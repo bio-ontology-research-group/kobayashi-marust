@@ -148,7 +148,25 @@ lean/          Lean 4 formalisation
 validation/    end-to-end driver (run.sh) + normalised JSON inputs
 oracle/        HermiT cross-check (scripts, reference results, ontologies)
 examples/      example OWL ontologies (.ofn)
+protege/       Protege reasoner plugin (Maven; OSGi bundle)
 ```
+
+## Protege plugin
+
+`protege/` is a [Protege](https://protege.stanford.edu/) **reasoner plugin**:
+Kobayashi-MaRust appears in the *Reasoner* menu and computes the inferred class
+hierarchy and unsatisfiable classes. It is a thin OWL API `OWLReasoner` that
+serialises the ontology and calls `engine/py/owl_classify.py` (the real moose
+normalisation + the Rust engine), then maps the named-class subsumptions back
+into Protege.
+
+```sh
+cd protege
+mvn -DskipTests package   # -> target/kobayashi-marust-protege-0.1.0.jar  (drop into Protege plugins/)
+mvn test                  # headless OWL-API tests (disjunction; kinship.ofn vs HermiT)
+```
+
+Runtime needs Python 3 + `moose` + the built engine (see `protege/README.md`).
 
 ---
 

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<?eclipse version="3.0"?>
+<plugin>
+
+   <!-- Register Kobayashi-MaRust in Protege's Reasoner menu. -->
+   <extension id="KobayashiMarustReasonerFactory"
+              point="org.protege.editor.owl.inference_reasonerfactory">
+      <reasonerFactory name="Kobayashi-MaRust"
+                       factoryClass="org.bioontology.kobayashimarust.protege.KMReasonerInfo"/>
+   </extension>
+
+</plugin>
