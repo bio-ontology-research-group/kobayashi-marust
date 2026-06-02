@@ -1,0 +1,8 @@
+{"clauses":[
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"fun","function":"f1","arg":{"kind":"var","name":"x"}}}]},
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"B","term":{"kind":"fun","function":"f1","arg":{"kind":"var","name":"x"}}}]},
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"fun","function":"f2","arg":{"kind":"var","name":"x"}}}]},
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"C","term":{"kind":"fun","function":"f2","arg":{"kind":"var","name":"x"}}}]},
+ {"body":[{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"var","name":"y"}},{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"var","name":"z"}}],"head":[{"kind":"eq","left":{"kind":"var","name":"y"},"right":{"kind":"var","name":"z"}}]},
+ {"body":[{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"var","name":"w"}},{"kind":"concept","concept":"B","term":{"kind":"var","name":"w"}},{"kind":"concept","concept":"C","term":{"kind":"var","name":"w"}}],"head":[{"kind":"concept","concept":"D","term":{"kind":"var","name":"x"}}]}
+]}

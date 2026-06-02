@@ -1,0 +1,99 @@
+Prefix(:=<http://moose.bio/kinship#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+
+# A small synthetic kinship ontology in OWL 2 DL functional syntax.
+# Designed to exercise every distinctive SROIQ role-axiom kind in a
+# single ABox so the moose-SROIQ benchmark can demonstrate them all
+# end-to-end through the same encoder.
+#
+# Features exercised:
+#   * SubObjectPropertyOf  (hasParent ⊑ hasAncestor)
+#   * InverseObjectProperties  (hasParent ≡ hasChild⁻)
+#   * TransitiveObjectProperty  (hasAncestor)
+#   * SymmetricObjectProperty  (hasSibling, marriedTo)
+#   * AsymmetricObjectProperty  (hasParent)
+#   * IrreflexiveObjectProperty  (hasSibling)
+#   * ReflexiveObjectProperty  (knowsSelf)
+#   * FunctionalObjectProperty  (hasMother, hasFather)
+#   * SubObjectPropertyOf (ObjectPropertyChain(hasParent hasParent) hasGrandparent)
+#   * Nominals  (Queen ≡ {Elizabeth})
+#   * ObjectHasSelf  (Narcissist ⊑ ∃knowsSelf.Self)
+#   * Universal restriction  (Person ⊑ ∀hasParent.Person)
+#   * Qualified at-least  (Parent ≡ Person ⊓ ≥1 hasChild.Person)
+#   * Complement  (Childless ≡ Person ⊓ ¬Parent)
+
+Ontology(<http://moose.bio/kinship>
+
+Declaration(Class(:Person))
+Declaration(Class(:Parent))
+Declaration(Class(:Mother))
+Declaration(Class(:Father))
+Declaration(Class(:Grandparent))
+Declaration(Class(:Childless))
+Declaration(Class(:Narcissist))
+Declaration(Class(:Royal))
+Declaration(Class(:Queen))
+Declaration(Class(:Spouse))
+Declaration(Class(:Female))
+Declaration(Class(:Male))
+
+Declaration(ObjectProperty(:hasParent))
+Declaration(ObjectProperty(:hasChild))
+Declaration(ObjectProperty(:hasAncestor))
+Declaration(ObjectProperty(:hasGrandparent))
+Declaration(ObjectProperty(:hasSibling))
+Declaration(ObjectProperty(:hasMother))
+Declaration(ObjectProperty(:hasFather))
+Declaration(ObjectProperty(:marriedTo))
+Declaration(ObjectProperty(:knowsSelf))
+
+Declaration(NamedIndividual(:Elizabeth))
+
+# --- Property hierarchy + chain ----------------------------------------
+SubObjectPropertyOf(:hasParent :hasAncestor)
+SubObjectPropertyOf(:hasMother :hasParent)
+SubObjectPropertyOf(:hasFather :hasParent)
+SubObjectPropertyOf(ObjectPropertyChain(:hasParent :hasParent) :hasGrandparent)
+
+# --- Inverse / characteristic ------------------------------------------
+InverseObjectProperties(:hasParent :hasChild)
+TransitiveObjectProperty(:hasAncestor)
+SymmetricObjectProperty(:hasSibling)
+SymmetricObjectProperty(:marriedTo)
+AsymmetricObjectProperty(:hasParent)
+IrreflexiveObjectProperty(:hasSibling)
+ReflexiveObjectProperty(:knowsSelf)
+FunctionalObjectProperty(:hasMother)
+FunctionalObjectProperty(:hasFather)
+
+# --- Domain and range --------------------------------------------------
+ObjectPropertyDomain(:hasParent :Person)
+ObjectPropertyRange(:hasParent :Person)
+ObjectPropertyRange(:hasMother :Female)
+ObjectPropertyRange(:hasFather :Male)
+
+# --- Disjointness ------------------------------------------------------
+DisjointClasses(:Female :Male)
+DisjointClasses(:Parent :Childless)
+
+# --- Class definitions with SROIQ-distinctive features ---------------
+EquivalentClasses(:Parent ObjectIntersectionOf(:Person ObjectMinCardinality(1 :hasChild :Person)))
+EquivalentClasses(:Mother ObjectIntersectionOf(:Person :Female ObjectSomeValuesFrom(:hasChild :Person)))
+EquivalentClasses(:Father ObjectIntersectionOf(:Person :Male ObjectSomeValuesFrom(:hasChild :Person)))
+EquivalentClasses(:Grandparent ObjectIntersectionOf(:Person ObjectSomeValuesFrom(:hasChild :Parent)))
+EquivalentClasses(:Childless ObjectIntersectionOf(:Person ObjectComplementOf(:Parent)))
+EquivalentClasses(:Narcissist ObjectIntersectionOf(:Person ObjectHasSelf(:knowsSelf)))
+EquivalentClasses(:Queen ObjectOneOf(:Elizabeth))
+SubClassOf(:Royal ObjectSomeValuesFrom(:hasAncestor :Queen))
+SubClassOf(:Person ObjectAllValuesFrom(:hasParent :Person))
+
+# --- Closure for kids of Elizabeth (nominal exercise) ----------------
+ClassAssertion(:Royal :Elizabeth)
+ClassAssertion(:Person :Elizabeth)
+ClassAssertion(:Female :Elizabeth)
+
+)

@@ -1,0 +1,28 @@
+{
+  "ontology": "kinship.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Childless", "Narcissist"],
+    ["Childless", "Person"],
+    ["Father", "Male"],
+    ["Father", "Narcissist"],
+    ["Father", "Parent"],
+    ["Father", "Person"],
+    ["Grandparent", "Narcissist"],
+    ["Grandparent", "Parent"],
+    ["Grandparent", "Person"],
+    ["Mother", "Female"],
+    ["Mother", "Narcissist"],
+    ["Mother", "Parent"],
+    ["Mother", "Person"],
+    ["Narcissist", "Person"],
+    ["Parent", "Narcissist"],
+    ["Parent", "Person"],
+    ["Person", "Narcissist"],
+    ["Queen", "Female"],
+    ["Queen", "Narcissist"],
+    ["Queen", "Person"],
+    ["Queen", "Royal"]
+  ],
+  "unsatisfiable": []
+}

@@ -1,0 +1,11 @@
+{"clauses":[
+ {"body":[{"kind":"concept","concept":"Father","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Male","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Father","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Parent","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Mother","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Female","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Mother","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Parent","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Parent","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Person","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Male","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Person","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Female","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Person","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Parent","term":{"kind":"var","name":"x"}}],"head":[{"kind":"concept","concept":"Narcissist","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"Male","term":{"kind":"var","name":"x"}},{"kind":"concept","concept":"Female","term":{"kind":"var","name":"x"}}],"head":[]}
+]}

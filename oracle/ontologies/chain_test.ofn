@@ -1,0 +1,9 @@
+Prefix(:=<http://t#>)
+Ontology(<http://t>
+Declaration(Class(:A)) Declaration(Class(:Mid)) Declaration(Class(:C)) Declaration(Class(:D))
+Declaration(ObjectProperty(:R)) Declaration(ObjectProperty(:S)) Declaration(ObjectProperty(:T))
+SubObjectPropertyOf(ObjectPropertyChain(:R :S) :T)
+SubClassOf(:A ObjectSomeValuesFrom(:R :Mid))
+SubClassOf(:Mid ObjectSomeValuesFrom(:S :C))
+SubClassOf(ObjectSomeValuesFrom(:T :C) :D)
+)

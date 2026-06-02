@@ -1,0 +1,8 @@
+{
+  "ontology": "chain_test.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "D"]
+  ],
+  "unsatisfiable": []
+}

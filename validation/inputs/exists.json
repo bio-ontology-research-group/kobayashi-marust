@@ -1,0 +1,11 @@
+{"clauses":[
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],
+  "head":[{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"fun","function":"f","arg":{"kind":"var","name":"x"}}}]},
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],
+  "head":[{"kind":"concept","concept":"B","term":{"kind":"fun","function":"f","arg":{"kind":"var","name":"x"}}}]},
+ {"body":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}}],
+  "head":[{"kind":"concept","concept":"C","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"role","role":"R","source":{"kind":"var","name":"x"},"target":{"kind":"var","name":"z"}},
+          {"kind":"concept","concept":"C","term":{"kind":"var","name":"z"}}],
+  "head":[{"kind":"concept","concept":"D","term":{"kind":"var","name":"x"}}]}
+]}

@@ -1,0 +1,9 @@
+{
+  "ontology": "trans_test.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "D"],
+    ["B", "D"]
+  ],
+  "unsatisfiable": []
+}

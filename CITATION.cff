@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use Kobayashi-MaRust, please cite it as below."
+title: "Kobayashi-MaRust: a SROIQ / OWL 2 DL context reasoner with machine-checked soundness in Lean 4"
+type: software
+authors:
+  - family-names: Hoehndorf
+    given-names: Robert
+    affiliation: "King Abdullah University of Science and Technology (KAUST)"
+repository-code: "https://github.com/bio-ontology-research-group/kobayashi-marust"
+license: BSD-3-Clause
+keywords:
+  - description logic
+  - OWL 2 DL
+  - SROIQ
+  - consequence-based reasoning
+  - Lean 4
+  - formal verification
+  - neuro-symbolic

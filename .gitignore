@@ -1,0 +1,18 @@
+# Rust
+/engine/target/
+**/target/
+Cargo.lock.orig
+
+# Lean / Lake
+/lean/.lake/
+**/.lake/
+*.olean
+*.ilean
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor / OS
+*.swp
+.DS_Store

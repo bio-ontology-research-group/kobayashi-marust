@@ -1,0 +1,88 @@
+Prefix(:=<http://moose.bio/disjunction#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+
+# Disjunction-driven SROIQ benchmark for RS-awareness.
+#
+# Designed so that observed *role* assertions plus a concept
+# disjunction force the latent gender atoms into two correlated
+# RS modes that no factorised (UCI) perception can represent
+# jointly.
+#
+# Three named individuals a, b, c.  ABox observations:
+#
+#   Person(a), Person(b), Person(c)
+#   marriedTo(a, b)        [a is married to b; symmetric]
+#   hasChild(a, c)         [a is a parent of c]
+#   hasChild(b, c)         [b is a parent of c]
+#
+# SROIQ features exercised:
+#   * Concept disjunction       (Person ⊑ Male ⊔ Female)
+#   * Disjoint classes          (Male ⊓ Female ⊑ ⊥)
+#   * Symmetric role            (marriedTo)
+#   * Universal restriction     (Male ⊑ ∀marriedTo.Female)
+#   * Inverse object property   (hasChild ≡ hasParent^-)
+#   * Sub-property hierarchy    (hasParent ⊑ hasAncestor)
+#   * Transitive role           (hasAncestor)
+#
+# RS modes.  The opposite-sex marriage axiom couples Male(a) with
+# Female(b) and vice versa; the child gender is independent.
+# Four Theta-consistent ground-truth completions remain:
+#
+#   Mode AM:  Male(a), Female(b), Male(c)
+#   Mode AF:  Male(a), Female(b), Female(c)
+#   Mode BM:  Female(a), Male(b), Male(c)
+#   Mode BF:  Female(a), Male(b), Female(c)
+#
+# Plus latent deterministic atoms derived through SROIQ:
+#   hasParent(c, a), hasParent(c, b)       (inverse of hasChild)
+#   hasAncestor(c, a), hasAncestor(c, b)   (hierarchy from hasParent)
+#
+# A perception with K=4 mixture cells can place one head per mode.
+
+Ontology(<http://moose.bio/disjunction>
+
+Declaration(Class(:Person))
+Declaration(Class(:Male))
+Declaration(Class(:Female))
+
+Declaration(ObjectProperty(:marriedTo))
+Declaration(ObjectProperty(:hasParent))
+Declaration(ObjectProperty(:hasChild))
+Declaration(ObjectProperty(:hasAncestor))
+
+# Concept disjunction: every person has a gender.
+SubClassOf(:Person ObjectUnionOf(:Male :Female))
+DisjointClasses(:Male :Female)
+
+# Opposite-sex marriage: the universal restriction on marriedTo
+# forces a Male's spouses to all be Female (and vice versa via
+# the symmetric closure).
+SymmetricObjectProperty(:marriedTo)
+SubClassOf(:Male  ObjectAllValuesFrom(:marriedTo :Female))
+SubClassOf(:Female ObjectAllValuesFrom(:marriedTo :Male))
+
+# Parenthood role structure.  hasChild is the inverse of
+# hasParent; hasParent is a sub-property of hasAncestor; and
+# hasAncestor is transitive.
+InverseObjectProperties(:hasChild :hasParent)
+SubObjectPropertyOf(:hasParent :hasAncestor)
+TransitiveObjectProperty(:hasAncestor)
+
+# A small ABox: a and b are a married couple; c is their child.
+Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+Declaration(NamedIndividual(:c))
+
+ClassAssertion(:Person :a)
+ClassAssertion(:Person :b)
+ClassAssertion(:Person :c)
+
+ObjectPropertyAssertion(:marriedTo :a :b)
+ObjectPropertyAssertion(:hasChild :a :c)
+ObjectPropertyAssertion(:hasChild :b :c)
+
+)

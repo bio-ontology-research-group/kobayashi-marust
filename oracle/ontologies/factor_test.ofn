@@ -1,0 +1,8 @@
+Prefix(:=<http://t#>)
+Ontology(<http://t>
+Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:Bad))
+Declaration(ObjectProperty(:R))
+SubClassOf(:A ObjectMinCardinality(3 :R :C))
+SubClassOf(:A ObjectMaxCardinality(2 :R :C))
+EquivalentClasses(:Bad ObjectIntersectionOf(:A :A))
+)

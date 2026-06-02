@@ -1,0 +1,9 @@
+{
+  "ontology": "factor_test.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A",
+    "Bad"
+  ]
+}

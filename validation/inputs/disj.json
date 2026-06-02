@@ -1,0 +1,9 @@
+{"clauses":[
+ {"body":[{"kind":"concept","concept":"A","term":{"kind":"var","name":"x"}}],
+  "head":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}},
+          {"kind":"concept","concept":"C","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"B","term":{"kind":"var","name":"x"}}],
+  "head":[{"kind":"concept","concept":"D","term":{"kind":"var","name":"x"}}]},
+ {"body":[{"kind":"concept","concept":"C","term":{"kind":"var","name":"x"}}],
+  "head":[{"kind":"concept","concept":"D","term":{"kind":"var","name":"x"}}]}
+]}

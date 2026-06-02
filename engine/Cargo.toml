@@ -1,0 +1,22 @@
+[package]
+name = "kobayashi-marust"
+version = "0.1.0"
+edition = "2021"
+license = "BSD-3-Clause"
+description = "A sound disjunctive context-based (consequence-based) reasoner for SROIQ / OWL 2 DL, with machine-checked soundness in Lean 4."
+repository = "https://github.com/bio-ontology-research-group/kobayashi-marust"
+keywords = ["description-logic", "owl", "reasoner", "sroiq", "lean"]
+categories = ["science"]
+
+[[bin]]
+name = "kobayashi-marust"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

@@ -1,0 +1,24 @@
+Prefix(:=<http://moose.bio/kinship-chain#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+
+# Minimal SROIQ ontology isolating the property-chain feature
+# hasParent ∘ hasParent ⊑ hasGrandparent, so the chain compile fits
+# in a |D| = 3 grounded SDD that the perception loop can use.
+
+Ontology(<http://moose.bio/kinship-chain>
+
+Declaration(Class(:Person))
+Declaration(ObjectProperty(:hasParent))
+Declaration(ObjectProperty(:hasGrandparent))
+
+SubObjectPropertyOf(ObjectPropertyChain(:hasParent :hasParent) :hasGrandparent)
+ObjectPropertyDomain(:hasParent :Person)
+ObjectPropertyRange(:hasParent :Person)
+ObjectPropertyDomain(:hasGrandparent :Person)
+ObjectPropertyRange(:hasGrandparent :Person)
+
+)

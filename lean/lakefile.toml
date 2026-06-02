@@ -1,0 +1,13 @@
+name = "ContextCalculus"
+defaultTargets = ["ContextCalculus", "Validation"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.30.0-rc2"
+
+[[lean_lib]]
+name = "ContextCalculus"
+
+[[lean_lib]]
+name = "Validation"
