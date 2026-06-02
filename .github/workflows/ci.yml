@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  engine:
+    name: Rust engine (build + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: Build
+        working-directory: engine
+        run: cargo build --release --locked
+      - name: Test
+        working-directory: engine
+        run: cargo test --release --locked
+      - name: Smoke test (disjunctive subsumption A ⊑ D)
+        working-directory: engine
+        run: |
+          out=$(./target/release/kobayashi-marust < ../validation/inputs/disj.json)
+          echo "$out"
+          echo "$out" | grep -q '"A":\["D"\]'
+
+  lean:
+    name: Lean proofs (kernel-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and kernel-check the formalisation + all validation theorems
+        uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: lean

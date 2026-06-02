@@ -2,6 +2,7 @@
 
 **A sound disjunctive context reasoner for SROIQ / OWL 2 DL — with machine-checked soundness in Lean 4.**
 
+[![CI](https://github.com/bio-ontology-research-group/kobayashi-marust/actions/workflows/ci.yml/badge.svg)](https://github.com/bio-ontology-research-group/kobayashi-marust/actions/workflows/ci.yml)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/engine-Rust-orange.svg)](engine)
 [![Lean 4](https://img.shields.io/badge/proofs-Lean%204-brightgreen.svg)](lean)
