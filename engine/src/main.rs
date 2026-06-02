@@ -44,6 +44,7 @@ fn main() {
         subsumptions,
         derived_clauses: r.emit_clauses(),
         inconsistent: r.inconsistent(),
+        dropped: r.dropped_unsupported(),
     };
 
     let s = serde_json::to_string(&out).expect("serialise output");

@@ -78,4 +78,8 @@ pub struct JOutput {
     pub subsumptions: std::collections::BTreeMap<String, Vec<String>>,
     pub derived_clauses: Vec<JClause>,
     pub inconsistent: bool,
+    /// Number of input clauses dropped as unsupported (i.e. needing the general
+    /// role-automaton transformation). Soundness-preserving; nonzero only costs
+    /// completeness. Zero on all benchmarks after the `augment` preprocessing.
+    pub dropped: usize,
 }

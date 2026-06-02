@@ -192,12 +192,38 @@ def chain_clauses(tbox):
     return extra
 
 
+def _is_chain_axiom(c):
+    """True for a raw role-chain / transitivity clause `R(a,b) ∧ S(b,c) → T(a,c)`
+    (shared middle `b`), i.e. exactly the clause shape that has a body role with
+    no central variable.  These are *replaced* by the central-form reachability /
+    chain encoding below, so they must not be passed through to the engine (which
+    would otherwise drop them as unsupported)."""
+    roles = [a for a in c.body if _is_role(a)]
+    heads = list(c.head)
+    if len(roles) == 2 and len(c.body) == 2 and len(heads) == 1 and _is_role(heads[0]):
+        r0, r1, h = roles[0], roles[1], heads[0]
+        pair = (r0, r1) if r0.target == r1.source else \
+               (r1, r0) if r1.target == r0.source else None
+        if pair is not None:
+            first, second = pair
+            if (h.source == first.source and h.target == second.target
+                    and first.source != second.target):
+                return True
+    return False
+
+
 def augment(tbox, abox, hooks):
     """tbox plus: sound nominal clauses, the transitive-role reachability
-    encoding (`R∘R⊑R`), and the role-chain encoding (`R∘S⊑T`)."""
+    encoding (`R∘R⊑R`), and the role-chain encoding (`R∘S⊑T`).
+
+    The raw chain/transitivity axioms are *removed* from the pass-through set:
+    they are out of the ALCHIQ clause normal form (body role without a central
+    variable) and are fully replaced by the central-form encoding, so the engine
+    consumes every emitted clause and drops nothing."""
     tbox = list(tbox)
+    base = [c for c in tbox if not _is_chain_axiom(c)]
     return (
-        tbox
+        base
         + nominal_clauses(abox, hooks)
         + transitivity_clauses(tbox)
         + chain_clauses(tbox)
