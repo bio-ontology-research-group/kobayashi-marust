@@ -998,12 +998,27 @@ impl Engine {
 
     // ------------------------------ driver ---------------------------------
 
-    pub fn run(&mut self) {
-        // Root contexts: one per named (query) concept.
-        let named: Vec<Iri> = (0..self.sig.concept_names.len() as Iri)
+    /// All named (non-internal, non-Nothing) concepts, i.e. the default query set.
+    pub fn named_queries(&self) -> Vec<Iri> {
+        (0..self.sig.concept_names.len() as Iri)
             .filter(|&i| !self.sig.is_internal(i) && !self.sig.is_nothing_concept(i))
-            .collect();
-        for iri in named {
+            .collect()
+    }
+
+    pub fn run(&mut self) {
+        let named = self.named_queries();
+        self.run_for(&named);
+    }
+
+    /// Classify exactly the given query concepts (seed one root context each,
+    /// then run the inter-context message fixpoint).  Each query's subsumptions
+    /// are independent of which other queries are co-classified -- the shared
+    /// successor context is only an optimisation -- so classifying a subset is
+    /// sound and yields identical results for those concepts.  This is what lets
+    /// classification be parallelised across disjoint concept chunks.
+    pub fn run_for(&mut self, queries: &[Iri]) {
+        // Root contexts: one per named (query) concept.
+        for &iri in queries {
             let core = vec![Pred::Concept { iri, t: X }];
             let id = self.get_or_create_context(core, true, Some(iri));
             self.saturate(id);

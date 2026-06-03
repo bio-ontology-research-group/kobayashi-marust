@@ -188,7 +188,7 @@ impl Lit {
 
 /// Global, immutable trigger / classification information about the ontology
 /// signature, used to decide Succ/Pred triggers and the ordering.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Sig {
     /// `iri` of every concept name in interning order; reverse map for output.
     pub concept_names: Vec<String>,

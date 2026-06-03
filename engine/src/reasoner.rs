@@ -4,6 +4,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use rayon::prelude::*;
+
 use crate::calc::*;
 use crate::clause::OntologyClause;
 use crate::engine::Engine;
@@ -13,9 +15,19 @@ fn short(name: &str) -> &str {
     name.rsplit(['#', '/']).next().unwrap_or(name)
 }
 
-/// Build the engine from input clauses.
+/// Reasoner: parses input clauses, then classifies by running the verified
+/// context-calculus `Engine` over disjoint chunks of the named query concepts
+/// **in parallel** (rayon), merging the per-chunk results.  Each query's
+/// subsumptions are independent of the others (the shared successor context is
+/// only an optimisation), so chunked classification is sound and deterministic;
+/// the engine core is unchanged.  Set `KM_THREADS=1` to force sequential mode.
 pub struct Reasoner {
-    engine: Engine,
+    sig0: Sig,
+    clauses0: Vec<OntologyClause>,
+    dropped: usize,
+    subs: BTreeMap<String, BTreeSet<String>>,
+    inconsistent: bool,
+    num_ctx: usize,
 }
 
 struct Builder {
@@ -160,20 +172,73 @@ impl Reasoner {
                 None => b.dropped += 1,
             }
         }
-        let engine = Engine::new(b.sig, clauses, b.dropped);
-        Reasoner { engine }
+        Reasoner {
+            sig0: b.sig,
+            clauses0: clauses,
+            dropped: b.dropped,
+            subs: BTreeMap::new(),
+            inconsistent: false,
+            num_ctx: 0,
+        }
+    }
+
+    /// Desired worker count: `KM_THREADS` env if set (clamped >=1), else the
+    /// machine's available parallelism.
+    fn want_threads() -> usize {
+        if let Ok(v) = std::env::var("KM_THREADS") {
+            if let Ok(n) = v.trim().parse::<usize>() {
+                return n.max(1);
+            }
+        }
+        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+    }
+
+    fn build_engine(&self) -> Engine {
+        Engine::new(self.sig0.clone(), self.clauses0.clone(), self.dropped)
+    }
+
+    fn absorb(&mut self, subs: Vec<(String, Vec<String>)>, inc: bool, nctx: usize) {
+        if inc {
+            self.inconsistent = true;
+        }
+        self.num_ctx += nctx;
+        for (a, supers) in subs {
+            let set = self.subs.entry(a).or_default();
+            set.extend(supers);
+        }
     }
 
     pub fn saturate(&mut self) {
-        self.engine.run();
+        let queries = self.build_engine().named_queries();
+        let threads = Self::want_threads().min(queries.len().max(1));
+        // Sequential path: one engine over all queries (preserves cross-query
+        // context sharing -- fastest when single-threaded).
+        if threads <= 1 || queries.len() <= 1 {
+            let mut e = self.build_engine();
+            e.run_for(&queries);
+            let (subs, inc, n) = (e.subsumptions(), e.inconsistent(), e.num_contexts());
+            self.absorb(subs, inc, n);
+            return;
+        }
+        // Parallel path: split the named concepts into `threads` chunks and run
+        // an independent engine per chunk concurrently, then merge.
+        let chunk_len = queries.len().div_ceil(threads);
+        let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();
+        let partials: Vec<(Vec<(String, Vec<String>)>, bool, usize)> = chunks
+            .par_iter()
+            .map(|chunk| {
+                let mut e = self.build_engine();
+                e.run_for(chunk);
+                (e.subsumptions(), e.inconsistent(), e.num_contexts())
+            })
+            .collect();
+        for (subs, inc, n) in partials {
+            self.absorb(subs, inc, n);
+        }
     }
 
     pub fn subsumptions(&self) -> BTreeMap<String, BTreeSet<String>> {
-        let mut out: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-        for (a, supers) in self.engine.subsumptions() {
-            out.insert(a, supers.into_iter().collect());
-        }
-        out
+        self.subs.clone()
     }
 
     pub fn emit_clauses(&self) -> Vec<JClause> {
@@ -184,12 +249,12 @@ impl Reasoner {
             }
         }
         let mut out = Vec::new();
-        for (a, supers) in self.engine.subsumptions() {
+        for (a, supers) in &self.subs {
             for d in supers {
                 if d == "owl:Nothing" {
-                    out.push(JClause { body: vec![ax(&a)], head: vec![] });
+                    out.push(JClause { body: vec![ax(a)], head: vec![] });
                 } else {
-                    out.push(JClause { body: vec![ax(&a)], head: vec![ax(&d)] });
+                    out.push(JClause { body: vec![ax(a)], head: vec![ax(d)] });
                 }
             }
         }
@@ -197,15 +262,15 @@ impl Reasoner {
     }
 
     pub fn inconsistent(&self) -> bool {
-        self.engine.inconsistent()
+        self.inconsistent
     }
 
     pub fn dropped_unsupported(&self) -> usize {
-        self.engine.dropped_unsupported
+        self.dropped
     }
 
     pub fn num_contexts(&self) -> usize {
-        self.engine.num_contexts()
+        self.num_ctx
     }
 }
 
