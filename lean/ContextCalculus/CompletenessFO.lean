@@ -124,4 +124,60 @@ theorem fo_model_or_refute (S : List FCL) (hf : ∀ c ∈ S, EqFree c) :
   · exact Or.inr h
   · exact Or.inl (herbrand_fo_model_existence S hf h)
 
+/-! ### First-order subsumption completeness over term models -/
+
+/-- `→ A(x)` over the term algebra. -/
+def coreFCL (A : Nat) : FCL := ⟨[], [FLit.P (FPred.concept A (FTerm.var 0))]⟩
+/-- `B(x) →` over the term algebra. -/
+def negFCL (B : Nat) : FCL := ⟨[FLit.P (FPred.concept B (FTerm.var 0))], []⟩
+
+theorem eqFree_coreFCL (A : Nat) : EqFree (coreFCL A) := by
+  constructor <;> intro L hL <;>
+    simp only [coreFCL, List.not_mem_nil, List.mem_singleton] at hL <;>
+    first | exact hL.elim | (subst hL; exact trivial)
+
+theorem eqFree_negFCL (B : Nat) : EqFree (negFCL B) := by
+  constructor <;> intro L hL <;>
+    simp only [negFCL, List.not_mem_nil, List.mem_singleton] at hL <;>
+    first | exact hL.elim | (subst hL; exact trivial)
+
+/-- Under the canonical assignment, `A(x)` evaluates to `conc A (var 0)` in any
+    term model (the variable case of evaluation is model-independent). -/
+theorem evalL_var0 (M : TModel FTerm) (A : Nat) :
+    M.evalL rho0 (FLit.P (FPred.concept A (FTerm.var 0))) = M.conc A (FTerm.var 0) := rfl
+
+/-- **First-order subsumption completeness (term models).**  If every Herbrand
+    term model of `O` (under the canonical assignment) that carries `A(x)` also
+    carries `B(x)`, then the engine's resolution refutes `O ⊓ A ⊓ ¬B`.  This lifts
+    `subsumption_refut_complete` from propositional to first-order *term-model*
+    semantics over the actual successor term algebra (equality-free fragment). -/
+theorem fo_subsumption_refut (O : List FCL) (A B : Nat)
+    (hfree : ∀ c ∈ O, EqFree c)
+    (hent : ∀ M : TModel FTerm, (∀ c ∈ O, sat (M.evalL rho0) c) →
+      M.conc A (FTerm.var 0) → M.conc B (FTerm.var 0)) :
+    Derivable (O ++ [coreFCL A, negFCL B]) (⟨[], []⟩ : FCL) := by
+  have hfreeS : ∀ c ∈ O ++ [coreFCL A, negFCL B], EqFree c := by
+    intro c hc
+    rw [List.mem_append] at hc
+    rcases hc with hc | hc
+    · exact hfree c hc
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
+      rcases hc with rfl | rfl
+      · exact eqFree_coreFCL A
+      · exact eqFree_negFCL B
+  rcases fo_model_or_refute (O ++ [coreFCL A, negFCL B]) hfreeS with ⟨M, hM⟩ | hd
+  · exfalso
+    have hO : ∀ c ∈ O, sat (M.evalL rho0) c := fun c hc => hM c (by simp [hc])
+    have hA : M.conc A (FTerm.var 0) := by
+      obtain ⟨L, hL, hev⟩ := hM (coreFCL A) (by simp) (by intro a ha; cases ha)
+      simp only [coreFCL, List.mem_singleton] at hL
+      rw [← evalL_var0 M A, ← hL]; exact hev
+    have hB : ¬ M.conc B (FTerm.var 0) := by
+      intro hCB
+      obtain ⟨L, hL, _⟩ := hM (negFCL B) (by simp)
+        (by intro a ha; simp only [negFCL, List.mem_singleton] at ha; subst ha; exact hCB)
+      simp only [negFCL, List.not_mem_nil] at hL
+    exact hB (hent M hO hA)
+  · exact hd
+
 end ContextCalculus.CompletenessFO
