@@ -167,6 +167,68 @@ theorem entails_refut_iff (O : List (Clause Atom)) (C : Clause Atom) :
         exact (sat_unit_neg I a).2 (fun hIa => hno ⟨a, ha, hIa⟩)
     exact sat_empty I (derivable_sound I _ hall hder)
 
+/-! ### First-order Herbrand model existence (equality-free fragment)
+
+`Basic.TermModel` interprets `Lit.eq` by *real* equality of valuations, so a
+propositional model lifts to a genuine first-order term model only on the
+equality-free fragment (concept/role literals — ALC without the number-restriction
+`Eq` machinery).  There the engine's failure to refute yields an actual
+first-order model. -/
+
+/-- The Herbrand term model from a propositional model: domain = terms, valuation
+    the identity, concepts/roles read off the propositional truth assignment. -/
+def herbrandModel (I : Model Lit) : TermModel Term where
+  val := id
+  conc := fun i d => I (Lit.P (Pred.concept i d))
+  rol := fun i s t => I (Lit.P (Pred.role i s t))
+
+theorem eval_herbrand_P (I : Model Lit) (p : Pred) :
+    (herbrandModel I).eval (Lit.P p) = I (Lit.P p) := by
+  cases p <;> rfl
+
+/-- A literal is equality-free (a concept/role atom). -/
+def IsP : Lit → Prop
+  | Lit.P _ => True
+  | _ => False
+
+theorem eval_herbrand_of_IsP (I : Model Lit) {L : Lit} (h : IsP L) :
+    (herbrandModel I).eval L = I L := by
+  cases L with
+  | P p => exact eval_herbrand_P I p
+  | eq _ _ => exact absurd h (by simp [IsP])
+  | ineq _ _ => exact absurd h (by simp [IsP])
+
+/-- A clause is equality-free when every literal is a concept/role atom. -/
+def EqFree (c : Clause Lit) : Prop :=
+  (∀ L ∈ c.body, IsP L) ∧ (∀ L ∈ c.head, IsP L)
+
+/-- Satisfaction of a clause in a term model. -/
+def tsat {D : Type} (M : TermModel D) (c : Clause Lit) : Prop :=
+  (∀ L ∈ c.body, M.eval L) → (∃ L ∈ c.head, M.eval L)
+
+theorem tsat_herbrand_of_sat (I : Model Lit) {c : Clause Lit} (hf : EqFree c) :
+    tsat (herbrandModel I) c ↔ sat I c := by
+  have hb : (∀ L ∈ c.body, (herbrandModel I).eval L) ↔ (∀ L ∈ c.body, I L) := by
+    constructor <;> intro h L hL
+    · exact (eval_herbrand_of_IsP I (hf.1 L hL)) ▸ h L hL
+    · exact (eval_herbrand_of_IsP I (hf.1 L hL)).symm ▸ h L hL
+  have hh : (∃ L ∈ c.head, (herbrandModel I).eval L) ↔ (∃ L ∈ c.head, I L) := by
+    constructor
+    · rintro ⟨L, hL, hev⟩; exact ⟨L, hL, (eval_herbrand_of_IsP I (hf.2 L hL)) ▸ hev⟩
+    · rintro ⟨L, hL, hev⟩; exact ⟨L, hL, (eval_herbrand_of_IsP I (hf.2 L hL)).symm ▸ hev⟩
+  unfold tsat sat; rw [hb, hh]
+
+/-- **First-order Herbrand model existence.**  An equality-free clause set the
+    engine cannot refute has a genuine first-order term model. -/
+theorem herbrand_model_existence (O : List (Clause Lit))
+    (hf : ∀ c ∈ O, EqFree c)
+    (h : ¬ Derivable O (⟨[], []⟩ : Clause Lit)) :
+    ∃ M : TermModel Term, ∀ c ∈ O, tsat M c := by
+  have hmodel : ∃ I : Lit → Prop, ∀ c ∈ O, sat I c := by
+    by_contra hno; exact h (completeness O hno)
+  obtain ⟨I, hI⟩ := hmodel
+  exact ⟨herbrandModel I, fun c hc => (tsat_herbrand_of_sat I (hf c hc)).2 (hI c hc)⟩
+
 /-! ### Classification corollaries (concrete `Lit` clauses) -/
 
 /-- `B(x) →`, the clause negating `B(x)`. -/

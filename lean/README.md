@@ -37,6 +37,29 @@ Classical.choice, Quot.sound]`.  On the function-free fragment the engine's
 saturation *is* propositional resolution, so this is soundness + completeness of
 the disjunctive core.
 
+### Clause-level completeness, on the engine's own clauses — `ContextCalculus/CompletenessClause.lean`
+`CompletenessProp` proves completeness over a *separate* set-based clause type;
+this file transports it onto the engine's actual `Clause Lit` / `Derivable` (the
+ones `Basic.lean` proves *sound*), via a clause map `toP` (lists→finsets) that
+commutes with resolution (`toP_resolvent`) and a step-for-step lifting (`lift`):
+
+- `completeness` — `Basic.Derivable` refutes any propositionally unsatisfiable
+  finite clause set (derives the empty clause);
+- `unsat_complete`, `subsumption_refut_complete` — the classification corollaries
+  (`O ⊨ A ⊑ ⊥` / `O ⊨ A ⊑ B` ⇒ the engine derives `⊥`);
+- `subsumption_refut_iff`, `entails_refut_iff` — the **decidability capstone**:
+  pairing these with `Basic`'s soundness, `O ⊨ A ⊑ B` (and more generally `O ⊨ C`
+  for any ground clause `C`) holds **iff** the engine refutes `O` + ¬`C`;
+- `model_existence` — contrapositive: a clause set the engine cannot refute has a
+  model.
+
+`sorry`-free; axioms `[propext, Classical.choice, Quot.sound]`.  This is the
+completeness counterpart of `Basic`'s soundness on the **ground/propositional**
+layer (Core/Hyper/Pred/Elim).  The orthogonal term-generating `Succ` layer
+(instantiating clauses at fresh successor terms `f(x)`) is the existential
+direction below; fusing the two into one first-order completeness theorem over a
+saturated term set remains open.
+
 ### Completeness, existential direction — `ContextCalculus/CompletenessEL.lean`
 **First-order completeness of consequence-based reasoning for EL**, via a
 canonical model with genuine existential witnesses (the ELK case the
