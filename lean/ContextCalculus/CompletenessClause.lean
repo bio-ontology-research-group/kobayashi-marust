@@ -149,4 +149,43 @@ theorem subsumption_refut_complete (O : List (Clause Lit)) (A B : Nat)
     (sat_negClause I B).1 (hI (negClause B) (by simp))
   exact hnB (hent I hO hA)
 
+/-- **Soundness companion** (refutational form).  If the engine refutes `A ⊓ ¬B`
+    then `O ⊨ A ⊑ B`.  (Re-derived here in the `coreClause`/`negClause`
+    formulation so it pairs with `subsumption_refut_complete`.) -/
+theorem subsumption_refut_sound (O : List (Clause Lit)) (A B : Nat)
+    (hder : Derivable (O ++ [coreClause A, negClause B]) (⟨[], []⟩ : Clause Lit))
+    (I : Model Lit) (hO : ∀ c ∈ O, sat I c)
+    (hA : I (Lit.P (Pred.concept A Term.x))) : I (Lit.P (Pred.concept B Term.x)) := by
+  by_contra hnB
+  have hall : ∀ c ∈ (O ++ [coreClause A, negClause B]), sat I c := by
+    intro c hc
+    rw [List.mem_append] at hc
+    rcases hc with hc | hc
+    · exact hO c hc
+    · simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hc
+      rcases hc with rfl | rfl
+      · exact (sat_coreClause I A).2 hA
+      · exact (sat_negClause I B).2 hnB
+  exact sat_empty I (derivable_sound I _ hall hder)
+
+/-- **Clause-level decidability of subsumption (capstone).**  On the
+    ground/propositional fragment, `O ⊨ A ⊑ B` holds **iff** the engine's
+    resolution refutes `A ⊓ ¬B` — soundness (`subsumption_refut_sound`,
+    `Basic.derivable_sound`) and completeness (`subsumption_refut_complete`,
+    `PropRes.completeness`) for the engine's own `Derivable`, in one statement. -/
+theorem subsumption_refut_iff (O : List (Clause Lit)) (A B : Nat) :
+    (∀ I : Model Lit, (∀ c ∈ O, sat I c) →
+        I (Lit.P (Pred.concept A Term.x)) → I (Lit.P (Pred.concept B Term.x)))
+      ↔ Derivable (O ++ [coreClause A, negClause B]) (⟨[], []⟩ : Clause Lit) :=
+  ⟨subsumption_refut_complete O A B,
+   fun hder I hO hA => subsumption_refut_sound O A B hder I hO hA⟩
+
+/-- **Model existence.**  If the engine cannot derive `⊥` from a finite clause
+    set, the set has a (propositional) model.  Contrapositive of `completeness`. -/
+theorem model_existence (O : List (Clause Atom))
+    (h : ¬ Derivable O (⟨[], []⟩ : Clause Atom)) :
+    ∃ I : Atom → Prop, ∀ c ∈ O, sat I c := by
+  by_contra hno
+  exact h (completeness O hno)
+
 end ContextCalculus.ClauseComplete
