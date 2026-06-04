@@ -31,13 +31,22 @@
                               strategy's materialised set is sound and complete and
                               decides `A ⊑ B` (via `strategy_decides`, itself a
                               corollary of `CompletenessContext.subsumption_complete`).
+    * `engine_decides`     — the **lazy** version: the engine never enumerates all
+                              `2^|CName|` types, it materialises a finite candidate
+                              set `U` (root context per named concept, one successor
+                              context per function symbol).  Iterating `step` from
+                              `U` still converges to exactly the good types and
+                              decides `A ⊑ B`, under the single explicit hypothesis
+                              `coverage : goodFS O ⊆ U`.
 
-  Scope note (unchanged from `lean/README`): this is the ALCHIQ type-level
-  argument.  It establishes that *some* terminating elimination computes the good
-  types; the remaining engineering obligation is the operational refinement that
-  the Rust per-`f` data structures realise this abstract `step` — the verdict
-  identity to the trivial strategy is checked empirically, and the per-run
-  certificate checker re-establishes soundness on every run.
+  Scope note: this is the ALCHIQ type-level argument.  `engine_decides` pins the
+  whole remaining operational gap to the one named property `coverage` (the
+  lazy-completeness of per-`f` expansion — Core seeds every named concept,
+  Succ/Hyper generate every reachable good core); everything else is
+  machine-checked.  Soundness needs no such hypothesis: it is re-established on
+  every run by the certificate checker (`CheckerTerm.certifies_subsumptionT`), and
+  verdict identity to the exhaustive trivial strategy is byte-identical on every
+  benchmark.
 -/
 import ContextCalculus.CompletenessContext
 
@@ -263,6 +272,116 @@ theorem saturate_decides (A B : CName) :
     (∀ t, t ∈ saturate O → A ∈ t → B ∈ t)
       ↔ (∀ (D : Type) (I : Interp D CName Role), models I O → ∀ x, I.c A x → I.c B x) :=
   strategy_decides O (fun t => t ∈ saturate O) (saturate_sound O) (saturate_complete O) A B
+
+/-! ### Bridge to the engine's *lazy* materialisation
+
+`saturate` above eliminates from `cand O`, the set of *all* consistent types
+(`2^|CName|` of them).  The Rust engine never enumerates that: it materialises a
+finite candidate set `U` lazily (a root context per named concept, one successor
+context per function symbol — the pay-as-you-go strategy) and eliminates from
+`U`.  We show that **the lazy loop computes exactly the good types and decides
+subsumption** under one explicit hypothesis, `coverage : goodFS O ⊆ U` — the
+materialised set covers the good types.
+
+This pins the entire remaining operational gap to that single, named property
+(the lazy-completeness of per-`f` expansion: Core seeds every named concept and
+Succ/Hyper generate every reachable good core).  Everything else — that
+elimination never discards a good type, that it converges in `≤ |U|` rounds, that
+the fixpoint it reaches is *exactly* the good types, and that the reported
+subsumptions then decide `A ⊑ B` — is machine-checked here.  Soundness needs no
+such hypothesis (it is the per-run certificate checker's job, `CheckerTerm`). -/
+
+theorem iter_succ_subset (U : Finset (Finset CName)) (m : ℕ) :
+    (step O)^[m + 1] U ⊆ (step O)^[m] U := by
+  rw [Function.iterate_succ_apply']; exact step_subset O _
+
+theorem iter_subset (U : Finset (Finset CName)) (n : ℕ) : (step O)^[n] U ⊆ U := by
+  induction n with
+  | zero => simp
+  | succ k ih => exact (iter_succ_subset O U k).trans ih
+
+/-- Elimination from `U` never discards a good type, as long as `U` had them. -/
+theorem goodFS_subset_iter (U : Finset (Finset CName)) (hcov : goodFS O ⊆ U) (n : ℕ) :
+    goodFS O ⊆ (step O)^[n] U := by
+  induction n with
+  | zero => simpa using hcov
+  | succ k ih =>
+      rw [Function.iterate_succ_apply']
+      intro t ht
+      exact Finset.mem_filter.2 ⟨ih ht, realizedIn_mono O ih (goodFS_selfReal O t ht).2⟩
+
+theorem iter_card_add_le (U : Finset (Finset CName)) (n : ℕ)
+    (h : ∀ m, m < n → (step O)^[m] U ≠ (step O)^[m + 1] U) :
+    ((step O)^[n] U).card + n ≤ U.card := by
+  induction n with
+  | zero => simp
+  | succ k ih =>
+      have hk : ∀ m, m < k → (step O)^[m] U ≠ (step O)^[m + 1] U :=
+        fun m hm => h m (Nat.lt_succ_of_lt hm)
+      have ihk := ih hk
+      have hne := h k (Nat.lt_succ_self k)
+      have hss := iter_succ_subset O U k
+      have hlt : ((step O)^[k + 1] U).card < ((step O)^[k] U).card :=
+        Finset.card_lt_card ⟨hss, fun hsup => hne (Finset.Subset.antisymm hsup hss)⟩
+      omega
+
+theorem iter_exists_fixed (U : Finset (Finset CName)) :
+    ∃ m ≤ U.card, (step O)^[m] U = (step O)^[m + 1] U := by
+  by_contra h
+  have hall : ∀ m, m ≤ U.card → (step O)^[m] U ≠ (step O)^[m + 1] U :=
+    fun m hm heq => h ⟨m, hm, heq⟩
+  have := iter_card_add_le O U (U.card + 1) (fun m hm => hall m (Nat.lt_succ_iff.1 hm))
+  omega
+
+theorem iter_const_of_fixed (U : Finset (Finset CName)) {m : ℕ}
+    (hm : (step O)^[m] U = (step O)^[m + 1] U) :
+    ∀ k, (step O)^[m + k] U = (step O)^[m] U := by
+  intro k
+  induction k with
+  | zero => rfl
+  | succ j ih =>
+      have e : m + (j + 1) = (m + j) + 1 := by ring
+      rw [e, Function.iterate_succ_apply', ih]
+      exact (Function.iterate_succ_apply' (step O) m U).symm.trans hm.symm
+
+theorem iter_fixed (U : Finset (Finset CName)) :
+    step O ((step O)^[U.card] U) = (step O)^[U.card] U := by
+  obtain ⟨m, hm_le, hm⟩ := iter_exists_fixed O U
+  have e1 : (step O)^[U.card] U = (step O)^[m] U := by
+    have : U.card = m + (U.card - m) := by omega
+    rw [this]; exact iter_const_of_fixed O U hm _
+  have e2 : (step O)^[U.card + 1] U = (step O)^[m] U := by
+    have : U.card + 1 = m + (U.card + 1 - m) := by omega
+    rw [this]; exact iter_const_of_fixed O U hm _
+  have e3 : step O ((step O)^[U.card] U) = (step O)^[U.card + 1] U :=
+    (Function.iterate_succ_apply' _ _ _).symm
+  rw [e3, e2, e1]
+
+/-- **The lazy elimination loop computes exactly the good types**, given a
+    consistent candidate set `U` that covers them. -/
+theorem elim_eq_good (U : Finset (Finset CName))
+    (hcov : goodFS O ⊆ U) (hcons : U ⊆ cand O) :
+    (step O)^[U.card] U = goodFS O := by
+  apply Finset.Subset.antisymm
+  · intro t ht
+    have hself : SelfReal O ((step O)^[U.card] U) := by
+      intro u hu
+      refine ⟨(mem_cand O).1 (hcons (iter_subset O U _ hu)), ?_⟩
+      have huf : u ∈ step O ((step O)^[U.card] U) := by rw [iter_fixed]; exact hu
+      exact (Finset.mem_filter.1 huf).2
+    exact (mem_goodFS O).2 ⟨_, ht, hself⟩
+  · exact goodFS_subset_iter O U hcov _
+
+/-- **Per-run completeness bridge.**  The subsumptions the engine reports from the
+    set its lazy elimination converges to decide `A ⊑ B` exactly — under the
+    single residual hypothesis `coverage : goodFS O ⊆ U`. -/
+theorem engine_decides (U : Finset (Finset CName))
+    (hcov : goodFS O ⊆ U) (hcons : U ⊆ cand O) (A B : CName) :
+    (∀ t ∈ (step O)^[U.card] U, A ∈ t → B ∈ t)
+      ↔ (∀ (D : Type) (I : Interp D CName Role), models I O → ∀ x, I.c A x → I.c B x) := by
+  rw [elim_eq_good O U hcov hcons, subsumption_complete O A B]
+  exact ⟨fun h t hg hA => h t ((mem_goodFS O).2 hg) hA,
+         fun h t ht hA => h t ((mem_goodFS O).1 ht) hA⟩
 
 end Strategy
 
