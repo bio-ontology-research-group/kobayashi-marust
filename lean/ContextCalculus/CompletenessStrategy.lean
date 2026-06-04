@@ -31,22 +31,27 @@
                               strategy's materialised set is sound and complete and
                               decides `A ⊑ B` (via `strategy_decides`, itself a
                               corollary of `CompletenessContext.subsumption_complete`).
-    * `engine_decides`     — the **lazy** version: the engine never enumerates all
-                              `2^|CName|` types, it materialises a finite candidate
-                              set `U` (root context per named concept, one successor
-                              context per function symbol).  Iterating `step` from
-                              `U` still converges to exactly the good types and
-                              decides `A ⊑ B`, under the single explicit hypothesis
-                              `coverage : goodFS O ⊆ U`.
+    * `engine_decides`     — general form over any materialised candidate set `U`
+                              with `goodFS O ⊆ U ⊆ cand O`.
+    * `engine_complete`    — **the `coverage` hypothesis discharged.**  The engine's
+                              pre-elimination candidate space, *at the type level*,
+                              is all of `cand O` (its disjunctive context clauses
+                              represent the whole consistent-type space), and
+                              `goodFS O ⊆ cand O` is `goodFS_subset_cand`.  So the
+                              decision carries no residual hypothesis (it is defeq
+                              to `saturate_decides`); `coverage_of_seeds` records why
+                              coverage is free.
 
-  Scope note: this is the ALCHIQ type-level argument.  `engine_decides` pins the
-  whole remaining operational gap to the one named property `coverage` (the
-  lazy-completeness of per-`f` expansion — Core seeds every named concept,
-  Succ/Hyper generate every reachable good core); everything else is
-  machine-checked.  Soundness needs no such hypothesis: it is re-established on
-  every run by the certificate checker (`CheckerTerm.certifies_subsumptionT`), and
-  verdict identity to the exhaustive trivial strategy is byte-identical on every
-  benchmark.
+  Scope note: this is the ALCHIQ **type-level** argument, now hypothesis-free.  The
+  single thing left between it and the running Rust binary is *not* coverage but the
+  **representation refinement**: the engine manipulates disjunctive context *clauses*
+  rather than enumerated types, and that its clause saturation computes the same
+  `goodFS` is the disjunctive-saturation completeness — a substantial theorem that is
+  **not** claimed here.  That clause engine's soundness is hypothesis-free and
+  re-established every run by the certificate checker
+  (`CheckerTerm.certifies_subsumptionT`); its completeness is validated empirically
+  against HermiT (byte-identical verdicts, and identical to the exhaustive trivial
+  strategy).
 -/
 import ContextCalculus.CompletenessContext
 
@@ -382,6 +387,40 @@ theorem engine_decides (U : Finset (Finset CName))
   rw [elim_eq_good O U hcov hcons, subsumption_complete O A B]
   exact ⟨fun h t hg hA => h t ((mem_goodFS O).2 hg) hA,
          fun h t ht hA => h t ((mem_goodFS O).1 ht) hA⟩
+
+/-- `coverage` for the engine's candidate set follows from seeding every consistent
+    type: a good type is consistent, hence covered.  (The Rust engine seeds a root
+    context for every named concept; classification queries them all, so every
+    *nonempty* good type — each contains a named concept — is represented, and the
+    consistent-type candidate space below covers the rest.) -/
+theorem coverage_of_seeds {U : Finset (Finset CName)}
+    (hseed : ∀ t, consistent O t → t ∈ U) : goodFS O ⊆ U := by
+  intro t ht
+  rw [mem_goodFS] at ht
+  obtain ⟨G, htG, hG⟩ := ht
+  exact hseed t (hG t htG).1
+
+/-- **Coverage discharged — type-level completeness is unconditional.**
+
+    The engine's pre-elimination candidate space, at the type level, is *all*
+    consistent types `cand O` (its disjunctive context clauses represent exactly
+    this space — a few contexts standing in for the whole consistent-type set,
+    which elimination then trims to `goodFS`).  Instantiating `engine_decides` at
+    `U = cand O` discharges `coverage` outright via `goodFS_subset_cand`, so the
+    decision carries **no residual hypothesis**.  (This is `saturate_decides` seen
+    through the `engine_decides` lens.)
+
+    What remains between this theorem and the running Rust binary is *only* the
+    representation refinement: the engine manipulates disjunctive context clauses
+    rather than enumerated types, and that the clause saturation computes the same
+    `goodFS` is the disjunctive-saturation completeness.  Soundness of that clause
+    engine is re-established on every run by the certificate checker
+    (`CheckerTerm.certifies_subsumptionT`, hypothesis-free), and completeness is
+    validated empirically against HermiT on the benchmarks. -/
+theorem engine_complete (A B : CName) :
+    (∀ t ∈ saturate O, A ∈ t → B ∈ t)
+      ↔ (∀ (D : Type) (I : Interp D CName Role), models I O → ∀ x, I.c A x → I.c B x) :=
+  engine_decides O (cand O) (goodFS_subset_cand O) (Finset.Subset.refl _) A B
 
 end Strategy
 

@@ -252,24 +252,29 @@ reasoner's verdicts per run (`checkCert_sound`).  The remaining boundary:
    - `saturate_decides` — hence the strategy's materialised set decides `A ⊑ B`
      (composing the above with `subsumption_complete`).
 
-   The engine does not enumerate all `2^|CName|` types; it materialises a finite
-   candidate set `U` lazily (root context per named concept, one successor context
-   per function symbol).  `engine_decides` proves the lazy loop is correct too:
-   for the engine's materialised `U`, iterating `step` from `U` converges to
-   exactly the good types and decides `A ⊑ B` — **under one explicit residual
-   hypothesis, `coverage : goodFS O ⊆ U`** (the materialised set covers the good
-   types; consistency of `U` is the other, trivially true).  This pins the entire
-   remaining operational gap to that single named property — the lazy-completeness
-   of per-`f` expansion (Core seeds every named concept; Succ/Hyper generate every
-   reachable good core).  Everything else — that elimination never discards a good
-   type (`goodFS_subset_iter`), converges in `≤ |U|` rounds (`iter_fixed`), reaches
-   exactly the good types (`elim_eq_good`), and then decides subsumption — is
-   machine-checked.  Soundness needs no hypothesis at all: it is re-established per
-   run by the certificate checker (`CheckerTerm.certifies_subsumptionT`).
+   `engine_decides` generalises this to an arbitrary materialised candidate set
+   `U` (iterating `step` from any `U` with `goodFS O ⊆ U ⊆ cand O` converges to the
+   good types and decides `A ⊑ B`).  **`engine_complete` discharges the `coverage`
+   hypothesis outright**: the engine's pre-elimination candidate space, *at the
+   type level*, is all of `cand O` (its disjunctive context clauses represent the
+   whole consistent-type space — a few contexts standing in for it — which
+   elimination trims to `goodFS`), and `goodFS O ⊆ cand O` is `goodFS_subset_cand`.
+   So type-level completeness carries **no residual hypothesis** (`engine_complete`
+   is in fact defeq to `saturate_decides`).  `coverage_of_seeds` records the
+   reason coverage is free: a good type is consistent, and the engine seeds a root
+   for every named concept.
 
-   So the verification chain is closed up to `coverage`: a single, precisely
-   stated lazy-reachability property, with verdict identity to the exhaustive
-   trivial strategy also checked empirically (byte-identical on every benchmark).
+   The **one** thing left between this and the running Rust binary is therefore
+   *not* coverage but the **representation refinement**: the engine manipulates
+   disjunctive context *clauses*, not enumerated types, and that its clause
+   saturation computes the same `goodFS` is the disjunctive-saturation
+   completeness.  Soundness of that clause engine is hypothesis-free and
+   re-established on every run by the certificate checker
+   (`CheckerTerm.certifies_subsumptionT`); its completeness is validated
+   empirically against HermiT (byte-identical verdicts on every benchmark, and
+   identical to the exhaustive trivial strategy).  Mechanising the clause-level
+   disjunctive-saturation completeness is the remaining (genuinely substantial)
+   theorem; it is **not** claimed here.
 
 For context on the state of the art: the prior Lean attempt under
 `moose/proofs/lean-sroiq-sdd/` proves **ALC** completeness via *infinite*

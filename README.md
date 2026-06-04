@@ -213,16 +213,18 @@ byte-identical verdicts).
   (imported by the root module, so it is part of the default certified build):
   `saturate_decides` proves that iterating the elimination operator from the
   consistent candidates converges (in ≤ `|candidates|` rounds) to exactly the
-  good types, which decide `A ⊑ B` via `subsumption_complete`. `engine_decides`
-  extends this to the engine's *lazy* loop (it materialises a candidate set `U`
-  rather than all `2^|C|` types): iterating elimination from `U` converges to
-  exactly the good types and decides `A ⊑ B`, under the **single explicit residual
-  hypothesis** `coverage : goodFS ⊆ U` — i.e. the materialised set covers the good
-  types. This pins the whole remaining operational gap to that one named property
-  (the lazy-completeness of per-`f` expansion); everything else is machine-checked.
-  Soundness needs no hypothesis — it is kernel-certified per run by the checker —
-  and verdict identity to the exhaustive trivial strategy is byte-identical on
-  every benchmark.
+  good types, which decide `A ⊑ B` via `subsumption_complete`. `engine_complete`
+  carries this through with **no residual hypothesis**: the engine's pre-elimination
+  candidate space, at the type level, is all consistent types `cand` (its disjunctive
+  clauses represent that whole space), and `goodFS ⊆ cand` is immediate, so the
+  `coverage` hypothesis of the general `engine_decides` is discharged. The single
+  remaining gap is then *not* coverage but the **representation refinement**: the
+  engine manipulates disjunctive context clauses rather than enumerated types, and
+  that its clause saturation computes the same `goodFS` is the disjunctive-saturation
+  completeness. That clause engine's soundness is hypothesis-free and kernel-certified
+  per run (the checker); its completeness is validated empirically against HermiT
+  (byte-identical verdicts). Mechanising clause-level completeness is the remaining
+  substantial theorem and is not claimed.
 - The per-run certificate search re-derives verdicts by a complete layered method
   (propositional, Horn forward chaining, and a complete disjunctive saturation
   over a term algebra); the disjunctive layer is bounded, so an ontology with very
@@ -230,10 +232,11 @@ byte-identical verdicts).
 - Still open in the engine: the general regular-role-hierarchy automaton (only
   transitivity and single chains are encoded) and the full Table-3 nominal merge
   rules. The pay-as-you-go strategy is implemented (per-`f` successor contexts) and
-  its completeness is machine-checked down to one explicit hypothesis: the lazy
-  loop decides subsumption (`engine_decides`) provided the materialised candidate
-  set covers the good types (`coverage : goodFS ⊆ U`). Discharging `coverage` from
-  the Rust generation rules is the sole remaining operational obligation.
+  its type-level completeness is machine-checked with no residual hypothesis
+  (`engine_complete`). The sole remaining obligation is the clause-level
+  disjunctive-saturation completeness (the engine works on disjunctive context
+  clauses, not enumerated types) — soundness-certified per run and HermiT-validated,
+  but not yet mechanised.
 
 ## The `.ofn` front-end (optional)
 
