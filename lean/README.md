@@ -234,11 +234,20 @@ reasoner's verdicts per run (`checkCert_sound`).  The remaining boundary:
    may give up rather than exhaust memory — the classical remedy is the ordered /
    pay-as-you-go strategy (item 2), which we do not re-mechanize; the Horn
    fast-path keeps the common case efficient.
-2. **The ordered / pay-as-you-go refinement.**  We mechanize the engine's
-   *complete* (trivial-strategy, full-closure) saturation.  Resolving only on
-   maximal literals (the efficiency refinement, and `safeCentral`) is a
+2. **The ordered / pay-as-you-go refinement.**  The engine now uses a
+   pay-as-you-go strategy (one successor context per function symbol `f`).
+   Resolving only on maximal literals and expanding successors lazily is a
    classically refutation-complete restriction (Bachmair–Ganzinger ordered
-   resolution); we do not re-mechanize that completeness here.
+   resolution); that completeness is **not yet machine-checked**.
+   `ContextCalculus/CompletenessStrategy.lean` *scaffolds* it (not imported by
+   the root module, so this default build stays `sorry`-free): it **proves** the
+   reduction `strategy_decides` — any strategy whose materialised type-contexts
+   are exactly the good types decides subsumption correctly, via
+   `CompletenessContext.subsumption_complete` — and isolates the two remaining
+   obligations as `sorry`: `perF_sound` (the per-run certificate checker already
+   re-establishes this each run) and `perF_complete` (the Bachmair–Ganzinger
+   content). Build it on demand with
+   `lake build ContextCalculus.CompletenessStrategy`.
 
 For context on the state of the art: the prior Lean attempt under
 `moose/proofs/lean-sroiq-sdd/` proves **ALC** completeness via *infinite*

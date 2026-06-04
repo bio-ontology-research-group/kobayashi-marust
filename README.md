@@ -184,8 +184,14 @@ conjunction of predicates implying a head disjunction of literals) are derived b
 the rules **Core / Hyper / Pred / Succ / Eq / Ineq / Elim**. Every rule is, model-
 theoretically, a clausal resolution or paramodulation step — which is exactly
 what the Lean soundness proof formalises. Terms are integer-encoded as in Sequoia
-(`x=0`, `y=-1`, `z_i=-(i+1)`, `f_i(x)=+i`). The engine uses the *trivial*
-(sound and complete) expansion strategy.
+(`x=0`, `y=-1`, `z_i=-(i+1)`, `f_i(x)=+i`). The engine uses a *pay-as-you-go*
+expansion strategy — **one successor context per function symbol `f`** rather
+than the trivial strategy's single shared empty-core context for all anonymous
+successors. Both are sound and complete; partitioning per `f` keeps each
+existential's successors out of one another's context, which avoids the
+shared-context blow-up that the trivial strategy suffers under disjunction
+(≈45× faster on a distinct-skolem disjunction×existential stress test, with
+byte-identical verdicts).
 
 **References**
 
@@ -200,16 +206,23 @@ what the Lean soundness proof formalises. Terms are integer-encoded as in Sequoi
 
 - **Soundness is the headline guarantee** (proved + kernel-certified per run).
   Completeness is proved for the foundational fragments above and validated
-  empirically against HermiT on the benchmarks; the engine uses the *trivial*
-  expansion strategy, which is complete but not pay-as-you-go, so it does not yet
-  scale to classifying large ontologies.
+  empirically against HermiT on the benchmarks. The engine uses a *pay-as-you-go*
+  expansion strategy (one successor context per function symbol); its completeness
+  is the standard ordered-resolution result (Bachmair–Ganzinger) and is **not yet
+  machine-checked** — `lean/ContextCalculus/CompletenessStrategy.lean` scaffolds
+  the proof: it proves the reduction (strategy completeness ⇔ "materialises
+  exactly the good types", via `subsumption_complete`) and isolates the remaining
+  obligation as a single `sorry`. The strategy preserves verdicts on every
+  benchmark (HermiT-validated) and every reported verdict remains kernel-certified
+  per run by the checker.
 - The per-run certificate search re-derives verdicts by a complete layered method
   (propositional, Horn forward chaining, and a complete disjunctive saturation
   over a term algebra); the disjunctive layer is bounded, so an ontology with very
   many excluded-middle definitions may exceed the bound.
 - Still open in the engine: the general regular-role-hierarchy automaton (only
-  transitivity and single chains are encoded), the full Table-3 nominal merge
-  rules, and the pay-as-you-go strategy.
+  transitivity and single chains are encoded) and the full Table-3 nominal merge
+  rules. The pay-as-you-go strategy is implemented (per-`f` successor contexts);
+  its machine-checked completeness proof is scaffolded but not yet discharged.
 
 ## The `.ofn` front-end (optional)
 

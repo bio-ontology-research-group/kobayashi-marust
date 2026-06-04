@@ -3,11 +3,17 @@
 //! `context/ContextState.scala`.
 //!
 //! Rules implemented: Core, Hyper, Pred, Succ, Eq, Ineq, Elim (redundancy).
-//! Expansion strategy: the *trivial* strategy (all successors share one context
-//! with empty core), which is sound and complete (Simančík et al.); it is the
-//! simplest strategy that preserves the calculus's guarantees, at the cost of
-//! pay-as-you-go efficiency.  Factor and full nominal rules (Nom/Join/r-Succ/
-//! r-Pred of Table 3) are not implemented; clauses requiring them are reported.
+//! Expansion strategy: a *pay-as-you-go* strategy — one successor context per
+//! function symbol `f` (`successor_for`), instead of the trivial strategy's
+//! single shared empty-core context for every anonymous successor.  Both are
+//! sound and complete (the trivial one is Simančík et al.); the per-`f` variant
+//! avoids piling every existential's successor into one context, which is what
+//! blows up under disjunction (≈45× on a distinct-skolem disjunctive stress
+//! test).  Soundness is re-checked per run by the Lean certificate checker;
+//! completeness is validated against the HermiT oracle and scaffolded in
+//! `lean/ContextCalculus/CompletenessStrategy.lean`.  Factor and full nominal
+//! rules (Nom/Join/r-Succ/r-Pred of Table 3) are not implemented; clauses
+//! requiring them are reported.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -142,6 +148,24 @@ struct Context {
     query: Option<Iri>,
     worked_off: Vec<ContextClause>,
     clause_keys: HashSet<(Vec<Pred>, Vec<Lit>)>,
+    /// Index from a head-predicate iri to the (ascending, de-duplicated)
+    /// `worked_off` indices of clauses having a *maximal* head predicate with
+    /// that iri.  Lets Hyper/Pred find resolution partners without scanning all
+    /// of `worked_off`.  Concept and role iris live in separate namespaces, so
+    /// they are indexed separately; `can_unify` / exact-predicate tests still
+    /// filter precisely, so the candidate set (and its order) is unchanged.
+    head_concept_index: HashMap<Iri, Vec<usize>>,
+    head_role_index: HashMap<Iri, Vec<usize>>,
+    /// Subsumption index over `worked_off`: each clause is recorded under every
+    /// literal of its head.  A clause `c` can subsume `clause` only if
+    /// `c.head ⊆ clause.head`, so every true subsumer with a non-empty head is
+    /// found under some literal of `clause.head`; conversely `clause` can
+    /// subsume only clauses that contain *all* of `clause.head`, i.e. those in
+    /// the intersection of these lists.  Empty-head clauses (which subsume on
+    /// the body alone) are tracked separately.  This replaces the per-`add`
+    /// linear scan of `worked_off` for both forward and backward subsumption.
+    head_lit_index: HashMap<Lit, Vec<usize>>,
+    empty_head_wo: Vec<usize>,
     todo: VecDeque<ContextClause>,
     /// pred clauses pushed in from successor contexts (already back-substituted)
     neighbor_pred: Vec<PredClause>,
@@ -152,6 +176,13 @@ struct Context {
     pushed_succ: HashSet<Pred>,
     /// (predecessor key, clause key) already pushed back, to avoid resending
     pushed_pred: HashSet<((usize, Term), (Vec<Pred>, Vec<Lit>))>,
+    /// `true` if a new worked-off clause or a new predecessor edge/pushed
+    /// predicate has appeared since the last `propagate`.  When `false`,
+    /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
+    /// `pushed_pred` sets already cover everything seen), so the full
+    /// `worked_off` scan can be skipped.  Soundness/output are unchanged: a
+    /// skipped scan would only have re-derived already-sent messages.
+    dirty: bool,
 }
 
 impl Context {
@@ -163,13 +194,175 @@ impl Context {
             query,
             worked_off: Vec::new(),
             clause_keys: HashSet::new(),
+            head_concept_index: HashMap::new(),
+            head_role_index: HashMap::new(),
+            head_lit_index: HashMap::new(),
+            empty_head_wo: Vec::new(),
             todo: VecDeque::new(),
             neighbor_pred: Vec::new(),
             successors: HashMap::new(),
             predecessors: HashMap::new(),
             pushed_succ: HashSet::new(),
             pushed_pred: HashSet::new(),
+            dirty: true,
         }
+    }
+
+    /// Add the `worked_off[idx]` clause to the head-predicate index, recording
+    /// `idx` once per distinct iri appearing among its maximal head predicates
+    /// (the per-clause predicate list is re-scanned at lookup time, so a single
+    /// entry per iri reproduces the original candidate sequence without
+    /// duplicates).  Appending in increasing `idx` keeps each list sorted.
+    fn index_clause(&mut self, idx: usize) {
+        let mut concept_iris: Vec<Iri> = Vec::new();
+        let mut role_iris: Vec<Iri> = Vec::new();
+        for (p, _) in self.worked_off[idx].max_head_predicates() {
+            match p {
+                Pred::Concept { iri, .. } => {
+                    if !concept_iris.contains(&iri) {
+                        concept_iris.push(iri);
+                    }
+                }
+                Pred::Role { iri, .. } => {
+                    if !role_iris.contains(&iri) {
+                        role_iris.push(iri);
+                    }
+                }
+            }
+        }
+        for iri in concept_iris {
+            self.head_concept_index.entry(iri).or_default().push(idx);
+        }
+        for iri in role_iris {
+            self.head_role_index.entry(iri).or_default().push(idx);
+        }
+        // subsumption index: record under every head literal (or the empty-head
+        // list).  Heads are small, so the clone is cheap and avoids a borrow on
+        // `self.worked_off` while mutating the maps.
+        let head = self.worked_off[idx].head.clone();
+        if head.is_empty() {
+            self.empty_head_wo.push(idx);
+        } else {
+            for l in head {
+                self.head_lit_index.entry(l).or_default().push(idx);
+            }
+        }
+    }
+
+    /// Rebuild every `worked_off` index from scratch.  Called after
+    /// back-subsumption physically removes clauses from `worked_off` (which
+    /// shifts the indices the maps refer to); removals are comparatively rare,
+    /// so a full rebuild keeps the common (append-only) path fast.
+    fn rebuild_head_index(&mut self) {
+        self.head_concept_index.clear();
+        self.head_role_index.clear();
+        self.head_lit_index.clear();
+        self.empty_head_wo.clear();
+        for idx in 0..self.worked_off.len() {
+            self.index_clause(idx);
+        }
+    }
+
+    /// Forward subsumption: is `clause` subsumed by some existing clause in
+    /// `worked_off` or `todo`?  `worked_off` is consulted via the head-literal
+    /// index (every non-empty-head subsumer shares a head literal with
+    /// `clause`); `todo` is scanned linearly (it is the small work queue).
+    /// The `(nb, nh)` length pre-filter skips clauses that cannot subsume.
+    fn fwd_subsumed(&self, clause: &ContextClause, nb: usize, nh: usize) -> bool {
+        for &ci in &self.empty_head_wo {
+            let c = &self.worked_off[ci];
+            if c.body.len() <= nb && c.test_strengthening(clause) == -1 {
+                return true;
+            }
+        }
+        for l in &clause.head {
+            if let Some(cands) = self.head_lit_index.get(l) {
+                for &ci in cands {
+                    let c = &self.worked_off[ci];
+                    if c.body.len() <= nb && c.head.len() <= nh && c.test_strengthening(clause) == -1 {
+                        return true;
+                    }
+                }
+            }
+        }
+        for c in &self.todo {
+            if c.body.len() <= nb && c.head.len() <= nh && c.test_strengthening(clause) == -1 {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Backward subsumption: remove every existing clause that `clause`
+    /// strengthens, from both `worked_off` and `todo`, dropping their keys.
+    /// `worked_off` candidates come from the intersection of the head-literal
+    /// lists (a clause strengthened by `clause` contains all of `clause.head`),
+    /// approximated by the rarest such list and verified by `test_strengthening`;
+    /// when `clause.head` is empty every clause is a candidate.  The common case
+    /// removes nothing, so the expensive full `worked_off` scan and index
+    /// rebuild are skipped entirely.  Same removed set and survivor order as a
+    /// full linear scan, so the result is unchanged.
+    fn back_subsume(&mut self, clause: &ContextClause, nb: usize, nh: usize, key: &(Vec<Pred>, Vec<Lit>)) {
+        // ---- worked_off ----
+        let mut remove_wo: Vec<usize> = Vec::new();
+        if clause.head.is_empty() {
+            for ci in 0..self.worked_off.len() {
+                let c = &self.worked_off[ci];
+                if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && &c.key() != key {
+                    remove_wo.push(ci);
+                }
+            }
+        } else {
+            // smallest head-literal list (None if some head literal is absent,
+            // in which case no clause contains all of `clause.head`).
+            let mut best: Option<&Vec<usize>> = None;
+            for l in &clause.head {
+                match self.head_lit_index.get(l) {
+                    None => {
+                        best = None;
+                        break;
+                    }
+                    Some(v) => {
+                        if best.map_or(true, |b| v.len() < b.len()) {
+                            best = Some(v);
+                        }
+                    }
+                }
+            }
+            if let Some(cands) = best {
+                for &ci in cands {
+                    let c = &self.worked_off[ci];
+                    if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && &c.key() != key {
+                        remove_wo.push(ci);
+                    }
+                }
+            }
+        }
+        if !remove_wo.is_empty() {
+            let remove_set: HashSet<usize> = remove_wo.into_iter().collect();
+            let old = std::mem::take(&mut self.worked_off);
+            let mut new_wo = Vec::with_capacity(old.len() - remove_set.len());
+            for (ci, c) in old.into_iter().enumerate() {
+                if remove_set.contains(&ci) {
+                    self.clause_keys.remove(&c.key());
+                } else {
+                    new_wo.push(c);
+                }
+            }
+            self.worked_off = new_wo;
+            self.rebuild_head_index();
+        }
+        // ---- todo (not indexed) ----
+        let mut todo = std::mem::take(&mut self.todo);
+        todo.retain(|c| {
+            if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && &c.key() != key {
+                self.clause_keys.remove(&c.key());
+                false
+            } else {
+                true
+            }
+        });
+        self.todo = todo;
     }
 }
 
@@ -205,7 +398,15 @@ pub struct Engine {
     contexts: Vec<Context>,
     core_index: HashMap<Vec<Pred>, usize>,
     msgs: VecDeque<Msg>,
-    successor_ctx: Option<usize>, // shared trivial-strategy successor
+    /// Pay-as-you-go expansion: one successor context per function symbol `f`,
+    /// instead of a single shared empty-core context for every anonymous
+    /// successor (the trivial strategy).  Successors generated by distinct
+    /// existential skolems no longer pile into one context, which is what blows
+    /// up under disjunction.  Sound and complete: the trivial strategy only
+    /// tolerated mixing successors because conditional clause bodies prevent a
+    /// consequence about one successor from being pushed back along another's
+    /// edge; partitioning by `f` pushes exactly the same per-edge consequences.
+    successor_ctxs: HashMap<Term, usize>,
     equality: bool,
     pub dropped_unsupported: usize,
 }
@@ -258,7 +459,7 @@ impl Engine {
             contexts: Vec::new(),
             core_index: HashMap::new(),
             msgs: VecDeque::new(),
-            successor_ctx: None,
+            successor_ctxs: HashMap::new(),
             equality: true,
             dropped_unsupported: dropped,
         }
@@ -341,28 +542,13 @@ impl Engine {
         if ctx.clause_keys.contains(&key) {
             return false;
         }
-        // subsumption check against worked_off and todo
-        let subsumed = ctx
-            .worked_off
-            .iter()
-            .chain(ctx.todo.iter())
-            .any(|c| c.test_strengthening(&clause) == -1);
-        if subsumed {
+        let (nb, nh) = (clause.body.len(), clause.head.len());
+        // Forward subsumption: skip if some existing clause subsumes `clause`.
+        if ctx.fwd_subsumed(&clause, nb, nh) {
             return false;
         }
-        // remove clauses that `clause` strengthens
-        let removed: Vec<(Vec<Pred>, Vec<Lit>)> = ctx
-            .worked_off
-            .iter()
-            .chain(ctx.todo.iter())
-            .filter(|c| clause.test_strengthening(c) == -1 && c.key() != key)
-            .map(|c| c.key())
-            .collect();
-        for rk in &removed {
-            ctx.clause_keys.remove(rk);
-        }
-        ctx.worked_off.retain(|c| !removed.contains(&c.key()));
-        ctx.todo.retain(|c| !removed.contains(&c.key()));
+        // Back-subsumption: drop existing clauses that `clause` strengthens.
+        ctx.back_subsume(&clause, nb, nh, &key);
         ctx.clause_keys.insert(key);
         ctx.todo.push_back(clause);
         true
@@ -429,7 +615,11 @@ impl Engine {
                     self.add_clause(id, r);
                 }
             }
-            self.contexts[id].worked_off.push(clause);
+            let ctx = &mut self.contexts[id];
+            let idx = ctx.worked_off.len();
+            ctx.worked_off.push(clause);
+            ctx.index_clause(idx);
+            ctx.dirty = true;
         }
     }
 
@@ -465,10 +655,16 @@ impl Engine {
                     candidates.push(v);
                 } else {
                     let mut v = Vec::new();
-                    for (ci, c) in ctx.worked_off.iter().enumerate() {
-                        for (p, _) in c.max_head_predicates() {
-                            if can_unify(&oc.body[i], &p) {
-                                v.push((ci, p));
+                    let cand = match oc.body[i] {
+                        Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
+                        Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                    };
+                    if let Some(cand) = cand {
+                        for &ci in cand {
+                            for (p, _) in ctx.worked_off[ci].max_head_predicates() {
+                                if can_unify(&oc.body[i], &p) {
+                                    v.push((ci, p));
+                                }
                             }
                         }
                     }
@@ -590,9 +786,15 @@ impl Engine {
                 if bp == max {
                     v.push((usize::MAX, bp));
                 }
-                for (ci, c) in ctx.worked_off.iter().enumerate() {
-                    if c.max_head_predicates().any(|(p, _)| p == bp) {
-                        v.push((ci, bp));
+                let cand = match bp {
+                    Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
+                    Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                };
+                if let Some(cand) = cand {
+                    for &ci in cand {
+                        if ctx.worked_off[ci].max_head_predicates().any(|(p, _)| p == bp) {
+                            v.push((ci, bp));
+                        }
                     }
                 }
                 if v.is_empty() {
@@ -799,17 +1001,29 @@ impl Engine {
 
     // -------------------- inter-context propagation ------------------------
 
-    fn shared_successor(&mut self) -> usize {
-        if let Some(s) = self.successor_ctx {
+    /// The successor context for function symbol `f` (pay-as-you-go strategy).
+    /// Each distinct `f` gets its own empty-core context, created lazily.  These
+    /// are tracked in `successor_ctxs` rather than `core_index`, because every
+    /// successor context shares the empty core and must not be deduplicated into
+    /// one (that is precisely the trivial strategy this replaces).
+    fn successor_for(&mut self, f: Term) -> usize {
+        if let Some(&s) = self.successor_ctxs.get(&f) {
             return s;
         }
-        let id = self.get_or_create_context(vec![], false, None);
-        self.successor_ctx = Some(id);
+        let id = self.contexts.len();
+        let ctx = Context::new(id, vec![], false, None);
+        self.contexts.push(ctx);
+        self.successor_ctxs.insert(f, id);
+        self.init_context(id); // seeds the empty-body ontology facts (no core)
         id
     }
 
     /// After saturating context `id`, generate Succ and Pred messages.
     fn propagate(&mut self, id: usize) {
+        if !self.contexts[id].dirty {
+            return;
+        }
+        self.contexts[id].dirty = false;
         // ---- Succ ----
         let mut new_succ: Vec<Pred> = Vec::new();
         {
@@ -827,7 +1041,7 @@ impl Engine {
         }
         for p in new_succ {
             let f = p.max_term();
-            let target = self.shared_successor();
+            let target = self.successor_for(f);
             // forward map: f -> x, x -> y
             let psigma = p.apply(&|v| forwards(f, v));
             self.contexts[id].pushed_succ.insert(p);
@@ -887,6 +1101,9 @@ impl Engine {
             .entry((from, f))
             .or_default()
             .insert(p);
+        // a new edge / pushed predicate may let existing worked-off clauses be
+        // pushed back to this predecessor, so the next propagate must re-scan.
+        self.contexts[target].dirty = true;
         // Succ rule: add hypothesis clause  p -> p
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
@@ -945,9 +1162,15 @@ impl Engine {
         for i in 0..n {
             let bp = pc.body[i];
             let mut v = Vec::new();
-            for (ci, c) in ctx.worked_off.iter().enumerate() {
-                if c.max_head_predicates().any(|(p, _)| p == bp) {
-                    v.push((ci, bp));
+            let cand = match bp {
+                Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
+                Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+            };
+            if let Some(cand) = cand {
+                for &ci in cand {
+                    if ctx.worked_off[ci].max_head_predicates().any(|(p, _)| p == bp) {
+                        v.push((ci, bp));
+                    }
                 }
             }
             if v.is_empty() {
