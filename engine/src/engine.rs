@@ -1252,6 +1252,13 @@ impl Engine {
             self.saturate(id);
             self.propagate(id);
         }
+        // Always seed the ⊤ (empty-core) context so a *global* inconsistency
+        // (owl:Thing unsatisfiable) is detected regardless of which concepts are
+        // named in the input (audit M2). It carries query=None, so `subsumptions`
+        // skips it and it never contributes to the classification output.
+        let top = self.get_or_create_context(vec![], true, None);
+        self.saturate(top);
+        self.propagate(top);
         // Process inter-context messages to fixpoint.
         let mut guard = 0usize;
         while let Some(msg) = self.msgs.pop_front() {
@@ -1322,25 +1329,20 @@ impl Engine {
     }
 
     pub fn inconsistent(&self) -> bool {
-        // ontology inconsistent iff some root context derives the empty clause
-        // for a satisfiable-by-assumption core, i.e. owl:Thing is unsatisfiable.
-        // Conservative: any root context whose core single concept is forced to
-        // Nothing AND that concept is owl:Thing.
-        for ctx in &self.contexts {
-            if !ctx.root {
-                continue;
-            }
-            if let Some(iri) = ctx.query {
-                let name = &self.sig.concept_names[iri as usize];
-                let short = name.rsplit(['#', '/']).next().unwrap_or(name);
-                if short == "Thing" || name == "owl:Thing" {
-                    if ctx.worked_off.iter().any(|c| c.body.is_empty() && c.head.is_empty()) {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
+        // The ontology is inconsistent iff the ⊤ (empty-core) context derives the
+        // empty clause: a generic element is forced into a contradiction, so there
+        // is no model. Checking the ⊤ context (seeded in `run_for`) rather than a
+        // concept literally named owl:Thing makes this independent of the input
+        // vocabulary (the normaliser maps owl:Thing to an internal proxy, so the
+        // old name-based check was effectively dead — audit M2).
+        self.contexts.iter().any(|ctx| {
+            ctx.root
+                && ctx.core.is_empty()
+                && ctx
+                    .worked_off
+                    .iter()
+                    .any(|c| c.body.is_empty() && c.head.is_empty())
+        })
     }
 
     pub fn num_contexts(&self) -> usize {
