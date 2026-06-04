@@ -380,24 +380,32 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
             }
         }
     }
-    // Internal-disjunct optimisation (put internal disjuncts low).
-    if let (Pred::Concept { iri: i1, .. }, Pred::Concept { iri: i2, .. }) = (p1, p2) {
-        if sig.is_internal(*i1) && !sig.is_internal(*i2) {
+    // Internal-disjunct optimisation (put internal disjuncts low) — but ONLY among
+    // literals on the SAME maximal term.  Across terms it would declare an internal
+    // definer on a successor term f(x) `<=` a named atom on x while the term arm
+    // also gives the reverse, making the two mutually `<=`, emptying max_head and
+    // silencing the successor's Succ trigger (audit H1).
+    if let (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) = (p1, p2) {
+        if t1 == t2 && sig.is_internal(*i1) && !sig.is_internal(*i2) {
             return true;
         }
+    }
+    // Term-major: a literal on a larger *maximal* term is the larger literal (so it
+    // is kept by max-head selection and drives Succ).  Comparing roles by their
+    // source term alone (rather than max(s,t)) broke this for role-vs-concept and
+    // role-vs-role (audit M1).  Within an equal maximal term, a deterministic
+    // structural tie-break.
+    let m1 = p1.max_term();
+    let m2 = p2.max_term();
+    if m1 != m2 {
+        return m1 < m2;
     }
     match (p1, p2) {
         (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Role { iri: i2, s: s2, t: t2 }) => {
             s1 < s2 || (s1 == s2 && (t1 < t2 || (t1 == t2 && i1 <= i2)))
         }
-        (Pred::Concept { iri: i1, t: s }, Pred::Concept { iri: i2, t }) => {
-            s < t || (s == t && i1 <= i2)
-        }
-        (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Concept { iri: i2, t }) => {
-            s1 < t || (s1 == t && (t1 < t || (t1 == t && i1 <= i2)))
-        }
-        (Pred::Concept { iri: i2, t }, Pred::Role { iri: i1, s: s1, t: t1 }) => {
-            !(s1 < t || (s1 == t && (t1 < t || (t1 == t && i1 <= i2))))
-        }
+        (Pred::Concept { iri: i1, .. }, Pred::Concept { iri: i2, .. }) => i1 <= i2,
+        (Pred::Role { .. }, Pred::Concept { .. }) => false,
+        (Pred::Concept { .. }, Pred::Role { .. }) => true,
     }
 }
