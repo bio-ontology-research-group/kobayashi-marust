@@ -1264,6 +1264,16 @@ impl Engine {
         while let Some(msg) = self.msgs.pop_front() {
             guard += 1;
             if guard > 5_000_000 {
+                // Hard safety cap on the inter-context message fixpoint. Hitting it
+                // means the run was truncated, so the classification may be
+                // INCOMPLETE — never silently: warn on stderr (audit L1/L2). Sound
+                // (only consequences are dropped), but completeness is not
+                // guaranteed for this run.
+                eprintln!(
+                    "WARNING: kobayashi-marust message fixpoint hit the 5,000,000 cap; \
+                     classification may be incomplete (truncated). {} pending messages dropped.",
+                    self.msgs.len()
+                );
                 break;
             }
             match msg {
