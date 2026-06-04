@@ -112,6 +112,61 @@ theorem completeness (O : List (Clause Atom))
   have : c = ⟨[], []⟩ := by cases c; simp_all
   exact this ▸ hder
 
+/-! ### General ground-clause entailment -/
+
+theorem sat_unit_pos (I : Model Atom) (a : Atom) :
+    sat I (⟨[], [a]⟩ : Clause Atom) ↔ I a := by
+  unfold sat; simp
+
+theorem sat_unit_neg (I : Model Atom) (a : Atom) :
+    sat I (⟨[a], []⟩ : Clause Atom) ↔ ¬ I a := by
+  unfold sat; simp
+
+/-- The premise set augmenting `O` with the negation of a ground clause `C`:
+    assert every body atom (`→a`) and negate every head atom (`a→`). -/
+def aug (O : List (Clause Atom)) (C : Clause Atom) : List (Clause Atom) :=
+  O ++ C.body.map (fun a => ⟨[], [a]⟩) ++ C.head.map (fun a => ⟨[a], []⟩)
+
+/-- **Clause-level completeness & soundness for arbitrary ground-clause
+    entailment.**  `O ⊨ C` (every model of `O` satisfies the clause `C`) holds
+    **iff** the engine's resolution refutes `O` together with the negation of `C`
+    (assert `C`'s body, negate `C`'s head).  Atomic subsumption is the special
+    case `C = A(x) → B(x)`. -/
+theorem entails_refut_iff (O : List (Clause Atom)) (C : Clause Atom) :
+    (∀ I : Model Atom, (∀ c ∈ O, sat I c) → sat I C)
+      ↔ Derivable (aug O C) (⟨[], []⟩ : Clause Atom) := by
+  constructor
+  · intro hent
+    apply completeness
+    rintro ⟨I, hI⟩
+    have hmem : ∀ c ∈ O, sat I c :=
+      fun c hc => hI c (by unfold aug; rw [List.mem_append, List.mem_append]; tauto)
+    have hbody : ∀ a ∈ C.body, I a := by
+      intro a ha
+      refine (sat_unit_pos I a).1 (hI _ ?_)
+      unfold aug; rw [List.mem_append, List.mem_append]
+      exact Or.inl (Or.inr (List.mem_map_of_mem ha))
+    have hhead : ∀ a ∈ C.head, ¬ I a := by
+      intro a ha
+      refine (sat_unit_neg I a).1 (hI _ ?_)
+      unfold aug; rw [List.mem_append]
+      exact Or.inr (List.mem_map_of_mem ha)
+    obtain ⟨a, ha, hIa⟩ := hent I hmem hbody
+    exact hhead a ha hIa
+  · intro hder I hO hbody
+    by_contra hno
+    have hall : ∀ c ∈ aug O C, sat I c := by
+      intro c hc
+      unfold aug at hc
+      rw [List.mem_append, List.mem_append] at hc
+      rcases hc with (hc | hc) | hc
+      · exact hO c hc
+      · obtain ⟨a, ha, rfl⟩ := List.mem_map.1 hc
+        exact (sat_unit_pos I a).2 (hbody a ha)
+      · obtain ⟨a, ha, rfl⟩ := List.mem_map.1 hc
+        exact (sat_unit_neg I a).2 (fun hIa => hno ⟨a, ha, hIa⟩)
+    exact sat_empty I (derivable_sound I _ hall hder)
+
 /-! ### Classification corollaries (concrete `Lit` clauses) -/
 
 /-- `B(x) →`, the clause negating `B(x)`. -/
@@ -162,7 +217,7 @@ theorem subsumption_refut_sound (O : List (Clause Lit)) (A B : Nat)
     rw [List.mem_append] at hc
     rcases hc with hc | hc
     · exact hO c hc
-    · simp only [List.mem_cons, List.mem_singleton, List.not_mem_nil, or_false] at hc
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
       rcases hc with rfl | rfl
       · exact (sat_coreClause I A).2 hA
       · exact (sat_negClause I B).2 hnB
