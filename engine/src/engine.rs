@@ -1066,7 +1066,12 @@ impl Engine {
                 // that consequences about the witness (e.g. C(f(x))) reach the
                 // predecessor; it is sound (the body predicates discharge via
                 // the Pred rule) and keeps successor terms bounded.
-                if !c.head.iter().all(|l| l.is_function_free()) {
+                // Head must be predicate-only as well: an Eq/Ineq head disjunct
+                // would be silently dropped by apply_pred below (which keeps only
+                // Lit::P), strengthening the pushed clause — unsound (it can derive
+                // a spurious empty clause / owl:Nothing). Function-free *predicate*
+                // consequences about the witness (e.g. C(f(x))) are still pushed.
+                if !c.head.iter().all(|l| l.is_function_free() && matches!(l, Lit::P(_))) {
                     continue;
                 }
                 if c.head.is_empty() && c.body.is_empty() {
