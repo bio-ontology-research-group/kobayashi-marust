@@ -206,23 +206,28 @@ byte-identical verdicts).
 
 - **Soundness is the headline guarantee** (proved + kernel-certified per run).
   Completeness is proved for the foundational fragments above and validated
-  empirically against HermiT on the benchmarks. The engine uses a *pay-as-you-go*
-  expansion strategy (one successor context per function symbol); its completeness
-  is the standard ordered-resolution result (Bachmair–Ganzinger) and is **not yet
-  machine-checked** — `lean/ContextCalculus/CompletenessStrategy.lean` scaffolds
-  the proof: it proves the reduction (strategy completeness ⇔ "materialises
-  exactly the good types", via `subsumption_complete`) and isolates the remaining
-  obligation as a single `sorry`. The strategy preserves verdicts on every
-  benchmark (HermiT-validated) and every reported verdict remains kernel-certified
-  per run by the checker.
+  empirically against HermiT on the benchmarks. The engine classifies by
+  consequence-based *type-elimination* (and uses a *pay-as-you-go* representation:
+  one successor context per function symbol). Its strategy completeness is now
+  **machine-checked, `sorry`-free**, in `lean/ContextCalculus/CompletenessStrategy.lean`
+  (imported by the root module, so it is part of the default certified build):
+  `saturate_decides` proves that iterating the elimination operator from the
+  consistent candidates converges (in ≤ `|candidates|` rounds) to exactly the
+  good types, which decide `A ⊑ B` via `subsumption_complete`. What remains is the
+  operational refinement only — that the Rust per-`f` data structures realise this
+  abstract elimination step; the pay-as-you-go strategy preserves verdicts on every
+  benchmark (byte-identical, HermiT-validated) and every reported verdict is
+  kernel-certified per run by the checker.
 - The per-run certificate search re-derives verdicts by a complete layered method
   (propositional, Horn forward chaining, and a complete disjunctive saturation
   over a term algebra); the disjunctive layer is bounded, so an ontology with very
   many excluded-middle definitions may exceed the bound.
 - Still open in the engine: the general regular-role-hierarchy automaton (only
   transitivity and single chains are encoded) and the full Table-3 nominal merge
-  rules. The pay-as-you-go strategy is implemented (per-`f` successor contexts);
-  its machine-checked completeness proof is scaffolded but not yet discharged.
+  rules. The pay-as-you-go strategy is implemented (per-`f` successor contexts) and
+  its strategy-level completeness is machine-checked (`saturate_decides`); the
+  remaining gap is the operational refinement linking the abstract elimination
+  step to the concrete Rust data structures.
 
 ## The `.ofn` front-end (optional)
 

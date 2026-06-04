@@ -234,20 +234,30 @@ reasoner's verdicts per run (`checkCert_sound`).  The remaining boundary:
    may give up rather than exhaust memory — the classical remedy is the ordered /
    pay-as-you-go strategy (item 2), which we do not re-mechanize; the Horn
    fast-path keeps the common case efficient.
-2. **The ordered / pay-as-you-go refinement.**  The engine now uses a
-   pay-as-you-go strategy (one successor context per function symbol `f`).
-   Resolving only on maximal literals and expanding successors lazily is a
-   classically refutation-complete restriction (Bachmair–Ganzinger ordered
-   resolution); that completeness is **not yet machine-checked**.
-   `ContextCalculus/CompletenessStrategy.lean` *scaffolds* it (not imported by
-   the root module, so this default build stays `sorry`-free): it **proves** the
-   reduction `strategy_decides` — any strategy whose materialised type-contexts
-   are exactly the good types decides subsumption correctly, via
-   `CompletenessContext.subsumption_complete` — and isolates the two remaining
-   obligations as `sorry`: `perF_sound` (the per-run certificate checker already
-   re-establishes this each run) and `perF_complete` (the Bachmair–Ganzinger
-   content). Build it on demand with
-   `lake build ContextCalculus.CompletenessStrategy`.
+2. **The saturation-strategy completeness — now machine-checked (`sorry`-free).**
+   The engine classifies by consequence-based *type-elimination*: seed the
+   consistent candidate contexts and repeatedly discard any context whose
+   existential demands are no longer realised by a surviving context, to a
+   fixpoint.  `ContextCalculus/CompletenessStrategy.lean` (now imported by the
+   root module, so it is part of the default `sorry`-free build) proves the
+   whole chain unconditionally:
+   - `good_iff` — the fixpoint equation an elimination round checks (a type is
+     good iff consistent and every existential it forces has a *good* witness);
+   - `goodFS_selfReal` + `selfReal_subset_goodFS` — the good types are the
+     **greatest** self-realising set (the gfp of the elimination operator `step`);
+   - `exists_fixed` + `saturate_fixed` — iterating `step` from the candidates
+     **converges** to a fixpoint in ≤ `|candidates|` rounds (a strictly
+     shrinking finite chain);
+   - `mem_saturate_iff_good` — that computed fixpoint *is* the set of good types;
+   - `saturate_decides` — hence the strategy's materialised set decides `A ⊑ B`
+     (composing the above with `subsumption_complete`).
+
+   What remains is the *operational refinement* only: that the Rust per-`f`
+   successor data structures realise this abstract `step`.  The pay-as-you-go
+   strategy changes how the surviving contexts are *represented*, not the set it
+   converges to — verdict identity to the trivial strategy is checked empirically
+   (byte-identical on every benchmark) and the per-run certificate checker
+   re-establishes soundness on each run.
 
 For context on the state of the art: the prior Lean attempt under
 `moose/proofs/lean-sroiq-sdd/` proves **ALC** completeness via *infinite*

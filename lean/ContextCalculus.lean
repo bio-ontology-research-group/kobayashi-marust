@@ -2,6 +2,7 @@ import ContextCalculus.Basic
 import ContextCalculus.CompletenessProp
 import ContextCalculus.CompletenessEL
 import ContextCalculus.CompletenessContext
+import ContextCalculus.CompletenessStrategy
 import ContextCalculus.CompletenessEq
 import ContextCalculus.Termination
 import ContextCalculus.Equivalence
