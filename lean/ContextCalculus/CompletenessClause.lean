@@ -305,4 +305,16 @@ theorem model_existence (O : List (Clause Atom))
   by_contra hno
   exact h (completeness O hno)
 
+/-- **Clause-level consistency decidability.**  A finite clause set is
+    (propositionally) satisfiable **iff** the engine's resolution does *not* derive
+    the empty clause — soundness (`Basic.derivable_sound`) one way, completeness
+    (`completeness`) the other.  This is the consistency-checking counterpart of
+    `subsumption_refut_iff`. -/
+theorem consistent_iff (O : List (Clause Atom)) :
+    (∃ I : Atom → Prop, ∀ c ∈ O, sat I c) ↔ ¬ Derivable O (⟨[], []⟩ : Clause Atom) := by
+  constructor
+  · rintro ⟨I, hI⟩ hder
+    exact sat_empty I (derivable_sound I O hI hder)
+  · exact model_existence O
+
 end ContextCalculus.ClauseComplete
