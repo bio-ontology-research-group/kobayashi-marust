@@ -180,4 +180,17 @@ theorem fo_subsumption_refut (O : List FCL) (A B : Nat)
     exact hB (hent M hO hA)
   · exact hd
 
+/-- **First-order consistency decidability (term models).**  An equality-free
+    clause set has a first-order term model (under the canonical assignment) iff
+    the engine's resolution does not derive the empty clause.  Soundness
+    (`Basic.derivable_sound` against the term model's propositional reduct) one
+    way, Herbrand model existence the other. -/
+theorem fo_consistent_iff (S : List FCL) (hf : ∀ c ∈ S, EqFree c) :
+    (∃ M : TModel FTerm, ∀ c ∈ S, sat (M.evalL rho0) c)
+      ↔ ¬ Derivable S (⟨[], []⟩ : FCL) := by
+  constructor
+  · rintro ⟨M, hM⟩ hder
+    exact sat_empty (M.evalL rho0) (derivable_sound (M.evalL rho0) S hM hder)
+  · exact herbrand_fo_model_existence S hf
+
 end ContextCalculus.CompletenessFO
