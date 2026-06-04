@@ -1,5 +1,6 @@
 import ContextCalculus.Basic
 import ContextCalculus.CompletenessProp
+import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.CompletenessContext
 import ContextCalculus.CompletenessStrategy
