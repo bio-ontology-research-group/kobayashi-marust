@@ -50,11 +50,12 @@ gen disjsucc  "$INPUTS/disjsucc.json"  Disjsucc    # disjunction × successor (c
 
 # real .ofn ontologies via the OWL front-end (needs the moose package)
 if ( cd "$CRATE/py" && python3 -c "import frontend" >/dev/null 2>&1 ); then
-  gen trans_test "$ONTOS/trans_test.ofn"  Transtest   # nested successors (A ⊑ D)
-  gen kinship    "$ONTOS/kinship.ofn"     Kinship     # 21 subs incl. nominal
+  gen trans_test   "$ONTOS/trans_test.ofn"   Transtest    # nested successors (A ⊑ D)
+  gen kinship      "$ONTOS/kinship.ofn"      Kinship      # 21 subs incl. nominal
+  gen forall_intro "$ONTOS/forall_intro.ofn" ForallIntro  # ∀-introduction (A ⊑ B)
 else
   echo "== .ofn front-end skipped (moose not found): re-verifying checked-in"
-  echo "   Transtest.lean / Kinship.lean instead. Set MOOSE_HOME to regenerate."
+  echo "   Transtest.lean / Kinship.lean / ForallIntro.lean instead. Set MOOSE_HOME to regenerate."
 fi
 
 echo "== kernel-checking all certificates (lake build Validation) =="

@@ -4,292 +4,292 @@ import ContextCalculus.CheckerTerm
 open ContextCalculus ContextCalculus.CheckerTerm
 set_option maxRecDepth 8000
 
-def O_kinship : List FCL := [⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 4 (FTerm.var (0)))], []⟩, ⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.app 1 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (-2))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 5 (FTerm.var (0))), FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 10 (FTerm.var (0)))], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.app 2 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 10 (FTerm.var (0)))], [FLit.P (FPred.concept 11 (FTerm.app 2 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 11 (FTerm.var (-2))), FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 10 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 12 (FTerm.var (0)))], [FLit.P (FPred.concept 10 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.app 3 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (-2))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0))), FLit.P (FPred.concept 15 (FTerm.var (0)))], []⟩, ⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0))), FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 15 (FTerm.var (0)))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (-2))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 21 (FTerm.var (0))), FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 8 (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 21 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 24 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 3 (FTerm.var (0))), FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 28 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 28 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0))), FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 28 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 28 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 5 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.role 3 (FTerm.var (-2)) (FTerm.var (0))), FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))], []⟩, ⟨[FLit.P (FPred.role 2 (FTerm.var (-2)) (FTerm.var (-3))), FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (-3)))]⟩, ⟨[FLit.P (FPred.role 3 (FTerm.var (-5)) (FTerm.var (-6))), FLit.P (FPred.role 3 (FTerm.var (-4)) (FTerm.var (-5)))], [FLit.P (FPred.role 6 (FTerm.var (-4)) (FTerm.var (-6)))]⟩, ⟨[FLit.P (FPred.role 7 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 7 (FTerm.var (-2)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 7 (FTerm.var (0)) (FTerm.var (0)))], []⟩, ⟨[FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.role 8 (FTerm.var (0)) (FTerm.var (-8))), FLit.P (FPred.role 8 (FTerm.var (0)) (FTerm.var (-7)))], [FLit.eq (FTerm.var (-7)) (FTerm.var (-8))]⟩, ⟨[FLit.P (FPred.role 5 (FTerm.var (0)) (FTerm.var (-8))), FLit.P (FPred.role 5 (FTerm.var (0)) (FTerm.var (-7)))], [FLit.eq (FTerm.var (-7)) (FTerm.var (-8))]⟩, ⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 9 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 9 (FTerm.var (-2)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 8 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 11 (FTerm.var (-2))), FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 29 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 29 (FTerm.var (-2))), FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 29 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 29 (FTerm.var (0)))], [FLit.P (FPred.concept 10 (FTerm.var (0)))]⟩]
+def O_kinship : List FCL := [⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (-2))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 1 (FTerm.var (0))), FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 4 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 1 (FTerm.var (0))), FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 9 (FTerm.var (0))), FLit.P (FPred.concept 10 (FTerm.var (0)))], []⟩, ⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0))), FLit.P (FPred.concept 10 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 10 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 10 (FTerm.var (0)))], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 12 (FTerm.var (0)))], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 15 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 2 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.app 2 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (-2))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.app 3 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 9 (FTerm.var (-2))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 21 (FTerm.var (0)))], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 21 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 9 (FTerm.var (0))), FLit.P (FPred.concept 12 (FTerm.var (0)))], [FLit.P (FPred.concept 21 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 22 (FTerm.var (0)))], []⟩, ⟨[FLit.P (FPred.concept 21 (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 4 (FTerm.var (0))), FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 24 (FTerm.var (0))), FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 2 (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.app 4 (FTerm.var (0))))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (-2))), FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 28 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, ⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 5 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.role 5 (FTerm.var (0)) (FTerm.var (-4))), FLit.P (FPred.role 5 (FTerm.var (0)) (FTerm.var (-3)))], [FLit.eq (FTerm.var (-3)) (FTerm.var (-4))]⟩, ⟨[FLit.P (FPred.role 6 (FTerm.var (0)) (FTerm.var (-4))), FLit.P (FPred.role 6 (FTerm.var (0)) (FTerm.var (-3)))], [FLit.eq (FTerm.var (-3)) (FTerm.var (-4))]⟩, ⟨[FLit.P (FPred.role 7 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 7 (FTerm.var (-2)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 8 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 8 (FTerm.var (-2)) (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.role 6 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))]⟩, ⟨[FLit.P (FPred.role 8 (FTerm.var (0)) (FTerm.var (0)))], []⟩, ⟨[FLit.P (FPred.role 3 (FTerm.var (-2)) (FTerm.var (0))), FLit.P (FPred.role 3 (FTerm.var (0)) (FTerm.var (-2)))], []⟩, ⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 28 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 25 (FTerm.var (-2))), FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 29 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 29 (FTerm.var (-2))), FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (-2)))], [FLit.P (FPred.concept 29 (FTerm.var (0)))]⟩, ⟨[FLit.P (FPred.concept 29 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩]
 
 def cert_kinship_0 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 28 []),
-    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .prem 30 []),
-    (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 17 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 16 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 23 (FTerm.var (0))))) ]
-theorem kinship_0_Childless_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 17 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 17 24 cert_kinship_0 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 17 []),
+    (⟨[FLit.P (FPred.concept 12 (FTerm.var (0)))], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .prem 20 []),
+    (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 12 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 11 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
+theorem kinship_0_Childless_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 12 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 12 15 cert_kinship_0 (by decide) M hO a0 hA
 
 def cert_kinship_1 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 28 []),
-    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .prem 30 []),
-    (⟨[], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 16 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 17 (FTerm.var (0))))) ]
-theorem kinship_1_Childless_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 17 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 17 8 cert_kinship_1 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 17 []),
+    (⟨[FLit.P (FPred.concept 12 (FTerm.var (0)))], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .prem 20 []),
+    (⟨[], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 12 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 11 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 12 (FTerm.var (0))))) ]
+theorem kinship_1_Childless_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 12 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 12 2 cert_kinship_1 (by decide) M hO a0 hA
 
 def cert_kinship_2 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .prem 51 []),
-    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .prem 54 []),
-    (⟨[], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 25 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 26 (FTerm.var (0))))) ]
-theorem kinship_2_Father_sub_Male {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 26 a0) : M.conc 3 a0 :=
-  certifies_subsumptionT O_kinship 26 3 cert_kinship_2 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .prem 11 []),
+    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 13 []),
+    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 6 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 8 (FTerm.var (0))))) ]
+theorem kinship_2_Father_sub_Male {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 8 a0) : M.conc 7 a0 :=
+  certifies_subsumptionT O_kinship 8 7 cert_kinship_2 (by decide) M hO a0 hA
 
 def cert_kinship_3 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 50 []),
-    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .prem 54 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 5 0 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .res 6 4 (FLit.P (FPred.concept 26 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 25 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 7 1 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 11 2 (FLit.P (FPred.concept 23 (FTerm.var (0))))) ]
-theorem kinship_3_Father_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 26 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 26 24 cert_kinship_3 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 9 []),
+    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 13 []),
+    (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 6 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
+theorem kinship_3_Father_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 8 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 8 15 cert_kinship_3 (by decide) M hO a0 hA
 
 def cert_kinship_4 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 22 []),
-    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 24 []),
-    (⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))]⟩, .prem 32 []),
-    (⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))]⟩, .prem 33 []),
-    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 50 []),
-    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, .prem 52 []),
-    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .prem 54 []),
-    (⟨[], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .res 7 6 (FLit.P (FPred.concept 26 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 8 4 (FLit.P (FPred.concept 25 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, .res 8 5 (FLit.P (FPred.concept 25 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))]⟩, .res 10 2 (FLit.P (FPred.concept 18 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))]⟩, .res 10 3 (FLit.P (FPred.concept 18 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0)))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 19 [((-2), (FTerm.app 4 (FTerm.var (0))))]),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 11 13 (FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0)))))),
-    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 12 14 (FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0)))))),
-    (⟨[FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 0 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 15 16 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .res 17 1 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
-theorem kinship_4_Father_sub_Parent {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 26 a0) : M.conc 6 a0 :=
-  certifies_subsumptionT O_kinship 26 6 cert_kinship_4 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 0 []),
+    (⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 1 []),
+    (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 9 []),
+    (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, .prem 10 []),
+    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 13 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .prem 34 []),
+    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .prem 36 []),
+    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .res 7 4 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 8 2 (FLit.P (FPred.concept 6 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 6 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, .res 10 0 (FLit.P (FPred.concept 1 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0))))]⟩, .res 10 1 (FLit.P (FPred.concept 1 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0)))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .prem 31 [((-2), (FTerm.app 1 (FTerm.var (0))))]),
+    (⟨[FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 12 13 (FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0)))))),
+    (⟨[], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 11 14 (FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0)))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 15 5 (FLit.P (FPred.concept 16 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 9 16 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .res 17 6 (FLit.P (FPred.concept 17 (FTerm.var (0))))) ]
+theorem kinship_4_Father_sub_Parent {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 8 a0) : M.conc 9 a0 :=
+  certifies_subsumptionT O_kinship 8 9 cert_kinship_4 (by decide) M hO a0 hA
 
 def cert_kinship_5 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 50 []),
-    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .prem 54 []),
-    (⟨[], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 25 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 26 (FTerm.var (0))))) ]
-theorem kinship_5_Father_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 26 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 26 8 cert_kinship_5 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 9 []),
+    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 13 []),
+    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 6 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 8 (FTerm.var (0))))) ]
+theorem kinship_5_Father_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 8 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 8 2 cert_kinship_5 (by decide) M hO a0 hA
 
 def cert_kinship_6 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 8 []),
-    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .prem 11 []),
-    (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 9 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 7 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 23 (FTerm.var (0))))) ]
-theorem kinship_6_Grandparent_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 9 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 9 24 cert_kinship_6 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 40 []),
+    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 43 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 5 0 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .res 6 4 (FLit.P (FPred.concept 20 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 7 1 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 11 2 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
+theorem kinship_6_Grandparent_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 20 15 cert_kinship_6 (by decide) M hO a0 hA
 
 def cert_kinship_7 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 5 []),
-    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 6 []),
-    (⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 8 []),
-    (⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, .prem 9 []),
-    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .prem 11 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 22 []),
-    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 24 []),
-    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .res 7 4 (FLit.P (FPred.concept 9 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 8 2 (FLit.P (FPred.concept 7 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 7 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, .res 10 0 (FLit.P (FPred.concept 5 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 6 (FTerm.app 1 (FTerm.var (0))))]⟩, .res 10 1 (FLit.P (FPred.concept 5 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 6 (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 14 (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 23 [((0), (FTerm.app 1 (FTerm.var (0))))]),
-    (⟨[], [FLit.P (FPred.concept 14 (FTerm.app 1 (FTerm.var (0))))]⟩, .res 12 13 (FLit.P (FPred.concept 6 (FTerm.app 1 (FTerm.var (0)))))),
-    (⟨[FLit.P (FPred.concept 14 (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 8 (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 21 [((0), (FTerm.app 1 (FTerm.var (0))))]),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.app 1 (FTerm.var (0))))]⟩, .res 14 15 (FLit.P (FPred.concept 14 (FTerm.app 1 (FTerm.var (0)))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.app 1 (FTerm.var (0)))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 19 [((-2), (FTerm.app 1 (FTerm.var (0))))]),
-    (⟨[FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 16 17 (FLit.P (FPred.concept 8 (FTerm.app 1 (FTerm.var (0)))))),
-    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 11 18 (FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0)))))),
-    (⟨[FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 5 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 19 20 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .res 21 6 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
-theorem kinship_7_Grandparent_sub_Parent {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 9 a0) : M.conc 6 a0 :=
-  certifies_subsumptionT O_kinship 9 6 cert_kinship_7 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .prem 34 []),
+    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .prem 36 []),
+    (⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0))))]⟩, .prem 37 []),
+    (⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.app 3 (FTerm.var (0))))]⟩, .prem 38 []),
+    (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 40 []),
+    (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, .prem 41 []),
+    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 43 []),
+    (⟨[], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .res 7 6 (FLit.P (FPred.concept 20 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 8 4 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, .res 8 5 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0))))]⟩, .res 10 2 (FLit.P (FPred.concept 18 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 9 (FTerm.app 3 (FTerm.var (0))))]⟩, .res 10 3 (FLit.P (FPred.concept 18 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 9 (FTerm.app 3 (FTerm.var (0))))], [FLit.P (FPred.concept 17 (FTerm.app 3 (FTerm.var (0))))]⟩, .prem 35 [((0), (FTerm.app 3 (FTerm.var (0))))]),
+    (⟨[], [FLit.P (FPred.concept 17 (FTerm.app 3 (FTerm.var (0))))]⟩, .res 12 13 (FLit.P (FPred.concept 9 (FTerm.app 3 (FTerm.var (0)))))),
+    (⟨[FLit.P (FPred.concept 17 (FTerm.app 3 (FTerm.var (0))))], [FLit.P (FPred.concept 2 (FTerm.app 3 (FTerm.var (0))))]⟩, .prem 32 [((0), (FTerm.app 3 (FTerm.var (0))))]),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.app 3 (FTerm.var (0))))]⟩, .res 14 15 (FLit.P (FPred.concept 17 (FTerm.app 3 (FTerm.var (0)))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.app 3 (FTerm.var (0)))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0))))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .prem 31 [((-2), (FTerm.app 3 (FTerm.var (0))))]),
+    (⟨[FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0))))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 16 17 (FLit.P (FPred.concept 2 (FTerm.app 3 (FTerm.var (0)))))),
+    (⟨[], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 11 18 (FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 3 (FTerm.var (0)))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 19 0 (FLit.P (FPred.concept 16 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 9 20 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .res 21 1 (FLit.P (FPred.concept 17 (FTerm.var (0))))) ]
+theorem kinship_7_Grandparent_sub_Parent {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 9 a0 :=
+  certifies_subsumptionT O_kinship 20 9 cert_kinship_7 (by decide) M hO a0 hA
 
 def cert_kinship_8 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 7 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 8 []),
-    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 7 (FTerm.var (0)))]⟩, .prem 11 []),
-    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 7 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 9 (FTerm.var (0))))) ]
-theorem kinship_8_Grandparent_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 9 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 9 8 cert_kinship_8 (by decide) M hO a0 hA
-
-def cert_kinship_9 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 35 []),
-    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 39 []),
+  [ (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 40 []),
+    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 43 []),
     (⟨[], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, .core),
     (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
     (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 20 (FTerm.var (0))))) ]
-theorem kinship_9_Mother_sub_Female {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 2 a0 :=
-  certifies_subsumptionT O_kinship 20 2 cert_kinship_9 (by decide) M hO a0 hA
+theorem kinship_8_Grandparent_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 20 2 cert_kinship_8 (by decide) M hO a0 hA
+
+def cert_kinship_9 : List (FCL × JustifT) :=
+  [ (⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, .prem 3 []),
+    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .prem 7 []),
+    (⟨[], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 3 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 5 (FTerm.var (0))))) ]
+theorem kinship_9_Mother_sub_Female {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 5 a0) : M.conc 4 a0 :=
+  certifies_subsumptionT O_kinship 5 4 cert_kinship_9 (by decide) M hO a0 hA
 
 def cert_kinship_10 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 36 []),
-    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 39 []),
-    (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 20 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 23 (FTerm.var (0))))) ]
-theorem kinship_10_Mother_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 20 24 cert_kinship_10 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 4 []),
+    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .prem 7 []),
+    (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 5 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 3 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
+theorem kinship_10_Mother_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 5 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 5 15 cert_kinship_10 (by decide) M hO a0 hA
 
 def cert_kinship_11 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 22 []),
-    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .prem 24 []),
-    (⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))]⟩, .prem 32 []),
-    (⟨[FLit.P (FPred.concept 18 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))]⟩, .prem 33 []),
-    (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 36 []),
-    (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, .prem 37 []),
-    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 39 []),
-    (⟨[], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .res 7 6 (FLit.P (FPred.concept 20 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 8 4 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 18 (FTerm.var (0)))]⟩, .res 8 5 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))]⟩, .res 10 2 (FLit.P (FPred.concept 18 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))]⟩, .res 10 3 (FLit.P (FPred.concept 18 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0)))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0))))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 19 [((-2), (FTerm.app 4 (FTerm.var (0))))]),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0))))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 11 13 (FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 4 (FTerm.var (0)))))),
-    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 12 14 (FLit.P (FPred.concept 8 (FTerm.app 4 (FTerm.var (0)))))),
-    (⟨[FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 0 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 15 16 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .res 17 1 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
-theorem kinship_11_Mother_sub_Parent {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 6 a0 :=
-  certifies_subsumptionT O_kinship 20 6 cert_kinship_11 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 0 []),
+    (⟨[FLit.P (FPred.concept 1 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0))))]⟩, .prem 1 []),
+    (⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 4 []),
+    (⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, .prem 5 []),
+    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .prem 7 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 16 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .prem 34 []),
+    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .prem 36 []),
+    (⟨[], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .res 7 4 (FLit.P (FPred.concept 5 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 8 2 (FLit.P (FPred.concept 3 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 1 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 3 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))]⟩, .res 10 0 (FLit.P (FPred.concept 1 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0))))]⟩, .res 10 1 (FLit.P (FPred.concept 1 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0)))), FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .prem 31 [((-2), (FTerm.app 1 (FTerm.var (0))))]),
+    (⟨[FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0))))], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 12 13 (FLit.P (FPred.concept 2 (FTerm.app 1 (FTerm.var (0)))))),
+    (⟨[], [FLit.P (FPred.concept 16 (FTerm.var (0)))]⟩, .res 11 14 (FLit.P (FPred.role 1 (FTerm.var (0)) (FTerm.app 1 (FTerm.var (0)))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 15 5 (FLit.P (FPred.concept 16 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 9 16 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .res 17 6 (FLit.P (FPred.concept 17 (FTerm.var (0))))) ]
+theorem kinship_11_Mother_sub_Parent {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 5 a0) : M.conc 9 a0 :=
+  certifies_subsumptionT O_kinship 5 9 cert_kinship_11 (by decide) M hO a0 hA
 
 def cert_kinship_12 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 19 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 36 []),
-    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 19 (FTerm.var (0)))]⟩, .prem 39 []),
-    (⟨[], [FLit.P (FPred.concept 20 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 20 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 19 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 20 (FTerm.var (0))))) ]
-theorem kinship_12_Mother_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 20 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 20 8 cert_kinship_12 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 3 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 4 []),
+    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 3 (FTerm.var (0)))]⟩, .prem 7 []),
+    (⟨[], [FLit.P (FPred.concept 5 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 5 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 3 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 5 (FTerm.var (0))))) ]
+theorem kinship_12_Mother_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 5 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 5 2 cert_kinship_12 (by decide) M hO a0 hA
 
 def cert_kinship_13 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 46 []),
-    (⟨[FLit.P (FPred.concept 24 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 48 []),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 24 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 23 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 24 (FTerm.var (0))))) ]
-theorem kinship_13_Narcissist_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 24 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 24 8 cert_kinship_13 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 25 []),
+    (⟨[FLit.P (FPred.concept 15 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 27 []),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 15 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 14 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 15 (FTerm.var (0))))) ]
+theorem kinship_13_Narcissist_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 15 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 15 2 cert_kinship_13 (by decide) M hO a0 hA
 
 def cert_kinship_14 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 21 []),
-    (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 23 []),
-    (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 6 1 (FLit.P (FPred.concept 6 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 5 2 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 7 0 (FLit.P (FPred.concept 14 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 11 4 (FLit.P (FPred.concept 23 (FTerm.var (0))))) ]
-theorem kinship_14_Parent_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 6 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 6 24 cert_kinship_14 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 32 []),
+    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .prem 35 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 5 0 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .res 6 4 (FLit.P (FPred.concept 9 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 8 3 (FLit.P (FPred.concept 17 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 7 1 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 11 2 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
+theorem kinship_14_Parent_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 9 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 9 15 cert_kinship_14 (by decide) M hO a0 hA
 
 def cert_kinship_15 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 21 []),
-    (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 23 []),
-    (⟨[], [FLit.P (FPred.concept 6 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 6 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 14 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 6 (FTerm.var (0))))) ]
-theorem kinship_15_Parent_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 6 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 6 8 cert_kinship_15 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 17 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 32 []),
+    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 17 (FTerm.var (0)))]⟩, .prem 35 []),
+    (⟨[], [FLit.P (FPred.concept 9 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 9 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 1 0 (FLit.P (FPred.concept 17 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 9 (FTerm.var (0))))) ]
+theorem kinship_15_Parent_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 9 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 9 2 cert_kinship_15 (by decide) M hO a0 hA
 
 def cert_kinship_16 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 1 2 (FLit.P (FPred.concept 23 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 3 0 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 6 5 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 4 7 (FLit.P (FPred.concept 8 (FTerm.var (0))))) ]
-theorem kinship_16_Person_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 8 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 8 24 cert_kinship_16 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 1 2 (FLit.P (FPred.concept 14 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 3 0 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 6 5 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 4 7 (FLit.P (FPred.concept 2 (FTerm.var (0))))) ]
+theorem kinship_16_Person_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 2 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 2 15 cert_kinship_16 (by decide) M hO a0 hA
 
 def cert_kinship_17 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, .prem 56 []),
-    (⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 75 []),
-    (⟨[], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 0 1 (FLit.P (FPred.concept 27 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 11 (FTerm.var (0))))) ]
-theorem kinship_17_Queen_sub_Female {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 11 a0) : M.conc 2 a0 :=
-  certifies_subsumptionT O_kinship 11 2 cert_kinship_17 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .prem 56 []),
+    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, .prem 73 []),
+    (⟨[], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, .res 0 1 (FLit.P (FPred.concept 26 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 4 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 25 (FTerm.var (0))))) ]
+theorem kinship_17_Queen_sub_Female {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 25 a0) : M.conc 4 a0 :=
+  certifies_subsumptionT O_kinship 25 4 cert_kinship_17 (by decide) M hO a0 hA
 
 def cert_kinship_18 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .prem 44 []),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0))), FLit.P (FPred.concept 22 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .prem 47 []),
-    (⟨[FLit.P (FPred.concept 23 (FTerm.var (0)))], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .prem 49 []),
-    (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, .prem 56 []),
-    (⟨[], [FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 71 []),
-    (⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 76 []),
-    (⟨[], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .core),
-    (⟨[], [FLit.P (FPred.concept 22 (FTerm.var (0)))]⟩, .res 4 0 (FLit.P (FPred.role 4 (FTerm.var (0)) (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, .res 6 3 (FLit.P (FPred.concept 11 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 8 5 (FLit.P (FPred.concept 27 (FTerm.var (0))))),
-    (⟨[FLit.P (FPred.concept 8 (FTerm.var (0)))], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 7 1 (FLit.P (FPred.concept 22 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 23 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 8 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 24 (FTerm.var (0)))]⟩, .res 11 2 (FLit.P (FPred.concept 23 (FTerm.var (0))))) ]
-theorem kinship_18_Queen_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 11 a0) : M.conc 24 a0 :=
-  certifies_subsumptionT O_kinship 11 24 cert_kinship_18 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .prem 23 []),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0))), FLit.P (FPred.concept 13 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .prem 26 []),
+    (⟨[FLit.P (FPred.concept 14 (FTerm.var (0)))], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .prem 28 []),
+    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .prem 56 []),
+    (⟨[], [FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0)))]⟩, .prem 62 []),
+    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 72 []),
+    (⟨[], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .core),
+    (⟨[], [FLit.P (FPred.concept 13 (FTerm.var (0)))]⟩, .res 4 0 (FLit.P (FPred.role 2 (FTerm.var (0)) (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .res 6 3 (FLit.P (FPred.concept 25 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 8 5 (FLit.P (FPred.concept 26 (FTerm.var (0))))),
+    (⟨[FLit.P (FPred.concept 2 (FTerm.var (0)))], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 7 1 (FLit.P (FPred.concept 13 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 14 (FTerm.var (0)))]⟩, .res 9 10 (FLit.P (FPred.concept 2 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 15 (FTerm.var (0)))]⟩, .res 11 2 (FLit.P (FPred.concept 14 (FTerm.var (0))))) ]
+theorem kinship_18_Queen_sub_Narcissist {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 25 a0) : M.conc 15 a0 :=
+  certifies_subsumptionT O_kinship 25 15 cert_kinship_18 (by decide) M hO a0 hA
 
 def cert_kinship_19 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, .prem 56 []),
-    (⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .prem 76 []),
-    (⟨[], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 0 1 (FLit.P (FPred.concept 27 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 8 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 11 (FTerm.var (0))))) ]
-theorem kinship_19_Queen_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 11 a0) : M.conc 8 a0 :=
-  certifies_subsumptionT O_kinship 11 8 cert_kinship_19 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .prem 56 []),
+    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .prem 72 []),
+    (⟨[], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 0 1 (FLit.P (FPred.concept 26 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 2 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 25 (FTerm.var (0))))) ]
+theorem kinship_19_Queen_sub_Person {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 25 a0) : M.conc 2 a0 :=
+  certifies_subsumptionT O_kinship 25 2 cert_kinship_19 (by decide) M hO a0 hA
 
 def cert_kinship_20 : List (FCL × JustifT) :=
-  [ (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 27 (FTerm.var (0)))]⟩, .prem 56 []),
-    (⟨[FLit.P (FPred.concept 27 (FTerm.var (0)))], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, .prem 74 []),
-    (⟨[], [FLit.P (FPred.concept 11 (FTerm.var (0)))]⟩, .core),
-    (⟨[FLit.P (FPred.concept 11 (FTerm.var (0)))], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, .res 0 1 (FLit.P (FPred.concept 27 (FTerm.var (0))))),
-    (⟨[], [FLit.P (FPred.concept 12 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 11 (FTerm.var (0))))) ]
-theorem kinship_20_Queen_sub_Royal {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 11 a0) : M.conc 12 a0 :=
-  certifies_subsumptionT O_kinship 11 12 cert_kinship_20 (by decide) M hO a0 hA
+  [ (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 26 (FTerm.var (0)))]⟩, .prem 56 []),
+    (⟨[FLit.P (FPred.concept 26 (FTerm.var (0)))], [FLit.P (FPred.concept 28 (FTerm.var (0)))]⟩, .prem 74 []),
+    (⟨[], [FLit.P (FPred.concept 25 (FTerm.var (0)))]⟩, .core),
+    (⟨[FLit.P (FPred.concept 25 (FTerm.var (0)))], [FLit.P (FPred.concept 28 (FTerm.var (0)))]⟩, .res 0 1 (FLit.P (FPred.concept 26 (FTerm.var (0))))),
+    (⟨[], [FLit.P (FPred.concept 28 (FTerm.var (0)))]⟩, .res 2 3 (FLit.P (FPred.concept 25 (FTerm.var (0))))) ]
+theorem kinship_20_Queen_sub_Royal {D : Type} (M : TModel D) (hO : ∀ p ∈ O_kinship, valid M p) (a0 : D) (hA : M.conc 25 a0) : M.conc 28 a0 :=
+  certifies_subsumptionT O_kinship 25 28 cert_kinship_20 (by decide) M hO a0 hA
 

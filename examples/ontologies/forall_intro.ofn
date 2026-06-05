@@ -1,0 +1,14 @@
+Prefix(:=<http://example.org/forall#>)
+Ontology(<http://example.org/forall>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(Class(:D))
+Declaration(ObjectProperty(:r))
+# A is everything whose r-successors are all C.
+SubClassOf(:A ObjectAllValuesFrom(:r :C))
+# B is exactly the things whose r-successors are all (C or D).
+EquivalentClasses(:B ObjectAllValuesFrom(:r ObjectUnionOf(:C :D)))
+# Entailed: A ⊑ B, because ∀r.C ⊑ ∀r.(C ⊔ D).  Requires the ∀-introduction
+# (converse) clause: concluding membership in a universal restriction.
+)

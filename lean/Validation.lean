@@ -16,3 +16,4 @@ import Validation.Disjsucc     -- disjunction x successor together (complete eng
 /- Sourced from real `.ofn` ontologies via the front-end (`frontend.py`):       -/
 import Validation.Transtest    -- transitive role incl. nested A ⊑ D (trans_test.ofn)
 import Validation.Kinship      -- 21 subsumptions of kinship.ofn (incl. a nominal)
+import Validation.ForallIntro  -- ∀-introduction: A ⊑ B for B ≡ ∀r.(C⊔D) (forall_intro.ofn)

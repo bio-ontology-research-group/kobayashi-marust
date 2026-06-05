@@ -103,6 +103,23 @@ def depth(t):
     return 0 if t[0] == "V" else 1 + depth(t[2])
 
 
+def maximal_head(head):
+    """The head literals on a maximal-depth term -- the ones the (ordered)
+    calculus resolves on.  In the context literal ordering a literal on a
+    successor term f(x) is larger than one on the central/predecessor variable,
+    so disjuncts about a successor are peeled off first; this both mirrors the
+    engine's max-head selection and keeps the disjunctive saturation bounded
+    (resolving on every disjunct indiscriminately is what blows up and yields a
+    false fixpoint).  When all disjuncts sit on the same depth (e.g. a purely
+    central-variable clause) every literal is maximal, so plain ALC reasoning is
+    unaffected.  Ordered positive hyperresolution stays refutation-complete, so
+    no derivable verdict is lost (verified: 0 uncovered across the suite)."""
+    if not head:
+        return head
+    m = max(max(depth(t) for t in atom_terms(a)) for a in head)
+    return [a for a in head if max(depth(t) for t in atom_terms(a)) == m]
+
+
 def subst_term(t, s):
     if t[0] == "V":
         return s.get(t[1], t)
@@ -442,9 +459,11 @@ def derive_full(prem_list, core, target, varcodes):
         more = True
         while more:
             more = False
+            # Electrons resolve only on their *maximal* head literal (ordered
+            # positive hyperresolution); this prunes the disjunctive blow-up.
             cons_by_atom = {}
             for el, elidx in positive_consequences(D, varcodes):
-                for a in el[1]:
+                for a in maximal_head(el[1]):
                     cons_by_atom.setdefault(a, []).append((el, elidx))
             rules = [(c, k) for k, c in enumerate(D.order)
                      if len(c[0]) > 0 and clause_ground(c, varcodes)]
@@ -455,17 +474,20 @@ def derive_full(prem_list, core, target, varcodes):
                     if steps > MAX_PROP_STEPS:
                         break
                     for el, elidx in cons_by_atom.get(ba, []):
-                        steps += 1
-                        if steps > MAX_PROP_STEPS:
-                            break
                         res = resolvent(el, cur, ba)
                         if not clause_depth_ok(res) or res in D.index:
                             continue
+                        # Count the *budget* against productive steps (clauses
+                        # actually added), not against redundant re-derivations:
+                        # otherwise a large set of already-known resolvents
+                        # exhausts the budget and the search reports a spurious
+                        # fixpoint while genuinely new clauses remain reachable.
+                        steps += 1
                         k = D.add(res, ("res", elidx, cidx, ba))
                         changed = more = True
                         if res == target:
                             return D.prune(k)
-                        if len(D.order) > MAX_CLAUSES:
+                        if len(D.order) > MAX_CLAUSES or steps > MAX_PROP_STEPS:
                             more = False; break
         # (3) forward paramodulation: a unit eq consequence (s≈t) rewrites s->t
         cons = [(next(iter(c[1])), k) for k, c in enumerate(D.order)
