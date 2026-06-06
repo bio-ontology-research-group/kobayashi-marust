@@ -561,6 +561,21 @@ impl Engine {
                 Some(c) => c,
                 None => break,
             };
+            // Re-check forward subsumption at work-off time: a clause that was
+            // not subsumed when enqueued may since have been subsumed by a
+            // newly worked-off clause (back_subsume only scans worked_off, not
+            // todo).  Skipping it here -- before it fires its rules -- prevents a
+            // redundant clause from spawning a cascade of further redundant
+            // consequences.  Sound (a subsumed clause is entailed by its
+            // subsumer, so dropping it preserves completeness).
+            {
+                let ctx = &self.contexts[id];
+                let (nb, nh) = (clause.body.len(), clause.head.len());
+                if ctx.fwd_subsumed(&clause, nb, nh) {
+                    self.contexts[id].clause_keys.remove(&clause.key());
+                    continue;
+                }
+            }
             let root = self.contexts[id].root;
             // Fire rules per maximal head literal.
             let max_head = clause.max_head.clone();
