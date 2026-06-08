@@ -23,6 +23,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import frontend  # noqa: E402  (parse/normalise/augment; locates moose itself)
+import el_route  # noqa: E402  (EL++ fast path via moose's completion reasoner)
 
 BOTTOM = {"Nothing", "owl:Nothing", "⊥"}
 
@@ -64,12 +65,17 @@ def is_internal(n: str) -> bool:
 
 def classify(ofn_path: str) -> dict:
     clauses = frontend.ofn_to_clauses(ofn_path)
-    proc = subprocess.run([str(engine_path())],
-                          input=json.dumps({"clauses": clauses}),
-                          capture_output=True, text=True)
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr)
-    out = json.loads(proc.stdout)
+    # EL fast path: if the whole clause set lies in EL++, classify with moose's
+    # ELK-style completion reasoner, which is sound+complete on EL++ and avoids
+    # the disjunctive context engine's transitivity blow-up (see el_route).
+    out = el_route.classify(clauses)
+    if out is None:
+        proc = subprocess.run([str(engine_path())],
+                              input=json.dumps({"clauses": clauses}),
+                              capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr)
+        out = json.loads(proc.stdout)
 
     subs, unsat = [], []
     for a, sups in out["subsumptions"].items():

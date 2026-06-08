@@ -1359,8 +1359,20 @@ impl Engine {
         self.propagate(top);
         // Process inter-context messages to fixpoint.
         let mut guard = 0usize;
+        let trace = std::env::var("KM_TRACE").is_ok();
         while let Some(msg) = self.msgs.pop_front() {
             guard += 1;
+            if trace && guard % 200_000 == 0 {
+                let (mut maxb, mut totwo) = (0usize, 0usize);
+                for c in &self.contexts {
+                    totwo += c.worked_off.len();
+                    for cl in &c.worked_off { if cl.body.len() > maxb { maxb = cl.body.len(); } }
+                }
+                eprintln!(
+                    "KM_TRACE guard={} contexts={} msgs_pending={} worked_off_total={} max_body_len={}",
+                    guard, self.contexts.len(), self.msgs.len(), totwo, maxb
+                );
+            }
             if guard > 5_000_000 {
                 // Hard safety cap on the inter-context message fixpoint. Hitting it
                 // means the run was truncated, so the classification may be
