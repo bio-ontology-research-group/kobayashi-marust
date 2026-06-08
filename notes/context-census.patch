@@ -1,0 +1,145 @@
+diff --git a/engine/src/engine.rs b/engine/src/engine.rs
+index c09079d..3702377 100644
+--- a/engine/src/engine.rs
++++ b/engine/src/engine.rs
+@@ -409,6 +409,10 @@ pub struct Engine {
+     successor_ctxs: HashMap<Term, usize>,
+     equality: bool,
+     pub dropped_unsupported: usize,
++    /// DEV only (env `SROIQ_POPCAP`): halt saturation after this many clause-pops
++    /// so a context census (env `SROIQ_CENSUS`) can inspect a non-terminating run.
++    pops: usize,
++    pop_budget: usize,
+ }
+ 
+ impl Engine {
+@@ -462,6 +466,11 @@ impl Engine {
+             successor_ctxs: HashMap::new(),
+             equality: true,
+             dropped_unsupported: dropped,
++            pops: 0,
++            pop_budget: std::env::var("SROIQ_POPCAP")
++                .ok()
++                .and_then(|v| v.trim().parse::<usize>().ok())
++                .unwrap_or(0),
+         }
+     }
+ 
+@@ -557,10 +566,15 @@ impl Engine {
+     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
+     fn saturate(&mut self, id: usize) {
+         loop {
++            if self.pop_budget != 0 && self.pops >= self.pop_budget {
++                self.contexts[id].todo.clear();
++                break;
++            }
+             let clause = match self.contexts[id].todo.pop_front() {
+                 Some(c) => c,
+                 None => break,
+             };
++            self.pops += 1;
+             // Re-check forward subsumption at work-off time: a clause that was
+             // not subsumed when enqueued may since have been subsumed by a
+             // newly worked-off clause (back_subsume only scans worked_off, not
+@@ -1277,6 +1291,9 @@ impl Engine {
+         // Process inter-context messages to fixpoint.
+         let mut guard = 0usize;
+         while let Some(msg) = self.msgs.pop_front() {
++            if self.pop_budget != 0 && self.pops >= self.pop_budget {
++                break;
++            }
+             guard += 1;
+             if guard > 5_000_000 {
+                 // Hard safety cap on the inter-context message fixpoint. Hitting it
+@@ -1312,6 +1329,91 @@ impl Engine {
+                 }
+             }
+         }
++        if std::env::var("SROIQ_CENSUS").is_ok() {
++            self.context_census();
++        }
++    }
++
++    /// DEV census (env `SROIQ_CENSUS`): is the context population redundant?
++    /// Reports total contexts, distribution of worked-off sizes, and how many
++    /// contexts are *blockable* — i.e. their worked-off clause-set (as a key set)
++    /// is a subset of another context's, so a context-subsumption / blocking
++    /// optimisation could redirect them instead of saturating each separately.
++    fn context_census(&self) {
++        let n = self.contexts.len();
++        let total_wo: usize = self.contexts.iter().map(|c| c.worked_off.len()).sum();
++        let succ = self.successor_ctxs.len();
++        eprintln!(
++            "CENSUS contexts={} (successors={} roots={}) total_wo_clauses={} pops={}",
++            n, succ, n - succ, total_wo, self.pops
++        );
++        // size buckets
++        let mut sizes: Vec<usize> = self.contexts.iter().map(|c| c.worked_off.len()).collect();
++        sizes.sort_unstable();
++        let max = sizes.last().copied().unwrap_or(0);
++        let med = sizes.get(n / 2).copied().unwrap_or(0);
++        eprintln!("  wo-size: max={} median={}", max, med);
++        // Build a normalised clause-key-set per context (body+head keys).
++        let keysets: Vec<std::collections::BTreeSet<(Vec<Pred>, Vec<Lit>)>> = self
++            .contexts
++            .iter()
++            .map(|c| c.worked_off.iter().map(|cl| cl.key()).collect())
++            .collect();
++        // Count exact duplicates and subset-blockable contexts (O(n^2), dev only).
++        let mut exact_dups = 0usize;
++        let mut blockable = 0usize;
++        // group by size to limit comparisons
++        for i in 0..n {
++            if keysets[i].is_empty() {
++                continue;
++            }
++            let mut is_dup = false;
++            let mut is_sub = false;
++            for j in 0..n {
++                if i == j || keysets[j].len() < keysets[i].len() {
++                    continue;
++                }
++                if keysets[i].is_subset(&keysets[j]) {
++                    if keysets[i].len() == keysets[j].len() {
++                        // exact equal: count once (smaller index wins)
++                        if i < j {
++                            is_dup = true;
++                        }
++                    } else {
++                        is_sub = true;
++                    }
++                }
++            }
++            if is_dup {
++                exact_dups += 1;
++            }
++            if is_sub {
++                blockable += 1;
++            }
++        }
++        eprintln!(
++            "  BLOCKABLE: exact-duplicate-clauseset contexts={}, strict-subset(blockable) contexts={} / {} ({:.0}%)",
++            exact_dups, blockable, n, 100.0 * (exact_dups + blockable) as f64 / n.max(1) as f64
++        );
++        // core multiplicity: how many contexts share an identical core
++        let mut core_count: HashMap<Vec<Pred>, usize> = HashMap::new();
++        for c in &self.contexts {
++            *core_count.entry(c.core.clone()).or_default() += 1;
++        }
++        let mut shared = 0usize;
++        let mut empty_core = 0usize;
++        for (core, k) in &core_count {
++            if *k > 1 {
++                shared += k;
++            }
++            if core.is_empty() {
++                empty_core = *k;
++            }
++        }
++        eprintln!(
++            "  cores: distinct={}, contexts sharing a non-unique core={}, empty-core contexts={}",
++            core_count.len(), shared, empty_core
++        );
+     }
+ 
+     // ------------------------------ output ---------------------------------

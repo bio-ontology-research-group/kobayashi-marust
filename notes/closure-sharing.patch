@@ -1,0 +1,198 @@
+diff --git a/engine/src/engine.rs b/engine/src/engine.rs
+index c09079d..f877a37 100644
+--- a/engine/src/engine.rs
++++ b/engine/src/engine.rs
+@@ -409,6 +409,20 @@ pub struct Engine {
+     successor_ctxs: HashMap<Term, usize>,
+     equality: bool,
+     pub dropped_unsupported: usize,
++    /// Global-closure sharing: the empty-body ontology facts have the same local
++    /// (Hyper/Eq/Factor) closure in every root context (the root ordering is
++    /// uniform), so re-deriving it per query is wasted work. When enabled, that
++    /// closure is computed once in the ⊤ context and pre-loaded into every query
++    /// root, which then only does its core-specific saturation. Sound (the shared
++    /// clauses are core-independent consequences) and complete (core×fact and
++    /// core+fact+fact inferences still fire when the core clause is worked off,
++    /// the facts sitting in `worked_off`).
++    shareglobal: bool,
++    /// The non-root (successor-ordering) empty-body fact closure, computed once
++    /// and pre-loaded into every successor context under global-closure sharing.
++    /// Empty until first computed.
++    g_succ: Vec<ContextClause>,
++    g_succ_ready: bool,
+ }
+ 
+ impl Engine {
+@@ -462,9 +476,28 @@ impl Engine {
+             successor_ctxs: HashMap::new(),
+             equality: true,
+             dropped_unsupported: dropped,
++            shareglobal: std::env::var("SROIQ_SHAREGLOBAL").is_ok(),
++            g_succ: Vec::new(),
++            g_succ_ready: false,
+         }
+     }
+ 
++    /// Compute (once) the non-root empty-body fact closure shared into every
++    /// successor context. Saturates a throwaway non-root empty-core context
++    /// seeded with the ontology facts; the result is core-independent.
++    fn ensure_g_succ(&mut self) {
++        if self.g_succ_ready {
++            return;
++        }
++        let id = self.contexts.len();
++        let ctx = Context::new(id, vec![], false, None);
++        self.contexts.push(ctx);
++        self.init_context(id); // seed empty-body facts (no core)
++        self.saturate(id);
++        self.g_succ = self.contexts[id].worked_off.clone();
++        self.g_succ_ready = true;
++    }
++
+     fn get_or_create_context(
+         &mut self,
+         core: Vec<Pred>,
+@@ -509,6 +542,40 @@ impl Engine {
+         }
+     }
+ 
++    /// Core rule only (no fact seeding) — used when the empty-body fact closure
++    /// is supplied separately via `preload_shared`.
++    fn init_context_core_only(&mut self, id: usize) {
++        let root = self.contexts[id].root;
++        let core = self.contexts[id].core.clone();
++        if core.iter().any(|p| self.sig.is_nothing_pred(p)) {
++            let c = ContextClause::new(vec![], vec![], root, &self.sig);
++            self.add_clause(id, c);
++        } else {
++            for p in core {
++                let c = ContextClause::new(vec![], vec![Lit::P(p)], root, &self.sig);
++                self.add_clause(id, c);
++            }
++        }
++    }
++
++    /// Pre-load the shared empty-body fact closure `g` directly into `id`'s
++    /// `worked_off` (pre-fired: their mutual inferences were already computed in
++    /// the ⊤ context, so they are not re-derived). Builds the indexes and clause
++    /// keys exactly as `index_clause` does for normally-worked-off clauses.
++    fn preload_shared(&mut self, id: usize, g: &[ContextClause]) {
++        for c in g {
++            let key = c.key();
++            if self.contexts[id].clause_keys.contains(&key) {
++                continue;
++            }
++            self.contexts[id].clause_keys.insert(key);
++            let idx = self.contexts[id].worked_off.len();
++            self.contexts[id].worked_off.push(c.clone());
++            self.contexts[id].index_clause(idx);
++        }
++        self.contexts[id].dirty = true;
++    }
++
+     /// Filter a head literal vector: apply the Ineq rule (drop `t != t`),
+     /// drop valid equations `t == t` (makes clause a tautology -> None), and
+     /// drop owl:Nothing predicates.  Returns None if the clause is tautological.
+@@ -1025,6 +1092,19 @@ impl Engine {
+         if let Some(&s) = self.successor_ctxs.get(&f) {
+             return s;
+         }
++        if self.shareglobal {
++            self.ensure_g_succ();
++            let id = self.contexts.len();
++            let ctx = Context::new(id, vec![], false, None);
++            self.contexts.push(ctx);
++            self.successor_ctxs.insert(f, id);
++            // pre-load the shared non-root fact closure instead of re-deriving it;
++            // pushed predicates arrive later via apply_succ and saturate against it.
++            let g = std::mem::take(&mut self.g_succ);
++            self.preload_shared(id, &g);
++            self.g_succ = g;
++            return id;
++        }
+         let id = self.contexts.len();
+         let ctx = Context::new(id, vec![], false, None);
+         self.contexts.push(ctx);
+@@ -1260,20 +1340,44 @@ impl Engine {
+     /// sound and yields identical results for those concepts.  This is what lets
+     /// classification be parallelised across disjoint concept chunks.
+     pub fn run_for(&mut self, queries: &[Iri]) {
+-        // Root contexts: one per named (query) concept.
+-        for &iri in queries {
+-            let core = vec![Pred::Concept { iri, t: X }];
+-            let id = self.get_or_create_context(core, true, Some(iri));
+-            self.saturate(id);
+-            self.propagate(id);
++        if self.shareglobal {
++            // Global-closure sharing: build and saturate the ⊤ (empty-core)
++            // context FIRST; its worked-off set is exactly the empty-body fact
++            // closure, which is pre-loaded into every query root so the root only
++            // does its core-specific saturation.
++            let top = self.get_or_create_context(vec![], true, None);
++            self.saturate(top);
++            let g_root: Vec<ContextClause> = self.contexts[top].worked_off.clone();
++            for &iri in queries {
++                let core = vec![Pred::Concept { iri, t: X }];
++                if self.core_index.contains_key(&core) {
++                    continue;
++                }
++                let id = self.contexts.len();
++                let ctx = Context::new(id, core.clone(), true, Some(iri));
++                self.contexts.push(ctx);
++                self.core_index.insert(core, id);
++                self.preload_shared(id, &g_root);
++                self.init_context_core_only(id);
++                self.saturate(id);
++                self.propagate(id);
++            }
++            self.propagate(top);
++        } else {
++            // Root contexts: one per named (query) concept.
++            for &iri in queries {
++                let core = vec![Pred::Concept { iri, t: X }];
++                let id = self.get_or_create_context(core, true, Some(iri));
++                self.saturate(id);
++                self.propagate(id);
++            }
++            // Always seed the ⊤ (empty-core) context so a *global* inconsistency
++            // (owl:Thing unsatisfiable) is detected regardless of which concepts
++            // are named (audit M2). query=None, so `subsumptions` skips it.
++            let top = self.get_or_create_context(vec![], true, None);
++            self.saturate(top);
++            self.propagate(top);
+         }
+-        // Always seed the ⊤ (empty-core) context so a *global* inconsistency
+-        // (owl:Thing unsatisfiable) is detected regardless of which concepts are
+-        // named in the input (audit M2). It carries query=None, so `subsumptions`
+-        // skips it and it never contributes to the classification output.
+-        let top = self.get_or_create_context(vec![], true, None);
+-        self.saturate(top);
+-        self.propagate(top);
+         // Process inter-context messages to fixpoint.
+         let mut guard = 0usize;
+         while let Some(msg) = self.msgs.pop_front() {
+@@ -1312,6 +1416,24 @@ impl Engine {
+                 }
+             }
+         }
++        if std::env::var("SROIQ_SIZES").is_ok() {
++            let n = self.contexts.len();
++            let mut sizes: Vec<(usize, bool, usize)> = self
++                .contexts
++                .iter()
++                .map(|c| (c.worked_off.len(), c.root, c.id))
++                .collect();
++            sizes.sort_by(|a, b| b.0.cmp(&a.0));
++            let total: usize = sizes.iter().map(|s| s.0).sum();
++            let roots = self.contexts.iter().filter(|c| c.root).count();
++            eprintln!(
++                "SIZES contexts={} (roots={} succ={}) total_wo={}",
++                n, roots, n - roots, total
++            );
++            for (sz, root, id) in sizes.iter().take(8) {
++                eprintln!("  ctx#{} root={} wo={}", id, root, sz);
++            }
++        }
+     }
+ 
+     // ------------------------------ output ---------------------------------

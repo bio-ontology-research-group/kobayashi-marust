@@ -1,0 +1,355 @@
+diff --git a/engine/src/engine.rs b/engine/src/engine.rs
+index c09079d..a7404a0 100644
+--- a/engine/src/engine.rs
++++ b/engine/src/engine.rs
+@@ -166,6 +166,11 @@ struct Context {
+     /// linear scan of `worked_off` for both forward and backward subsumption.
+     head_lit_index: HashMap<Lit, Vec<usize>>,
+     empty_head_wo: Vec<usize>,
++    /// Subsumption-resolution cutter index: maps a central-variable concept
++    /// body-atom `A` to the `worked_off` clauses `D` with `|head(D)|<=1` and
++    /// `A∈body(D)` (the cutters that can remove an `A` disjunct). Only such
++    /// unit/⊥ clauses are recorded, so the lists stay short.
++    cutter_index: HashMap<Pred, Vec<usize>>,
+     todo: VecDeque<ContextClause>,
+     /// pred clauses pushed in from successor contexts (already back-substituted)
+     neighbor_pred: Vec<PredClause>,
+@@ -198,6 +203,7 @@ impl Context {
+             head_role_index: HashMap::new(),
+             head_lit_index: HashMap::new(),
+             empty_head_wo: Vec::new(),
++            cutter_index: HashMap::new(),
+             todo: VecDeque::new(),
+             neighbor_pred: Vec::new(),
+             successors: HashMap::new(),
+@@ -243,8 +249,18 @@ impl Context {
+         if head.is_empty() {
+             self.empty_head_wo.push(idx);
+         } else {
+-            for l in head {
+-                self.head_lit_index.entry(l).or_default().push(idx);
++            for l in &head {
++                self.head_lit_index.entry(*l).or_default().push(idx);
++            }
++        }
++        // cutter index: unit/⊥ clauses, keyed by each central concept body-atom.
++        if head.len() <= 1 {
++            for b in &self.worked_off[idx].body {
++                if let Pred::Concept { t, .. } = b {
++                    if is_central(*t) {
++                        self.cutter_index.entry(*b).or_default().push(idx);
++                    }
++                }
+             }
+         }
+     }
+@@ -258,6 +274,7 @@ impl Context {
+         self.head_role_index.clear();
+         self.head_lit_index.clear();
+         self.empty_head_wo.clear();
++        self.cutter_index.clear();
+         for idx in 0..self.worked_off.len() {
+             self.index_clause(idx);
+         }
+@@ -409,6 +426,23 @@ pub struct Engine {
+     successor_ctxs: HashMap<Term, usize>,
+     equality: bool,
+     pub dropped_unsupported: usize,
++    /// DEV instrumentation only (gated by env `SROIQ_POPCAP`): when non-zero,
++    /// saturation halts after this many total clause-pops so the diagnostic
++    /// dump (`SROIQ_DIAG`) can inspect a non-terminating context. Has NO effect
++    /// on the certified output path when the env vars are unset.
++    pops: usize,
++    pop_budget: usize,
++    /// Forward subsumption resolution (contextual literal cutting), restricted
++    /// to the trigger-safe regime: cut a central-variable concept *disjunct* `A`
++    /// from a clause `C` when some context clause `D` with `|head(D)|<=1`,
++    /// `A∈body(D)`, `body(D)\{A}⊆body(C)`, `head(D)⊆head(C)` witnesses that the
++    /// `A` branch is closed. Sound (the result entails `C`) and trigger-safe (a
++    /// central concept literal is never a Succ/Pred trigger).
++    subres: bool,
++    /// DEV: pick the lightest todo clause (fewest body+head literals) instead of
++    /// FIFO. Gated by env `SROIQ_SMALLFIRST`. Fair (every clause is eventually
++    /// chosen) so completeness is preserved; only the work-off order changes.
++    smallfirst: bool,
+ }
+ 
+ impl Engine {
+@@ -462,6 +496,13 @@ impl Engine {
+             successor_ctxs: HashMap::new(),
+             equality: true,
+             dropped_unsupported: dropped,
++            pops: 0,
++            pop_budget: std::env::var("SROIQ_POPCAP")
++                .ok()
++                .and_then(|v| v.trim().parse::<usize>().ok())
++                .unwrap_or(0),
++            subres: std::env::var("SROIQ_SUBRES").is_ok(),
++            smallfirst: std::env::var("SROIQ_SMALLFIRST").is_ok(),
+         }
+     }
+ 
+@@ -533,7 +574,75 @@ impl Engine {
+ 
+     /// Redundancy-aware clause addition (Elim): skip if subsumed; remove clauses
+     /// it subsumes; enqueue to todo.  Returns true if added.
++    /// Forward subsumption resolution: cut trigger-safe central-variable concept
++    /// disjuncts from `clause`'s head using unit/⊥ cutters in `worked_off`,
++    /// iterating to a fixpoint. Returns the (possibly strengthened) clause; the
++    /// result always entails the input, so substituting it is sound and
++    /// redundancy-preserving.
++    fn subres_reduce(&self, id: usize, clause: ContextClause) -> ContextClause {
++        let ctx = &self.contexts[id];
++        let mut head = clause.head.clone();
++        let mut changed_any = false;
++        loop {
++            // find one cuttable central concept disjunct
++            let mut cut: Option<(Lit, usize)> = None;
++            'find: for l in &head {
++                let a = match l {
++                    Lit::P(p @ Pred::Concept { t, .. }) if is_central(*t) => *p,
++                    _ => continue,
++                };
++                // cutters: clauses with A in body, |head|<=1, head⊆C.head.
++                // index: clauses whose head carries... no — we need body index.
++                if let Some(cands) = ctx.cutter_index.get(&a) {
++                    for &ci in cands {
++                        let d = &ctx.worked_off[ci];
++                        // The resolvent of C and D on A is (C\{A}) ∪ (D\{¬A}); for
++                        // it to equal C\{A} (so that it subsumes C and the cut is
++                        // sound) we need  body(D)\{A} ⊆ body(C)  and  head(D) ⊆
++                        // head(C)\{A}.  The last conjunct forbids A∈head(D): a
++                        // cutter such as the tautology A→A would otherwise put A
++                        // back and the "resolvent" would be C itself, so cutting
++                        // would be unsound.
++                        if d.body.iter().all(|p| *p == a || clause.body.contains(p))
++                            && d.head.iter().all(|dl| *dl != *l && head.contains(dl))
++                        {
++                            cut = Some((*l, ci));
++                            break 'find;
++                        }
++                    }
++                }
++            }
++            match cut {
++                Some((l, ci)) => {
++                    if std::env::var("SROIQ_SRTRACE").is_ok() {
++                        let d = &ctx.worked_off[ci];
++                        eprintln!(
++                            "SRCUT ctx#{} core={:?}: cut {:?} from (body={:?} head={:?}) via D(body={:?} head={:?})",
++                            id, ctx.core, l, clause.body, head, d.body, d.head
++                        );
++                    }
++                    head.retain(|x| *x != l);
++                    changed_any = true;
++                }
++                None => break,
++            }
++        }
++        if changed_any {
++            ContextClause::new(clause.body, head, ctx.root, &self.sig)
++        } else {
++            clause
++        }
++    }
++
+     fn add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
++        if clause.is_head_tautology() {
++            return false;
++        }
++        let clause = if self.subres {
++            self.subres_reduce(id, clause)
++        } else {
++            clause
++        };
+         if clause.is_head_tautology() {
+             return false;
+         }
+@@ -557,10 +666,32 @@ impl Engine {
+     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
+     fn saturate(&mut self, id: usize) {
+         loop {
+-            let clause = match self.contexts[id].todo.pop_front() {
+-                Some(c) => c,
+-                None => break,
++            if self.pop_budget != 0 && self.pops >= self.pop_budget {
++                self.contexts[id].todo.clear();
++                break;
++            }
++            let clause = if self.smallfirst {
++                let todo = &mut self.contexts[id].todo;
++                if todo.is_empty() {
++                    break;
++                }
++                let mut best = 0usize;
++                let mut bestw = usize::MAX;
++                for (i, c) in todo.iter().enumerate() {
++                    let w = c.body.len() + c.head.len();
++                    if w < bestw {
++                        bestw = w;
++                        best = i;
++                    }
++                }
++                todo.swap_remove_front(best).unwrap()
++            } else {
++                match self.contexts[id].todo.pop_front() {
++                    Some(c) => c,
++                    None => break,
++                }
+             };
++            self.pops += 1;
+             // Re-check forward subsumption at work-off time: a clause that was
+             // not subsumed when enqueued may since have been subsumed by a
+             // newly worked-off clause (back_subsume only scans worked_off, not
+@@ -1277,6 +1408,9 @@ impl Engine {
+         // Process inter-context messages to fixpoint.
+         let mut guard = 0usize;
+         while let Some(msg) = self.msgs.pop_front() {
++            if self.pop_budget != 0 && self.pops >= self.pop_budget {
++                break;
++            }
+             guard += 1;
+             if guard > 5_000_000 {
+                 // Hard safety cap on the inter-context message fixpoint. Hitting it
+@@ -1312,6 +1446,141 @@ impl Engine {
+                 }
+             }
+         }
++        if std::env::var("SROIQ_DIAG").is_ok() {
++            self.diag_dump();
++        }
++    }
++
++    /// DEV diagnostic (gated by env `SROIQ_DIAG`): inspect the largest context
++    /// and measure how many head disjuncts could be cut by *subsumption
++    /// resolution* against another clause of the same context — the redundancy
++    /// that plain subset-subsumption (Elim) misses. NOT part of the certified
++    /// output path.
++    fn diag_dump(&self) {
++        // pick the context with the most worked-off clauses
++        let Some(ctx) = self.contexts.iter().max_by_key(|c| c.worked_off.len()) else {
++            return;
++        };
++        let cls = &ctx.worked_off;
++        let n = cls.len();
++        eprintln!(
++            "DIAG ctx#{} root={} core={:?} #wo={} (pops={})",
++            ctx.id, ctx.root, ctx.core, n, self.pops
++        );
++        // head-width distribution
++        let mut width_hist: std::collections::BTreeMap<usize, usize> = Default::default();
++        let mut fn_clauses = 0usize;
++        for c in cls {
++            *width_hist.entry(c.head.len()).or_default() += 1;
++            if c.body.iter().any(|p| is_function(p.max_term()))
++                || c.head.iter().any(|l| is_function(l.max_term()))
++            {
++                fn_clauses += 1;
++            }
++        }
++        eprintln!("  head-width hist: {:?}", width_hist);
++        eprintln!("  fn-term clauses: {} / {} ({:.0}%)", fn_clauses, n, 100.0 * fn_clauses as f64 / n.max(1) as f64);
++
++        // Build a head-concept-atom -> clause indices map (target side of a cut).
++        let mut head_atom: HashMap<Pred, Vec<usize>> = HashMap::new();
++        for (i, c) in cls.iter().enumerate() {
++            for l in &c.head {
++                if let Lit::P(p @ Pred::Concept { .. }) = l {
++                    head_atom.entry(*p).or_default().push(i);
++                }
++            }
++        }
++        // Subsumption-resolution opportunities: cutter D (body atom A, head H_D)
++        // cuts disjunct A from target C iff (B_D \ {A}) ⊆ B_C and H_D ⊆ H_C.
++        let mut cut_occurrences = 0usize; // all (C,A) pairs cuttable
++        let mut clauses_with_cut: HashSet<usize> = HashSet::new();
++        // SAFE subset: cutter D has empty/unit head AND the cut disjunct A is a
++        // central-variable concept atom (never a Succ/Pred trigger), so removing
++        // it cannot silence a neighbour message.
++        let mut safe_occ = 0usize;
++        let mut safe_clauses: HashSet<usize> = HashSet::new();
++        let mut global_dead = 0usize; // ⊥-unit cutters: A globally impossible (B_D={A}, H_D={})
++        let mut dead_atoms: HashSet<Pred> = HashSet::new();
++        for d in cls {
++            for bd in &d.body {
++                if let Pred::Concept { .. } = bd {
++                    let a = *bd;
++                    let Some(targets) = head_atom.get(&a) else { continue };
++                    let rest_body: Vec<Pred> = d.body.iter().copied().filter(|p| *p != a).collect();
++                    if rest_body.is_empty() && d.head.is_empty() && dead_atoms.insert(a) {
++                        global_dead += 1;
++                    }
++                    let a_central = matches!(a, Pred::Concept { t, .. } if is_central(t));
++                    let cutter_safe = d.head.len() <= 1;
++                    let a_lit = Lit::P(a);
++                    for &ti in targets {
++                        let c = &cls[ti];
++                        let body_ok = rest_body.iter().all(|p| c.body.contains(p));
++                        // sound condition: head(D) ⊆ head(C)\{A}  (A∉head(D))
++                        let head_ok = d.head.iter().all(|l| *l != a_lit && c.head.contains(l));
++                        if body_ok && head_ok {
++                            cut_occurrences += 1;
++                            clauses_with_cut.insert(ti);
++                            if a_central && cutter_safe {
++                                safe_occ += 1;
++                                safe_clauses.insert(ti);
++                            }
++                        }
++                    }
++                }
++            }
++        }
++        eprintln!(
++            "  SUBSUMPTION-RESOLUTION (all): {} occ across {} / {} clauses ({:.0}%); {} globally-dead atoms",
++            cut_occurrences, clauses_with_cut.len(), n,
++            100.0 * clauses_with_cut.len() as f64 / n.max(1) as f64, global_dead
++        );
++        eprintln!(
++            "  SUBSUMPTION-RESOLUTION (SAFE: central concept disjunct, unit/⊥ cutter): {} occ across {} / {} clauses ({:.0}%)",
++            safe_occ, safe_clauses.len(), n,
++            100.0 * safe_clauses.len() as f64 / n.max(1) as f64
++        );
++
++        // UNRESTRICTED ceiling: cut ANY head disjunct L (concept/role on any term)
++        // against ANY cutter D (any head size) with L∉head(D), body(D)\{matched}⊆
++        // body(C), head(D)⊆head(C)\{L}. Bucket by disjunct kind to locate the
++        // opportunity. Cutter is matched on a body atom equal to L's predicate.
++        let mut head_pred_idx: HashMap<Pred, Vec<usize>> = HashMap::new();
++        for (i, c) in cls.iter().enumerate() {
++            for l in &c.head {
++                if let Lit::P(p) = l {
++                    head_pred_idx.entry(*p).or_default().push(i);
++                }
++            }
++        }
++        let (mut u_cc, mut u_fc, mut u_role) = (0usize, 0usize, 0usize);
++        let mut u_clauses: HashSet<usize> = HashSet::new();
++        for d in cls {
++            for bd in &d.body {
++                let a = *bd;
++                let Some(targets) = head_pred_idx.get(&a) else { continue };
++                let a_lit = Lit::P(a);
++                let rest_body: Vec<Pred> = d.body.iter().copied().filter(|p| *p != a).collect();
++                for &ti in targets {
++                    let c = &cls[ti];
++                    let body_ok = rest_body.iter().all(|p| c.body.contains(p));
++                    let head_ok = d.head.iter().all(|l| *l != a_lit && c.head.contains(l));
++                    if body_ok && head_ok {
++                        u_clauses.insert(ti);
++                        match a {
++                            Pred::Concept { t, .. } if is_central(t) => u_cc += 1,
++                            Pred::Concept { .. } => u_fc += 1,
++                            Pred::Role { .. } => u_role += 1,
++                        }
++                    }
++                }
++            }
++        }
++        eprintln!(
++            "  SUBSUMPTION-RESOLUTION (UNRESTRICTED ceiling): central-concept={} fn-concept={} role={} occ; across {} / {} clauses ({:.0}%)",
++            u_cc, u_fc, u_role, u_clauses.len(), n,
++            100.0 * u_clauses.len() as f64 / n.max(1) as f64
++        );
+     }
+ 
+     // ------------------------------ output ---------------------------------
