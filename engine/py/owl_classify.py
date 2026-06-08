@@ -52,6 +52,11 @@ def short(n: str) -> str:
 
 
 def is_internal(n: str) -> bool:
+    # A name backed by a real OWL IRI is a real class, even if its local name
+    # happens to match a moose-internal prefix (e.g. a `Q_minus`/`Q_plus` class
+    # in symbols.owl). Only un-IRI-backed names get the prefix heuristic.
+    if frontend.is_named_iri(n):
+        return False
     s = short(n)
     return (s.startswith("Q_") or s.startswith("__") or s.startswith("aux_")
             or s.startswith("def_") or (":" in s and s not in BOTTOM))

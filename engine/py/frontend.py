@@ -150,6 +150,15 @@ def short(name: str) -> str:
     return cand
 
 
+def is_named_iri(internal: str) -> bool:
+    """True if `internal` is the engine name of a real OWL IRI (declared/used in
+    the ontology). moose's normalisation concepts (`Q_<n>`, `__*`, …) are
+    generated, never IRI-backed, so this distinguishes a real class that merely
+    *looks* internal (e.g. a `Q_minus` class in symbols.owl) from a genuine
+    internal concept — the name-prefix heuristic alone gives false positives."""
+    return internal in _short_owner
+
+
 def local_name(internal: str) -> str:
     """Map an engine-internal name back to the OWL *local name* (fragment after
     the last `#`/`/`) of the IRI that owns it. `short()` disambiguates distinct
