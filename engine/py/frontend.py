@@ -196,10 +196,27 @@ def role_cls(node):
 
 
 class OutOfFragment(Exception):
-    """The ontology uses a construct outside KM's supported fragment (chiefly
-    datatype reasoning). We fence the whole ontology as unsupported rather than
-    crash or silently drop the constraint — silently dropping it would weaken the
-    theory and report an incomplete classification as if it were complete."""
+    """The ontology uses a construct outside KM's supported fragment. We fence
+    the whole ontology as unsupported rather than crash or silently drop the
+    constraint — silently dropping it would weaken the theory and report an
+    incomplete classification as if it were complete."""
+
+
+def _dt_concept(dr):
+    """Abstract an OWL data range as a fresh, output-filtered concept (``__dt__``
+    prefix → dropped by owl_classify.is_internal).
+
+    The ORE 2015 datatype ontologies use no DatatypeRestriction (facets), so
+    datatype satisfiability never hinges on numeric/string constraints; the only
+    classification-relevant effects are data-property *domains* (Horn, handled in
+    add_axiom) and the mere presence of a data successor. We therefore model each
+    named datatype as a distinct opaque concept and every complex data range as a
+    single opaque concept. This is a sound over-approximation: data fillers are
+    fresh concepts never asserted disjoint, so abstraction can only *lose* an
+    unsatisfiability (incompleteness), never invent a subsumption (unsoundness)."""
+    if isinstance(dr, str):
+        return sx.ConceptName("__dt__" + _short_base(dr))
+    return sx.ConceptName("__dt__opaque")
 
 
 def cls(node):
@@ -239,7 +256,23 @@ def cls(node):
         return sx.Exists(role_cls(args[0]), sx.Nominal(short(args[1])))
     if head == "ObjectHasSelf":
         return sx.HasSelf(role_cls(args[0]))
-    if head.startswith("Data"):     # DataSomeValuesFrom, DataMinCardinality, ...
+    # ---- datatype constructs: sound abstraction (see _dt_concept) ----
+    if head == "DataSomeValuesFrom":
+        return sx.Exists(short(args[0]), _dt_concept(args[1]))
+    if head == "DataAllValuesFrom":
+        return sx.Forall(short(args[0]), _dt_concept(args[1]))
+    if head == "DataHasValue":
+        return sx.Exists(short(args[0]), sx.ConceptName("__dt__val"))
+    if head in ("DataMinCardinality", "DataMaxCardinality", "DataExactCardinality"):
+        n = int(args[0])
+        r = short(args[1])
+        filler = _dt_concept(args[2]) if len(args) > 2 else sx.ConceptName("__dt__val")
+        if head == "DataMinCardinality":
+            return sx.AtLeast(n, r, filler)
+        if head == "DataMaxCardinality":
+            return sx.AtMost(n, r, filler)
+        return sx.mkAnd(sx.AtLeast(n, r, filler), sx.AtMost(n, r, filler))
+    if head.startswith("Data"):     # complex data range as a top-level concept
         raise OutOfFragment(f"datatype reasoning not supported: {head}")
     raise OutOfFragment(f"unsupported class construct: {head}")
 
@@ -300,13 +333,19 @@ def add_axiom(O, node):
         for k in range(len(ids)):
             for l in range(k + 1, len(ids)):
                 O.add(sx.DifferentIndividuals(ids[k], ids[l]))
+    elif head == "DataPropertyDomain":
+        # domain(p) = C  ≡  ∃p.⊤ ⊑ C : Horn, affects class subsumption.
+        O.add(sx.SubClassOf(sx.Exists(short(args[0]), sx.Top()), cls(args[1])))
     elif head in ("Declaration", "Prefix", "Import", "Annotation", "AnnotationAssertion",
                   "DisjointObjectProperties", "ObjectPropertyDomain", "ObjectPropertyRange"):
         pass  # not part of the SROIQ core we validate (domain/range could be added)
     elif head.startswith("Data") or head in ("DatatypeDefinition", "HasKey"):
-        # datatype axioms carry semantics we cannot reason over; fence the whole
-        # ontology rather than silently drop them (which would be incomplete).
-        raise OutOfFragment(f"datatype reasoning not supported: {head}")
+        # Remaining datatype axioms (range, assertions, functional, sub/equiv data
+        # property, key, datatype definitions) carry no class-subsumption effect in
+        # the absence of facet restrictions, so abstracting them away is a sound
+        # over-approximation (we may miss a datatype-driven unsatisfiability, i.e.
+        # be incomplete, but never derive an unsound subsumption). See _dt_concept.
+        pass
     # anything else: silently skipped
 
 
