@@ -21,7 +21,26 @@
 
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
+
+thread_local! {
+    /// Search statistics, only printed when `KM_TAB_STATS` is set. (expand calls,
+    /// branch alternatives tried, branch alternatives that backtracked). Used to
+    /// decide whether dependency-directed backjumping is worth building.
+    static STATS: std::cell::Cell<(u64, u64, u64)> = const { std::cell::Cell::new((0, 0, 0)) };
+}
+#[inline]
+fn stat_expand() {
+    STATS.with(|s| { let (e, t, b) = s.get(); s.set((e + 1, t, b)); });
+}
+#[inline]
+fn stat_try() {
+    STATS.with(|s| { let (e, t, b) = s.get(); s.set((e, t + 1, b)); });
+}
+#[inline]
+fn stat_backtrack() {
+    STATS.with(|s| { let (e, t, b) = s.get(); s.set((e, t, b + 1)); });
+}
 
 /// Atomic concept id, atomic role id, clause variable, completion-graph node.
 pub type C = u32;
@@ -486,6 +505,18 @@ struct ClauseInfo {
 
 pub struct Tableau {
     clauses: Vec<ClauseInfo>,
+    /// Semi-naive saturation index (non-disjunctive clauses only). Maps a body
+    /// concept literal to the `(clause, body-variable)` pairs it can seed: when a
+    /// fact `lit@node` is newly derived, only these clauses can fire a new
+    /// consequence, and binding the variable to `node` avoids re-scanning all
+    /// nodes for the centre. Built once in `new`.
+    lit_index: HashMap<CLit, Vec<(usize, Var)>>,
+    /// Likewise for role body atoms: role → `(clause, source-var, target-var)`.
+    role_index: HashMap<R, Vec<(usize, Var, Var)>>,
+    /// Non-disjunctive clauses with a head variable not bound by the body (e.g.
+    /// `⊤ ⊑ C`): they must fire afresh on every new node. `(clause, the unbound
+    /// head variable to bind to the node)`.
+    node_triggered: Vec<(usize, Var)>,
     /// Use pairwise (double) blocking instead of subset blocking. Required for
     /// soundness when inverse roles are present (subset blocking lets a blocked
     /// node's label flow back up the tree via the inverse edge); harmless but
@@ -527,8 +558,48 @@ impl Tableau {
                 let disjunctive = cl.head.len() >= 2;
                 ClauseInfo { cl, body_lits, body_roles, disjunctive }
             })
-            .collect();
-        Tableau { clauses: infos, pairwise: false, number: false, nominals: Vec::new() }
+            .collect::<Vec<_>>();
+        // Build the semi-naive index over non-disjunctive clauses.
+        let mut lit_index: HashMap<CLit, Vec<(usize, Var)>> = HashMap::new();
+        let mut role_index: HashMap<R, Vec<(usize, Var, Var)>> = HashMap::new();
+        let mut node_triggered: Vec<(usize, Var)> = Vec::new();
+        for (ci, info) in infos.iter().enumerate() {
+            if info.disjunctive {
+                continue;
+            }
+            let mut body_vars: Vec<Var> = Vec::new();
+            for a in &info.cl.body {
+                match a {
+                    Atom::Concept { lit, t } => {
+                        lit_index.entry(*lit).or_default().push((ci, *t));
+                        body_vars.push(*t);
+                    }
+                    Atom::Role { r, s, t } => {
+                        role_index.entry(*r).or_default().push((ci, *s, *t));
+                        body_vars.push(*s);
+                        body_vars.push(*t);
+                    }
+                    _ => {}
+                }
+            }
+            // A head variable not bound by the body makes the clause fire on every
+            // node (the centre ranges over all individuals).
+            for v in clause_vars(&info.cl) {
+                if !body_vars.contains(&v) {
+                    node_triggered.push((ci, v));
+                    break;
+                }
+            }
+        }
+        Tableau {
+            clauses: infos,
+            lit_index,
+            role_index,
+            node_triggered,
+            pairwise: false,
+            number: false,
+            nominals: Vec::new(),
+        }
     }
 
     /// Enable pairwise blocking (for KBs with inverse roles).
@@ -643,7 +714,38 @@ impl Tableau {
             let r = g.new_node(None, false);
             g.add_concept(r, CLit::pos(nc));
         }
-        if self.expand(&mut g) {
+        let found = if self.careful() {
+            self.expand(&mut g)
+        } else {
+            // Non-careful path: incremental (semi-naive) saturation. A clash
+            // directly in the root label is caught here (the root concepts were
+            // added without going through the worklist's clash check); deeper
+            // clashes are caught during saturation.
+            let root_clash = root_label
+                .iter()
+                .any(|l| g.concepts[a].contains(&l.complement()));
+            if root_clash {
+                false
+            } else {
+                let mut q: VecDeque<NewFact> = VecDeque::new();
+                if self.seed_node(&mut g, a, &mut q) {
+                    for &l in root_label {
+                        q.push_back(NewFact::Concept(a, l));
+                    }
+                    self.expand_inc(&mut g, q)
+                } else {
+                    false
+                }
+            }
+        };
+        if std::env::var("KM_TAB_STATS").is_ok() {
+            let (e, t, b) = STATS.with(|s| s.get());
+            eprintln!(
+                "KM_TAB_STATS expands={e} branch_tries={t} backtracks={b} nodes={}",
+                g.n()
+            );
+        }
+        if found {
             Some(g)
         } else {
             None
@@ -658,6 +760,7 @@ impl Tableau {
     /// covers the deterministic saturation `g` accumulates before branching, so a
     /// `false` return leaves `g` mutated; the caller restores it.
     fn expand(&self, g: &mut Graph) -> bool {
+        stat_expand();
         if !self.careful() {
             // Inverse-free, number-free, nominal-free path: saturate Horn + the deterministic ∃
             // round in one pass (∃ never needs backtracking here), then branch on
@@ -667,12 +770,14 @@ impl Tableau {
             }
             if let Some((head, subst)) = self.find_disjunctive(g) {
                 for v in &head {
+                    stat_try();
                     let cp = g.checkpoint();
                     self.add_head_atom(g, v, &subst);
                     if self.expand(g) {
                         return true;
                     }
                     g.rollback_to(cp);
+                    stat_backtrack();
                 }
                 return false;
             }
@@ -1088,6 +1193,228 @@ impl Tableau {
         }
         true
     }
+
+    // ---------------- incremental (semi-naive) saturation -----------------
+    // The non-careful path (ALCH/SH, no merges) re-derived the whole Horn
+    // closure from scratch on every `expand` call, even though each call only
+    // adds one disjunct on top of an already-saturated parent. These methods
+    // instead drive saturation from a worklist of newly-derived facts, firing
+    // only the clauses each fact can trigger (via `lit_index` / `role_index`)
+    // and binding the triggering variable so the matcher need not rescan all
+    // nodes for it.
+
+    /// Match `cl`'s body starting from a partial substitution `seed`.
+    fn match_visit_from(
+        &self,
+        cl: &Clause,
+        g: &Graph,
+        seed: Subst,
+        f: &mut dyn FnMut(&Subst) -> bool,
+    ) -> bool {
+        let vars = clause_vars(cl);
+        let mut subst = seed;
+        self.match_rec(cl, g, 0, &mut subst, &vars, f)
+    }
+
+    /// Resolve a head atom under `subst` to the concrete fact it would assert.
+    fn resolve_head(&self, g: &Graph, v: &Atom, subst: &Subst) -> PendHead {
+        match v {
+            Atom::Concept { lit, t } => PendHead::Concept(g.find(subst.lookup(*t)), *lit),
+            Atom::Role { r, s, t } => {
+                PendHead::Edge(*r, g.find(subst.lookup(*s)), g.find(subst.lookup(*t)))
+            }
+            Atom::Exists { r, fil, t } => PendHead::Exobl(g.find(subst.lookup(*t)), *r, *fil),
+            Atom::Eq { .. } => unreachable!("Eq head only occurs on the careful path"),
+        }
+    }
+
+    /// Fire one non-disjunctive clause from a seed binding, collecting head facts
+    /// not already present into `pending` (applied later, since the matcher holds
+    /// `g` immutably). Returns `false` on an empty-head clause (a clash).
+    fn fire_clause(
+        &self,
+        info: &ClauseInfo,
+        g: &Graph,
+        seed: Subst,
+        pending: &mut Vec<PendHead>,
+    ) -> bool {
+        let mut ok = true;
+        self.match_visit_from(&info.cl, g, seed, &mut |subst| {
+            if info.cl.head.is_empty() {
+                ok = false;
+                return false;
+            }
+            let v = &info.cl.head[0];
+            if !self.head_atom_present(g, v, subst) {
+                pending.push(self.resolve_head(g, v, subst));
+            }
+            true
+        });
+        ok
+    }
+
+    /// Apply collected head facts, enqueuing newly-added concepts/edges for
+    /// further propagation. Returns `false` if a concept and its complement meet
+    /// on a node (a clash).
+    fn apply_pending(
+        &self,
+        g: &mut Graph,
+        pending: Vec<PendHead>,
+        queue: &mut VecDeque<NewFact>,
+    ) -> bool {
+        for p in pending {
+            match p {
+                PendHead::Concept(n, lit) => {
+                    if g.add_concept(n, lit) {
+                        if g.concepts[n].contains(&lit.complement()) {
+                            return false;
+                        }
+                        queue.push_back(NewFact::Concept(n, lit));
+                    }
+                }
+                PendHead::Edge(r, s, t) => {
+                    if g.add_edge(r, s, t) {
+                        queue.push_back(NewFact::Edge(r, s, t));
+                    }
+                }
+                PendHead::Exobl(n, r, fil) => {
+                    g.add_exobl(n, r, fil);
+                }
+            }
+        }
+        true
+    }
+
+    /// Fire the `node_triggered` clauses (e.g. `⊤ ⊑ C`) for a freshly created
+    /// node `n`. Returns `false` on a clash.
+    fn seed_node(&self, g: &mut Graph, n: Node, queue: &mut VecDeque<NewFact>) -> bool {
+        let mut pending = Vec::new();
+        for &(ci, var) in &self.node_triggered {
+            let mut seed = Subst::new();
+            seed.insert(var, n);
+            if !self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
+                return false;
+            }
+        }
+        self.apply_pending(g, pending, queue)
+    }
+
+    /// Drain the worklist, firing the Horn clauses each new fact can trigger to a
+    /// fixpoint. Returns `false` on a clash.
+    fn horn_inc(&self, g: &mut Graph, queue: &mut VecDeque<NewFact>) -> bool {
+        while let Some(f) = queue.pop_front() {
+            let mut pending = Vec::new();
+            match f {
+                NewFact::Concept(node, lit) => {
+                    if let Some(es) = self.lit_index.get(&lit) {
+                        for &(ci, var) in es {
+                            let mut seed = Subst::new();
+                            seed.insert(var, node);
+                            if !self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                NewFact::Edge(r, s, t) => {
+                    if let Some(es) = self.role_index.get(&r) {
+                        for &(ci, sv, tv) in es {
+                            let mut seed = Subst::new();
+                            seed.insert(sv, s);
+                            seed.insert(tv, t);
+                            if !self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+            if !self.apply_pending(g, pending, queue) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Incremental analogue of `saturate` for the non-careful path: Horn closure
+    /// from the worklist, then the (batched) ∃ round, repeated to a fixpoint.
+    fn saturate_inc(&self, g: &mut Graph, mut queue: VecDeque<NewFact>) -> bool {
+        loop {
+            if !self.horn_inc(g, &mut queue) {
+                return false;
+            }
+            let mut ex_changed = false;
+            for s in 0..g.n() {
+                if self.node_blocked(g, s) {
+                    continue;
+                }
+                let obls: Vec<(R, CLit)> = g.exobl[s].iter().copied().collect();
+                for (r, fil) in obls {
+                    let satisfied = g.out_edges[s]
+                        .iter()
+                        .any(|&(rr, t)| rr == r && g.concepts[t].contains(&fil));
+                    if !satisfied {
+                        let t = g.new_node(Some(s), true);
+                        if !self.seed_node(g, t, &mut queue) {
+                            return false;
+                        }
+                        g.add_edge(r, s, t);
+                        queue.push_back(NewFact::Edge(r, s, t));
+                        if g.add_concept(t, fil) {
+                            if g.concepts[t].contains(&fil.complement()) {
+                                return false;
+                            }
+                            queue.push_back(NewFact::Concept(t, fil));
+                        }
+                        ex_changed = true;
+                    }
+                }
+            }
+            if !ex_changed {
+                return true;
+            }
+        }
+    }
+
+    /// Incremental analogue of the non-careful `expand`: saturate from the seed
+    /// worklist, then branch on a disjunction (seeding each child with just the
+    /// chosen disjunct). Backtracks via the trail, exactly like `expand`.
+    fn expand_inc(&self, g: &mut Graph, queue: VecDeque<NewFact>) -> bool {
+        stat_expand();
+        if !self.saturate_inc(g, queue) {
+            return false;
+        }
+        if let Some((head, subst)) = self.find_disjunctive(g) {
+            for v in &head {
+                stat_try();
+                let cp = g.checkpoint();
+                let pend = self.resolve_head(g, v, &subst);
+                let mut child: VecDeque<NewFact> = VecDeque::new();
+                let ok = self.apply_pending(g, vec![pend], &mut child);
+                if ok && self.expand_inc(g, child) {
+                    return true;
+                }
+                g.rollback_to(cp);
+                stat_backtrack();
+            }
+            return false;
+        }
+        true
+    }
+}
+
+/// A newly-derived fact on the worklist that drives incremental saturation.
+enum NewFact {
+    Concept(Node, CLit),
+    Edge(R, Node, Node),
+}
+
+/// A head atom resolved to concrete nodes, collected during a match (when `g` is
+/// borrowed immutably) and applied afterwards.
+enum PendHead {
+    Concept(Node, CLit),
+    Edge(R, Node, Node),
+    Exobl(Node, R, CLit),
 }
 
 

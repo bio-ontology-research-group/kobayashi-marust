@@ -502,6 +502,29 @@ unchanged.
    K=16/P=12 (which timed out at 60 s on the clone baseline) now finishes in ~18 s.
    Verdicts identical, 16/16 oracle MATCH.
 
+4. **Incremental (semi-naive) saturation (2026-06-08).** A KM_TAB_STATS counter
+   showed the non-careful path was *saturation*-bound, not backtrack-bound: the
+   ∀+⊔ stress did ~1170 `expand` calls with only ~90 backtracks, each call
+   re-deriving the whole Horn closure from scratch even though it only adds one
+   disjunct on top of an already-saturated parent. The non-careful path now drives
+   saturation from a worklist of newly-derived facts (`expand_inc` / `saturate_inc`
+   / `horn_inc`), firing only the clauses each fact can trigger (a body index
+   `lit_index` / `role_index` / `node_triggered` built in `Tableau::new`) and
+   binding the triggering variable so the matcher need not rescan all nodes. It
+   reuses `match_rec` via a seeded substitution and collects head facts to apply
+   after the match (the matcher holds `g` immutably). The ∃/blocking round stays
+   batched. Result: stress K=14/P=10 7.2 s -> 0.93 s (~8x on top of the edge
+   index, ~18x vs the original clone baseline); K=16/P=12 18.5 s -> 2.5 s. The
+   careful path (merges/inverse/number/nominal) keeps the batch `saturate`.
+   Verdicts identical, 22+16 tests pass, 16/16 oracle MATCH.
+
+The `KM_TAB_STATS` env var prints per-`find_model` search stats (expands /
+branch-tries / backtracks / nodes) to stderr; it also showed that *backjumping*
+helps a different regime — a disjunction whose clash is decided far below the
+relevant decision (a distant-clash instance did 33k tries / 99% backtracks),
+where dependency-directed backtracking would collapse the search to ~linear. That
+is the next tableau lever.
+
 ### Original M1 description
 
 - **M1 (now): standalone ALC hypertableau consistency checker in Rust.**
