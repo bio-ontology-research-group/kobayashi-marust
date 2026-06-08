@@ -43,7 +43,12 @@ def engine_path() -> Path:
 
 
 def short(n: str) -> str:
-    return n.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+    # Collapse the engine-internal name back to its OWL local name. frontend
+    # disambiguates distinct IRIs that share a fragment (sound reasoning), but
+    # the classification output must use the bare local name to match the gold
+    # comparison convention (ore_canon.localname). See frontend.local_name.
+    s = frontend.local_name(n)
+    return s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
 
 
 def is_internal(n: str) -> bool:

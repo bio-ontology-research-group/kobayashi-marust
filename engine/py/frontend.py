@@ -150,6 +150,21 @@ def short(name: str) -> str:
     return cand
 
 
+def local_name(internal: str) -> str:
+    """Map an engine-internal name back to the OWL *local name* (fragment after
+    the last `#`/`/`) of the IRI that owns it. `short()` disambiguates distinct
+    IRIs that share a fragment (e.g. three `…/LineString`) so the engine reasons
+    over them separately and soundly, but classification *output* must collapse
+    them back to the bare local name — that is what every reasoner-comparison
+    harness does (ore_canon.localname), so the disambiguation suffix would
+    otherwise show as a spurious miss/extra against the gold signature. Names
+    not in the registry (internal `Q_*`, builtins) are returned unchanged."""
+    full = _short_owner.get(internal)
+    if full is None:
+        return internal
+    return _short_base("<" + full + ">")
+
+
 # ---------------------------------------------------------------------------
 # class / role expression -> sx
 # ---------------------------------------------------------------------------
@@ -299,9 +314,41 @@ def parse_ontology(text: str) -> sx.Ontology:
     return O
 
 
+def declared_classes(text: str) -> list[str]:
+    """Short names of every `Declaration(Class(...))` in the ontology, owl:Thing
+    / owl:Nothing excluded. Run *after* the main parse so the collision-safe
+    `short` registry is already populated and returns the same names."""
+    toks = tokenize(text)
+    p = P(toks)
+    out = []
+    while p.peek() is not None:
+        node = p.parse()
+        if isinstance(node, tuple) and node[0] == "Ontology":
+            for a in node[1]:
+                if (isinstance(a, tuple) and a[0] == "Declaration"
+                        and a[1] and isinstance(a[1][0], tuple)
+                        and a[1][0][0] == "Class" and a[1][0][1]):
+                    s = short(a[1][0][1][0])
+                    if s not in ("owl:Thing", "owl:Nothing"):
+                        out.append(s)
+    return out
+
+
+def _concept_names_in(clauses) -> set:
+    """Concept names that appear (body or head) in a list of JSON clauses."""
+    names = set()
+    for c in clauses:
+        for side in ("body", "head"):
+            for atom in c.get(side, ()):
+                if atom.get("kind") == "concept":
+                    names.add(atom["concept"])
+    return names
+
+
 def ofn_to_clauses(path) -> list[dict]:
     reset_short()   # fresh IRI->name registry per ontology (collision-safe short)
-    O = parse_ontology(Path(path).read_text())
+    text = Path(path).read_text()
+    O = parse_ontology(text)
     tbox, abox, hooks = normalise(O)
     tbox = augment(tbox, abox, hooks)
     # moose's normalise folds role hierarchy and transitivity into the clauses
@@ -310,7 +357,22 @@ def ofn_to_clauses(path) -> list[dict]:
     # ObjectPropertyDomain/Range axiom. See preprocess.domain_range_clauses.
     from preprocess import domain_range_clauses
     tbox = list(tbox) + domain_range_clauses(ofn_rbox(path))
-    return [_clause_to_json(c) for c in tbox]
+    jclauses = [_clause_to_json(c) for c in tbox]
+    # Seed every *declared* class that appears in no clause with a tautological
+    # self-clause `A(x) → A(x)`. The CB engine only classifies concepts that
+    # reach its signature (named_queries), so an isolated declared class never
+    # receives global axioms like `⊤ ⊑ B`. Konclude classifies all declared
+    # names; matching it needs them in the signature. The self-clause is a
+    # tautology (sound, pure input augmentation — calculus/Lean unchanged).
+    present = _concept_names_in(jclauses)
+    from moose.sroiq import dlclauses as dlc
+    for name in declared_classes(text):
+        if name not in present:
+            present.add(name)
+            atom = dlc.ConceptAtom(name, dlc.X)
+            self_cl = dlc.DLClause(body=frozenset({atom}), head=frozenset({atom}))
+            jclauses.append(_clause_to_json(self_cl))
+    return jclauses
 
 
 # ---------------------------------------------------------------------------
