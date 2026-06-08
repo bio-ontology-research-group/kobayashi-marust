@@ -20,6 +20,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::calc::*;
 use crate::clause::*;
 
+thread_local! {
+    /// Hyper-call counter (only read under KM_STATS). Thread-local because
+    /// `hyper` takes `&self`; reset per Engine run via `reset_hyper_calls`.
+    static HYPER_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 // ----------------------------- substitutions -------------------------------
 
 /// Central substitution used by Hyper: maps ontology variables (x, z_i) to
@@ -176,6 +182,26 @@ struct Context {
     pushed_succ: HashSet<Pred>,
     /// (predecessor key, clause key) already pushed back, to avoid resending
     pushed_pred: HashSet<((usize, Term), (Vec<Pred>, Vec<Lit>))>,
+    /// Semi-naive Pred propagation: append-only pool of worked-off clauses that
+    /// are Pred-eligible (function-free, predicate-only head).  Entries are never
+    /// removed (a clause back-subsumed out of `worked_off` is still
+    /// context-entailed, so pushing it stays sound), which lets `pred_hwm` be a
+    /// stable high-water mark despite `worked_off` reshuffling under back-subsume.
+    pred_pool: Vec<ContextClause>,
+    /// number of `pred_pool` entries already cross-checked against every edge at
+    /// that edge's `edge_seen` pushed-length in a prior `propagate`.
+    pred_hwm: usize,
+    /// per predecessor edge, the `pushed`-set length at which all of
+    /// `pred_pool[..pred_hwm]` were last checked against it.  An edge whose
+    /// current pushed-set is longer is "dirty" and forces a re-check of the old
+    /// pool against it (a previously-failed covered-check can only flip when the
+    /// edge gains a pushed predicate).
+    edge_seen: HashMap<(usize, Term), usize>,
+    /// Semi-naive Succ propagation: append-only pool of worked-off clauses with a
+    /// function-headed (succ-trigger candidate) maximal head predicate, and the
+    /// high-water mark of entries already scanned for Succ triggers.
+    succ_pool: Vec<ContextClause>,
+    succ_hwm: usize,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
     /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
@@ -204,6 +230,11 @@ impl Context {
             predecessors: HashMap::new(),
             pushed_succ: HashSet::new(),
             pushed_pred: HashSet::new(),
+            pred_pool: Vec::new(),
+            pred_hwm: 0,
+            edge_seen: HashMap::new(),
+            succ_pool: Vec::new(),
+            succ_hwm: 0,
             dirty: true,
         }
     }
@@ -409,6 +440,11 @@ pub struct Engine {
     successor_ctxs: HashMap<Term, usize>,
     equality: bool,
     pub dropped_unsupported: usize,
+    /// instrumentation counters (only read under KM_STATS)
+    stat_propagate: u64,
+    stat_pred_checks: u64,
+    stat_succ_scans: u64,
+    stat_saturate: u64,
 }
 
 impl Engine {
@@ -462,6 +498,10 @@ impl Engine {
             successor_ctxs: HashMap::new(),
             equality: true,
             dropped_unsupported: dropped,
+            stat_propagate: 0,
+            stat_pred_checks: 0,
+            stat_succ_scans: 0,
+            stat_saturate: 0,
         }
     }
 
@@ -556,6 +596,7 @@ impl Engine {
 
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
     fn saturate(&mut self, id: usize) {
+        self.stat_saturate += 1;
         loop {
             let clause = match self.contexts[id].todo.pop_front() {
                 Some(c) => c,
@@ -632,6 +673,23 @@ impl Engine {
             }
             let ctx = &mut self.contexts[id];
             let idx = ctx.worked_off.len();
+            // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
+            // function-free, predicate-only head (mirrors the filter in
+            // `propagate`'s Pred section).  Succ-eligible: some maximal head
+            // predicate is on a function term (succ-trigger candidate).
+            let pred_eligible = clause
+                .head
+                .iter()
+                .all(|l| l.is_function_free() && matches!(l, Lit::P(_)));
+            let succ_eligible = clause
+                .max_head_predicates()
+                .any(|(p, _)| is_function(p.max_term()));
+            if pred_eligible {
+                ctx.pred_pool.push(clause.clone());
+            }
+            if succ_eligible {
+                ctx.succ_pool.push(clause.clone());
+            }
             ctx.worked_off.push(clause);
             ctx.index_clause(idx);
             ctx.dirty = true;
@@ -641,6 +699,7 @@ impl Engine {
     /// Hyper rule.  `side` is the just-popped clause; `max` one of its maximal
     /// head predicates.
     fn hyper(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+        HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         for oci in self.ont.clauses_cand(&max) {
@@ -1038,12 +1097,17 @@ impl Engine {
         if !self.contexts[id].dirty {
             return;
         }
+        self.stat_propagate += 1;
         self.contexts[id].dirty = false;
-        // ---- Succ ----
+        // ---- Succ ---- (semi-naive: scan only pool entries added since the last
+        // propagate; succ triggers only arise from new worked-off clauses, and
+        // `pushed_succ` still dedups within and across scans).
         let mut new_succ: Vec<Pred> = Vec::new();
+        let succ_start = self.contexts[id].succ_hwm;
+        self.stat_succ_scans += (self.contexts[id].succ_pool.len() - succ_start) as u64;
         {
             let ctx = &self.contexts[id];
-            for c in &ctx.worked_off {
+            for c in &ctx.succ_pool[succ_start..] {
                 for (p, _) in c.max_head_predicates() {
                     if is_function(p.max_term())
                         && p.is_succ_trigger(&self.sig)
@@ -1054,6 +1118,7 @@ impl Engine {
                 }
             }
         }
+        self.contexts[id].succ_hwm = self.contexts[id].succ_pool.len();
         for p in new_succ {
             let f = p.max_term();
             let target = self.successor_for(f);
@@ -1068,40 +1133,58 @@ impl Engine {
                 target,
             });
         }
-        // ---- Pred ----
+        // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
+        // `pred_pool` (function-free, predicate-only head — built when a clause is
+        // worked off, see `saturate`; pushing a back-subsumed pool entry stays
+        // sound because it is still context-entailed).  A `(clause, edge)`
+        // covered-check `c.body ⊆ pushed[edge]` can only flip from fail to pass
+        // when `pushed[edge]` gains a predicate, so we re-check a pair only when
+        // the clause is new (index ≥ `pred_hwm`) or the edge's pushed-set grew
+        // since `edge_seen`.  `pushed_pred` still dedups actual sends.  This
+        // replaces the per-propagate full `worked_off × predecessors` rescan that
+        // dominated runtime on existential-rich ontologies.
         let mut to_send: Vec<((usize, Term), Vec<Pred>, ContextClause)> = Vec::new();
+        let mut pred_checks = 0u64;
+        let new_edge_seen: Vec<((usize, Term), usize)>;
         {
             let ctx = &self.contexts[id];
-            for c in &ctx.worked_off {
-                // Push back clauses whose head is function-free (so after the
-                // backward map y->x, x->f(x) they speak only about the
-                // predecessor and the shared term f(x), never nested f(f(x))),
-                // and whose body is covered by the predicates pushed on an edge.
-                // This generalises Sequoia's pred-trigger-head restriction so
-                // that consequences about the witness (e.g. C(f(x))) reach the
-                // predecessor; it is sound (the body predicates discharge via
-                // the Pred rule) and keeps successor terms bounded.
-                // Head must be predicate-only as well: an Eq/Ineq head disjunct
-                // would be silently dropped by apply_pred below (which keeps only
-                // Lit::P), strengthening the pushed clause — unsound (it can derive
-                // a spurious empty clause / owl:Nothing). Function-free *predicate*
-                // consequences about the witness (e.g. C(f(x))) are still pushed.
-                if !c.head.iter().all(|l| l.is_function_free() && matches!(l, Lit::P(_))) {
-                    continue;
-                }
-                if c.head.is_empty() && c.body.is_empty() {
-                    // empty clause: inconsistency under the pushed hypotheses;
-                    // still propagate so the predecessor learns the clash.
-                }
-                for (edge, pushed) in &ctx.predecessors {
+            let hwm = ctx.pred_hwm;
+            // edges with a freshness flag (pushed-set grew since last scan)
+            let edges: Vec<(&(usize, Term), &HashSet<Pred>, bool)> = ctx
+                .predecessors
+                .iter()
+                .map(|(e, pushed)| {
+                    let seen = *ctx.edge_seen.get(e).unwrap_or(&0);
+                    (e, pushed, pushed.len() > seen)
+                })
+                .collect();
+            for (i, c) in ctx.pred_pool.iter().enumerate() {
+                let new_clause = i >= hwm;
+                for (edge, pushed, dirty_edge) in &edges {
+                    // (old clause, unchanged edge): already checked at this
+                    // edge's pushed-length — skip.
+                    if !new_clause && !*dirty_edge {
+                        continue;
+                    }
+                    pred_checks += 1;
                     if c.body.iter().all(|b| pushed.contains(b)) {
-                        let pk = (*edge, c.key());
+                        let pk = (**edge, c.key());
                         if !ctx.pushed_pred.contains(&pk) {
-                            to_send.push((*edge, ctx.core.clone(), c.clone()));
+                            to_send.push((**edge, ctx.core.clone(), c.clone()));
                         }
                     }
                 }
             }
+            new_edge_seen = ctx
+                .predecessors
+                .iter()
+                .map(|(e, pushed)| (*e, pushed.len()))
+                .collect();
+        }
+        self.stat_pred_checks += pred_checks;
+        self.contexts[id].pred_hwm = self.contexts[id].pred_pool.len();
+        for (e, len) in new_edge_seen {
+            self.contexts[id].edge_seen.insert(e, len);
         }
         for (edge, core, clause) in to_send {
             self.contexts[id].pushed_pred.insert((edge, clause.key()));
@@ -1300,6 +1383,23 @@ impl Engine {
                     clause,
                 } => self.apply_pred(to, edge_label, neighbour_core, clause),
             }
+        }
+        if std::env::var("KM_STATS").is_ok() {
+            let nroot = self.contexts.iter().filter(|c| c.root).count();
+            let nsucc = self.contexts.iter().filter(|c| !c.root).count();
+            let root_wo: usize = self.contexts.iter().filter(|c| c.root).map(|c| c.worked_off.len()).sum();
+            let succ_wo: usize = self.contexts.iter().filter(|c| !c.root).map(|c| c.worked_off.len()).sum();
+            let top_wo = self.contexts.iter().find(|c| c.root && c.core.is_empty()).map(|c| c.worked_off.len()).unwrap_or(0);
+            eprintln!(
+                "KM_STATS contexts={} roots={} succs={} root_wo_total={} succ_wo_total={} top_wo={} avg_root_wo={:.0}",
+                self.contexts.len(), nroot, nsucc, root_wo, succ_wo, top_wo,
+                root_wo as f64 / nroot.max(1) as f64
+            );
+            eprintln!(
+                "KM_STATS propagate={} pred_checks={} succ_scans={} hyper_calls={} saturate={}",
+                self.stat_propagate, self.stat_pred_checks, self.stat_succ_scans,
+                HYPER_CALLS.with(|c| c.get()), self.stat_saturate
+            );
         }
         if std::env::var("SROIQ_DEBUG").is_ok() {
             for ctx in &self.contexts {

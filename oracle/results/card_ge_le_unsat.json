@@ -1,0 +1,8 @@
+{
+  "ontology": "card_ge_le_unsat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

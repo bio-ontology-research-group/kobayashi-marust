@@ -1,0 +1,8 @@
+Prefix(:=<http://ex#>)
+Ontology(
+Declaration(Class(:Q))
+Declaration(Class(:C))
+Declaration(NamedIndividual(:a))
+ClassAssertion(:C :a)
+EquivalentClasses(:Q ObjectOneOf(:a))
+)

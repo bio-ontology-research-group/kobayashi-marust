@@ -158,6 +158,10 @@ def cls(node):
     if head == "ObjectOneOf":
         noms = [sx.Nominal(short(a)) for a in args]
         return noms[0] if len(noms) == 1 else sx.mkOr(*noms)
+    if head == "ObjectHasValue":
+        # ObjectHasValue(R a) ≡ ∃R.{a}. Surfacing the nominal lets the converter
+        # fence it cleanly rather than the parser raising (which read as CBERR).
+        return sx.Exists(role_cls(args[0]), sx.Nominal(short(args[1])))
     if head == "ObjectHasSelf":
         return sx.HasSelf(role_cls(args[0]))
     raise ValueError(f"class: {head}")
@@ -242,9 +246,131 @@ def ofn_to_clauses(path) -> list[dict]:
     O = parse_ontology(Path(path).read_text())
     tbox, abox, hooks = normalise(O)
     tbox = augment(tbox, abox, hooks)
+    # moose's normalise folds role hierarchy and transitivity into the clauses
+    # but not domain/range (the Rust engine has no domain/range trigger), so add
+    # them as Horn clauses here — otherwise the CB path silently loses every
+    # ObjectPropertyDomain/Range axiom. See preprocess.domain_range_clauses.
+    from preprocess import domain_range_clauses
+    tbox = list(tbox) + domain_range_clauses(ofn_rbox(path))
     return [_clause_to_json(c) for c in tbox]
+
+
+# ---------------------------------------------------------------------------
+# RBox extraction for the hypertableau (HT) front-end
+# ---------------------------------------------------------------------------
+#
+# moose's `normalise` folds the RBox (role hierarchy, domain, range, inverse,
+# transitivity, ...) into the CB *engine's* trigger machinery, so it never
+# surfaces as concept-clauses — the reverse-Skolemising `cb_to_ht` converter
+# therefore cannot see it.  For the HT pipeline we re-read the RBox straight
+# from the parsed functional-syntax tree (the same s-expression parser, no
+# regex) and hand it to the converter as structured records.
+#
+# Each record is a tuple `(kind, *args)`.  Records the M1 ALC+H tableau can
+# encode losslessly use named roles/classes only:
+#   ("subrole", sub, sup)   r ⊑ s            -> r(x,y) → s(x,y)
+#   ("range",   r, C)        range(r) = C     -> r(x,y) → C(y)
+#   ("domain",  r, D)        domain(r) = D    -> ⊤ → D(x) ∨ ∀r.⊥   (blocking-safe)
+# Anything that needs inverse, number, self, or non-tree edges is returned with
+# a `("fenced", reason, detail)` record so the driver flags the whole ontology
+# out-of-fragment rather than silently dropping a constraint.
+
+def _plain_role(node):
+    """Named role -> short string; an inverse/complex role expression -> None."""
+    return short(node) if isinstance(node, str) else None
+
+
+def _plain_class(node):
+    """Named class -> short string; ⊤ -> "" (trivial); complex/⊥ -> None."""
+    if isinstance(node, str):
+        s = short(node)
+        if s in ("owl:Thing", "Thing"):
+            return ""          # trivial domain/range constraint, skip silently
+        if s in ("owl:Nothing", "Nothing"):
+            return None        # bottom domain/range: rare, fence as complex
+        return s
+    return None
+
+
+def ofn_rbox(path) -> list:
+    """Extract RBox records from a `.ofn` ontology (see module note above)."""
+    toks = tokenize(Path(path).read_text())
+    p = P(toks)
+    nodes = []
+    while p.peek() is not None:
+        node = p.parse()
+        if isinstance(node, tuple) and node[0] == "Ontology":
+            nodes = node[1]
+            break
+    out = []
+    for node in nodes:
+        if not isinstance(node, tuple):
+            continue
+        head, args = node
+        args = [a for a in args if not (isinstance(a, tuple) and a[0] == "Annotation")]
+        if head == "SubObjectPropertyOf":
+            sub, sup = args[0], args[1]
+            ssup = _plain_role(sup)
+            if isinstance(sub, tuple) and sub[0] == "ObjectPropertyChain":
+                out.append(("fenced", "role-chain", "%s ⊑ %s" % (sub, sup)))
+            elif _plain_role(sub) and ssup:
+                out.append(("subrole", _plain_role(sub), ssup))
+            else:
+                out.append(("fenced", "inverse-role", "SubObjectPropertyOf %s ⊑ %s" % (sub, sup)))
+        elif head == "ObjectPropertyDomain":
+            r, d = _plain_role(args[0]), _plain_class(args[1])
+            if r is None:
+                out.append(("fenced", "inverse-role", "domain of %s" % (args[0],)))
+            elif d is None:
+                out.append(("fenced", "complex-domain", "domain(%s) = %s" % (r, args[1])))
+            elif d != "":
+                out.append(("domain", r, d))
+        elif head == "ObjectPropertyRange":
+            r, c = _plain_role(args[0]), _plain_class(args[1])
+            if r is None:
+                out.append(("fenced", "inverse-role", "range of %s" % (args[0],)))
+            elif c is None:
+                out.append(("fenced", "complex-range", "range(%s) = %s" % (r, args[1])))
+            elif c != "":
+                out.append(("range", r, c))
+        elif head == "InverseObjectProperties":
+            # r ≡ s⁻: handled in-fragment (SHI) by materialising both edge
+            # directions as clauses + pairwise blocking in the tableau. Only named
+            # role pairs; an inverse *expression* would be fenced elsewhere.
+            a, b = _plain_role(args[0]), _plain_role(args[1])
+            if a is not None and b is not None:
+                out.append(("inverse", a, b))
+            else:
+                out.append(("fenced", "inverse-role", "InverseObjectProperties %s" % (args,)))
+        elif head == "TransitiveObjectProperty":
+            # Transitivity is encoded losslessly by moose's TBox normalisation as
+            # `__trans__r__C` propagation concepts (not as concept-clauses we add),
+            # so we do NOT fence it: subset blocking is sound for SH (transitive +
+            # hierarchy, no inverse). An ontology that also has inverse/symmetric is
+            # still fenced by those (SHI needs pairwise blocking, M1b). Validated
+            # exact vs HermiT incl. blocking-active infinite chains and trans-through-
+            # hierarchy (oracle/ontologies/trans_*.ofn).
+            pass
+        elif head == "SymmetricObjectProperty":
+            out.append(("fenced", "symmetric-role", _plain_role(args[0]) or str(args[0])))
+        elif head in ("ReflexiveObjectProperty", "IrreflexiveObjectProperty"):
+            out.append(("fenced", "reflexivity", _plain_role(args[0]) or str(args[0])))
+        elif head == "FunctionalObjectProperty":
+            # ≤1 R.⊤. moose's normalise emits this as the DL-clause
+            # `R(x,y0) ∧ R(x,y1) → ≈(y0,y1)`, which cb_to_ht turns into an eq-head
+            # HT-clause the tableau discharges by merging two R-successors
+            # (siblings — tree-preserving). In-fragment for SHQ, so not fenced.
+            pass
+        elif head == "InverseFunctionalObjectProperty":
+            # ≤1 R⁻.⊤ merges two *predecessors* — an inverse-flavoured constraint
+            # outside the number-only merge path. Fence until SHIQ is validated.
+            out.append(("fenced", "inverse-functional", _plain_role(args[0]) or str(args[0])))
+        elif head in ("AsymmetricObjectProperty", "DisjointObjectProperties"):
+            out.append(("fenced", "role-constraint", head))
+    return out
 
 
 if __name__ == "__main__":
     import json
-    print(json.dumps({"clauses": ofn_to_clauses(sys.argv[1])}))
+    print(json.dumps({"clauses": ofn_to_clauses(sys.argv[1]),
+                      "rbox": ofn_rbox(sys.argv[1])}))

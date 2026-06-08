@@ -1,0 +1,11 @@
+Prefix(:=<http://ex#>)
+Ontology(
+Declaration(Class(:A))
+Declaration(Class(:D))
+Declaration(Class(:E))
+Declaration(ObjectProperty(:r))
+FunctionalObjectProperty(:r)
+SubClassOf(:A ObjectSomeValuesFrom(:r :D))
+SubClassOf(:A ObjectSomeValuesFrom(:r :E))
+DisjointClasses(:D :E)
+)

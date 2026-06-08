@@ -11,13 +11,20 @@ mod clause;
 mod engine;
 mod json_io;
 mod reasoner;
+mod tableau;
 
 use std::io::{Read, Write};
 
 use json_io::{JInput, JOutput};
 use reasoner::Reasoner;
 
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
 fn main() {
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
     let mut buf = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
         eprintln!("failed to read stdin: {e}");

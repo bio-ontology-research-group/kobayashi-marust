@@ -1,0 +1,12 @@
+Prefix(:=<http://ex#>)
+Ontology(
+Declaration(Class(:A))
+Declaration(Class(:C))
+Declaration(Class(:D))
+Declaration(Class(:E))
+Declaration(ObjectProperty(:r))
+SubClassOf(:A ObjectMaxCardinality(1 :r :C))
+SubClassOf(:A ObjectSomeValuesFrom(:r ObjectIntersectionOf(:C :D)))
+SubClassOf(:A ObjectSomeValuesFrom(:r ObjectIntersectionOf(:C :E)))
+DisjointClasses(:D :E)
+)

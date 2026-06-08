@@ -1,0 +1,15 @@
+Prefix(:=<http://t#>)
+Ontology(<http://t>
+Declaration(Class(:Animal)) Declaration(Class(:B)) Declaration(Class(:Scientist))
+Declaration(Class(:Pet)) Declaration(Class(:Loved))
+Declaration(ObjectProperty(:hasChild)) Declaration(ObjectProperty(:hasDescendant))
+Declaration(ObjectProperty(:owns))
+# domain through a super-role: Animal has an r-successor, r ⊑ s, domain(s)=Scientist
+#   ⇒ Animal ⊑ Scientist
+SubClassOf(:Animal ObjectSomeValuesFrom(:hasChild :B))
+SubObjectPropertyOf(:hasChild :hasDescendant)
+ObjectPropertyDomain(:hasDescendant :Scientist)
+# range: owns has range Pet, B owns something ⇒ that something is a Pet
+SubClassOf(:B ObjectSomeValuesFrom(:owns :Loved))
+ObjectPropertyRange(:owns :Pet)
+)

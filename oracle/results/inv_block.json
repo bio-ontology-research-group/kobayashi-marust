@@ -1,0 +1,9 @@
+{
+  "ontology": "inv_block.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "D"],
+    ["Top0", "D"]
+  ],
+  "unsatisfiable": []
+}

@@ -1,0 +1,8 @@
+{
+  "ontology": "nom_disjunction.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

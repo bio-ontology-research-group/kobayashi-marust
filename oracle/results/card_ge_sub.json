@@ -1,0 +1,11 @@
+{
+  "ontology": "card_ge_sub.ofn",
+  "consistent": true,
+  "subsumptions": [
+    [
+      "A",
+      "B"
+    ]
+  ],
+  "unsatisfiable": []
+}

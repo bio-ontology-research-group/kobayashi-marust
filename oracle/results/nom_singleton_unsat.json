@@ -1,0 +1,8 @@
+{
+  "ontology": "nom_singleton_unsat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

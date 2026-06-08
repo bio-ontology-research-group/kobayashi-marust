@@ -1,0 +1,8 @@
+Prefix(:=<http://ex#>)
+Ontology(
+Declaration(Class(:A))
+Declaration(Class(:C))
+Declaration(ObjectProperty(:r))
+SubClassOf(:A ObjectMinCardinality(2 :r :C))
+SubClassOf(:A ObjectMaxCardinality(1 :r :C))
+)

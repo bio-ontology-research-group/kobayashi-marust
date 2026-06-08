@@ -46,6 +46,34 @@ def nominal_clauses(abox, hooks):
     return extra
 
 
+def domain_range_clauses(rbox):
+    """Horn DL-clauses for object-property domain/range, so the CB engine derives
+    them. moose's normalise folds role hierarchy and transitivity into clauses
+    but NOT domain/range (the Rust engine has no domain/range trigger), so an
+    ``ObjectPropertyDomain(r,D)`` / ``ObjectPropertyRange(r,C)`` axiom is
+    otherwise silently lost (verified: ``A ⊑ ∃r.B`` with ``domain(r)=D`` did not
+    yield ``A ⊑ D``). The backward clause ``r(x,y) → D(x)`` fires on the Skolem
+    edge ``r(x,f(x))`` the engine already creates for an existential, and the
+    super-role case (``r ⊑ s``, ``domain(s)=D``) is covered because normalise
+    folds ``r(x,y) → s(x,y)`` into the clauses. Sound (entailed by the axiom) and
+    pure input-clause augmentation, so the engine calculus — and its Lean
+    certificate — is unchanged. ``rbox`` is the :func:`frontend.ofn_rbox` record
+    list; inverse-role / complex domains are already fenced there, so only plain
+    named-role records reach here."""
+    Y = dlc.Y
+    out = []
+    for rec in (rbox or []):
+        if rec[0] == "domain":
+            _, r, d = rec
+            out.append(dlc.DLClause(body=frozenset({dlc.RoleAtom(r, X, Y)}),
+                                    head=frozenset({dlc.ConceptAtom(d, X)})))
+        elif rec[0] == "range":
+            _, r, c = rec
+            out.append(dlc.DLClause(body=frozenset({dlc.RoleAtom(r, X, Y)}),
+                                    head=frozenset({dlc.ConceptAtom(c, Y)})))
+    return out
+
+
 def _is_role(a):
     return isinstance(a, dlc.RoleAtom)
 

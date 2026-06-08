@@ -1,0 +1,9 @@
+Prefix(:=<http://ex#>)
+Ontology(
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(ObjectProperty(:r))
+SubClassOf(:A ObjectMinCardinality(2 :r :C))
+EquivalentClasses(:B ObjectMinCardinality(1 :r :C))
+)

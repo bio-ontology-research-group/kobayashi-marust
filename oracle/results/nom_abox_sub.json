@@ -1,0 +1,8 @@
+{
+  "ontology": "nom_abox_sub.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Q", "C"]
+  ],
+  "unsatisfiable": []
+}

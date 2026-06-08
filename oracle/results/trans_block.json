@@ -1,0 +1,10 @@
+{
+  "ontology": "trans_block.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "Win"],
+    ["B", "Win"],
+    ["Inf", "Win"]
+  ],
+  "unsatisfiable": []
+}

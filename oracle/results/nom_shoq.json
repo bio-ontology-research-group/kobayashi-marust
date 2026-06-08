@@ -1,0 +1,8 @@
+{
+  "ontology": "nom_shoq.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "ontology": "card_qual_unsat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

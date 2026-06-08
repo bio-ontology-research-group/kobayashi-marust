@@ -1,0 +1,11 @@
+Prefix(:=<http://ex#>)
+Ontology(
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(NamedIndividual(:a))
+Declaration(ObjectProperty(:r))
+SubClassOf(:A ObjectMaxCardinality(1 :r))
+SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:a)))
+SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+SubClassOf(ObjectOneOf(:a) ObjectComplementOf(:B))
+)

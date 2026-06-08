@@ -1,0 +1,8 @@
+{
+  "ontology": "functional_unsat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

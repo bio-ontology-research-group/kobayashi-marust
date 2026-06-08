@@ -1,0 +1,8 @@
+{
+  "ontology": "rbox_domain.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Animal", "Scientist"]
+  ],
+  "unsatisfiable": []
+}

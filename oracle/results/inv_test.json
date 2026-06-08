@@ -1,0 +1,8 @@
+{
+  "ontology": "inv_test.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "C"]
+  ],
+  "unsatisfiable": []
+}
