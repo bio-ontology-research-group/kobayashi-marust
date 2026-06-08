@@ -161,6 +161,12 @@ struct Graph {
     /// Undo log for backtracking: every mutator appends a record, `checkpoint`
     /// reads the length, and `rollback_to` replays records in reverse.
     trail: Vec<Undo>,
+    /// Backjumping dependency sets (populated only on the incremental
+    /// non-careful path; empty otherwise). Per-node concept deps, global edge
+    /// deps, per-node ∃-obligation deps — each rolled back with its fact.
+    cdep: Vec<HashMap<CLit, DepSet>>,
+    edep: HashMap<(R, Node, Node), DepSet>,
+    xdep: Vec<HashMap<(R, CLit), DepSet>>,
 }
 
 impl Graph {
@@ -176,6 +182,9 @@ impl Graph {
             present_roles: HashSet::new(),
             repr: Vec::new(),
             trail: Vec::new(),
+            cdep: Vec::new(),
+            edep: HashMap::new(),
+            xdep: Vec::new(),
         }
     }
 
@@ -184,6 +193,8 @@ impl Graph {
         self.concepts.push(HashSet::new());
         self.exobl.push(HashSet::new());
         self.out_edges.push(Vec::new());
+        self.cdep.push(HashMap::new());
+        self.xdep.push(HashMap::new());
         self.pred.push(pred);
         self.blockable.push(blockable);
         self.repr.push(id);
@@ -228,12 +239,15 @@ impl Graph {
             match self.trail.pop().unwrap() {
                 Undo::Concept(node, lit) => {
                     self.concepts[node].remove(&lit);
+                    self.cdep[node].remove(&lit);
                 }
                 Undo::Edge(r, s, t) => {
                     self.raw_edge_remove(r, s, t);
+                    self.edep.remove(&(r, s, t));
                 }
                 Undo::Exobl(node, r, fil) => {
                     self.exobl[node].remove(&(r, fil));
+                    self.xdep[node].remove(&(r, fil));
                 }
                 Undo::NewNode => {
                     // The appended node is always the last slot (later-created
@@ -241,6 +255,8 @@ impl Graph {
                     self.concepts.pop();
                     self.exobl.pop();
                     self.out_edges.pop();
+                    self.cdep.pop();
+                    self.xdep.pop();
                     self.pred.pop();
                     self.blockable.pop();
                     self.repr.pop();
@@ -494,6 +510,59 @@ fn clause_vars(cl: &Clause) -> Vec<Var> {
     vs
 }
 
+/// The set of disjunction decision *levels* a derived fact depends on, used for
+/// dependency-directed backjumping. A fact's dependency set is the union of the
+/// dependency sets of the facts that derived it; a disjunct chosen at level `L`
+/// additionally depends on `{L}`. When a clash's combined dependency set does not
+/// contain the current decision level, that decision is irrelevant to the clash,
+/// so the search backjumps past it (and its untried siblings) instead of
+/// exploring them. Kept sorted and duplicate-free; usually tiny (most facts
+/// depend on a single choice), so an inline 4-element vector avoids allocation.
+#[derive(Clone, Default, PartialEq)]
+struct DepSet {
+    v: SmallVec<[u32; 4]>,
+}
+
+impl DepSet {
+    fn new() -> Self {
+        DepSet { v: SmallVec::new() }
+    }
+    fn singleton(l: u32) -> Self {
+        let mut v = SmallVec::new();
+        v.push(l);
+        DepSet { v }
+    }
+    fn contains(&self, l: u32) -> bool {
+        self.v.binary_search(&l).is_ok()
+    }
+    fn insert(&mut self, l: u32) {
+        if let Err(i) = self.v.binary_search(&l) {
+            self.v.insert(i, l);
+        }
+    }
+    /// Merge `other` into `self` (sorted-union).
+    fn union_with(&mut self, other: &DepSet) {
+        for &l in &other.v {
+            self.insert(l);
+        }
+    }
+    /// Remove a level (used when a decision level is exhausted: its own number is
+    /// dropped before propagating the residual dependencies to the parent).
+    fn remove(&mut self, l: u32) {
+        if let Ok(i) = self.v.binary_search(&l) {
+            self.v.remove(i);
+        }
+    }
+}
+
+/// Result of a backjumping expansion: either a clash-free model was reached, or
+/// the subtree clashed and `DepSet` records which decision levels the clash
+/// depends on (so the caller can backjump).
+enum Outcome {
+    Sat,
+    Conflict(DepSet),
+}
+
 /// A clause plus precomputed metadata for pruning: the concept literals and
 /// roles its body requires, and whether it is disjunctive (≥2 head atoms).
 struct ClauseInfo {
@@ -727,12 +796,16 @@ impl Tableau {
             if root_clash {
                 false
             } else {
+                // Root-label facts are given, so they depend on no decision.
+                for &l in root_label {
+                    g.cdep[a].insert(l, DepSet::new());
+                }
                 let mut q: VecDeque<NewFact> = VecDeque::new();
-                if self.seed_node(&mut g, a, &mut q) {
+                if self.seed_node(&mut g, a, &mut q).is_none() {
                     for &l in root_label {
                         q.push_back(NewFact::Concept(a, l));
                     }
-                    self.expand_inc(&mut g, q)
+                    matches!(self.expand_inc(&mut g, q, 0), Outcome::Sat)
                 } else {
                     false
                 }
@@ -768,7 +841,7 @@ impl Tableau {
             if !self.saturate(g) {
                 return false;
             }
-            if let Some((head, subst)) = self.find_disjunctive(g) {
+            if let Some((head, subst, _)) = self.find_disjunctive(g) {
                 for v in &head {
                     stat_try();
                     let cp = g.checkpoint();
@@ -791,7 +864,7 @@ impl Tableau {
         if !self.horn_saturate(g) {
             return false;
         }
-        if let Some((head, subst)) = self.find_disjunctive(g) {
+        if let Some((head, subst, _)) = self.find_disjunctive(g) {
             for v in &head {
                 let cp = g.checkpoint();
                 self.add_head_atom(g, v, &subst);
@@ -841,7 +914,7 @@ impl Tableau {
         if !self.horn_saturate(g) {
             return false;
         }
-        if let Some((head, subst)) = self.find_disjunctive(g) {
+        if let Some((head, subst, _)) = self.find_disjunctive(g) {
             for v in &head {
                 let cp = g.checkpoint();
                 self.add_head_atom(g, v, &subst);
@@ -1003,8 +1076,10 @@ impl Tableau {
     }
 
     /// Find a disjunctive (≥2 head) clause whose body matches and none of whose
-    /// head disjuncts is already present — a branching point.
-    fn find_disjunctive(&self, g: &Graph) -> Option<(Vec<Atom>, Subst)> {
+    /// head disjuncts is already present — a branching point. Also returns the
+    /// matched body's dependency set (empty on the careful path, which does not
+    /// track dependencies), for backjumping.
+    fn find_disjunctive(&self, g: &Graph) -> Option<(Vec<Atom>, Subst, DepSet)> {
         for info in &self.clauses {
             if !info.disjunctive || !self.matchable(info, g) {
                 continue;
@@ -1021,7 +1096,8 @@ impl Tableau {
                 }
             });
             if let Some(subst) = found {
-                return Some((info.cl.head.clone(), subst));
+                let bdep = self.body_dep(g, &info.cl, &subst);
+                return Some((info.cl.head.clone(), subst, bdep));
             }
         }
         None
@@ -1216,92 +1292,126 @@ impl Tableau {
         self.match_rec(cl, g, 0, &mut subst, &vars, f)
     }
 
-    /// Resolve a head atom under `subst` to the concrete fact it would assert.
-    fn resolve_head(&self, g: &Graph, v: &Atom, subst: &Subst) -> PendHead {
-        match v {
-            Atom::Concept { lit, t } => PendHead::Concept(g.find(subst.lookup(*t)), *lit),
-            Atom::Role { r, s, t } => {
-                PendHead::Edge(*r, g.find(subst.lookup(*s)), g.find(subst.lookup(*t)))
+    /// Union of the dependency sets of the facts a clause body matches under
+    /// `subst` (the dependencies a head derived from this match inherits).
+    fn body_dep(&self, g: &Graph, cl: &Clause, subst: &Subst) -> DepSet {
+        let mut d = DepSet::new();
+        for a in &cl.body {
+            match a {
+                Atom::Concept { lit, t } => {
+                    let n = g.find(subst.lookup(*t));
+                    if let Some(fd) = g.cdep[n].get(lit) {
+                        d.union_with(fd);
+                    }
+                }
+                Atom::Role { r, s, t } => {
+                    let key = (*r, g.find(subst.lookup(*s)), g.find(subst.lookup(*t)));
+                    if let Some(fd) = g.edep.get(&key) {
+                        d.union_with(fd);
+                    }
+                }
+                _ => {}
             }
-            Atom::Exists { r, fil, t } => PendHead::Exobl(g.find(subst.lookup(*t)), *r, *fil),
+        }
+        d
+    }
+
+    /// Resolve a head atom under `subst` to the fact it asserts, tagged with `dep`.
+    fn resolve_head(&self, g: &Graph, v: &Atom, subst: &Subst, dep: DepSet) -> PendHead {
+        match v {
+            Atom::Concept { lit, t } => PendHead::Concept(g.find(subst.lookup(*t)), *lit, dep),
+            Atom::Role { r, s, t } => {
+                PendHead::Edge(*r, g.find(subst.lookup(*s)), g.find(subst.lookup(*t)), dep)
+            }
+            Atom::Exists { r, fil, t } => PendHead::Exobl(g.find(subst.lookup(*t)), *r, *fil, dep),
             Atom::Eq { .. } => unreachable!("Eq head only occurs on the careful path"),
         }
     }
 
     /// Fire one non-disjunctive clause from a seed binding, collecting head facts
     /// not already present into `pending` (applied later, since the matcher holds
-    /// `g` immutably). Returns `false` on an empty-head clause (a clash).
+    /// `g` immutably). Returns `Some(conflict)` on an empty-head clause; the
+    /// conflict is the dependency set of the matched body.
     fn fire_clause(
         &self,
         info: &ClauseInfo,
         g: &Graph,
         seed: Subst,
         pending: &mut Vec<PendHead>,
-    ) -> bool {
-        let mut ok = true;
+    ) -> Option<DepSet> {
+        let mut conflict = None;
         self.match_visit_from(&info.cl, g, seed, &mut |subst| {
+            let bd = self.body_dep(g, &info.cl, subst);
             if info.cl.head.is_empty() {
-                ok = false;
+                conflict = Some(bd);
                 return false;
             }
             let v = &info.cl.head[0];
             if !self.head_atom_present(g, v, subst) {
-                pending.push(self.resolve_head(g, v, subst));
+                pending.push(self.resolve_head(g, v, subst, bd));
             }
             true
         });
-        ok
+        conflict
     }
 
-    /// Apply collected head facts, enqueuing newly-added concepts/edges for
-    /// further propagation. Returns `false` if a concept and its complement meet
-    /// on a node (a clash).
+    /// Apply collected head facts, recording each fact's dependency set and
+    /// enqueuing newly-added concepts/edges. Returns `Some(conflict)` if a concept
+    /// meets its complement on a node (the conflict is the union of the two
+    /// facts' dependency sets).
     fn apply_pending(
         &self,
         g: &mut Graph,
         pending: Vec<PendHead>,
         queue: &mut VecDeque<NewFact>,
-    ) -> bool {
+    ) -> Option<DepSet> {
         for p in pending {
             match p {
-                PendHead::Concept(n, lit) => {
+                PendHead::Concept(n, lit, dep) => {
                     if g.add_concept(n, lit) {
-                        if g.concepts[n].contains(&lit.complement()) {
-                            return false;
+                        if let Some(cd) = g.cdep[n].get(&lit.complement()) {
+                            let mut c = dep.clone();
+                            c.union_with(cd);
+                            g.cdep[n].insert(lit, dep);
+                            return Some(c);
                         }
+                        g.cdep[n].insert(lit, dep);
                         queue.push_back(NewFact::Concept(n, lit));
                     }
                 }
-                PendHead::Edge(r, s, t) => {
+                PendHead::Edge(r, s, t, dep) => {
                     if g.add_edge(r, s, t) {
+                        g.edep.insert((r, s, t), dep);
                         queue.push_back(NewFact::Edge(r, s, t));
                     }
                 }
-                PendHead::Exobl(n, r, fil) => {
-                    g.add_exobl(n, r, fil);
+                PendHead::Exobl(n, r, fil, dep) => {
+                    if g.add_exobl(n, r, fil) {
+                        g.xdep[n].insert((r, fil), dep);
+                    }
                 }
             }
         }
-        true
+        None
     }
 
     /// Fire the `node_triggered` clauses (e.g. `⊤ ⊑ C`) for a freshly created
-    /// node `n`. Returns `false` on a clash.
-    fn seed_node(&self, g: &mut Graph, n: Node, queue: &mut VecDeque<NewFact>) -> bool {
+    /// node `n`. Returns `Some(conflict)` on a clash.
+    fn seed_node(&self, g: &mut Graph, n: Node, queue: &mut VecDeque<NewFact>) -> Option<DepSet> {
         let mut pending = Vec::new();
         for &(ci, var) in &self.node_triggered {
             let mut seed = Subst::new();
             seed.insert(var, n);
-            if !self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
-                return false;
+            if let Some(c) = self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
+                return Some(c);
             }
         }
         self.apply_pending(g, pending, queue)
     }
 
     /// Drain the worklist, firing the Horn clauses each new fact can trigger to a
-    /// fixpoint. Returns `false` on a clash.
-    fn horn_inc(&self, g: &mut Graph, queue: &mut VecDeque<NewFact>) -> bool {
+    /// fixpoint. Returns `Some(conflict)` on a clash.
+    fn horn_inc(&self, g: &mut Graph, queue: &mut VecDeque<NewFact>) -> Option<DepSet> {
         while let Some(f) = queue.pop_front() {
             let mut pending = Vec::new();
             match f {
@@ -1310,8 +1420,9 @@ impl Tableau {
                         for &(ci, var) in es {
                             let mut seed = Subst::new();
                             seed.insert(var, node);
-                            if !self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
-                                return false;
+                            if let Some(c) = self.fire_clause(&self.clauses[ci], g, seed, &mut pending)
+                            {
+                                return Some(c);
                             }
                         }
                     }
@@ -1322,26 +1433,29 @@ impl Tableau {
                             let mut seed = Subst::new();
                             seed.insert(sv, s);
                             seed.insert(tv, t);
-                            if !self.fire_clause(&self.clauses[ci], g, seed, &mut pending) {
-                                return false;
+                            if let Some(c) = self.fire_clause(&self.clauses[ci], g, seed, &mut pending)
+                            {
+                                return Some(c);
                             }
                         }
                     }
                 }
             }
-            if !self.apply_pending(g, pending, queue) {
-                return false;
+            if let Some(c) = self.apply_pending(g, pending, queue) {
+                return Some(c);
             }
         }
-        true
+        None
     }
 
     /// Incremental analogue of `saturate` for the non-careful path: Horn closure
     /// from the worklist, then the (batched) ∃ round, repeated to a fixpoint.
-    fn saturate_inc(&self, g: &mut Graph, mut queue: VecDeque<NewFact>) -> bool {
+    /// Returns `Some(conflict)` on a clash. ∃ successors inherit the obligation's
+    /// dependency set.
+    fn saturate_inc(&self, g: &mut Graph, mut queue: VecDeque<NewFact>) -> Option<DepSet> {
         loop {
-            if !self.horn_inc(g, &mut queue) {
-                return false;
+            if let Some(c) = self.horn_inc(g, &mut queue) {
+                return Some(c);
             }
             let mut ex_changed = false;
             for s in 0..g.n() {
@@ -1354,16 +1468,22 @@ impl Tableau {
                         .iter()
                         .any(|&(rr, t)| rr == r && g.concepts[t].contains(&fil));
                     if !satisfied {
+                        let odep = g.xdep[s].get(&(r, fil)).cloned().unwrap_or_default();
                         let t = g.new_node(Some(s), true);
-                        if !self.seed_node(g, t, &mut queue) {
-                            return false;
+                        if let Some(c) = self.seed_node(g, t, &mut queue) {
+                            return Some(c);
                         }
                         g.add_edge(r, s, t);
+                        g.edep.insert((r, s, t), odep.clone());
                         queue.push_back(NewFact::Edge(r, s, t));
                         if g.add_concept(t, fil) {
-                            if g.concepts[t].contains(&fil.complement()) {
-                                return false;
+                            if let Some(cd) = g.cdep[t].get(&fil.complement()) {
+                                let mut c = odep.clone();
+                                c.union_with(cd);
+                                g.cdep[t].insert(fil, odep);
+                                return Some(c);
                             }
+                            g.cdep[t].insert(fil, odep);
                             queue.push_back(NewFact::Concept(t, fil));
                         }
                         ex_changed = true;
@@ -1371,35 +1491,57 @@ impl Tableau {
                 }
             }
             if !ex_changed {
-                return true;
+                return None;
             }
         }
     }
 
-    /// Incremental analogue of the non-careful `expand`: saturate from the seed
-    /// worklist, then branch on a disjunction (seeding each child with just the
-    /// chosen disjunct). Backtracks via the trail, exactly like `expand`.
-    fn expand_inc(&self, g: &mut Graph, queue: VecDeque<NewFact>) -> bool {
+    /// Incremental analogue of the non-careful `expand`, with dependency-directed
+    /// backjumping. `dl` is the current decision level; the disjunction picked
+    /// here introduces level `dl+1`. When a disjunct's subtree clashes with a
+    /// conflict that does *not* mention `dl+1`, the choice is irrelevant, so the
+    /// whole disjunction is abandoned and the conflict propagates up (skipping
+    /// untried siblings and any irrelevant intervening decisions).
+    fn expand_inc(&self, g: &mut Graph, queue: VecDeque<NewFact>, dl: u32) -> Outcome {
         stat_expand();
-        if !self.saturate_inc(g, queue) {
-            return false;
+        if let Some(c) = self.saturate_inc(g, queue) {
+            return Outcome::Conflict(c);
         }
-        if let Some((head, subst)) = self.find_disjunctive(g) {
+        if let Some((head, subst, bdep)) = self.find_disjunctive(g) {
+            let level = dl + 1;
+            let mut accum = DepSet::new();
             for v in &head {
                 stat_try();
                 let cp = g.checkpoint();
-                let pend = self.resolve_head(g, v, &subst);
+                let mut ddep = bdep.clone();
+                ddep.insert(level);
+                let pend = self.resolve_head(g, v, &subst, ddep);
                 let mut child: VecDeque<NewFact> = VecDeque::new();
-                let ok = self.apply_pending(g, vec![pend], &mut child);
-                if ok && self.expand_inc(g, child) {
-                    return true;
-                }
+                let conflict = match self.apply_pending(g, vec![pend], &mut child) {
+                    Some(c) => Some(c),
+                    None => match self.expand_inc(g, child, level) {
+                        Outcome::Sat => return Outcome::Sat,
+                        Outcome::Conflict(c) => Some(c),
+                    },
+                };
                 g.rollback_to(cp);
                 stat_backtrack();
+                let mut c = conflict.unwrap();
+                if !c.contains(level) {
+                    // This disjunction choice was irrelevant to the clash: every
+                    // sibling would clash the same way. Backjump.
+                    return Outcome::Conflict(c);
+                }
+                c.remove(level);
+                accum.union_with(&c);
             }
-            return false;
+            // Every disjunct failed at this level: the disjunction itself cannot
+            // be satisfied given the earlier decisions in `accum` and the reasons
+            // this disjunction fired (`bdep`).
+            accum.union_with(&bdep);
+            return Outcome::Conflict(accum);
         }
-        true
+        Outcome::Sat
     }
 }
 
@@ -1409,12 +1551,12 @@ enum NewFact {
     Edge(R, Node, Node),
 }
 
-/// A head atom resolved to concrete nodes, collected during a match (when `g` is
-/// borrowed immutably) and applied afterwards.
+/// A head atom resolved to concrete nodes and tagged with its dependency set,
+/// collected during a match (when `g` is borrowed immutably) and applied after.
 enum PendHead {
-    Concept(Node, CLit),
-    Edge(R, Node, Node),
-    Exobl(Node, R, CLit),
+    Concept(Node, CLit, DepSet),
+    Edge(R, Node, Node, DepSet),
+    Exobl(Node, R, CLit, DepSet),
 }
 
 

@@ -521,9 +521,23 @@ unchanged.
 The `KM_TAB_STATS` env var prints per-`find_model` search stats (expands /
 branch-tries / backtracks / nodes) to stderr; it also showed that *backjumping*
 helps a different regime — a disjunction whose clash is decided far below the
-relevant decision (a distant-clash instance did 33k tries / 99% backtracks),
-where dependency-directed backtracking would collapse the search to ~linear. That
-is the next tableau lever.
+relevant decision (a distant-clash instance did 33k tries / 99% backtracks).
+
+5. **Dependency-directed backjumping (2026-06-08).** Each derived fact on the
+   non-careful path now carries a `DepSet`: the set of disjunction decision
+   *levels* it depends on (Horn heads inherit the union of their body's deps; a
+   disjunct chosen at level `L` adds `{L}`; ∃ successors inherit the obligation's
+   deps; a clash's conflict is the union of the two facts' deps). Stored in
+   `Graph::cdep` / `edep` / `xdep`, rolled back with their facts. `expand_inc`
+   returns `Outcome::Sat | Conflict(DepSet)`: when a disjunct's subtree clashes
+   with a conflict that does not mention the current decision level, the choice is
+   irrelevant — the whole disjunction is abandoned and the conflict propagates up,
+   skipping untried siblings and any irrelevant intervening decisions. The
+   distant-clash instance drops from **33,053 tries / 32,797 backtracks to 309 /
+   53** (exponential → ~linear in k); the ∀+⊔ stress is unchanged (dep sets stay
+   tiny — structural facts depend on nothing). Sound: 22+16 tests, 16/16 oracle,
+   and 160/160 random disjunctive ontologies MATCH HermiT. The careful path keeps
+   chronological backtracking.
 
 ### Original M1 description
 
