@@ -89,7 +89,10 @@ class P:
 # IRI / name shortening
 # ---------------------------------------------------------------------------
 
-def short(name: str) -> str:
+def _short_base(name: str) -> str:
+    """Fragment / local-name of an IRI. NOT collision-safe on its own: two IRIs
+    that share a fragment (e.g. `…/OBO_REL#part_of` and `…/obo#part_of`) collapse
+    to the same string. Use `short()`, which disambiguates collisions."""
     name = name.strip()
     if name.startswith("<") and name.endswith(">"):
         name = name[1:-1]
@@ -104,6 +107,47 @@ def short(name: str) -> str:
     if ":" in name:                # other prefixed name pfx:Local
         return name.split(":", 1)[1]
     return name
+
+
+# Collision-safe IRI -> internal-name registry, reset per ontology in
+# `ofn_to_clauses`. Distinct full IRIs MUST get distinct internal names: the
+# engine reasons over these names, so collapsing `…/OBO_REL#part_of` and
+# `…/obo#part_of` to `part_of` makes a role-hierarchy axiom on one apply to the
+# other and derives unsound subsumptions (witnessed on ORE ore_ont_3978).
+# Unique local names are returned unchanged, so non-colliding ontologies (and
+# every existing certificate / classification output) are byte-identical.
+_short_iri: dict[str, str] = {}   # full IRI -> assigned unique short name
+_short_owner: dict[str, str] = {}  # short name -> full IRI that owns it
+
+
+def reset_short() -> None:
+    _short_iri.clear()
+    _short_owner.clear()
+
+
+def short(name: str) -> str:
+    raw = name.strip()
+    full = raw[1:-1] if raw.startswith("<") and raw.endswith(">") else raw
+    cached = _short_iri.get(full)
+    if cached is not None:
+        return cached
+    base = _short_base(name)
+    if base in ("owl:Thing", "owl:Nothing"):   # specials: never disambiguate
+        _short_iri[full] = base
+        return base
+    cand = base
+    owner = _short_owner.get(cand)
+    if owner is not None and owner != full:     # collision with a different IRI
+        ns = full[: len(full) - len(base)].rstrip("#/:")
+        tag = _short_base(ns) or "ns"
+        cand = f"{base}__{tag}"
+        i = 2
+        while _short_owner.get(cand, full) != full:
+            cand = f"{base}__{tag}{i}"
+            i += 1
+    _short_owner[cand] = full
+    _short_iri[full] = cand
+    return cand
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +287,7 @@ def parse_ontology(text: str) -> sx.Ontology:
 
 
 def ofn_to_clauses(path) -> list[dict]:
+    reset_short()   # fresh IRI->name registry per ontology (collision-safe short)
     O = parse_ontology(Path(path).read_text())
     tbox, abox, hooks = normalise(O)
     tbox = augment(tbox, abox, hooks)
