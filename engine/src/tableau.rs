@@ -118,8 +118,13 @@ struct Graph {
     concepts: Vec<HashSet<CLit>>,
     /// `≥1 R.B` obligations of each node (the ∃-rule discharges these)
     exobl: Vec<HashSet<(R, CLit)>>,
-    /// role edges `R(from,to)` (atomic roles only)
+    /// role edges `R(from,to)` (atomic roles only). Kept for O(1) membership.
     edges: HashSet<(R, Node, Node)>,
+    /// adjacency index mirroring `edges`: `out_edges[s]` holds `(r, t)` for every
+    /// edge `(r, s, t)`. Lets the matcher and the ∃-rules iterate a node's actual
+    /// successors instead of scanning all edges / all nodes. Maintained in lock
+    /// step with `edges` through `raw_edge_insert` / `raw_edge_remove`.
+    out_edges: Vec<Vec<(R, Node)>>,
     /// tree predecessor of each node (None for root individuals)
     pred: Vec<Option<Node>>,
     /// whether each node is blockable (a generated tree node) vs a root
@@ -145,6 +150,7 @@ impl Graph {
             concepts: Vec::new(),
             exobl: Vec::new(),
             edges: HashSet::new(),
+            out_edges: Vec::new(),
             pred: Vec::new(),
             blockable: Vec::new(),
             present_lits: HashSet::new(),
@@ -158,11 +164,37 @@ impl Graph {
         let id = self.concepts.len();
         self.concepts.push(HashSet::new());
         self.exobl.push(HashSet::new());
+        self.out_edges.push(Vec::new());
         self.pred.push(pred);
         self.blockable.push(blockable);
         self.repr.push(id);
         self.trail.push(Undo::NewNode);
         id
+    }
+
+    /// Insert `(r, s, t)` into both `edges` and the `out_edges` mirror, keeping
+    /// `present_roles` (a monotone index, never rolled back). Returns `true` iff
+    /// the edge was new. Every edge insertion goes through here so the two stay
+    /// consistent.
+    fn raw_edge_insert(&mut self, r: R, s: Node, t: Node) -> bool {
+        let fresh = self.edges.insert((r, s, t));
+        if fresh {
+            self.out_edges[s].push((r, t));
+            self.present_roles.insert(r);
+        }
+        fresh
+    }
+
+    /// Remove `(r, s, t)` from both `edges` and the `out_edges` mirror. Returns
+    /// `true` iff it was present.
+    fn raw_edge_remove(&mut self, r: R, s: Node, t: Node) -> bool {
+        let existed = self.edges.remove(&(r, s, t));
+        if existed {
+            if let Some(i) = self.out_edges[s].iter().position(|&(rr, tt)| rr == r && tt == t) {
+                self.out_edges[s].swap_remove(i);
+            }
+        }
+        existed
     }
 
     /// Current trail position; pass to `rollback_to` to undo everything since.
@@ -179,7 +211,7 @@ impl Graph {
                     self.concepts[node].remove(&lit);
                 }
                 Undo::Edge(r, s, t) => {
-                    self.edges.remove(&(r, s, t));
+                    self.raw_edge_remove(r, s, t);
                 }
                 Undo::Exobl(node, r, fil) => {
                     self.exobl[node].remove(&(r, fil));
@@ -189,6 +221,7 @@ impl Graph {
                     // nodes have later trail records, already undone).
                     self.concepts.pop();
                     self.exobl.pop();
+                    self.out_edges.pop();
                     self.pred.pop();
                     self.blockable.pop();
                     self.repr.pop();
@@ -212,11 +245,11 @@ impl Graph {
             if fresh {
                 let s2 = if s == gone { keep } else { s };
                 let t2 = if t == gone { keep } else { t };
-                self.edges.remove(&(r, s2, t2));
+                self.raw_edge_remove(r, s2, t2);
             }
         }
         for &((r, s, t), _) in &moved_edges {
-            self.edges.insert((r, s, t));
+            self.raw_edge_insert(r, s, t);
         }
         for &(o, fresh) in &moved_exobl {
             if fresh {
@@ -286,13 +319,10 @@ impl Graph {
             .collect();
         let mut moved_edges = Vec::with_capacity(touching.len());
         for (r, s, t) in touching {
-            self.edges.remove(&(r, s, t));
+            self.raw_edge_remove(r, s, t);
             let s2 = if s == gone { keep } else { s };
             let t2 = if t == gone { keep } else { t };
-            let fresh = self.edges.insert((r, s2, t2));
-            if fresh {
-                self.present_roles.insert(r);
-            }
+            let fresh = self.raw_edge_insert(r, s2, t2);
             moved_edges.push(((r, s, t), fresh));
         }
         // children of `gone` become children of `keep`
@@ -325,11 +355,11 @@ impl Graph {
         fresh
     }
 
-    /// Insert a role edge, maintaining `present_roles`. Returns `true` iff new.
+    /// Insert a role edge (trailed), maintaining the `out_edges` mirror and
+    /// `present_roles`. Returns `true` iff new.
     fn add_edge(&mut self, r: R, s: Node, t: Node) -> bool {
-        let fresh = self.edges.insert((r, s, t));
+        let fresh = self.raw_edge_insert(r, s, t);
         if fresh {
-            self.present_roles.insert(r);
             self.trail.push(Undo::Edge(r, s, t));
         }
         fresh
@@ -358,12 +388,12 @@ impl Graph {
         out
     }
 
-    /// The set of roles on the directed edge `a → b`.
+    /// The set of roles on the directed edge `a → b` (scans only `a`'s successors).
     fn edge_label(&self, a: Node, b: Node) -> HashSet<R> {
-        self.edges
+        self.out_edges[a]
             .iter()
-            .filter(|(_, s, t)| *s == a && *t == b)
-            .map(|(r, _, _)| *r)
+            .filter(|(_, t)| *t == b)
+            .map(|(r, _)| *r)
             .collect()
     }
 
@@ -680,8 +710,9 @@ impl Tableau {
                 }
                 let obls: Vec<(R, CLit)> = g.exobl[s].iter().copied().collect();
                 for (r, fil) in obls {
-                    let sat = (0..g.n())
-                        .any(|t| g.alive(t) && g.edges.contains(&(r, s, t)) && g.concepts[t].contains(&fil));
+                    let sat = g.out_edges[s]
+                        .iter()
+                        .any(|&(rr, t)| rr == r && g.alive(t) && g.concepts[t].contains(&fil));
                     if !sat {
                         let t = g.new_node(Some(s), true);
                         g.add_edge(r, s, t);
@@ -816,8 +847,9 @@ impl Tableau {
                 }
                 let obls: Vec<(R, CLit)> = g.exobl[s].iter().copied().collect();
                 for (r, fil) in obls {
-                    let satisfied =
-                        (0..g.n()).any(|t| g.edges.contains(&(r, s, t)) && g.concepts[t].contains(&fil));
+                    let satisfied = g.out_edges[s]
+                        .iter()
+                        .any(|&(rr, t)| rr == r && g.concepts[t].contains(&fil));
                     if !satisfied {
                         let t = g.new_node(Some(s), true);
                         g.add_edge(r, s, t);
@@ -840,8 +872,9 @@ impl Tableau {
                 continue;
             }
             for &(r, fil) in &g.exobl[s] {
-                let satisfied =
-                    (0..g.n()).any(|t| g.edges.contains(&(r, s, t)) && g.concepts[t].contains(&fil));
+                let satisfied = g.out_edges[s]
+                    .iter()
+                    .any(|&(rr, t)| rr == r && g.concepts[t].contains(&fil));
                 if !satisfied {
                     return Some((s, r, fil));
                 }
@@ -898,7 +931,7 @@ impl Tableau {
             Atom::Exists { r, fil, t } => {
                 let s = g.find(subst.lookup(*t));
                 g.exobl[s].contains(&(*r, *fil))
-                    || (0..g.n()).any(|u| g.edges.contains(&(*r, s, u)) && g.concepts[u].contains(fil))
+                    || g.out_edges[s].iter().any(|&(rr, u)| rr == *r && g.concepts[u].contains(fil))
             }
             // Already satisfied iff the two terms denote the same (merged) node.
             Atom::Eq { s, t } => g.find(subst.lookup(*s)) == g.find(subst.lookup(*t)),
@@ -993,33 +1026,50 @@ impl Tableau {
                 }
             }
             Atom::Role { r, s, t } => {
-                for &(er, es, et) in &g.edges {
-                    if er != *r {
-                        continue;
-                    }
-                    if let Some(bs) = subst.get(*s) {
-                        if bs != es {
+                if let Some(bs) = subst.get(*s) {
+                    // Source already bound: scan only `bs`'s out-edges (each entry
+                    // `(er, et)` is the edge `(er, bs, et)`), not all edges.
+                    for &(er, et) in &g.out_edges[bs] {
+                        if er != *r {
                             continue;
                         }
-                    }
-                    if let Some(bt) = subst.get(*t) {
-                        if bt != et {
-                            continue;
+                        if let Some(bt) = subst.get(*t) {
+                            if bt != et {
+                                continue;
+                            }
+                        }
+                        let ins_t = !subst.contains(*t);
+                        subst.insert(*t, et);
+                        let cont = self.match_rec(cl, g, i + 1, subst, vars, f);
+                        if ins_t {
+                            subst.remove(*t);
+                        }
+                        if !cont {
+                            return false;
                         }
                     }
-                    let ins_s = !subst.contains(*s);
-                    let ins_t = !subst.contains(*t);
-                    subst.insert(*s, es);
-                    subst.insert(*t, et);
-                    let cont = self.match_rec(cl, g, i + 1, subst, vars, f);
-                    if ins_s {
+                } else {
+                    // Source unbound: must consider every edge.
+                    for &(er, es, et) in &g.edges {
+                        if er != *r {
+                            continue;
+                        }
+                        if let Some(bt) = subst.get(*t) {
+                            if bt != et {
+                                continue;
+                            }
+                        }
+                        let ins_t = !subst.contains(*t);
+                        subst.insert(*s, es);
+                        subst.insert(*t, et);
+                        let cont = self.match_rec(cl, g, i + 1, subst, vars, f);
                         subst.remove(*s);
-                    }
-                    if ins_t {
-                        subst.remove(*t);
-                    }
-                    if !cont {
-                        return false;
+                        if ins_t {
+                            subst.remove(*t);
+                        }
+                        if !cont {
+                            return false;
+                        }
                     }
                 }
             }

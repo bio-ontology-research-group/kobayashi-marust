@@ -493,6 +493,15 @@ Combined, the two fixes take the tableau from the clone+HashMap baseline to
 **peak memory 300x lower, allocations 10x fewer, ~2.3x faster**, verdicts
 unchanged.
 
+3. **Edge adjacency index (2026-06-08).** The matcher and the ∃-rules scanned all
+   edges / all nodes (`match_rec`'s Role case, the `∃`-satisfied checks,
+   `edge_label`). Added `Graph::out_edges` (a `Vec<Vec<(R,Node)>>` mirroring
+   `edges`, maintained through `raw_edge_insert` / `raw_edge_remove` so it stays
+   consistent under `merge` and rollback), turning those O(E)/O(N) scans into
+   O(deg). The win grows with size: stress K=14/P=10 10.3 s -> 7.2 s (~30%), and
+   K=16/P=12 (which timed out at 60 s on the clone baseline) now finishes in ~18 s.
+   Verdicts identical, 16/16 oracle MATCH.
+
 ### Original M1 description
 
 - **M1 (now): standalone ALC hypertableau consistency checker in Rust.**
