@@ -171,6 +171,13 @@ def role_cls(node):
     raise ValueError(f"role: {head}")
 
 
+class OutOfFragment(Exception):
+    """The ontology uses a construct outside KM's supported fragment (chiefly
+    datatype reasoning). We fence the whole ontology as unsupported rather than
+    crash or silently drop the constraint — silently dropping it would weaken the
+    theory and report an incomplete classification as if it were complete."""
+
+
 def cls(node):
     if isinstance(node, str):
         s = short(node)
@@ -208,7 +215,9 @@ def cls(node):
         return sx.Exists(role_cls(args[0]), sx.Nominal(short(args[1])))
     if head == "ObjectHasSelf":
         return sx.HasSelf(role_cls(args[0]))
-    raise ValueError(f"class: {head}")
+    if head.startswith("Data"):     # DataSomeValuesFrom, DataMinCardinality, ...
+        raise OutOfFragment(f"datatype reasoning not supported: {head}")
+    raise OutOfFragment(f"unsupported class construct: {head}")
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +279,10 @@ def add_axiom(O, node):
     elif head in ("Declaration", "Prefix", "Import", "Annotation", "AnnotationAssertion",
                   "DisjointObjectProperties", "ObjectPropertyDomain", "ObjectPropertyRange"):
         pass  # not part of the SROIQ core we validate (domain/range could be added)
+    elif head.startswith("Data") or head in ("DatatypeDefinition", "HasKey"):
+        # datatype axioms carry semantics we cannot reason over; fence the whole
+        # ontology rather than silently drop them (which would be incomplete).
+        raise OutOfFragment(f"datatype reasoning not supported: {head}")
     # anything else: silently skipped
 
 

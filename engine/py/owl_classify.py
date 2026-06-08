@@ -86,7 +86,13 @@ if __name__ == "__main__":
     if len(args) != 1:
         print("usage: owl_classify.py [--lines] ontology.ofn", file=sys.stderr)
         sys.exit(2)
-    res = classify(args[0])
+    try:
+        res = classify(args[0])
+    except frontend.OutOfFragment as e:
+        # honest decline: the ontology is outside the supported fragment
+        # (datatypes). Report unsupported rather than a partial classification.
+        print(f"unsupported: {e}", file=sys.stderr)
+        sys.exit(3)
     if lines:
         # Dependency-free line format for the Java/Protege plugin:
         out = [f"CONSISTENT {1 if res['consistent'] else 0}",
