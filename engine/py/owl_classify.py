@@ -63,15 +63,78 @@ def is_internal(n: str) -> bool:
             or s.startswith("def_") or (":" in s and s not in BOTTOM))
 
 
+def _race_el(clauses_json: str):
+    """For EL++ ontologies, race the context-engine binary against the EL
+    completion reasoner and return the first valid result; kill the loser. Both
+    are sound+complete on EL++, but neither dominates on time — completion wins
+    on transitive / blow-up ontologies, the context engine wins on some large
+    flat ones. Racing captures both with no regression. Returns the parsed dict
+    or None (caller then runs the binary alone)."""
+    import threading
+    import time
+    here = Path(__file__).resolve().parent
+    cmds = {"el": [sys.executable, str(here / "el_route.py")],
+            "ctx": [str(engine_path())]}
+    boxes = {k: {} for k in cmds}
+
+    def run(key):
+        box = boxes[key]
+        try:
+            p = subprocess.Popen(cmds[key], stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            box["proc"] = p
+            out, _ = p.communicate(clauses_json)   # reads fully -> no pipe deadlock
+            box["rc"] = p.returncode
+            box["out"] = out
+        except Exception:
+            box["rc"] = -1
+
+    threads = {k: threading.Thread(target=run, args=(k,), daemon=True) for k in cmds}
+    for t in threads.values():
+        t.start()
+    winner = None
+    # poll for the first thread to finish successfully (prefer completion on tie)
+    while winner is None and any(t.is_alive() for t in threads.values()):
+        for key in ("el", "ctx"):
+            if not threads[key].is_alive() and boxes[key].get("rc") == 0:
+                winner = key
+                break
+        else:
+            time.sleep(0.05)
+    if winner is None:  # both finished; pick any success
+        for key in ("el", "ctx"):
+            if boxes[key].get("rc") == 0:
+                winner = key
+                break
+    # kill the loser
+    for key in cmds:
+        if key != winner:
+            p = boxes[key].get("proc")
+            if p is not None and p.poll() is None:
+                p.kill()
+    if winner is None:
+        return None
+    return json.loads(boxes[winner]["out"])
+
+
 def classify(ofn_path: str) -> dict:
     clauses = frontend.ofn_to_clauses(ofn_path)
-    # EL fast path: if the whole clause set lies in EL++, classify with moose's
-    # ELK-style completion reasoner, which is sound+complete on EL++ and avoids
-    # the disjunctive context engine's transitivity blow-up (see el_route).
-    out = el_route.classify(clauses)
+    clauses_json = json.dumps({"clauses": clauses})
+    out = None
+    # EL fast path. If the ontology is EL++:
+    #  - with transitive roles, the context engine reliably blows up, so go
+    #    straight to completion;
+    #  - otherwise race the context engine against completion and take the
+    #    faster (neither dominates on flat EL; racing avoids regressing the
+    #    ontologies the context engine already handles quickly).
+    if el_route.is_el(clauses):
+        if el_route.has_transitivity(clauses):
+            out = el_route.classify(clauses)
+        else:
+            out = _race_el(clauses_json)
     if out is None:
         proc = subprocess.run([str(engine_path())],
-                              input=json.dumps({"clauses": clauses}),
+                              input=clauses_json,
                               capture_output=True, text=True)
         if proc.returncode != 0:
             raise RuntimeError(proc.stderr)

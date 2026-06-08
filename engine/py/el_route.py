@@ -32,6 +32,7 @@ all carried through with no separate parser.
 """
 from __future__ import annotations
 
+import frontend  # noqa: F401  -- bootstraps the moose package onto sys.path
 from moose.elpp.axioms import NF1, NF2, NF3, NF4, NF5, NF6, NF7, TOP, BOTTOM
 from moose.elpp.completion import Completion
 
@@ -144,3 +145,39 @@ def classify(clauses):
         if out:
             subs[c] = out
     return {"subsumptions": subs, "inconsistent": res.is_unsatisfiable(TOP), "dropped": 0}
+
+
+def is_el(clauses) -> bool:
+    """True iff the whole clause set lies in EL++ (so completion is applicable)."""
+    _ax, ok = to_nf(clauses)
+    return ok
+
+
+def has_transitivity(clauses) -> bool:
+    """True iff the ontology uses transitive roles — moose normalises these into
+    ``__trans__r__C`` propagation concepts, which are precisely what makes the
+    disjunctive context engine's message fixpoint blow up. Such ontologies should
+    go straight to completion (the context engine reliably diverges on them, so
+    racing it only wastes CPU/memory)."""
+    for c in clauses:
+        for side in ("body", "head"):
+            for a in c.get(side, ()):
+                if a.get("kind") == "concept" and a["concept"].startswith("__trans__"):
+                    return True
+    return False
+
+
+if __name__ == "__main__":
+    # Subprocess entry point so owl_classify can *race* completion against the
+    # context-engine binary and take whichever finishes first (both are correct
+    # on EL++; neither dominates on time — completion wins on transitive/blow-up
+    # ontologies, the context engine wins on some large flat ones).
+    # Reads {"clauses": [...]} on stdin; prints the engine-shaped result JSON, or
+    # exits 3 if the ontology is not EL++ (caller must use the context engine).
+    import json
+    import sys
+    data = json.load(sys.stdin)
+    out = classify(data["clauses"])
+    if out is None:
+        sys.exit(3)
+    json.dump(out, sys.stdout)
