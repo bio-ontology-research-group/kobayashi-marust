@@ -1568,10 +1568,16 @@ impl Tableau {
     ///
     /// Model-based candidate pruning: a subsumer `B` of `A` holds in *every* model
     /// of `A`, hence in the root label of any single model `M_A`. So we build one
-    /// model of `{A}` and only run the `{A, ¬B}` confirmation test for the named
-    /// `B` present in `M_A`'s root, instead of all `n` concepts. This keeps the
-    /// verdicts identical (subsumers are never outside `M_A`) while cutting the
-    /// inner loop from `O(n)` to the handful of told/derived super-concepts.
+    /// model of `{A}` and only consider the named `B` present in `M_A`'s root,
+    /// instead of all `n` concepts.
+    ///
+    /// Told-subsumer pruning (a CB-style hybrid, internal): on the dependency-
+    /// tracking (non-careful) path, a root subsumer `B` derived with an *empty*
+    /// dependency set was derived deterministically — no disjunction choice — so
+    /// it holds in every model of `A` and `A ⊑ B` is definite. Those need no
+    /// `{A, ¬B}` confirmation test; only choice-dependent candidates do. (On the
+    /// careful path no dependencies are tracked, so every candidate is confirmed,
+    /// exactly as before.)
     pub fn classify(&self, named: &[C]) -> (bool, Vec<C>, Vec<(C, C)>) {
         let consistent = self.consistent(&[]);
         if !consistent {
@@ -1580,30 +1586,45 @@ impl Tableau {
         }
         let named_set: HashSet<C> = named.iter().copied().collect();
         let mut unsat = Vec::new();
-        // For each satisfiable A, remember the named concepts in one of its models'
-        // root label — the only candidate subsumers worth confirming.
+        let mut subs = Vec::new();
+        // For each satisfiable A: record deterministic subsumers directly, and
+        // keep only the choice-dependent ones for the confirmation test.
         let mut cand: Vec<(C, Vec<C>)> = Vec::new();
         for &a in named {
             match self.find_model(&[CLit::pos(a)]) {
                 None => unsat.push(a),
                 Some(g) => {
-                    let mut sup: Vec<C> = g.concepts[0]
-                        .iter()
-                        .filter(|l| !l.neg && l.c != a && named_set.contains(&l.c))
-                        .map(|l| l.c)
-                        .collect();
-                    sup.sort_unstable();
-                    cand.push((a, sup));
+                    let mut uncertain = Vec::new();
+                    for l in g.concepts[0].iter() {
+                        if l.neg || l.c == a || !named_set.contains(&l.c) {
+                            continue;
+                        }
+                        let definite = matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
+                        if definite {
+                            subs.push((a, l.c));
+                        } else {
+                            uncertain.push(l.c);
+                        }
+                    }
+                    uncertain.sort_unstable();
+                    cand.push((a, uncertain));
                 }
             }
         }
-        let mut subs = Vec::new();
+        let definite = subs.len();
+        let mut confirmed = 0;
         for (a, sup) in &cand {
             for &b in sup {
+                confirmed += 1;
                 if !self.consistent(&[CLit::pos(*a), CLit::neg(b)]) {
                     subs.push((*a, b));
                 }
             }
+        }
+        if std::env::var("KM_TAB_STATS").is_ok() {
+            eprintln!(
+                "KM_TAB_STATS classify: definite_subs={definite} (no test) confirm_tests={confirmed}"
+            );
         }
         (consistent, unsat, subs)
     }

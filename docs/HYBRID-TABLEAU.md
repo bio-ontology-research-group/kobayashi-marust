@@ -539,6 +539,19 @@ relevant decision (a distant-clash instance did 33k tries / 99% backtracks).
    and 160/160 random disjunctive ontologies MATCH HermiT. The careful path keeps
    chronological backtracking.
 
+6. **Told-subsumer classification pruning (2026-06-08).** A CB-style hybrid, but
+   internal: `classify` builds one model `M_A` and reads each named subsumer `B`
+   in its root. With dependency tracking, a root subsumer derived with an *empty*
+   dependency set was derived deterministically (no disjunction choice), so it
+   holds in every model of `A` and `A ⊑ B` is definite — recorded with no
+   `{A, ¬B}` confirmation test (each test is a full model build). Only
+   choice-dependent candidates are confirmed. On a 50-concept Horn chain with
+   sprinkled disjunctions this classified all 1225 subsumptions with 0
+   confirmation tests. Verdicts unchanged (16/16 oracle + 160/160 random MATCH).
+   This realises CB's told-subsumer pruning from the tableau's own deterministic
+   derivations, with no router plumbing and no CB-explosion risk; the careful path
+   (no dependency tracking) confirms every candidate as before.
+
 ### Original M1 description
 
 - **M1 (now): standalone ALC hypertableau consistency checker in Rust.**
