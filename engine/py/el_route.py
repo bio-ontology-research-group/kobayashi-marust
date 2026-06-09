@@ -137,6 +137,11 @@ def classify(clauses):
     res = Completion(ax).saturate()
     subs = {}
     for c, sups in res.sub_super.items():
+        # ⊤/⊥ as a *subject* give the trivially-true ⊤⊑X / ⊥⊑X, which no reasoner
+        # reports as a class subsumption — skip them (else they show as spurious
+        # "extra" vs the gold signature).
+        if c == TOP or c == BOTTOM:
+            continue
         out = []
         for d in sups:
             if d == c or d == TOP:
