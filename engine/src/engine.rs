@@ -597,6 +597,7 @@ impl Engine {
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
     fn saturate(&mut self, id: usize) {
         self.stat_saturate += 1;
+        let trace_sat = std::env::var("KM_SAT").is_ok();
         loop {
             let clause = match self.contexts[id].todo.pop_front() {
                 Some(c) => c,
@@ -693,6 +694,20 @@ impl Engine {
             ctx.worked_off.push(clause);
             ctx.index_clause(idx);
             ctx.dirty = true;
+            if trace_sat {
+                let c = &self.contexts[id];
+                let wl = c.worked_off.len();
+                if wl % 10000 == 0 {
+                    let maxb = c.worked_off.iter().map(|cl| cl.body.len()).max().unwrap_or(0);
+                    let maxh = c.worked_off.iter().map(|cl| cl.head.len()).max().unwrap_or(0);
+                    let nctx = self.contexts.len();
+                    eprintln!(
+                        "KM_SAT ctx={} root={} core_len={} todo={} wo={} max_body={} max_head={} ncontexts={} hyper={}",
+                        id, c.root, c.core.len(), c.todo.len(), wl,
+                        maxb, maxh, nctx, HYPER_CALLS.with(|x| x.get())
+                    );
+                }
+            }
         }
     }
 
