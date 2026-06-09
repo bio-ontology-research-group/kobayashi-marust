@@ -65,21 +65,48 @@ def _atom_key(a: dict, ren: dict, fresh):
     raise ValueError(k)
 
 
+def _skeleton(c: dict) -> str:
+    """Order-independent fingerprint of a clause with every internal symbol
+    blanked to its kind tag (so it does not depend on the emission order or on
+    the concrete fresh-name spelling). Used to deterministically order clauses
+    before assigning the global renaming bijection."""
+    blank = {}
+    n = [0]
+    def f(_k):
+        n[0] += 1
+        return n[0]
+    body = sorted(repr(_atom_key(a, blank, f)) for a in c["body"])
+    head = sorted(repr(_atom_key(a, blank, f)) for a in c["head"])
+    # collapse the per-clause fresh ids to a single token: only the *shape* and
+    # the named (non-internal) symbols matter for ordering.
+    import re as _re
+    s = json.dumps({"b": body, "h": head}, sort_keys=True)
+    return _re.sub(r"#[a-z]\d+", "#", s)
+
+
 def canon(clauses):
     """Canonical, rename-invariant multiset of clauses, as sorted JSON lines.
 
-    Renaming is *global* (one bijection over the whole clause set), so the
-    structural linkage between clauses sharing an internal symbol is preserved.
-    Body/head atoms are sorted within a clause (clauses are unordered conjunctions
-    / disjunctions); clauses are then sorted as a multiset.
+    Renaming is *global* (one bijection over the whole clause set) so structural
+    linkage between clauses sharing an internal symbol is preserved, and it is
+    assigned in a deterministic, emission-order-independent order: clauses are
+    first sorted by an internal-blanked skeleton, then the bijection is built
+    walking that order. This makes the canonical form invariant to the order in
+    which the two frontends happen to emit clauses (Python uses frozensets, so
+    its emission order is hash-dependent and not reproducible in Rust).
+
+    Body/head atoms are sorted within each clause (clauses are unordered
+    conjunctions/disjunctions); clauses are sorted as a multiset at the end.
     """
+    order = sorted(range(len(clauses)), key=lambda i: _skeleton(clauses[i]))
     counters = {}
     def fresh(kind):
         counters[kind] = counters.get(kind, 0) + 1
         return counters[kind]
     ren = {}
     out = []
-    for c in clauses:
+    for i in order:
+        c = clauses[i]
         body = sorted(repr(_atom_key(a, ren, fresh)) for a in c["body"])
         head = sorted(repr(_atom_key(a, ren, fresh)) for a in c["head"])
         out.append(json.dumps({"b": body, "h": head}, sort_keys=True))
