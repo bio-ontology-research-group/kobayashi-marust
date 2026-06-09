@@ -150,6 +150,20 @@ def short(name: str) -> str:
     return cand
 
 
+def full_iri(internal: str) -> str:
+    """Map an engine-internal name back to the *full* IRI of the class/role it
+    denotes (the inverse of the per-ontology `short` registry). Classification
+    output uses this so the comparison harness canonicalises km exactly like the
+    other reasoners (Konclude/ELK/HermiT all emit full IRIs and the harness
+    applies ore_canon.localname once). Emitting the already-shortened local name
+    instead made the harness apply localname a SECOND time, truncating fragments
+    that contain '/' or an embedded IRI (e.g. '…#C2/C3_facet_joint' ->
+    'C3_facet_joint'; the _hasValue surrogate -> 'SWO_0000023'), which showed as
+    spurious extra+missing vs gold. Names with no registered IRI (generated
+    Q_*/__*, builtins) are returned unchanged."""
+    return _short_owner.get(internal, internal)
+
+
 def is_named_iri(internal: str) -> bool:
     """True if `internal` is the engine name of a real OWL IRI (declared/used in
     the ontology). moose's normalisation concepts (`Q_<n>`, `__*`, …) are

@@ -93,17 +93,23 @@ def classify(ofn_path: str) -> dict:
             raise RuntimeError(proc.stderr)
         out = json.loads(proc.stdout)
 
+    # Output uses the FULL IRI (frontend.full_iri); the comparison harness
+    # applies ore_canon.localname once, exactly as it does for every other
+    # reasoner. Filtering (is_internal) and the self-/bottom-subsumption checks
+    # stay on the short local name. Emitting the short name here instead made the
+    # harness localname-truncate fragments containing '/' (ore_ont_14499/8135).
     subs, unsat = [], []
     for a, sups in out["subsumptions"].items():
         if is_internal(a):
             continue
         sa = short(a)
+        fa = frontend.full_iri(a)
         for s in sups:
             if short(s) in BOTTOM:
-                if sa not in unsat:
-                    unsat.append(sa)
+                if fa not in unsat:
+                    unsat.append(fa)
             elif not is_internal(s) and short(s) != sa:
-                subs.append([sa, short(s)])
+                subs.append([fa, frontend.full_iri(s)])
     return {
         "consistent": not out.get("inconsistent", False),
         "subsumptions": sorted(subs),
