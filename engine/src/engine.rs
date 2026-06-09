@@ -30,6 +30,7 @@ thread_local! {
 
 /// Central substitution used by Hyper: maps ontology variables (x, z_i) to
 /// context terms.  `x -> x` always; function terms map to themselves.
+#[derive(Clone)]
 struct CentralSubst {
     map: HashMap<Term, Term>,
 }
@@ -598,11 +599,25 @@ impl Engine {
     fn saturate(&mut self, id: usize) {
         self.stat_saturate += 1;
         let trace_sat = std::env::var("KM_SAT").is_ok();
+        let prof = std::env::var("KM_PROF").is_ok();
+        let (mut iters, mut subsumed, mut nhyper, mut npred, mut neqp, mut neqe, mut nfact, mut nadded) =
+            (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
         loop {
             let clause = match self.contexts[id].todo.pop_front() {
                 Some(c) => c,
                 None => break,
             };
+            if prof {
+                iters += 1;
+                if iters % 200_000 == 0 {
+                    let ctx = &self.contexts[id];
+                    eprintln!(
+                        "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={}",
+                        id, iters, subsumed, nadded, ctx.todo.len(), ctx.worked_off.len(),
+                        nhyper, npred, neqp, neqe, nfact
+                    );
+                }
+            }
             // Re-check forward subsumption at work-off time: a clause that was
             // not subsumed when enqueued may since have been subsumed by a
             // newly worked-off clause (back_subsume only scans worked_off, not
@@ -615,6 +630,7 @@ impl Engine {
                 let (nb, nh) = (clause.body.len(), clause.head.len());
                 if ctx.fwd_subsumed(&clause, nb, nh) {
                     self.contexts[id].clause_keys.remove(&clause.key());
+                    if prof { subsumed += 1; }
                     continue;
                 }
             }
@@ -628,18 +644,21 @@ impl Engine {
                         // candidate ontology clauses are those with a body atom
                         // (central or neighbour) that can unify with `p`.
                         let results = self.hyper(id, &clause, *p, root);
+                        if prof { nhyper += results.len() as u64; }
                         for r in results {
-                            self.add_clause(id, r);
+                            if self.add_clause(id, r) && prof { nadded += 1; }
                         }
                         if is_function(p.max_term()) {
                             let results = self.pred_local(id, &clause, *p, root);
+                            if prof { npred += results.len() as u64; }
                             for r in results {
-                                self.add_clause(id, r);
+                                if self.add_clause(id, r) && prof { nadded += 1; }
                             }
                             if self.equality {
                                 let results = self.eq_from_pred(id, &clause, *max, root);
+                                if prof { neqp += results.len() as u64; }
                                 for r in results {
-                                    self.add_clause(id, r);
+                                    if self.add_clause(id, r) && prof { nadded += 1; }
                                 }
                             }
                         }
@@ -648,8 +667,9 @@ impl Engine {
                         // This equality is the paramodulation source: rewrite
                         // matching literals of worked-off clauses.
                         let results = self.eq_from_equation(id, &clause, *max, root);
+                        if prof { neqe += results.len() as u64; }
                         for r in results {
-                            self.add_clause(id, r);
+                            if self.add_clause(id, r) && prof { nadded += 1; }
                         }
                     }
                     Lit::Ineq { .. } if self.equality => {
@@ -658,8 +678,9 @@ impl Engine {
                         // the equality/inequality clash is found regardless of
                         // derivation order).
                         let results = self.eq_from_pred(id, &clause, *max, root);
+                        if prof { neqp += results.len() as u64; }
                         for r in results {
-                            self.add_clause(id, r);
+                            if self.add_clause(id, r) && prof { nadded += 1; }
                         }
                     }
                     _ => {}
@@ -668,8 +689,9 @@ impl Engine {
             // Factor rule: applies to clauses with two head equalities sharing a side.
             if self.equality && clause.head.iter().filter(|l| matches!(l, Lit::Eq { .. })).count() >= 2 {
                 let results = self.factor(&clause, root);
+                if prof { nfact += results.len() as u64; }
                 for r in results {
-                    self.add_clause(id, r);
+                    if self.add_clause(id, r) && prof { nadded += 1; }
                 }
             }
             let ctx = &mut self.contexts[id];
@@ -767,45 +789,58 @@ impl Engine {
             if !ok {
                 continue;
             }
-            // cartesian product over candidates
-            let mut idxs = vec![0usize; n];
-            loop {
-                // build substitution and resolvent for this combination
-                let mut sigma = CentralSubst::new();
-                let mut unifiable = true;
-                for i in 0..n {
-                    let (_ci, p) = candidates[i][idxs[i]];
-                    if !unify(&mut sigma, &oc.body[i], &p) {
-                        unifiable = false;
-                        break;
-                    }
-                }
-                if unifiable {
-                    if let Some(c) = self.build_hyper_resolvent(id, side, oc, &sigma, &candidates, &idxs, root) {
-                        out.push(c);
-                    }
-                }
-                // increment
-                let mut k = 0;
-                loop {
-                    if k == n {
-                        // done
-                        idxs[0] = usize::MAX; // sentinel handled below
-                        break;
-                    }
-                    idxs[k] += 1;
-                    if idxs[k] < candidates[k].len() {
-                        break;
-                    }
-                    idxs[k] = 0;
-                    k += 1;
-                }
-                if n == 0 || idxs[0] == usize::MAX {
-                    break;
-                }
-            }
+            // Enumerate the unifiable combinations by a backtracking *join* rather
+            // than the full cartesian product: extend the central substitution one
+            // body position at a time, and at each position only descend into the
+            // candidates whose match is consistent with the bindings already made
+            // (shared neighbour variables, e.g. `y` in `R(x,y) ∧ C(y)`).  This
+            // yields exactly the same set of resolvents as iterating the product
+            // and filtering by `unify` -- the failed combinations were precisely
+            // those skipped here -- but never materialises the doomed branches,
+            // which on number restrictions (`R(x,y1) ∧ C(y1) ∧ R(x,y2) ∧ C(y2)`)
+            // is the difference between `(#successors)^k` and the number of
+            // genuinely unifiable tuples.  Positions are visited fewest-candidates
+            // first so the most constraining atoms bind earliest.
+            let mut order: Vec<usize> = (0..n).collect();
+            order.sort_by_key(|&i| candidates[i].len());
+            let mut chosen = vec![0usize; n];
+            let sigma = CentralSubst::new();
+            self.hyper_join(id, side, oc, &candidates, &order, 0, &sigma, &mut chosen, root, &mut out);
         }
         out
+    }
+
+    /// Recursive backtracking enumeration helper for `hyper` (see its comment).
+    /// `order[depth]` is the body position bound at this level; `chosen[pos]` is
+    /// the index into `candidates[pos]` selected for the resolvent build.
+    #[allow(clippy::too_many_arguments)]
+    fn hyper_join(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        oc: &OntologyClause,
+        candidates: &[Vec<(usize, Pred)>],
+        order: &[usize],
+        depth: usize,
+        sigma: &CentralSubst,
+        chosen: &mut Vec<usize>,
+        root: bool,
+        out: &mut Vec<ContextClause>,
+    ) {
+        if depth == order.len() {
+            if let Some(c) = self.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root) {
+                out.push(c);
+            }
+            return;
+        }
+        let pos = order[depth];
+        for (j, &(_ci, p)) in candidates[pos].iter().enumerate() {
+            let mut s2 = sigma.clone();
+            if unify(&mut s2, &oc.body[pos], &p) {
+                chosen[pos] = j;
+                self.hyper_join(id, side, oc, candidates, order, depth + 1, &s2, chosen, root, out);
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1358,12 +1393,25 @@ impl Engine {
     /// sound and yields identical results for those concepts.  This is what lets
     /// classification be parallelised across disjoint concept chunks.
     pub fn run_for(&mut self, queries: &[Iri]) {
+        let prof = std::env::var("KM_PROF").is_ok();
         // Root contexts: one per named (query) concept.
-        for &iri in queries {
+        for (qi, &iri) in queries.iter().enumerate() {
             let core = vec![Pred::Concept { iri, t: X }];
             let id = self.get_or_create_context(core, true, Some(iri));
             self.saturate(id);
             self.propagate(id);
+            if prof && (qi + 1) % 50 == 0 {
+                eprintln!(
+                    "KM_PROF seeding query {}/{} contexts={} msgs_pending={} saturate_calls={}",
+                    qi + 1, queries.len(), self.contexts.len(), self.msgs.len(), self.stat_saturate
+                );
+            }
+        }
+        if prof {
+            eprintln!(
+                "KM_PROF seeded all {} queries; contexts={} msgs_pending={} saturate_calls={}",
+                queries.len(), self.contexts.len(), self.msgs.len(), self.stat_saturate
+            );
         }
         // Always seed the ⊤ (empty-core) context so a *global* inconsistency
         // (owl:Thing unsatisfiable) is detected regardless of which concepts are
@@ -1377,6 +1425,12 @@ impl Engine {
         let trace = std::env::var("KM_TRACE").is_ok();
         while let Some(msg) = self.msgs.pop_front() {
             guard += 1;
+            if prof && guard % 200 == 0 {
+                eprintln!(
+                    "KM_PROF msgloop guard={} contexts={} msgs_pending={} saturate_calls={}",
+                    guard, self.contexts.len(), self.msgs.len(), self.stat_saturate
+                );
+            }
             if trace && guard % 200_000 == 0 {
                 let (mut maxb, mut totwo) = (0usize, 0usize);
                 for c in &self.contexts {
