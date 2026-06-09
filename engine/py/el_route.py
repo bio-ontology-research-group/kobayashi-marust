@@ -188,22 +188,15 @@ _EL_SAFE_RBOX = {"subrole", "domain", "range"}
 def rbox_el_safe(rbox) -> bool:
     """Whether the RBox is safe to hand to completion.
 
-    {subrole, domain, range} are folded into the clauses, so completion sees
-    them fully. Role chains are *fenced* (moose does not put general chains in
-    the clauses), but ignoring a role-composition axiom only ever REMOVES
-    consequences, so completion stays sound on chain ontologies — merely
-    incomplete on the chain-derived subsumptions, which is strictly better than
-    the context engine timing out. Inverse / symmetric / functional etc. are NOT
-    safe: dropping them can change role-hierarchy interactions and yield extra
-    (unsound) subsumptions (witnessed on ore_ont_5404), so those still fall back
-    to the context engine."""
-    for rec in (rbox or []):
-        if rec[0] in _EL_SAFE_RBOX:
-            continue
-        if rec[0] == "fenced" and rec[1] == "role-chain":
-            continue
-        return False
-    return True
+    Only {subrole, domain, range} are folded into the clauses so completion sees
+    their full semantics. Everything else — inverse, symmetric, functional, and
+    *role chains* (incl. transitivity written as ObjectPropertyChain(r r)⊑r,
+    which moose fences rather than turning into __trans__) — is handled by the
+    context engine's trigger machinery and is absent from / only partially
+    approximated in the clauses, so completion can return UNSOUND results
+    (ore_ont_5404 inverse: +11 extra; ore_ont_7868 chain-transitivity: +1110
+    extra). Those fall back to the context engine."""
+    return all(rec[0] in _EL_SAFE_RBOX for rec in (rbox or []))
 
 
 def has_transitivity(clauses) -> bool:
