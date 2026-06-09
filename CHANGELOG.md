@@ -8,6 +8,28 @@ Goal: close the remaining ORE 2015 coverage gap to Konclude (was 551/590 ok;
 40 failures = 21 timeout + 19 memout). Diagnosis, fixes, and benchmark deltas
 tracked here.
 
+### Result (ORE 2015, 240 s / 20 GB, gold = Konclude 587 ok)
+
+| build | ok | timeout | memout | vs baseline |
+|---|---|---|---|---|
+| baseline (16-thread, pre-fixes) | 551 | 21 | 19 | — |
+| + Hyper join + adaptive retry | 553 | 33 | 5 | +2, 0 regressions |
+| **+ message batching (final)** | **554** | 31 | 6 | **+3, 0 regressions** |
+
+Recovered: 2397 (fully correct), 9944, 9724 (sound but CB-incomplete on
+number/inverse — previously timed out/memouted). Soundness preserved: vs gold the
+unsound set is unchanged (the 8 pre-existing CB nominal/number under-detected-
+unsat cases), both-disagree = 0; no previously-agreeing ontology regressed. The
+Hyper-join and batching changes are fixpoint-preserving, so they change *whether*
+an ontology finishes in budget, never *what* it derives.
+
+Residual (37) is genuinely hard for the CB engine: live-`∀+⊔` disjunction
+(message-traffic explosion — Sequoia, the same calculus, solves these via more
+mature redundancy/ordering), 3M-axiom giants that memout in the frontend (3M
+string-valued clause structs ≈ 20 GB before the engine starts), and role-chain
+propagation volume. The hypertableau (`tableau_cli`) is NOT a fallback: it errors
+or hangs on real ORE ontologies (validated only on small synthetic + kinship).
+
 ### Hyper rule: backtracking join instead of full cartesian product
 - `engine/src/engine.rs` `hyper()` / new `hyper_join()`: the Hyper rule used to
   build a candidate list per body position and iterate the **full cartesian
@@ -27,6 +49,19 @@ tracked here.
   enumeration optimisation.
 - Added env-gated `KM_PROF` diagnostics (per-query seeding + message-loop
   progress, per-rule saturate counters). Off by default, no hot-path cost.
+
+### Message loop: batched propagation
+- `engine.rs` `run_for`: the inter-context message fixpoint used to `saturate`
+  *and* `propagate` the target after **every** message. On disjunction/role-chain
+  ontologies that re-scans each context's predecessor-edge and Succ/Pred pools
+  thousands of times (ore_ont_5303: ~86 k propagate calls). Applying a message
+  never enqueues new messages (only `propagate` does), so the loop now **drains
+  the whole pending batch**, saturates each target, records the touched contexts,
+  and propagates each **once** per round. `apply_succ`/`apply_pred` return the
+  touched context instead of propagating inline. Fixpoint unchanged (saturation
+  is monotone and confluent — the schedule does not affect the derived set);
+  ~1.5× faster message throughput. Recovers ore_ont_9724; all `cargo test` pass;
+  vs gold no new unsound/incomplete.
 
 ### Threading: adaptive parallel-then-single-threaded-retry (memory-aware)
 - Root cause: `reasoner.rs` `saturate()` splits the named queries into

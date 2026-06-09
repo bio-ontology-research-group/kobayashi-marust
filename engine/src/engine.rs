@@ -1247,7 +1247,13 @@ impl Engine {
         }
     }
 
-    fn apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) {
+    /// Apply a Succ message: record the edge and add the hypothesis clause,
+    /// saturating the target.  Returns the target id; the caller propagates it
+    /// (deferred, batched: many messages may target the same context, and
+    /// propagating once after the whole batch -- rather than per message --
+    /// avoids re-scanning the edge/pool sets thousands of times on
+    /// disjunction/role-chain ontologies, without changing the fixpoint).
+    fn apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) -> usize {
         // record predecessor edge
         self.contexts[target]
             .predecessors
@@ -1260,24 +1266,22 @@ impl Engine {
         // Succ rule: add hypothesis clause  p -> p
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
-        let added = self.add_clause(target, c);
-        if added {
+        if self.add_clause(target, c) {
             self.saturate(target);
-            self.propagate(target);
-        } else {
-            // even if not added, existing pred clauses may need pushing to the
-            // (possibly new) edge: re-run propagate to flush worked-off pred clauses
-            self.propagate(target);
         }
+        target
     }
 
+    /// Apply a Pred message: back-substitute and add the resulting pred clause /
+    /// resolvents, saturating `to`.  Returns `to`; the caller propagates it
+    /// (deferred, batched -- see `apply_succ`).
     fn apply_pred(
         &mut self,
         to: usize,
         edge_label: Term,
         neighbour_core: Vec<Pred>,
         clause: ContextClause,
-    ) {
+    ) -> usize {
         // Back-substitute: y -> x, x -> f(x)
         let f = edge_label;
         let subst = |v: Term| backwards(f, v);
@@ -1302,7 +1306,7 @@ impl Engine {
             self.add_clause(to, r);
         }
         self.saturate(to);
-        self.propagate(to);
+        to
     }
 
     /// Pred rule for a freshly received neighbor pred clause: resolve all its
@@ -1420,49 +1424,75 @@ impl Engine {
         let top = self.get_or_create_context(vec![], true, None);
         self.saturate(top);
         self.propagate(top);
-        // Process inter-context messages to fixpoint.
+        // Process inter-context messages to fixpoint, *batched*: drain the whole
+        // pending set, apply each message (which saturates its target but does
+        // not propagate), recording the touched contexts, then propagate each
+        // touched context exactly once.  Applying a message never enqueues new
+        // messages (only `propagate` does), so a batch is self-contained and the
+        // next batch is the propagation output.  Propagating once per batch --
+        // instead of after every message -- avoids re-scanning each context's
+        // predecessor-edge and Succ/Pred pools thousands of times on
+        // disjunction/role-chain ontologies (the dominant cost there).  The
+        // fixpoint is unchanged: saturation is monotone and confluent, so the
+        // derived clause set is independent of the propagation schedule.
         let mut guard = 0usize;
         let trace = std::env::var("KM_TRACE").is_ok();
-        while let Some(msg) = self.msgs.pop_front() {
-            guard += 1;
-            if prof && guard % 200 == 0 {
-                eprintln!(
-                    "KM_PROF msgloop guard={} contexts={} msgs_pending={} saturate_calls={}",
-                    guard, self.contexts.len(), self.msgs.len(), self.stat_saturate
-                );
-            }
-            if trace && guard % 200_000 == 0 {
-                let (mut maxb, mut totwo) = (0usize, 0usize);
-                for c in &self.contexts {
-                    totwo += c.worked_off.len();
-                    for cl in &c.worked_off { if cl.body.len() > maxb { maxb = cl.body.len(); } }
+        let mut truncated = false;
+        while !self.msgs.is_empty() {
+            let batch: Vec<Msg> = self.msgs.drain(..).collect();
+            let mut touched: Vec<usize> = Vec::new();
+            let mut seen: HashSet<usize> = HashSet::new();
+            for msg in batch {
+                guard += 1;
+                if guard > 5_000_000 {
+                    // Hard safety cap on the inter-context message fixpoint.
+                    // Hitting it means the run was truncated, so the
+                    // classification may be INCOMPLETE -- never silently: warn on
+                    // stderr (audit L1/L2). Sound (only consequences are
+                    // dropped), but completeness is not guaranteed for this run.
+                    eprintln!(
+                        "WARNING: kobayashi-marust message fixpoint hit the 5,000,000 cap; \
+                         classification may be incomplete (truncated). {} pending messages dropped.",
+                        self.msgs.len()
+                    );
+                    truncated = true;
+                    break;
                 }
-                eprintln!(
-                    "KM_TRACE guard={} contexts={} msgs_pending={} worked_off_total={} max_body_len={}",
-                    guard, self.contexts.len(), self.msgs.len(), totwo, maxb
-                );
+                if prof && guard % 20000 == 0 {
+                    eprintln!(
+                        "KM_PROF msgloop guard={} contexts={} msgs_pending={} saturate_calls={}",
+                        guard, self.contexts.len(), self.msgs.len(), self.stat_saturate
+                    );
+                }
+                if trace && guard % 200_000 == 0 {
+                    let (mut maxb, mut totwo) = (0usize, 0usize);
+                    for c in &self.contexts {
+                        totwo += c.worked_off.len();
+                        for cl in &c.worked_off { if cl.body.len() > maxb { maxb = cl.body.len(); } }
+                    }
+                    eprintln!(
+                        "KM_TRACE guard={} contexts={} msgs_pending={} worked_off_total={} max_body_len={}",
+                        guard, self.contexts.len(), self.msgs.len(), totwo, maxb
+                    );
+                }
+                let t = match msg {
+                    Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
+                    Msg::Pred {
+                        to,
+                        edge_label,
+                        neighbour_core,
+                        clause,
+                    } => self.apply_pred(to, edge_label, neighbour_core, clause),
+                };
+                if seen.insert(t) {
+                    touched.push(t);
+                }
             }
-            if guard > 5_000_000 {
-                // Hard safety cap on the inter-context message fixpoint. Hitting it
-                // means the run was truncated, so the classification may be
-                // INCOMPLETE — never silently: warn on stderr (audit L1/L2). Sound
-                // (only consequences are dropped), but completeness is not
-                // guaranteed for this run.
-                eprintln!(
-                    "WARNING: kobayashi-marust message fixpoint hit the 5,000,000 cap; \
-                     classification may be incomplete (truncated). {} pending messages dropped.",
-                    self.msgs.len()
-                );
+            if truncated {
                 break;
             }
-            match msg {
-                Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
-                Msg::Pred {
-                    to,
-                    edge_label,
-                    neighbour_core,
-                    clause,
-                } => self.apply_pred(to, edge_label, neighbour_core, clause),
+            for id in touched {
+                self.propagate(id);
             }
         }
         if std::env::var("KM_STATS").is_ok() {
