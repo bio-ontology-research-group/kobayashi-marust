@@ -38,6 +38,21 @@ fn dt_concept(node: &Node) -> Concept {
     }
 }
 
+/// `DataHasValue(p v)` ≡ ∃p.{v}: the filler MUST distinguish the literal value
+/// `v`. Sharing one `__dt__val` concept across all values (the old behaviour)
+/// collapses e.g. `Chinese ≡ ∃langCode."zh"` and `English ≡ ∃langCode."en"` to
+/// the same concept, inventing the unsound subsumption Chinese ≡ English (seen
+/// on ore_ont_13132 / 9881). Keying by the literal restores the `dt_concept`
+/// invariant: distinct data values are distinct concepts, never asserted
+/// disjoint, so the abstraction can only lose an unsatisfiability
+/// (incompleteness), never invent a subsumption.
+fn dt_value_concept(node: Option<&Node>) -> Concept {
+    match node.and_then(|n| n.as_atom()) {
+        Some(v) => Concept::Name(format!("__dt__val__{}", v)),
+        None => Concept::Name("__dt__val__opaque".to_string()),
+    }
+}
+
 /// Port of `cls`.
 fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
     match node {
@@ -121,7 +136,7 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
             )),
             "DataHasValue" => Ok(Concept::Exists(
                 Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                Box::new(Concept::Name("__dt__val".to_string())),
+                Box::new(dt_value_concept(args.get(1))),
             )),
             "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
                 let n: i64 = args[0]

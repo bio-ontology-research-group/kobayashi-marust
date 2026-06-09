@@ -233,6 +233,20 @@ def _dt_concept(dr):
     return sx.ConceptName("__dt__opaque")
 
 
+def _dt_value_concept(args):
+    """``DataHasValue(p v)`` ≡ ∃p.{v}: the filler must distinguish the literal
+    value ``v``. Sharing one ``__dt__val`` concept across all values collapses
+    e.g. ``Chinese ≡ ∃langCode."zh"`` and ``English ≡ ∃langCode."en"`` into the
+    same concept, inventing the unsound subsumption Chinese ≡ English (seen on
+    ore_ont_13132 / 9881). Keying by the literal keeps the _dt_concept invariant:
+    distinct data values are distinct, never-disjoint concepts, so the
+    abstraction can only lose an unsatisfiability, never invent a subsumption.
+    The functional-syntax literal ``"zh"^^xsd:string`` tokenises to the value
+    ``args[1]`` (the datatype is args[2])."""
+    val = args[1] if len(args) > 1 and isinstance(args[1], str) else None
+    return sx.ConceptName("__dt__val__" + val if val else "__dt__val__opaque")
+
+
 def cls(node):
     if isinstance(node, str):
         s = short(node)
@@ -276,7 +290,7 @@ def cls(node):
     if head == "DataAllValuesFrom":
         return sx.Forall(short(args[0]), _dt_concept(args[1]))
     if head == "DataHasValue":
-        return sx.Exists(short(args[0]), sx.ConceptName("__dt__val"))
+        return sx.Exists(short(args[0]), _dt_value_concept(args))
     if head in ("DataMinCardinality", "DataMaxCardinality", "DataExactCardinality"):
         n = int(args[0])
         r = short(args[1])
