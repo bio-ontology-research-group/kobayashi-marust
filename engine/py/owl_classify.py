@@ -180,18 +180,23 @@ def classify(ofn_path: str) -> dict:
     try:
         out = None
         # EL fast path: classify EL++ ontologies with the ELK-style completion.
-        # The compiled `elc` decides EL-membership itself (exit 3 => not EL, fall
-        # through to the context engine); it replaces the Python completion on the
-        # large EL ontologies whose Python saturation exceeds the time budget.
-        if rbox_safe and use_rust_el:
-            proc = run_reasoner_file([elc_bin()], clauses_path)
-            if proc.returncode == 3:
-                out = None
-            elif proc.returncode != 0:
-                raise RuntimeError(proc.stderr)
-            else:
-                out = json.loads(proc.stdout)
-        elif el_route.is_el(clauses) and rbox_safe:
+        # Only attempt it when the RBox is EL-safe; otherwise go straight to the
+        # context engine.
+        if use_rust_el:
+            # Compiled `elc` decides EL-membership itself (exit 3 => not EL, fall
+            # through to the context engine); it replaces the Python completion on
+            # the large EL ontologies whose Python saturation exceeds the budget.
+            # `clauses` is None here (the clause set lives only in the file), so
+            # the Python el_route path must NOT be taken.
+            if rbox_safe:
+                proc = run_reasoner_file([elc_bin()], clauses_path)
+                if proc.returncode == 3:
+                    out = None
+                elif proc.returncode != 0:
+                    raise RuntimeError(proc.stderr)
+                else:
+                    out = json.loads(proc.stdout)
+        elif rbox_safe and el_route.is_el(clauses):
             out = el_route.classify(clauses)
         if out is None:
             if clauses_path is not None:
