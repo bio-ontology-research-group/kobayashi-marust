@@ -63,6 +63,7 @@ sys.path.insert(0, str(HERE))
 import frontend  # noqa: E402
 import cb_to_ht  # noqa: E402
 import owl_classify  # noqa: E402
+import el_route  # noqa: E402  (EL++ completion fast path)
 
 TABLEAU = HERE.parent / "target" / "release" / "tableau_cli"
 
@@ -112,6 +113,35 @@ def _mem_limit(gb):
     resource.setrlimit(resource.RLIMIT_AS, (n, n))
 
 
+def _filter_engine_out(out):
+    """Shape an engine-style result ({"subsumptions": {C:[D,...]},
+    "inconsistent": bool}) — produced by either the CB binary or the EL
+    completion fast path — into the router's {consistent, subsumptions,
+    unsatisfiable} form, dropping normalisation-internal names (the exact same
+    filtering owl_classify applies)."""
+    subs, unsat = [], []
+    for a, sups in out["subsumptions"].items():
+        if owl_classify.is_internal(a):
+            continue
+        sa = owl_classify.short(a)
+        for s in sups:
+            if owl_classify.short(s) in owl_classify.BOTTOM:
+                if sa not in unsat:
+                    unsat.append(sa)
+            elif not owl_classify.is_internal(s) and owl_classify.short(s) != sa:
+                subs.append([sa, owl_classify.short(s)])
+    return {"consistent": not out.get("inconsistent", False),
+            "subsumptions": sorted(subs), "unsatisfiable": sorted(unsat)}
+
+
+def el_classify(clauses):
+    """EL++ fast path: classify with moose's ELK-style completion (sound, low
+    memory, no successor trees). Returns the shaped dict, or None if the clause
+    set is not EL++ (caller falls through to CB/tableau)."""
+    out = el_route.classify(clauses)
+    return None if out is None else _filter_engine_out(out)
+
+
 def cb_classify(clauses, mem_gb=DEFAULT_CB_MEM_GB):
     """Run the CB engine under a hard memory cap. Returns the classification
     dict, or None if the engine overflowed the cap / errored (never OOMs the
@@ -126,20 +156,7 @@ def cb_classify(clauses, mem_gb=DEFAULT_CB_MEM_GB):
         return None
     if proc.returncode != 0 or not proc.stdout.strip():
         return None
-    out = json.loads(proc.stdout)
-    subs, unsat = [], []
-    for a, sups in out["subsumptions"].items():
-        if owl_classify.is_internal(a):
-            continue
-        sa = owl_classify.short(a)
-        for s in sups:
-            if owl_classify.short(s) in owl_classify.BOTTOM:
-                if sa not in unsat:
-                    unsat.append(sa)
-            elif not owl_classify.is_internal(s) and owl_classify.short(s) != sa:
-                subs.append([sa, owl_classify.short(s)])
-    return {"consistent": not out.get("inconsistent", False),
-            "subsumptions": sorted(subs), "unsatisfiable": sorted(unsat)}
+    return _filter_engine_out(json.loads(proc.stdout))
 
 
 def tableau_classify(tin):
@@ -166,11 +183,6 @@ def route(ofn, cb_mem_gb=DEFAULT_CB_MEM_GB, explain=False):
     clauses = frontend.ofn_to_clauses(ofn)
     rbox = frontend.ofn_rbox(ofn)
     feat = liveness(clauses)
-    tin = cb_to_ht.convert(clauses, rbox)
-    in_frag = not (tin["fenced"] or tin["dropped"])
-    feat["in_tableau_fragment"] = in_frag
-    feat["nominals"] = len(tin["nominals"])
-    feat["inverse"] = tin["inverse"]
 
     def finish(engine, res, why):
         if res is None:
@@ -182,6 +194,23 @@ def route(ofn, cb_mem_gb=DEFAULT_CB_MEM_GB, explain=False):
             res["_why"] = why
         res["engine"] = engine
         return res
+
+    # EL++ fast path (cheapest, lowest memory, validated sound vs gold). EL is
+    # Horn (no disjunctive heads => live=0) and the RBox-safe gate excludes
+    # inverse/nominals, so an EL-safe ontology never needs the tableau; take it
+    # straight to completion. Falls through if the clause set is not EL++ or the
+    # RBox uses features moose folds only into the context engine.
+    if el_route.is_el(clauses) and el_route.rbox_el_safe(rbox):
+        res = el_classify(clauses)
+        if res is not None:
+            feat["in_tableau_fragment"] = None
+            return finish("el", res, "EL++ via ELK-style completion")
+
+    tin = cb_to_ht.convert(clauses, rbox)
+    in_frag = not (tin["fenced"] or tin["dropped"])
+    feat["in_tableau_fragment"] = in_frag
+    feat["nominals"] = len(tin["nominals"])
+    feat["inverse"] = tin["inverse"]
 
     # 0. CB-incomplete in-fragment feature -> tableau (validated-complete there).
     if in_frag and (tin["inverse"] or tin["nominals"]):

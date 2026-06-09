@@ -48,8 +48,18 @@ def short(n: str) -> str:
     # disambiguates distinct IRIs that share a fragment (sound reasoning), but
     # the classification output must use the bare local name to match the gold
     # comparison convention (ore_canon.localname). See frontend.local_name.
-    s = frontend.local_name(n)
-    return s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+    #
+    # local_name == _short_base(full IRI), which already implements the gold
+    # ore_canon.localname convention exactly: everything after the last '#', or
+    # (if there is no '#') after the last '/'. Crucially it keeps the whole
+    # post-'#' fragment, including any embedded '/' or '://' — ORE surrogate
+    # classes look like '…obo/_#_hasValue__http://…/SWO_0000394__http://…/SWO_0000023'
+    # and gold keeps that full fragment. The old code did an extra
+    # `.rsplit('/')`, truncating such fragments to their last path segment
+    # ('C2/C3_facet_joint' -> 'C3_facet_joint'; the _hasValue surrogate ->
+    # 'SWO_0000023'), which showed as spurious extra+missing vs gold (ore_ont_14499,
+    # 8135). Return local_name unchanged so output matches the gold convention.
+    return frontend.local_name(n)
 
 
 def is_internal(n: str) -> bool:
