@@ -14,9 +14,63 @@
 //! EL-membership test is `to_nf`: it fires only when *every* clause maps onto one
 //! of the EL++ normal forms NF1–NF7, exactly as the Python router does.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
+use std::hash::{BuildHasherDefault, Hasher};
 
 use crate::json_io::{JAtom, JClause, JTerm};
+
+// ---------------------------------------------------------------------------
+// Fast hashing for the integer-keyed saturation state
+// ---------------------------------------------------------------------------
+//
+// The saturation is dominated by membership/lookup on `u32` (concept/role id)
+// and `(u32,u32)` keys. std's default SipHash is cryptographic and far too slow
+// for that hot path; an FxHash-style multiply-rotate hasher (the rustc-hash
+// algorithm) is ~an order of magnitude faster on small integer keys and needs no
+// extra dependency.
+
+#[derive(Default)]
+struct FxHasher {
+    hash: u64,
+}
+
+const SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+
+impl FxHasher {
+    #[inline]
+    fn add(&mut self, i: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ i).wrapping_mul(SEED);
+    }
+}
+
+impl Hasher for FxHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.add(b as u64);
+        }
+    }
+    #[inline]
+    fn write_u32(&mut self, i: u32) {
+        self.add(i as u64);
+    }
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.add(i);
+    }
+    #[inline]
+    fn write_usize(&mut self, i: usize) {
+        self.add(i as u64);
+    }
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
+
+type FxBuild = BuildHasherDefault<FxHasher>;
+type HashMap<K, V> = std::collections::HashMap<K, V, FxBuild>;
+type HashSet<T> = std::collections::HashSet<T, FxBuild>;
 
 // ---------------------------------------------------------------------------
 // String interning
@@ -35,7 +89,7 @@ const BOTTOM: u32 = 1;
 impl Interner {
     fn new() -> Self {
         let mut i = Interner {
-            map: HashMap::new(),
+            map: HashMap::default(),
             names: Vec::new(),
         };
         i.intern("\u{22a4}"); // ⊤ -> 0
@@ -151,11 +205,11 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
     let mut nf5 = Vec::new();
     let mut nf6 = Vec::new();
     let mut nf7 = Vec::new();
-    let mut concept_names: HashSet<u32> = HashSet::new();
-    let mut role_names: HashSet<u32> = HashSet::new();
+    let mut concept_names: HashSet<u32> = HashSet::default();
+    let mut role_names: HashSet<u32> = HashSet::default();
 
     // (sub_concept, skolem_fn) -> (role, filler) halves of an A ⊑ ∃R.B axiom.
-    let mut pending_ex: HashMap<(u32, u32), (Option<u32>, Option<u32>)> = HashMap::new();
+    let mut pending_ex: HashMap<(u32, u32), (Option<u32>, Option<u32>)> = HashMap::default();
 
     // Helpers that intern + record the signature as a side effect.
     macro_rules! addc {
@@ -397,8 +451,9 @@ enum Item {
     Edge(u32, u32, u32),
 }
 
-struct Sat {
-    // indexes (read-only during the loop)
+/// Read-only indexes over the normal forms; built once, never mutated during the
+/// loop, so the hot path can iterate their slices directly (no per-item clone).
+struct Idx {
     nf1_by_sub: HashMap<u32, Vec<u32>>,        // sub -> [sup]
     nf2_by_sub: HashMap<u32, Vec<(u32, u32)>>, // key -> [(other, sup)]
     nf3_by_sub: HashMap<u32, Vec<(u32, u32)>>, // sub -> [(role, filler)]
@@ -406,35 +461,38 @@ struct Sat {
     nf5_subs: HashSet<u32>,
     nf7_by_pair: HashMap<(u32, u32), Vec<u32>>, // (r1,r2) -> [sup]
     role_sub: Vec<HashSet<u32>>,                // role -> {super roles} (computed once)
+}
 
-    // mutable state
+impl Idx {
+    /// Super-roles of `r` (always includes `r`, since every role in the signature
+    /// is pre-seeded with itself and every edge role lies in that signature).
+    fn role_supers(&self, r: u32) -> &HashSet<u32> {
+        &self.role_sub[r as usize]
+    }
+}
+
+/// Mutable saturation state. Kept separate from `Idx` so a rule can iterate an
+/// index immutably while pushing conclusions here mutably.
+struct State {
     sub_super: Vec<HashSet<u32>>,
     edges: Vec<HashSet<(u32, u32)>>,
     in_edges: Vec<HashSet<(u32, u32)>>, // target -> {(parent, role)}
     worklist: VecDeque<Item>,
 }
 
-impl Sat {
+impl State {
+    #[inline]
     fn add_sub(&mut self, c: u32, d: u32) {
         if self.sub_super[c as usize].insert(d) {
             self.worklist.push_back(Item::Sub(c, d));
         }
     }
 
+    #[inline]
     fn add_edge(&mut self, c: u32, r: u32, d: u32) {
         if self.edges[c as usize].insert((r, d)) {
             self.in_edges[d as usize].insert((c, r));
             self.worklist.push_back(Item::Edge(c, r, d));
-        }
-    }
-
-    /// Super-roles of `r` (always includes `r`).
-    fn role_supers(&self, r: u32) -> Vec<u32> {
-        let s = &self.role_sub[r as usize];
-        if s.is_empty() {
-            vec![r]
-        } else {
-            s.iter().copied().collect()
         }
     }
 }
@@ -446,21 +504,21 @@ struct SatResult {
 
 fn saturate(nfs: &Nfs, n: usize) -> SatResult {
     // ----- build indexes -----
-    let mut nf1_by_sub: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut nf1_by_sub: HashMap<u32, Vec<u32>> = HashMap::default();
     for a in &nfs.nf1 {
         nf1_by_sub.entry(a.sub).or_default().push(a.sup);
     }
-    let mut nf2_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+    let mut nf2_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf2 {
         // indexed by both sides; store the *other* side + the conclusion
         nf2_by_sub.entry(a.sub1).or_default().push((a.sub2, a.sup));
         nf2_by_sub.entry(a.sub2).or_default().push((a.sub1, a.sup));
     }
-    let mut nf3_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::new();
+    let mut nf3_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf3 {
         nf3_by_sub.entry(a.sub).or_default().push((a.role, a.filler));
     }
-    let mut nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>> = HashMap::new();
+    let mut nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
     for a in &nfs.nf4 {
         nf4_by_role_filler
             .entry((a.role, a.filler))
@@ -468,17 +526,17 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
             .push(a.sup);
     }
     let nf5_subs: HashSet<u32> = nfs.nf5.iter().copied().collect();
-    let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::new();
+    let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
     for a in &nfs.nf7 {
         nf7_by_pair.entry((a.r1, a.r2)).or_default().push(a.sup);
     }
 
     // ----- role hierarchy: reflexive-transitive closure of NF6 -----
-    let mut role_sub: Vec<HashSet<u32>> = vec![HashSet::new(); n];
+    let mut role_sub: Vec<HashSet<u32>> = vec![HashSet::default(); n];
     for &r in &nfs.role_names {
         role_sub[r as usize].insert(r);
     }
-    let mut nf6_by_sub: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut nf6_by_sub: HashMap<u32, Vec<u32>> = HashMap::default();
     for a in &nfs.nf6 {
         nf6_by_sub.entry(a.sub).or_default().push(a.sup);
     }
@@ -502,7 +560,7 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
         }
     }
 
-    let mut sat = Sat {
+    let idx = Idx {
         nf1_by_sub,
         nf2_by_sub,
         nf3_by_sub,
@@ -510,9 +568,11 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
         nf5_subs,
         nf7_by_pair,
         role_sub,
-        sub_super: vec![HashSet::new(); n],
-        edges: vec![HashSet::new(); n],
-        in_edges: vec![HashSet::new(); n],
+    };
+    let mut st = State {
+        sub_super: vec![HashSet::default(); n],
+        edges: vec![HashSet::default(); n],
+        in_edges: vec![HashSet::default(); n],
         worklist: VecDeque::new(),
     };
 
@@ -521,57 +581,61 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
         if c == BOTTOM {
             continue;
         }
-        sat.add_sub(c, c);
-        sat.add_sub(c, TOP);
+        st.add_sub(c, c);
+        st.add_sub(c, TOP);
     }
 
+    // Empty fallback so an unindexed role still yields the empty super-set
+    // without a per-lookup allocation (it never occurs for edge roles in
+    // practice, but keeps the borrow simple).
+    let empty: HashSet<u32> = HashSet::default();
+
     // ----- Main loop -----
-    while let Some(item) = sat.worklist.pop_front() {
+    // `idx` is borrowed immutably throughout; `st` mutably. Because they are
+    // distinct objects, a rule can scan an index slice while pushing into the
+    // state. Snapshots (`.collect()`) are taken only when iterating one of the
+    // state's *own* mutated collections (sub_super[d], edges[d], in_edges[c]).
+    while let Some(item) = st.worklist.pop_front() {
         match item {
             Item::Sub(c, d) => {
                 // R⊑ : C ⊑ D, D ⊑ E ⟹ C ⊑ E  (NF1)
-                if let Some(sups) = sat.nf1_by_sub.get(&d) {
-                    let sups = sups.clone();
-                    for sup in sups {
-                        sat.add_sub(c, sup);
+                if let Some(sups) = idx.nf1_by_sub.get(&d) {
+                    for &sup in sups {
+                        st.add_sub(c, sup);
                     }
                 }
                 // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
-                if let Some(cand) = sat.nf2_by_sub.get(&d) {
-                    let cand = cand.clone();
-                    for (other, sup) in cand {
-                        if sat.sub_super[c as usize].contains(&other) {
-                            sat.add_sub(c, sup);
+                if let Some(cand) = idx.nf2_by_sub.get(&d) {
+                    for &(other, sup) in cand {
+                        if st.sub_super[c as usize].contains(&other) {
+                            st.add_sub(c, sup);
                         }
                     }
                 }
                 // R⊥ : D ⊑ ⊥ axiomatically (NF5) ⟹ C ⊑ ⊥
-                if sat.nf5_subs.contains(&d) {
-                    sat.add_sub(c, BOTTOM);
+                if idx.nf5_subs.contains(&d) {
+                    st.add_sub(c, BOTTOM);
                 }
                 // R∃ : C ⊑ D, D ⊑ ∃R.E ⟹ edge (C,R,E)  (NF3)
-                if let Some(edges) = sat.nf3_by_sub.get(&d) {
-                    let edges = edges.clone();
-                    for (role, filler) in edges {
-                        sat.add_edge(c, role, filler);
+                if let Some(edges) = idx.nf3_by_sub.get(&d) {
+                    for &(role, filler) in edges {
+                        st.add_edge(c, role, filler);
                     }
                 }
                 // R⊥-edge : C ⊑ ⊥ propagates backwards along edges into C.
                 if d == BOTTOM {
-                    let preds: Vec<(u32, u32)> =
-                        sat.in_edges[c as usize].iter().copied().collect();
+                    let preds: Vec<(u32, u32)> = st.in_edges[c as usize].iter().copied().collect();
                     for (parent, _role) in preds {
-                        sat.add_sub(parent, BOTTOM);
+                        st.add_sub(parent, BOTTOM);
                     }
                 }
                 // R∃⁻ (NF4): edge (X,S,C) with ∃S'.D ⊑ E, S ⊑ S' ⟹ X ⊑ E.
-                let preds: Vec<(u32, u32)> = sat.in_edges[c as usize].iter().copied().collect();
+                let preds: Vec<(u32, u32)> = st.in_edges[c as usize].iter().copied().collect();
                 for (parent, role) in preds {
-                    for super_role in sat.role_supers(role) {
-                        if let Some(sups) = sat.nf4_by_role_filler.get(&(super_role, d)) {
-                            let sups = sups.clone();
-                            for sup in sups {
-                                sat.add_sub(parent, sup);
+                    for &super_role in idx.role_supers(role) {
+                        if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d)) {
+                            for &sup in sups {
+                                st.add_sub(parent, sup);
                             }
                         }
                     }
@@ -579,49 +643,46 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
             }
             Item::Edge(c, r, d) => {
                 // R∃⁻ (NF4): fire the new edge against everything above d.
-                for super_role in sat.role_supers(r) {
-                    let d_supers: Vec<u32> = sat.sub_super[d as usize].iter().copied().collect();
-                    for d_super in d_supers {
-                        if let Some(sups) = sat.nf4_by_role_filler.get(&(super_role, d_super)) {
-                            let sups = sups.clone();
-                            for sup in sups {
-                                sat.add_sub(c, sup);
+                let d_supers: Vec<u32> = st.sub_super[d as usize].iter().copied().collect();
+                for &super_role in idx.role_supers(r) {
+                    for &d_super in &d_supers {
+                        if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d_super)) {
+                            for &sup in sups {
+                                st.add_sub(c, sup);
                             }
                         }
                     }
                 }
                 // R⊥-edge: edge to a known-unsat target propagates.
-                if sat.sub_super[d as usize].contains(&BOTTOM) {
-                    sat.add_sub(c, BOTTOM);
+                if st.sub_super[d as usize].contains(&BOTTOM) {
+                    st.add_sub(c, BOTTOM);
                 }
                 // R∘ (NF7): compose with edges leaving d.
-                let out: Vec<(u32, u32)> = sat.edges[d as usize].iter().copied().collect();
+                let out: Vec<(u32, u32)> = st.edges[d as usize].iter().copied().collect();
                 for (r2, e) in out {
-                    if let Some(sups) = sat.nf7_by_pair.get(&(r, r2)) {
-                        let sups = sups.clone();
-                        for nfsup in sups {
-                            for super_role in sat.role_supers(nfsup) {
-                                sat.add_edge(c, super_role, e);
+                    if let Some(sups) = idx.nf7_by_pair.get(&(r, r2)) {
+                        for &nfsup in sups {
+                            for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                                st.add_edge(c, super_role, e);
                             }
                         }
                     }
                 }
                 // Symmetric: edge into c with role r0 plus this new edge.
-                let preds: Vec<(u32, u32)> = sat.in_edges[c as usize].iter().copied().collect();
+                let preds: Vec<(u32, u32)> = st.in_edges[c as usize].iter().copied().collect();
                 for (parent, r0) in preds {
-                    if let Some(sups) = sat.nf7_by_pair.get(&(r0, r)) {
-                        let sups = sups.clone();
-                        for nfsup in sups {
-                            for super_role in sat.role_supers(nfsup) {
-                                sat.add_edge(parent, super_role, d);
+                    if let Some(sups) = idx.nf7_by_pair.get(&(r0, r)) {
+                        for &nfsup in sups {
+                            for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                                st.add_edge(parent, super_role, d);
                             }
                         }
                     }
                 }
                 // Plain role-hierarchy lift: an R-edge is also an S-edge for R ⊑ S.
-                for super_role in sat.role_supers(r) {
+                for &super_role in idx.role_supers(r) {
                     if super_role != r {
-                        sat.add_edge(c, super_role, d);
+                        st.add_edge(c, super_role, d);
                     }
                 }
             }
@@ -629,7 +690,7 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
     }
 
     SatResult {
-        sub_super: sat.sub_super,
+        sub_super: st.sub_super,
     }
 }
 
