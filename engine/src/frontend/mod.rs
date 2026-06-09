@@ -30,6 +30,9 @@ pub struct FrontendResult {
     pub named: Vec<String>,
     /// short names of every `Declaration(Class(...))`.
     pub declared: Vec<String>,
+    /// whether the RBox is safe for the EL completion reasoner (port of
+    /// `el_route.rbox_el_safe`); lets `owl_classify` route without re-parsing.
+    pub el_rbox_safe: bool,
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -56,6 +59,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
 
     // domain/range Horn clauses from the RBox records.
     let rbox = rbox::ofn_rbox(&mut reg, &onto_nodes);
+    let el_rbox_safe = rbox::el_rbox_safe(&rbox);
     tbox.extend(preprocess::domain_range_clauses(&rbox));
 
     let mut jclauses: Vec<crate::json_io::JClause> =
@@ -88,5 +92,6 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         iri_map,
         named,
         declared,
+        el_rbox_safe,
     })
 }

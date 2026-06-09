@@ -20,6 +20,7 @@ struct Output {
     iri_map: std::collections::BTreeMap<String, String>,
     named: Vec<String>,
     declared: Vec<String>,
+    el_rbox_safe: bool,
 }
 
 fn main() {
@@ -48,6 +49,7 @@ fn main() {
         iri_map: result.iri_map,
         named: result.named,
         declared: result.declared,
+        el_rbox_safe: result.el_rbox_safe,
     };
     match serde_json::to_string(&out) {
         Ok(s) => println!("{}", s),

@@ -73,8 +73,55 @@ def is_internal(n: str) -> bool:
             or s.startswith("def_") or (":" in s and s not in BOTTOM))
 
 
+def ofn_bin() -> str:
+    env = os.environ.get("KM_OFN_BIN")
+    if env:
+        return env
+    return str(HERE.parent / "target" / "release" / "ofn")
+
+
+def run_ofn(ofn_path: str) -> dict:
+    """Run the Rust `ofn` normalisation frontend; returns its
+    {clauses, iri_map, named, declared, el_rbox_safe} dict. Exit 3 means the
+    ontology is out of the supported fragment (datatypes), mirroring
+    frontend.OutOfFragment."""
+    proc = subprocess.run([ofn_bin(), ofn_path], capture_output=True, text=True)
+    if proc.returncode == 3:
+        raise frontend.OutOfFragment(proc.stderr.strip() or "out of fragment")
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr)
+    return json.loads(proc.stdout)
+
+
 def classify(ofn_path: str) -> dict:
-    clauses = frontend.ofn_to_clauses(ofn_path)
+    # Front-end: Rust `ofn` binary (fast; env-gated) or the Python normaliser.
+    # Both yield the same clause set plus the output-mapping data (full IRI of
+    # each internal name, the set of IRI-backed names, RBox EL-safety). The Rust
+    # path avoids the 45-100s Python parse+normalise on large ontologies.
+    if os.environ.get("KM_RUST_FRONTEND"):
+        data = run_ofn(ofn_path)
+        clauses = data["clauses"]
+        _iri_map = data["iri_map"]
+        _named = set(data["named"])
+        full_iri = lambda n: _iri_map.get(n, n)          # noqa: E731
+        named_iri = lambda n: n in _named                # noqa: E731
+        rbox_safe = bool(data["el_rbox_safe"])
+    else:
+        clauses = frontend.ofn_to_clauses(ofn_path)
+        full_iri = frontend.full_iri
+        named_iri = frontend.is_named_iri
+        rbox_safe = el_route.rbox_el_safe(frontend.ofn_rbox(ofn_path))
+
+    def is_internal(n: str) -> bool:
+        # A name backed by a real OWL IRI is a real class even if its local name
+        # matches a moose-internal prefix; only un-IRI-backed names get the
+        # prefix heuristic. Uses the active frontend's IRI-backed-name predicate.
+        if named_iri(n):
+            return False
+        s = short(n)
+        return (s.startswith("Q_") or s.startswith("__") or s.startswith("aux_")
+                or s.startswith("def_") or (":" in s and s not in BOTTOM))
+
     clauses_json = json.dumps({"clauses": clauses})
     out = None
     # EL fast path: classify EL++ ontologies with moose's ELK-style completion
@@ -83,7 +130,7 @@ def classify(ofn_path: str) -> dict:
     # directly. A race against the context-engine binary was tried but its 16
     # rayon threads starve the single-threaded completion under the benchmark's
     # KM_THREADS=16, so completion-only is both faster and simpler here.
-    if el_route.is_el(clauses) and el_route.rbox_el_safe(frontend.ofn_rbox(ofn_path)):
+    if el_route.is_el(clauses) and rbox_safe:
         out = el_route.classify(clauses)
     if out is None:
         proc = subprocess.run([str(engine_path())],
@@ -103,13 +150,13 @@ def classify(ofn_path: str) -> dict:
         if is_internal(a):
             continue
         sa = short(a)
-        fa = frontend.full_iri(a)
+        fa = full_iri(a)
         for s in sups:
             if short(s) in BOTTOM:
                 if fa not in unsat:
                     unsat.append(fa)
             elif not is_internal(s) and short(s) != sa:
-                subs.append([fa, frontend.full_iri(s)])
+                subs.append([fa, full_iri(s)])
     return {
         "consistent": not out.get("inconsistent", False),
         "subsumptions": sorted(subs),

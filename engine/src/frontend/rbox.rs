@@ -155,3 +155,17 @@ pub fn ofn_rbox(reg: &mut IriRegistry, nodes: &[Node]) -> Vec<RboxRecord> {
     }
     out
 }
+
+/// Port of `el_route.rbox_el_safe`: the RBox is safe to hand to the EL
+/// completion reasoner iff every record is `subrole`/`domain`/`range` (folded
+/// into the clauses with full semantics) or a fenced `role-chain` (also folded
+/// into NF7 by `normalise`). Inverse / symmetric / functional / etc. are only
+/// handled by the context-engine trigger machinery and never reach the clauses,
+/// so they make completion incomplete and force the CB fallback.
+pub fn el_rbox_safe(records: &[RboxRecord]) -> bool {
+    records.iter().all(|r| match r {
+        RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
+        RboxRecord::Fenced(reason, _) => reason == "role-chain",
+        RboxRecord::Inverse(..) => false,
+    })
+}
