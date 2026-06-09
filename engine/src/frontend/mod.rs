@@ -50,15 +50,42 @@ fn concept_names_in(clauses: &[crate::json_io::JClause]) -> BTreeSet<String> {
     names
 }
 
+/// Per-stage wall timing, written to stderr when `KM_OFN_TIMING` is set. Cheap
+/// (one `Instant::now()` per stage) and off by default, so the normal path is
+/// unaffected.
+struct StageTimer {
+    on: bool,
+    last: std::time::Instant,
+}
+impl StageTimer {
+    fn new() -> Self {
+        StageTimer {
+            on: std::env::var_os("KM_OFN_TIMING").is_some(),
+            last: std::time::Instant::now(),
+        }
+    }
+    fn lap(&mut self, label: &str) {
+        if self.on {
+            let now = std::time::Instant::now();
+            eprintln!("[ofn-timing] {:<22} {:>8.3}s", label, (now - self.last).as_secs_f64());
+            self.last = now;
+        }
+    }
+}
+
 /// Port of `frontend.ofn_to_clauses` + the `iri_map`/`named`/`declared` outputs.
 pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
+    let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     let (ontology, onto_nodes) = parse::parse_ontology(&mut reg, text)?;
+    t.lap("parse_ontology");
     let (tbox, abox, hooks) = normalise::normalise(&ontology);
     drop(ontology); // the syntax AST is dead once clausified
+    t.lap("normalise");
     let mut tbox = preprocess::augment(tbox, &abox, &hooks);
     drop(abox);
     drop(hooks);
+    t.lap("augment");
 
     // domain/range Horn clauses + the EL-safety flag from the RBox records, then
     // the declared-class list — both need the parsed `onto_nodes` tree, so do
@@ -70,11 +97,13 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     tbox.extend(preprocess::domain_range_clauses(&rbox));
     let declared = parse::declared_classes(&mut reg, &onto_nodes);
     drop(onto_nodes);
+    t.lap("rbox+domain+declared");
 
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON
     // clause set is built (rather than holding both in full at once).
     let mut jclauses: Vec<crate::json_io::JClause> =
         tbox.into_iter().map(|c| clause_to_json(&c)).collect();
+    t.lap("clause_to_json");
 
     // Seed every declared class absent from the clause set with a tautological
     // self-clause A(x) → A(x) (port of the declared-classes loop).
@@ -96,6 +125,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         named.push(internal);
     }
     named.sort();
+    t.lap("declared_seed+iri_map");
 
     Ok(FrontendResult {
         clauses: jclauses,
