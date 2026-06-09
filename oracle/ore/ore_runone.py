@@ -12,6 +12,7 @@ Usage:
       --outdir ~/bench/ore_out --timeout 300 --memcap-mb 14000
 """
 import argparse
+import threading
 import gzip
 import hashlib
 import json
@@ -124,6 +125,17 @@ def main():
     p = subprocess.Popen(argv, cwd=cwd, env=env, stdout=outf, stderr=errf,
                          start_new_session=True)
     pgid = os.getpgid(p.pid)
+    _stdout_chunks = []
+    _reader = None
+    if src == "stdout" and p.stdout is not None:
+        def _drain(stream=p.stdout, sink=_stdout_chunks):
+            try:
+                for chunk in iter(lambda: stream.read(65536), b""):
+                    sink.append(chunk)
+            except Exception:
+                pass
+        _reader = threading.Thread(target=_drain, daemon=True)
+        _reader.start()
     peak = 0
     status = "ok"
     stdout_data = b""
@@ -174,10 +186,9 @@ def main():
         pass
 
     if src == "stdout":
-        try:
-            stdout_data = p.stdout.read() if p.stdout else b""
-        except Exception:
-            stdout_data = b""
+        if _reader is not None:
+            _reader.join(timeout=15)
+        stdout_data = b"".join(_stdout_chunks)
     errf.close()
     if outf not in (subprocess.PIPE,):
         try:

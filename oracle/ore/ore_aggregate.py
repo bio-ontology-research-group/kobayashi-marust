@@ -18,7 +18,7 @@ JOBDIR = os.path.join(HOME, "bench", "ore_jobs")
 OUTDIR = os.path.join(HOME, "bench", "ore_out")
 # KM was re-run on the audit-fixed binary; its records/sigs live separately and
 # supersede the buggy KM entries from the main sweep.
-OUTDIR_KM = os.path.join(HOME, "bench", "ore_out_kmfix")
+OUTDIR_KM = os.path.join(HOME, "bench", "ore_out_kmcur")
 
 
 def outdir_for(reasoner):
@@ -101,7 +101,7 @@ def load_records():
                 r["status"] = refine_status(r)
                 recs[(r["reasoner"], r["ont"])] = r
     # km from the audit-fixed re-run
-    for rf in sorted(glob.glob(os.path.join(JOBDIR, "res_km_*.jsonl"))):
+    for rf in sorted(glob.glob(os.path.join(JOBDIR, "res_kmcur_*.jsonl"))):
         with open(rf) as f:
             for line in f:
                 line = line.strip()
