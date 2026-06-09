@@ -65,11 +65,17 @@ def to_nf(clauses):
         hr = [a for a in h if a["kind"] == "role"]
         # empty head => ⊥ (NF5 / disjointness)
         if len(h) == 0:
-            if len(bc) == 1 and not br:
-                ax.append(NF5(bc[0]["concept"]))
-                continue
-            if len(bc) == 2 and not br:
-                ax.append(NF2(bc[0]["concept"], bc[1]["concept"], BOTTOM))
+            if not br and bc and all(_tk(a["term"])[0] == "var" for a in bc):
+                if len(bc) == 1:
+                    ax.append(NF5(bc[0]["concept"]))
+                    continue
+                # A1⊓…⊓Ak ⊑ ⊥ : binary-decompose (k>=2)
+                names = sorted(a["concept"] for a in bc)
+                acc = names[0]
+                for j in range(1, len(names) - 1):
+                    aux = "__conj__" + "/".join(names[: j + 1])
+                    ax.append(NF2(acc, names[j], aux)); acc = aux
+                ax.append(NF2(acc, names[-1], BOTTOM))
                 continue
             return None, False
         # disjunctive head => not EL (Horn only)
@@ -87,7 +93,17 @@ def to_nf(clauses):
                         ax.append(NF1(bc[0]["concept"], hd)); continue   # A ⊑ B
                     if len(bc) == 2:
                         ax.append(NF2(bc[0]["concept"], bc[1]["concept"], hd)); continue  # A⊓A' ⊑ B
-                    return None, False
+                    # n-ary conjunction A1⊓…⊓Ak ⊑ B (k>2): decompose into binary
+                    # NF2 with deterministic fresh aux concepts (so identical
+                    # conjunctions share them). EL, just not binary-normalised.
+                    names = sorted(a["concept"] for a in bc)
+                    acc = names[0]
+                    for j in range(1, len(names) - 1):
+                        aux = "__conj__" + "/".join(names[: j + 1])
+                        ax.append(NF2(acc, names[j], aux))
+                        acc = aux
+                    ax.append(NF2(acc, names[-1], hd))
+                    continue
                 # NF4:  R(x,y) ∧ A(y) ⊑ B(x)
                 if len(br) == 1 and len(bc) == 1:
                     r = br[0]; cc = bc[0]
@@ -170,7 +186,24 @@ _EL_SAFE_RBOX = {"subrole", "domain", "range"}
 
 
 def rbox_el_safe(rbox) -> bool:
-    return all(rec[0] in _EL_SAFE_RBOX for rec in (rbox or []))
+    """Whether the RBox is safe to hand to completion.
+
+    {subrole, domain, range} are folded into the clauses, so completion sees
+    them fully. Role chains are *fenced* (moose does not put general chains in
+    the clauses), but ignoring a role-composition axiom only ever REMOVES
+    consequences, so completion stays sound on chain ontologies — merely
+    incomplete on the chain-derived subsumptions, which is strictly better than
+    the context engine timing out. Inverse / symmetric / functional etc. are NOT
+    safe: dropping them can change role-hierarchy interactions and yield extra
+    (unsound) subsumptions (witnessed on ore_ont_5404), so those still fall back
+    to the context engine."""
+    for rec in (rbox or []):
+        if rec[0] in _EL_SAFE_RBOX:
+            continue
+        if rec[0] == "fenced" and rec[1] == "role-chain":
+            continue
+        return False
+    return True
 
 
 def has_transitivity(clauses) -> bool:
