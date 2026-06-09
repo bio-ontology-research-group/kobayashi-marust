@@ -8,9 +8,17 @@ repository = "https://github.com/bio-ontology-research-group/kobayashi-marust"
 keywords = ["description-logic", "owl", "reasoner", "sroiq", "lean"]
 categories = ["science"]
 
+[lib]
+name = "kobayashi_marust"
+path = "src/lib.rs"
+
 [[bin]]
 name = "kobayashi-marust"
 path = "src/main.rs"
+
+[[bin]]
+name = "ofn"
+path = "src/bin/ofn.rs"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

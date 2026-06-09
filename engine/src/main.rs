@@ -6,17 +6,10 @@
 //! `{ "subsumptions": {...}, "derived_clauses": [...], "inconsistent": bool }`
 //! on stdout.
 
-mod calc;
-mod clause;
-mod engine;
-mod json_io;
-mod reasoner;
-mod tableau;
-
 use std::io::{Read, Write};
 
-use json_io::{JInput, JOutput};
-use reasoner::Reasoner;
+use kobayashi_marust::json_io::{JInput, JOutput};
+use kobayashi_marust::reasoner::Reasoner;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]

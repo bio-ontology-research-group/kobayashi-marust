@@ -1,0 +1,333 @@
+//! Functional-syntax node -> SROIQ AST (`cls`, `role_cls`, `_dt_concept`,
+//! `add_axiom`, `parse_ontology`, `declared_classes`).
+//!
+//! Direct port of the corresponding `frontend.py` functions.
+
+use super::iri::{short_base, IriRegistry};
+use super::sexpr::{tokenize, Node, Parser};
+use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
+
+/// Out-of-fragment marker (port of `OutOfFragment`).
+#[derive(Debug)]
+pub struct OutOfFragment(pub String);
+
+/// Port of `role_str`: a *named* role -> short string.
+fn role_str(reg: &mut IriRegistry, node: &Node) -> Result<String, OutOfFragment> {
+    match node {
+        Node::Atom(s) => Ok(reg.short(s)),
+        _ => Err(OutOfFragment(format!("named role expected, got {:?}", node))),
+    }
+}
+
+/// Port of `role_cls`: role expression for class constructs.
+fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
+    match node {
+        Node::Atom(s) => Ok(Role::Name(reg.short(s))),
+        Node::List(head, args) if head == "ObjectInverseOf" => {
+            Ok(Role::Inverse(reg.short(args[0].as_atom().unwrap_or(""))))
+        }
+        Node::List(head, _) => Err(OutOfFragment(format!("role: {}", head))),
+    }
+}
+
+/// Port of `_dt_concept`.
+fn dt_concept(node: &Node) -> Concept {
+    match node {
+        Node::Atom(s) => Concept::Name(format!("__dt__{}", short_base(s))),
+        _ => Concept::Name("__dt__opaque".to_string()),
+    }
+}
+
+/// Port of `cls`.
+fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
+    match node {
+        Node::Atom(s) => {
+            let sh = reg.short(s);
+            if sh == "owl:Thing" || sh == "Thing" {
+                Ok(Concept::Top)
+            } else if sh == "owl:Nothing" || sh == "Nothing" {
+                Ok(Concept::Bottom)
+            } else {
+                Ok(Concept::Name(sh))
+            }
+        }
+        Node::List(head, args) => match head.as_str() {
+            "ObjectIntersectionOf" => {
+                let mut cs = Vec::new();
+                for a in args {
+                    cs.push(cls(reg, a)?);
+                }
+                Ok(mk_and(cs))
+            }
+            "ObjectUnionOf" => {
+                let mut cs = Vec::new();
+                for a in args {
+                    cs.push(cls(reg, a)?);
+                }
+                Ok(mk_or(cs))
+            }
+            "ObjectComplementOf" => Ok(Concept::Not(Box::new(cls(reg, &args[0])?))),
+            "ObjectSomeValuesFrom" => Ok(Concept::Exists(
+                role_cls(reg, &args[0])?,
+                Box::new(cls(reg, &args[1])?),
+            )),
+            "ObjectAllValuesFrom" => Ok(Concept::Forall(
+                role_cls(reg, &args[0])?,
+                Box::new(cls(reg, &args[1])?),
+            )),
+            "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" => {
+                let n: i64 = args[0]
+                    .as_atom()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args[0])))?;
+                let r = role_cls(reg, &args[1])?;
+                let filler = if args.len() > 2 {
+                    cls(reg, &args[2])?
+                } else {
+                    Concept::Top
+                };
+                match head.as_str() {
+                    "ObjectMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
+                    "ObjectMaxCardinality" => Ok(Concept::AtMost(n, r, Box::new(filler))),
+                    _ => Ok(mk_and([
+                        Concept::AtLeast(n, r.clone(), Box::new(filler.clone())),
+                        Concept::AtMost(n, r, Box::new(filler)),
+                    ])),
+                }
+            }
+            "ObjectOneOf" => {
+                let noms: Vec<Concept> = args
+                    .iter()
+                    .map(|a| Concept::Nominal(reg.short(a.as_atom().unwrap_or(""))))
+                    .collect();
+                if noms.len() == 1 {
+                    Ok(noms.into_iter().next().unwrap())
+                } else {
+                    Ok(mk_or(noms))
+                }
+            }
+            "ObjectHasValue" => Ok(Concept::Exists(
+                role_cls(reg, &args[0])?,
+                Box::new(Concept::Nominal(reg.short(args[1].as_atom().unwrap_or("")))),
+            )),
+            "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, &args[0])?)),
+            "DataSomeValuesFrom" => Ok(Concept::Exists(
+                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                Box::new(dt_concept(&args[1])),
+            )),
+            "DataAllValuesFrom" => Ok(Concept::Forall(
+                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                Box::new(dt_concept(&args[1])),
+            )),
+            "DataHasValue" => Ok(Concept::Exists(
+                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                Box::new(Concept::Name("__dt__val".to_string())),
+            )),
+            "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
+                let n: i64 = args[0]
+                    .as_atom()
+                    .and_then(|s| s.parse().ok())
+                    .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args[0])))?;
+                let r = Role::Name(reg.short(args[1].as_atom().unwrap_or("")));
+                let filler = if args.len() > 2 {
+                    dt_concept(&args[2])
+                } else {
+                    Concept::Name("__dt__val".to_string())
+                };
+                match head.as_str() {
+                    "DataMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
+                    "DataMaxCardinality" => Ok(Concept::AtMost(n, r, Box::new(filler))),
+                    _ => Ok(mk_and([
+                        Concept::AtLeast(n, r.clone(), Box::new(filler.clone())),
+                        Concept::AtMost(n, r, Box::new(filler)),
+                    ])),
+                }
+            }
+            other if other.starts_with("Data") => Err(OutOfFragment(format!(
+                "datatype reasoning not supported: {}",
+                other
+            ))),
+            other => Err(OutOfFragment(format!(
+                "unsupported class construct: {}",
+                other
+            ))),
+        },
+    }
+}
+
+fn strip_annotations(args: &[Node]) -> Vec<&Node> {
+    args.iter()
+        .filter(|a| a.head() != Some("Annotation"))
+        .collect()
+}
+
+/// Port of `add_axiom`.
+fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(), OutOfFragment> {
+    let (head, args) = match node {
+        Node::List(h, a) => (h.as_str(), a),
+        Node::Atom(_) => return Ok(()),
+    };
+    let args = strip_annotations(args);
+    match head {
+        "SubClassOf" => {
+            o.add(Axiom::SubClassOf(cls(reg, args[0])?, cls(reg, args[1])?));
+        }
+        "EquivalentClasses" => {
+            let mut cs = Vec::new();
+            for a in &args {
+                cs.push(cls(reg, a)?);
+            }
+            for k in 0..cs.len().saturating_sub(1) {
+                o.add(Axiom::EquivalentClasses(cs[k].clone(), cs[k + 1].clone()));
+            }
+        }
+        "DisjointClasses" => {
+            let mut cs = Vec::new();
+            for a in &args {
+                cs.push(cls(reg, a)?);
+            }
+            for k in 0..cs.len() {
+                for l in (k + 1)..cs.len() {
+                    o.add(Axiom::DisjointClasses(cs[k].clone(), cs[l].clone()));
+                }
+            }
+        }
+        "SubObjectPropertyOf" => {
+            let sub = args[0];
+            if let Node::List(h, chain_args) = sub {
+                if h == "ObjectPropertyChain" {
+                    let mut chain = Vec::new();
+                    for r in chain_args {
+                        chain.push(role_str(reg, r)?);
+                    }
+                    o.add(Axiom::RoleChain(chain, role_str(reg, args[1])?));
+                    return Ok(());
+                }
+            }
+            o.add(Axiom::RoleInclusion(
+                role_str(reg, sub)?,
+                role_str(reg, args[1])?,
+            ));
+        }
+        "InverseObjectProperties" => {
+            o.add(Axiom::InverseRoles(
+                role_str(reg, args[0])?,
+                role_str(reg, args[1])?,
+            ));
+        }
+        "TransitiveObjectProperty" => o.add(Axiom::TransitiveRole(role_str(reg, args[0])?)),
+        "SymmetricObjectProperty" => o.add(Axiom::SymmetricRole(role_str(reg, args[0])?)),
+        "ReflexiveObjectProperty" => o.add(Axiom::ReflexiveRole(role_str(reg, args[0])?)),
+        "FunctionalObjectProperty" => o.add(Axiom::FunctionalRole(role_str(reg, args[0])?)),
+        "InverseFunctionalObjectProperty" => {
+            o.add(Axiom::InverseFunctionalRole(role_str(reg, args[0])?))
+        }
+        "AsymmetricObjectProperty" => o.add(Axiom::AsymmetricRole(role_str(reg, args[0])?)),
+        "IrreflexiveObjectProperty" => o.add(Axiom::IrreflexiveRole(role_str(reg, args[0])?)),
+        "ClassAssertion" => {
+            o.add(Axiom::ConceptAssertion(
+                cls(reg, args[0])?,
+                reg.short(args[1].as_atom().unwrap_or("")),
+            ));
+        }
+        "ObjectPropertyAssertion" => {
+            o.add(Axiom::RoleAssertion(
+                role_str(reg, args[0])?,
+                reg.short(args[1].as_atom().unwrap_or("")),
+                reg.short(args[2].as_atom().unwrap_or("")),
+            ));
+        }
+        "SameIndividual" => {
+            let ids: Vec<String> = args
+                .iter()
+                .map(|a| reg.short(a.as_atom().unwrap_or("")))
+                .collect();
+            for k in 0..ids.len().saturating_sub(1) {
+                o.add(Axiom::SameIndividual(ids[k].clone(), ids[k + 1].clone()));
+            }
+        }
+        "DifferentIndividuals" => {
+            let ids: Vec<String> = args
+                .iter()
+                .map(|a| reg.short(a.as_atom().unwrap_or("")))
+                .collect();
+            for k in 0..ids.len() {
+                for l in (k + 1)..ids.len() {
+                    o.add(Axiom::DifferentIndividuals(ids[k].clone(), ids[l].clone()));
+                }
+            }
+        }
+        "DataPropertyDomain" => {
+            // domain(p) = C ≡ ∃p.⊤ ⊑ C
+            o.add(Axiom::SubClassOf(
+                Concept::Exists(
+                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Box::new(Concept::Top),
+                ),
+                cls(reg, args[1])?,
+            ));
+        }
+        "Declaration" | "Prefix" | "Import" | "Annotation" | "AnnotationAssertion"
+        | "DisjointObjectProperties" | "ObjectPropertyDomain" | "ObjectPropertyRange" => {
+            // not part of the SROIQ core we validate here
+        }
+        other if other.starts_with("Data")
+            || other == "DatatypeDefinition"
+            || other == "HasKey" =>
+        {
+            // datatype axioms: sound over-approximation by dropping
+        }
+        _ => {
+            // anything else: silently skipped
+        }
+    }
+    Ok(())
+}
+
+/// Port of `parse_ontology`. Returns the ontology plus the top-level
+/// `Ontology(...)` argument nodes (needed by `ofn_rbox` / `declared_classes`).
+pub fn parse_ontology(
+    reg: &mut IriRegistry,
+    text: &str,
+) -> Result<(Ontology, Vec<Node>), OutOfFragment> {
+    let toks = tokenize(text);
+    let mut p = Parser::new(toks);
+    let mut o = Ontology::new();
+    let mut onto_nodes: Vec<Node> = Vec::new();
+    while p.peek().is_some() {
+        let node = p
+            .parse()
+            .map_err(|e| OutOfFragment(format!("parse error: {}", e)))?;
+        if let Node::List(h, args) = &node {
+            if h == "Ontology" {
+                onto_nodes = args.clone();
+                for a in args {
+                    add_axiom(reg, &mut o, a)?;
+                }
+            }
+        }
+    }
+    Ok((o, onto_nodes))
+}
+
+/// Port of `declared_classes`. Run after the main parse so `short` is populated.
+pub fn declared_classes(reg: &mut IriRegistry, onto_nodes: &[Node]) -> Vec<String> {
+    let mut out = Vec::new();
+    for node in onto_nodes {
+        if let Node::List(h, args) = node {
+            if h == "Declaration" && !args.is_empty() {
+                if let Node::List(ch, cargs) = &args[0] {
+                    if ch == "Class" && !cargs.is_empty() {
+                        if let Some(name) = cargs[0].as_atom() {
+                            let s = reg.short(name);
+                            if s != "owl:Thing" && s != "owl:Nothing" {
+                                out.push(s);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
