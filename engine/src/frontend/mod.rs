@@ -55,20 +55,30 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let mut reg = IriRegistry::new();
     let (ontology, onto_nodes) = parse::parse_ontology(&mut reg, text)?;
     let (tbox, abox, hooks) = normalise::normalise(&ontology);
+    drop(ontology); // the syntax AST is dead once clausified
     let mut tbox = preprocess::augment(tbox, &abox, &hooks);
+    drop(abox);
+    drop(hooks);
 
-    // domain/range Horn clauses from the RBox records.
+    // domain/range Horn clauses + the EL-safety flag from the RBox records, then
+    // the declared-class list — both need the parsed `onto_nodes` tree, so do
+    // them here and drop the (large) tree before materialising the clause JSON,
+    // to keep peak memory down on big ontologies (the tree, the clause set and
+    // the JSON copy are each O(ontology size)).
     let rbox = rbox::ofn_rbox(&mut reg, &onto_nodes);
     let el_rbox_safe = rbox::el_rbox_safe(&rbox);
     tbox.extend(preprocess::domain_range_clauses(&rbox));
+    let declared = parse::declared_classes(&mut reg, &onto_nodes);
+    drop(onto_nodes);
 
+    // Consume `tbox` while converting, so the DLClause set is freed as the JSON
+    // clause set is built (rather than holding both in full at once).
     let mut jclauses: Vec<crate::json_io::JClause> =
-        tbox.iter().map(clause_to_json).collect();
+        tbox.into_iter().map(|c| clause_to_json(&c)).collect();
 
     // Seed every declared class absent from the clause set with a tautological
     // self-clause A(x) → A(x) (port of the declared-classes loop).
     let mut present = concept_names_in(&jclauses);
-    let declared = parse::declared_classes(&mut reg, &onto_nodes);
     for name in &declared {
         if !present.contains(name) {
             present.insert(name.clone());

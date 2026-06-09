@@ -51,11 +51,16 @@ fn main() {
         declared: result.declared,
         el_rbox_safe: result.el_rbox_safe,
     };
-    match serde_json::to_string(&out) {
-        Ok(s) => println!("{}", s),
-        Err(e) => {
-            eprintln!("serialise error: {}", e);
-            exit(1);
-        }
+    // Stream the JSON straight to a buffered stdout instead of building the
+    // whole output string in memory first (the clause array is O(ontology size)
+    // and dominates peak memory on large ontologies).
+    let stdout = std::io::stdout();
+    let mut w = std::io::BufWriter::new(stdout.lock());
+    if let Err(e) = serde_json::to_writer(&mut w, &out) {
+        eprintln!("serialise error: {}", e);
+        exit(1);
     }
+    use std::io::Write;
+    let _ = w.write_all(b"\n");
+    let _ = w.flush();
 }
