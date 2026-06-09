@@ -17,7 +17,7 @@ Usage:  python3 owl_classify.py ontology.ofn
 Env:    KM_ENGINE  path to the kobayashi-marust binary (else autodetected).
 """
 from __future__ import annotations
-import json, os, subprocess, sys
+import json, os, subprocess, sys, tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -100,19 +100,40 @@ def elc_bin() -> str:
     return str(HERE.parent / "target" / "release" / "elc")
 
 
-def run_elc(clauses_json: str):
-    """Run the Rust `elc` EL++ completion binary on the `{"clauses":[...]}`
-    payload. Returns the engine-shaped result dict, or None if the ontology is
-    not EL++ (exit 3) so the caller falls back to the context engine. This is the
-    compiled twin of `el_route.classify`; it classifies the large EL ontologies
-    that time out in the Python completion in seconds."""
-    proc = subprocess.run([elc_bin()], input=clauses_json,
-                          capture_output=True, text=True)
-    if proc.returncode == 3:
-        return None
-    if proc.returncode != 0:
-        raise RuntimeError(proc.stderr)
-    return json.loads(proc.stdout)
+def run_ofn_split(ofn_path: str):
+    """Run `ofn` in split mode: the (large) clause set goes to a temp file in
+    the engine/elc stdin shape `{"clauses":[...]}`, and the small side data
+    {iri_map, named, declared, el_rbox_safe} is returned as a dict. Returns
+    (clauses_path, meta); the caller owns clauses_path and must unlink it. This
+    keeps the clause set out of Python entirely — parsing+re-serialising it
+    dominated the EL fast path on large ontologies. Exit 3 => out of fragment."""
+    cfd, clauses_path = tempfile.mkstemp(suffix=".clauses.json")
+    os.close(cfd)
+    mfd, meta_path = tempfile.mkstemp(suffix=".meta.json")
+    os.close(mfd)
+    try:
+        with open(clauses_path, "w") as cf:
+            proc = subprocess.run([ofn_bin(), ofn_path, "--meta", meta_path],
+                                  stdout=cf, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 3:
+            os.unlink(clauses_path)
+            raise frontend.OutOfFragment(proc.stderr.strip() or "out of fragment")
+        if proc.returncode != 0:
+            os.unlink(clauses_path)
+            raise RuntimeError(proc.stderr)
+        with open(meta_path) as mf:
+            meta = json.load(mf)
+        return clauses_path, meta
+    finally:
+        if os.path.exists(meta_path):
+            os.unlink(meta_path)
+
+
+def run_reasoner_file(argv, clauses_path):
+    """Run a reasoner binary (elc or the context engine) reading the clause set
+    straight from `clauses_path` via stdin (no Python serialisation)."""
+    with open(clauses_path) as f:
+        return subprocess.run(argv, stdin=f, capture_output=True, text=True)
 
 
 def classify(ofn_path: str) -> dict:
@@ -120,14 +141,26 @@ def classify(ofn_path: str) -> dict:
     # Both yield the same clause set plus the output-mapping data (full IRI of
     # each internal name, the set of IRI-backed names, RBox EL-safety). The Rust
     # path avoids the 45-100s Python parse+normalise on large ontologies.
+    use_rust_el = bool(os.environ.get("KM_RUST_EL"))
+    clauses_path = None  # set in the zero-copy path; clauses then stay out of Python
+    clauses = None
     if os.environ.get("KM_RUST_FRONTEND"):
-        data = run_ofn(ofn_path)
-        clauses = data["clauses"]
-        _iri_map = data["iri_map"]
-        _named = set(data["named"])
+        if use_rust_el:
+            # Zero-copy: ofn writes the clause set to a file and the small side
+            # data to a meta file; Python reads only the meta. elc / the engine
+            # read the clauses straight from the file (no parse+re-dump in Python).
+            clauses_path, meta = run_ofn_split(ofn_path)
+            _iri_map = meta["iri_map"]
+            _named = set(meta["named"])
+            rbox_safe = bool(meta["el_rbox_safe"])
+        else:
+            data = run_ofn(ofn_path)
+            clauses = data["clauses"]
+            _iri_map = data["iri_map"]
+            _named = set(data["named"])
+            rbox_safe = bool(data["el_rbox_safe"])
         full_iri = lambda n: _iri_map.get(n, n)          # noqa: E731
         named_iri = lambda n: n in _named                # noqa: E731
-        rbox_safe = bool(data["el_rbox_safe"])
     else:
         clauses = frontend.ofn_to_clauses(ofn_path)
         full_iri = frontend.full_iri
@@ -144,28 +177,35 @@ def classify(ofn_path: str) -> dict:
         return (s.startswith("Q_") or s.startswith("__") or s.startswith("aux_")
                 or s.startswith("def_") or (":" in s and s not in BOTTOM))
 
-    clauses_json = json.dumps({"clauses": clauses})
-    out = None
-    # EL fast path: classify EL++ ontologies with moose's ELK-style completion
-    # (el_route). With the predecessor-index optimisation completion is fast on
-    # every EL ontology in the corpus (flat and transitive alike), so we use it
-    # directly. A race against the context-engine binary was tried but its 16
-    # rayon threads starve the single-threaded completion under the benchmark's
-    # KM_THREADS=16, so completion-only is both faster and simpler here.
-    if rbox_safe and os.environ.get("KM_RUST_EL"):
-        # Compiled EL++ completion (decides EL-membership itself; None => not EL,
-        # fall through to the context engine). Replaces the Python completion on
-        # the large EL ontologies whose Python saturation exceeds the time budget.
-        out = run_elc(clauses_json)
-    elif el_route.is_el(clauses) and rbox_safe:
-        out = el_route.classify(clauses)
-    if out is None:
-        proc = subprocess.run([str(engine_path())],
-                              input=clauses_json,
-                              capture_output=True, text=True)
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr)
-        out = json.loads(proc.stdout)
+    try:
+        out = None
+        # EL fast path: classify EL++ ontologies with the ELK-style completion.
+        # The compiled `elc` decides EL-membership itself (exit 3 => not EL, fall
+        # through to the context engine); it replaces the Python completion on the
+        # large EL ontologies whose Python saturation exceeds the time budget.
+        if rbox_safe and use_rust_el:
+            proc = run_reasoner_file([elc_bin()], clauses_path)
+            if proc.returncode == 3:
+                out = None
+            elif proc.returncode != 0:
+                raise RuntimeError(proc.stderr)
+            else:
+                out = json.loads(proc.stdout)
+        elif el_route.is_el(clauses) and rbox_safe:
+            out = el_route.classify(clauses)
+        if out is None:
+            if clauses_path is not None:
+                proc = run_reasoner_file([str(engine_path())], clauses_path)
+            else:
+                proc = subprocess.run([str(engine_path())],
+                                      input=json.dumps({"clauses": clauses}),
+                                      capture_output=True, text=True)
+            if proc.returncode != 0:
+                raise RuntimeError(proc.stderr)
+            out = json.loads(proc.stdout)
+    finally:
+        if clauses_path is not None and os.path.exists(clauses_path):
+            os.unlink(clauses_path)
 
     # Output uses the FULL IRI (frontend.full_iri); the comparison harness
     # applies ore_canon.localname once, exactly as it does for every other
