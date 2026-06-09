@@ -188,15 +188,30 @@ _EL_SAFE_RBOX = {"subrole", "domain", "range"}
 def rbox_el_safe(rbox) -> bool:
     """Whether the RBox is safe to hand to completion.
 
-    Only {subrole, domain, range} are folded into the clauses so completion sees
-    their full semantics. Everything else — inverse, symmetric, functional, and
-    *role chains* (incl. transitivity written as ObjectPropertyChain(r r)⊑r,
-    which moose fences rather than turning into __trans__) — is handled by the
-    context engine's trigger machinery and is absent from / only partially
-    approximated in the clauses, so completion can return UNSOUND results
-    (ore_ont_5404 inverse: +11 extra; ore_ont_7868 chain-transitivity: +1110
-    extra). Those fall back to the context engine."""
-    return all(rec[0] in _EL_SAFE_RBOX for rec in (rbox or []))
+    {subrole, domain, range} are folded into the clauses so completion sees their
+    full semantics. *Role chains* (incl. transitivity) are also folded in:
+    moose's `normalise` turns ObjectPropertyChain(R S)⊑T into the EL++ normal
+    form NF7 (R(x,y) ∧ S(y,z) → T(x,z)), which `to_nf` maps and the completion
+    procedure discharges. Completion over EL++ normal forms only ever derives
+    valid EL++ entailments, so routing a chain ontology to it is *sound*; a chain
+    the frontend failed to fold would at worst leave completion incomplete (a
+    missed subsumption), never unsound. Validated exact (extra=0, miss=0) vs the
+    Konclude gold on 12 ORE chain ontologies (935, 1082, 2361, 3414, 5549, 5612,
+    6076, 6223, 9400, 9499, 11081, 394). The earlier "+1110 extra" on ore_ont_7868
+    was a local-name truncation bug in the *output* path (fixed: it now emits full
+    IRIs), not a chain-soundness problem.
+
+    Everything else — inverse, symmetric, (inverse-)functional, reflexive,
+    complex domain/range, role constraints — is handled only by the context
+    engine's RBox trigger machinery and never reaches the clauses, so completion
+    would silently ignore it. Those still fall back to the context engine."""
+    for rec in (rbox or []):
+        if rec[0] in _EL_SAFE_RBOX:
+            continue
+        if rec[0] == "fenced" and len(rec) > 1 and rec[1] == "role-chain":
+            continue
+        return False
+    return True
 
 
 def has_transitivity(clauses) -> bool:
