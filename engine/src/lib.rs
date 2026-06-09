@@ -8,6 +8,7 @@
 
 pub mod calc;
 pub mod clause;
+pub mod elcomplete;
 pub mod engine;
 pub mod frontend;
 pub mod json_io;

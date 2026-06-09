@@ -93,6 +93,28 @@ def run_ofn(ofn_path: str) -> dict:
     return json.loads(proc.stdout)
 
 
+def elc_bin() -> str:
+    env = os.environ.get("KM_ELC_BIN")
+    if env:
+        return env
+    return str(HERE.parent / "target" / "release" / "elc")
+
+
+def run_elc(clauses_json: str):
+    """Run the Rust `elc` EL++ completion binary on the `{"clauses":[...]}`
+    payload. Returns the engine-shaped result dict, or None if the ontology is
+    not EL++ (exit 3) so the caller falls back to the context engine. This is the
+    compiled twin of `el_route.classify`; it classifies the large EL ontologies
+    that time out in the Python completion in seconds."""
+    proc = subprocess.run([elc_bin()], input=clauses_json,
+                          capture_output=True, text=True)
+    if proc.returncode == 3:
+        return None
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr)
+    return json.loads(proc.stdout)
+
+
 def classify(ofn_path: str) -> dict:
     # Front-end: Rust `ofn` binary (fast; env-gated) or the Python normaliser.
     # Both yield the same clause set plus the output-mapping data (full IRI of
@@ -130,7 +152,12 @@ def classify(ofn_path: str) -> dict:
     # directly. A race against the context-engine binary was tried but its 16
     # rayon threads starve the single-threaded completion under the benchmark's
     # KM_THREADS=16, so completion-only is both faster and simpler here.
-    if el_route.is_el(clauses) and rbox_safe:
+    if rbox_safe and os.environ.get("KM_RUST_EL"):
+        # Compiled EL++ completion (decides EL-membership itself; None => not EL,
+        # fall through to the context engine). Replaces the Python completion on
+        # the large EL ontologies whose Python saturation exceeds the time budget.
+        out = run_elc(clauses_json)
+    elif el_route.is_el(clauses) and rbox_safe:
         out = el_route.classify(clauses)
     if out is None:
         proc = subprocess.run([str(engine_path())],
