@@ -73,7 +73,7 @@ def classify(ofn_path: str) -> dict:
     # directly. A race against the context-engine binary was tried but its 16
     # rayon threads starve the single-threaded completion under the benchmark's
     # KM_THREADS=16, so completion-only is both faster and simpler here.
-    if el_route.is_el(clauses):
+    if el_route.is_el(clauses) and el_route.rbox_el_safe(frontend.ofn_rbox(ofn_path)):
         out = el_route.classify(clauses)
     if out is None:
         proc = subprocess.run([str(engine_path())],

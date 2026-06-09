@@ -158,6 +158,21 @@ def is_el(clauses) -> bool:
     return ok
 
 
+# RBox features moose folds into the concept-clauses (so completion sees their
+# full semantics): role hierarchy and domain/range. Transitivity is encoded as
+# __trans__ concept-clauses (also visible). Everything else — inverse roles,
+# symmetric/reflexive/asymmetric/irreflexive, (inverse-)functional, role
+# constraints, fenced complex roles — is handled by the *context engine's* RBox
+# trigger machinery and never reaches the clauses, so completion would silently
+# ignore it (unsound/incomplete). Route to completion only when the RBox is
+# limited to these safe kinds.
+_EL_SAFE_RBOX = {"subrole", "domain", "range"}
+
+
+def rbox_el_safe(rbox) -> bool:
+    return all(rec[0] in _EL_SAFE_RBOX for rec in (rbox or []))
+
+
 def has_transitivity(clauses) -> bool:
     """True iff the ontology uses transitive roles — moose normalises these into
     ``__trans__r__C`` propagation concepts, which are precisely what makes the
