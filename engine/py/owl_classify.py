@@ -191,19 +191,24 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None):
 
 
 def _run_engine_adaptive(clauses_path, clauses):
-    """Default *parallel* attempt under an RSS watchdog; if it overflows, retry
-    with a single engine (successor contexts shared across all queries -> far
-    lower memory). Parallelism is kept for the speed-bound ontologies (no
-    regression) while the memory-bound ones are recovered by the single-threaded
-    fallback. `KM_PAR_MEM_GB` sets the cap (default 18 GiB, under the typical
-    20 GiB benchmark memcap); an explicit `KM_THREADS` bypasses the adaptive
-    logic and is honoured by the engine directly."""
-    if os.environ.get("KM_THREADS"):
-        return _run_engine(clauses_path, clauses)
+    """Parallel attempt under an RSS watchdog; if it overflows, retry with a
+    single engine (successor contexts shared across all queries -> far lower
+    memory). Parallelism is kept for the speed-bound ontologies (no regression)
+    while the memory-bound ones are recovered by the single-threaded fallback.
+    The first attempt uses the configured `KM_THREADS` (the harness sets it; if
+    unset the engine picks `available_parallelism`); `KM_PAR_MEM_GB` sets the cap
+    (default 18 GiB, under the typical 20 GiB benchmark memcap). Disable the
+    fallback with `KM_NO_RETRY=1`."""
     cap = os.environ.get("KM_PAR_MEM_GB")
     cap = float(cap) if cap else 18.0
-    proc = _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=cap)
-    if proc.oom or proc.returncode != 0:
+    first = os.environ.get("KM_THREADS")  # None or e.g. "16"; first attempt as-is
+    proc = _run_engine(clauses_path, clauses, threads=first, rss_cap_gb=cap)
+    if (proc.oom or proc.returncode != 0) and first != "1" \
+            and not os.environ.get("KM_NO_RETRY"):
+        # Parallel attempt overflowed (or failed): retry single-threaded, which
+        # shares the successor contexts and uses far less memory. Uncapped so the
+        # legitimate single-threaded working set is not starved (the external
+        # benchmark memcap still bounds the host).
         proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None)
     return proc
 
