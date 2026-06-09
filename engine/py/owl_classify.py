@@ -17,7 +17,7 @@ Usage:  python3 owl_classify.py ontology.ofn
 Env:    KM_ENGINE  path to the kobayashi-marust binary (else autodetected).
 """
 from __future__ import annotations
-import json, os, subprocess, sys, tempfile
+import json, os, subprocess, sys, tempfile, threading, time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -136,6 +136,78 @@ def run_reasoner_file(argv, clauses_path):
         return subprocess.run(argv, stdin=f, capture_output=True, text=True)
 
 
+class _EngineResult:
+    __slots__ = ("returncode", "stdout", "stderr", "oom")
+
+    def __init__(self, returncode, stdout, stderr, oom):
+        self.returncode, self.stdout, self.stderr, self.oom = returncode, stdout, stderr, oom
+
+
+def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None):
+    """Run the context engine on the clause set, optionally forcing a thread
+    count (`KM_THREADS`) and/or an RSS watchdog (GiB). The watchdog polls the
+    engine's resident set and kills *only the engine child* (leaving this driver
+    alive to retry) when it exceeds the cap -- so the default parallel attempt,
+    which on existential-blow-up ontologies re-derives the shared successor
+    contexts per query chunk and multiplies memory, can be aborted and retried
+    single-threaded instead of memouting the whole job. RSS (not virtual address
+    space) is used so legitimate large parallel runs are not falsely tripped."""
+    env = dict(os.environ)
+    if threads is not None:
+        env["KM_THREADS"] = str(threads)
+    argv = [str(engine_path())]
+    stdin_f = open(clauses_path) if clauses_path is not None else subprocess.PIPE
+    p = subprocess.Popen(argv, stdin=stdin_f if clauses_path is not None else subprocess.PIPE,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    if clauses_path is None:
+        threading.Thread(target=lambda: (p.stdin.write(json.dumps({"clauses": clauses})),
+                                         p.stdin.close()), daemon=True).start()
+    oom = {"hit": False}
+    if rss_cap_gb is not None:
+        cap = int(rss_cap_gb * (1 << 30))
+
+        def monitor():
+            # All rayon worker threads share one address space, so the process
+            # RSS (statm field 2, in pages) covers the whole engine.
+            while p.poll() is None:
+                try:
+                    rss = int(open("/proc/%d/statm" % p.pid).read().split()[1]) * 4096
+                except Exception:
+                    break
+                if rss > cap:
+                    oom["hit"] = True
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+                    break
+                time.sleep(0.1)
+
+        threading.Thread(target=monitor, daemon=True).start()
+    out, err = p.communicate()
+    if clauses_path is not None:
+        stdin_f.close()
+    return _EngineResult(p.returncode, out, err, oom["hit"])
+
+
+def _run_engine_adaptive(clauses_path, clauses):
+    """Default *parallel* attempt under an RSS watchdog; if it overflows, retry
+    with a single engine (successor contexts shared across all queries -> far
+    lower memory). Parallelism is kept for the speed-bound ontologies (no
+    regression) while the memory-bound ones are recovered by the single-threaded
+    fallback. `KM_PAR_MEM_GB` sets the cap (default 18 GiB, under the typical
+    20 GiB benchmark memcap); an explicit `KM_THREADS` bypasses the adaptive
+    logic and is honoured by the engine directly."""
+    if os.environ.get("KM_THREADS"):
+        return _run_engine(clauses_path, clauses)
+    cap = os.environ.get("KM_PAR_MEM_GB")
+    cap = float(cap) if cap else 18.0
+    proc = _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=cap)
+    if proc.oom or proc.returncode != 0:
+        proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None)
+    return proc
+
+
 def classify(ofn_path: str) -> dict:
     # Front-end: Rust `ofn` binary (fast; env-gated) or the Python normaliser.
     # Both yield the same clause set plus the output-mapping data (full IRI of
@@ -199,12 +271,7 @@ def classify(ofn_path: str) -> dict:
         elif rbox_safe and el_route.is_el(clauses):
             out = el_route.classify(clauses)
         if out is None:
-            if clauses_path is not None:
-                proc = run_reasoner_file([str(engine_path())], clauses_path)
-            else:
-                proc = subprocess.run([str(engine_path())],
-                                      input=json.dumps({"clauses": clauses}),
-                                      capture_output=True, text=True)
+            proc = _run_engine_adaptive(clauses_path, clauses)
             if proc.returncode != 0:
                 raise RuntimeError(proc.stderr)
             out = json.loads(proc.stdout)
