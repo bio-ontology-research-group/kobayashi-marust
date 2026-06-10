@@ -6,6 +6,7 @@
 //! renaming) to `frontend.ofn_to_clauses`, plus the `iri_map` / `named` /
 //! `declared` side outputs that drive `owl_classify`'s output mapping.
 
+pub mod abox_consistency;
 pub mod clauses;
 pub mod iri;
 pub mod normalise;
@@ -33,6 +34,11 @@ pub struct FrontendResult {
     /// whether the RBox is safe for the EL completion reasoner (port of
     /// `el_route.rbox_el_safe`); lets `owl_classify` route without re-parsing.
     pub el_rbox_safe: bool,
+    /// the ABox forces an individual into two disjoint named classes, so the
+    /// ontology is inconsistent (see `abox_consistency`). The CB engine drops
+    /// ABox clauses and would miss this, so `owl_classify` short-circuits to an
+    /// inconsistent result when set.
+    pub abox_inconsistent: bool,
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -105,6 +111,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let ontology = parse::parse_axioms(&mut reg, text)?;
     t.lap("parse+axioms");
     let (tbox, abox, hooks) = normalise::normalise(&ontology);
+    // Project the named-class ABox-consistency data before the AST is dropped
+    // (cheap: `None` unless the ontology has named-class disjointness). The
+    // clash check is finished after the RBox domain/range records are built.
+    let abox_data = abox_consistency::collect(&ontology);
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     let mut tbox = preprocess::augment(tbox, &abox, &hooks);
@@ -128,6 +138,9 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         Ok(())
     })?;
     let el_rbox_safe = rbox::el_rbox_safe(&rbox);
+    let abox_inconsistent = abox_data
+        .map(|d| d.is_inconsistent(&rbox))
+        .unwrap_or(false);
     tbox.extend(preprocess::domain_range_clauses(&rbox));
     let mut declared = Vec::new();
     for name in declared_raw {
@@ -172,5 +185,6 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         named,
         declared,
         el_rbox_safe,
+        abox_inconsistent,
     })
 }

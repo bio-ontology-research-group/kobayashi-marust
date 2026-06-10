@@ -30,6 +30,7 @@ struct Output {
     named: Vec<String>,
     declared: Vec<String>,
     el_rbox_safe: bool,
+    abox_inconsistent: bool,
 }
 
 /// Side data written to the `--meta` file: everything `owl_classify` needs to
@@ -40,6 +41,7 @@ struct Meta {
     named: Vec<String>,
     declared: Vec<String>,
     el_rbox_safe: bool,
+    abox_inconsistent: bool,
 }
 
 #[derive(Serialize)]
@@ -93,6 +95,7 @@ fn main() {
             named: result.named,
             declared: result.declared,
             el_rbox_safe: result.el_rbox_safe,
+            abox_inconsistent: result.abox_inconsistent,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {
@@ -122,6 +125,7 @@ fn main() {
             named: result.named,
             declared: result.declared,
             el_rbox_safe: result.el_rbox_safe,
+            abox_inconsistent: result.abox_inconsistent,
         };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {
             eprintln!("serialise error: {}", e);

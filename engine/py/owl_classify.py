@@ -221,6 +221,7 @@ def classify(ofn_path: str) -> dict:
     use_rust_el = bool(os.environ.get("KM_RUST_EL"))
     clauses_path = None  # set in the zero-copy path; clauses then stay out of Python
     clauses = None
+    abox_inconsistent = False
     if os.environ.get("KM_RUST_FRONTEND"):
         if use_rust_el:
             # Zero-copy: ofn writes the clause set to a file and the small side
@@ -230,12 +231,14 @@ def classify(ofn_path: str) -> dict:
             _iri_map = meta["iri_map"]
             _named = set(meta["named"])
             rbox_safe = bool(meta["el_rbox_safe"])
+            abox_inconsistent = bool(meta.get("abox_inconsistent"))
         else:
             data = run_ofn(ofn_path)
             clauses = data["clauses"]
             _iri_map = data["iri_map"]
             _named = set(data["named"])
             rbox_safe = bool(data["el_rbox_safe"])
+            abox_inconsistent = bool(data.get("abox_inconsistent"))
         full_iri = lambda n: _iri_map.get(n, n)          # noqa: E731
         named_iri = lambda n: n in _named                # noqa: E731
     else:
@@ -243,6 +246,22 @@ def classify(ofn_path: str) -> dict:
         full_iri = frontend.full_iri
         named_iri = frontend.is_named_iri
         rbox_safe = el_route.rbox_el_safe(frontend.ofn_rbox(ofn_path))
+
+    # The Rust frontend proved the ABox forces an individual into two disjoint
+    # named classes: the ontology is inconsistent. The CB engine drops ABox
+    # clauses and would report it consistent, so short-circuit here (sound;
+    # every such flag is a real OWL entailment). An inconsistent ontology has no
+    # informative subsumptions, matching the gold reasoners' empty subsumption
+    # set on these ontologies.
+    if abox_inconsistent:
+        if clauses_path is not None and os.path.exists(clauses_path):
+            os.unlink(clauses_path)
+        return {
+            "consistent": False,
+            "subsumptions": [],
+            "unsatisfiable": [],
+            "dropped": 0,
+        }
 
     def is_internal(n: str) -> bool:
         # A name backed by a real OWL IRI is a real class even if its local name

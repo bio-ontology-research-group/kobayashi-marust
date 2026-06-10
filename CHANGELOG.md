@@ -8,6 +8,41 @@ Goal: close the remaining ORE 2015 coverage gap to Konclude (was 551/590 ok;
 40 failures = 21 timeout + 19 memout). Diagnosis, fixes, and benchmark deltas
 tracked here.
 
+### Frontend (`ofn`): sound ABox-inconsistency precheck (4 unsound → agree)
+
+Re-diagnosed the 8 "unsound vs gold" ORE ontologies. The dominant cause is NOT
+the nominal/number under-detection previously assumed: for `6720`, `15288`,
+`443`, `7052` the **ABox** forces an individual into two disjoint named classes,
+so the ontology is **inconsistent** (HermiT agrees; Konclude and ELK report all
+classes unsatisfiable). KM missed it because the CB engine drops every
+individual/ABox clause (`reasoner.rs` maps `Ind`/`Aux` terms to `None`), so the
+clash never reaches saturation — KM emitted the full taxonomy of subsumptions,
+which the aggregator scored as spurious "extra" subsumptions.
+
+Witness (`6720`): `lemon_slice` is asserted both `fruit` (⊑ `non_alcoholic_-`
+`ingredient`) and `sparqling_wine` (⊑ `alcoholic_ingredient`), and those two are
+`DisjointClasses`.
+
+New `frontend/abox_consistency.rs`: a sound, conservative precheck over the
+parsed ontology. It closes ABox membership under the named subclass/equivalence
+hierarchy, object-property domain/range, and `SameIndividual`, then reports
+inconsistency iff some individual is provably in both ends of a named
+`DisjointClasses`/`DisjointUnion` pair. Only NAMED classes participate (complex
+operands and complex assertion concepts are skipped), so every fire is a genuine
+OWL entailment — no false positives. The flag rides the `ofn` meta as
+`abox_inconsistent`; `owl_classify` short-circuits to an inconsistent result
+(empty subsumption set, matching the gold reasoners) without invoking the
+engine. Cost is one TBox scan and an early-out (`None`) unless the ontology has
+named-class disjointness, so the giants (no disjointness, no ABox) pay nothing.
+
+Clause output is untouched (byte-identical); the only meta change is the added
+`abox_inconsistent` field. Corpus-wide the flag fires only on the four family
+ontologies plus two non-gold ontologies (`11305`, `11457`, both genuinely
+inconsistent), and no ontology Konclude classifies consistently. Soundness vs
+gold: **8 unsound → 4 unsound** (remaining: `7901` datatype empty data-range,
+`8941` ALC `∀`-driven, `15516`/`2669` complex-boolean over-derivation); agree
+530 → 534. No Lean re-cert (frontend, not calculus).
+
 ### Frontend (`ofn`): streaming parse + compact clause set (giant ontologies)
 
 The three 3M-axiom giants (ore_ont_8737, 15059, 16744; 450–580 MB OFN) memouted
