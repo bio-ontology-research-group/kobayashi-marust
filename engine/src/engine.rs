@@ -445,7 +445,7 @@ pub struct Engine {
     /// consequence about one successor from being pushed back along another's
     /// edge; partitioning by `f` pushes exactly the same per-edge consequences.
     successor_ctxs: HashMap<Term, usize>,
-    /// Central expansion strategy (opt-in via KM_CENTRAL; default is the per-`f`
+    /// Central expansion strategy (default; KM_NO_CENTRAL restores the per-`f`
     /// empty-core pay-as-you-go strategy): successor contexts are keyed by their core
     /// = the σ-image of the predecessor's pushed trigger set for `f`.  Trigger
     /// atoms become *core* atoms (`-> p` by the Core rule) instead of
@@ -463,7 +463,7 @@ pub struct Engine {
     /// so a successor core that happens to equal a root core must NOT be
     /// deduplicated into the root context.
     central_index: HashMap<Vec<Pred>, usize>,
-    /// cached strategy flag: central (KM_CENTRAL) vs default per-`f` pay-as-you-go
+    /// cached strategy flag: central (default) vs per-`f` pay-as-you-go (KM_NO_CENTRAL)
     central: bool,
     /// Context-independent closure: the worked-off clauses of an empty-core,
     /// non-root context saturated from the ontology facts + TBox alone (no Succ
@@ -544,7 +544,7 @@ impl Engine {
             msgs: VecDeque::new(),
             successor_ctxs: HashMap::new(),
             central_index: HashMap::new(),
-            central: std::env::var_os("KM_CENTRAL").is_some(),
+            central: std::env::var_os("KM_NO_CENTRAL").is_none(),
             shared_closure: None,
             shared_root_closure: None,
             equality: true,
