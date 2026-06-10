@@ -67,18 +67,43 @@ impl StageTimer {
     fn lap(&mut self, label: &str) {
         if self.on {
             let now = std::time::Instant::now();
-            eprintln!("[ofn-timing] {:<22} {:>8.3}s", label, (now - self.last).as_secs_f64());
+            eprintln!(
+                "[ofn-timing] {:<22} {:>8.3}s  rss={}MB hwm={}MB",
+                label,
+                (now - self.last).as_secs_f64(),
+                read_status_mb("VmRSS:"),
+                read_status_mb("VmHWM:")
+            );
             self.last = now;
         }
     }
+}
+
+/// Read a `/proc/self/status` field in MB (0 if unavailable, e.g. non-Linux).
+fn read_status_mb(field: &str) -> u64 {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| {
+            s.lines().find(|l| l.starts_with(field)).and_then(|l| {
+                l.split_whitespace()
+                    .nth(1)
+                    .and_then(|v| v.parse::<u64>().ok())
+            })
+        })
+        .map(|kb| kb / 1024)
+        .unwrap_or(0)
 }
 
 /// Port of `frontend.ofn_to_clauses` + the `iri_map`/`named`/`declared` outputs.
 pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment> {
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
-    let (ontology, onto_nodes) = parse::parse_ontology(&mut reg, text)?;
-    t.lap("parse_ontology");
+    // Pass 1: stream the document into SROIQ axioms. No token vector and no
+    // document AST is ever materialised (both used to be O(document) with a
+    // heap string per token, and the AST was additionally deep-cloned for the
+    // rbox/declared scans — together the 20 GB peak on 500 MB ontologies).
+    let ontology = parse::parse_axioms(&mut reg, text)?;
+    t.lap("parse+axioms");
     let (tbox, abox, hooks) = normalise::normalise(&ontology);
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
@@ -87,16 +112,30 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     drop(hooks);
     t.lap("augment");
 
-    // domain/range Horn clauses + the EL-safety flag from the RBox records, then
-    // the declared-class list — both need the parsed `onto_nodes` tree, so do
-    // them here and drop the (large) tree before materialising the clause JSON,
-    // to keep peak memory down on big ontologies (the tree, the clause set and
-    // the JSON copy are each O(ontology size)).
-    let rbox = rbox::ofn_rbox(&mut reg, &onto_nodes);
+    // Pass 2: re-stream the (cheap, zero-copy) parse for the RBox records and
+    // the declared-class list. Re-parsing trades a few seconds of tokenising
+    // for not retaining the document AST across `normalise`/`augment`. The
+    // `reg.short` call order — all axiom names, then all rbox names, then all
+    // declared names — matches the old single-parse code exactly, so the
+    // assigned internal names are identical.
+    let mut rbox: Vec<rbox::RboxRecord> = Vec::new();
+    let mut declared_raw: Vec<&str> = Vec::new();
+    parse::for_each_ontology_child(text, |node| {
+        rbox::rbox_node(&mut reg, node, &mut rbox);
+        if let Some(name) = parse::declared_class_node(node) {
+            declared_raw.push(name);
+        }
+        Ok(())
+    })?;
     let el_rbox_safe = rbox::el_rbox_safe(&rbox);
     tbox.extend(preprocess::domain_range_clauses(&rbox));
-    let declared = parse::declared_classes(&mut reg, &onto_nodes);
-    drop(onto_nodes);
+    let mut declared = Vec::new();
+    for name in declared_raw {
+        let s = reg.short(name);
+        if s != "owl:Thing" && s != "owl:Nothing" {
+            declared.push(s);
+        }
+    }
     t.lap("rbox+domain+declared");
 
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON

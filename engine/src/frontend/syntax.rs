@@ -147,10 +147,12 @@ impl Axiom {
 /// abox partitions on access (each itself a set). The structural canonicaliser
 /// in `dump_clauses.canon` is emission-order independent, so we keep insertion
 /// order and de-duplicate, which is sufficient for canonical equality.
+/// Axioms are stored once behind an `Rc`; the dedup set shares the same
+/// allocation instead of cloning every axiom (which doubled the AST memory).
 #[derive(Default)]
 pub struct Ontology {
-    pub axioms: Vec<Axiom>,
-    seen: std::collections::HashSet<Axiom>,
+    axioms: Vec<std::rc::Rc<Axiom>>,
+    seen: std::collections::HashSet<std::rc::Rc<Axiom>>,
 }
 
 impl Ontology {
@@ -160,18 +162,19 @@ impl Ontology {
 
     /// Mirror `Ontology.add` over a `set`: ignore duplicate axioms.
     pub fn add(&mut self, ax: Axiom) {
+        let ax = std::rc::Rc::new(ax);
         if self.seen.insert(ax.clone()) {
             self.axioms.push(ax);
         }
     }
 
     pub fn tbox(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().filter(|a| a.is_tbox())
+        self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_tbox())
     }
     pub fn rbox(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().filter(|a| a.is_rbox())
+        self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_rbox())
     }
     pub fn abox(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().filter(|a| a.is_abox())
+        self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_abox())
     }
 }

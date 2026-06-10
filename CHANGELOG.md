@@ -8,6 +8,38 @@ Goal: close the remaining ORE 2015 coverage gap to Konclude (was 551/590 ok;
 40 failures = 21 timeout + 19 memout). Diagnosis, fixes, and benchmark deltas
 tracked here.
 
+### Frontend (`ofn`): streaming parse + compact clause set (giant ontologies)
+
+The three 3M-axiom giants (ore_ont_8737, 15059, 16744; 450–580 MB OFN) memouted
+**in the frontend** at ~20 GB before the reasoner ever started. Three changes,
+all output-preserving (byte-identical clause+meta JSON to the old frontend on the
+full ORE corpus and on all three giants), cut the frontend peak ~5.5x:
+
+- **Zero-copy tokeniser / parser** (`sexpr.rs`): tokens are now `&str` slices into
+  the source produced by a lazy iterator, instead of a `Vec<String>` with a heap
+  allocation per token. The parse tree (`Node`) borrows those slices. The
+  whole-document token vector and its per-token strings are never materialised.
+- **Streaming document walk** (`parse.rs` `for_each_ontology_child` /
+  `parse_axioms`): each `Ontology(...)` child is parsed, turned into SROIQ
+  axioms, and dropped, so the whole-document AST is never resident. The RBox /
+  declared-class side scans re-stream the (cheap, zero-copy) parse instead of
+  retaining and **deep-cloning** the AST across `normalise`/`augment` (the old
+  `onto_nodes = args.clone()` was itself an O(document) copy). `reg.short` call
+  order is preserved, so assigned internal names are identical.
+- **Compact `DLClause`** (`clauses.rs`): `body`/`head` are sorted-deduped
+  `Vec<Atom>` (canonicalised in the constructors) instead of `BTreeSet<Atom>`.
+  A `BTreeSet` node over-allocates even for a 1–2 atom clause; on 3M clauses that
+  dominated memory. `Ontology` also stores axioms behind `Rc` so the dedup set
+  shares the allocation instead of cloning every axiom.
+
+Measured on ore_ont_8737 (472 MB): frontend peak **19.2 GB → 3.6 GB**, wall
+45 s → 20 s (per-stage `VmHWM` via `KM_OFN_TIMING`: normalise 9.4→2.6 GB,
+augment 18.6→3.5 GB). Result: **ore_ont_15059 recovered** (was memout; now ok in
+70 s / 5 GB, signature identical to the Konclude gold — consistent, empty
+#UNSAT). 8737 and 16744 now reach the reasoner (frontend no longer the wall) but
+are **not** EL-safe (inverse roles), so they route to the context engine and
+remain time-bound there — the engine-scaling residual, not the frontend.
+
 ### Result (ORE 2015, 240 s / 20 GB, gold = Konclude 587 ok)
 
 | build | ok | timeout | memout | vs baseline |

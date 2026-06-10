@@ -1,10 +1,14 @@
 //! Functional-syntax node -> SROIQ AST (`cls`, `role_cls`, `_dt_concept`,
-//! `add_axiom`, `parse_ontology`, `declared_classes`).
+//! `add_axiom`) plus the streaming document walk (`for_each_ontology_child`).
 //!
-//! Direct port of the corresponding `frontend.py` functions.
+//! Direct port of the corresponding `frontend.py` functions, reworked to
+//! stream: each child of the top-level `Ontology(...)` node is parsed, handed
+//! to the caller, and dropped, so the whole-document AST is never resident
+//! (it used to be built in full AND deep-cloned for the rbox/declared scans,
+//! which dominated peak memory on 500 MB ontologies).
 
 use super::iri::{short_base, IriRegistry};
-use super::sexpr::{tokenize, Node, Parser};
+use super::sexpr::{Node, Parser};
 use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
 
 /// Out-of-fragment marker (port of `OutOfFragment`).
@@ -23,7 +27,7 @@ fn role_str(reg: &mut IriRegistry, node: &Node) -> Result<String, OutOfFragment>
 fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
     match node {
         Node::Atom(s) => Ok(Role::Name(reg.short(s))),
-        Node::List(head, args) if head == "ObjectInverseOf" => {
+        Node::List(head, args) if *head == "ObjectInverseOf" => {
             Ok(Role::Inverse(reg.short(args[0].as_atom().unwrap_or(""))))
         }
         Node::List(head, _) => Err(OutOfFragment(format!("role: {}", head))),
@@ -66,7 +70,7 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
                 Ok(Concept::Name(sh))
             }
         }
-        Node::List(head, args) => match head.as_str() {
+        Node::List(head, args) => match *head {
             "ObjectIntersectionOf" => {
                 let mut cs = Vec::new();
                 for a in args {
@@ -101,7 +105,7 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
                 } else {
                     Concept::Top
                 };
-                match head.as_str() {
+                match *head {
                     "ObjectMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
                     "ObjectMaxCardinality" => Ok(Concept::AtMost(n, r, Box::new(filler))),
                     _ => Ok(mk_and([
@@ -149,7 +153,7 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
                 } else {
                     Concept::Name("__dt__val".to_string())
                 };
-                match head.as_str() {
+                match *head {
                     "DataMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
                     "DataMaxCardinality" => Ok(Concept::AtMost(n, r, Box::new(filler))),
                     _ => Ok(mk_and([
@@ -170,7 +174,7 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
     }
 }
 
-fn strip_annotations(args: &[Node]) -> Vec<&Node> {
+pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a>> {
     args.iter()
         .filter(|a| a.head() != Some("Annotation"))
         .collect()
@@ -179,7 +183,7 @@ fn strip_annotations(args: &[Node]) -> Vec<&Node> {
 /// Port of `add_axiom`.
 fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(), OutOfFragment> {
     let (head, args) = match node {
-        Node::List(h, a) => (h.as_str(), a),
+        Node::List(h, a) => (*h, a),
         Node::Atom(_) => return Ok(()),
     };
     let args = strip_annotations(args);
@@ -210,7 +214,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         "SubObjectPropertyOf" => {
             let sub = args[0];
             if let Node::List(h, chain_args) = sub {
-                if h == "ObjectPropertyChain" {
+                if *h == "ObjectPropertyChain" {
                     let mut chain = Vec::new();
                     for r in chain_args {
                         chain.push(role_str(reg, r)?);
@@ -299,50 +303,65 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
     Ok(())
 }
 
-/// Port of `parse_ontology`. Returns the ontology plus the top-level
-/// `Ontology(...)` argument nodes (needed by `ofn_rbox` / `declared_classes`).
-pub fn parse_ontology(
-    reg: &mut IriRegistry,
-    text: &str,
-) -> Result<(Ontology, Vec<Node>), OutOfFragment> {
-    let toks = tokenize(text);
-    let mut p = Parser::new(toks);
-    let mut o = Ontology::new();
-    let mut onto_nodes: Vec<Node> = Vec::new();
+/// Stream the children of every top-level `Ontology(...)` node: each child is
+/// parsed, handed to `f`, and dropped, so peak memory is one axiom subtree
+/// instead of the whole document AST. Non-`Ontology` top-level nodes
+/// (`Prefix(...)` etc.) are parsed with the same strictness and discarded.
+///
+/// (A valid OFN document has exactly one `Ontology(...)` node; like the old
+/// whole-tree parser this walks all of them.)
+pub fn for_each_ontology_child<'a, F>(text: &'a str, mut f: F) -> Result<(), OutOfFragment>
+where
+    F: FnMut(&Node<'a>) -> Result<(), OutOfFragment>,
+{
+    let perr = |e: String| OutOfFragment(format!("parse error: {}", e));
+    let mut p = Parser::new(text);
     while p.peek().is_some() {
-        let node = p
-            .parse()
-            .map_err(|e| OutOfFragment(format!("parse error: {}", e)))?;
-        if let Node::List(h, args) = &node {
-            if h == "Ontology" {
-                onto_nodes = args.clone();
-                for a in args {
-                    add_axiom(reg, &mut o, a)?;
+        let t = p.next_tok().unwrap();
+        if t == "(" {
+            return Err(perr("unexpected (".to_string()));
+        }
+        if p.peek() == Some("(") {
+            p.next_tok(); // consume '('
+            let streamed = t == "Ontology";
+            while p.peek() != Some(")") {
+                if p.peek().is_none() {
+                    return Err(perr("unexpected end of input".to_string()));
+                }
+                let node = p.parse().map_err(perr)?;
+                if streamed {
+                    f(&node)?;
                 }
             }
+            p.next_tok(); // consume ')'
         }
+        // bare atom at top level: ignored (matches the old parser, which built
+        // a Node::Atom and skipped it)
     }
-    Ok((o, onto_nodes))
+    Ok(())
 }
 
-/// Port of `declared_classes`. Run after the main parse so `short` is populated.
-pub fn declared_classes(reg: &mut IriRegistry, onto_nodes: &[Node]) -> Vec<String> {
-    let mut out = Vec::new();
-    for node in onto_nodes {
-        if let Node::List(h, args) = node {
-            if h == "Declaration" && !args.is_empty() {
-                if let Node::List(ch, cargs) = &args[0] {
-                    if ch == "Class" && !cargs.is_empty() {
-                        if let Some(name) = cargs[0].as_atom() {
-                            let s = reg.short(name);
-                            if s != "owl:Thing" && s != "owl:Nothing" {
-                                out.push(s);
-                            }
-                        }
-                    }
+/// Port of `parse_ontology`'s axiom pass: build the SROIQ `Ontology` by
+/// streaming over the document.
+pub fn parse_axioms(reg: &mut IriRegistry, text: &str) -> Result<Ontology, OutOfFragment> {
+    let mut o = Ontology::new();
+    for_each_ontology_child(text, |node| add_axiom(reg, &mut o, node))?;
+    Ok(o)
+}
+
+/// If `node` is `Declaration(Class(<name>))`, return the raw class token.
+/// (Port of the match inside `declared_classes`; the `reg.short` call is
+/// deferred to the caller so the registry call order — all rbox shorts, then
+/// all declared shorts — matches the old two-sweep code exactly.)
+pub fn declared_class_node<'a>(node: &Node<'a>) -> Option<&'a str> {
+    if let Node::List(h, args) = node {
+        if *h == "Declaration" && !args.is_empty() {
+            if let Node::List(ch, cargs) = &args[0] {
+                if *ch == "Class" && !cargs.is_empty() {
+                    return cargs[0].as_atom();
                 }
             }
         }
     }
-    out
+    None
 }

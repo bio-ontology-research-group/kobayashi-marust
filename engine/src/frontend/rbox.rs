@@ -43,19 +43,20 @@ fn plain_class(reg: &mut IriRegistry, node: &Node) -> Option<String> {
     }
 }
 
-fn strip_annotations(args: &[Node]) -> Vec<&Node> {
+fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a>> {
     args.iter()
         .filter(|a| a.head() != Some("Annotation"))
         .collect()
 }
 
-/// Port of `ofn_rbox`. `nodes` are the arguments of the `Ontology(...)` node.
-pub fn ofn_rbox(reg: &mut IriRegistry, nodes: &[Node]) -> Vec<RboxRecord> {
-    let mut out = Vec::new();
-    for node in nodes {
+/// Port of one `ofn_rbox` loop iteration: append the RBox records of a single
+/// `Ontology(...)` child to `out`. Called from the streaming side scan in
+/// `ofn_to_clauses` (the old `ofn_rbox` materialised all nodes first).
+pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) {
+    {
         let (head, args) = match node {
-            Node::List(h, a) => (h.as_str(), a),
-            _ => continue,
+            Node::List(h, a) => (*h, a),
+            _ => return,
         };
         let args = strip_annotations(args);
         match head {
@@ -153,7 +154,6 @@ pub fn ofn_rbox(reg: &mut IriRegistry, nodes: &[Node]) -> Vec<RboxRecord> {
             _ => {}
         }
     }
-    out
 }
 
 /// Port of `el_route.rbox_el_safe`: the RBox is safe to hand to the EL

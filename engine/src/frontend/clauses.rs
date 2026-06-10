@@ -1,10 +1,14 @@
 //! DL-clause normal form (port of `moose.sroiq.dlclauses`) + conversion to the
 //! engine JSON schema (`crate::json_io`).
 //!
-//! `DLClause` keeps `body`/`head` as `BTreeSet<Atom>` to mirror the frozenset
-//! semantics of the Python `DLClause` (unordered, de-duplicated).
-
-use std::collections::BTreeSet;
+//! `DLClause` keeps `body`/`head` as sorted, de-duplicated `Vec<Atom>` — the
+//! canonical form of the frozenset semantics of the Python `DLClause`
+//! (unordered, de-duplicated). All constructions go through `clause`/`fact`/
+//! `constraint`, which canonicalise, so derived `Eq`/`Ord`/`Hash` coincide
+//! with set equality and iteration order matches the old `BTreeSet` exactly.
+//! (A `BTreeSet` node allocates 11 `Atom` slots even for a 1–2 atom set,
+//! which made the clause set the dominant memory cost on 3M-axiom
+//! ontologies; an exact-size sorted Vec is ~5x smaller.)
 
 use crate::json_io::{JAtom, JClause, JTerm};
 
@@ -25,8 +29,17 @@ pub enum Atom {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DLClause {
-    pub body: BTreeSet<Atom>,
-    pub head: BTreeSet<Atom>,
+    pub body: Vec<Atom>,
+    pub head: Vec<Atom>,
+}
+
+/// Canonicalise an atom list: sorted + de-duplicated, exact capacity.
+fn canon<I: IntoIterator<Item = Atom>>(atoms: I) -> Vec<Atom> {
+    let mut v: Vec<Atom> = atoms.into_iter().collect();
+    v.sort();
+    v.dedup();
+    v.shrink_to_fit();
+    v
 }
 
 /// Convenience constructors mirroring `dlc.X` / `dlc.Y`.
@@ -42,22 +55,22 @@ pub fn clause<B: IntoIterator<Item = Atom>, H: IntoIterator<Item = Atom>>(
     head: H,
 ) -> DLClause {
     DLClause {
-        body: body.into_iter().collect(),
-        head: head.into_iter().collect(),
+        body: canon(body),
+        head: canon(head),
     }
 }
 
 pub fn fact<H: IntoIterator<Item = Atom>>(head: H) -> DLClause {
     DLClause {
-        body: BTreeSet::new(),
-        head: head.into_iter().collect(),
+        body: Vec::new(),
+        head: canon(head),
     }
 }
 
 pub fn constraint<B: IntoIterator<Item = Atom>>(body: B) -> DLClause {
     DLClause {
-        body: body.into_iter().collect(),
-        head: BTreeSet::new(),
+        body: canon(body),
+        head: Vec::new(),
     }
 }
 
