@@ -8,6 +8,7 @@
 
 pub mod abox_consistency;
 pub mod clauses;
+pub mod data_range;
 pub mod iri;
 pub mod normalise;
 pub mod parse;
@@ -136,8 +137,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // assigned internal names are identical.
     let mut rbox: Vec<rbox::RboxRecord> = Vec::new();
     let mut declared_raw: Vec<&str> = Vec::new();
+    let mut data_ranges = data_range::DataRanges::default();
     parse::for_each_ontology_child(text, |node| {
         rbox::rbox_node(&mut reg, node, &mut rbox);
+        data_ranges.observe(node);
         if let Some(name) = parse::declared_class_node(node) {
             declared_raw.push(name);
         }
@@ -170,6 +173,12 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
             declared.push(s);
         }
     }
+    // A data property whose `DataPropertyRange` axioms intersect to the empty
+    // set can carry no value: emit `P(x,y) -> ⊥` so any class requiring a
+    // P-value is unsatisfiable (ore_ont_7901's structureFormat). Resolved last,
+    // after declared names, to leave the internal-name order unchanged for
+    // ontologies with no empty range.
+    tbox.extend(data_ranges.empty_range_constraints(&mut reg));
     t.lap("rbox+domain+declared");
 
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON
