@@ -155,10 +155,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     preprocess::prune_dead_inverse_bridges(&mut tbox, &role_inverses);
     // Decide EL routing on the full clause set. An ontology fenced out of the EL
     // fast path only by symmetric / inverse roles is still EL-routable when
-    // those roles are inert (their reverse edges feed no concept): prune the
-    // inert reverse-edge clauses and relax the routing predicate. Roles that do
-    // feed a concept stay relevant -> the ontology stays on the CB engine, an
-    // identical decision to the prior `el_rbox_safe(&rbox) && !has_inverse`.
+    // those roles are inert -- not in the backward slice of roles that can reach
+    // a named-class subsumption, equality, or unsat (`concept_relevant_roles`).
+    // Prune the inert reverse-edge clauses and relax the routing predicate; roles
+    // in the slice keep the ontology on the CB engine.
     let relevant = preprocess::concept_relevant_roles(&tbox);
     preprocess::prune_inert_role_bridges(&mut tbox, &symmetric_roles, &role_inverses, &relevant);
     let inverses_inert = role_inverses

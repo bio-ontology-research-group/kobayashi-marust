@@ -345,68 +345,67 @@ pub fn prune_dead_inverse_bridges(tbox: &mut Vec<DLClause>, pairs: &[(String, St
 }
 
 /// Roles whose edges can influence a named-concept subsumption ("concept
-/// relevant"). A role `R` is concept-relevant if some clause has an `R`-atom in
-/// its body and a concept or equality atom in its head (the body edge is read
-/// to derive a concept membership or a merge), or if `R` feeds — through a
-/// role-headed clause such as a subrole axiom, role chain, or transitivity —
-/// another concept-relevant role. Domain (`R(x,y) -> D(x)`), range
-/// (`R(x,y) -> D(y)`) and universal (`A(x), R(x,y) -> C(y)`) clauses all carry
-/// a concept head, so they seed relevance directly.
+/// relevant"). The set of roles whose edges can influence a *named*-class
+/// subsumption or unsatisfiability. Computed as a BACKWARD slice from the query
+/// goals: named concepts (a subsumption query is about named classes),
+/// equalities (merges), and empty heads (`⊥` / unsat constraints). A clause is
+/// "active" if its head contains a goal atom — a named concept, an equality, an
+/// empty head, or an *already-needed* synthetic concept or role. Every atom in
+/// an active clause's body then becomes needed, and the slice iterates to a
+/// fixpoint. A role is relevant iff it ends up needed.
 ///
-/// Symmetric / inverse axioms only add *reverse* edges for their role. If that
-/// role is not concept-relevant, no reverse edge it could produce is ever read
-/// to derive a concept, so the symmetry / inverse is inert for classification:
-/// dropping it changes no named-concept subsumption, and the ontology can take
-/// the EL fast path. The over-approximation is conservative — a clause with a
-/// mixed concept+role head marks its body roles relevant, so the analysis only
-/// ever errs toward calling a role relevant (keeping it on the CB engine).
+/// Symmetric / inverse axioms only add *reverse* edges for their role. If the
+/// role is not in the slice, no reverse edge it produces is ever read along a
+/// chain that reaches a named concept, equality, or `⊥`, so the symmetry /
+/// inverse is inert: dropping it changes no named-class subsumption and the
+/// ontology can take the EL fast path. (A forward "feeds any concept head"
+/// test is too coarse — it flags a role that only feeds a synthetic existential
+/// definer `Q_i ≡ ∃R.C` that no named subsumption ever consumes, e.g.
+/// RO_0002158 in the ORE giants. The backward slice excludes those.)
+///
+/// Conservative toward soundness: equalities and empty heads are always goals,
+/// and any concept that is not recognisably synthetic (`Q_*` / `__*`) is a
+/// goal, so the slice only ever errs toward marking a role relevant (keeping it
+/// on the CB engine).
 pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
-    let mut relevant: HashSet<String> = HashSet::new();
-    // Role-headed clauses: (head role, body roles). Only those with at least one
-    // body role can propagate relevance backward; the millions of existential
-    // `C(x) -> R(x,f)` clauses have an empty body-role list and are skipped.
-    let mut role_edges: Vec<(String, Vec<String>)> = Vec::new();
-    for c in tbox {
-        let body_roles: Vec<&str> = c
-            .body
-            .iter()
-            .filter_map(|a| match a {
-                Atom::Role(r, _, _) => Some(r.as_str()),
-                _ => None,
-            })
-            .collect();
-        if body_roles.is_empty() {
-            continue;
-        }
-        let head_has_concept = c
-            .head
-            .iter()
-            .any(|a| matches!(a, Atom::Concept(..) | Atom::Eq(..)));
-        if head_has_concept {
-            for r in &body_roles {
-                relevant.insert((*r).to_string());
-            }
-        }
-        for a in &c.head {
-            if let Atom::Role(s, _, _) = a {
-                role_edges.push((s.clone(), body_roles.iter().map(|r| r.to_string()).collect()));
-            }
-        }
+    fn is_synthetic(name: &str) -> bool {
+        name.starts_with("Q_") || name.starts_with("__")
     }
+    let mut needed_concepts: HashSet<&str> = HashSet::new();
+    let mut needed_roles: HashSet<String> = HashSet::new();
     let mut changed = true;
     while changed {
         changed = false;
-        for (head_role, body_roles) in &role_edges {
-            if relevant.contains(head_role) {
-                for r in body_roles {
-                    if relevant.insert(r.clone()) {
-                        changed = true;
+        for c in tbox {
+            let active = c.head.is_empty()
+                || c.head.iter().any(|a| match a {
+                    Atom::Concept(n, _) => {
+                        !is_synthetic(n) || needed_concepts.contains(n.as_str())
                     }
+                    Atom::Eq(..) => true,
+                    Atom::Role(r, _, _) => needed_roles.contains(r),
+                });
+            if !active {
+                continue;
+            }
+            for a in &c.body {
+                match a {
+                    Atom::Concept(n, _) => {
+                        if needed_concepts.insert(n.as_str()) {
+                            changed = true;
+                        }
+                    }
+                    Atom::Role(r, _, _) => {
+                        if needed_roles.insert(r.clone()) {
+                            changed = true;
+                        }
+                    }
+                    Atom::Eq(..) => {}
                 }
             }
         }
     }
-    relevant
+    needed_roles
 }
 
 /// Drop the reverse-edge clauses for *inert* symmetric and inverse roles — the
@@ -492,6 +491,7 @@ pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::clauses::constraint;
 
     fn role(r: &str, s: Term, t: Term) -> Atom {
         Atom::Role(r.to_string(), s, t)
@@ -607,6 +607,52 @@ mod tests {
         );
         let tbox = vec![producer, succ, trans, bridge("R", "R")];
         assert!(concept_relevant_roles(&tbox).is_empty());
+    }
+
+    #[test]
+    fn relevance_excludes_role_feeding_only_a_synthetic_definer() {
+        // The ORE-giant pattern: `A ⊑ ∃R.C` names the existential as a synthetic
+        // definer Q_0, emitting the recognizer `R(x,y) ∧ C(y) → Q_0(x)` and
+        // `A(x) → Q_0(x)`. Q_0 is never consumed to derive a NAMED concept, so R
+        // is inert — a forward "feeds any concept head" test would wrongly flag R.
+        let recognizer = clause(
+            [
+                role("R", var_x(), var_y()),
+                Atom::Concept("C".to_string(), var_y()),
+            ],
+            [Atom::Concept("Q_0".to_string(), var_x())],
+        );
+        let sub = clause(
+            [Atom::Concept("A".to_string(), var_x())],
+            [Atom::Concept("Q_0".to_string(), var_x())],
+        );
+        assert!(concept_relevant_roles(&[recognizer, sub]).is_empty());
+    }
+
+    #[test]
+    fn relevance_includes_role_when_definer_reaches_a_named_concept() {
+        // Same recognizer, but now Q_0 ⊑ D (named): Q_0 becomes a goal, the
+        // recognizer activates, and R is needed.
+        let recognizer = clause(
+            [
+                role("R", var_x(), var_y()),
+                Atom::Concept("C".to_string(), var_y()),
+            ],
+            [Atom::Concept("Q_0".to_string(), var_x())],
+        );
+        let q_named = clause(
+            [Atom::Concept("Q_0".to_string(), var_x())],
+            [Atom::Concept("D".to_string(), var_x())],
+        );
+        assert!(concept_relevant_roles(&[recognizer, q_named]).contains("R"));
+    }
+
+    #[test]
+    fn relevance_marks_role_feeding_a_constraint() {
+        // P(x,y) → ⊥ (empty head, e.g. the 7901 empty-data-range constraint) is a
+        // goal: P is needed (it matters for unsatisfiability).
+        let constraint_cl = constraint([role("P", var_x(), var_y())]);
+        assert!(concept_relevant_roles(&[constraint_cl]).contains("P"));
     }
 
     #[test]
