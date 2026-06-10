@@ -46,19 +46,25 @@ remain time-bound there — the engine-scaling residual, not the frontend.
 |---|---|---|---|---|
 | baseline (16-thread, pre-fixes) | 551 | 21 | 19 | — |
 | + Hyper join + adaptive retry | 553 | 33 | 5 | +2, 0 regressions |
-| **+ message batching (final)** | **554** | 31 | 6 | **+3, 0 regressions** |
+| + message batching | 554 | 31 | 6 | +3, 0 regressions |
+| **+ streaming frontend (final)** | **555** | 32 | 4 | **+4, 0 regressions** |
 
 Recovered: 2397 (fully correct), 9944, 9724 (sound but CB-incomplete on
-number/inverse — previously timed out/memouted). Soundness preserved: vs gold the
-unsound set is unchanged (the 8 pre-existing CB nominal/number under-detected-
-unsat cases), both-disagree = 0; no previously-agreeing ontology regressed. The
-Hyper-join and batching changes are fixpoint-preserving, so they change *whether*
-an ontology finishes in budget, never *what* it derives.
+number/inverse), and 15059 (the giant — see the frontend section; agrees with the
+Konclude gold). Soundness preserved: vs gold the correctness profile is unchanged
+(530 agree, 17 incomplete, 8 unsound — the pre-existing CB nominal/number
+under-detected-unsat cases — both-disagree = 0); the one newly-classified
+ontology (15059) agrees with gold, and no previously-agreeing ontology regressed.
+All landed changes (Hyper join, batching, streaming frontend) are
+output-preserving, so they change *whether* an ontology finishes in budget, never
+*what* it derives. km has the lowest median peak memory of the five reasoners
+(45.9 MB; Konclude 65, Sequoia 536).
 
-Residual (37) is genuinely hard for the CB engine: live-`∀+⊔` disjunction
+Residual is genuinely hard for the CB engine: live-`∀+⊔` disjunction
 (message-traffic explosion — Sequoia, the same calculus, solves these via more
-mature redundancy/ordering), 3M-axiom giants that memout in the frontend (3M
-string-valued clause structs ≈ 20 GB before the engine starts), and role-chain
+mature redundancy/ordering), the two remaining giants (8737, 16744 — frontend now
+fits, but they are not EL-safe so they route to the context engine and time out
+there), four CB-engine ~20 GB memouts (10781, 15491, 16444, 6682), and role-chain
 propagation volume. The hypertableau (`tableau_cli`) is NOT a fallback: it errors
 or hangs on real ORE ontologies (validated only on small synthetic + kinship).
 
