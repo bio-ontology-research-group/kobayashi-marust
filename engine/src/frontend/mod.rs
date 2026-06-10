@@ -110,7 +110,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // rbox/declared scans — together the 20 GB peak on 500 MB ontologies).
     let ontology = parse::parse_axioms(&mut reg, text)?;
     t.lap("parse+axioms");
-    let (tbox, abox, hooks) = normalise::normalise(&ontology);
+    let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
@@ -122,7 +122,8 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // elc's screen rejects them, but route past it up front. The rbox-record
     // check below misses bare `ObjectInverseOf` in concepts (no rbox record),
     // so this flag is the authoritative one.
-    let has_inverse = !hooks.role_inverses.is_empty();
+    let role_inverses = std::mem::take(&mut hooks.role_inverses);
+    let has_inverse = !role_inverses.is_empty();
     drop(abox);
     drop(hooks);
     t.lap("augment");
@@ -147,6 +148,9 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         .map(|d| d.is_inconsistent(&rbox))
         .unwrap_or(false);
     tbox.extend(preprocess::domain_range_clauses(&rbox));
+    // All consumers are in place (augment encodings + domain/range), so dead
+    // inverse bridges can be identified and dropped.
+    preprocess::prune_dead_inverse_bridges(&mut tbox, &role_inverses);
     let mut declared = Vec::new();
     for name in declared_raw {
         let s = reg.short(name);

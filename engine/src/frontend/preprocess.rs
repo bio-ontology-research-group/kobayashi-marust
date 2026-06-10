@@ -4,7 +4,7 @@
 //! `domain_range_clauses`, `detect_role_chains`, `transitivity_clauses`,
 //! `chain_clauses`, `_is_chain_axiom`, and `augment`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use super::clauses::{clause, var_x, var_y, Atom, DLClause, Term};
 use super::normalise::GroundHooks;
@@ -267,6 +267,83 @@ pub fn chain_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     extra
 }
 
+/// Drop inverse-bridge clauses whose derived atoms nothing can consume.
+///
+/// `link_inverse` emits both `R(x,y) -> S(y,x)` and `S(x,y) -> R(y,x)` for
+/// every inverse pair. A bridge only does work if the atoms it derives can
+/// fire another clause, i.e. its head role occurs in the body of some
+/// non-bridge clause. Run after `augment` and `domain_range_clauses`, so the
+/// transitivity/chain encodings and domain/range consumers are all visible.
+///
+/// Completeness argument for the drop: if the head role `S` has no non-bridge
+/// body occurrence, the only clause that can consume a derived `S(y,x)` is the
+/// partner bridge `S(x,y) -> R(y,x)`, and that round trip re-derives exactly
+/// the `R(x,y)` the bridge fired from. The derived set of concept atoms is
+/// unchanged, so subsumptions and unsatisfiability are unaffected. If `S` has
+/// a bridge onward to a third role the clause is kept (conservatively, even
+/// though that bridge may itself be dead).
+///
+/// On taxonomy-plus-positive-existential ontologies the pair is never
+/// consumed and both directions go away, removing the per-edge backward
+/// propagation entirely (ore_ont_3414: 7515 `∃part_of` successors each also
+/// spawned a `has_part` back edge, tipping it over the 240 s budget).
+pub fn prune_dead_inverse_bridges(tbox: &mut Vec<DLClause>, pairs: &[(String, String)]) {
+    if pairs.is_empty() {
+        return;
+    }
+    let mut bridge_edges: HashSet<(&str, &str)> = HashSet::new();
+    let mut partners: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (r, s) in pairs {
+        bridge_edges.insert((r.as_str(), s.as_str()));
+        bridge_edges.insert((s.as_str(), r.as_str()));
+        partners.entry(r.as_str()).or_default().push(s.as_str());
+        partners.entry(s.as_str()).or_default().push(r.as_str());
+    }
+    // A bridge is exactly the swapped-orientation shape `link_inverse` emits,
+    // over a registered pair.
+    let is_bridge = |c: &DLClause| -> bool {
+        if c.body.len() != 1 || c.head.len() != 1 {
+            return false;
+        }
+        match (&c.body[0], &c.head[0]) {
+            (Atom::Role(r, rs, rt), Atom::Role(s, ss, st)) => {
+                rs == st
+                    && rt == ss
+                    && rs != rt
+                    && bridge_edges.contains(&(r.as_str(), s.as_str()))
+            }
+            _ => false,
+        }
+    };
+    let mut consumed: HashSet<String> = HashSet::new();
+    for c in tbox.iter() {
+        if is_bridge(c) {
+            continue;
+        }
+        for a in &c.body {
+            if let Atom::Role(r, _, _) = a {
+                consumed.insert(r.clone());
+            }
+        }
+    }
+    tbox.retain(|c| {
+        if !is_bridge(c) {
+            return true;
+        }
+        let (r, s) = match (&c.body[0], &c.head[0]) {
+            (Atom::Role(r, _, _), Atom::Role(s, _, _)) => (r.as_str(), s.as_str()),
+            _ => unreachable!("is_bridge admits only role-role clauses"),
+        };
+        if consumed.contains(s) {
+            return true;
+        }
+        partners
+            .get(s)
+            .map(|ts| ts.iter().any(|t| *t != r))
+            .unwrap_or(false)
+    });
+}
+
 /// Port of `_is_chain_axiom`.
 fn is_chain_axiom(c: &DLClause) -> bool {
     let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
@@ -302,4 +379,97 @@ pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> V
     base.extend(transitivity_clauses(&tbox));
     base.extend(chain_clauses(&tbox));
     base
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn role(r: &str, s: Term, t: Term) -> Atom {
+        Atom::Role(r.to_string(), s, t)
+    }
+
+    fn bridge(r: &str, s: &str) -> DLClause {
+        clause([role(r, var_x(), var_y())], [role(s, var_y(), var_x())])
+    }
+
+    fn pair(r: &str, s: &str) -> (String, String) {
+        (r.to_string(), s.to_string())
+    }
+
+    #[test]
+    fn prunes_both_directions_when_pair_unconsumed() {
+        // A ⊑ ∃R.B yields only a head occurrence of R; nothing consumes R or S.
+        let producer = clause(
+            [Atom::Concept("A".to_string(), var_x())],
+            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+        );
+        let mut tbox = vec![producer.clone(), bridge("R", "S"), bridge("S", "R")];
+        prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S")]);
+        assert_eq!(tbox, vec![producer]);
+    }
+
+    #[test]
+    fn keeps_only_consumed_direction() {
+        // S(x,y) ∧ B(y) → Q(x): S is consumed, R is not.
+        let consumer = clause(
+            [
+                role("S", var_x(), var_y()),
+                Atom::Concept("B".to_string(), var_y()),
+            ],
+            [Atom::Concept("Q".to_string(), var_x())],
+        );
+        let r_to_s = bridge("R", "S");
+        let mut tbox = vec![consumer.clone(), r_to_s.clone(), bridge("S", "R")];
+        prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S")]);
+        assert_eq!(tbox, vec![consumer, r_to_s]);
+    }
+
+    #[test]
+    fn keeps_bridge_with_onward_partner() {
+        // Pairs (R,S) and (S,T); only T is consumed. R→S must survive because
+        // S bridges onward to T; S→R is the pure round trip and goes away.
+        let consumer = clause(
+            [role("T", var_x(), var_y())],
+            [Atom::Concept("C".to_string(), var_x())],
+        );
+        let mut tbox = vec![
+            consumer.clone(),
+            bridge("R", "S"),
+            bridge("S", "R"),
+            bridge("S", "T"),
+            bridge("T", "S"),
+        ];
+        prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S"), pair("S", "T")]);
+        assert_eq!(
+            tbox,
+            vec![consumer, bridge("R", "S"), bridge("S", "T"), bridge("T", "S")]
+        );
+    }
+
+    #[test]
+    fn same_orientation_subrole_clause_is_not_a_bridge() {
+        // R(x,y) → S(x,y) is a role-hierarchy clause: never pruned, and its
+        // body occurrence of R keeps nothing alive for the R→S bridge (S is
+        // still unconsumed).
+        let sub = clause(
+            [role("R", var_x(), var_y())],
+            [role("S", var_x(), var_y())],
+        );
+        let mut tbox = vec![sub.clone(), bridge("R", "S"), bridge("S", "R")];
+        prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S")]);
+        // S→R survives: the hierarchy clause consumes R. R→S dies.
+        assert_eq!(tbox, vec![sub, bridge("S", "R")]);
+    }
+
+    #[test]
+    fn noop_without_pairs() {
+        let sub = clause(
+            [role("R", var_x(), var_y())],
+            [role("S", var_y(), var_x())],
+        );
+        let mut tbox = vec![sub.clone()];
+        prune_dead_inverse_bridges(&mut tbox, &[]);
+        assert_eq!(tbox, vec![sub]);
+    }
 }
