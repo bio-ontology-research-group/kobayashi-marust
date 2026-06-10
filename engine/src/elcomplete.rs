@@ -185,6 +185,15 @@ fn tk(t: &JTerm) -> Tk<'_> {
     }
 }
 
+/// Variable name of a term, if it is a variable. The `&str` borrows the
+/// underlying `JTerm`, so it outlives the transient `Tk`.
+fn vname<'a>(t: &Tk<'a>) -> Option<&'a str> {
+    match t {
+        Tk::Var(n) => Some(n),
+        _ => None,
+    }
+}
+
 /// Concept name / term of a concept atom; helper for readability.
 fn concept_of(a: &JAtom) -> Option<(&str, &JTerm)> {
     if let JAtom::Concept { concept, term } = a {
@@ -387,22 +396,80 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                         continue;
                     }
                 }
-                // role inclusion: R(x,y) -> S(x,y)
+                // role inclusion: R(x,y) -> S(x,y). The head wiring must match
+                // the body EXACTLY: a swapped head `R(x,y) -> S(y,x)` is an
+                // inverse-role bridge (emitted by the frontend for
+                // InverseObjectProperties / ObjectInverseOf), which EL cannot
+                // express -- reading it as a forward inclusion would be unsound.
                 if matches!(st, Tk::Var(_)) && br.len() == 1 && bc.is_empty() {
-                    if let JAtom::Role { role: br0, .. } = br[0] {
+                    if let JAtom::Role {
+                        role: br0,
+                        source: bs,
+                        target: bt,
+                    } = br[0]
+                    {
+                        let fwd = match (
+                            vname(&tk(bs)),
+                            vname(&tk(bt)),
+                            vname(&sxs),
+                            vname(&st),
+                        ) {
+                            (Some(a), Some(b), Some(c), Some(d)) => a == c && b == d,
+                            _ => false,
+                        };
+                        if !fwd {
+                            return None;
+                        }
                         let sub = addr!(br0);
                         let sup = addr!(role);
                         nf6.push(Nf6 { sub, sup });
                         continue;
                     }
                 }
-                // role chain: R(x,y) ∧ S(y,z) -> T(x,z)
+                // role chain: R(x,y) ∧ S(y,z) -> T(x,z), with the chain wiring
+                // checked explicitly (either body order). Anything else
+                // (swapped orientation, fan-out) is not EL.
                 if matches!(st, Tk::Var(_)) && br.len() == 2 && bc.is_empty() {
-                    if let (JAtom::Role { role: r1, .. }, JAtom::Role { role: r2, .. }) =
-                        (br[0], br[1])
+                    if let (
+                        JAtom::Role {
+                            role: ra,
+                            source: as_,
+                            target: at,
+                        },
+                        JAtom::Role {
+                            role: rb,
+                            source: bs,
+                            target: bt,
+                        },
+                    ) = (br[0], br[1])
                     {
-                        let r1 = addr!(r1);
-                        let r2 = addr!(r2);
+                        let (hs, ht) = match (vname(&sxs), vname(&st)) {
+                            (Some(a), Some(b)) => (a, b),
+                            _ => return None,
+                        };
+                        let w = (
+                            vname(&tk(as_)),
+                            vname(&tk(at)),
+                            vname(&tk(bs)),
+                            vname(&tk(bt)),
+                        );
+                        let ordered = if let (Some(a0), Some(a1), Some(b0), Some(b1)) = w {
+                            if a1 == b0 && hs == a0 && ht == b1 {
+                                Some((ra, rb)) // R=br0, S=br1
+                            } else if b1 == a0 && hs == b0 && ht == a1 {
+                                Some((rb, ra)) // R=br1, S=br0
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                        let (first, second) = match ordered {
+                            Some(p) => p,
+                            None => return None,
+                        };
+                        let r1 = addr!(first);
+                        let r2 = addr!(second);
                         let sup = addr!(role);
                         nf7.push(Nf7 { r1, r2, sup });
                         continue;

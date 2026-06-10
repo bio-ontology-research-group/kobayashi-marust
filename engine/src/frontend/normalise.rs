@@ -23,8 +23,10 @@ use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
 pub struct GroundHooks {
     /// Map `__nom__a -> a`. Order-insensitive; consumed by nominal preprocessing.
     pub nominal_to_individual: HashMap<String, String>,
-    /// `(R, __inv__R)` / `(R, S)` inverse pairs (recorded; not turned into
-    /// concept clauses by the frontend, mirroring Python).
+    /// `(R, __inv__R)` / `(R, S)` inverse pairs. Each registered pair also gets
+    /// the bridging clauses `R(x,y) -> S(y,x)` and `S(x,y) -> R(y,x)` emitted
+    /// (see `link_inverse`), which carry the inverse-role semantics to the
+    /// engine; this Vec additionally records the pairs for diagnostics.
     pub role_inverses: Vec<(String, String)>,
 }
 
@@ -140,16 +142,40 @@ impl Clausifier {
         format!("__nom__{}", individual)
     }
 
+    /// Emit the clauses carrying `InverseObjectProperties(r, s)` semantics:
+    /// `r(x,y) -> s(y,x)` and `s(x,y) -> r(y,x)`. Same swapped-orientation
+    /// clause shape as symmetric roles, which the engine already propagates.
+    /// Registered pairs are deduped via `hooks.role_inverses`. Without these
+    /// clauses the inverse axiom was silently dropped (the hook Vec had no
+    /// consumer), losing e.g. range-of-superproperty-of-inverse subsumptions
+    /// (the SWEET `temporalPartOf ⊑ subsetOf, inv(subsetOf)=supersetOf ⊑
+    /// setRelation, range(setRelation)=Set` chain on ore_ont_14896 et al).
+    fn link_inverse(&mut self, r: &str, s: &str) {
+        let pair = (r.to_string(), s.to_string());
+        let rev = (s.to_string(), r.to_string());
+        if self.hooks.role_inverses.contains(&pair) || self.hooks.role_inverses.contains(&rev) {
+            return;
+        }
+        self.hooks.role_inverses.push(pair);
+        let x = var_x();
+        let y = var_y();
+        self.clauses.push(clause(
+            [Atom::Role(r.to_string(), x.clone(), y.clone())],
+            [Atom::Role(s.to_string(), y.clone(), x.clone())],
+        ));
+        self.clauses.push(clause(
+            [Atom::Role(s.to_string(), x.clone(), y.clone())],
+            [Atom::Role(r.to_string(), y.clone(), x)],
+        ));
+    }
+
     /// Port of `_resolve_role`.
     fn resolve_role(&mut self, r: &Role) -> String {
         match r {
             Role::Name(n) => n.clone(),
             Role::Inverse(base) => {
                 let inv_name = format!("__inv__{}", base);
-                let pair = (base.clone(), inv_name.clone());
-                if !self.hooks.role_inverses.contains(&pair) {
-                    self.hooks.role_inverses.push(pair);
-                }
+                self.link_inverse(base, &inv_name);
                 inv_name
             }
             Role::Universal => {
@@ -523,10 +549,7 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                 ));
             }
             Axiom::InverseRoles(role, inverse) => {
-                clausifier
-                    .hooks
-                    .role_inverses
-                    .push((role.clone(), inverse.clone()));
+                clausifier.link_inverse(role, inverse);
             }
             Axiom::DisjointRoles(l, r) => {
                 clausifier.clauses.push(constraint([

@@ -118,6 +118,11 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     let mut tbox = preprocess::augment(tbox, &abox, &hooks);
+    // Inverse-role bridge clauses (swapped-orientation role heads) are not EL;
+    // elc's screen rejects them, but route past it up front. The rbox-record
+    // check below misses bare `ObjectInverseOf` in concepts (no rbox record),
+    // so this flag is the authoritative one.
+    let has_inverse = !hooks.role_inverses.is_empty();
     drop(abox);
     drop(hooks);
     t.lap("augment");
@@ -137,7 +142,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         }
         Ok(())
     })?;
-    let el_rbox_safe = rbox::el_rbox_safe(&rbox);
+    let el_rbox_safe = rbox::el_rbox_safe(&rbox) && !has_inverse;
     let abox_inconsistent = abox_data
         .map(|d| d.is_inconsistent(&rbox))
         .unwrap_or(false);
