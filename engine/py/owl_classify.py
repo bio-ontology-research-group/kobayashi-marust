@@ -137,13 +137,15 @@ def run_reasoner_file(argv, clauses_path):
 
 
 class _EngineResult:
-    __slots__ = ("returncode", "stdout", "stderr", "oom")
+    __slots__ = ("returncode", "stdout", "stderr", "oom", "timed_out")
 
-    def __init__(self, returncode, stdout, stderr, oom):
+    def __init__(self, returncode, stdout, stderr, oom, timed_out=False):
         self.returncode, self.stdout, self.stderr, self.oom = returncode, stdout, stderr, oom
+        self.timed_out = timed_out
 
 
-def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None):
+def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=None,
+                time_cap_s=None):
     """Run the context engine on the clause set, optionally forcing a thread
     count (`KM_THREADS`) and/or an RSS watchdog (GiB). The watchdog polls the
     engine's resident set and kills *only the engine child* (leaving this driver
@@ -155,6 +157,8 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None):
     env = dict(os.environ)
     if threads is not None:
         env["KM_THREADS"] = str(threads)
+    if extra_env:
+        env.update(extra_env)
     argv = [str(engine_path())]
     stdin_f = open(clauses_path) if clauses_path is not None else subprocess.PIPE
     p = subprocess.Popen(argv, stdin=stdin_f if clauses_path is not None else subprocess.PIPE,
@@ -163,19 +167,29 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None):
         threading.Thread(target=lambda: (p.stdin.write(json.dumps({"clauses": clauses})),
                                          p.stdin.close()), daemon=True).start()
     oom = {"hit": False}
-    if rss_cap_gb is not None:
-        cap = int(rss_cap_gb * (1 << 30))
+    timed = {"hit": False}
+    if rss_cap_gb is not None or time_cap_s is not None:
+        cap = int(rss_cap_gb * (1 << 30)) if rss_cap_gb is not None else None
+        deadline = (time.time() + time_cap_s) if time_cap_s is not None else None
 
         def monitor():
             # All rayon worker threads share one address space, so the process
             # RSS (statm field 2, in pages) covers the whole engine.
             while p.poll() is None:
-                try:
-                    rss = int(open("/proc/%d/statm" % p.pid).read().split()[1]) * 4096
-                except Exception:
-                    break
-                if rss > cap:
-                    oom["hit"] = True
+                if cap is not None:
+                    try:
+                        rss = int(open("/proc/%d/statm" % p.pid).read().split()[1]) * 4096
+                    except Exception:
+                        break
+                    if rss > cap:
+                        oom["hit"] = True
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                        break
+                if deadline is not None and time.time() > deadline:
+                    timed["hit"] = True
                     try:
                         p.kill()
                     except Exception:
@@ -187,29 +201,49 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None):
     out, err = p.communicate()
     if clauses_path is not None:
         stdin_f.close()
-    return _EngineResult(p.returncode, out, err, oom["hit"])
+    return _EngineResult(p.returncode, out, err, oom["hit"], timed["hit"])
 
 
 def _run_engine_adaptive(clauses_path, clauses):
-    """Parallel attempt under an RSS watchdog; if it overflows, retry with a
-    single engine (successor contexts shared across all queries -> far lower
-    memory). Parallelism is kept for the speed-bound ontologies (no regression)
-    while the memory-bound ones are recovered by the single-threaded fallback.
+    """Parallel attempt under an RSS+time watchdog; on overflow/timeout/failure,
+    fall back to a single-threaded legacy (per-`f` pay-as-you-go) run.
+
     The first attempt uses the configured `KM_THREADS` (the harness sets it; if
-    unset the engine picks `available_parallelism`); `KM_PAR_MEM_GB` sets the cap
-    (default 18 GiB, under the typical 20 GiB benchmark memcap). Disable the
-    fallback with `KM_NO_RETRY=1`."""
+    unset the engine picks `available_parallelism`), the default central
+    expansion strategy, an `KM_PAR_MEM_GB` RSS cap (default 18 GiB, under the
+    typical 20 GiB benchmark memcap) and a wall cap `KM_CENTRAL_TIME_CAP`
+    (default 190 s, under the typical 240 s per-ontology timeout). The central
+    strategy collapses the body-conjunction blow-up but can concentrate the
+    head-disjunction blow-up in shared-core contexts -- a few disjunction-heavy
+    ontologies that the legacy per-`f` strategy classifies in seconds blow up
+    under it. The time cap (set above the slowest central-OK ontology, ~182 s on
+    ORE) makes those abort with budget left for the legacy fallback, which then
+    classifies them within the per-ontology timeout. Speed-bound ontologies
+    finish on the first attempt and never reach the fallback. Disable with
+    `KM_NO_RETRY=1`."""
     cap = os.environ.get("KM_PAR_MEM_GB")
     cap = float(cap) if cap else 18.0
+    tcap = os.environ.get("KM_CENTRAL_TIME_CAP")
+    tcap = float(tcap) if tcap else 190.0
+    central_on = not os.environ.get("KM_NO_CENTRAL")
     first = os.environ.get("KM_THREADS")  # None or e.g. "16"; first attempt as-is
-    proc = _run_engine(clauses_path, clauses, threads=first, rss_cap_gb=cap)
-    if (proc.oom or proc.returncode != 0) and first != "1" \
+    # Time-cap the first attempt only when the central strategy is active (so an
+    # explicit KM_NO_CENTRAL run keeps the prior unbounded-time behaviour).
+    proc = _run_engine(clauses_path, clauses, threads=first, rss_cap_gb=cap,
+                       time_cap_s=(tcap if central_on else None))
+    if (proc.oom or proc.timed_out or proc.returncode != 0) \
             and not os.environ.get("KM_NO_RETRY"):
-        # Parallel attempt overflowed (or failed): retry single-threaded, which
-        # shares the successor contexts and uses far less memory. Uncapped so the
-        # legitimate single-threaded working set is not starved (the external
-        # benchmark memcap still bounds the host).
-        proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None)
+        if central_on:
+            # Central blew up (memory or time): the legacy per-`f` strategy is the
+            # proven-complete fallback and classifies these in seconds. Run it
+            # single-threaded (shares successor contexts -> low memory), uncapped
+            # in time/memory (the remaining harness budget + external memcap bound
+            # it).
+            proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None,
+                               extra_env={"KM_NO_CENTRAL": "1"})
+        elif first != "1":
+            # Explicit legacy run: keep the original single-threaded retry.
+            proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None)
     return proc
 
 
