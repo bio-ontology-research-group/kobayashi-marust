@@ -178,6 +178,11 @@ struct Context {
     neighbor_pred: Vec<PredClause>,
     /// successor edges: function term -> successor context id
     successors: HashMap<Term, usize>,
+    /// Central strategy: per function symbol, the full (raw, un-substituted)
+    /// set of succ-trigger predicates pushed so far.  The successor context for
+    /// `f` is keyed by the σ-image of this set (its core); when the set grows,
+    /// the edge re-targets a new context with the larger core.
+    trigger_sets: HashMap<Term, std::collections::BTreeSet<Pred>>,
     /// predecessor edges: (predecessor ctx id, function term) -> pushed predicates
     predecessors: HashMap<(usize, Term), HashSet<Pred>>,
     pushed_succ: HashSet<Pred>,
@@ -228,6 +233,7 @@ impl Context {
             todo: VecDeque::new(),
             neighbor_pred: Vec::new(),
             successors: HashMap::new(),
+            trigger_sets: HashMap::new(),
             predecessors: HashMap::new(),
             pushed_succ: HashSet::new(),
             pushed_pred: HashSet::new(),
@@ -439,6 +445,46 @@ pub struct Engine {
     /// consequence about one successor from being pushed back along another's
     /// edge; partitioning by `f` pushes exactly the same per-edge consequences.
     successor_ctxs: HashMap<Term, usize>,
+    /// Central expansion strategy (opt-in via KM_CENTRAL; default is the per-`f`
+    /// empty-core pay-as-you-go strategy): successor contexts are keyed by their core
+    /// = the σ-image of the predecessor's pushed trigger set for `f`.  Trigger
+    /// atoms become *core* atoms (`-> p` by the Core rule) instead of
+    /// conditional hypotheses (`p -> p`), so consequences that the empty-core
+    /// strategy derives as clauses with ever-growing hypothesis conjunctions in
+    /// the body (`Q1(x) ∧ ... ∧ Qk(x) -> D(x)`, the measured blow-up on
+    /// disjunctive ontologies) collapse to unit clauses.  Predecessors with
+    /// identical trigger sets share one successor context.  Strategy choice is
+    /// within the calculus's soundness/completeness freedom (same rules, same
+    /// ordering; only WHICH context a Succ message targets changes — cf. the
+    /// trivial and pay-as-you-go strategies above); the Pred rule's
+    /// `neighbour_core` back-substitution already conditions returned clauses
+    /// on the successor's core, which is exactly the pushed trigger set.
+    /// Kept separate from `core_index`: root contexts use the root ordering,
+    /// so a successor core that happens to equal a root core must NOT be
+    /// deduplicated into the root context.
+    central_index: HashMap<Vec<Pred>, usize>,
+    /// cached strategy flag: central (KM_CENTRAL) vs default per-`f` pay-as-you-go
+    central: bool,
+    /// Context-independent closure: the worked-off clauses of an empty-core,
+    /// non-root context saturated from the ontology facts + TBox alone (no Succ
+    /// hypotheses, no incoming edges).  These consequences are entailed by the
+    /// ontology and hold of *every* element, so they are valid in every
+    /// successor context (all empty-core, non-root, same literal ordering).
+    /// Computed once and seeded into each new successor context instead of
+    /// re-deriving them per context — the measured cross-context duplication on
+    /// disjunction/role-chain ontologies is 8-15x, almost all of it this shared
+    /// TBox reasoning.  Sound + completeness-preserving (the seeded clauses are
+    /// exactly those the context would re-derive), so the saturation fixpoint
+    /// and output are unchanged; no Lean re-certification (a redundancy/sharing
+    /// optimisation, not a calculus-rule change).
+    shared_closure: Option<Vec<ContextClause>>,
+    /// Same idea as `shared_closure` but under the *root* literal ordering
+    /// (`root=true`): the facts+TBox closure of an empty-core root context.
+    /// Seeded into every query root context (core `{A(x)}`) so the shared TBox
+    /// reasoning is computed once rather than per classified concept.  Root and
+    /// non-root orderings differ (query concepts are mutually incomparable at a
+    /// root), so the two closures are kept separate and never crossed.
+    shared_root_closure: Option<Vec<ContextClause>>,
     equality: bool,
     pub dropped_unsupported: usize,
     /// instrumentation counters (only read under KM_STATS)
@@ -497,6 +543,10 @@ impl Engine {
             core_index: HashMap::new(),
             msgs: VecDeque::new(),
             successor_ctxs: HashMap::new(),
+            central_index: HashMap::new(),
+            central: std::env::var_os("KM_CENTRAL").is_some(),
+            shared_closure: None,
+            shared_root_closure: None,
             equality: true,
             dropped_unsupported: dropped,
             stat_propagate: 0,
@@ -519,14 +569,51 @@ impl Engine {
         let ctx = Context::new(id, core.clone(), root, query);
         self.contexts.push(ctx);
         self.core_index.insert(core, id);
-        self.init_context(id);
+        // Root contexts share the root-ordering facts+TBox closure: seed it and
+        // add only the core rule (the facts live in the closure).  The empty-core
+        // top context is itself the closure, so seeding it is a no-op-equivalent
+        // (it adds no core clause and derives nothing further).
+        if root && std::env::var_os("KM_NO_SHARE").is_none() {
+            self.ensure_shared_root_closure();
+            let closure = self.shared_root_closure.as_ref().unwrap().clone();
+            for c in closure {
+                self.seed_worked_off(id, c);
+            }
+            self.add_core(id);
+        } else {
+            self.init_context(id);
+        }
         id
+    }
+
+    /// Compute the root-ordering facts+TBox closure once (see
+    /// `shared_root_closure`).  A throwaway empty-core root context is saturated
+    /// from facts+TBox alone and its worked-off snapshotted, then discarded.
+    fn ensure_shared_root_closure(&mut self) {
+        if self.shared_root_closure.is_some() {
+            return;
+        }
+        let id = self.contexts.len();
+        let ctx = Context::new(id, vec![], true, None);
+        self.contexts.push(ctx);
+        self.init_context(id);
+        self.saturate(id);
+        let closure = self.contexts[id].worked_off.clone();
+        debug_assert_eq!(id, self.contexts.len() - 1);
+        self.contexts.pop();
+        self.shared_root_closure = Some(closure);
     }
 
     /// Core rule + facts for a freshly created context, then schedule saturation.
     fn init_context(&mut self, id: usize) {
+        self.add_core(id);
+        self.add_facts(id);
+    }
+
+    /// Core rule for context `id`: the empty clause if a core predicate is
+    /// owl:Nothing, else one `-> p` clause per core predicate.
+    fn add_core(&mut self, id: usize) {
         let root = self.contexts[id].root;
-        // Core rule
         let core = self.contexts[id].core.clone();
         if core.iter().any(|p| self.sig.is_nothing_pred(p)) {
             let c = ContextClause::new(vec![], vec![], root, &self.sig);
@@ -537,7 +624,13 @@ impl Engine {
                 self.add_clause(id, c);
             }
         }
-        // Facts: ontology clauses with empty body.
+    }
+
+    /// Ontology facts (empty-body clauses) seeded into context `id`.  These are
+    /// part of every context-independent closure, so a context seeded from a
+    /// shared closure must NOT also call this (the facts are already present).
+    fn add_facts(&mut self, id: usize) {
+        let root = self.contexts[id].root;
         let facts: Vec<usize> = self.ont.facts.clone();
         for fi in facts {
             let head = self.ont.clauses[fi].head.clone();
@@ -1134,12 +1227,111 @@ impl Engine {
         if let Some(&s) = self.successor_ctxs.get(&f) {
             return s;
         }
+        // Disabled via KM_NO_SHARE for A/B measurement; default on.
+        if std::env::var_os("KM_NO_SHARE").is_some() {
+            let id = self.contexts.len();
+            let ctx = Context::new(id, vec![], false, None);
+            self.contexts.push(ctx);
+            self.successor_ctxs.insert(f, id);
+            self.init_context(id);
+            return id;
+        }
+        self.ensure_shared_closure();
         let id = self.contexts.len();
         let ctx = Context::new(id, vec![], false, None);
         self.contexts.push(ctx);
         self.successor_ctxs.insert(f, id);
-        self.init_context(id); // seeds the empty-body ontology facts (no core)
+        // Seed the shared context-independent closure directly into worked-off
+        // (already mutually saturated, so it fires no rules here).  This replaces
+        // `init_context` for successor contexts: the ontology facts are part of
+        // the closure, and the empty core contributes no core clauses.  The
+        // hypothesis clause that arrives via the first Succ message (apply_succ)
+        // then saturates against this seeded closure, deriving exactly the
+        // context-specific consequences.
+        let closure = self.shared_closure.as_ref().unwrap().clone();
+        for c in closure {
+            self.seed_worked_off(id, c);
+        }
         id
+    }
+
+    /// Central strategy: the successor context whose core is exactly `core`
+    /// (the σ-image of a pushed trigger set), created on first use.  Seeded
+    /// with the shared non-root closure (facts+TBox consequences) plus the
+    /// Core rule for its core atoms.
+    fn central_successor_for_core(&mut self, core: Vec<Pred>) -> usize {
+        if let Some(&id) = self.central_index.get(&core) {
+            return id;
+        }
+        let id = self.contexts.len();
+        let ctx = Context::new(id, core.clone(), false, None);
+        self.contexts.push(ctx);
+        self.central_index.insert(core, id);
+        if std::env::var_os("KM_NO_SHARE").is_none() {
+            self.ensure_shared_closure();
+            let closure = self.shared_closure.as_ref().unwrap().clone();
+            for c in closure {
+                self.seed_worked_off(id, c);
+            }
+            self.add_core(id);
+        } else {
+            self.init_context(id);
+        }
+        id
+    }
+
+    /// Compute the context-independent closure once: saturate a throwaway
+    /// empty-core, non-root context from the ontology facts + TBox alone, then
+    /// snapshot its worked-off clauses and discard the context.  No messages are
+    /// generated (propagation is never run on it), so the snapshot is purely the
+    /// facts/TBox consequences shared by every successor context.
+    fn ensure_shared_closure(&mut self) {
+        if self.shared_closure.is_some() {
+            return;
+        }
+        let id = self.contexts.len();
+        let ctx = Context::new(id, vec![], false, None);
+        self.contexts.push(ctx);
+        self.init_context(id); // seeds empty-body ontology facts (no core)
+        self.saturate(id);
+        let closure = self.contexts[id].worked_off.clone();
+        // Discard the throwaway: nothing references `id` (no edges, not in
+        // `successor_ctxs`/`core_index`, no query), so popping it keeps the
+        // context vector and counts clean.
+        debug_assert_eq!(id, self.contexts.len() - 1);
+        self.contexts.pop();
+        self.shared_closure = Some(closure);
+    }
+
+    /// Place an already-derived clause into context `id`'s worked-off set without
+    /// firing any rules: mirrors the bookkeeping tail of `saturate` (clause-key
+    /// set, semi-naive Pred/Succ pools, head indexes, dirty flag) so the seeded
+    /// clause participates in later resolution and propagation exactly as if it
+    /// had been worked off normally.
+    fn seed_worked_off(&mut self, id: usize, clause: ContextClause) {
+        let ctx = &mut self.contexts[id];
+        let key = clause.key();
+        if ctx.clause_keys.contains(&key) {
+            return;
+        }
+        ctx.clause_keys.insert(key);
+        let pred_eligible = clause
+            .head
+            .iter()
+            .all(|l| l.is_function_free() && matches!(l, Lit::P(_)));
+        let succ_eligible = clause
+            .max_head_predicates()
+            .any(|(p, _)| is_function(p.max_term()));
+        if pred_eligible {
+            ctx.pred_pool.push(clause.clone());
+        }
+        if succ_eligible {
+            ctx.succ_pool.push(clause.clone());
+        }
+        let idx = ctx.worked_off.len();
+        ctx.worked_off.push(clause);
+        ctx.index_clause(idx);
+        ctx.dirty = true;
     }
 
     /// After saturating context `id`, generate Succ and Pred messages.
@@ -1169,19 +1361,65 @@ impl Engine {
             }
         }
         self.contexts[id].succ_hwm = self.contexts[id].succ_pool.len();
-        for p in new_succ {
-            let f = p.max_term();
-            let target = self.successor_for(f);
-            // forward map: f -> x, x -> y
-            let psigma = p.apply(&|v| forwards(f, v));
-            self.contexts[id].pushed_succ.insert(p);
-            self.contexts[id].successors.insert(f, target);
-            self.msgs.push_back(Msg::Succ {
-                from: id,
-                f,
-                p: psigma,
-                target,
-            });
+        if !self.central {
+            // Legacy pay-as-you-go strategy: one empty-core successor per `f`.
+            for p in new_succ {
+                let f = p.max_term();
+                let target = self.successor_for(f);
+                // forward map: f -> x, x -> y
+                let psigma = p.apply(&|v| forwards(f, v));
+                self.contexts[id].pushed_succ.insert(p);
+                self.contexts[id].successors.insert(f, target);
+                self.msgs.push_back(Msg::Succ {
+                    from: id,
+                    f,
+                    p: psigma,
+                    target,
+                });
+            }
+        } else {
+            // Central strategy: group the new triggers by `f`, extend each
+            // trigger set, and (re-)target the successor context whose core is
+            // the σ-image of the full set.  A grown set yields a new target and
+            // the WHOLE set is re-sent there (the new context needs every
+            // pushed predicate for its edge bookkeeping and hypotheses); the
+            // previous (smaller-core) context simply stops receiving — its
+            // earlier back-pushed consequences remain sound because apply_pred
+            // conditions them on that context's own core.
+            let mut grew: Vec<Term> = Vec::new();
+            {
+                let ctx = &mut self.contexts[id];
+                for p in new_succ {
+                    let f = p.max_term();
+                    ctx.pushed_succ.insert(p);
+                    ctx.trigger_sets.entry(f).or_default().insert(p);
+                    if !grew.contains(&f) {
+                        grew.push(f);
+                    }
+                }
+            }
+            for f in grew {
+                let raw: Vec<Pred> = self.contexts[id].trigger_sets[&f].iter().copied().collect();
+                let mut core: Vec<Pred> = raw.iter().map(|p| p.apply(&|v| forwards(f, v))).collect();
+                core.sort();
+                core.dedup();
+                let target = self.central_successor_for_core(core);
+                let prev = self.contexts[id].successors.insert(f, target);
+                // New target (first push or grown set): send the full set so the
+                // new context's edge records every pushed predicate.  (A new raw
+                // trigger always changes the σ-image, so `prev == Some(target)`
+                // only happens if nothing changed — nothing to send then.)
+                if prev != Some(target) {
+                    for p in &raw {
+                        self.msgs.push_back(Msg::Succ {
+                            from: id,
+                            f,
+                            p: p.apply(&|v| forwards(f, v)),
+                            target,
+                        });
+                    }
+                }
+            }
         }
         // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
         // `pred_pool` (function-free, predicate-only head — built when a clause is
@@ -1263,12 +1501,14 @@ impl Engine {
         // a new edge / pushed predicate may let existing worked-off clauses be
         // pushed back to this predecessor, so the next propagate must re-scan.
         self.contexts[target].dirty = true;
-        // Succ rule: add hypothesis clause  p -> p
+        // Succ rule: add hypothesis clause  p -> p.  Saturate unconditionally:
+        // under the central strategy the hypothesis is subsumed by the core's
+        // `-> p` (so add_clause returns false), but the core clauses seeded at
+        // context creation still sit in `todo` and must be worked off.
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
-        if self.add_clause(target, c) {
-            self.saturate(target);
-        }
+        self.add_clause(target, c);
+        self.saturate(target);
         target
     }
 
@@ -1584,4 +1824,5 @@ impl Engine {
     pub fn num_contexts(&self) -> usize {
         self.contexts.len()
     }
+
 }
