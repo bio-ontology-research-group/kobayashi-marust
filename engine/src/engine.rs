@@ -1706,13 +1706,30 @@ impl Engine {
                 }
                 if trace && guard % 200_000 == 0 {
                     let (mut maxb, mut totwo) = (0usize, 0usize);
+                    // Head-size histogram (h1/h2/h3/h4plus) + max head, to tell a
+                    // disjunctive-blowup (many incomparable multi-head clauses) from
+                    // a Horn one. `topwo` = largest single-context worked_off.
+                    let (mut h1, mut h2, mut h3, mut h4p, mut maxh, mut topwo) =
+                        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
                     for c in &self.contexts {
                         totwo += c.worked_off.len();
-                        for cl in &c.worked_off { if cl.body.len() > maxb { maxb = cl.body.len(); } }
+                        if c.worked_off.len() > topwo { topwo = c.worked_off.len(); }
+                        for cl in &c.worked_off {
+                            if cl.body.len() > maxb { maxb = cl.body.len(); }
+                            if cl.head.len() > maxh { maxh = cl.head.len(); }
+                            match cl.head.len() {
+                                0 | 1 => h1 += 1,
+                                2 => h2 += 1,
+                                3 => h3 += 1,
+                                _ => h4p += 1,
+                            }
+                        }
                     }
                     eprintln!(
-                        "KM_TRACE guard={} contexts={} msgs_pending={} worked_off_total={} max_body_len={}",
-                        guard, self.contexts.len(), self.msgs.len(), totwo, maxb
+                        "KM_TRACE guard={} contexts={} msgs_pending={} worked_off_total={} \
+                         max_body_len={} max_head_len={} top_ctx_wo={} head[<=1={} 2={} 3={} >=4={}]",
+                        guard, self.contexts.len(), self.msgs.len(), totwo, maxb, maxh,
+                        topwo, h1, h2, h3, h4p
                     );
                 }
                 let t = match msg {
