@@ -5,6 +5,8 @@
 //! `preprocess.domain_range_clauses`); the other record kinds are produced for
 //! parity with the Python list but are not consumed by `ofn_to_clauses`.
 
+use std::collections::HashSet;
+
 use super::iri::IriRegistry;
 use super::sexpr::Node;
 
@@ -167,5 +169,24 @@ pub fn el_rbox_safe(records: &[RboxRecord]) -> bool {
         RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
         RboxRecord::Fenced(reason, _) => reason == "role-chain",
         RboxRecord::Inverse(..) => false,
+    })
+}
+
+/// Like [`el_rbox_safe`], but additionally admits a *symmetric* or *inverse*
+/// role record when the role(s) it names are inert for classification, i.e. not
+/// in `relevant` (see `preprocess::concept_relevant_roles`). The inert
+/// reverse-edge clauses are pruned separately by `prune_inert_role_bridges`, so
+/// the clause set the EL fast path receives is pure EL and the dropped axiom
+/// changes no named-concept subsumption. Every other record is judged exactly
+/// as `el_rbox_safe` would, so an ontology with no symmetric/inverse records (or
+/// with a relevant one) gets the identical routing decision as before.
+pub fn el_rbox_safe_relaxed(records: &[RboxRecord], relevant: &HashSet<String>) -> bool {
+    records.iter().all(|r| match r {
+        RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
+        RboxRecord::Fenced(reason, role) => {
+            reason == "role-chain"
+                || (reason == "symmetric-role" && !relevant.contains(role))
+        }
+        RboxRecord::Inverse(r, s) => !relevant.contains(r) && !relevant.contains(s),
     })
 }

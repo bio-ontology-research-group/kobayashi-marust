@@ -123,7 +123,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // check below misses bare `ObjectInverseOf` in concepts (no rbox record),
     // so this flag is the authoritative one.
     let role_inverses = std::mem::take(&mut hooks.role_inverses);
-    let has_inverse = !role_inverses.is_empty();
+    let symmetric_roles = std::mem::take(&mut hooks.symmetric_roles);
     drop(abox);
     drop(hooks);
     t.lap("augment");
@@ -143,7 +143,6 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         }
         Ok(())
     })?;
-    let el_rbox_safe = rbox::el_rbox_safe(&rbox) && !has_inverse;
     let abox_inconsistent = abox_data
         .map(|d| d.is_inconsistent(&rbox))
         .unwrap_or(false);
@@ -151,6 +150,19 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // All consumers are in place (augment encodings + domain/range), so dead
     // inverse bridges can be identified and dropped.
     preprocess::prune_dead_inverse_bridges(&mut tbox, &role_inverses);
+    // Decide EL routing on the full clause set. An ontology fenced out of the EL
+    // fast path only by symmetric / inverse roles is still EL-routable when
+    // those roles are inert (their reverse edges feed no concept): prune the
+    // inert reverse-edge clauses and relax the routing predicate. Roles that do
+    // feed a concept stay relevant -> the ontology stays on the CB engine, an
+    // identical decision to the prior `el_rbox_safe(&rbox) && !has_inverse`.
+    let relevant = preprocess::concept_relevant_roles(&tbox);
+    preprocess::prune_inert_role_bridges(&mut tbox, &symmetric_roles, &role_inverses, &relevant);
+    let inverses_inert = role_inverses
+        .iter()
+        .all(|(r, s)| !relevant.contains(r) && !relevant.contains(s));
+    let el_rbox_safe = rbox::el_rbox_safe_relaxed(&rbox, &relevant) && inverses_inert;
+    t.lap("relevance+prune");
     let mut declared = Vec::new();
     for name in declared_raw {
         let s = reg.short(name);

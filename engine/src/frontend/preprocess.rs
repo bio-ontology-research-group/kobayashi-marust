@@ -344,6 +344,114 @@ pub fn prune_dead_inverse_bridges(tbox: &mut Vec<DLClause>, pairs: &[(String, St
     });
 }
 
+/// Roles whose edges can influence a named-concept subsumption ("concept
+/// relevant"). A role `R` is concept-relevant if some clause has an `R`-atom in
+/// its body and a concept or equality atom in its head (the body edge is read
+/// to derive a concept membership or a merge), or if `R` feeds — through a
+/// role-headed clause such as a subrole axiom, role chain, or transitivity —
+/// another concept-relevant role. Domain (`R(x,y) -> D(x)`), range
+/// (`R(x,y) -> D(y)`) and universal (`A(x), R(x,y) -> C(y)`) clauses all carry
+/// a concept head, so they seed relevance directly.
+///
+/// Symmetric / inverse axioms only add *reverse* edges for their role. If that
+/// role is not concept-relevant, no reverse edge it could produce is ever read
+/// to derive a concept, so the symmetry / inverse is inert for classification:
+/// dropping it changes no named-concept subsumption, and the ontology can take
+/// the EL fast path. The over-approximation is conservative — a clause with a
+/// mixed concept+role head marks its body roles relevant, so the analysis only
+/// ever errs toward calling a role relevant (keeping it on the CB engine).
+pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
+    let mut relevant: HashSet<String> = HashSet::new();
+    // Role-headed clauses: (head role, body roles). Only those with at least one
+    // body role can propagate relevance backward; the millions of existential
+    // `C(x) -> R(x,f)` clauses have an empty body-role list and are skipped.
+    let mut role_edges: Vec<(String, Vec<String>)> = Vec::new();
+    for c in tbox {
+        let body_roles: Vec<&str> = c
+            .body
+            .iter()
+            .filter_map(|a| match a {
+                Atom::Role(r, _, _) => Some(r.as_str()),
+                _ => None,
+            })
+            .collect();
+        if body_roles.is_empty() {
+            continue;
+        }
+        let head_has_concept = c
+            .head
+            .iter()
+            .any(|a| matches!(a, Atom::Concept(..) | Atom::Eq(..)));
+        if head_has_concept {
+            for r in &body_roles {
+                relevant.insert((*r).to_string());
+            }
+        }
+        for a in &c.head {
+            if let Atom::Role(s, _, _) = a {
+                role_edges.push((s.clone(), body_roles.iter().map(|r| r.to_string()).collect()));
+            }
+        }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for (head_role, body_roles) in &role_edges {
+            if relevant.contains(head_role) {
+                for r in body_roles {
+                    if relevant.insert(r.clone()) {
+                        changed = true;
+                    }
+                }
+            }
+        }
+    }
+    relevant
+}
+
+/// Drop the reverse-edge clauses for *inert* symmetric and inverse roles — the
+/// symmetric self-bridge `R(x,y) -> R(y,x)` for a symmetric `R` and the inverse
+/// bridges `R(x,y) -> S(y,x)` / `S(x,y) -> R(y,x)` for an inverse pair `(R, S)`,
+/// whenever every role involved is not in `relevant`. Removing an inert bridge
+/// changes no named-concept subsumption (its reverse edges feed no concept), so
+/// this is sound for the CB engine and leaves a pure-EL clause set that the EL
+/// fast path accepts (it otherwise rejects the swapped-orientation role head).
+pub fn prune_inert_role_bridges(
+    tbox: &mut Vec<DLClause>,
+    symmetric_roles: &[String],
+    inverse_pairs: &[(String, String)],
+    relevant: &HashSet<String>,
+) {
+    let sym_inert: HashSet<&str> = symmetric_roles
+        .iter()
+        .map(String::as_str)
+        .filter(|r| !relevant.contains(*r))
+        .collect();
+    let inv_inert: HashSet<(&str, &str)> = inverse_pairs
+        .iter()
+        .filter(|(r, s)| !relevant.contains(r) && !relevant.contains(s))
+        .flat_map(|(r, s)| [(r.as_str(), s.as_str()), (s.as_str(), r.as_str())])
+        .collect();
+    if sym_inert.is_empty() && inv_inert.is_empty() {
+        return;
+    }
+    tbox.retain(|c| {
+        if c.body.len() != 1 || c.head.len() != 1 {
+            return true;
+        }
+        match (&c.body[0], &c.head[0]) {
+            (Atom::Role(r, rs, rt), Atom::Role(s, ss, st))
+                if rs == st && rt == ss && rs != rt =>
+            {
+                let drop = (r == s && sym_inert.contains(r.as_str()))
+                    || inv_inert.contains(&(r.as_str(), s.as_str()));
+                !drop
+            }
+            _ => true,
+        }
+    });
+}
+
 /// Port of `_is_chain_axiom`.
 fn is_chain_axiom(c: &DLClause) -> bool {
     let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
@@ -471,5 +579,95 @@ mod tests {
         let mut tbox = vec![sub.clone()];
         prune_dead_inverse_bridges(&mut tbox, &[]);
         assert_eq!(tbox, vec![sub]);
+    }
+
+    fn relevant_set(items: &[&str]) -> HashSet<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn relevance_skips_existential_only_role() {
+        // A ⊑ ∃R.B (head occurrence of R + concept B on the successor) and the
+        // transitivity/self-bridge of R. R never sits in a body that yields a
+        // concept, so it is inert.
+        let producer = clause(
+            [Atom::Concept("A".to_string(), var_x())],
+            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+        );
+        let succ = clause(
+            [Atom::Concept("A".to_string(), var_x())],
+            [Atom::Concept(
+                "B".to_string(),
+                Term::Fun("f".to_string(), Box::new(var_x())),
+            )],
+        );
+        let trans = clause(
+            [role("R", var_x(), var_y()), role("R", var_y(), Term::Var("z".to_string()))],
+            [role("R", var_x(), Term::Var("z".to_string()))],
+        );
+        let tbox = vec![producer, succ, trans, bridge("R", "R")];
+        assert!(concept_relevant_roles(&tbox).is_empty());
+    }
+
+    #[test]
+    fn relevance_marks_domain_and_propagates_through_subrole() {
+        // S(x,y) → D(x) is a domain clause: S is relevant. R ⊑ S makes R relevant.
+        let domain = clause(
+            [role("S", var_x(), var_y())],
+            [Atom::Concept("D".to_string(), var_x())],
+        );
+        let subrole = clause([role("R", var_x(), var_y())], [role("S", var_x(), var_y())]);
+        let rel = concept_relevant_roles(&[domain, subrole]);
+        assert_eq!(rel, relevant_set(&["S", "R"]));
+    }
+
+    #[test]
+    fn relevance_propagates_back_through_inverse_bridge() {
+        // Range on S (S(x,y) → D(y)) makes S relevant; the inverse bridge
+        // R(x,y) → S(y,x) then makes R relevant — the SWEET inverse-feeds-range
+        // case that must stay on the CB engine.
+        let range = clause(
+            [role("S", var_x(), var_y())],
+            [Atom::Concept("D".to_string(), var_y())],
+        );
+        let rel = concept_relevant_roles(&[range, bridge("R", "S"), bridge("S", "R")]);
+        assert!(rel.contains("R") && rel.contains("S"));
+    }
+
+    #[test]
+    fn prunes_inert_symmetric_self_bridge() {
+        let producer = clause(
+            [Atom::Concept("A".to_string(), var_x())],
+            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+        );
+        let mut tbox = vec![producer.clone(), bridge("R", "R")];
+        let relevant = HashSet::new();
+        prune_inert_role_bridges(&mut tbox, &["R".to_string()], &[], &relevant);
+        assert_eq!(tbox, vec![producer]);
+    }
+
+    #[test]
+    fn keeps_relevant_symmetric_self_bridge() {
+        let consumer = clause(
+            [role("R", var_x(), var_y())],
+            [Atom::Concept("D".to_string(), var_x())],
+        );
+        let sym = bridge("R", "R");
+        let mut tbox = vec![consumer.clone(), sym.clone()];
+        let relevant = relevant_set(&["R"]);
+        prune_inert_role_bridges(&mut tbox, &["R".to_string()], &[], &relevant);
+        assert_eq!(tbox, vec![consumer, sym]);
+    }
+
+    #[test]
+    fn prunes_inert_inverse_pair_both_directions() {
+        let producer = clause(
+            [Atom::Concept("A".to_string(), var_x())],
+            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+        );
+        let mut tbox = vec![producer.clone(), bridge("R", "S"), bridge("S", "R")];
+        let relevant = HashSet::new();
+        prune_inert_role_bridges(&mut tbox, &[], &[pair("R", "S")], &relevant);
+        assert_eq!(tbox, vec![producer]);
     }
 }

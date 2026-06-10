@@ -28,6 +28,12 @@ pub struct GroundHooks {
     /// (see `link_inverse`), which carry the inverse-role semantics to the
     /// engine; this Vec additionally records the pairs for diagnostics.
     pub role_inverses: Vec<(String, String)>,
+    /// Roles declared `SymmetricObjectProperty(R)`. Each also gets the
+    /// self-bridge clause `R(x,y) -> R(y,x)` emitted; this Vec records the role
+    /// names so the frontend can recognise an inert symmetric role (one whose
+    /// reverse edges feed no concept) and route the ontology to the EL fast
+    /// path instead of the CB engine.
+    pub symmetric_roles: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -505,6 +511,7 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                 ));
             }
             Axiom::SymmetricRole(role) => {
+                clausifier.hooks.symmetric_roles.push(role.clone());
                 clausifier.clauses.push(clause(
                     [Atom::Role(role.clone(), x.clone(), y.clone())],
                     [Atom::Role(role.clone(), y.clone(), x.clone())],
