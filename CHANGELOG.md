@@ -8,6 +8,36 @@ Goal: close the remaining ORE 2015 coverage gap to Konclude (was 551/590 ok;
 40 failures = 21 timeout + 19 memout). Diagnosis, fixes, and benchmark deltas
 tracked here.
 
+### Frontend (`ofn`): inverse-role bridge clauses (8+ incomplete → agree)
+
+`InverseObjectProperties(R, S)` was parsed into `hooks.role_inverses` — which no
+code consumed — and `ObjectInverseOf(R)` in concepts became a fresh role
+`__inv__R` with no clause linking it to `R`. The engine has no inverse machinery
+of its own, so inverse-role semantics was silently dropped. Diagnosed on the
+SWEET cluster (`14896`/`3795`/`4834`/`6060`/`7025`/`7320`, 24 byte-identical
+missing subsumptions each): the gold derivation `Age ⊑ Set` needs
+`temporalPartOf ⊑ subsetOf`, `inverse(subsetOf) = supersetOf ⊑ setRelation`,
+`range(setRelation) = Set` — i.e. range of a superproperty of the inverse.
+
+`normalise.rs` now emits the two bridge clauses `R(x,y) → S(y,x)` and
+`S(x,y) → R(y,x)` per inverse pair (the same swapped-orientation shape as
+symmetric roles, which the engine already propagates; verified on `14896` where
+the engine derives exactly the 24 gold subsumptions once the bridges exist).
+
+Two hardening fixes rode along: `elc`'s NF6/NF7 recognizers ignored variable
+wiring (a bridge clause would parse as a FORWARD role inclusion — unsound; a
+chain could bind in listed order, not chain order) and now check the wiring
+explicitly, rejecting anything else to the CB engine (exit 3). `el_rbox_safe`
+is also forced false whenever an inverse pair was registered, covering bare
+`ObjectInverseOf` which produces no rbox record.
+
+Clause output is byte-identical on ontologies without inverse constructs;
+inverse-bearing ones gain only the bridge clauses. Harness-validated: the six
+SWEET-cluster ontologies plus `3050` and `8999` flip incomplete → AGREE
+(8 of the 17 incomplete; the rest have other causes). Sound by construction
+(the bridges are the first-order semantics of the axiom; saturation only gains
+derivations). No Lean re-cert (frontend/input clauses; calculus untouched).
+
 ### Frontend (`ofn`): sound ABox-inconsistency precheck (4 unsound → agree)
 
 Re-diagnosed the 8 "unsound vs gold" ORE ontologies. The dominant cause is NOT
