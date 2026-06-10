@@ -16,3 +16,8 @@ __pycache__/
 # Editor / OS
 *.swp
 .DS_Store
+
+# Local Claude guidance (internal host/infra details — do NOT push to the public remote)
+CLAUDE.md
+CLAUDE.local.md
+.claude/
