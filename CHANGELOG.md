@@ -4,6 +4,37 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### EL fast path: optional canonical-model completeness certificate (`elc`)
+
+`elcomplete::to_nf` no longer aborts on the first non-EL clause: it collects the
+non-EL clauses into a *residual* and still saturates the EL subset. With
+`KM_ELC_CERT=1`, `classify` then checks every residual clause against the
+saturated **canonical model** (domain = satisfiable concept nodes; `x_C ∈ D^I`
+iff `C ⊑ D` derived; `(x_C,x_D) ∈ R^I` iff edge `(C,R,D)` derived). If all hold,
+`I ⊨ O` for the full ontology, so the EL classification is exact (sound AND
+complete) for subsumption, unsatisfiability, and consistency; any failure (or a
+work-budget overrun) returns `None` and the caller falls back to the CB engine.
+Never an approximation. 7 unit tests; the certificate logic is a calculus-logic
+addition and needs Lean certification of the canonical-model lemma (deferred).
+
+**Default OFF.** On ORE 2015 every non-EL residual is a live covering
+disjunction (`⊤ → A ⊔ B`), a non-inert inverse bridge, or multi-successor
+functionality — none of which the canonical EL model satisfies — so the
+certificate never passes there (verified: fails at residual clause 0 on
+4205/6212/15803/7127/7246/11311), and attempting it would saturate the large EL
+subset before failing, stealing time from the CB fallback. With the flag off,
+routing is byte-identical to before (`to_nf` returns a non-empty residual ⇒
+`classify` returns `None` ⇒ same exit-3 fallback). The capability is for
+near-EL ontologies whose non-EL part IS model-satisfiable.
+
+Also in `elc.rs`: read stdin as raw bytes + `serde_json::from_slice` (skips the
+whole-buffer UTF-8 validation and a second allocation; lower peak memory), and
+`KM_ELC_TIMING=1` per-stage timing. The timing showed the ORE giant
+`ore_ont_8737` is **saturation-bound** (read 0.5 s, parse 8 s, classify 252 s,
+serialise 2.8 s) — its 240 s timeout is the EL completion itself, not I/O, so it
+needs a faster (parallel, ELK-style) completion, not an I/O fix. `ore_ont_16744`
+classify is 83 s.
+
 Goal: close the remaining ORE 2015 coverage gap to Konclude (was 551/590 ok;
 40 failures = 21 timeout + 19 memout). Diagnosis, fixes, and benchmark deltas
 tracked here.

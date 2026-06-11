@@ -203,10 +203,14 @@ fn concept_of(a: &JAtom) -> Option<(&str, &JTerm)> {
     }
 }
 
-/// Map the clause set onto EL++ normal forms. Returns `None` as soon as any
-/// clause lies outside EL++ (disjunctive head, equality/number atom, nominal
-/// `ind` term, unsupported shape) — a sound, conservative EL router.
-fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
+/// Map the clause set onto EL++ normal forms. Clauses outside EL++
+/// (disjunctive head, equality/number atom, nominal `ind` term, unsupported
+/// shape) are collected into the returned *residual* list instead of aborting:
+/// the caller saturates the EL subset and then checks the residual clauses
+/// against the canonical model (the completeness certificate). Returns `None`
+/// only for an orphan existential-filler half-clause (a shape we don't model
+/// at all).
+fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>)> {
     let mut nf1 = Vec::new();
     let mut nf2 = Vec::new();
     let mut nf3 = Vec::new();
@@ -219,6 +223,8 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
 
     // (sub_concept, skolem_fn) -> (role, filler) halves of an A ⊑ ∃R.B axiom.
     let mut pending_ex: HashMap<(u32, u32), (Option<u32>, Option<u32>)> = HashMap::default();
+    // Clauses outside the EL++ normal forms, kept for the certificate check.
+    let mut residual: Vec<JClause> = Vec::new();
 
     // Helpers that intern + record the signature as a side effect.
     macro_rules! addc {
@@ -241,7 +247,8 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
         let h = &c.head;
         // equality / inequality atoms (number restrictions, nominal merge) -> not EL
         if b.iter().chain(h.iter()).any(|a| matches!(a, JAtom::Eq { .. })) {
-            return None;
+            residual.push(c.clone());
+            continue;
         }
         let bc: Vec<&JAtom> = b.iter().filter(|a| concept_of(a).is_some()).collect();
         let br: Vec<&JAtom> = b
@@ -282,11 +289,13 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                 concept_names.insert(BOTTOM);
                 continue;
             }
-            return None;
+            residual.push(c.clone());
+            continue;
         }
         // disjunctive head => not EL (Horn only)
         if h.len() != 1 {
-            return None;
+            residual.push(c.clone());
+            continue;
         }
 
         // ---- concept head ----
@@ -357,7 +366,8 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                             }
                         }
                     }
-                    return None;
+                    residual.push(c.clone());
+                    continue;
                 }
                 Tk::Fun(fname) => {
                     // existential filler: A(x) -> B(f(x))
@@ -371,9 +381,13 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                         pending_ex.entry((sub, fnid)).or_insert((None, None)).1 = Some(hd);
                         continue;
                     }
-                    return None;
+                    residual.push(c.clone());
+                    continue;
                 }
-                Tk::Other => return None,
+                Tk::Other => {
+                    residual.push(c.clone());
+                    continue;
+                }
             }
         }
 
@@ -418,7 +432,8 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                             _ => false,
                         };
                         if !fwd {
-                            return None;
+                            residual.push(c.clone());
+                            continue;
                         }
                         let sub = addr!(br0);
                         let sup = addr!(role);
@@ -445,7 +460,10 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                     {
                         let (hs, ht) = match (vname(&sxs), vname(&st)) {
                             (Some(a), Some(b)) => (a, b),
-                            _ => return None,
+                            _ => {
+                                residual.push(c.clone());
+                                continue;
+                            }
                         };
                         let w = (
                             vname(&tk(as_)),
@@ -466,7 +484,10 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                         };
                         let (first, second) = match ordered {
                             Some(p) => p,
-                            None => return None,
+                            None => {
+                                residual.push(c.clone());
+                                continue;
+                            }
                         };
                         let r1 = addr!(first);
                         let r2 = addr!(second);
@@ -476,9 +497,10 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
                     }
                 }
             }
-            return None;
+            residual.push(c.clone());
+            continue;
         }
-        return None;
+        residual.push(c.clone());
     }
 
     // assemble NF3 (A ⊑ ∃R.B) from its two half-clauses
@@ -495,17 +517,20 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<Nfs> {
         }
     }
 
-    Some(Nfs {
-        nf1,
-        nf2,
-        nf3,
-        nf4,
-        nf5,
-        nf6,
-        nf7,
-        concept_names,
-        role_names,
-    })
+    Some((
+        Nfs {
+            nf1,
+            nf2,
+            nf3,
+            nf4,
+            nf5,
+            nf6,
+            nf7,
+            concept_names,
+            role_names,
+        },
+        residual,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -564,9 +589,12 @@ impl State {
     }
 }
 
-/// Result of saturation: `sub_super[c]` = `{d : ⊨ c ⊑ d}`.
+/// Result of saturation: `sub_super[c]` = `{d : ⊨ c ⊑ d}` and
+/// `edges[c]` = `{(r, d) : ⊨ c ⊑ ∃r.d}` (the canonical-model role edges,
+/// needed by the completeness certificate).
 struct SatResult {
     sub_super: Vec<HashSet<u32>>,
+    edges: Vec<HashSet<(u32, u32)>>,
 }
 
 fn saturate(nfs: &Nfs, n: usize) -> SatResult {
@@ -758,7 +786,394 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
 
     SatResult {
         sub_super: st.sub_super,
+        edges: st.edges,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Completeness certificate over the canonical model
+// ---------------------------------------------------------------------------
+//
+// The saturated structure is the canonical model `I` of the EL subset:
+// domain = the satisfiable concept nodes, `x_C ∈ D^I` iff `C ⊑ D` was derived,
+// `(x_C, x_D) ∈ R^I` iff the edge `(C, R, D)` was derived. At fixpoint `I`
+// satisfies every EL clause (each completion rule is exactly the closure
+// condition of one normal form). If `I` ALSO satisfies every residual (non-EL)
+// clause, then `I ⊨ O` for the full ontology `O`, and the EL answer is exact:
+// for any entailment `O ⊨ A ⊑ B` we have `x_A ∈ A^I` (Init), hence
+// `x_A ∈ B^I` (since `I ⊨ O`), hence `A ⊑ B` was already derived (membership
+// IS derivedness). The same argument covers unsatisfiable classes (an alive
+// node `x_A` witnesses `O ⊭ A ⊑ ⊥`) and consistency (a model exists). So a
+// passing certificate yields a sound AND complete classification; a failing
+// one returns `None` and the caller falls back to the disjunctive context
+// engine. Never an approximation.
+//
+// (Calculus-logic change: needs Lean certification of the canonical-model
+// lemma; deferred by explicit decision, see CHANGELOG.)
+
+/// A residual atom, compiled to interned ids + per-clause variable indices.
+#[derive(Clone, Copy)]
+enum RAtom {
+    C { cid: u32, v: usize },
+    R { rid: u32, s: usize, t: usize },
+    Eq { s: usize, t: usize },
+}
+
+/// A residual clause: `body -> head`, universally quantified over `nvars`
+/// variables, every term a plain variable.
+struct RClause {
+    nvars: usize,
+    body: Vec<RAtom>,
+    head: Vec<RAtom>,
+}
+
+/// Compile the residual clauses for certificate checking. Returns `None` if
+/// any clause has a shape the checker cannot evaluate (function/`ind`/`aux`
+/// terms, equality in the body) — the caller then bails to the context engine
+/// BEFORE paying for saturation. Concept names mentioned only residually are
+/// added to `nfs.concept_names` so they get canonical-model nodes (required
+/// for the completeness argument when they appear as query subjects).
+fn compile_residual(
+    residual: &[JClause],
+    it: &mut Interner,
+    nfs: &mut Nfs,
+) -> Option<Vec<RClause>> {
+    // tiny per-clause var sets: linear scan beats hashing
+    fn vid<'a>(vars: &mut Vec<&'a str>, name: &'a str) -> usize {
+        if let Some(i) = vars.iter().position(|v| *v == name) {
+            return i;
+        }
+        vars.push(name);
+        vars.len() - 1
+    }
+    let mut out = Vec::with_capacity(residual.len());
+    for c in residual {
+        let mut vars: Vec<&str> = Vec::new();
+        let mut body = Vec::with_capacity(c.body.len());
+        let mut head = Vec::with_capacity(c.head.len());
+        for (atoms, dst, is_head) in [(&c.body, &mut body, false), (&c.head, &mut head, true)] {
+            for a in atoms {
+                match a {
+                    JAtom::Concept { concept, term } => {
+                        let v = match term {
+                            JTerm::Var { name } => vid(&mut vars, name),
+                            _ => return None,
+                        };
+                        let cid = it.intern(concept);
+                        nfs.concept_names.insert(cid);
+                        dst.push(RAtom::C { cid, v });
+                    }
+                    JAtom::Role { role, source, target } => {
+                        let (s, t) = match (source, target) {
+                            (JTerm::Var { name: sn }, JTerm::Var { name: tn }) => {
+                                (vid(&mut vars, sn), vid(&mut vars, tn))
+                            }
+                            _ => return None,
+                        };
+                        let rid = it.intern(role);
+                        nfs.role_names.insert(rid);
+                        dst.push(RAtom::R { rid, s, t });
+                    }
+                    JAtom::Eq { left, right } => {
+                        // an equality conclusion (number restriction) is
+                        // checkable: it holds only under identical bindings.
+                        // An equality HYPOTHESIS is not modelled.
+                        if !is_head {
+                            return None;
+                        }
+                        let (s, t) = match (left, right) {
+                            (JTerm::Var { name: ln }, JTerm::Var { name: rn }) => {
+                                (vid(&mut vars, ln), vid(&mut vars, rn))
+                            }
+                            _ => return None,
+                        };
+                        dst.push(RAtom::Eq { s, t });
+                    }
+                }
+            }
+        }
+        out.push(RClause {
+            nvars: vars.len(),
+            body,
+            head,
+        });
+    }
+    Some(out)
+}
+
+/// Check every residual clause against the canonical model. `true` iff all are
+/// satisfied (certificate passes). Work is bounded by `budget` candidate
+/// extensions; exhausting it fails conservatively.
+fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -> bool {
+    let n = sat.sub_super.len();
+    // domain: satisfiable concept nodes
+    let mut alive = vec![false; n];
+    let mut nodes: Vec<u32> = Vec::new();
+    for &cn in &nfs.concept_names {
+        if cn != BOTTOM && !sat.sub_super[cn as usize].contains(&BOTTOM) {
+            alive[cn as usize] = true;
+            nodes.push(cn);
+        }
+    }
+    // enumeration indexes for the body atoms
+    let mut needed_c: HashSet<u32> = HashSet::default();
+    let mut needed_r: HashSet<u32> = HashSet::default();
+    for rc in rcs {
+        for a in &rc.body {
+            match a {
+                RAtom::C { cid, .. } => {
+                    needed_c.insert(*cid);
+                }
+                RAtom::R { rid, .. } => {
+                    needed_r.insert(*rid);
+                }
+                RAtom::Eq { .. } => {}
+            }
+        }
+    }
+    let mut members: HashMap<u32, Vec<u32>> = HashMap::default();
+    for &c in &nodes {
+        for &s in &sat.sub_super[c as usize] {
+            if needed_c.contains(&s) {
+                members.entry(s).or_default().push(c);
+            }
+        }
+    }
+    let mut edges_by_role: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    for &c in &nodes {
+        for &(r, d) in &sat.edges[c as usize] {
+            if needed_r.contains(&r) && alive[d as usize] {
+                edges_by_role.entry(r).or_default().push((c, d));
+            }
+        }
+    }
+    let empty_m: Vec<u32> = Vec::new();
+    let empty_e: Vec<(u32, u32)> = Vec::new();
+
+    // Work cap on the certificate join (candidate extensions). Exhaustion
+    // fails conservatively (-> context-engine fallback), it never approximates.
+    let mut budget: u64 = 200_000_000;
+
+    // recursive join over one clause; returns false on a violating assignment
+    // (or on budget exhaustion, marked by budget == 0).
+    #[allow(clippy::too_many_arguments)]
+    fn join(
+        rc: &RClause,
+        order: &[usize],
+        depth: usize,
+        asg: &mut Vec<Option<u32>>,
+        nodes: &[u32],
+        alive: &[bool],
+        sat: &SatResult,
+        members: &HashMap<u32, Vec<u32>>,
+        edges_by_role: &HashMap<u32, Vec<(u32, u32)>>,
+        empty_m: &Vec<u32>,
+        empty_e: &Vec<(u32, u32)>,
+        budget: &mut u64,
+    ) -> bool {
+        if *budget == 0 {
+            return false;
+        }
+        if depth == order.len() {
+            // body satisfied; bind any remaining (head-only) variables, then
+            // require some head atom to hold.
+            if let Some(free) = asg.iter().position(|b| b.is_none()) {
+                for &nd in nodes {
+                    *budget = budget.saturating_sub(1);
+                    if *budget == 0 {
+                        return false;
+                    }
+                    asg[free] = Some(nd);
+                    if !join(
+                        rc, order, depth, asg, nodes, alive, sat, members, edges_by_role,
+                        empty_m, empty_e, budget,
+                    ) {
+                        asg[free] = None;
+                        return false;
+                    }
+                }
+                asg[free] = None;
+                return true;
+            }
+            let ok = rc.head.iter().any(|a| match *a {
+                RAtom::C { cid, v } => sat.sub_super[asg[v].unwrap() as usize].contains(&cid),
+                RAtom::R { rid, s, t } => sat.edges[asg[s].unwrap() as usize]
+                    .contains(&(rid, asg[t].unwrap())),
+                RAtom::Eq { s, t } => asg[s] == asg[t],
+            });
+            return ok;
+        }
+        let atom = rc.body[order[depth]];
+        match atom {
+            RAtom::C { cid, v } => match asg[v] {
+                Some(nd) => {
+                    *budget = budget.saturating_sub(1);
+                    if !sat.sub_super[nd as usize].contains(&cid) {
+                        return true; // body unsatisfied: clause holds here
+                    }
+                    join(
+                        rc, order, depth + 1, asg, nodes, alive, sat, members, edges_by_role,
+                        empty_m, empty_e, budget,
+                    )
+                }
+                None => {
+                    for &nd in members.get(&cid).unwrap_or(empty_m) {
+                        *budget = budget.saturating_sub(1);
+                        if *budget == 0 {
+                            return false;
+                        }
+                        asg[v] = Some(nd);
+                        if !join(
+                            rc, order, depth + 1, asg, nodes, alive, sat, members,
+                            edges_by_role, empty_m, empty_e, budget,
+                        ) {
+                            asg[v] = None;
+                            return false;
+                        }
+                    }
+                    asg[v] = None;
+                    true
+                }
+            },
+            RAtom::R { rid, s, t } => match (asg[s], asg[t]) {
+                (Some(sn), Some(tn)) => {
+                    *budget = budget.saturating_sub(1);
+                    if !sat.edges[sn as usize].contains(&(rid, tn)) {
+                        return true;
+                    }
+                    join(
+                        rc, order, depth + 1, asg, nodes, alive, sat, members, edges_by_role,
+                        empty_m, empty_e, budget,
+                    )
+                }
+                (Some(sn), None) => {
+                    for &(r, d) in &sat.edges[sn as usize] {
+                        if r != rid || !alive[d as usize] {
+                            continue;
+                        }
+                        *budget = budget.saturating_sub(1);
+                        if *budget == 0 {
+                            return false;
+                        }
+                        asg[t] = Some(d);
+                        if !join(
+                            rc, order, depth + 1, asg, nodes, alive, sat, members,
+                            edges_by_role, empty_m, empty_e, budget,
+                        ) {
+                            asg[t] = None;
+                            return false;
+                        }
+                    }
+                    asg[t] = None;
+                    true
+                }
+                (sn_opt, tn_opt) => {
+                    for &(c, d) in edges_by_role.get(&rid).unwrap_or(empty_e) {
+                        if let Some(sn) = sn_opt {
+                            if c != sn {
+                                continue;
+                            }
+                        }
+                        if let Some(tn) = tn_opt {
+                            if d != tn {
+                                continue;
+                            }
+                        }
+                        if s == t && c != d {
+                            continue; // reflexive atom R(x,x): one binding
+                        }
+                        *budget = budget.saturating_sub(1);
+                        if *budget == 0 {
+                            return false;
+                        }
+                        let (os, ot) = (asg[s], asg[t]);
+                        asg[s] = Some(c);
+                        asg[t] = Some(d);
+                        if !join(
+                            rc, order, depth + 1, asg, nodes, alive, sat, members,
+                            edges_by_role, empty_m, empty_e, budget,
+                        ) {
+                            asg[s] = os;
+                            asg[t] = ot;
+                            return false;
+                        }
+                        asg[s] = os;
+                        asg[t] = ot;
+                    }
+                    true
+                }
+            },
+            RAtom::Eq { .. } => unreachable!("eq in body rejected at compile"),
+        }
+    }
+
+    for (i, rc) in rcs.iter().enumerate() {
+        // static atom order: bound-first greedy (atoms whose vars are already
+        // bound act as filters; among generators prefer the smaller list).
+        let mut remaining: Vec<usize> = (0..rc.body.len()).collect();
+        let mut order: Vec<usize> = Vec::with_capacity(rc.body.len());
+        let mut bound = vec![false; rc.nvars];
+        while !remaining.is_empty() {
+            let pick = remaining
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, &ai)| match rc.body[ai] {
+                    RAtom::C { cid, v } => {
+                        if bound[v] {
+                            (0usize, 0usize)
+                        } else {
+                            (1, members.get(&cid).map_or(0, |m| m.len()))
+                        }
+                    }
+                    RAtom::R { rid, s, t } => {
+                        let nb = !bound[s] as usize + !bound[t] as usize;
+                        if nb == 0 {
+                            (0, 0)
+                        } else {
+                            (1, edges_by_role.get(&rid).map_or(0, |e| e.len()))
+                        }
+                    }
+                    RAtom::Eq { .. } => (2, 0),
+                })
+                .map(|(j, _)| j)
+                .unwrap();
+            let ai = remaining.swap_remove(pick);
+            match rc.body[ai] {
+                RAtom::C { v, .. } => bound[v] = true,
+                RAtom::R { s, t, .. } => {
+                    bound[s] = true;
+                    bound[t] = true;
+                }
+                RAtom::Eq { .. } => {}
+            }
+            order.push(ai);
+        }
+        let mut asg: Vec<Option<u32>> = vec![None; rc.nvars];
+        let ok = join(
+            rc, &order, 0, &mut asg, &nodes, &alive, sat, &members, &edges_by_role, &empty_m,
+            &empty_e, &mut budget,
+        );
+        if !ok {
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT fail at residual clause {} of {} (budget_left={})",
+                    i,
+                    rcs.len(),
+                    budget
+                );
+            }
+            return false;
+        }
+    }
+    if debug {
+        eprintln!(
+            "KM_ELC_CERT pass: {} residual clauses over {} nodes (budget_left={})",
+            rcs.len(),
+            nodes.len(),
+            budget
+        );
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------
@@ -772,14 +1187,64 @@ pub struct ElResult {
     pub inconsistent: bool,
 }
 
-/// Classify `clauses` with EL++ completion. Returns `Some(result)` iff the whole
-/// clause set lies in EL++ (so the caller routes here); `None` otherwise (caller
-/// must use the disjunctive context engine).
+/// Classify `clauses` with EL++ completion. Returns `Some(result)` when the
+/// clause set lies in EL++, or when the non-EL residual passes the
+/// canonical-model completeness certificate (the result is then exact for the
+/// FULL clause set). Returns `None` otherwise (caller must use the disjunctive
+/// context engine). `KM_ELC_CERT=0` disables the certificate (old behaviour:
+/// any non-EL clause routes to the context engine); `KM_ELC_DEBUG=1` reports
+/// residual counts and the certificate verdict on stderr.
 pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
+    // Default OFF: on the ORE 2015 corpus every non-EL residual is a live
+    // covering disjunction / non-inert inverse bridge / multi-successor
+    // functionality, none of which the canonical EL model satisfies, so the
+    // certificate never passes there -- and attempting it would saturate the
+    // (large) EL subset before failing, stealing time from the CB fallback.
+    // The capability is sound and tested; enable with `KM_ELC_CERT=1` for
+    // near-EL ontologies whose non-EL part IS model-satisfiable.
+    let cert_on = matches!(std::env::var("KM_ELC_CERT").as_deref(), Ok("1") | Ok("on"));
+    let debug = std::env::var("KM_ELC_DEBUG").is_ok();
+    classify_inner(clauses, cert_on, debug)
+}
+
+/// Core of [`classify`] with the certificate explicitly enabled/disabled (the
+/// env read is in `classify`; tests drive this directly to avoid racy
+/// `set_var` across parallel test threads).
+fn classify_inner(clauses: &[JClause], cert_on: bool, debug: bool) -> Option<ElResult> {
     let mut it = Interner::new();
-    let nfs = to_nf(clauses, &mut it)?;
+    let (mut nfs, residual) = to_nf(clauses, &mut it)?;
+    let rcs = if residual.is_empty() {
+        Vec::new()
+    } else {
+        if !cert_on {
+            return None;
+        }
+        match compile_residual(&residual, &mut it, &mut nfs) {
+            Some(r) => r,
+            None => {
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT skip: {} residual clauses, uncheckable shape",
+                        residual.len()
+                    );
+                }
+                return None;
+            }
+        }
+    };
     let n = it.len();
     let res = saturate(&nfs, n);
+    // An inconsistent EL subset makes the full ontology inconsistent
+    // (monotonicity), so that answer is exact without a certificate.
+    let el_inconsistent = res.sub_super[TOP as usize].contains(&BOTTOM);
+    if !rcs.is_empty() && !el_inconsistent {
+        if debug {
+            eprintln!("KM_ELC_CERT checking {} residual clauses", rcs.len());
+        }
+        if !check_certificate(&rcs, &nfs, &res, debug) {
+            return None;
+        }
+    }
 
     let mut subsumptions = std::collections::BTreeMap::new();
     for (c, sups) in res.sub_super.iter().enumerate() {
@@ -805,9 +1270,184 @@ pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
         }
     }
 
-    let inconsistent = res.sub_super[TOP as usize].contains(&BOTTOM);
     Some(ElResult {
         subsumptions,
-        inconsistent,
+        inconsistent: el_inconsistent,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clauses(json: &str) -> Vec<JClause> {
+        serde_json::from_str::<Vec<JClause>>(json).expect("test clause JSON")
+    }
+    fn v(n: &str) -> String {
+        format!("{{\"kind\":\"var\",\"name\":\"{}\"}}", n)
+    }
+    fn c(name: &str, t: &str) -> String {
+        format!("{{\"kind\":\"concept\",\"concept\":\"{}\",\"term\":{}}}", name, v(t))
+    }
+    fn cf(name: &str, f: &str, t: &str) -> String {
+        format!(
+            "{{\"kind\":\"concept\",\"concept\":\"{}\",\"term\":{{\"kind\":\"fun\",\"function\":\"{}\",\"arg\":{}}}}}",
+            name, f, v(t)
+        )
+    }
+    fn r(role: &str, s: &str, t: &str) -> String {
+        format!("{{\"kind\":\"role\",\"role\":\"{}\",\"source\":{},\"target\":{}}}", role, v(s), v(t))
+    }
+    fn rf(role: &str, s: &str, f: &str) -> String {
+        format!(
+            "{{\"kind\":\"role\",\"role\":\"{}\",\"source\":{},\"target\":{{\"kind\":\"fun\",\"function\":\"{}\",\"arg\":{}}}}}",
+            role, v(s), f, v(s)
+        )
+    }
+    fn cl(body: &[String], head: &[String]) -> String {
+        format!("{{\"body\":[{}],\"head\":[{}]}}", body.join(","), head.join(","))
+    }
+
+    fn subs_of(res: &ElResult, sub: &str) -> Vec<String> {
+        res.subsumptions.get(sub).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn cert_passes_when_disjunction_already_decided() {
+        // EL: A ⊑ B. Residual: A → B ∨ D (every A-node has B). Must classify
+        // and keep the EL answer.
+        let cs = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("A", "x")], &[c("B", "x"), c("D", "x")]),
+        ));
+        let res = classify_inner(&cs, true, false).expect("certificate should pass");
+        assert!(subs_of(&res, "A").contains(&"B".to_string()));
+        assert!(!res.inconsistent);
+    }
+
+    #[test]
+    fn cert_fails_on_live_disjunction() {
+        // Residual: A → D ∨ E with neither derivable: the canonical model
+        // violates it, so elc must hand off to the context engine.
+        let cs = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("A", "x")], &[c("D", "x"), c("E", "x")]),
+        ));
+        assert!(classify_inner(&cs, true, false).is_none());
+    }
+
+    #[test]
+    fn cert_checks_range_clause_over_edges() {
+        // EL: A ⊑ ∃R.B (pair of half-clauses). Residual range: R(x,y) → C(y).
+        // Fails without B ⊑ C, passes with it.
+        let base = format!(
+            "{},{}",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+        );
+        let range = cl(&[r("R", "x", "y")], &[c("C", "y")]);
+        let cs_fail = clauses(&format!("[{},{}]", base, range));
+        assert!(classify_inner(&cs_fail, true, false).is_none());
+        let cs_pass = clauses(&format!(
+            "[{},{},{}]",
+            base,
+            range,
+            cl(&[c("B", "x")], &[c("C", "x")]),
+        ));
+        let res = classify_inner(&cs_pass, true, false).expect("range satisfied by B ⊑ C");
+        assert!(subs_of(&res, "B").contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn cert_checks_cardinality_eq_head() {
+        // EL: A ⊑ ∃R.B and A ⊑ ∃R.C. Residual (≤1 R): R(x,y) ∧ R(x,z) → y = z.
+        // Two distinct successors violate it.
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[c("A", "x")], &[rf("R", "x", "g")]),
+            cl(&[c("A", "x")], &[cf("C", "g", "x")]),
+            format!(
+                "{{\"body\":[{},{}],\"head\":[{{\"kind\":\"eq\",\"left\":{},\"right\":{}}}]}}",
+                r("R", "x", "y"),
+                r("R", "x", "z"),
+                v("y"),
+                v("z")
+            ),
+        ));
+        assert!(classify_inner(&cs, true, false).is_none());
+        // With a single successor the functionality constraint holds.
+        let cs1 = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            format!(
+                "{{\"body\":[{},{}],\"head\":[{{\"kind\":\"eq\",\"left\":{},\"right\":{}}}]}}",
+                r("R", "x", "y"),
+                r("R", "x", "z"),
+                v("y"),
+                v("z")
+            ),
+        ));
+        let res = classify_inner(&cs1, true, false).expect("functional with one successor");
+        assert!(subs_of(&res, "A").is_empty() || !res.inconsistent);
+    }
+
+    #[test]
+    fn cert_bails_on_nominal_terms_before_saturation() {
+        // ind terms are not modelled: classify must return None (context engine).
+        let cs = clauses(
+            "[{\"body\":[],\"head\":[{\"kind\":\"concept\",\"concept\":\"A\",\
+              \"term\":{\"kind\":\"ind\",\"name\":\"a\"}}]}]",
+        );
+        assert!(classify_inner(&cs, true, false).is_none());
+    }
+
+    #[test]
+    fn pure_el_unchanged() {
+        // No residual: behaves exactly as before.
+        let cs = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("B", "x")], &[c("C", "x")]),
+        ));
+        let res = classify_inner(&cs, true, false).expect("plain EL");
+        let a = subs_of(&res, "A");
+        assert!(a.contains(&"B".to_string()) && a.contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn cert_handles_empty_head_constraint_over_edges() {
+        // Residual constraint: A(x) ∧ R(x,y) ∧ D(y) → ⊥ (no head). Satisfied
+        // when no A-node has an R-successor in D; violated when one exists.
+        let base = format!(
+            "{},{}",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+        );
+        let constraint = format!(
+            "{{\"body\":[{},{},{}],\"head\":[]}}",
+            c("A", "x"),
+            r("R", "x", "y"),
+            c("D", "y")
+        );
+        let res = classify_inner(&clauses(&format!("[{},{}]", base, constraint)), true, false)
+            .expect("constraint body unsatisfied: certificate passes");
+        assert!(!res.inconsistent);
+        // Now make the successor a D: the constraint is violated in the model.
+        let cs_fail = clauses(&format!(
+            "[{},{},{}]",
+            base,
+            constraint,
+            cl(&[c("B", "x")], &[c("D", "x")]),
+        ));
+        assert!(classify_inner(&cs_fail, true, false).is_none());
+    }
 }
