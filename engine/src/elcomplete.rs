@@ -593,17 +593,22 @@ impl State {
             self.worklist.push_back(Item::Edge(c, r, d));
         }
     }
+
+    /// Deep copy for a certificate-repair pass. Only valid at fixpoint (empty
+    /// worklist): the copy starts with nothing queued.
+    fn fork(&self) -> State {
+        debug_assert!(self.worklist.is_empty());
+        State {
+            sub_super: self.sub_super.clone(),
+            edges: self.edges.clone(),
+            in_edges: self.in_edges.clone(),
+            worklist: VecDeque::new(),
+        }
+    }
 }
 
-/// Result of saturation: `sub_super[c]` = `{d : ⊨ c ⊑ d}` and
-/// `edges[c]` = `{(r, d) : ⊨ c ⊑ ∃r.d}` (the canonical-model role edges,
-/// needed by the completeness certificate).
-struct SatResult {
-    sub_super: Vec<HashSet<u32>>,
-    edges: Vec<HashSet<(u32, u32)>>,
-}
-
-fn saturate(nfs: &Nfs, n: usize) -> SatResult {
+/// Build the read-only rule indexes (including the role-hierarchy closure).
+fn build_idx(nfs: &Nfs, n: usize) -> Idx {
     // ----- build indexes -----
     let mut nf1_by_sub: HashMap<u32, Vec<u32>> = HashMap::default();
     for a in &nfs.nf1 {
@@ -661,7 +666,7 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
         }
     }
 
-    let idx = Idx {
+    Idx {
         nf1_by_sub,
         nf2_by_sub,
         nf3_by_sub,
@@ -669,15 +674,17 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
         nf5_subs,
         nf7_by_pair,
         role_sub,
-    };
+    }
+}
+
+/// Fresh state seeded with the Init rule R₀: C ⊑ C and C ⊑ ⊤ for every concept.
+fn init_state(nfs: &Nfs, n: usize) -> State {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
         in_edges: vec![Vec::new(); n],
         worklist: VecDeque::new(),
     };
-
-    // ----- Init rule R₀: C ⊑ C and C ⊑ ⊤ for every concept C -----
     for &c in &nfs.concept_names {
         if c == BOTTOM {
             continue;
@@ -685,13 +692,18 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
         st.add_sub(c, c);
         st.add_sub(c, TOP);
     }
+    st
+}
 
+/// Run the completion rules to fixpoint over whatever is on `st`'s worklist.
+/// Re-entrant: the certificate repair re-enters with extra seeded facts and the
+/// SAME `idx` (the rule set never changes), so a repaired structure is again
+/// closed under every EL rule — i.e. it stays a model of the EL clause set.
+fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
     // Empty fallback so an unindexed role still yields the empty super-set
     // without a per-lookup allocation (it never occurs for edge roles in
     // practice, but keeps the borrow simple).
     let empty: HashSet<u32> = HashSet::default();
-    // Reused across Edge items to collect NF4 conclusions without reallocating.
-    let mut nf4_buf: Vec<u32> = Vec::new();
 
     // ----- Main loop -----
     // `idx` is borrowed immutably throughout; `st` mutably. Because they are
@@ -774,7 +786,7 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
                             }
                         }
                     }
-                    for &sup in &nf4_buf {
+                    for &sup in nf4_buf.iter() {
                         st.add_sub(c, sup);
                     }
                 }
@@ -815,12 +827,8 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
             }
         }
     }
-
-    SatResult {
-        sub_super: st.sub_super,
-        edges: st.edges,
-    }
 }
+
 
 // ---------------------------------------------------------------------------
 // Completeness certificate over the canonical model
@@ -933,16 +941,36 @@ fn compile_residual(
     Some(out)
 }
 
-/// Check every residual clause against the canonical model. `true` iff all are
-/// satisfied (certificate passes). Work is bounded by `budget` candidate
-/// extensions; exhausting it fails conservatively.
-fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -> bool {
-    let n = sat.sub_super.len();
+/// Hard cap on violations recorded per repair round: bounds round memory; the
+/// uncollected remainder is caught by the recheck after this round's repairs.
+const REPAIR_VIOL_CAP: usize = 100_000;
+
+/// One certificate round over the structure `(sub_super, edges)`.
+///
+/// With `collect == None` this is the plain check: `true` iff every residual
+/// clause is satisfied, aborting on the first violation (or on budget
+/// exhaustion, which conservatively returns `false`).
+///
+/// With `collect == Some(out)` it ENUMERATES violating instances instead of
+/// aborting: each violation is recorded as `(clause index, full binding)`, up
+/// to [`REPAIR_VIOL_CAP`] per round. Returns `true` iff no violation was found
+/// and the budget survived. On `false`: an empty `out` means budget exhaustion
+/// (the caller must fail conservatively); a non-empty `out` is repair work.
+fn cert_round(
+    rcs: &[RClause],
+    concept_names: &HashSet<u32>,
+    sub_super: &[HashSet<u32>],
+    edges: &[HashSet<(u32, u32)>],
+    budget: &mut u64,
+    mut collect: Option<&mut Vec<(usize, Vec<u32>)>>,
+    debug: bool,
+) -> bool {
+    let n = sub_super.len();
     // domain: satisfiable concept nodes
     let mut alive = vec![false; n];
     let mut nodes: Vec<u32> = Vec::new();
-    for &cn in &nfs.concept_names {
-        if cn != BOTTOM && !sat.sub_super[cn as usize].contains(&BOTTOM) {
+    for &cn in concept_names {
+        if cn != BOTTOM && !sub_super[cn as usize].contains(&BOTTOM) {
             alive[cn as usize] = true;
             nodes.push(cn);
         }
@@ -965,7 +993,7 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
     }
     let mut members: HashMap<u32, Vec<u32>> = HashMap::default();
     for &c in &nodes {
-        for &s in &sat.sub_super[c as usize] {
+        for &s in &sub_super[c as usize] {
             if needed_c.contains(&s) {
                 members.entry(s).or_default().push(c);
             }
@@ -973,7 +1001,7 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
     }
     let mut edges_by_role: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for &c in &nodes {
-        for &(r, d) in &sat.edges[c as usize] {
+        for &(r, d) in &edges[c as usize] {
             if needed_r.contains(&r) && alive[d as usize] {
                 edges_by_role.entry(r).or_default().push((c, d));
             }
@@ -982,26 +1010,26 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
     let empty_m: Vec<u32> = Vec::new();
     let empty_e: Vec<(u32, u32)> = Vec::new();
 
-    // Work cap on the certificate join (candidate extensions). Exhaustion
-    // fails conservatively (-> context-engine fallback), it never approximates.
-    let mut budget: u64 = 200_000_000;
-
     // recursive join over one clause; returns false on a violating assignment
-    // (or on budget exhaustion, marked by budget == 0).
+    // (collect == None), on a full violation round (collect cap reached), or
+    // on budget exhaustion (budget == 0).
     #[allow(clippy::too_many_arguments)]
     fn join(
         rc: &RClause,
+        rci: usize,
         order: &[usize],
         depth: usize,
         asg: &mut Vec<Option<u32>>,
         nodes: &[u32],
         alive: &[bool],
-        sat: &SatResult,
+        sub_super: &[HashSet<u32>],
+        edges: &[HashSet<(u32, u32)>],
         members: &HashMap<u32, Vec<u32>>,
         edges_by_role: &HashMap<u32, Vec<(u32, u32)>>,
         empty_m: &Vec<u32>,
         empty_e: &Vec<(u32, u32)>,
         budget: &mut u64,
+        collect: &mut Option<&mut Vec<(usize, Vec<u32>)>>,
     ) -> bool {
         if *budget == 0 {
             return false;
@@ -1017,8 +1045,8 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
                     }
                     asg[free] = Some(nd);
                     if !join(
-                        rc, order, depth, asg, nodes, alive, sat, members, edges_by_role,
-                        empty_m, empty_e, budget,
+                        rc, rci, order, depth, asg, nodes, alive, sub_super, edges, members,
+                        edges_by_role, empty_m, empty_e, budget, collect,
                     ) {
                         asg[free] = None;
                         return false;
@@ -1028,24 +1056,33 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
                 return true;
             }
             let ok = rc.head.iter().any(|a| match *a {
-                RAtom::C { cid, v } => sat.sub_super[asg[v].unwrap() as usize].contains(&cid),
-                RAtom::R { rid, s, t } => sat.edges[asg[s].unwrap() as usize]
-                    .contains(&(rid, asg[t].unwrap())),
+                RAtom::C { cid, v } => sub_super[asg[v].unwrap() as usize].contains(&cid),
+                RAtom::R { rid, s, t } => {
+                    edges[asg[s].unwrap() as usize].contains(&(rid, asg[t].unwrap()))
+                }
                 RAtom::Eq { s, t } => asg[s] == asg[t],
             });
-            return ok;
+            if ok {
+                return true;
+            }
+            if let Some(out) = collect.as_deref_mut() {
+                out.push((rci, asg.iter().map(|b| b.unwrap()).collect()));
+                // Under the cap, keep enumerating this round's violations.
+                return out.len() < REPAIR_VIOL_CAP;
+            }
+            return false;
         }
         let atom = rc.body[order[depth]];
         match atom {
             RAtom::C { cid, v } => match asg[v] {
                 Some(nd) => {
                     *budget = budget.saturating_sub(1);
-                    if !sat.sub_super[nd as usize].contains(&cid) {
+                    if !sub_super[nd as usize].contains(&cid) {
                         return true; // body unsatisfied: clause holds here
                     }
                     join(
-                        rc, order, depth + 1, asg, nodes, alive, sat, members, edges_by_role,
-                        empty_m, empty_e, budget,
+                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, members,
+                        edges_by_role, empty_m, empty_e, budget, collect,
                     )
                 }
                 None => {
@@ -1056,8 +1093,8 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
                         }
                         asg[v] = Some(nd);
                         if !join(
-                            rc, order, depth + 1, asg, nodes, alive, sat, members,
-                            edges_by_role, empty_m, empty_e, budget,
+                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges,
+                            members, edges_by_role, empty_m, empty_e, budget, collect,
                         ) {
                             asg[v] = None;
                             return false;
@@ -1070,16 +1107,16 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
             RAtom::R { rid, s, t } => match (asg[s], asg[t]) {
                 (Some(sn), Some(tn)) => {
                     *budget = budget.saturating_sub(1);
-                    if !sat.edges[sn as usize].contains(&(rid, tn)) {
+                    if !edges[sn as usize].contains(&(rid, tn)) {
                         return true;
                     }
                     join(
-                        rc, order, depth + 1, asg, nodes, alive, sat, members, edges_by_role,
-                        empty_m, empty_e, budget,
+                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, members,
+                        edges_by_role, empty_m, empty_e, budget, collect,
                     )
                 }
                 (Some(sn), None) => {
-                    for &(r, d) in &sat.edges[sn as usize] {
+                    for &(r, d) in &edges[sn as usize] {
                         if r != rid || !alive[d as usize] {
                             continue;
                         }
@@ -1089,8 +1126,8 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
                         }
                         asg[t] = Some(d);
                         if !join(
-                            rc, order, depth + 1, asg, nodes, alive, sat, members,
-                            edges_by_role, empty_m, empty_e, budget,
+                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges,
+                            members, edges_by_role, empty_m, empty_e, budget, collect,
                         ) {
                             asg[t] = None;
                             return false;
@@ -1122,8 +1159,8 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
                         asg[s] = Some(c);
                         asg[t] = Some(d);
                         if !join(
-                            rc, order, depth + 1, asg, nodes, alive, sat, members,
-                            edges_by_role, empty_m, empty_e, budget,
+                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges,
+                            members, edges_by_role, empty_m, empty_e, budget, collect,
                         ) {
                             asg[s] = os;
                             asg[t] = ot;
@@ -1182,8 +1219,8 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
         }
         let mut asg: Vec<Option<u32>> = vec![None; rc.nvars];
         let ok = join(
-            rc, &order, 0, &mut asg, &nodes, &alive, sat, &members, &edges_by_role, &empty_m,
-            &empty_e, &mut budget,
+            rc, i, &order, 0, &mut asg, &nodes, &alive, sub_super, edges, &members,
+            &edges_by_role, &empty_m, &empty_e, budget, &mut collect,
         );
         if !ok {
             if debug {
@@ -1197,12 +1234,208 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, sat: &SatResult, debug: bool) -
             return false;
         }
     }
+    // In collect mode the join keeps going past violations (under the cap), so
+    // reaching this point only means enumeration completed — clean iff nothing
+    // was recorded.
+    if let Some(out) = collect.as_deref() {
+        if !out.is_empty() {
+            return false;
+        }
+    }
     if debug {
         eprintln!(
             "KM_ELC_CERT pass: {} residual clauses over {} nodes (budget_left={})",
             rcs.len(),
             nodes.len(),
             budget
+        );
+    }
+    true
+}
+
+/// Check every residual clause against the (already saturated) canonical
+/// model. `true` iff all are satisfied. Work is bounded by a fixed budget of
+/// candidate extensions; exhausting it fails conservatively.
+fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> bool {
+    let mut budget: u64 = 200_000_000;
+    cert_round(rcs, &nfs.concept_names, &st.sub_super, &st.edges, &mut budget, None, debug)
+}
+
+/// Completeness certificate by MODEL REPAIR (pay-as-you-go upper bound).
+///
+/// The plain certificate needs the canonical model of the EL subset to already
+/// satisfy every residual clause; a live covering disjunction `⊤ ⊑ A ⊔ B`
+/// always defeats it. Repair closes that gap soundly:
+///
+/// For each choice policy (first / last addable head atom), fork the saturated
+/// structure and loop: enumerate the violated residual instances; for each,
+/// make the chosen head atom true (a concept membership or a role edge);
+/// re-run the EL completion to fixpoint; recheck. If the loop empties, the
+/// result is a genuine model `I_p ⊨ O` of the FULL ontology in which every
+/// base-derived fact still holds (repair only adds). Such a model is an UPPER
+/// bound: `D ∉ label_p(x_C)` refutes `C ⊑ D`. The base saturation is the
+/// LOWER bound (sound derivations). The certificate passes iff on every
+/// named, base-satisfiable node the intersection of the pass labels — over
+/// the passes where the node stays satisfiable; at least one is required as
+/// that node's satisfiability witness — adds NO named concept over the base.
+/// Then lower bound = truth = upper bound and the EL answer is exact, for
+/// subsumptions, unsatisfiable classes, and consistency alike. Any other
+/// outcome fails conservatively (context-engine fallback). Never an
+/// approximation.
+fn repair_certify(
+    rcs: &[RClause],
+    nfs: &Nfs,
+    idx: &Idx,
+    base: &State,
+    it: &Interner,
+    debug: bool,
+) -> bool {
+    const MAX_ROUNDS: usize = 64;
+    let n = base.sub_super.len();
+    let mut is_named = vec![false; n];
+    for &c in &nfs.concept_names {
+        if c != TOP && c != BOTTOM && !crate::calc::is_internal_concept(it.name(c)) {
+            is_named[c as usize] = true;
+        }
+    }
+    let mut pass_states: Vec<State> = Vec::new();
+    'pass: for pol in 0..2usize {
+        let mut st = base.fork();
+        let mut nf4_buf: Vec<u32> = Vec::new();
+        // One shared work budget per pass across all of its rounds.
+        let mut budget: u64 = 400_000_000;
+        let mut adds: u64 = 0;
+        for round in 1..=MAX_ROUNDS {
+            let mut viols: Vec<(usize, Vec<u32>)> = Vec::new();
+            let clean = cert_round(
+                rcs,
+                &nfs.concept_names,
+                &st.sub_super,
+                &st.edges,
+                &mut budget,
+                Some(&mut viols),
+                false,
+            );
+            if clean {
+                if adds == 0 {
+                    // No repair was needed: the base canonical model already
+                    // satisfies everything (the plain certificate). No second
+                    // pass and no intersection required.
+                    if debug {
+                        eprintln!("KM_ELC_CERT repair: base model already complete");
+                    }
+                    return true;
+                }
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair pass {pol}: model complete after {} rounds, \
+                         {adds} additions (budget_left={budget})",
+                        round - 1
+                    );
+                }
+                pass_states.push(st);
+                continue 'pass;
+            }
+            if viols.is_empty() {
+                // Budget exhaustion mid-enumeration: nothing trustworthy to
+                // repair, fail this pass conservatively.
+                if debug {
+                    eprintln!("KM_ELC_CERT repair pass {pol}: budget exhausted (round {round})");
+                }
+                continue 'pass;
+            }
+            for (rci, asg) in &viols {
+                // The chosen disjunct: first/last addable head atom. An eq
+                // atom cannot be "made true" by adding facts; a clause whose
+                // head is all-eq is unrepairable.
+                let head = &rcs[*rci].head;
+                let pick = if pol == 0 {
+                    head.iter().find(|a| !matches!(a, RAtom::Eq { .. }))
+                } else {
+                    head.iter().rev().find(|a| !matches!(a, RAtom::Eq { .. }))
+                };
+                match pick {
+                    Some(&RAtom::C { cid, v }) => st.add_sub(asg[v], cid),
+                    Some(&RAtom::R { rid, s, t }) => st.add_edge(asg[s], rid, asg[t]),
+                    _ => {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {pol}: clause {rci} has no addable \
+                                 head atom"
+                            );
+                        }
+                        continue 'pass;
+                    }
+                }
+                adds += 1;
+            }
+            // Re-close under the EL rules: the repaired structure must again
+            // be a model of the EL clause set before the next recheck.
+            run(idx, &mut st, &mut nf4_buf);
+        }
+        if debug {
+            eprintln!("KM_ELC_CERT repair pass {pol}: no convergence in {MAX_ROUNDS} rounds");
+        }
+    }
+    if pass_states.is_empty() {
+        return false;
+    }
+    // Intersection criterion on every named, base-satisfiable node.
+    for c in 0..n {
+        if !is_named[c] || base.sub_super[c].contains(&BOTTOM) {
+            continue; // not a query subject / already reported unsatisfiable
+        }
+        // Named concepts the repair added at this node, intersected across the
+        // pass models where the node stays satisfiable.
+        let mut inter: Option<HashSet<u32>> = None;
+        for st in &pass_states {
+            if st.sub_super[c].contains(&BOTTOM) {
+                continue;
+            }
+            let extras: HashSet<u32> = st.sub_super[c]
+                .iter()
+                .copied()
+                .filter(|&d| is_named[d as usize] && !base.sub_super[c].contains(&d))
+                .collect();
+            inter = Some(match inter {
+                None => extras,
+                Some(prev) => prev.intersection(&extras).copied().collect(),
+            });
+            if inter.as_ref().is_some_and(|s| s.is_empty()) {
+                break;
+            }
+        }
+        match &inter {
+            None => {
+                // Unsatisfiable in every pass model: no witness that the base
+                // "satisfiable" verdict is right.
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair fail: {} unsat in every pass model",
+                        it.name(c as u32)
+                    );
+                }
+                return false;
+            }
+            Some(s) if !s.is_empty() => {
+                // Forced in every surviving model but not derived: the EL
+                // answer might be incomplete here. Undetermined -> fallback.
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair fail: {} undetermined supers at {}",
+                        s.len(),
+                        it.name(c as u32)
+                    );
+                }
+                return false;
+            }
+            _ => {}
+        }
+    }
+    if debug {
+        eprintln!(
+            "KM_ELC_CERT repair pass: {} model(s) agree with the EL lower bound",
+            pass_states.len()
         );
     }
     true
@@ -1226,29 +1459,44 @@ pub struct ElResult {
 /// context engine). `KM_ELC_CERT=0` disables the certificate (old behaviour:
 /// any non-EL clause routes to the context engine); `KM_ELC_DEBUG=1` reports
 /// residual counts and the certificate verdict on stderr.
+/// Certificate mode, from `KM_ELC_CERT`: unset/`0` = off, `1`/`on` = plain
+/// canonical-model check, `2`/`repair` = model repair with intersection.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CertMode {
+    Off,
+    Check,
+    Repair,
+}
+
 pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
     // Default OFF: on the ORE 2015 corpus every non-EL residual is a live
     // covering disjunction / non-inert inverse bridge / multi-successor
     // functionality, none of which the canonical EL model satisfies, so the
-    // certificate never passes there -- and attempting it would saturate the
-    // (large) EL subset before failing, stealing time from the CB fallback.
-    // The capability is sound and tested; enable with `KM_ELC_CERT=1` for
-    // near-EL ontologies whose non-EL part IS model-satisfiable.
-    let cert_on = matches!(std::env::var("KM_ELC_CERT").as_deref(), Ok("1") | Ok("on"));
+    // PLAIN certificate never passes there -- and attempting it would saturate
+    // the (large) EL subset before failing, stealing time from the CB
+    // fallback. `KM_ELC_CERT=1` enables the plain check (near-EL ontologies
+    // whose non-EL part IS model-satisfiable); `KM_ELC_CERT=2` additionally
+    // repairs violated residuals by disjunct choice and certifies via the
+    // intersection of the choice-pass models.
+    let cert = match std::env::var("KM_ELC_CERT").as_deref() {
+        Ok("1") | Ok("on") => CertMode::Check,
+        Ok("2") | Ok("repair") => CertMode::Repair,
+        _ => CertMode::Off,
+    };
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
-    classify_inner(clauses, cert_on, debug)
+    classify_inner(clauses, cert, debug)
 }
 
-/// Core of [`classify`] with the certificate explicitly enabled/disabled (the
-/// env read is in `classify`; tests drive this directly to avoid racy
-/// `set_var` across parallel test threads).
-fn classify_inner(clauses: &[JClause], cert_on: bool, debug: bool) -> Option<ElResult> {
+/// Core of [`classify`] with the certificate mode explicit (the env read is in
+/// `classify`; tests drive this directly to avoid racy `set_var` across
+/// parallel test threads).
+fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<ElResult> {
     let mut it = Interner::new();
     let (mut nfs, residual) = to_nf(clauses, &mut it)?;
     let rcs = if residual.is_empty() {
         Vec::new()
     } else {
-        if !cert_on {
+        if cert == CertMode::Off {
             return None;
         }
         match compile_residual(&residual, &mut it, &mut nfs) {
@@ -1265,7 +1513,11 @@ fn classify_inner(clauses: &[JClause], cert_on: bool, debug: bool) -> Option<ElR
         }
     };
     let n = it.len();
-    let res = saturate(&nfs, n);
+    let idx = build_idx(&nfs, n);
+    let mut st = init_state(&nfs, n);
+    let mut nf4_buf: Vec<u32> = Vec::new();
+    run(&idx, &mut st, &mut nf4_buf);
+    let res = st;
     // An inconsistent EL subset makes the full ontology inconsistent
     // (monotonicity), so that answer is exact without a certificate.
     let el_inconsistent = res.sub_super[TOP as usize].contains(&BOTTOM);
@@ -1273,7 +1525,12 @@ fn classify_inner(clauses: &[JClause], cert_on: bool, debug: bool) -> Option<ElR
         if debug {
             eprintln!("KM_ELC_CERT checking {} residual clauses", rcs.len());
         }
-        if !check_certificate(&rcs, &nfs, &res, debug) {
+        let certified = match cert {
+            CertMode::Check => check_certificate(&rcs, &nfs, &res, debug),
+            CertMode::Repair => repair_certify(&rcs, &nfs, &idx, &res, &it, debug),
+            CertMode::Off => unreachable!("residual with cert off returns early"),
+        };
+        if !certified {
             return None;
         }
     }
@@ -1357,7 +1614,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("A", "x")], &[c("B", "x"), c("D", "x")]),
         ));
-        let res = classify_inner(&cs, true, false).expect("certificate should pass");
+        let res = classify_inner(&cs, CertMode::Check, false).expect("certificate should pass");
         assert!(subs_of(&res, "A").contains(&"B".to_string()));
         assert!(!res.inconsistent);
     }
@@ -1371,7 +1628,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("A", "x")], &[c("D", "x"), c("E", "x")]),
         ));
-        assert!(classify_inner(&cs, true, false).is_none());
+        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
     }
 
     #[test]
@@ -1385,14 +1642,14 @@ mod tests {
         );
         let range = cl(&[r("R", "x", "y")], &[c("C", "y")]);
         let cs_fail = clauses(&format!("[{},{}]", base, range));
-        assert!(classify_inner(&cs_fail, true, false).is_none());
+        assert!(classify_inner(&cs_fail, CertMode::Check, false).is_none());
         let cs_pass = clauses(&format!(
             "[{},{},{}]",
             base,
             range,
             cl(&[c("B", "x")], &[c("C", "x")]),
         ));
-        let res = classify_inner(&cs_pass, true, false).expect("range satisfied by B ⊑ C");
+        let res = classify_inner(&cs_pass, CertMode::Check, false).expect("range satisfied by B ⊑ C");
         assert!(subs_of(&res, "B").contains(&"C".to_string()));
     }
 
@@ -1414,7 +1671,7 @@ mod tests {
                 v("z")
             ),
         ));
-        assert!(classify_inner(&cs, true, false).is_none());
+        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
         // With a single successor the functionality constraint holds.
         let cs1 = clauses(&format!(
             "[{},{},{}]",
@@ -1428,7 +1685,7 @@ mod tests {
                 v("z")
             ),
         ));
-        let res = classify_inner(&cs1, true, false).expect("functional with one successor");
+        let res = classify_inner(&cs1, CertMode::Check, false).expect("functional with one successor");
         assert!(subs_of(&res, "A").is_empty() || !res.inconsistent);
     }
 
@@ -1439,7 +1696,7 @@ mod tests {
             "[{\"body\":[],\"head\":[{\"kind\":\"concept\",\"concept\":\"A\",\
               \"term\":{\"kind\":\"ind\",\"name\":\"a\"}}]}]",
         );
-        assert!(classify_inner(&cs, true, false).is_none());
+        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
     }
 
     #[test]
@@ -1450,7 +1707,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("B", "x")], &[c("C", "x")]),
         ));
-        let res = classify_inner(&cs, true, false).expect("plain EL");
+        let res = classify_inner(&cs, CertMode::Check, false).expect("plain EL");
         let a = subs_of(&res, "A");
         assert!(a.contains(&"B".to_string()) && a.contains(&"C".to_string()));
     }
@@ -1470,7 +1727,7 @@ mod tests {
             r("R", "x", "y"),
             c("D", "y")
         );
-        let res = classify_inner(&clauses(&format!("[{},{}]", base, constraint)), true, false)
+        let res = classify_inner(&clauses(&format!("[{},{}]", base, constraint)), CertMode::Check, false)
             .expect("constraint body unsatisfied: certificate passes");
         assert!(!res.inconsistent);
         // Now make the successor a D: the constraint is violated in the model.
@@ -1480,6 +1737,90 @@ mod tests {
             constraint,
             cl(&[c("B", "x")], &[c("D", "x")]),
         ));
-        assert!(classify_inner(&cs_fail, true, false).is_none());
+        assert!(classify_inner(&cs_fail, CertMode::Check, false).is_none());
+    }
+
+    // ----- repair-mode certificate -----
+
+    #[test]
+    fn repair_passes_on_inert_covering_disjunction() {
+        // ⊤ → A ∨ B (covering), A and B otherwise unconstrained, EL: C ⊑ D.
+        // The plain check fails (live disjunction); repair builds the
+        // choose-A and choose-B models, whose intersection adds nothing, so
+        // the EL answer is certified exact.
+        let cs = clauses(&format!(
+            "[{},{}]",
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("C", "x")], &[c("D", "x")]),
+        ));
+        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
+        let res = classify_inner(&cs, CertMode::Repair, false).expect("repair certifies");
+        assert!(subs_of(&res, "C").contains(&"D".to_string()));
+        // The choices must not leak into the answer.
+        assert!(!subs_of(&res, "C").contains(&"A".to_string()));
+        assert!(!subs_of(&res, "C").contains(&"B".to_string()));
+        assert!(!res.inconsistent);
+    }
+
+    #[test]
+    fn repair_fails_when_disjunction_forces_subsumption() {
+        // ⊤ → A ∨ B with A ⊑ D and B ⊑ D entails C ⊑ D for every class C,
+        // which EL completion cannot derive: D survives in the intersection at
+        // the C node, so the certificate must fail (context-engine fallback).
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("A", "x")], &[c("D", "x")]),
+            cl(&[c("B", "x")], &[c("D", "x")]),
+            cl(&[c("C", "x")], &[c("C", "x")]),
+        ));
+        assert!(classify_inner(&cs, CertMode::Repair, false).is_none());
+    }
+
+    #[test]
+    fn repair_fails_when_both_choices_force_bottom() {
+        // ⊤ → A ∨ B with both disjuncts unsatisfiable: the ontology is
+        // inconsistent but EL completion does not see it. Every repair choice
+        // kills every node, so no pass model can witness C's satisfiability
+        // and the certificate must fail.
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[], &[c("A", "x"), c("B", "x")]),
+            cl(&[c("A", "x")], &[]),
+            cl(&[c("B", "x")], &[]),
+            cl(&[c("C", "x")], &[c("C", "x")]),
+        ));
+        assert!(classify_inner(&cs, CertMode::Repair, false).is_none());
+    }
+
+    #[test]
+    fn repair_handles_inert_inverse_bridge_via_edge_addition() {
+        // EL: A ⊑ ∃R.B. Residual inverse bridge R(x,y) → S(y,x) with S unused:
+        // repair adds the S-edge, nothing else fires, both pass models agree
+        // with the base, certificate passes with the EL answer.
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
+            cl(&[c("C", "x")], &[c("D", "x")]),
+        ));
+        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
+        let res = classify_inner(&cs, CertMode::Repair, false).expect("edge repair certifies");
+        assert!(subs_of(&res, "C").contains(&"D".to_string()));
+        assert!(!res.inconsistent);
+    }
+
+    #[test]
+    fn repair_shortcuts_when_base_model_already_complete() {
+        // Residual already satisfied by the canonical model: repair mode must
+        // pass without needing a second pass (adds == 0 shortcut).
+        let cs = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("A", "x")], &[c("B", "x"), c("D", "x")]),
+        ));
+        let res = classify_inner(&cs, CertMode::Repair, false).expect("base model complete");
+        assert!(subs_of(&res, "A").contains(&"B".to_string()));
     }
 }

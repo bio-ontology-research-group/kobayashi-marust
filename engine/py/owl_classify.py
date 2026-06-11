@@ -318,7 +318,11 @@ def classify(ofn_path: str) -> dict:
             # the large EL ontologies whose Python saturation exceeds the budget.
             # `clauses` is None here (the clause set lives only in the file), so
             # the Python el_route path must NOT be taken.
-            if rbox_safe:
+            # KM_ELC_FORCE=1 attempts elc even when the RBox is not EL-safe:
+            # the non-EL role clauses then land in elc's residual, where only a
+            # passing completeness certificate (KM_ELC_CERT) lets it answer;
+            # otherwise it exits 3 and the context engine runs as usual.
+            if rbox_safe or os.environ.get("KM_ELC_FORCE"):
                 proc = run_reasoner_file([elc_bin()], clauses_path)
                 if proc.returncode == 3:
                     out = None
