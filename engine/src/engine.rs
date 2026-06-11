@@ -1334,6 +1334,25 @@ impl Engine {
         ctx.dirty = true;
     }
 
+    /// `true` if context `sid` has derived concept `iri` on its central
+    /// variable as an unconditional fact (`⊤ → iri(x)`).  Used by the
+    /// redundant-trigger skip to detect a push-back the successor already knows.
+    fn ctx_derives_central(&self, sid: usize, iri: Iri) -> bool {
+        let ctx = &self.contexts[sid];
+        if let Some(idxs) = ctx.head_concept_index.get(&iri) {
+            for &ci in idxs {
+                let c = &ctx.worked_off[ci];
+                if c.body.is_empty()
+                    && c.head.len() == 1
+                    && matches!(c.head[0], Lit::P(Pred::Concept { iri: i, t }) if i == iri && is_central(t))
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     /// After saturating context `id`, generate Succ and Pred messages.
     fn propagate(&mut self, id: usize) {
         if !self.contexts[id].dirty {
@@ -1388,10 +1407,39 @@ impl Engine {
             // conditions them on that context's own core.
             let mut grew: Vec<Term> = Vec::new();
             {
+                // Redundant-trigger skip (KM_NO_TRIGSKIP to disable): a concept
+                // trigger `C(f)` whose successor context for `f` already derives
+                // `C` on its own central is a redundant push-back — growing `f`'s
+                // core to `{filler, C}` would just duplicate the `{filler}`
+                // context (C is derivable from the filler), so it adds churn with
+                // no new consequence.  Skipping it keeps the successor mapped to
+                // its existing context (whose edge already delivers every
+                // consequence) and stops the grown-core cascade that otherwise
+                // overruns the message budget on transitive/role-chain onts.
+                // Genuinely-new concepts (not yet derived by the successor) still
+                // grow the core, so completeness is preserved.
+                let trigskip = std::env::var_os("KM_NO_TRIGSKIP").is_none();
+                let mut redundant: Vec<Pred> = Vec::new();
+                if trigskip {
+                    for p in &new_succ {
+                        if let Pred::Concept { iri, t } = *p {
+                            let f = t;
+                            if let Some(&sid) = self.contexts[id].successors.get(&f) {
+                                if self.ctx_derives_central(sid, iri) {
+                                    redundant.push(*p);
+                                }
+                            }
+                        }
+                    }
+                }
                 let ctx = &mut self.contexts[id];
                 for p in new_succ {
-                    let f = p.max_term();
+                    // Always mark pushed so we never re-process this trigger.
                     ctx.pushed_succ.insert(p);
+                    if redundant.contains(&p) {
+                        continue; // redundant push-back: do not grow the core
+                    }
+                    let f = p.max_term();
                     ctx.trigger_sets.entry(f).or_default().insert(p);
                     if !grew.contains(&f) {
                         grew.push(f);
@@ -1677,6 +1725,15 @@ impl Engine {
         // derived clause set is independent of the propagation schedule.
         let mut guard = 0usize;
         let trace = std::env::var("KM_TRACE").is_ok();
+        // Hard safety cap on the inter-context message fixpoint (backstop against
+        // a runaway central-strategy core-growth cascade). Configurable via
+        // KM_MSG_CAP; default 5M. Raising it trades time/memory for completeness
+        // on heavy role-chain/transitive ontologies whose fixpoint is large but
+        // finite.
+        let msg_cap: usize = std::env::var("KM_MSG_CAP")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5_000_000);
         let mut truncated = false;
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
@@ -1684,16 +1741,16 @@ impl Engine {
             let mut seen: HashSet<usize> = HashSet::new();
             for msg in batch {
                 guard += 1;
-                if guard > 5_000_000 {
+                if guard > msg_cap {
                     // Hard safety cap on the inter-context message fixpoint.
                     // Hitting it means the run was truncated, so the
                     // classification may be INCOMPLETE -- never silently: warn on
                     // stderr (audit L1/L2). Sound (only consequences are
                     // dropped), but completeness is not guaranteed for this run.
                     eprintln!(
-                        "WARNING: kobayashi-marust message fixpoint hit the 5,000,000 cap; \
+                        "WARNING: kobayashi-marust message fixpoint hit the {} cap; \
                          classification may be incomplete (truncated). {} pending messages dropped.",
-                        self.msgs.len()
+                        msg_cap, self.msgs.len()
                     );
                     truncated = true;
                     break;
@@ -1779,6 +1836,73 @@ impl Engine {
                     ctx.query.map(|i| self.sig.concept_names[i as usize].clone()),
                     core.join(", "), ctx.worked_off.len());
                 for c in &ctx.worked_off {
+                    let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
+                    let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
+                    eprintln!("   {} -> {}",
+                        if b.is_empty() { "T".to_string() } else { b.join(" & ") },
+                        if h.is_empty() { "F".to_string() } else { h.join(" | ") });
+                }
+            }
+        }
+        if let Ok(pat) = std::env::var("KM_TRACE_C") {
+            // Substring-filtered context dump: only contexts whose core or
+            // worked-off set mentions a concept/role name containing any of the
+            // comma-separated needles.  Keeps output tractable on full ORE onts
+            // when tracing one query's reachability propagation.
+            let needles: Vec<String> = pat.split(',').map(|s| s.to_string()).collect();
+            let fmt_t = |t: Term| -> String {
+                if t == X { "x".to_string() }
+                else if t == Y { "y".to_string() }
+                else if t < 0 { format!("z{}", -t - 1) }
+                else { format!("f{}(x)", t) }
+            };
+            let nm_c = |iri: u32| self.sig.concept_names[iri as usize].clone();
+            let nm_r = |iri: u32| self.sig.role_names[iri as usize].clone();
+            let fmt_p = |p: &Pred| -> String {
+                match *p {
+                    Pred::Concept { iri, t } => format!("{}({})", nm_c(iri), fmt_t(t)),
+                    Pred::Role { iri, s, t } => format!("{}({},{})", nm_r(iri), fmt_t(s), fmt_t(t)),
+                }
+            };
+            let fmt_l = |l: &Lit| -> String {
+                match *l {
+                    Lit::P(p) => fmt_p(&p),
+                    Lit::Eq { s, t } => format!("{}={}", fmt_t(s), fmt_t(t)),
+                    Lit::Ineq { s, t } => format!("{}!={}", fmt_t(s), fmt_t(t)),
+                }
+            };
+            let hit = |p: &Pred| -> bool {
+                let n = match *p {
+                    Pred::Concept { iri, .. } => nm_c(iri),
+                    Pred::Role { iri, .. } => nm_r(iri),
+                };
+                needles.iter().any(|nd| n.contains(nd.as_str()))
+            };
+            for ctx in &self.contexts {
+                let touch = ctx.core.iter().any(&hit)
+                    || ctx.worked_off.iter().any(|c| {
+                        c.body.iter().any(&hit)
+                            || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)))
+                    });
+                if !touch { continue; }
+                let core: Vec<String> = ctx.core.iter().map(&fmt_p).collect();
+                eprintln!("== ctx {} root={} query={:?} core=[{}] preds={} wo={}",
+                    ctx.id, ctx.root,
+                    ctx.query.map(|i| nm_c(i)),
+                    core.join(", "), ctx.predecessors.len(), ctx.worked_off.len());
+                let mut succs: Vec<String> = ctx.successors.iter()
+                    .map(|(f, sid)| format!("f{}->{}", f, sid)).collect();
+                succs.sort();
+                eprintln!("   SUCC: {}", succs.join(" "));
+                let mut preds: Vec<String> = ctx.predecessors.keys()
+                    .map(|(pid, f)| format!("{}@f{}", pid, f)).collect();
+                preds.sort();
+                eprintln!("   PRED-OF: {}", preds.join(" "));
+                for c in &ctx.worked_off {
+                    // only print clauses mentioning a needle (keeps it focused)
+                    let rel = c.body.iter().any(&hit)
+                        || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)));
+                    if !rel { continue; }
                     let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
                     let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
                     eprintln!("   {} -> {}",

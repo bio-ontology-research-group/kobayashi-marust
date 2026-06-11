@@ -199,6 +199,16 @@ pub struct Sig {
     pub concept_internal: Vec<bool>,
     /// Su / Pr trigger sets (computed from ontology clause bodies).
     pub concept_succ_trigger: Vec<bool>,
+    /// `true` if concept iri is a transitivity/role-chain *reachability*
+    /// bookkeeping concept (`__trans__…` / `__chain__…`).  These never occur as
+    /// existential fillers — they are only ever derived in clause heads on the
+    /// central variable — so a `reach(f)` fact on a successor `f` is always a
+    /// redundant push-back of what `f`'s own (sub-)context already derived
+    /// natively.  Excluding them from Succ triggers keeps the successor's core
+    /// from growing on pushed-back reachability (which otherwise spawns a
+    /// combinatorial cascade of grown-core contexts that overruns the message
+    /// budget and drops deep reachability), without losing any derivation.
+    pub concept_reach: Vec<bool>,
     pub forward_role_succ_trigger: Vec<bool>,
     pub backward_role_succ_trigger: Vec<bool>,
     /// concept iris asserted unsatisfiable (body length 1, empty head).
@@ -218,6 +228,7 @@ impl Sig {
         let internal = is_internal_concept(name);
         self.concept_internal.push(internal);
         self.concept_succ_trigger.push(false);
+        self.concept_reach.push(is_reach_concept(name));
         self.nothing.push(false);
         id
     }
@@ -238,6 +249,10 @@ impl Sig {
             .get(iri as usize)
             .copied()
             .unwrap_or(true)
+    }
+    #[inline]
+    pub fn is_reach(&self, iri: Iri) -> bool {
+        self.concept_reach.get(iri as usize).copied().unwrap_or(false)
     }
     #[inline]
     pub fn is_nothing_concept(&self, iri: Iri) -> bool {
@@ -267,6 +282,16 @@ pub fn is_internal_concept(name: &str) -> bool {
         || short.starts_with("def_")
 }
 
+/// `true` for the transitivity / role-chain *reachability* bookkeeping concepts
+/// introduced by `preprocess` (`__trans__ROLE__C…`, `__chain__ROLE__C…`).  These
+/// only ever appear in clause heads on the central variable, never as
+/// existential fillers, so they are never a genuine "fresh hypothesis" on a
+/// successor — see `Sig::concept_reach`.
+pub fn is_reach_concept(name: &str) -> bool {
+    let short = name.rsplit(['#', '/']).next().unwrap_or(name);
+    short.starts_with("__trans__") || short.starts_with("__chain__")
+}
+
 // ----------------------------- triggers ------------------------------------
 
 impl Pred {
@@ -280,9 +305,14 @@ impl Pred {
     /// successor learns its incoming edge and can discharge axioms such as
     /// `∃R.C ⊑ D` about its predecessor.  Over-pushing is sound (it only adds
     /// hypotheses to the successor).
-    pub fn is_succ_trigger(&self, _sig: &Sig) -> bool {
+    pub fn is_succ_trigger(&self, sig: &Sig) -> bool {
         match *self {
-            Pred::Concept { t, .. } => is_function(t),
+            // Reachability bookkeeping concepts (`__trans__`/`__chain__`) are
+            // never existential fillers, so `reach(f)` on a successor is always a
+            // redundant push-back of what `f`'s own context derived natively.
+            // Pushing it back would grow `f`'s core and spawn grown-core context
+            // churn; skip it (the fact still flows to predecessors via Pred).
+            Pred::Concept { iri, t } => is_function(t) && !sig.is_reach(iri),
             Pred::Role { s, t, .. } => {
                 (is_central(s) && is_function(t)) || (is_central(t) && is_function(s))
             }
