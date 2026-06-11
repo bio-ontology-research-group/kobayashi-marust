@@ -4,6 +4,35 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Engine: complete disjunctive case analysis (same-term literals incomparable)
+
+The context literal ordering (`calc.rs pred_lteq`) imposed a total order on
+same-term concept literals (iri id + internal-definer-low), applying the
+mutually-incomparable refinement only in root contexts. That total order is
+incomplete for disjunctive consequence finding: once a disjunct stops being
+maximal it is never resolved, so a head disjunction never fully case-splits.
+Minimal probe (CB engine): `A ⊑ ∃R.(C⊔D), C⊑E, D⊑E, ∃R.E⊑G ⊬ A⊑G` (the engine
+derives `C(f)|Q_2(x)` and stalls). This is the root cause of the incomplete
+disjunctive ORE ontologies (12698's `∃`-filler disjunction + transitive role).
+
+Fix: concept literals on the same term are mutually incomparable in every
+context, so Hyper fires on every disjunct and the case split completes. This
+matches the Lean completeness proof, which models Hyper as resolution on an
+arbitrary atom (`CompletenessProp.lean`) with no ordering assumption -- the total
+order was never part of the certified calculus. Sound by construction (ordered
+resolution is sound for any selection). Validated on probes + ORE 2313 / 12698
+minimal cores; 65 tests green; Horn (single-head) reasoning is unaffected.
+
+TRADEOFF (sweep 5814): genuinely-disjunctive ontologies now explore all branches,
+which is heavy (12698 ~16-19 GB). About 10 ontologies regress ok→timeout/memout.
+This is fundamental -- completeness on disjunctive inputs requires full case
+analysis -- and is recoverable only by performance work (stronger redundancy on
+disjunctive clauses, or decoupling Hyper-maximality from Succ-trigger selection),
+not by weakening the ordering. `KM_DUMP_WO=1` dumps every context's worked-off
+clauses (debug, env-gated). `KM_NO_PRUNE=1` disables inert inverse/role-bridge
+pruning (diagnostic; pruning is sound -- disabling it does not recover the
+remaining inverse-role / GALEN incompleteness, which is a separate engine gap).
+
 ### Frontend: handle EquivalentObjectProperties (was silently dropped)
 
 `EquivalentObjectProperties(R1 … Rn)` had no parse arm in either the AST path

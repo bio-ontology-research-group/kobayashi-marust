@@ -178,7 +178,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     tbox.extend(preprocess::domain_range_clauses(&rbox));
     // All consumers are in place (augment encodings + domain/range), so dead
     // inverse bridges can be identified and dropped.
-    preprocess::prune_dead_inverse_bridges(&mut tbox, &role_inverses);
+    let no_prune = std::env::var_os("KM_NO_PRUNE").is_some();
+    if !no_prune {
+        preprocess::prune_dead_inverse_bridges(&mut tbox, &role_inverses);
+    }
     // Decide EL routing on the full clause set. An ontology fenced out of the EL
     // fast path only by symmetric / inverse roles is still EL-routable when
     // those roles are inert -- not in the backward slice of roles that can reach
@@ -186,7 +189,9 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // Prune the inert reverse-edge clauses and relax the routing predicate; roles
     // in the slice keep the ontology on the CB engine.
     let relevant = preprocess::concept_relevant_roles(&tbox);
-    preprocess::prune_inert_role_bridges(&mut tbox, &symmetric_roles, &role_inverses, &relevant);
+    if !no_prune {
+        preprocess::prune_inert_role_bridges(&mut tbox, &symmetric_roles, &role_inverses, &relevant);
+    }
     let inverses_inert = role_inverses
         .iter()
         .all(|(r, s)| !relevant.contains(r) && !relevant.contains(s));
