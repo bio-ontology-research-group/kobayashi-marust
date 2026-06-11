@@ -4,6 +4,43 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Engine: clause interning (Pred pipeline + global arena) — peak RSS −77%
+
+KM_MEMSTATS accounting (new, diagnostics-only) on ore_ont_9944 at fixpoint
+showed each derived clause stored 5+ times across the engine: per-context
+`neighbor_pred` copies of back-substituted pred clauses (11.4M instances,
+2.06 GB — only 388k distinct, 29x duplication), a full clause copy per
+(edge, clause) in `pushed_pred`, full copies in `pred_pool`/`succ_pool` and
+`clause_keys`, the `max_head` duplicate, and `Msg::Pred` carrying a cloned
+neighbour core + clause per queued message (13.8M messages). On top of that,
+the seeded shared closure was cloned into every context (8009 root contexts).
+
+Two interning stages, both representation/sharing only (the derived clause
+set is unchanged, so no Lean re-certification — skipping a duplicate Pred
+arrival only skips re-deriving clauses `add_clause` would dedup anyway):
+
+1. **Pred pipeline** (`228067f`): engine-level `pred_interned` table;
+   contexts hold u32 ids and `neighbor_pred_seen` dedups duplicate arrivals
+   (real, from a successor's pre-/post-growth contexts under the central
+   strategy). `pushed_pred` keys by (edge → `pred_pool` index). `Msg::Pred`
+   carries `{to, from, edge_label, pool_idx}` (24 B, no heap); the sender's
+   pool entry and core are immutable, so apply-time resolution reads exactly
+   the send-time snapshot. 9944: 8.50 → 4.99 GB, wall 2:58 → 2:26.
+
+2. **Global clause arena**: `cc_arena: [Vec<ContextClause>; 2]`, content-
+   interned, split by ordering domain (root / non-root — the same
+   (body, head) caches a different `max_head` under the two orderings, so
+   the domains are never crossed). `worked_off`/`todo`/pools become Vec of
+   u32 arena ids; `clause_keys` becomes HashSet of the id (the id IS the
+   content key); head indexes store ids; the shared closures seed ids
+   instead of cloning clauses per context. 6.08M worked-off instances
+   collapse to 193k distinct (31x). 9944: 8.50 → **1.99 GB peak (−77%)**,
+   wall 2:58 → **1:56 (−35%)**, output identical (315,940 subsumptions,
+   exact set match). 49+16 cargo tests pass.
+
+This is the lever for the 9724 (GALEN) memout, which churns >82 GB
+unconverged on the old representation.
+
 ### Engine: complete disjunctive case analysis (same-term literals incomparable)
 
 The context literal ordering (`calc.rs pred_lteq`) imposed a total order on

@@ -153,16 +153,24 @@ struct Context {
     root: bool,
     /// the query concept this root context classifies (if any)
     query: Option<Iri>,
-    worked_off: Vec<ContextClause>,
-    clause_keys: HashSet<(Vec<Pred>, Vec<Lit>)>,
+    /// Worked-off clauses, as ids into the engine-level clause arena for this
+    /// context's ordering domain (root / non-root).  The arena is content-
+    /// interned and append-only, so identical clauses derived in thousands of
+    /// contexts (notably the seeded shared closure) are stored once; ids are
+    /// stable and ascend in work-off order.
+    worked_off: Vec<u32>,
+    /// Arena ids of the clauses currently in `worked_off` ∪ `todo` (the arena
+    /// id IS the canonical content key, so this replaces the old full
+    /// (body, head) copy used for duplicate detection).
+    clause_keys: HashSet<u32>,
     /// Index from a head-predicate iri to the (ascending, de-duplicated)
     /// `worked_off` indices of clauses having a *maximal* head predicate with
     /// that iri.  Lets Hyper/Pred find resolution partners without scanning all
     /// of `worked_off`.  Concept and role iris live in separate namespaces, so
     /// they are indexed separately; `can_unify` / exact-predicate tests still
     /// filter precisely, so the candidate set (and its order) is unchanged.
-    head_concept_index: HashMap<Iri, Vec<usize>>,
-    head_role_index: HashMap<Iri, Vec<usize>>,
+    head_concept_index: HashMap<Iri, Vec<u32>>,
+    head_role_index: HashMap<Iri, Vec<u32>>,
     /// Subsumption index over `worked_off`: each clause is recorded under every
     /// literal of its head.  A clause `c` can subsume `clause` only if
     /// `c.head ⊆ clause.head`, so every true subsumer with a non-empty head is
@@ -171,9 +179,9 @@ struct Context {
     /// the intersection of these lists.  Empty-head clauses (which subsume on
     /// the body alone) are tracked separately.  This replaces the per-`add`
     /// linear scan of `worked_off` for both forward and backward subsumption.
-    head_lit_index: HashMap<Lit, Vec<usize>>,
-    empty_head_wo: Vec<usize>,
-    todo: VecDeque<ContextClause>,
+    head_lit_index: HashMap<Lit, Vec<u32>>,
+    empty_head_wo: Vec<u32>,
+    todo: VecDeque<u32>,
     /// pred clauses pushed in from successor contexts (already back-substituted),
     /// as ids into the engine-level `pred_interned` table.  The same substituted
     /// clause can arrive more than once (e.g. from a successor's pre- and
@@ -202,7 +210,9 @@ struct Context {
     /// removed (a clause back-subsumed out of `worked_off` is still
     /// context-entailed, so pushing it stays sound), which lets `pred_hwm` be a
     /// stable high-water mark despite `worked_off` reshuffling under back-subsume.
-    pred_pool: Vec<ContextClause>,
+    /// Entries are arena ids (the arena is append-only, so the referenced
+    /// clause outlives any back-subsumption).
+    pred_pool: Vec<u32>,
     /// number of `pred_pool` entries already cross-checked against every edge at
     /// that edge's `edge_seen` pushed-length in a prior `propagate`.
     pred_hwm: usize,
@@ -215,7 +225,8 @@ struct Context {
     /// Semi-naive Succ propagation: append-only pool of worked-off clauses with a
     /// function-headed (succ-trigger candidate) maximal head predicate, and the
     /// high-water mark of entries already scanned for Succ triggers.
-    succ_pool: Vec<ContextClause>,
+    /// Entries are arena ids.
+    succ_pool: Vec<u32>,
     succ_hwm: usize,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
@@ -256,15 +267,17 @@ impl Context {
         }
     }
 
-    /// Add the `worked_off[idx]` clause to the head-predicate index, recording
-    /// `idx` once per distinct iri appearing among its maximal head predicates
-    /// (the per-clause predicate list is re-scanned at lookup time, so a single
-    /// entry per iri reproduces the original candidate sequence without
-    /// duplicates).  Appending in increasing `idx` keeps each list sorted.
-    fn index_clause(&mut self, idx: usize) {
+    /// Add the worked-off clause with arena id `cid` to the head-predicate
+    /// index, recording `cid` once per distinct iri appearing among its maximal
+    /// head predicates (the per-clause predicate list is re-scanned at lookup
+    /// time, so a single entry per iri reproduces the original candidate
+    /// sequence without duplicates).  Appending in work-off order keeps each
+    /// list in candidate order.
+    fn index_clause(&mut self, arena: &[ContextClause], cid: u32) {
+        let c = &arena[cid as usize];
         let mut concept_iris: Vec<Iri> = Vec::new();
         let mut role_iris: Vec<Iri> = Vec::new();
-        for (p, _) in self.worked_off[idx].max_head_predicates() {
+        for (p, _) in c.max_head_predicates() {
             match p {
                 Pred::Concept { iri, .. } => {
                     if !concept_iris.contains(&iri) {
@@ -279,20 +292,18 @@ impl Context {
             }
         }
         for iri in concept_iris {
-            self.head_concept_index.entry(iri).or_default().push(idx);
+            self.head_concept_index.entry(iri).or_default().push(cid);
         }
         for iri in role_iris {
-            self.head_role_index.entry(iri).or_default().push(idx);
+            self.head_role_index.entry(iri).or_default().push(cid);
         }
         // subsumption index: record under every head literal (or the empty-head
-        // list).  Heads are small, so the clone is cheap and avoids a borrow on
-        // `self.worked_off` while mutating the maps.
-        let head = self.worked_off[idx].head.clone();
-        if head.is_empty() {
-            self.empty_head_wo.push(idx);
+        // list).
+        if c.head.is_empty() {
+            self.empty_head_wo.push(cid);
         } else {
-            for l in head {
-                self.head_lit_index.entry(l).or_default().push(idx);
+            for &l in &c.head {
+                self.head_lit_index.entry(l).or_default().push(cid);
             }
         }
     }
@@ -301,13 +312,14 @@ impl Context {
     /// back-subsumption physically removes clauses from `worked_off` (which
     /// shifts the indices the maps refer to); removals are comparatively rare,
     /// so a full rebuild keeps the common (append-only) path fast.
-    fn rebuild_head_index(&mut self) {
+    fn rebuild_head_index(&mut self, arena: &[ContextClause]) {
         self.head_concept_index.clear();
         self.head_role_index.clear();
         self.head_lit_index.clear();
         self.empty_head_wo.clear();
-        for idx in 0..self.worked_off.len() {
-            self.index_clause(idx);
+        for k in 0..self.worked_off.len() {
+            let cid = self.worked_off[k];
+            self.index_clause(arena, cid);
         }
     }
 
@@ -316,9 +328,9 @@ impl Context {
     /// index (every non-empty-head subsumer shares a head literal with
     /// `clause`); `todo` is scanned linearly (it is the small work queue).
     /// The `(nb, nh)` length pre-filter skips clauses that cannot subsume.
-    fn fwd_subsumed(&self, clause: &ContextClause, nb: usize, nh: usize) -> bool {
+    fn fwd_subsumed(&self, arena: &[ContextClause], clause: &ContextClause, nb: usize, nh: usize) -> bool {
         for &ci in &self.empty_head_wo {
-            let c = &self.worked_off[ci];
+            let c = &arena[ci as usize];
             if c.body.len() <= nb && c.test_strengthening(clause) == -1 {
                 return true;
             }
@@ -326,14 +338,15 @@ impl Context {
         for l in &clause.head {
             if let Some(cands) = self.head_lit_index.get(l) {
                 for &ci in cands {
-                    let c = &self.worked_off[ci];
+                    let c = &arena[ci as usize];
                     if c.body.len() <= nb && c.head.len() <= nh && c.test_strengthening(clause) == -1 {
                         return true;
                     }
                 }
             }
         }
-        for c in &self.todo {
+        for &ci in &self.todo {
+            let c = &arena[ci as usize];
             if c.body.len() <= nb && c.head.len() <= nh && c.test_strengthening(clause) == -1 {
                 return true;
             }
@@ -350,20 +363,24 @@ impl Context {
     /// removes nothing, so the expensive full `worked_off` scan and index
     /// rebuild are skipped entirely.  Same removed set and survivor order as a
     /// full linear scan, so the result is unchanged.
-    fn back_subsume(&mut self, clause: &ContextClause, nb: usize, nh: usize, key: &(Vec<Pred>, Vec<Lit>)) {
+    fn back_subsume(&mut self, arena: &[ContextClause], clause: &ContextClause, nb: usize, nh: usize) {
+        // The incoming clause must not remove an existing *identical* clause
+        // (callers reject exact duplicates before back-subsuming, but the guard
+        // mirrors the historical key check).
+        let same = |c: &ContextClause| c.body == clause.body && c.head == clause.head;
         // ---- worked_off ----
-        let mut remove_wo: Vec<usize> = Vec::new();
+        let mut remove_wo: Vec<u32> = Vec::new();
         if clause.head.is_empty() {
-            for ci in 0..self.worked_off.len() {
-                let c = &self.worked_off[ci];
-                if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && &c.key() != key {
+            for &ci in &self.worked_off {
+                let c = &arena[ci as usize];
+                if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && !same(c) {
                     remove_wo.push(ci);
                 }
             }
         } else {
             // smallest head-literal list (None if some head literal is absent,
             // in which case no clause contains all of `clause.head`).
-            let mut best: Option<&Vec<usize>> = None;
+            let mut best: Option<&Vec<u32>> = None;
             for l in &clause.head {
                 match self.head_lit_index.get(l) {
                     None => {
@@ -379,38 +396,37 @@ impl Context {
             }
             if let Some(cands) = best {
                 for &ci in cands {
-                    let c = &self.worked_off[ci];
-                    if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && &c.key() != key {
+                    let c = &arena[ci as usize];
+                    if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && !same(c) {
                         remove_wo.push(ci);
                     }
                 }
             }
         }
         if !remove_wo.is_empty() {
-            let remove_set: HashSet<usize> = remove_wo.into_iter().collect();
-            let old = std::mem::take(&mut self.worked_off);
-            let mut new_wo = Vec::with_capacity(old.len() - remove_set.len());
-            for (ci, c) in old.into_iter().enumerate() {
-                if remove_set.contains(&ci) {
-                    self.clause_keys.remove(&c.key());
-                } else {
-                    new_wo.push(c);
-                }
+            let remove_set: HashSet<u32> = remove_wo.into_iter().collect();
+            self.worked_off.retain(|ci| !remove_set.contains(ci));
+            for ci in &remove_set {
+                self.clause_keys.remove(ci);
             }
-            self.worked_off = new_wo;
-            self.rebuild_head_index();
+            self.rebuild_head_index(arena);
         }
         // ---- todo (not indexed) ----
+        let mut removed_todo: Vec<u32> = Vec::new();
         let mut todo = std::mem::take(&mut self.todo);
-        todo.retain(|c| {
-            if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && &c.key() != key {
-                self.clause_keys.remove(&c.key());
+        todo.retain(|&ci| {
+            let c = &arena[ci as usize];
+            if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && !same(c) {
+                removed_todo.push(ci);
                 false
             } else {
                 true
             }
         });
         self.todo = todo;
+        for ci in removed_todo {
+            self.clause_keys.remove(&ci);
+        }
     }
 }
 
@@ -500,14 +516,17 @@ pub struct Engine {
     /// exactly those the context would re-derive), so the saturation fixpoint
     /// and output are unchanged; no Lean re-certification (a redundancy/sharing
     /// optimisation, not a calculus-rule change).
-    shared_closure: Option<Vec<ContextClause>>,
+    /// (Arena ids in the non-root domain; seeding a context shares the arena
+    /// entries instead of cloning the clauses.)
+    shared_closure: Option<Vec<u32>>,
     /// Same idea as `shared_closure` but under the *root* literal ordering
     /// (`root=true`): the facts+TBox closure of an empty-core root context.
     /// Seeded into every query root context (core `{A(x)}`) so the shared TBox
     /// reasoning is computed once rather than per classified concept.  Root and
     /// non-root orderings differ (query concepts are mutually incomparable at a
     /// root), so the two closures are kept separate and never crossed.
-    shared_root_closure: Option<Vec<ContextClause>>,
+    /// (Arena ids in the root domain.)
+    shared_root_closure: Option<Vec<u32>>,
     equality: bool,
     /// Intern table for back-substituted pred clauses: one copy per distinct
     /// content, shared across all receiving contexts (`Context.neighbor_pred`
@@ -517,6 +536,16 @@ pub struct Engine {
     pred_interned: Vec<PredClause>,
     /// content hash -> candidate ids (collisions resolved by exact comparison)
     pred_intern_idx: HashMap<u64, Vec<u32>>,
+    /// Global content-interned clause arenas, one per ordering domain
+    /// (`[non-root, root]` -- the same (body, head) has a different cached
+    /// `max_head` under the root vs non-root literal ordering, so the domains
+    /// are kept separate and never crossed).  Append-only; each distinct
+    /// clause is stored once and contexts reference it by id, which collapses
+    /// the per-context copies of the seeded shared closure and of clauses
+    /// re-derived across contexts.
+    cc_arena: [Vec<ContextClause>; 2],
+    /// content hash -> candidate arena ids, per domain (exact-compare verified)
+    cc_intern_idx: [HashMap<u64, Vec<u32>>; 2],
     pub dropped_unsupported: usize,
     /// instrumentation counters (only read under KM_STATS)
     stat_propagate: u64,
@@ -581,12 +610,40 @@ impl Engine {
             equality: true,
             pred_interned: Vec::new(),
             pred_intern_idx: HashMap::new(),
+            cc_arena: [Vec::new(), Vec::new()],
+            cc_intern_idx: [HashMap::new(), HashMap::new()],
             dropped_unsupported: dropped,
             stat_propagate: 0,
             stat_pred_checks: 0,
             stat_succ_scans: 0,
             stat_saturate: 0,
         }
+    }
+
+    /// Find the arena id of a clause with this exact (body, head) content in
+    /// the given ordering domain, if it was ever interned.  The arena is
+    /// content-unique, so at most one id matches.
+    fn cc_find(&self, root: bool, c: &ContextClause) -> Option<u32> {
+        let d = root as usize;
+        let h = content_hash(&(&c.body, &c.head));
+        self.cc_intern_idx[d].get(&h)?.iter().copied().find(|&i| {
+            let a = &self.cc_arena[d][i as usize];
+            a.body == c.body && a.head == c.head
+        })
+    }
+
+    /// Intern a context clause in the given ordering domain, returning its
+    /// stable arena id.
+    fn intern_cc(&mut self, root: bool, c: ContextClause) -> u32 {
+        if let Some(i) = self.cc_find(root, &c) {
+            return i;
+        }
+        let d = root as usize;
+        let h = content_hash(&(&c.body, &c.head));
+        let id = self.cc_arena[d].len() as u32;
+        self.cc_arena[d].push(c);
+        self.cc_intern_idx[d].entry(h).or_default().push(id);
+        id
     }
 
     /// Intern a back-substituted pred clause, returning its stable id.
@@ -720,20 +777,35 @@ impl Engine {
         if clause.is_head_tautology() {
             return false;
         }
-        let key = clause.key();
-        let ctx = &mut self.contexts[id];
-        if ctx.clause_keys.contains(&key) {
-            return false;
+        let root = self.contexts[id].root;
+        let d = root as usize;
+        // Exact-duplicate check: the arena id is the canonical content key.
+        let existing = self.cc_find(root, &clause);
+        if let Some(cid) = existing {
+            if self.contexts[id].clause_keys.contains(&cid) {
+                return false;
+            }
         }
         let (nb, nh) = (clause.body.len(), clause.head.len());
+        let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[d];
         // Forward subsumption: skip if some existing clause subsumes `clause`.
-        if ctx.fwd_subsumed(&clause, nb, nh) {
+        if ctx.fwd_subsumed(arena, &clause, nb, nh) {
             return false;
         }
         // Back-subsumption: drop existing clauses that `clause` strengthens.
-        ctx.back_subsume(&clause, nb, nh, &key);
-        ctx.clause_keys.insert(key);
-        ctx.todo.push_back(clause);
+        {
+            let arena = &self.cc_arena[d];
+            let ctx = &mut self.contexts[id];
+            ctx.back_subsume(arena, &clause, nb, nh);
+        }
+        let cid = match existing {
+            Some(c) => c,
+            None => self.intern_cc(root, clause),
+        };
+        let ctx = &mut self.contexts[id];
+        ctx.clause_keys.insert(cid);
+        ctx.todo.push_back(cid);
         true
     }
 
@@ -744,11 +816,15 @@ impl Engine {
         let prof = std::env::var("KM_PROF").is_ok();
         let (mut iters, mut subsumed, mut nhyper, mut npred, mut neqp, mut neqe, mut nfact, mut nadded) =
             (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+        let d = self.contexts[id].root as usize;
         loop {
-            let clause = match self.contexts[id].todo.pop_front() {
+            let cid = match self.contexts[id].todo.pop_front() {
                 Some(c) => c,
                 None => break,
             };
+            // Transient working copy (the arena entry is shared across contexts
+            // and rule code needs it while `self` is mutated).
+            let clause = self.cc_arena[d][cid as usize].clone();
             if prof {
                 iters += 1;
                 if iters % 200_000 == 0 {
@@ -769,9 +845,10 @@ impl Engine {
             // subsumer, so dropping it preserves completeness).
             {
                 let ctx = &self.contexts[id];
+                let arena = &self.cc_arena[d];
                 let (nb, nh) = (clause.body.len(), clause.head.len());
-                if ctx.fwd_subsumed(&clause, nb, nh) {
-                    self.contexts[id].clause_keys.remove(&clause.key());
+                if ctx.fwd_subsumed(arena, &clause, nb, nh) {
+                    self.contexts[id].clause_keys.remove(&cid);
                     if prof { subsumed += 1; }
                     continue;
                 }
@@ -836,8 +913,6 @@ impl Engine {
                     if self.add_clause(id, r) && prof { nadded += 1; }
                 }
             }
-            let ctx = &mut self.contexts[id];
-            let idx = ctx.worked_off.len();
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
             // function-free, predicate-only head (mirrors the filter in
             // `propagate`'s Pred section).  Succ-eligible: some maximal head
@@ -849,21 +924,26 @@ impl Engine {
             let succ_eligible = clause
                 .max_head_predicates()
                 .any(|(p, _)| is_function(p.max_term()));
-            if pred_eligible {
-                ctx.pred_pool.push(clause.clone());
+            {
+                let arena = &self.cc_arena[d];
+                let ctx = &mut self.contexts[id];
+                if pred_eligible {
+                    ctx.pred_pool.push(cid);
+                }
+                if succ_eligible {
+                    ctx.succ_pool.push(cid);
+                }
+                ctx.worked_off.push(cid);
+                ctx.index_clause(arena, cid);
+                ctx.dirty = true;
             }
-            if succ_eligible {
-                ctx.succ_pool.push(clause.clone());
-            }
-            ctx.worked_off.push(clause);
-            ctx.index_clause(idx);
-            ctx.dirty = true;
             if trace_sat {
                 let c = &self.contexts[id];
+                let arena = &self.cc_arena[d];
                 let wl = c.worked_off.len();
                 if wl % 10000 == 0 {
-                    let maxb = c.worked_off.iter().map(|cl| cl.body.len()).max().unwrap_or(0);
-                    let maxh = c.worked_off.iter().map(|cl| cl.head.len()).max().unwrap_or(0);
+                    let maxb = c.worked_off.iter().map(|&ci| arena[ci as usize].body.len()).max().unwrap_or(0);
+                    let maxh = c.worked_off.iter().map(|&ci| arena[ci as usize].head.len()).max().unwrap_or(0);
                     let nctx = self.contexts.len();
                     eprintln!(
                         "KM_SAT ctx={} root={} core_len={} todo={} wo={} max_body={} max_head={} ncontexts={} hyper={}",
@@ -881,6 +961,7 @@ impl Engine {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[root as usize];
         for oci in self.ont.clauses_cand(&max) {
             let oc = &self.ont.clauses[oci];
             let n = oc.body.len();
@@ -914,9 +995,9 @@ impl Engine {
                     };
                     if let Some(cand) = cand {
                         for &ci in cand {
-                            for (p, _) in ctx.worked_off[ci].max_head_predicates() {
+                            for (p, _) in arena[ci as usize].max_head_predicates() {
                                 if can_unify(&oc.body[i], &p) {
-                                    v.push((ci, p));
+                                    v.push((ci as usize, p));
                                 }
                             }
                         }
@@ -996,7 +1077,7 @@ impl Engine {
         idxs: &[usize],
         root: bool,
     ) -> Option<ContextClause> {
-        let ctx = &self.contexts[id];
+        let _ = id;
         let subst = |t: Term| sigma.apply(t);
         // head: ontology head substituted, filtered
         let mut head: Vec<Lit> = Vec::new();
@@ -1016,10 +1097,11 @@ impl Engine {
             head.push(ls);
         }
         // plus each candidate clause's head minus the matched predicate
+        let arena = &self.cc_arena[root as usize];
         let mut body: Vec<Pred> = Vec::new();
         for i in 0..candidates.len() {
             let (ci, matched) = candidates[i][idxs[i]];
-            let clause = if ci == usize::MAX { side } else { &ctx.worked_off[ci] };
+            let clause = if ci == usize::MAX { side } else { &arena[ci] };
             for l in &clause.head {
                 if *l != Lit::P(matched) {
                     head.push(*l);
@@ -1037,6 +1119,7 @@ impl Engine {
     fn pred_local(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[root as usize];
         for &pid in &ctx.neighbor_pred {
             let pc = &self.pred_interned[pid as usize];
             if !pc.body.iter().any(|b| *b == max) {
@@ -1059,8 +1142,8 @@ impl Engine {
                 };
                 if let Some(cand) = cand {
                     for &ci in cand {
-                        if ctx.worked_off[ci].max_head_predicates().any(|(p, _)| p == bp) {
-                            v.push((ci, bp));
+                        if arena[ci as usize].max_head_predicates().any(|(p, _)| p == bp) {
+                            v.push((ci as usize, bp));
                         }
                     }
                 }
@@ -1108,12 +1191,13 @@ impl Engine {
         idxs: &[usize],
         root: bool,
     ) -> Option<ContextClause> {
-        let ctx = &self.contexts[id];
+        let _ = id;
+        let arena = &self.cc_arena[root as usize];
         let mut head: Vec<Lit> = pc.head.iter().map(|p| Lit::P(*p)).collect();
         let mut body: Vec<Pred> = Vec::new();
         for i in 0..candidates.len() {
             let (ci, matched) = candidates[i][idxs[i]];
-            let clause = if ci == usize::MAX { side } else { &ctx.worked_off[ci] };
+            let clause = if ci == usize::MAX { side } else { &arena[ci] };
             for l in &clause.head {
                 if *l != Lit::P(matched) {
                     head.push(*l);
@@ -1169,8 +1253,10 @@ impl Engine {
     fn eq_from_pred(&self, id: usize, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[root as usize];
         let mterm = max.max_term();
-        for c in &ctx.worked_off {
+        for &ci in &ctx.worked_off {
+            let c = &arena[ci as usize];
             for l in &c.max_head {
                 if let Lit::Eq { s, t } = *l {
                     if s == mterm && max.contains_at_rewrite_position(s) {
@@ -1188,11 +1274,13 @@ impl Engine {
     fn eq_from_equation(&self, id: usize, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[root as usize];
         let s = match max {
             Lit::Eq { s, .. } | Lit::Ineq { s, .. } => s,
             _ => return out,
         };
-        for c in &ctx.worked_off {
+        for &ci in &ctx.worked_off {
+            let c = &arena[ci as usize];
             for l in &c.max_head {
                 if l.contains_at_rewrite_position(s) && *l != max {
                     if let Lit::Eq { s: es, t: et } = max {
@@ -1358,29 +1446,33 @@ impl Engine {
     /// set, semi-naive Pred/Succ pools, head indexes, dirty flag) so the seeded
     /// clause participates in later resolution and propagation exactly as if it
     /// had been worked off normally.
-    fn seed_worked_off(&mut self, id: usize, clause: ContextClause) {
+    fn seed_worked_off(&mut self, id: usize, cid: u32) {
+        let d = self.contexts[id].root as usize;
+        let (pred_eligible, succ_eligible) = {
+            let clause = &self.cc_arena[d][cid as usize];
+            (
+                clause
+                    .head
+                    .iter()
+                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
+                clause
+                    .max_head_predicates()
+                    .any(|(p, _)| is_function(p.max_term())),
+            )
+        };
+        let arena = &self.cc_arena[d];
         let ctx = &mut self.contexts[id];
-        let key = clause.key();
-        if ctx.clause_keys.contains(&key) {
+        if !ctx.clause_keys.insert(cid) {
             return;
         }
-        ctx.clause_keys.insert(key);
-        let pred_eligible = clause
-            .head
-            .iter()
-            .all(|l| l.is_function_free() && matches!(l, Lit::P(_)));
-        let succ_eligible = clause
-            .max_head_predicates()
-            .any(|(p, _)| is_function(p.max_term()));
         if pred_eligible {
-            ctx.pred_pool.push(clause.clone());
+            ctx.pred_pool.push(cid);
         }
         if succ_eligible {
-            ctx.succ_pool.push(clause.clone());
+            ctx.succ_pool.push(cid);
         }
-        let idx = ctx.worked_off.len();
-        ctx.worked_off.push(clause);
-        ctx.index_clause(idx);
+        ctx.worked_off.push(cid);
+        ctx.index_clause(arena, cid);
         ctx.dirty = true;
     }
 
@@ -1389,9 +1481,10 @@ impl Engine {
     /// redundant-trigger skip to detect a push-back the successor already knows.
     fn ctx_derives_central(&self, sid: usize, iri: Iri) -> bool {
         let ctx = &self.contexts[sid];
+        let arena = &self.cc_arena[ctx.root as usize];
         if let Some(idxs) = ctx.head_concept_index.get(&iri) {
             for &ci in idxs {
-                let c = &ctx.worked_off[ci];
+                let c = &arena[ci as usize];
                 if c.body.is_empty()
                     && c.head.len() == 1
                     && matches!(c.head[0], Lit::P(Pred::Concept { iri: i, t }) if i == iri && is_central(t))
@@ -1418,7 +1511,9 @@ impl Engine {
         self.stat_succ_scans += (self.contexts[id].succ_pool.len() - succ_start) as u64;
         {
             let ctx = &self.contexts[id];
-            for c in &ctx.succ_pool[succ_start..] {
+            let arena = &self.cc_arena[ctx.root as usize];
+            for &ci in &ctx.succ_pool[succ_start..] {
+                let c = &arena[ci as usize];
                 for (p, _) in c.max_head_predicates() {
                     if is_function(p.max_term())
                         && p.is_succ_trigger(&self.sig)
@@ -1534,6 +1629,7 @@ impl Engine {
         let new_edge_seen: Vec<((usize, Term), usize)>;
         {
             let ctx = &self.contexts[id];
+            let arena = &self.cc_arena[ctx.root as usize];
             let hwm = ctx.pred_hwm;
             // edges with a freshness flag (pushed-set grew since last scan)
             let edges: Vec<(&(usize, Term), &HashSet<Pred>, bool)> = ctx
@@ -1544,7 +1640,8 @@ impl Engine {
                     (e, pushed, pushed.len() > seen)
                 })
                 .collect();
-            for (i, c) in ctx.pred_pool.iter().enumerate() {
+            for (i, &ci) in ctx.pred_pool.iter().enumerate() {
+                let c = &arena[ci as usize];
                 let new_clause = i >= hwm;
                 for (edge, pushed, dirty_edge) in &edges {
                     // (old clause, unchanged edge): already checked at this
@@ -1626,7 +1723,8 @@ impl Engine {
         // snapshot a send-time copy would have carried.
         let pc = {
             let from_ctx = &self.contexts[from];
-            let clause = &from_ctx.pred_pool[pool_idx as usize];
+            let arena = &self.cc_arena[from_ctx.root as usize];
+            let clause = &arena[from_ctx.pred_pool[pool_idx as usize] as usize];
             let f = edge_label;
             let subst = |v: Term| backwards(f, v);
             let mut body: Vec<Pred> = clause.body.iter().map(|p| p.apply(&subst)).collect();
@@ -1669,6 +1767,7 @@ impl Engine {
     fn pred_from_neighbor(&self, id: usize, pc: &PredClause, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[root as usize];
         let n = pc.body.len();
         let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(n);
         for i in 0..n {
@@ -1680,8 +1779,8 @@ impl Engine {
             };
             if let Some(cand) = cand {
                 for &ci in cand {
-                    if ctx.worked_off[ci].max_head_predicates().any(|(p, _)| p == bp) {
-                        v.push((ci, bp));
+                    if arena[ci as usize].max_head_predicates().any(|(p, _)| p == bp) {
+                        v.push((ci as usize, bp));
                     }
                 }
             }
@@ -1697,7 +1796,7 @@ impl Engine {
             let mut body: Vec<Pred> = Vec::new();
             for i in 0..n {
                 let (ci, matched) = candidates[i][idxs[i]];
-                let clause = &ctx.worked_off[ci];
+                let clause = &arena[ci];
                 for l in &clause.head {
                     if *l != Lit::P(matched) {
                         head.push(*l);
@@ -1839,9 +1938,11 @@ impl Engine {
                     let (mut h1, mut h2, mut h3, mut h4p, mut maxh, mut topwo) =
                         (0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
                     for c in &self.contexts {
+                        let arena = &self.cc_arena[c.root as usize];
                         totwo += c.worked_off.len();
                         if c.worked_off.len() > topwo { topwo = c.worked_off.len(); }
-                        for cl in &c.worked_off {
+                        for &ci in &c.worked_off {
+                            let cl = &arena[ci as usize];
                             if cl.body.len() > maxb { maxb = cl.body.len(); }
                             if cl.head.len() > maxh { maxh = cl.head.len(); }
                             match cl.head.len() {
@@ -1905,7 +2006,9 @@ impl Engine {
                     ctx.id, ctx.root,
                     ctx.query.map(|i| self.sig.concept_names[i as usize].clone()),
                     core.join(", "), ctx.worked_off.len());
-                for c in &ctx.worked_off {
+                let arena = &self.cc_arena[ctx.root as usize];
+                for &ci in &ctx.worked_off {
+                    let c = &arena[ci as usize];
                     let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
                     let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
                     eprintln!("   {} -> {}",
@@ -1949,8 +2052,10 @@ impl Engine {
                 needles.iter().any(|nd| n.contains(nd.as_str()))
             };
             for ctx in &self.contexts {
+                let arena = &self.cc_arena[ctx.root as usize];
                 let touch = ctx.core.iter().any(&hit)
-                    || ctx.worked_off.iter().any(|c| {
+                    || ctx.worked_off.iter().any(|&ci| {
+                        let c = &arena[ci as usize];
                         c.body.iter().any(&hit)
                             || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)))
                     });
@@ -1968,7 +2073,8 @@ impl Engine {
                     .map(|(pid, f)| format!("{}@f{}", pid, f)).collect();
                 preds.sort();
                 eprintln!("   PRED-OF: {}", preds.join(" "));
-                for c in &ctx.worked_off {
+                for &ci in &ctx.worked_off {
+                    let c = &arena[ci as usize];
                     // only print clauses mentioning a needle (keeps it focused)
                     let rel = c.body.iter().any(&hit)
                         || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)));
@@ -2022,37 +2128,23 @@ impl Engine {
             for ctx in &self.contexts {
                 add("core", ctx.core.len(), ctx.core.capacity() * szp);
                 add(
-                    "worked_off(body+head)",
+                    "worked_off(ids)",
                     ctx.worked_off.len(),
-                    ctx.worked_off.capacity() * szcc
-                        + ctx.worked_off.iter()
-                            .map(|c| c.body.capacity() * szp + c.head.capacity() * szl)
-                            .sum::<usize>(),
+                    ctx.worked_off.capacity() * 4,
                 );
                 add(
-                    "worked_off(max_head dup)",
-                    ctx.worked_off.iter().map(|c| c.max_head.len()).sum(),
-                    ctx.worked_off.iter().map(|c| c.max_head.capacity() * szl).sum(),
-                );
-                add(
-                    "clause_keys(full copies)",
+                    "clause_keys(ids)",
                     ctx.clause_keys.len(),
-                    ctx.clause_keys.iter()
-                        .map(|(b, h)| 48 + b.capacity() * szp + h.capacity() * szl + 8)
-                        .sum(),
+                    ctx.clause_keys.len() * 12,
                 );
                 add(
                     "head_indexes",
                     ctx.head_concept_index.len() + ctx.head_role_index.len() + ctx.head_lit_index.len(),
-                    ctx.head_concept_index.values().map(|v| 24 + 4 + v.capacity() * 8).sum::<usize>()
-                        + ctx.head_role_index.values().map(|v| 24 + 4 + v.capacity() * 8).sum::<usize>()
-                        + ctx.head_lit_index.values().map(|v| 24 + szl + v.capacity() * 8).sum::<usize>(),
+                    ctx.head_concept_index.values().map(|v| 24 + 4 + v.capacity() * 4).sum::<usize>()
+                        + ctx.head_role_index.values().map(|v| 24 + 4 + v.capacity() * 4).sum::<usize>()
+                        + ctx.head_lit_index.values().map(|v| 24 + szl + v.capacity() * 4).sum::<usize>(),
                 );
-                add(
-                    "todo",
-                    ctx.todo.len(),
-                    ctx.todo.capacity() * szcc + ctx.todo.iter().map(&cc_heap).sum::<usize>(),
-                );
+                add("todo", ctx.todo.len(), ctx.todo.capacity() * 4);
                 add(
                     "neighbor_pred(ids)",
                     ctx.neighbor_pred.len(),
@@ -2074,18 +2166,8 @@ impl Engine {
                     ctx.pushed_pred.values().map(|s| s.len()).sum(),
                     ctx.pushed_pred.values().map(|s| 40 + s.len() * 12).sum(),
                 );
-                add(
-                    "pred_pool(full copies)",
-                    ctx.pred_pool.len(),
-                    ctx.pred_pool.capacity() * szcc
-                        + ctx.pred_pool.iter().map(&cc_heap).sum::<usize>(),
-                );
-                add(
-                    "succ_pool(full copies)",
-                    ctx.succ_pool.len(),
-                    ctx.succ_pool.capacity() * szcc
-                        + ctx.succ_pool.iter().map(&cc_heap).sum::<usize>(),
-                );
+                add("pred_pool(ids)", ctx.pred_pool.len(), ctx.pred_pool.capacity() * 4);
+                add("succ_pool(ids)", ctx.succ_pool.len(), ctx.succ_pool.capacity() * 4);
                 add(
                     "edges_misc",
                     ctx.successors.len() + ctx.edge_seen.len(),
@@ -2107,6 +2189,16 @@ impl Engine {
                     + self.pred_intern_idx.len() * 40
                     + self.pred_intern_idx.values().map(|v| v.capacity() * 4).sum::<usize>(),
             );
+            add(
+                "cc_arena(engine)",
+                self.cc_arena[0].len() + self.cc_arena[1].len(),
+                self.cc_arena.iter()
+                    .map(|a| a.capacity() * szcc + a.iter().map(&cc_heap).sum::<usize>())
+                    .sum::<usize>()
+                    + self.cc_intern_idx.iter()
+                        .map(|m| m.len() * 40 + m.values().map(|v| v.capacity() * 4).sum::<usize>())
+                        .sum::<usize>(),
+            );
             cat.sort_by(|a, b| b.2.cmp(&a.2));
             let total: usize = cat.iter().map(|e| e.2).sum();
             eprintln!(
@@ -2125,11 +2217,13 @@ impl Engine {
         }
         if std::env::var("SROIQ_DEBUG").is_ok() {
             for ctx in &self.contexts {
+                let arena = &self.cc_arena[ctx.root as usize];
                 eprintln!(
                     "ctx {} root={} core={:?} #wo={}",
                     ctx.id, ctx.root, ctx.core, ctx.worked_off.len()
                 );
-                for c in &ctx.worked_off {
+                for &ci in &ctx.worked_off {
+                    let c = &arena[ci as usize];
                     eprintln!("    {:?} -> {:?}", c.body, c.head);
                 }
             }
@@ -2150,12 +2244,17 @@ impl Engine {
                 Some(iri) => self.sig.concept_names[iri as usize].clone(),
                 None => continue,
             };
+            let arena = &self.cc_arena[ctx.root as usize];
             let mut supers: Vec<String> = Vec::new();
-            let unsat = ctx.worked_off.iter().any(|c| c.body.is_empty() && c.head.is_empty());
+            let unsat = ctx.worked_off.iter().any(|&ci| {
+                let c = &arena[ci as usize];
+                c.body.is_empty() && c.head.is_empty()
+            });
             if unsat {
                 supers.push("owl:Nothing".to_string());
             }
-            for c in &ctx.worked_off {
+            for &ci in &ctx.worked_off {
+                let c = &arena[ci as usize];
                 if c.body.is_empty() && c.head.len() == 1 {
                     if let Lit::P(Pred::Concept { iri, t }) = c.head[0] {
                         if is_central(t) {
@@ -2182,13 +2281,14 @@ impl Engine {
         // concept literally named owl:Thing makes this independent of the input
         // vocabulary (the normaliser maps owl:Thing to an internal proxy, so the
         // old name-based check was effectively dead — audit M2).
+        let arena = &self.cc_arena[1];
         self.contexts.iter().any(|ctx| {
             ctx.root
                 && ctx.core.is_empty()
-                && ctx
-                    .worked_off
-                    .iter()
-                    .any(|c| c.body.is_empty() && c.head.is_empty())
+                && ctx.worked_off.iter().any(|&ci| {
+                    let c = &arena[ci as usize];
+                    c.body.is_empty() && c.head.is_empty()
+                })
         })
     }
 
