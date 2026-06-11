@@ -174,8 +174,13 @@ struct Context {
     head_lit_index: HashMap<Lit, Vec<usize>>,
     empty_head_wo: Vec<usize>,
     todo: VecDeque<ContextClause>,
-    /// pred clauses pushed in from successor contexts (already back-substituted)
-    neighbor_pred: Vec<PredClause>,
+    /// pred clauses pushed in from successor contexts (already back-substituted),
+    /// as ids into the engine-level `pred_interned` table.  The same substituted
+    /// clause can arrive more than once (e.g. from a successor's pre- and
+    /// post-growth contexts under the central strategy); `neighbor_pred_seen`
+    /// dedups arrivals, which only skips re-deriving already-derived clauses.
+    neighbor_pred: Vec<u32>,
+    neighbor_pred_seen: HashSet<u32>,
     /// successor edges: function term -> successor context id
     successors: HashMap<Term, usize>,
     /// Central strategy: per function symbol, the full (raw, un-substituted)
@@ -186,8 +191,12 @@ struct Context {
     /// predecessor edges: (predecessor ctx id, function term) -> pushed predicates
     predecessors: HashMap<(usize, Term), HashSet<Pred>>,
     pushed_succ: HashSet<Pred>,
-    /// (predecessor key, clause key) already pushed back, to avoid resending
-    pushed_pred: HashSet<((usize, Term), (Vec<Pred>, Vec<Lit>))>,
+    /// per predecessor edge, the `pred_pool` indices already pushed back, to
+    /// avoid resending.  Pool indices are stable (the pool is append-only), so
+    /// they identify the clause without copying it; a re-added identical clause
+    /// gets a fresh index and is resent, which the receiver's
+    /// `neighbor_pred_seen` dedups.
+    pushed_pred: HashMap<(usize, Term), HashSet<u32>>,
     /// Semi-naive Pred propagation: append-only pool of worked-off clauses that
     /// are Pred-eligible (function-free, predicate-only head).  Entries are never
     /// removed (a clause back-subsumed out of `worked_off` is still
@@ -232,11 +241,12 @@ impl Context {
             empty_head_wo: Vec::new(),
             todo: VecDeque::new(),
             neighbor_pred: Vec::new(),
+            neighbor_pred_seen: HashSet::new(),
             successors: HashMap::new(),
             trigger_sets: HashMap::new(),
             predecessors: HashMap::new(),
             pushed_succ: HashSet::new(),
-            pushed_pred: HashSet::new(),
+            pushed_pred: HashMap::new(),
             pred_pool: Vec::new(),
             pred_hwm: 0,
             edge_seen: HashMap::new(),
@@ -405,10 +415,19 @@ impl Context {
 }
 
 /// A pred clause (substitution already applied): body and head over x / f(x).
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct PredClause {
     body: Vec<Pred>,
     head: Vec<Pred>,
+}
+
+/// Content hash for interning (collisions are resolved by exact comparison,
+/// never trusted on their own).
+fn content_hash<T: std::hash::Hash>(t: &T) -> u64 {
+    use std::hash::Hasher;
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    t.hash(&mut h);
+    h.finish()
 }
 
 // ------------------------------- messages ----------------------------------
@@ -420,11 +439,15 @@ enum Msg {
         p: Pred, // already forward-substituted (over successor's x/y)
         target: usize,
     },
+    /// A pushed-back clause, by reference into the sender's append-only
+    /// `pred_pool` (both the pool entry and the sender's core are immutable
+    /// once created, so resolving them at apply time reads exactly what a
+    /// send-time snapshot would have carried).
     Pred {
         to: usize,
+        from: usize,
         edge_label: Term,
-        neighbour_core: Vec<Pred>,
-        clause: ContextClause,
+        pool_idx: u32,
     },
 }
 
@@ -486,6 +509,14 @@ pub struct Engine {
     /// root), so the two closures are kept separate and never crossed.
     shared_root_closure: Option<Vec<ContextClause>>,
     equality: bool,
+    /// Intern table for back-substituted pred clauses: one copy per distinct
+    /// content, shared across all receiving contexts (`Context.neighbor_pred`
+    /// stores ids).  The same clause shape recurs across thousands of contexts
+    /// on role-chain ontologies, where the per-context copies dominated peak
+    /// memory.  Append-only; ids are stable.
+    pred_interned: Vec<PredClause>,
+    /// content hash -> candidate ids (collisions resolved by exact comparison)
+    pred_intern_idx: HashMap<u64, Vec<u32>>,
     pub dropped_unsupported: usize,
     /// instrumentation counters (only read under KM_STATS)
     stat_propagate: u64,
@@ -548,12 +579,30 @@ impl Engine {
             shared_closure: None,
             shared_root_closure: None,
             equality: true,
+            pred_interned: Vec::new(),
+            pred_intern_idx: HashMap::new(),
             dropped_unsupported: dropped,
             stat_propagate: 0,
             stat_pred_checks: 0,
             stat_succ_scans: 0,
             stat_saturate: 0,
         }
+    }
+
+    /// Intern a back-substituted pred clause, returning its stable id.
+    fn intern_pred(&mut self, pc: PredClause) -> u32 {
+        let h = content_hash(&pc);
+        if let Some(ids) = self.pred_intern_idx.get(&h) {
+            for &i in ids {
+                if self.pred_interned[i as usize] == pc {
+                    return i;
+                }
+            }
+        }
+        let id = self.pred_interned.len() as u32;
+        self.pred_interned.push(pc);
+        self.pred_intern_idx.entry(h).or_default().push(id);
+        id
     }
 
     fn get_or_create_context(
@@ -988,7 +1037,8 @@ impl Engine {
     fn pred_local(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
-        for pc in &ctx.neighbor_pred {
+        for &pid in &ctx.neighbor_pred {
+            let pc = &self.pred_interned[pid as usize];
             if !pc.body.iter().any(|b| *b == max) {
                 continue;
             }
@@ -1479,7 +1529,7 @@ impl Engine {
         // since `edge_seen`.  `pushed_pred` still dedups actual sends.  This
         // replaces the per-propagate full `worked_off × predecessors` rescan that
         // dominated runtime on existential-rich ontologies.
-        let mut to_send: Vec<((usize, Term), Vec<Pred>, ContextClause)> = Vec::new();
+        let mut to_send: Vec<((usize, Term), u32)> = Vec::new();
         let mut pred_checks = 0u64;
         let new_edge_seen: Vec<((usize, Term), usize)>;
         {
@@ -1504,9 +1554,12 @@ impl Engine {
                     }
                     pred_checks += 1;
                     if c.body.iter().all(|b| pushed.contains(b)) {
-                        let pk = (**edge, c.key());
-                        if !ctx.pushed_pred.contains(&pk) {
-                            to_send.push((**edge, ctx.core.clone(), c.clone()));
+                        let sent = ctx
+                            .pushed_pred
+                            .get(*edge)
+                            .map_or(false, |s| s.contains(&(i as u32)));
+                        if !sent {
+                            to_send.push((**edge, i as u32));
                         }
                     }
                 }
@@ -1522,13 +1575,17 @@ impl Engine {
         for (e, len) in new_edge_seen {
             self.contexts[id].edge_seen.insert(e, len);
         }
-        for (edge, core, clause) in to_send {
-            self.contexts[id].pushed_pred.insert((edge, clause.key()));
+        for (edge, pool_idx) in to_send {
+            self.contexts[id]
+                .pushed_pred
+                .entry(edge)
+                .or_default()
+                .insert(pool_idx);
             self.msgs.push_back(Msg::Pred {
                 to: edge.0,
+                from: id,
                 edge_label: edge.1,
-                neighbour_core: core,
-                clause,
+                pool_idx,
             });
         }
     }
@@ -1563,33 +1620,43 @@ impl Engine {
     /// Apply a Pred message: back-substitute and add the resulting pred clause /
     /// resolvents, saturating `to`.  Returns `to`; the caller propagates it
     /// (deferred, batched -- see `apply_succ`).
-    fn apply_pred(
-        &mut self,
-        to: usize,
-        edge_label: Term,
-        neighbour_core: Vec<Pred>,
-        clause: ContextClause,
-    ) -> usize {
-        // Back-substitute: y -> x, x -> f(x)
-        let f = edge_label;
-        let subst = |v: Term| backwards(f, v);
-        let mut body: Vec<Pred> = clause.body.iter().map(|p| p.apply(&subst)).collect();
-        for p in &neighbour_core {
-            body.push(p.apply(&subst));
+    fn apply_pred(&mut self, to: usize, from: usize, edge_label: Term, pool_idx: u32) -> usize {
+        // Back-substitute: y -> x, x -> f(x).  The sender's pool entry and core
+        // are immutable once created, so resolving them here reads exactly the
+        // snapshot a send-time copy would have carried.
+        let pc = {
+            let from_ctx = &self.contexts[from];
+            let clause = &from_ctx.pred_pool[pool_idx as usize];
+            let f = edge_label;
+            let subst = |v: Term| backwards(f, v);
+            let mut body: Vec<Pred> = clause.body.iter().map(|p| p.apply(&subst)).collect();
+            for p in &from_ctx.core {
+                body.push(p.apply(&subst));
+            }
+            let head: Vec<Pred> = clause
+                .head
+                .iter()
+                .filter_map(|l| match l {
+                    Lit::P(p) => Some(p.apply(&subst)),
+                    _ => None,
+                })
+                .collect();
+            PredClause { body, head }
+        };
+        let pid = self.intern_pred(pc);
+        // Duplicate arrival (same substituted clause already received, e.g. from
+        // a successor's pre- and post-growth contexts): everything it could
+        // contribute was already derived, so skip the re-derivation.
+        if !self.contexts[to].neighbor_pred_seen.insert(pid) {
+            return to;
         }
-        let head: Vec<Pred> = clause
-            .head
-            .iter()
-            .filter_map(|l| match l {
-                Lit::P(p) => Some(p.apply(&subst)),
-                _ => None,
-            })
-            .collect();
-        let pc = PredClause { body, head };
-        self.contexts[to].neighbor_pred.push(pc.clone());
+        self.contexts[to].neighbor_pred.push(pid);
         // Apply Pred rule against worked-off clauses of `to`.
         let root = self.contexts[to].root;
-        let results = self.pred_from_neighbor(to, &pc, root);
+        let results = {
+            let pc = &self.pred_interned[pid as usize];
+            self.pred_from_neighbor(to, pc, root)
+        };
         for r in results {
             self.add_clause(to, r);
         }
@@ -1796,10 +1863,10 @@ impl Engine {
                     Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
                     Msg::Pred {
                         to,
+                        from,
                         edge_label,
-                        neighbour_core,
-                        clause,
-                    } => self.apply_pred(to, edge_label, neighbour_core, clause),
+                        pool_idx,
+                    } => self.apply_pred(to, from, edge_label, pool_idx),
                 };
                 if seen.insert(t) {
                     touched.push(t);
@@ -1930,6 +1997,131 @@ impl Engine {
                 self.stat_propagate, self.stat_pred_checks, self.stat_succ_scans,
                 HYPER_CALLS.with(|c| c.get()), self.stat_saturate
             );
+        }
+        if std::env::var("KM_MEMSTATS").is_ok() {
+            // Exact-ish accounting of where context memory sits (heap data via
+            // capacity(); hash-table load factors not modelled, so map/set
+            // figures are lower bounds). Diagnostics only -- no effect on
+            // reasoning.
+            use std::mem::size_of;
+            let szp = size_of::<Pred>();
+            let szl = size_of::<Lit>();
+            let szcc = size_of::<ContextClause>();
+            let cc_heap = |c: &ContextClause| {
+                c.body.capacity() * szp + c.head.capacity() * szl + c.max_head.capacity() * szl
+            };
+            let mut cat: Vec<(&str, usize, usize)> = Vec::new(); // (name, count, bytes)
+            let mut add = |name: &'static str, n: usize, b: usize| {
+                if let Some(e) = cat.iter_mut().find(|e| e.0 == name) {
+                    e.1 += n;
+                    e.2 += b;
+                } else {
+                    cat.push((name, n, b));
+                }
+            };
+            for ctx in &self.contexts {
+                add("core", ctx.core.len(), ctx.core.capacity() * szp);
+                add(
+                    "worked_off(body+head)",
+                    ctx.worked_off.len(),
+                    ctx.worked_off.capacity() * szcc
+                        + ctx.worked_off.iter()
+                            .map(|c| c.body.capacity() * szp + c.head.capacity() * szl)
+                            .sum::<usize>(),
+                );
+                add(
+                    "worked_off(max_head dup)",
+                    ctx.worked_off.iter().map(|c| c.max_head.len()).sum(),
+                    ctx.worked_off.iter().map(|c| c.max_head.capacity() * szl).sum(),
+                );
+                add(
+                    "clause_keys(full copies)",
+                    ctx.clause_keys.len(),
+                    ctx.clause_keys.iter()
+                        .map(|(b, h)| 48 + b.capacity() * szp + h.capacity() * szl + 8)
+                        .sum(),
+                );
+                add(
+                    "head_indexes",
+                    ctx.head_concept_index.len() + ctx.head_role_index.len() + ctx.head_lit_index.len(),
+                    ctx.head_concept_index.values().map(|v| 24 + 4 + v.capacity() * 8).sum::<usize>()
+                        + ctx.head_role_index.values().map(|v| 24 + 4 + v.capacity() * 8).sum::<usize>()
+                        + ctx.head_lit_index.values().map(|v| 24 + szl + v.capacity() * 8).sum::<usize>(),
+                );
+                add(
+                    "todo",
+                    ctx.todo.len(),
+                    ctx.todo.capacity() * szcc + ctx.todo.iter().map(&cc_heap).sum::<usize>(),
+                );
+                add(
+                    "neighbor_pred(ids)",
+                    ctx.neighbor_pred.len(),
+                    ctx.neighbor_pred.capacity() * 4 + ctx.neighbor_pred_seen.len() * 12,
+                );
+                add(
+                    "trigger_sets",
+                    ctx.trigger_sets.values().map(|s| s.len()).sum(),
+                    ctx.trigger_sets.values().map(|s| 24 + s.len() * (szp + 8)).sum(),
+                );
+                add(
+                    "predecessor_edges(pushed)",
+                    ctx.predecessors.values().map(|s| s.len()).sum(),
+                    ctx.predecessors.values().map(|s| 24 + s.len() * (szp + 8)).sum(),
+                );
+                add("pushed_succ", ctx.pushed_succ.len(), ctx.pushed_succ.len() * (szp + 8));
+                add(
+                    "pushed_pred(idx)",
+                    ctx.pushed_pred.values().map(|s| s.len()).sum(),
+                    ctx.pushed_pred.values().map(|s| 40 + s.len() * 12).sum(),
+                );
+                add(
+                    "pred_pool(full copies)",
+                    ctx.pred_pool.len(),
+                    ctx.pred_pool.capacity() * szcc
+                        + ctx.pred_pool.iter().map(&cc_heap).sum::<usize>(),
+                );
+                add(
+                    "succ_pool(full copies)",
+                    ctx.succ_pool.len(),
+                    ctx.succ_pool.capacity() * szcc
+                        + ctx.succ_pool.iter().map(&cc_heap).sum::<usize>(),
+                );
+                add(
+                    "edges_misc",
+                    ctx.successors.len() + ctx.edge_seen.len(),
+                    ctx.successors.len() * 24 + ctx.edge_seen.len() * 32,
+                );
+            }
+            add(
+                "core_index(engine)",
+                self.core_index.len(),
+                self.core_index.keys().map(|k| 24 + k.capacity() * szp + 8).sum(),
+            );
+            add(
+                "pred_interned(engine)",
+                self.pred_interned.len(),
+                self.pred_interned.capacity() * 48
+                    + self.pred_interned.iter()
+                        .map(|p| (p.body.capacity() + p.head.capacity()) * szp)
+                        .sum::<usize>()
+                    + self.pred_intern_idx.len() * 40
+                    + self.pred_intern_idx.values().map(|v| v.capacity() * 4).sum::<usize>(),
+            );
+            cat.sort_by(|a, b| b.2.cmp(&a.2));
+            let total: usize = cat.iter().map(|e| e.2).sum();
+            eprintln!(
+                "KM_MEMSTATS sizeof Pred={} Lit={} ContextClause={} | contexts={} | accounted={:.1} MB",
+                szp, szl, szcc, self.contexts.len(), total as f64 / 1e6
+            );
+            for (name, n, b) in &cat {
+                eprintln!(
+                    "KM_MEMSTATS {:>9.1} MB {:>5.1}% n={:<12} {}",
+                    *b as f64 / 1e6,
+                    100.0 * *b as f64 / total.max(1) as f64,
+                    n,
+                    name
+                );
+            }
         }
         if std::env::var("SROIQ_DEBUG").is_ok() {
             for ctx in &self.contexts {
