@@ -1752,6 +1752,41 @@ impl Engine {
                 self.propagate(id);
             }
         }
+        if std::env::var("KM_DUMP_WO").is_ok() {
+            let fmt_t = |t: Term| -> String {
+                if t == X { "x".to_string() }
+                else if t == Y { "y".to_string() }
+                else if t < 0 { format!("z{}", -t - 1) }
+                else { format!("f{}(x)", t) }
+            };
+            let fmt_p = |p: &Pred| -> String {
+                match *p {
+                    Pred::Concept { iri, t } => format!("{}({})", self.sig.concept_names[iri as usize], fmt_t(t)),
+                    Pred::Role { iri, s, t } => format!("{}({},{})", self.sig.role_names[iri as usize], fmt_t(s), fmt_t(t)),
+                }
+            };
+            let fmt_l = |l: &Lit| -> String {
+                match *l {
+                    Lit::P(p) => fmt_p(&p),
+                    Lit::Eq { s, t } => format!("{}={}", fmt_t(s), fmt_t(t)),
+                    Lit::Ineq { s, t } => format!("{}!={}", fmt_t(s), fmt_t(t)),
+                }
+            };
+            for ctx in &self.contexts {
+                let core: Vec<String> = ctx.core.iter().map(&fmt_p).collect();
+                eprintln!("== ctx {} root={} query={:?} core=[{}] wo={}",
+                    ctx.id, ctx.root,
+                    ctx.query.map(|i| self.sig.concept_names[i as usize].clone()),
+                    core.join(", "), ctx.worked_off.len());
+                for c in &ctx.worked_off {
+                    let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
+                    let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
+                    eprintln!("   {} -> {}",
+                        if b.is_empty() { "T".to_string() } else { b.join(" & ") },
+                        if h.is_empty() { "F".to_string() } else { h.join(" | ") });
+                }
+            }
+        }
         if std::env::var("KM_STATS").is_ok() {
             let nroot = self.contexts.iter().filter(|c| c.root).count();
             let nsucc = self.contexts.iter().filter(|c| !c.root).count();

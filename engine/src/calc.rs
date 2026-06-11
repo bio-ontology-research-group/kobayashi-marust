@@ -357,7 +357,7 @@ fn eqn_s(l: &Lit) -> Term {
     }
 }
 
-fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
+fn pred_lteq(p1: &Pred, p2: &Pred, _root: bool, sig: &Sig) -> bool {
     // Pred-trigger cases (bottom of the order).
     let p1pt = p1.is_pred_trigger(sig);
     let p2pt = p2.is_pred_trigger(sig);
@@ -367,34 +367,28 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     if p1pt && !p2pt {
         return true;
     }
-    // Root query-concept refinement: named A(x) mutually incomparable.
-    if root {
-        if let (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) = (p1, p2) {
-            let q1 = is_central(*t1) && !sig.is_internal(*i1);
-            let q2 = is_central(*t2) && !sig.is_internal(*i2);
-            if q2 {
-                return p1 == p2;
-            }
-            if q1 && !q2 {
-                return true;
-            }
-        }
-    }
-    // Internal-disjunct optimisation (put internal disjuncts low) — but ONLY among
-    // literals on the SAME maximal term.  Across terms it would declare an internal
-    // definer on a successor term f(x) `<=` a named atom on x while the term arm
-    // also gives the reverse, making the two mutually `<=`, emptying max_head and
-    // silencing the successor's Succ trigger (audit H1).
+    // Concept literals on the SAME term are mutually incomparable: each is a
+    // maximal head literal, so Hyper fires on EVERY disjunct of a head
+    // disjunction.  This is required for completeness of disjunctive case
+    // analysis -- e.g. {C⊔D, C⊑E, D⊑E} ⊢ E needs both C and D resolved, and a
+    // total tie-break (by iri, or internal-definer-low) would leave the
+    // non-maximal disjunct stuck, losing the inference (probe: A⊑∃R.(C⊔D),
+    // C⊑E, D⊑E, ∃R.E⊑G ⊬ A⊑G).  The Lean completeness proof models Hyper as
+    // resolution on an arbitrary atom (`CompletenessProp.lean`), so resolving
+    // on every same-term disjunct -- named or internal definer -- is exactly
+    // what the proof certifies.  This generalises the old root-only query-concept
+    // refinement to every context and every concept.
     if let (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) = (p1, p2) {
-        if t1 == t2 && sig.is_internal(*i1) && !sig.is_internal(*i2) {
-            return true;
+        if t1 == t2 {
+            return i1 == i2;
         }
+        // Different terms: term-major (a literal on the larger term is larger,
+        // so it is kept by max-head selection and drives Succ).
+        return t1 < t2;
     }
-    // Term-major: a literal on a larger *maximal* term is the larger literal (so it
-    // is kept by max-head selection and drives Succ).  Comparing roles by their
-    // source term alone (rather than max(s,t)) broke this for role-vs-concept and
-    // role-vs-role (audit M1).  Within an equal maximal term, a deterministic
-    // structural tie-break.
+    // Term-major across the remaining (role / mixed) cases.  Comparing roles by
+    // their source term alone (rather than max(s,t)) broke this for
+    // role-vs-concept and role-vs-role (audit M1).
     let m1 = p1.max_term();
     let m2 = p2.max_term();
     if m1 != m2 {
@@ -404,6 +398,7 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
         (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Role { iri: i2, s: s2, t: t2 }) => {
             s1 < s2 || (s1 == s2 && (t1 < t2 || (t1 == t2 && i1 <= i2)))
         }
+        // Same-term concept pairs handled above; unreachable here.
         (Pred::Concept { iri: i1, .. }, Pred::Concept { iri: i2, .. }) => i1 <= i2,
         (Pred::Role { .. }, Pred::Concept { .. }) => false,
         (Pred::Concept { .. }, Pred::Role { .. }) => true,
