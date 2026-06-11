@@ -228,6 +228,20 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 role_str(reg, args[1])?,
             ));
         }
+        "EquivalentObjectProperties" => {
+            // R1 ≡ ... ≡ Rn  ⟹  pairwise Ri ⊑ Rj and Rj ⊑ Ri. Mirrors the
+            // SubObjectPropertyOf convention (role_str handles inverses).
+            let mut rs = Vec::new();
+            for a in &args {
+                rs.push(role_str(reg, a)?);
+            }
+            for k in 0..rs.len() {
+                for l in (k + 1)..rs.len() {
+                    o.add(Axiom::RoleInclusion(rs[k].clone(), rs[l].clone()));
+                    o.add(Axiom::RoleInclusion(rs[l].clone(), rs[k].clone()));
+                }
+            }
+        }
         "InverseObjectProperties" => {
             o.add(Axiom::InverseRoles(
                 role_str(reg, args[0])?,

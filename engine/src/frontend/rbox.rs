@@ -129,6 +129,29 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                     )),
                 }
             }
+            "EquivalentObjectProperties" => {
+                // Equivalent simple roles fold into pairwise both-way subrole
+                // records (the subrole clause itself is emitted by `normalise`
+                // from the AST `RoleInclusion`s; these records drive routing /
+                // relevance / domain-range propagation). Any inverse member
+                // fences the whole axiom to the CB engine.
+                let roles: Vec<Option<String>> = args.iter().map(|a| plain_role(reg, a)).collect();
+                if roles.iter().any(|r| r.is_none()) {
+                    out.push(RboxRecord::Fenced(
+                        "inverse-role".to_string(),
+                        format!("EquivalentObjectProperties {:?}", args),
+                    ));
+                } else {
+                    for k in 0..roles.len() {
+                        for l in (k + 1)..roles.len() {
+                            let a = roles[k].clone().unwrap();
+                            let b = roles[l].clone().unwrap();
+                            out.push(RboxRecord::Subrole(a.clone(), b.clone()));
+                            out.push(RboxRecord::Subrole(b, a));
+                        }
+                    }
+                }
+            }
             "TransitiveObjectProperty" => {
                 // not fenced (handled by TBox normalisation)
             }
