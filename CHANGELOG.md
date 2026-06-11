@@ -4,6 +4,34 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Frontend: handle EquivalentObjectProperties (was silently dropped)
+
+`EquivalentObjectProperties(R1 … Rn)` had no parse arm in either the AST path
+(`parse.rs`) or the streaming RBox builder (`rbox.rs` `rbox_node`), so role
+equivalences were dropped. Every inference that bridges two equivalent roles was
+lost. Minimal witness extracted from ORE `ore_ont_2313` (`ddmin`, oracle =
+HermiT entails `C ⊑ D`), a 3-axiom core:
+
+```
+SubClassOf(TO_0000059, ObjectSomeValuesFrom(BFO_0000050, TO_0000056))
+EquivalentObjectProperties(BFO_0000050, PPIO_0000091)
+ObjectPropertyDomain(PPIO_0000091, PPIO_0000069)
+⟹ TO_0000059 ⊑ PPIO_0000069
+```
+
+The existential uses `BFO_0000050`; the domain is stated on the equivalent
+`PPIO_0000091`. Without the equivalence the two roles never connect, so the
+domain never fires on the existential's Skolem edge. `2313` was missing 88 such
+subsumptions.
+
+Fix: expand `R1 ≡ … ≡ Rn` into pairwise both-direction inclusions. `parse.rs`
+emits the AST `RoleInclusion`s (so `normalise` produces the subrole clauses that
+reach the reasoner); `rbox_node` emits matching `Subrole` records (routing /
+relevance / domain-range). Any inverse member fences the axiom to the CB engine.
+`2313` now matches gold exactly (88 missing → 0, 0 extra). 57 ORE onts contain
+the axiom; the change is sound (role equivalence = mutual inclusion) and can only
+recover entailed subsumptions. Tests green.
+
 ### Correctness tail: sound datatype-ABox precheck + complex-domain clausification
 
 Resolved the four "unsound vs gold" ontologies and recovered one incomplete one.
