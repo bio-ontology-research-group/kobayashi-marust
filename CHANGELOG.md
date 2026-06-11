@@ -4,6 +4,38 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### EL completion: clone-free hot loop (recovers giant ore_ont_8737)
+
+The `elcomplete` worklist saturation cloned a state collection on every
+Sub/Edge item to satisfy the borrow checker. On the transitive ORE giants this
+dominated: transitivity is encoded as NF4, so the existential rules fire on
+huge predecessor and superclass sets, and each firing paid a full-set clone.
+Three changes remove the per-item allocations:
+
+- `in_edges` is `Vec<Vec<(parent,role)>>` instead of `Vec<HashSet<...>>` — a
+  pair is appended only in the `edges[parent].insert` success branch, so
+  duplicates were already impossible and the set bought nothing. The Sub-side
+  NF4 rule and ⊥-edge back-propagation iterate it by index (new entries pushed
+  during the loop are picked up by the growing bound), clone-free.
+- The Edge-side NF4 rule collects conclusions into a reused `nf4_buf` during a
+  read-only scan of `sub_super[d]`, then applies them (replaces a full-superset
+  clone per edge).
+- NF4/NF7 rule blocks are skipped outright when their indexes are empty.
+
+Schedule-only change: the same conclusions are derived, possibly in a different
+order; the fixpoint is unchanged (saturation is monotone + confluent), so no
+Lean re-cert. Validated: 53 unit tests; gold-identical signatures on controls
+16744 / 10016 / 1559 / 13482.
+
+Effect: `ore_ont_8737` classify 252 → 221 s standalone; in the benchmark
+pipeline it went **timeout → ok at 205.7 s** (9.5 GB peak), signature
+byte-identical to the Konclude gold. `ore_ont_16744` pipeline 167 → 151 s.
+
+**Full-sweep confirmation (job 5690): 564 ok / 26 timeout / 1 memout**, vs
+gold 554 agree / 6 incomplete / 4 unsound / 0 both-disagree — agree +1 (the
+recovered 8737), no regression anywhere. All three 3M-axiom giants (8737,
+15059, 16744) now classify within budget via the EL path.
+
 ### EL fast path: optional canonical-model completeness certificate (`elc`)
 
 `elcomplete::to_nf` no longer aborts on the first non-EL clause: it collects the
