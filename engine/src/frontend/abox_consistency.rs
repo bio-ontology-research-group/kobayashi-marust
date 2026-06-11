@@ -87,6 +87,32 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
     })
 }
 
+/// Named classes directly asserted on some individual, plus the set of roles
+/// with at least one assertion (their domain/range classes also provably
+/// contain an individual; the caller adds those once the RBox is built).
+/// Used for the asserted-member-of-unsat-class inconsistency rule.
+pub fn asserted_profile(
+    ont: &Ontology,
+) -> (
+    std::collections::BTreeSet<String>,
+    HashSet<String>,
+) {
+    let mut classes = std::collections::BTreeSet::new();
+    let mut roles = HashSet::new();
+    for ax in ont.abox() {
+        match ax {
+            Axiom::ConceptAssertion(Concept::Name(c), _) => {
+                classes.insert(c.clone());
+            }
+            Axiom::RoleAssertion(p, _, _) => {
+                roles.insert(p.clone());
+            }
+            _ => {}
+        }
+    }
+    (classes, roles)
+}
+
 fn uf_find(parent: &mut HashMap<String, String>, x: &str) -> String {
     if !parent.contains_key(x) {
         parent.insert(x.to_string(), x.to_string());

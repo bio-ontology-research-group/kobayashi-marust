@@ -8,6 +8,7 @@
 
 pub mod abox_consistency;
 pub mod clauses;
+pub mod data_abox;
 pub mod data_range;
 pub mod iri;
 pub mod normalise;
@@ -40,6 +41,11 @@ pub struct FrontendResult {
     /// ABox clauses and would miss this, so `owl_classify` short-circuits to an
     /// inconsistent result when set.
     pub abox_inconsistent: bool,
+    /// named classes provably containing at least one asserted individual
+    /// (direct `ClassAssertion` plus domain/range typing of asserted roles).
+    /// If classification later proves such a class unsatisfiable, the ontology
+    /// is inconsistent; `owl_classify` applies that rule after the engine runs.
+    pub asserted_classes: Vec<String>,
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -116,6 +122,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // (cheap: `None` unless the ontology has named-class disjointness). The
     // clash check is finished after the RBox domain/range records are built.
     let abox_data = abox_consistency::collect(&ontology);
+    let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     let mut tbox = preprocess::augment(tbox, &abox, &hooks);
@@ -138,17 +145,36 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let mut rbox: Vec<rbox::RboxRecord> = Vec::new();
     let mut declared_raw: Vec<&str> = Vec::new();
     let mut data_ranges = data_range::DataRanges::default();
+    let mut data_abox = data_abox::DataAbox::default();
     parse::for_each_ontology_child(text, |node| {
         rbox::rbox_node(&mut reg, node, &mut rbox);
         data_ranges.observe(node);
+        data_abox.observe(node);
         if let Some(name) = parse::declared_class_node(node) {
             declared_raw.push(name);
         }
         Ok(())
     })?;
+    // asserted-ABox inconsistency: named-disjointness clash (abox_consistency)
+    // or datatype range/functionality clash (data_abox); both sound prechecks.
     let abox_inconsistent = abox_data
         .map(|d| d.is_inconsistent(&rbox))
-        .unwrap_or(false);
+        .unwrap_or(false)
+        || data_abox.is_inconsistent();
+    // named classes with a provable asserted member: direct assertions plus
+    // domain/range typing of asserted roles (`R(a,b)` + `Domain(R,C)` => `a:C`).
+    let mut asserted_classes: BTreeSet<String> = asserted_direct;
+    for r in &rbox {
+        match r {
+            rbox::RboxRecord::Domain(p, d) if asserted_roles.contains(p) => {
+                asserted_classes.insert(d.clone());
+            }
+            rbox::RboxRecord::Range(p, c) if asserted_roles.contains(p) => {
+                asserted_classes.insert(c.clone());
+            }
+            _ => {}
+        }
+    }
     tbox.extend(preprocess::domain_range_clauses(&rbox));
     // All consumers are in place (augment encodings + domain/range), so dead
     // inverse bridges can be identified and dropped.
@@ -216,5 +242,6 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         declared,
         el_rbox_safe,
         abox_inconsistent,
+        asserted_classes: asserted_classes.into_iter().collect(),
     })
 }

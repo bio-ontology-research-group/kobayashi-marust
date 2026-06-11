@@ -286,6 +286,31 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 cls(reg, args[1])?,
             ));
         }
+        "ObjectPropertyDomain"
+            if matches!(args.first(), Some(Node::Atom(_)))
+                && matches!(args.get(1), Some(Node::List(..))) =>
+        {
+            // domain(R) = C ≡ ∃R.⊤ ⊑ C. The simple (named-class) case stays on
+            // the rbox path (byte-identical routing/clauses); only a COMPLEX
+            // domain class on a NAMED role — previously dropped as
+            // `complex-domain`, a real incompleteness (ore_ont_4827's
+            // `domain(hasCase) = Adjective ⊔ ...`) — is clausified here through
+            // the normal subclass encoding.
+            o.add(Axiom::SubClassOf(
+                Concept::Exists(role_cls(reg, args[0])?, Box::new(Concept::Top)),
+                cls(reg, args[1])?,
+            ));
+        }
+        "ObjectPropertyRange"
+            if matches!(args.first(), Some(Node::Atom(_)))
+                && matches!(args.get(1), Some(Node::List(..))) =>
+        {
+            // range(R) = C ≡ ⊤ ⊑ ∀R.C; complex-range case on a named role only.
+            o.add(Axiom::SubClassOf(
+                Concept::Top,
+                Concept::Forall(role_cls(reg, args[0])?, Box::new(cls(reg, args[1])?)),
+            ));
+        }
         "Declaration" | "Prefix" | "Import" | "Annotation" | "AnnotationAssertion"
         | "DisjointObjectProperties" | "ObjectPropertyDomain" | "ObjectPropertyRange" => {
             // not part of the SROIQ core we validate here

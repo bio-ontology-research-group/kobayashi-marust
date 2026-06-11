@@ -145,7 +145,7 @@ class _EngineResult:
 
 
 def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=None,
-                time_cap_s=None):
+                time_cap_s=None, argv=None):
     """Run the context engine on the clause set, optionally forcing a thread
     count (`KM_THREADS`) and/or an RSS watchdog (GiB). The watchdog polls the
     engine's resident set and kills *only the engine child* (leaving this driver
@@ -159,7 +159,7 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
         env["KM_THREADS"] = str(threads)
     if extra_env:
         env.update(extra_env)
-    argv = [str(engine_path())]
+    argv = argv or [str(engine_path())]
     stdin_f = open(clauses_path) if clauses_path is not None else subprocess.PIPE
     p = subprocess.Popen(argv, stdin=stdin_f if clauses_path is not None else subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
@@ -266,6 +266,7 @@ def classify(ofn_path: str) -> dict:
             _named = set(meta["named"])
             rbox_safe = bool(meta["el_rbox_safe"])
             abox_inconsistent = bool(meta.get("abox_inconsistent"))
+            asserted_classes = set(meta.get("asserted_classes") or [])
         else:
             data = run_ofn(ofn_path)
             clauses = data["clauses"]
@@ -273,6 +274,7 @@ def classify(ofn_path: str) -> dict:
             _named = set(data["named"])
             rbox_safe = bool(data["el_rbox_safe"])
             abox_inconsistent = bool(data.get("abox_inconsistent"))
+            asserted_classes = set(data.get("asserted_classes") or [])
         full_iri = lambda n: _iri_map.get(n, n)          # noqa: E731
         named_iri = lambda n: n in _named                # noqa: E731
     else:
@@ -280,6 +282,7 @@ def classify(ofn_path: str) -> dict:
         full_iri = frontend.full_iri
         named_iri = frontend.is_named_iri
         rbox_safe = el_route.rbox_el_safe(frontend.ofn_rbox(ofn_path))
+        asserted_classes = set()
 
     # The Rust frontend proved the ABox forces an individual into two disjoint
     # named classes: the ontology is inconsistent. The CB engine drops ABox
@@ -322,8 +325,24 @@ def classify(ofn_path: str) -> dict:
             # the non-EL role clauses then land in elc's residual, where only a
             # passing completeness certificate (KM_ELC_CERT) lets it answer;
             # otherwise it exits 3 and the context engine runs as usual.
-            if rbox_safe or os.environ.get("KM_ELC_FORCE"):
+            proc = None
+            if rbox_safe:
                 proc = run_reasoner_file([elc_bin()], clauses_path)
+            elif os.environ.get("KM_ELC_FORCE"):
+                # Forced attempt on a non-EL-safe RBox: only a passing
+                # completeness certificate (KM_ELC_CERT) lets elc answer, and a
+                # FAILING attempt can be arbitrarily expensive (saturation +
+                # repair on a non-EL clause set). Bound it by wall clock and
+                # RSS; hitting either bound falls through to the context
+                # engine exactly like exit 3.
+                budget = float(os.environ.get("KM_ELC_FORCE_BUDGET_S", "100"))
+                cap_gb = float(os.environ.get(
+                    "KM_ELC_FORCE_MEM_GB", os.environ.get("KM_PAR_MEM_GB", "14")))
+                proc = _run_engine(clauses_path, None, argv=[elc_bin()],
+                                   rss_cap_gb=cap_gb, time_cap_s=budget)
+                if proc.oom or proc.timed_out:
+                    proc = None
+            if proc is not None:
                 if proc.returncode == 3:
                     out = None
                 elif proc.returncode != 0:
@@ -347,6 +366,7 @@ def classify(ofn_path: str) -> dict:
     # stay on the short local name. Emitting the short name here instead made the
     # harness localname-truncate fragments containing '/' (ore_ont_14499/8135).
     subs, unsat = [], []
+    unsat_names = set()
     for a, sups in out["subsumptions"].items():
         if is_internal(a):
             continue
@@ -356,8 +376,20 @@ def classify(ofn_path: str) -> dict:
             if short(s) in BOTTOM:
                 if fa not in unsat:
                     unsat.append(fa)
+                    unsat_names.add(a)
+                    unsat_names.add(sa)
             elif not is_internal(s) and short(s) != sa:
                 subs.append([fa, full_iri(s)])
+    # An unsatisfiable class with a provable asserted member makes the whole
+    # ontology inconsistent (a : C and C <= bottom). The engine drops the ABox,
+    # so apply the rule here using the frontend's asserted-classes profile.
+    if unsat_names & asserted_classes:
+        return {
+            "consistent": False,
+            "subsumptions": [],
+            "unsatisfiable": [],
+            "dropped": out.get("dropped", 0),
+        }
     return {
         "consistent": not out.get("inconsistent", False),
         "subsumptions": sorted(subs),
