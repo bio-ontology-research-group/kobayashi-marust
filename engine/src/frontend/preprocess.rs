@@ -379,8 +379,17 @@ pub fn concept_relevant_roles(tbox: &[DLClause]) -> HashSet<String> {
         for c in tbox {
             let active = c.head.is_empty()
                 || c.head.iter().any(|a| match a {
-                    Atom::Concept(n, _) => {
-                        !is_synthetic(n) || needed_concepts.contains(n.as_str())
+                    // A named concept is a query goal only on a non-Skolem term:
+                    // a named concept on a function term f(x) is an existential
+                    // FILLER (`A ⊑ ∃R.C` emits `A(x) -> C(f(x))`), not a
+                    // subsumption goal. It reaches a central named subsumption
+                    // only through a subclass-side existential `∃R.C ⊑ D`, whose
+                    // recognizer head is a definer on the central term and is
+                    // captured separately. (Already-needed concepts re-activate
+                    // regardless of term.)
+                    Atom::Concept(n, t) => {
+                        (!is_synthetic(n) && !matches!(t, Term::Fun(..)))
+                            || needed_concepts.contains(n.as_str())
                     }
                     Atom::Eq(..) => true,
                     Atom::Role(r, _, _) => needed_roles.contains(r),
