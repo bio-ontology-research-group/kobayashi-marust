@@ -4,6 +4,59 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Correctness tail: sound datatype-ABox precheck + complex-domain clausification
+
+Resolved the four "unsound vs gold" ontologies and recovered one incomplete one.
+The headline result is that KM was never unsound on the four flagged ontologies:
+they are all genuinely **inconsistent**, and the gold signatures were wrong.
+
+**Proof the gold was wrong.** Delta-debugging (`ddmin` over the axioms, oracle =
+HermiT-reports-inconsistent) reduced each of `8941` / `13912` / `15516` / `2669`
+to a 2–8 axiom inconsistent core. Running those cores through HermiT *and*
+Konclude directly, both reasoners report inconsistent (Konclude prints
+`EquivalentClasses(Thing Nothing ...)`). The recorded gold said "consistent"
+because of two benchmark-harness bugs, both fixed:
+- `ore_canon.py` canonicalised Konclude's `Thing ≡ Nothing` (its encoding of an
+  inconsistent ontology) into "consistent with N unsatisfiable classes". It now
+  maps `owl:Thing` in the `owl:Nothing` SCC — and any `consistent=false` — to the
+  uniform empty inconsistent signature.
+- `ore_runone.py` recorded Konclude's exit-0-with-empty-output on a SWRL
+  `DLSafeRule` parse failure (`15516` / `2669`) as a bogus "consistent". It now
+  flags Konclude "All parsers failed" as `error` (excluded from comparison).
+The gold was regenerated for every affected ontology.
+
+**KM side (`frontend/data_abox.rs`).** The CB engine drops the ABox, so these
+asserted-data clashes never reached saturation. A new sound precheck detects:
+- range-vs-literal clash: a `DataPropertyAssertion` whose literal value-space is
+  disjoint from a (possibly sub-property-inherited) `DataPropertyRange`
+  (`8941`: `xsd:string` range carrying a language-tagged literal — an
+  `rdf:PlainLiteral`, never in the string value space);
+- functional-data clash: `FunctionalDataProperty` with two provably-distinct
+  values on one individual;
+- an at-most-1-driven ground individual merge (closing role assertions under
+  symmetry / inverse / sub-roles and domain/range typing) feeding a
+  `DataMax`/functional clash or a `DifferentIndividuals` violation (`13912`:
+  symmetric `Owner` + domain `Photo` + `Photo ⊑ =1 Owner` merges two photos,
+  then `Photo ⊑ ≤1 url` clashes their distinct urls);
+plus an asserted-member-of-unsatisfiable-class rule (`asserted_classes` on the
+ofn meta; `owl_classify` makes the ontology inconsistent when a class proved
+unsatisfiable has a provable asserted member). Every clash is an OWL 2
+entailment; caps degrade to "not detected" (incomplete, never unsound).
+
+**Incompleteness.** `parse.rs` now clausifies a COMPLEX
+`ObjectPropertyDomain`/`Range` on a named role as the equivalent class axiom
+(`∃R.⊤ ⊑ C` / `⊤ ⊑ ∀R.C`) instead of dropping it as `complex-domain`. The
+named-class case stays on the rbox path (byte-identical). Recovers `ore_ont_4827`
+exactly (the olia `domain(hasCase) = Adjective ⊔ ...` chain via `∃hasCase.Self`).
+
+**Validation.** 19 new `data_abox` unit tests; full suite green. Whole-corpus
+frontend differential: clause + meta output byte-identical on every ontology
+except those newly flagged inconsistent; all newly-inconsistent ontologies
+confirmed inconsistent by HermiT/Konclude (zero false positives). Remaining
+incomplete onts are deeper engine gaps: `16461` (1 nominal subsumption, CB drops
+individuals); `2313` / `12698` / `9944` (existential-superclass `∃R.C`
+propagation).
+
 ### EL completion: clone-free hot loop (recovers giant ore_ont_8737)
 
 The `elcomplete` worklist saturation cloned a state collection on every
