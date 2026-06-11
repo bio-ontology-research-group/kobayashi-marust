@@ -568,7 +568,13 @@ impl Idx {
 struct State {
     sub_super: Vec<HashSet<u32>>,
     edges: Vec<HashSet<(u32, u32)>>,
-    in_edges: Vec<HashSet<(u32, u32)>>, // target -> {(parent, role)}
+    // target -> [(parent, role)]. A `Vec`, not a `HashSet`: duplicates are
+    // already excluded because an `(parent, role)` pair is appended only inside
+    // the `edges[parent].insert(...)` success branch of `add_edge`, which fires
+    // at most once per distinct edge. Storing it as a slice lets the hot NF4
+    // rule iterate predecessors with a clone-free index loop (add_sub never
+    // mutates in_edges), instead of `.collect()`-ing the set on every Sub item.
+    in_edges: Vec<Vec<(u32, u32)>>,
     worklist: VecDeque<Item>,
 }
 
@@ -583,7 +589,7 @@ impl State {
     #[inline]
     fn add_edge(&mut self, c: u32, r: u32, d: u32) {
         if self.edges[c as usize].insert((r, d)) {
-            self.in_edges[d as usize].insert((c, r));
+            self.in_edges[d as usize].push((c, r));
             self.worklist.push_back(Item::Edge(c, r, d));
         }
     }
@@ -667,7 +673,7 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
-        in_edges: vec![HashSet::default(); n],
+        in_edges: vec![Vec::new(); n],
         worklist: VecDeque::new(),
     };
 
@@ -684,6 +690,8 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
     // without a per-lookup allocation (it never occurs for edge roles in
     // practice, but keeps the borrow simple).
     let empty: HashSet<u32> = HashSet::default();
+    // Reused across Edge items to collect NF4 conclusions without reallocating.
+    let mut nf4_buf: Vec<u32> = Vec::new();
 
     // ----- Main loop -----
     // `idx` is borrowed immutably throughout; `st` mutably. Because they are
@@ -718,58 +726,82 @@ fn saturate(nfs: &Nfs, n: usize) -> SatResult {
                     }
                 }
                 // R⊥-edge : C ⊑ ⊥ propagates backwards along edges into C.
+                // `add_sub` never touches `in_edges`, so iterate predecessors by
+                // index (the list length is stable across the calls) with no clone.
                 if d == BOTTOM {
-                    let preds: Vec<(u32, u32)> = st.in_edges[c as usize].iter().copied().collect();
-                    for (parent, _role) in preds {
+                    let mut k = 0;
+                    while k < st.in_edges[c as usize].len() {
+                        let parent = st.in_edges[c as usize][k].0;
                         st.add_sub(parent, BOTTOM);
+                        k += 1;
                     }
                 }
                 // R∃⁻ (NF4): edge (X,S,C) with ∃S'.D ⊑ E, S ⊑ S' ⟹ X ⊑ E.
-                let preds: Vec<(u32, u32)> = st.in_edges[c as usize].iter().copied().collect();
-                for (parent, role) in preds {
-                    for &super_role in idx.role_supers(role) {
-                        if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d)) {
-                            for &sup in sups {
-                                st.add_sub(parent, sup);
+                // Hot on transitive/qualified ontologies (the ORE giants encode
+                // transitivity as NF4). `add_sub` never mutates `in_edges`, so a
+                // clone-free index loop replaces the per-Sub-item `.collect()`
+                // of the full predecessor list; skipped entirely with no NF4.
+                if !idx.nf4_by_role_filler.is_empty() {
+                    let mut k = 0;
+                    while k < st.in_edges[c as usize].len() {
+                        let (parent, role) = st.in_edges[c as usize][k];
+                        for &super_role in idx.role_supers(role) {
+                            if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d)) {
+                                for &sup in sups {
+                                    st.add_sub(parent, sup);
+                                }
                             }
                         }
+                        k += 1;
                     }
                 }
             }
             Item::Edge(c, r, d) => {
                 // R∃⁻ (NF4): fire the new edge against everything above d.
-                let d_supers: Vec<u32> = st.sub_super[d as usize].iter().copied().collect();
-                for &super_role in idx.role_supers(r) {
-                    for &d_super in &d_supers {
-                        if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d_super)) {
-                            for &sup in sups {
-                                st.add_sub(c, sup);
+                // Collect the matching conclusions during the read-only scan of
+                // sub_super[d] (and idx), then apply them: this replaces the
+                // per-Edge-item clone of the FULL super-set with a `conclusions`
+                // buffer holding only the (usually few, often zero) NF4 hits.
+                // Snapshot semantics are unchanged -- conclusions enabled by the
+                // adds themselves arrive as fresh Sub worklist items. Skipped
+                // entirely when there are no NF4 axioms.
+                if !idx.nf4_by_role_filler.is_empty() {
+                    nf4_buf.clear();
+                    for &super_role in idx.role_supers(r) {
+                        for &d_super in &st.sub_super[d as usize] {
+                            if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d_super)) {
+                                nf4_buf.extend_from_slice(sups);
                             }
                         }
+                    }
+                    for &sup in &nf4_buf {
+                        st.add_sub(c, sup);
                     }
                 }
                 // R⊥-edge: edge to a known-unsat target propagates.
                 if st.sub_super[d as usize].contains(&BOTTOM) {
                     st.add_sub(c, BOTTOM);
                 }
-                // R∘ (NF7): compose with edges leaving d.
-                let out: Vec<(u32, u32)> = st.edges[d as usize].iter().copied().collect();
-                for (r2, e) in out {
-                    if let Some(sups) = idx.nf7_by_pair.get(&(r, r2)) {
-                        for &nfsup in sups {
-                            for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
-                                st.add_edge(c, super_role, e);
+                // R∘ (NF7): compose with edges leaving d. Skipped with no chains.
+                if !idx.nf7_by_pair.is_empty() {
+                    let out: Vec<(u32, u32)> = st.edges[d as usize].iter().copied().collect();
+                    for (r2, e) in out {
+                        if let Some(sups) = idx.nf7_by_pair.get(&(r, r2)) {
+                            for &nfsup in sups {
+                                for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                                    st.add_edge(c, super_role, e);
+                                }
                             }
                         }
                     }
-                }
-                // Symmetric: edge into c with role r0 plus this new edge.
-                let preds: Vec<(u32, u32)> = st.in_edges[c as usize].iter().copied().collect();
-                for (parent, r0) in preds {
-                    if let Some(sups) = idx.nf7_by_pair.get(&(r0, r)) {
-                        for &nfsup in sups {
-                            for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
-                                st.add_edge(parent, super_role, d);
+                    // Symmetric: edge into c with role r0 plus this new edge.
+                    let preds: Vec<(u32, u32)> = st.in_edges[c as usize].clone();
+                    for (parent, r0) in preds {
+                        if let Some(sups) = idx.nf7_by_pair.get(&(r0, r)) {
+                            for &nfsup in sups {
+                                for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                                    st.add_edge(parent, super_role, d);
+                                }
                             }
                         }
                     }
