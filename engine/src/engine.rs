@@ -1727,13 +1727,16 @@ impl Engine {
         let trace = std::env::var("KM_TRACE").is_ok();
         // Hard safety cap on the inter-context message fixpoint (backstop against
         // a runaway central-strategy core-growth cascade). Configurable via
-        // KM_MSG_CAP; default 5M. Raising it trades time/memory for completeness
+        // KM_MSG_CAP; default 25M. Raising it trades time/memory for completeness
         // on heavy role-chain/transitive ontologies whose fixpoint is large but
-        // finite.
+        // finite -- e.g. ore_ont_9944 needs ~13.8M messages to converge (and
+        // derives ~15k more subsumptions than the truncated 5M run); the per-run
+        // time/memory limits remain the real guard for genuinely pathological
+        // inputs, so honest convergence is preferred over silent truncation.
         let msg_cap: usize = std::env::var("KM_MSG_CAP")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(5_000_000);
+            .unwrap_or(25_000_000);
         let mut truncated = false;
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
