@@ -450,6 +450,14 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
     }
 }
 
+/// `KM_ROOT_ONLY_INCOMP=1`: same-term concept incomparability only at root
+/// contexts (cached once — the env cannot change mid-run).
+fn root_only_incomp() -> bool {
+    use std::sync::OnceLock;
+    static FLAG: OnceLock<bool> = OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_ROOT_ONLY_INCOMP").is_some())
+}
+
 #[inline]
 fn eqn_s(l: &Lit) -> Term {
     match *l {
@@ -458,7 +466,7 @@ fn eqn_s(l: &Lit) -> Term {
     }
 }
 
-fn pred_lteq(p1: &Pred, p2: &Pred, _root: bool, sig: &Sig) -> bool {
+fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     // Pred-trigger cases (bottom of the order).
     let p1pt = p1.is_pred_trigger(sig);
     let p2pt = p2.is_pred_trigger(sig);
@@ -479,9 +487,21 @@ fn pred_lteq(p1: &Pred, p2: &Pred, _root: bool, sig: &Sig) -> bool {
     // on every same-term disjunct -- named or internal definer -- is exactly
     // what the proof certifies.  This generalises the old root-only query-concept
     // refinement to every context and every concept.
+    //
+    // KM_ROOT_ONLY_INCOMP (EXPERIMENT, default off): scope the
+    // incomparability to ROOT contexts (Sequoia's shape) and totally order
+    // same-term concepts elsewhere (iri tie-break) — ordered resolution in
+    // successor contexts.  The unit extraction roots need stays intact;
+    // successors push per-disjunct CONDITIONAL clauses back (the residues
+    // expose the next-max disjunct for the following resolution step), so the
+    // disjunct-by-disjunct consumption chain replaces the all-disjunct
+    // case split there.  Validation: probe + corpus A/B before any default.
     if let (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) = (p1, p2) {
         if t1 == t2 {
-            return i1 == i2;
+            if root || !root_only_incomp() {
+                return i1 == i2;
+            }
+            return i1 <= i2;
         }
         // Different terms: term-major (a literal on the larger term is larger,
         // so it is kept by max-head selection and drives Succ).
