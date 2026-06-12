@@ -34,6 +34,12 @@ struct Builder {
     sig: Sig,
     /// global function-symbol interner (function name -> f index >= 1)
     fn_id: HashMap<String, i32>,
+    /// individual interner (name -> id >= 1); only populated in nominal mode
+    ind_id: HashMap<String, i32>,
+    /// KM_NOMINALS: accept individual terms (ALCHOIQ nominal rules,
+    /// docs/NOMINALS-CB.md Phase 1). Off: clauses with individuals are
+    /// dropped and counted, as before.
+    nominals: bool,
     dropped: usize,
 }
 
@@ -42,6 +48,8 @@ impl Builder {
         Builder {
             sig: Sig::default(),
             fn_id: HashMap::new(),
+            ind_id: HashMap::new(),
+            nominals: std::env::var_os("KM_NOMINALS").is_some(),
             dropped: 0,
         }
     }
@@ -52,6 +60,15 @@ impl Builder {
         }
         let id = self.fn_id.len() as i32 + 1;
         self.fn_id.insert(name.to_string(), id);
+        id
+    }
+
+    fn individual(&mut self, name: &str) -> i32 {
+        if let Some(&id) = self.ind_id.get(name) {
+            return id;
+        }
+        let id = self.ind_id.len() as i32 + 1;
+        self.ind_id.insert(name.to_string(), id);
         id
     }
 
@@ -80,8 +97,18 @@ impl Builder {
                 }
                 Some(fterm(self.function(function)))
             }
-            // individuals / nominal aux constants: unsupported in the ALCHIQ core
-            JTerm::Ind { .. } | JTerm::Aux { .. } => None,
+            // individuals: accepted in nominal mode (ALCHOIQ rules,
+            // docs/NOMINALS-CB.md Phase 1); otherwise unsupported and the
+            // clause is dropped+counted as before. Aux constants stay
+            // unsupported.
+            JTerm::Ind { name } => {
+                if self.nominals {
+                    Some(ind_term(self.individual(name)))
+                } else {
+                    None
+                }
+            }
+            JTerm::Aux { .. } => None,
         }
     }
 

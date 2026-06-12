@@ -11,8 +11,16 @@
 //!   * predecessor variable `y`    -> id -1
 //!   * neighbour variable `z_i`    -> id -(i+1)   (i >= 1)
 //!   * successor term `f_i(x)`     -> id +i       (i >= 1)
-//! Term order is the integer order on ids, so  z_i < y < x < f_i(x);
-//! function terms are maximal, which orients paramodulation downward.
+//! Term order is the integer order on ids, so  z_i < y < x < o_k < f_i(x)
+//! < f_i(o_k); function terms are maximal, which orients paramodulation
+//! downward. Individuals (nominal constants, ALCHOIQ calculus — see
+//! docs/NOMINALS-CB.md) sit between x and the function terms: this total
+//! order satisfies Def 3 of arXiv:1805.01396 given the pred-trigger-bottom
+//! refinement in `pred_lteq` (its condition 6 only needs predecessor-trigger
+//! atoms not to dominate non-trivial terms, which that refinement enforces).
+//! Composite `f(o)` terms (root-context successors) live above all `f(x)`
+//! terms and embed the (function, individual) pair order positionally so the
+//! congruence condition `f(o1) ≻ f(o2) ⟺ o1 ≻ o2` holds on the raw ids.
 
 use std::collections::HashMap;
 
@@ -21,6 +29,13 @@ pub type Term = i32;
 
 pub const X: Term = 0;
 pub const Y: Term = -1;
+/// Individuals occupy `1 .. FTERM_BASE`.
+pub const FTERM_BASE: Term = 1 << 24;
+/// `f(x)` Skolem terms occupy `FTERM_BASE .. COMP_BASE`.
+pub const COMP_BASE: Term = 1 << 30;
+/// Composite `f(o)` terms occupy `COMP_BASE ..`: `(f - FTERM_BASE)` in the
+/// bits above `COMP_IND_BITS`, the individual id in the low bits.
+pub const COMP_IND_BITS: u32 = 14;
 
 #[inline]
 pub fn zvar(i: i32) -> Term {
@@ -29,8 +44,14 @@ pub fn zvar(i: i32) -> Term {
 }
 #[inline]
 pub fn fterm(i: i32) -> Term {
-    debug_assert!(i >= 1);
-    i
+    debug_assert!(i >= 1 && i < COMP_BASE - FTERM_BASE);
+    FTERM_BASE + i
+}
+/// Individual (nominal constant) term, id `k >= 1`.
+#[inline]
+pub fn ind_term(k: i32) -> Term {
+    debug_assert!(k >= 1 && k < FTERM_BASE);
+    k
 }
 #[inline]
 pub fn is_central(t: Term) -> bool {
@@ -49,8 +70,30 @@ pub fn is_var(t: Term) -> bool {
     t <= 0
 }
 #[inline]
+pub fn is_individual(t: Term) -> bool {
+    t >= 1 && t < FTERM_BASE
+}
+/// `true` for Skolem terms: both `f(x)` and root-context `f(o)` composites.
+#[inline]
 pub fn is_function(t: Term) -> bool {
-    t > 0
+    t >= FTERM_BASE
+}
+/// Composite `f(o)` term for `f = fterm(i)` and individual `o = ind_term(k)`.
+/// Panics (never silently wraps) when the ontology exceeds the packed ranges;
+/// nominal-mode scale limits are reported, not approximated.
+#[inline]
+pub fn comp_term(f: Term, o: Term) -> Term {
+    debug_assert!(is_function(f) && f < COMP_BASE && is_individual(o));
+    let fi = f - FTERM_BASE;
+    assert!(
+        fi < (1 << (30 - COMP_IND_BITS)) && o < (1 << COMP_IND_BITS),
+        "nominal mode: f(o) term space exhausted (f id {fi}, individual {o})"
+    );
+    COMP_BASE + (fi << COMP_IND_BITS) + o
+}
+#[inline]
+pub fn is_comp(t: Term) -> bool {
+    t >= COMP_BASE
 }
 #[inline]
 pub fn term_max(a: Term, b: Term) -> Term {
