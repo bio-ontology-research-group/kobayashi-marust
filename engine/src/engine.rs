@@ -834,6 +834,10 @@ pub struct Engine {
     nom_table: std::cell::RefCell<HashMap<(Term, Iri, bool, u16), Term>>,
     /// next fresh individual id (starts above every input individual)
     nom_next: std::cell::Cell<i32>,
+    /// first additional-nominal id (= the initial `nom_next`): ids at or
+    /// above this are Nom-introduced and exempt from the r-Pred
+    /// announcement guard (no context can have announced them)
+    nom_base: i32,
     /// Additional-nominal budget (`KM_NOM_BUDGET`, default 4096).  The Nom rule
     /// is the doubly-exponential source of the calculus; on exhaustion further
     /// Nom conclusions are dropped with an explicit warning (sound, possibly
@@ -966,6 +970,7 @@ impl Engine {
             nom_k: (max_z - 1).max(0) as usize,
             nom_table: std::cell::RefCell::new(HashMap::new()),
             nom_next: std::cell::Cell::new(max_ind + 1),
+            nom_base: max_ind + 1,
             nom_budget,
             nom_truncated: std::cell::Cell::new(false),
             stat_propagate: 0,
@@ -2599,6 +2604,21 @@ impl Engine {
                             continue;
                         }
                         pred_checks += 1;
+                        // Every body atom must be DISCHARGED over u's edge
+                        // labelled by that atom's individual (the paper's
+                        // ⟨u, v_r, o_i⟩ per A_i, multi-edge per source), and
+                        // every individual the clause mentions must be one u
+                        // has announced (an edge per individual) — EXCEPT
+                        // additional nominals (id ≥ nom_base), which no
+                        // context can have announced: they are exactly what
+                        // the Nom conclusions carry back.  Without the
+                        // announcement guard, body-empty ground facts pass
+                        // the discharge check vacuously and spray to every
+                        // context with any root edge (livelock on ABox-heavy
+                        // ontologies: ore_ont_10594, ~1900 individuals).
+                        // Looser variants tried and rejected: verbatim C_i
+                        // copies (announced-only) and no head filter — both
+                        // unbounded on 10594.
                         let mut ok = true;
                         for b in &c.body {
                             let mut inds: Vec<Term> = Vec::new();
@@ -2608,15 +2628,23 @@ impl Engine {
                                     .get(&(u, *o))
                                     .map_or(false, |s| s.contains(b))
                             });
-                            let copied = b.is_ground()
-                                && !inds.is_empty()
-                                && inds
-                                    .iter()
-                                    .all(|o| ctx.predecessors.contains_key(&(u, *o)));
-                            if !(discharged || copied) {
+                            if !discharged {
                                 ok = false;
                                 break;
                             }
+                        }
+                        if ok {
+                            let mut inds: Vec<Term> = Vec::new();
+                            for p in &c.body {
+                                pred_inds(p, &mut inds);
+                            }
+                            for l in &c.head {
+                                lit_inds(l, &mut inds);
+                            }
+                            ok = inds.iter().all(|o| {
+                                *o >= self.nom_base
+                                    || ctx.predecessors.contains_key(&(u, *o))
+                            });
                         }
                         if ok {
                             let edge = (u, label);
@@ -2909,6 +2937,7 @@ impl Engine {
         // fixpoint is unchanged: saturation is monotone and confluent, so the
         // derived clause set is independent of the propagation schedule.
         let mut guard = 0usize;
+        let (mut nsucc_msgs, mut npred_msgs) = (0u64, 0u64);
         let trace = std::env::var("KM_TRACE").is_ok();
         // Hard safety cap on the inter-context message fixpoint (backstop against
         // a runaway central-strategy core-growth cascade). Configurable via
@@ -2944,9 +2973,14 @@ impl Engine {
                     break;
                 }
                 if prof && guard % 20000 == 0 {
+                    let gwo = self
+                        .ground_ctx
+                        .map(|g| self.contexts[g].worked_off.len())
+                        .unwrap_or(0);
                     eprintln!(
-                        "KM_PROF msgloop guard={} contexts={} msgs_pending={} saturate_calls={}",
-                        guard, self.contexts.len(), self.msgs.len(), self.stat_saturate
+                        "KM_PROF msgloop guard={} contexts={} msgs_pending={} saturate_calls={} succ={} pred={} ground_wo={}",
+                        guard, self.contexts.len(), self.msgs.len(), self.stat_saturate,
+                        nsucc_msgs, npred_msgs, gwo
                     );
                 }
                 if trace && guard % 200_000 == 0 {
@@ -2980,13 +3014,19 @@ impl Engine {
                     );
                 }
                 let t = match msg {
-                    Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
+                    Msg::Succ { from, f, p, target } => {
+                        nsucc_msgs += 1;
+                        self.apply_succ(from, f, p, target)
+                    }
                     Msg::Pred {
                         to,
                         from,
                         edge_label,
                         pool_idx,
-                    } => self.apply_pred(to, from, edge_label, pool_idx),
+                    } => {
+                        npred_msgs += 1;
+                        self.apply_pred(to, from, edge_label, pool_idx)
+                    }
                 };
                 if seen.insert(t) {
                     touched.push(t);
