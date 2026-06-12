@@ -69,7 +69,7 @@ pub fn domain_range_clauses(rbox: &[RboxRecord]) -> Vec<DLClause> {
 }
 
 /// A detected chain triple `(R, S, T)` for `R∘S⊑T`, or a transitive role.
-struct ChainInfo {
+pub struct ChainInfo {
     trans: Vec<String>,
     chains: Vec<(String, String, String)>,
 }
@@ -500,6 +500,19 @@ fn is_chain_axiom(c: &DLClause) -> bool {
 /// Port of `augment`: tbox minus raw chain axioms, plus nominal / transitivity /
 /// chain encodings.
 pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> Vec<DLClause> {
+    augment_with_chains(tbox, abox, hooks).0
+}
+
+/// Like [`augment`] but also returns the detected [`ChainInfo`], so a later
+/// pass (after `domain_range_clauses` are available) can build chain /
+/// transitivity recognitions for pure-domain consumers of chain targets — the
+/// consumers `T(x,y) → D(x)` that are not yet visible when `augment` runs.
+/// See [`domain_consumer_chain_clauses`].
+pub fn augment_with_chains(
+    tbox: Vec<DLClause>,
+    abox: &[DLClause],
+    hooks: &GroundHooks,
+) -> (Vec<DLClause>, ChainInfo) {
     let mut base: Vec<DLClause> = tbox.iter().filter(|c| !is_chain_axiom(c)).cloned().collect();
     base.extend(nominal_clauses(abox, hooks));
     if std::env::var_os("KM_NOMINALS").is_some() {
@@ -508,7 +521,108 @@ pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> V
     }
     base.extend(transitivity_clauses(&tbox));
     base.extend(chain_clauses(&tbox));
-    base
+    (base, detect_role_chains(&tbox))
+}
+
+/// Three-clause transitivity recognition for `R(x,y) ∧ ⋀filler(y) → ⋀head(x)`
+/// with transitive `R` (mirrors [`transitivity_clauses`]'s body): the `P`
+/// reachability concept, its up-propagation, and the consumer. `filler` may be
+/// empty (a pure `∃R.⊤ ⊑ head` / domain consumer).
+fn trans_recognition(r: &str, filler: &[String], head: &[Atom]) -> Vec<DLClause> {
+    let x = var_x();
+    let y = var_y();
+    let p = format!("__trans__{}__{}", r, filler.join("_"));
+    let mut out = Vec::new();
+    // R(x,y) ∧ ⋀filler(y) → P(x)
+    let mut body1 = vec![Atom::Role(r.to_string(), x.clone(), y.clone())];
+    for f in filler {
+        body1.push(Atom::Concept(f.clone(), y.clone()));
+    }
+    out.push(clause(body1, [Atom::Concept(p.clone(), x.clone())]));
+    // R(x,y) ∧ P(y) → P(x)
+    out.push(clause(
+        [
+            Atom::Role(r.to_string(), x.clone(), y.clone()),
+            Atom::Concept(p.clone(), y.clone()),
+        ],
+        [Atom::Concept(p.clone(), x.clone())],
+    ));
+    // P(x) → ⋀head(x)
+    out.push(clause([Atom::Concept(p, x.clone())], head.to_vec()));
+    out
+}
+
+/// Chain / transitivity recognition for PURE-DOMAIN consumers of chain targets
+/// and transitive roles: the `T(x,y) → D(x)` clauses produced by
+/// `domain_range_clauses`, which `augment`'s pass-1 `chain_clauses` /
+/// `transitivity_clauses` cannot see (domain/range records are parsed later).
+/// Closes `R∘S⊑T, domain(T)=D ⊢ ∃R.∃S.⊤ ⊑ D` and its transitive-`R` variant
+/// (e.g. ore_ont_11745's missed unsatisfiability). Additive and sound: emits
+/// only fresh `__chain__` / `__trans__` recognition clauses. Gated by
+/// `KM_CHAIN_DOMAIN` while it is validated corpus-wide.
+pub fn domain_consumer_chain_clauses(info: &ChainInfo, domain_range: &[DLClause]) -> Vec<DLClause> {
+    let x = var_x();
+    let y = var_y();
+    let trans: HashSet<&str> = info.trans.iter().map(|s| s.as_str()).collect();
+    let mut by_t: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
+    for (r, s, t) in &info.chains {
+        by_t.entry(t.as_str()).or_default().push((r.as_str(), s.as_str()));
+    }
+    let mut extra = Vec::new();
+    let mut seen_s: HashSet<String> = HashSet::new();
+    for c in domain_range {
+        // domain shape: body = [Role(T, x, y)], head = concept(s) on x only.
+        if c.body.len() != 1 || c.head.is_empty() {
+            continue;
+        }
+        let (trole, tsource, ttarget) = match &c.body[0] {
+            Atom::Role(r, s, t) => (r.as_str(), s, t),
+            _ => continue,
+        };
+        if *tsource != x || *ttarget != y {
+            continue; // range axioms (head on y) are not chain-target consumers
+        }
+        if !c
+            .head
+            .iter()
+            .all(|h| matches!(h, Atom::Concept(_, t) if *t == x))
+        {
+            continue;
+        }
+        let head: Vec<Atom> = c.head.clone();
+        // Chain: T = R∘S, consumer has empty filler on y.
+        if let Some(pairs) = by_t.get(trole) {
+            for (r, s) in pairs {
+                let q = format!("__chain__{}__", s);
+                if seen_s.insert(q.clone()) {
+                    // S(x,y) → Q(x)
+                    extra.push(clause(
+                        [Atom::Role(s.to_string(), x.clone(), y.clone())],
+                        [Atom::Concept(q.clone(), x.clone())],
+                    ));
+                }
+                if trans.contains(r) {
+                    // Transitive R: the recognition covers the 1-hop case too
+                    // (R(x,y)∧Q(y)→P(x)→head), so emit only that.
+                    extra.extend(trans_recognition(r, std::slice::from_ref(&q), &head));
+                } else {
+                    // R(x,y) ∧ Q(y) → head(x)
+                    extra.push(clause(
+                        [
+                            Atom::Role(r.to_string(), x.clone(), y.clone()),
+                            Atom::Concept(q.clone(), y.clone()),
+                        ],
+                        head.clone(),
+                    ));
+                }
+            }
+        }
+        // Transitive T with a pure-domain consumer: ∃T.⊤ ⊑ D up T-chains.
+        if trans.contains(trole) {
+            extra.extend(trans_recognition(trole, &[], &head));
+        }
+    }
+    extra
 }
 
 /// DL7/DL8 defining clauses that make each nominal proxy concept exact
@@ -550,6 +664,55 @@ mod tests {
 
     fn pair(r: &str, s: &str) -> (String, String) {
         (r.to_string(), s.to_string())
+    }
+
+    #[test]
+    fn domain_consumer_chain_recognition() {
+        // chain r∘s⊑t with a pure-domain consumer t(x,y)→D(x): expect a
+        // recognition __chain__s__ (any s-edge) and a consumer
+        // r(x,y) ∧ __chain__s__(y) → D(x).
+        let info = ChainInfo {
+            trans: vec![],
+            chains: vec![("r".into(), "s".into(), "t".into())],
+        };
+        let dr = vec![clause(
+            [Atom::Role("t".into(), var_x(), var_y())],
+            [Atom::Concept("D".into(), var_x())],
+        )];
+        let out = domain_consumer_chain_clauses(&info, &dr);
+        let has_recog = out.iter().any(|c| {
+            c.body == vec![Atom::Role("s".into(), var_x(), var_y())]
+                && c.head == vec![Atom::Concept("__chain__s__".into(), var_x())]
+        });
+        let has_consumer = out.iter().any(|c| {
+            c.head == vec![Atom::Concept("D".into(), var_x())]
+                && c.body.iter().any(|a| matches!(a, Atom::Role(r, ..) if r == "r"))
+                && c.body.iter().any(|a| matches!(a, Atom::Concept(q, _) if q == "__chain__s__"))
+        });
+        assert!(has_recog, "missing __chain__s__ recognition: {out:?}");
+        assert!(has_consumer, "missing r∧__chain__s__→D consumer: {out:?}");
+    }
+
+    #[test]
+    fn domain_consumer_transitive_chain_recognition() {
+        // transitive r, chain r∘s⊑t, domain(t)=D: the consumer must be the
+        // transitive recognition (P-concept up-propagation), not a plain edge.
+        let info = ChainInfo {
+            trans: vec!["r".into()],
+            chains: vec![("r".into(), "s".into(), "t".into())],
+        };
+        let dr = vec![clause(
+            [Atom::Role("t".into(), var_x(), var_y())],
+            [Atom::Concept("D".into(), var_x())],
+        )];
+        let out = domain_consumer_chain_clauses(&info, &dr);
+        // up-propagation clause r(x,y) ∧ P(y) → P(x) for P = __trans__r____chain__s__
+        let p = "__trans__r____chain__s__";
+        let has_prop = out.iter().any(|c| {
+            c.body.iter().any(|a| matches!(a, Atom::Concept(q, t) if q == p && *t == var_y()))
+                && c.head == vec![Atom::Concept(p.into(), var_x())]
+        });
+        assert!(has_prop, "missing transitive up-propagation: {out:?}");
     }
 
     #[test]

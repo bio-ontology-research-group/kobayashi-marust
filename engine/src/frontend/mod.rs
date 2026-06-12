@@ -130,7 +130,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // ontology off the elc path up front.
     let nominals_mode = std::env::var_os("KM_NOMINALS").is_some();
     let has_individuals = !abox.is_empty() || !hooks.nominal_to_individual.is_empty();
-    let mut tbox = preprocess::augment(tbox, &abox, &hooks);
+    let (mut tbox, chain_info) = preprocess::augment_with_chains(tbox, &abox, &hooks);
     // Inverse-role bridge clauses (swapped-orientation role heads) are not EL;
     // elc's screen rejects them, but route past it up front. The rbox-record
     // check below misses bare `ObjectInverseOf` in concepts (no rbox record),
@@ -180,7 +180,17 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
             _ => {}
         }
     }
-    tbox.extend(preprocess::domain_range_clauses(&rbox));
+    let domain_range = preprocess::domain_range_clauses(&rbox);
+    // Chain / transitivity recognition for pure-domain consumers of chain
+    // targets (e.g. `R∘S⊑T, domain(T)=D`): these consumers only exist now, so
+    // `augment`'s pass-1 chain/transitivity encodings missed them. Gated by
+    // KM_CHAIN_DOMAIN while validated; additive and sound (fresh recognition
+    // clauses only), so off-flag output is unchanged. Run before extending so
+    // the recognitions see the same `domain_range` set.
+    if std::env::var_os("KM_CHAIN_DOMAIN").is_some() {
+        tbox.extend(preprocess::domain_consumer_chain_clauses(&chain_info, &domain_range));
+    }
+    tbox.extend(domain_range);
     // All consumers are in place (augment encodings + domain/range), so dead
     // inverse bridges can be identified and dropped.
     let no_prune = std::env::var_os("KM_NO_PRUNE").is_some();
