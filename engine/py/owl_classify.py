@@ -550,6 +550,12 @@ def classify(ofn_path: str) -> dict:
                         raise RuntimeError(proc.stderr)
                     out = json.loads(proc.stdout)
                 else:
+                    # leave one core to the (single-threaded) certificate
+                    # racer: with the engine on all cores it gets starved and
+                    # loses races it wins handily alone
+                    if "KM_THREADS" not in os.environ:
+                        os.environ["KM_THREADS"] = str(
+                            max(1, (os.cpu_count() or 2) - 1))
                     out = _race_adaptive_vs_elc(
                         clauses_path, clauses, elc_race, elc_out_path)
             finally:
