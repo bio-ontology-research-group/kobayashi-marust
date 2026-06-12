@@ -144,6 +144,66 @@ class _EngineResult:
         self.timed_out = timed_out
 
 
+# Engine children currently alive (registered by `_run_engine`): the portfolio
+# race kills them when the certified EL path wins, and the event stops any
+# subsequent spawn (e.g. the adaptive retry) from starting a new one.
+_LIVE_ENGINES = []
+_RACE_WON = threading.Event()
+
+
+def _race_adaptive_vs_elc(clauses_path, clauses, elc_proc, elc_out_path):
+    """Race `_run_engine_adaptive` (in a thread) against the already-started
+    certified-elc process writing to `elc_out_path`. Both sides only ever
+    produce sound AND complete answers (a failing certificate exits 3), so the
+    first one wins and the loser is killed. The racing elc runs under its own
+    RSS cap (`KM_ELC_PORT_MEM_GB`, default 8 GiB)."""
+    cap = int(float(os.environ.get("KM_ELC_PORT_MEM_GB", "8")) * (1 << 30))
+    done = {}
+
+    def run_cb():
+        try:
+            done["proc"] = _run_engine_adaptive(clauses_path, clauses)
+        except BaseException as e:  # surfaced below if elc does not win
+            done["exc"] = e
+
+    th = threading.Thread(target=run_cb, daemon=True)
+    th.start()
+    elc_lost = False
+    while True:
+        rc = elc_proc.poll()
+        if rc is not None and not elc_lost:
+            if rc == 0:
+                _RACE_WON.set()
+                for p in list(_LIVE_ENGINES):
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+                with open(elc_out_path) as f:
+                    return json.load(f)
+            elc_lost = True  # exit 3 / crash: only the engine can answer now
+        if not th.is_alive():
+            break
+        if rc is None:
+            try:
+                rss = int(open("/proc/%d/statm" % elc_proc.pid).read().split()[1]) * 4096
+                if rss > cap:
+                    elc_proc.kill()
+            except Exception:
+                pass
+        time.sleep(0.1)
+    try:
+        elc_proc.kill()
+    except Exception:
+        pass
+    if "exc" in done:
+        raise done["exc"]
+    proc = done["proc"]
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr)
+    return json.loads(proc.stdout)
+
+
 def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=None,
                 time_cap_s=None, argv=None):
     """Run the context engine on the clause set, optionally forcing a thread
@@ -154,6 +214,10 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
     contexts per query chunk and multiplies memory, can be aborted and retried
     single-threaded instead of memouting the whole job. RSS (not virtual address
     space) is used so legitimate large parallel runs are not falsely tripped."""
+    if _RACE_WON.is_set():
+        # the portfolio's certified EL path already answered: do not spawn
+        # (the racing adaptive thread may still be unwinding its retry logic)
+        return _EngineResult(-9, "", "portfolio: certified EL path won", False, False)
     env = dict(os.environ)
     if threads is not None:
         env["KM_THREADS"] = str(threads)
@@ -163,6 +227,7 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
     stdin_f = open(clauses_path) if clauses_path is not None else subprocess.PIPE
     p = subprocess.Popen(argv, stdin=stdin_f if clauses_path is not None else subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    _LIVE_ENGINES.append(p)
     oom = {"hit": False}
     timed = {"hit": False}
     if rss_cap_gb is not None or time_cap_s is not None:
@@ -206,6 +271,11 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
         # the engine died before draining stdin (watchdog kill or crash);
         # collect what it wrote
         out, err = p.communicate()
+    finally:
+        try:
+            _LIVE_ENGINES.remove(p)
+        except ValueError:
+            pass
     if clauses_path is not None:
         stdin_f.close()
     return _EngineResult(p.returncode, out, err, oom["hit"], timed["hit"])
@@ -359,10 +429,41 @@ def classify(ofn_path: str) -> dict:
         elif rbox_safe and el_route.is_el(clauses):
             out = el_route.classify(clauses)
         if out is None:
-            proc = _run_engine_adaptive(clauses_path, clauses)
-            if proc.returncode != 0:
-                raise RuntimeError(proc.stderr)
-            out = json.loads(proc.stdout)
+            # Portfolio (KM_ELC_PORTFOLIO=1): race the certified EL path
+            # (elc with the canonical-model completeness certificate,
+            # KM_ELC_CERT=2) against the context engine. Both produce sound
+            # AND complete answers (a failing certificate exits 3 and only
+            # the engine can win), so taking the first one preserves
+            # correctness; the certified path recovers near-EL ontologies the
+            # engine times out on without stealing any budget from the
+            # engine. The elc side runs under its own RSS cap
+            # (KM_ELC_PORT_MEM_GB, default 8 GiB) so the combined footprint
+            # stays under the job memcap.
+            elc_race = None
+            elc_out_path = None
+            if use_rust_el and clauses_path is not None \
+                    and os.environ.get("KM_ELC_PORTFOLIO") and not rbox_safe:
+                elc_env = dict(os.environ)
+                elc_env.setdefault("KM_ELC_CERT", "2")
+                # output to a file: certified answers can be hundreds of MB,
+                # which would deadlock an undrained pipe
+                fd, elc_out_path = tempfile.mkstemp(suffix=".elcrace.json")
+                elc_race = subprocess.Popen(
+                    [str(elc_bin())], stdin=open(clauses_path),
+                    stdout=os.fdopen(fd, "w"), stderr=subprocess.DEVNULL,
+                    text=True, env=elc_env)
+            try:
+                if elc_race is None:
+                    proc = _run_engine_adaptive(clauses_path, clauses)
+                    if proc.returncode != 0:
+                        raise RuntimeError(proc.stderr)
+                    out = json.loads(proc.stdout)
+                else:
+                    out = _race_adaptive_vs_elc(
+                        clauses_path, clauses, elc_race, elc_out_path)
+            finally:
+                if elc_out_path is not None and os.path.exists(elc_out_path):
+                    os.unlink(elc_out_path)
     finally:
         if clauses_path is not None and os.path.exists(clauses_path):
             os.unlink(clauses_path)

@@ -210,7 +210,10 @@ fn concept_of(a: &JAtom) -> Option<(&str, &JTerm)> {
 /// against the canonical model (the completeness certificate). Returns `None`
 /// only for an orphan existential-filler half-clause (a shape we don't model
 /// at all).
-fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>)> {
+fn to_nf(
+    clauses: &[JClause],
+    it: &mut Interner,
+) -> Option<(Nfs, Vec<JClause>, HashMap<u32, u32>)> {
     let mut nf1 = Vec::new();
     let mut nf2 = Vec::new();
     let mut nf3 = Vec::new();
@@ -503,8 +506,14 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>)> 
         residual.push(c.clone());
     }
 
-    // assemble NF3 (A ⊑ ∃R.B) from its two half-clauses
-    for ((sub, _fn), (role, filler)) in pending_ex.into_iter() {
+    // assemble NF3 (A ⊑ ∃R.B) from its two half-clauses; record each skolem
+    // function's filler node for the residual certificate (the canonical
+    // model interprets `f(x)` as the constant filler node). A skolem reused
+    // with conflicting fillers (never emitted by the frontend) is dropped
+    // from the map, so residuals mentioning it bail conservatively.
+    let mut skolem_filler: HashMap<u32, u32> = HashMap::default();
+    let mut skolem_ambiguous: HashSet<u32> = HashSet::default();
+    for ((sub, fnid), (role, filler)) in pending_ex.into_iter() {
         match role {
             Some(r) => {
                 let f = filler.unwrap_or(TOP);
@@ -512,9 +521,21 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>)> 
                 concept_names.insert(sub);
                 concept_names.insert(f);
                 nf3.push(Nf3 { sub, role: r, filler: f });
+                match skolem_filler.entry(fnid) {
+                    std::collections::hash_map::Entry::Occupied(e) if *e.get() != f => {
+                        skolem_ambiguous.insert(fnid);
+                    }
+                    std::collections::hash_map::Entry::Occupied(_) => {}
+                    std::collections::hash_map::Entry::Vacant(v) => {
+                        v.insert(f);
+                    }
+                }
             }
             None => return None, // filler with no role edge: shape we don't model
         }
+    }
+    for fnid in skolem_ambiguous {
+        skolem_filler.remove(&fnid);
     }
 
     Some((
@@ -530,6 +551,7 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>)> 
             role_names,
         },
         residual,
+        skolem_filler,
     ))
 }
 
@@ -860,11 +882,19 @@ enum RAtom {
 }
 
 /// A residual clause: `body -> head`, universally quantified over `nvars`
-/// variables, every term a plain variable.
+/// variables.  Skolem terms `f(x)` are compiled to *pinned* variables, fixed
+/// to the canonical node of the skolem's NF3 filler: the canonical model
+/// interprets every skolem function as the constant map to its filler node
+/// (consistent with the NF3 edges/memberships the completion materialises),
+/// which makes ≥n witness-distinctness clauses
+/// (`Q(x) ∧ f₀(x) ≈ f₁(x) → ⊥`) and other fun-term residuals checkable:
+/// distinct fillers are distinct domain elements.
 struct RClause {
     nvars: usize,
     body: Vec<RAtom>,
     head: Vec<RAtom>,
+    /// (variable index, canonical node) fixed before evaluation
+    pins: Vec<(usize, u32)>,
 }
 
 /// Compile the residual clauses for certificate checking. Returns `None` if
@@ -877,7 +907,21 @@ fn compile_residual(
     residual: &[JClause],
     it: &mut Interner,
     nfs: &mut Nfs,
+    skolem_filler: &HashMap<u32, u32>,
 ) -> Option<Vec<RClause>> {
+    let debug = std::env::var("KM_ELC_DEBUG").is_ok();
+    macro_rules! bail {
+        ($c:expr, $why:expr) => {{
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT uncheckable residual ({}): {}",
+                    $why,
+                    serde_json::to_string($c).unwrap_or_default()
+                );
+            }
+            return None;
+        }};
+    }
     // tiny per-clause var sets: linear scan beats hashing
     fn vid<'a>(vars: &mut Vec<&'a str>, name: &'a str) -> usize {
         if let Some(i) = vars.iter().position(|v| *v == name) {
@@ -889,53 +933,91 @@ fn compile_residual(
     let mut out = Vec::with_capacity(residual.len());
     for c in residual {
         let mut vars: Vec<&str> = Vec::new();
+        let mut pins: Vec<(usize, u32)> = Vec::new();
         let mut body = Vec::with_capacity(c.body.len());
         let mut head = Vec::with_capacity(c.head.len());
+        // a term: plain variable, or a skolem `f(x)` pinned to its filler node
+        macro_rules! term_v {
+            ($t:expr) => {
+                match $t {
+                    JTerm::Var { name } => vid(&mut vars, name),
+                    JTerm::Fun { function, arg } => {
+                        if !matches!(arg.as_ref(), JTerm::Var { .. }) {
+                            bail!(c, "nested fun term");
+                        }
+                        let fnid = it.intern(function);
+                        let filler = match skolem_filler.get(&fnid) {
+                            Some(&f) => f,
+                            None => bail!(c, "fun term without NF3 filler"),
+                        };
+                        let v = vid(&mut vars, function);
+                        if !pins.iter().any(|&(pv, _)| pv == v) {
+                            pins.push((v, filler));
+                        }
+                        v
+                    }
+                    _ => bail!(c, "ind/aux term"),
+                }
+            };
+        }
         for (atoms, dst, is_head) in [(&c.body, &mut body, false), (&c.head, &mut head, true)] {
             for a in atoms {
                 match a {
                     JAtom::Concept { concept, term } => {
-                        let v = match term {
-                            JTerm::Var { name } => vid(&mut vars, name),
-                            _ => return None,
-                        };
+                        let v = term_v!(term);
                         let cid = it.intern(concept);
                         nfs.concept_names.insert(cid);
                         dst.push(RAtom::C { cid, v });
                     }
                     JAtom::Role { role, source, target } => {
-                        let (s, t) = match (source, target) {
-                            (JTerm::Var { name: sn }, JTerm::Var { name: tn }) => {
-                                (vid(&mut vars, sn), vid(&mut vars, tn))
-                            }
-                            _ => return None,
-                        };
+                        let s = term_v!(source);
+                        let t = term_v!(target);
                         let rid = it.intern(role);
                         nfs.role_names.insert(rid);
                         dst.push(RAtom::R { rid, s, t });
                     }
                     JAtom::Eq { left, right } => {
-                        // an equality conclusion (number restriction) is
-                        // checkable: it holds only under identical bindings.
-                        // An equality HYPOTHESIS is not modelled.
-                        if !is_head {
-                            return None;
-                        }
-                        let (s, t) = match (left, right) {
-                            (JTerm::Var { name: ln }, JTerm::Var { name: rn }) => {
-                                (vid(&mut vars, ln), vid(&mut vars, rn))
-                            }
-                            _ => return None,
-                        };
+                        // An equality conclusion (number restriction) holds
+                        // only under identical bindings.  An equality
+                        // HYPOTHESIS is checkable when both sides are bound
+                        // by the time it is evaluated (pinned skolems or
+                        // variables generated by other body atoms) — the
+                        // bound-coverage check below guarantees that.
+                        let _ = is_head;
+                        let s = term_v!(left);
+                        let t = term_v!(right);
                         dst.push(RAtom::Eq { s, t });
                     }
                 }
             }
         }
+        // body equalities need both sides bound: by a pin or a body C/R atom
+        let mut coverable = vec![false; vars.len()];
+        for &(v, _) in &pins {
+            coverable[v] = true;
+        }
+        for a in &body {
+            match *a {
+                RAtom::C { v, .. } => coverable[v] = true,
+                RAtom::R { s, t, .. } => {
+                    coverable[s] = true;
+                    coverable[t] = true;
+                }
+                RAtom::Eq { .. } => {}
+            }
+        }
+        let eq_ok = body.iter().all(|a| match *a {
+            RAtom::Eq { s, t } => coverable[s] && coverable[t],
+            _ => true,
+        });
+        if !eq_ok {
+            bail!(c, "body equality over unbound variable");
+        }
         out.push(RClause {
             nvars: vars.len(),
             body,
             head,
+            pins,
         });
     }
     Some(out)
@@ -961,6 +1043,10 @@ fn cert_round(
     concept_names: &HashSet<u32>,
     sub_super: &[HashSet<u32>],
     edges: &[HashSet<(u32, u32)>],
+    // node identity modulo repair merges (fully compressed union-find): a
+    // merged node and its witness mirror are the SAME quotient element, so
+    // equalities must compare representatives, not raw ids
+    repr: Option<&[u32]>,
     budget: &mut u64,
     mut collect: Option<&mut Vec<(usize, Vec<u32>)>>,
     debug: bool,
@@ -1024,6 +1110,7 @@ fn cert_round(
         alive: &[bool],
         sub_super: &[HashSet<u32>],
         edges: &[HashSet<(u32, u32)>],
+        repr: Option<&[u32]>,
         members: &HashMap<u32, Vec<u32>>,
         edges_by_role: &HashMap<u32, Vec<(u32, u32)>>,
         empty_m: &Vec<u32>,
@@ -1045,7 +1132,7 @@ fn cert_round(
                     }
                     asg[free] = Some(nd);
                     if !join(
-                        rc, rci, order, depth, asg, nodes, alive, sub_super, edges, members,
+                        rc, rci, order, depth, asg, nodes, alive, sub_super, edges, repr, members,
                         edges_by_role, empty_m, empty_e, budget, collect,
                     ) {
                         asg[free] = None;
@@ -1060,7 +1147,13 @@ fn cert_round(
                 RAtom::R { rid, s, t } => {
                     edges[asg[s].unwrap() as usize].contains(&(rid, asg[t].unwrap()))
                 }
-                RAtom::Eq { s, t } => asg[s] == asg[t],
+                RAtom::Eq { s, t } => {
+                    let (a, b) = (asg[s].unwrap(), asg[t].unwrap());
+                    match repr {
+                        Some(r) => r[a as usize] == r[b as usize],
+                        None => a == b,
+                    }
+                }
             });
             if ok {
                 return true;
@@ -1081,7 +1174,7 @@ fn cert_round(
                         return true; // body unsatisfied: clause holds here
                     }
                     join(
-                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, members,
+                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr, members,
                         edges_by_role, empty_m, empty_e, budget, collect,
                     )
                 }
@@ -1093,7 +1186,7 @@ fn cert_round(
                         }
                         asg[v] = Some(nd);
                         if !join(
-                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges,
+                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr,
                             members, edges_by_role, empty_m, empty_e, budget, collect,
                         ) {
                             asg[v] = None;
@@ -1111,7 +1204,7 @@ fn cert_round(
                         return true;
                     }
                     join(
-                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, members,
+                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr, members,
                         edges_by_role, empty_m, empty_e, budget, collect,
                     )
                 }
@@ -1126,7 +1219,7 @@ fn cert_round(
                         }
                         asg[t] = Some(d);
                         if !join(
-                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges,
+                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr,
                             members, edges_by_role, empty_m, empty_e, budget, collect,
                         ) {
                             asg[t] = None;
@@ -1159,7 +1252,7 @@ fn cert_round(
                         asg[s] = Some(c);
                         asg[t] = Some(d);
                         if !join(
-                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges,
+                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr,
                             members, edges_by_role, empty_m, empty_e, budget, collect,
                         ) {
                             asg[s] = os;
@@ -1172,16 +1265,40 @@ fn cert_round(
                     true
                 }
             },
-            RAtom::Eq { .. } => unreachable!("eq in body rejected at compile"),
+            RAtom::Eq { s, t } => match (asg[s], asg[t]) {
+                // body equality hypothesis: both sides are bound here (the
+                // compile-time coverage check guarantees it) — unequal
+                // bindings falsify the body, so the clause holds
+                (Some(a), Some(b)) => {
+                    *budget = budget.saturating_sub(1);
+                    let eq = match repr {
+                        Some(r) => r[a as usize] == r[b as usize],
+                        None => a == b,
+                    };
+                    if !eq {
+                        return true;
+                    }
+                    join(
+                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr, members,
+                        edges_by_role, empty_m, empty_e, budget, collect,
+                    )
+                }
+                // unbound side: cannot evaluate — fail conservatively
+                _ => false,
+            },
         }
     }
 
     for (i, rc) in rcs.iter().enumerate() {
         // static atom order: bound-first greedy (atoms whose vars are already
         // bound act as filters; among generators prefer the smaller list).
+        // Pinned (skolem) variables start bound to their filler node.
         let mut remaining: Vec<usize> = (0..rc.body.len()).collect();
         let mut order: Vec<usize> = Vec::with_capacity(rc.body.len());
         let mut bound = vec![false; rc.nvars];
+        for &(v, _) in &rc.pins {
+            bound[v] = true;
+        }
         while !remaining.is_empty() {
             let pick = remaining
                 .iter()
@@ -1218,8 +1335,11 @@ fn cert_round(
             order.push(ai);
         }
         let mut asg: Vec<Option<u32>> = vec![None; rc.nvars];
+        for &(v, node) in &rc.pins {
+            asg[v] = Some(node);
+        }
         let ok = join(
-            rc, i, &order, 0, &mut asg, &nodes, &alive, sub_super, edges, &members,
+            rc, i, &order, 0, &mut asg, &nodes, &alive, sub_super, edges, repr, &members,
             &edges_by_role, &empty_m, &empty_e, budget, &mut collect,
         );
         if !ok {
@@ -1258,7 +1378,7 @@ fn cert_round(
 /// candidate extensions; exhausting it fails conservatively.
 fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> bool {
     let mut budget: u64 = 200_000_000;
-    cert_round(rcs, &nfs.concept_names, &st.sub_super, &st.edges, &mut budget, None, debug)
+    cert_round(rcs, &nfs.concept_names, &st.sub_super, &st.edges, None, &mut budget, None, debug)
 }
 
 /// Completeness certificate by MODEL REPAIR (pay-as-you-go upper bound).
@@ -1282,6 +1402,46 @@ fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> boo
 /// subsumptions, unsatisfiable classes, and consistency alike. Any other
 /// outcome fails conservatively (context-engine fallback). Never an
 /// approximation.
+/// Union-find representative with path halving.
+fn uf_find(repr: &mut [u32], mut x: u32) -> u32 {
+    while repr[x as usize] != x {
+        let p = repr[x as usize];
+        repr[x as usize] = repr[p as usize];
+        x = repr[x as usize];
+    }
+    x
+}
+
+/// Merge node `y` into node `x` in a repair-pass model: a violated all-eq
+/// head (an at-most restriction) forces the two bound elements to coincide.
+/// Memberships and outgoing edges of `y` move to the representative through
+/// the State API (so the EL closure re-runs over them), incoming edges are
+/// redirected via the reverse index, and `y` becomes a mirror of the
+/// representative (re-synced after each closure round) so every concept's
+/// canonical witness stays present in the domain.
+fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, y: u32) {
+    let a = uf_find(repr, x);
+    let b = uf_find(repr, y);
+    if a == b {
+        return;
+    }
+    repr[b as usize] = a;
+    merged.push(b);
+    let subs: Vec<u32> = st.sub_super[b as usize].iter().copied().collect();
+    for s in subs {
+        st.add_sub(a, s);
+    }
+    let outs: Vec<(u32, u32)> = st.edges[b as usize].iter().copied().collect();
+    for (r, d) in outs {
+        st.add_edge(a, r, d);
+    }
+    let ins: Vec<(u32, u32)> = std::mem::take(&mut st.in_edges[b as usize]);
+    for (src, r) in ins {
+        st.edges[src as usize].remove(&(r, b));
+        st.add_edge(src, r, a);
+    }
+}
+
 fn repair_certify(
     rcs: &[RClause],
     nfs: &Nfs,
@@ -1305,13 +1465,18 @@ fn repair_certify(
         // One shared work budget per pass across all of its rounds.
         let mut budget: u64 = 400_000_000;
         let mut adds: u64 = 0;
+        // at-most repairs merge nodes; merged ids mirror their representative
+        let mut repr: Vec<u32> = (0..n as u32).collect();
+        let mut merged: Vec<u32> = Vec::new();
         for round in 1..=MAX_ROUNDS {
             let mut viols: Vec<(usize, Vec<u32>)> = Vec::new();
+            let crep: Vec<u32> = (0..n as u32).map(|i| uf_find(&mut repr, i)).collect();
             let clean = cert_round(
                 rcs,
                 &nfs.concept_names,
                 &st.sub_super,
                 &st.edges,
+                Some(&crep),
                 &mut budget,
                 Some(&mut viols),
                 false,
@@ -1346,8 +1511,10 @@ fn repair_certify(
             }
             for (rci, asg) in &viols {
                 // The chosen disjunct: first/last addable head atom. An eq
-                // atom cannot be "made true" by adding facts; a clause whose
-                // head is all-eq is unrepairable.
+                // atom cannot be "made true" by adding facts — it is repaired
+                // by MERGING the two bound elements (the at-most semantics);
+                // a clause with an empty head and a satisfied body is a
+                // genuine ⊥-violation, unrepairable.
                 let head = &rcs[*rci].head;
                 let pick = if pol == 0 {
                     head.iter().find(|a| !matches!(a, RAtom::Eq { .. }))
@@ -1355,23 +1522,55 @@ fn repair_certify(
                     head.iter().rev().find(|a| !matches!(a, RAtom::Eq { .. }))
                 };
                 match pick {
-                    Some(&RAtom::C { cid, v }) => st.add_sub(asg[v], cid),
-                    Some(&RAtom::R { rid, s, t }) => st.add_edge(asg[s], rid, asg[t]),
-                    _ => {
-                        if debug {
-                            eprintln!(
-                                "KM_ELC_CERT repair pass {pol}: clause {rci} has no addable \
-                                 head atom"
-                            );
-                        }
-                        continue 'pass;
+                    Some(&RAtom::C { cid, v }) => {
+                        let nd = uf_find(&mut repr, asg[v]);
+                        st.add_sub(nd, cid);
                     }
+                    Some(&RAtom::R { rid, s, t }) => {
+                        let sn = uf_find(&mut repr, asg[s]);
+                        let tn = uf_find(&mut repr, asg[t]);
+                        st.add_edge(sn, rid, tn);
+                    }
+                    _ => match head.iter().find_map(|a| match *a {
+                        RAtom::Eq { s, t } => Some((s, t)),
+                        _ => None,
+                    }) {
+                        Some((s, t)) => {
+                            // an earlier merge in THIS round may already have
+                            // unified the pair (violations were enumerated
+                            // against the round-start state): nothing to do,
+                            // the next recheck confirms
+                            if uf_find(&mut repr, asg[s]) == uf_find(&mut repr, asg[t]) {
+                                continue;
+                            }
+                            merge_nodes(&mut st, &mut repr, &mut merged, asg[s], asg[t]);
+                        }
+                        None => {
+                            if debug {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pol}: clause {rci} violated \
+                                     with empty head (genuine inconsistency instance)"
+                                );
+                            }
+                            continue 'pass;
+                        }
+                    },
                 }
                 adds += 1;
             }
             // Re-close under the EL rules: the repaired structure must again
             // be a model of the EL clause set before the next recheck.
             run(idx, &mut st, &mut nf4_buf);
+            // Re-sync merged ids as mirrors of their (closed) representative,
+            // so every concept's canonical witness remains in the domain with
+            // exactly the representative's labels and edges.
+            for &b in &merged {
+                let a = uf_find(&mut repr, b);
+                if a != b {
+                    st.sub_super[b as usize] = st.sub_super[a as usize].clone();
+                    st.edges[b as usize] = st.edges[a as usize].clone();
+                }
+            }
         }
         if debug {
             eprintln!("KM_ELC_CERT repair pass {pol}: no convergence in {MAX_ROUNDS} rounds");
@@ -1492,14 +1691,14 @@ pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
 /// parallel test threads).
 fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<ElResult> {
     let mut it = Interner::new();
-    let (mut nfs, residual) = to_nf(clauses, &mut it)?;
+    let (mut nfs, residual, skolem_filler) = to_nf(clauses, &mut it)?;
     let rcs = if residual.is_empty() {
         Vec::new()
     } else {
         if cert == CertMode::Off {
             return None;
         }
-        match compile_residual(&residual, &mut it, &mut nfs) {
+        match compile_residual(&residual, &mut it, &mut nfs, &skolem_filler) {
             Some(r) => r,
             None => {
                 if debug {
