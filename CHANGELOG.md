@@ -4,6 +4,52 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Nominals Phase 2+3: Join, r-Succ (*), the Nom rule, and Lean certification
+
+Completes the ALCHOIQ calculus implementation behind `KM_NOMINALS` (Table 3 of
+arXiv:1805.01396; design + status in `docs/NOMINALS-CB.md`):
+
+- **Nom** (additional nominals): in the ground context, a hyper-match with
+  `σ(x) = o` whose head a-equalities instantiate to `y ≈ y` / `y ≈ f(o')` no
+  longer drops them as tautologies (the exact O+I+Q incompleteness) but
+  replaces them with `⋁_{k} y ≈ o'_k` over fresh interned additional nominals.
+  The disjunction width is `K + K''` (`K + 1` = max neighbour-variable index,
+  `K''` = distinct pinned `f(o')` terms): the certified covering bound is the
+  sum, and the paper's bare-`K` statement is too narrow whenever `K'' > K`.
+  Budgeted (`KM_NOM_BUDGET`, default 4096) with an explicit incompleteness
+  warning on exhaustion. Two enabling fixes: the ground context's Hyper now
+  considers the side clause at non-side body positions (given-clause
+  semantics — provably redundant elsewhere, the Nom trigger here), and the
+  symmetric-group strict pruning admits the equal-`y` assignment there.
+- **Join**: in-context resolution on ground atoms (cases 1+2 via new
+  ground-body/bridge indexes and a `pred_local` refire on ground maximal
+  heads; case 3 = provider over `x` + an `x ≈ o` bridge, fired from all three
+  arrival orders).
+- **r-Succ condition (*)**: pushes are blocked when a subsuming-modulo-merge
+  clause shows the element may itself be a nominal (defer to equality
+  reasoning).
+- **r-Pred pipeline**: per-atom multi-edge discharge (different `A_i` over
+  different individual-labelled edges of one source), verbatim `C_i` copies,
+  and no edge requirement for head individuals — the old head filter made
+  every Nom conclusion undeliverable.
+- **Lean (Phase 3)**: `lean/ContextCalculus/Nominals.lean` (sorry-free)
+  certifies soundness of all four rules and the grounded substitutions;
+  `nom_cover`/`nom_sound` prove the covering bound and the
+  conservative-extension soundness of Nom (the interpretation of the fresh
+  constants is constructed).
+- `owl_classify._run_engine`: the stdin writer thread raced
+  `communicate()`'s flush on fast engine exits (`ValueError: I/O operation on
+  closed file`); `communicate(input=…)` now owns the write.
+
+Validation: 61 + 16 cargo tests (4 new engine-level tests incl. the paper's
+Example 3 and a no-counting negative control); all six pipeline probes match
+HermiT (`nom1`, `nom2`, `nom_dl8`, `nom_neg1`, `nom_unsat`,
+`nom_oiq_funct` — the last is Example 3 as OWL, the first KM result that
+*requires* additional nominals). Inert without individuals: every new code
+path is gated on the ground context / ground atoms, and without `KM_NOMINALS`
+the reasoner drops individual clauses, so SRIQ-fragment output is unchanged.
+60-ontology corpus A/B with this binary pending.
+
 ### Chain-domain recognition validated corpus-wide; now DEFAULT ON
 
 Full sweep 5976 (`KM_CHAIN_DOMAIN=1`, all 591 gold-comparable ontologies):

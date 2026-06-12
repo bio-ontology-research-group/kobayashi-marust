@@ -163,9 +163,6 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
     stdin_f = open(clauses_path) if clauses_path is not None else subprocess.PIPE
     p = subprocess.Popen(argv, stdin=stdin_f if clauses_path is not None else subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
-    if clauses_path is None:
-        threading.Thread(target=lambda: (p.stdin.write(json.dumps({"clauses": clauses})),
-                                         p.stdin.close()), daemon=True).start()
     oom = {"hit": False}
     timed = {"hit": False}
     if rss_cap_gb is not None or time_cap_s is not None:
@@ -198,7 +195,17 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
                 time.sleep(0.1)
 
         threading.Thread(target=monitor, daemon=True).start()
-    out, err = p.communicate()
+    # When piping the clause set, let communicate() own the stdin write: a
+    # separate writer thread closing p.stdin races communicate()'s flush of the
+    # same pipe (`ValueError: I/O operation on closed file` on fast-exiting
+    # engine runs, e.g. small probes).
+    try:
+        out, err = p.communicate(input=None if clauses_path is not None
+                                 else json.dumps({"clauses": clauses}))
+    except (BrokenPipeError, ValueError):
+        # the engine died before draining stdin (watchdog kill or crash);
+        # collect what it wrote
+        out, err = p.communicate()
     if clauses_path is not None:
         stdin_f.close()
     return _EngineResult(p.returncode, out, err, oom["hit"], timed["hit"])

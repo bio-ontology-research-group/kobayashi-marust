@@ -109,7 +109,14 @@ fn sym_groups_ok(oc: &OntologyClause, exempt: &[Term], sigma: &CentralSubst) -> 
             };
             if let Some(p) = prev {
                 if *strict {
-                    if p >= t {
+                    // Ground context: an equal assignment to y is the Nom
+                    // trigger (the head equality becomes y≈y, which the Nom
+                    // rule replaces with the additional-nominal disjunction
+                    // rather than dropping as a tautology), so the
+                    // tautology-based strict pruning must not discard it.
+                    if sigma.allow_ground && p == t && t == Y {
+                        // keep
+                    } else if p >= t {
                         return false;
                     }
                 } else if p > t {
@@ -139,6 +146,62 @@ fn root_succ_form(p: &Pred) -> Option<(Pred, Term)> {
         }
         _ => None,
     }
+}
+
+/// Merge-form literal of the r-Succ side condition (*): `x ≈ o`, `y ≈ o`, or
+/// `x ≈ y` (canonical `Lit::eq` puts the larger term first: individuals sit
+/// above x above y).  A clause `Γ'' → Δ'' ∨ ⋁ L_i` of merge-form `L_i` with
+/// `Γ'' ⊆ Γ`, `Δ'' ⊆ Δ` *blocks* the r-Succ push of `Γ → Δ ∨ Aσ`: the
+/// context's element may itself be a nominal (or merge with its predecessor),
+/// so the calculus defers to equality reasoning instead of creating the edge.
+fn is_merge_lit(l: &Lit) -> bool {
+    matches!(*l, Lit::Eq { s, t } if (is_individual(s) && (t == X || t == Y)) || (s == X && t == Y))
+}
+
+/// r-Succ side condition (*): the push of the maximal head atom `a` from
+/// clause `c` (`Γ → Δ ∨ Aσ` with `Γ = c.body`, `Δ = c.head \ {Aσ}`) is
+/// *blocked* when the context holds a clause `Γ'' → Δ'' ∨ ⋁ L_i` with
+/// `Γ'' ⊆ Γ`, `Δ'' ⊆ Δ`, and every `L_i` a merge-form literal (≥ 1 of them) —
+/// the element may itself be a nominal or merge with its predecessor, so the
+/// calculus defers to equality reasoning instead of creating the edge.
+fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &Pred) -> bool {
+    'cand: for &mi in &ctx.merge_clauses {
+        let m = &arena[mi as usize];
+        if !m.body.iter().all(|b| c.body.contains(b)) {
+            continue;
+        }
+        let mut has_merge = false;
+        for l in &m.head {
+            if is_merge_lit(l) {
+                has_merge = true;
+                continue;
+            }
+            if *l == Lit::P(*a) || !c.head.contains(l) {
+                continue 'cand;
+            }
+        }
+        if has_merge {
+            return true;
+        }
+    }
+    false
+}
+
+/// `true` if the clause mentions the central variable x anywhere (such
+/// ground-context clauses are instantiated per individual-labelled edge by the
+/// Pred back-substitution, so they keep the per-edge propagation path).
+fn cc_mentions_x(c: &ContextClause) -> bool {
+    fn px(p: &Pred) -> bool {
+        match *p {
+            Pred::Concept { t, .. } => t == X,
+            Pred::Role { s, t, .. } => s == X || t == X,
+        }
+    }
+    c.body.iter().any(px)
+        || c.head.iter().any(|l| match *l {
+            Lit::P(p) => px(&p),
+            Lit::Eq { s, t } | Lit::Ineq { s, t } => s == X || t == X,
+        })
 }
 
 /// Collect the individuals mentioned by a predicate (decoding `f(o)`
@@ -385,6 +448,20 @@ struct Context {
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
+    /// Join rule (arXiv:1805.01396 Table 3): worked-off clauses indexed by
+    /// each *ground* body atom (the verbatim-copied `C_i` of Pred/r-Pred),
+    /// so a later-derived provider for that atom can resolve it.  Empty
+    /// without individuals — the rule is inert on the SRIQ fragment.
+    ground_body_index: HashMap<Pred, Vec<u32>>,
+    /// Join case 3: body-empty clauses with a maximal head literal `x ≈ o`,
+    /// keyed by the individual `o` (the bridge premise `Γ' → Δ'' ∨ x ≈ o`).
+    bridge_index: HashMap<Term, Vec<u32>>,
+    /// r-Succ side condition (*): worked-off clauses whose head contains a
+    /// merge-form literal (`x ≈ o`, `y ≈ o`, `x ≈ y`) — the candidates that
+    /// can block an r-Succ push (deferring to equality reasoning when this
+    /// context's element may itself be a nominal or merge with its
+    /// predecessor).
+    merge_clauses: Vec<u32>,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
     /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
@@ -422,6 +499,9 @@ impl Context {
             succ_pool: Vec::new(),
             succ_hwm: 0,
             seeded_inds: HashSet::new(),
+            ground_body_index: HashMap::new(),
+            bridge_index: HashMap::new(),
+            merge_clauses: Vec::new(),
             dirty: true,
         }
     }
@@ -465,6 +545,27 @@ impl Context {
                 self.head_lit_index.entry(l).or_default().push(cid);
             }
         }
+        // nominal-calculus indexes (all empty without individuals)
+        for p in &c.body {
+            if p.is_ground() {
+                let e = self.ground_body_index.entry(*p).or_default();
+                if !e.contains(&cid) {
+                    e.push(cid);
+                }
+            }
+        }
+        if c.body.is_empty() {
+            for &l in &c.max_head {
+                if let Lit::Eq { s, t } = l {
+                    if is_individual(s) && t == X {
+                        self.bridge_index.entry(s).or_default().push(cid);
+                    }
+                }
+            }
+        }
+        if c.head.iter().any(is_merge_lit) {
+            self.merge_clauses.push(cid);
+        }
     }
 
     /// Rebuild every `worked_off` index from scratch.  Called after
@@ -476,6 +577,9 @@ impl Context {
         self.head_role_index.clear();
         self.head_lit_index.clear();
         self.empty_head_wo.clear();
+        self.ground_body_index.clear();
+        self.bridge_index.clear();
+        self.merge_clauses.clear();
         for k in 0..self.worked_off.len() {
             let cid = self.worked_off[k];
             self.index_clause(arena, cid);
@@ -715,6 +819,27 @@ pub struct Engine {
     /// content hash -> candidate arena ids, per domain (exact-compare verified)
     cc_intern_idx: [HashMap<u64, Vec<u32>>; 2],
     pub dropped_unsupported: usize,
+    /// Nom rule (arXiv:1805.01396 Table 3): `K`, where `K + 1` is the largest
+    /// neighbour-variable index `i` (of `z_i`) over the whole ontology — the
+    /// width of the additional-nominal disjunction `⋁_{i=1}^K y ≈ o'_{ρ·S^i}`.
+    /// 0 when the ontology has at most one neighbour variable per clause (the
+    /// Nom preconditions then cannot arise).
+    nom_k: usize,
+    /// Additional-nominal interner: (parent individual `o`, role `S`, edge
+    /// orientation `S(o,y)` vs `S(y,o)`, index `1..=K`) → fresh individual id
+    /// (the nominal label `ρ·S^i`).  Allocation order extends labels, so the
+    /// id order satisfies the Def-3 label-monotonicity `o_ρ·σ > o_ρ`.
+    /// Interior mutability: allocation happens inside the otherwise read-only
+    /// Hyper resolvent build (single-threaded engine, never shared).
+    nom_table: std::cell::RefCell<HashMap<(Term, Iri, bool, u16), Term>>,
+    /// next fresh individual id (starts above every input individual)
+    nom_next: std::cell::Cell<i32>,
+    /// Additional-nominal budget (`KM_NOM_BUDGET`, default 4096).  The Nom rule
+    /// is the doubly-exponential source of the calculus; on exhaustion further
+    /// Nom conclusions are dropped with an explicit warning (sound, possibly
+    /// incomplete — never silent).
+    nom_budget: usize,
+    nom_truncated: std::cell::Cell<bool>,
     /// instrumentation counters (only read under KM_STATS)
     stat_propagate: u64,
     stat_pred_checks: u64,
@@ -776,6 +901,50 @@ impl Engine {
             }
             ont.clauses.push(c);
         }
+        // Nom-rule parameters: K + 1 = the largest z_i index over the ontology,
+        // and fresh additional nominals are allocated above every input
+        // individual id (so the term/label order extends allocation order).
+        let mut max_z: i32 = 0;
+        let mut max_ind: i32 = 0;
+        {
+            let mut see = |t: Term| {
+                if is_neighbour(t) && t != Y {
+                    max_z = max_z.max(-t - 1);
+                } else if is_individual(t) {
+                    max_ind = max_ind.max(t);
+                } else if is_comp(t) {
+                    max_ind = max_ind.max(comp_parts(t).1);
+                }
+            };
+            for c in &ont.clauses {
+                for p in &c.body {
+                    match *p {
+                        Pred::Concept { t, .. } => see(t),
+                        Pred::Role { s, t, .. } => {
+                            see(s);
+                            see(t);
+                        }
+                    }
+                }
+                for l in &c.head {
+                    match *l {
+                        Lit::P(Pred::Concept { t, .. }) => see(t),
+                        Lit::P(Pred::Role { s, t, .. }) => {
+                            see(s);
+                            see(t);
+                        }
+                        Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                            see(s);
+                            see(t);
+                        }
+                    }
+                }
+            }
+        }
+        let nom_budget = std::env::var("KM_NOM_BUDGET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(4096);
         Engine {
             sig,
             ont,
@@ -794,6 +963,11 @@ impl Engine {
             cc_arena: [Vec::new(), Vec::new()],
             cc_intern_idx: [HashMap::new(), HashMap::new()],
             dropped_unsupported: dropped,
+            nom_k: (max_z - 1).max(0) as usize,
+            nom_table: std::cell::RefCell::new(HashMap::new()),
+            nom_next: std::cell::Cell::new(max_ind + 1),
+            nom_budget,
+            nom_truncated: std::cell::Cell::new(false),
             stat_propagate: 0,
             stat_pred_checks: 0,
             stat_succ_scans: 0,
@@ -1117,6 +1291,24 @@ impl Engine {
                                     if self.add_clause(id, r) && prof { nadded += 1; }
                                 }
                             }
+                        } else if p.is_ground() {
+                            // Join via the Pred pipeline (nominal calculus): a
+                            // ground maximal head atom resolves the verbatim-
+                            // copied ground body atoms (C_i) of neighbour pred
+                            // clauses, which the function-term refire above
+                            // never revisits.
+                            let results = self.pred_local(id, &clause, *p, root);
+                            if prof { npred += results.len() as u64; }
+                            for r in results {
+                                if self.add_clause(id, r) && prof { nadded += 1; }
+                            }
+                            if self.equality {
+                                let results = self.eq_from_pred(id, &clause, *max, root);
+                                if prof { neqp += results.len() as u64; }
+                                for r in results {
+                                    if self.add_clause(id, r) && prof { nadded += 1; }
+                                }
+                            }
                         }
                     }
                     Lit::Eq { .. } if self.equality => {
@@ -1146,6 +1338,14 @@ impl Engine {
             if self.equality && clause.head.iter().filter(|l| matches!(l, Lit::Eq { .. })).count() >= 2 {
                 let results = self.factor(&clause, root);
                 if prof { nfact += results.len() as u64; }
+                for r in results {
+                    if self.add_clause(id, r) && prof { nadded += 1; }
+                }
+            }
+            // Join rule (nominal calculus): in-context resolution on ground
+            // atoms; no-op (empty indexes) without individuals.
+            {
+                let results = self.join(id, &clause, root);
                 for r in results {
                     if self.add_clause(id, r) && prof { nadded += 1; }
                 }
@@ -1249,6 +1449,21 @@ impl Engine {
                             }
                         }
                     }
+                    // Ground context: the side clause is also a candidate at
+                    // non-side positions (given-clause semantics, S_v ∪ {C}).
+                    // Elsewhere this self-pairing is provably redundant — two
+                    // distinct max heads yield a resolvent the side clause
+                    // subsumes, the same head twice instantiates a head
+                    // equality to a tautology — but in the ground context the
+                    // same-head pair `S(o,y), S(o,y)` instantiates `z_i ≈ z_j`
+                    // to `y ≈ y`, the Nom-rule trigger, which must fire.
+                    if self.ground_ctx == Some(id) {
+                        for (p, _) in side.max_head_predicates() {
+                            if can_unify(&oc.body[i], &p) {
+                                v.push((usize::MAX, p));
+                            }
+                        }
+                    }
                     if v.is_empty() {
                         ok = false;
                         break;
@@ -1325,6 +1540,33 @@ impl Engine {
         }
     }
 
+    /// The additional nominal `o'_{ρ·S^k}` for parent individual `o` (label ρ),
+    /// role `S`, edge orientation `fwd` (`S(o,y)` vs `S(y,o)`), and index `k`
+    /// (Nom rule).  Interned: re-firing Nom with the same parameters reuses the
+    /// same individual.  `None` when the budget (or the individual id range) is
+    /// exhausted — reported once, never silent.
+    fn nom_term(&self, o: Term, role: Iri, fwd: bool, k: u16) -> Option<Term> {
+        let key = (o, role, fwd, k);
+        if let Some(&t) = self.nom_table.borrow().get(&key) {
+            return Some(t);
+        }
+        let next = self.nom_next.get();
+        if self.nom_table.borrow().len() >= self.nom_budget || next >= FTERM_BASE {
+            if !self.nom_truncated.replace(true) {
+                eprintln!(
+                    "WARNING: kobayashi-marust additional-nominal budget ({}) exhausted; \
+                     further Nom conclusions dropped — classification may be incomplete.",
+                    self.nom_budget
+                );
+            }
+            return None;
+        }
+        self.nom_next.set(next + 1);
+        let t = ind_term(next);
+        self.nom_table.borrow_mut().insert(key, t);
+        Some(t)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn build_hyper_resolvent(
         &self,
@@ -1336,12 +1578,47 @@ impl Engine {
         idxs: &[usize],
         root: bool,
     ) -> Option<ContextClause> {
-        let _ = id;
+        // Nom rule (arXiv:1805.01396 Table 3): in the ground context with
+        // σ(x) = o, head a-equalities instantiating to `y ≈ y` or `y ≈ f(o')`
+        // constrain the *unnamed predecessors* of o (the premise clauses come
+        // from different r-Succ senders).  Dropping `y ≈ y` as a tautology —
+        // the pre-nominal behaviour — loses exactly that constraint; instead
+        // the whole group is replaced by `⋁_{k=1}^K y ≈ o'_{ρ·S^k}` over fresh
+        // additional nominals, where S is the role of a matched `S(o,y)` /
+        // `S(y,o)` premise atom.  Only fires when nominals, inverse roles and
+        // number restrictions interact; inert otherwise.
+        let ground_o = if self.ground_ctx == Some(id) {
+            sigma.get(X).filter(|t| is_individual(*t))
+        } else {
+            None
+        };
         let subst = |t: Term| sigma.apply(t);
         // head: ontology head substituted, filtered
         let mut head: Vec<Lit> = Vec::new();
+        let mut nom_pending = false;
+        // Distinct `f(o')` right-hand terms among the replaced `y ≈ f(o')`
+        // literals (K''): an anonymous predecessor may be pinned to any of
+        // those values, and each needs its own additional nominal to cover
+        // it.  The Table-3 statement uses K disjuncts and its soundness proof
+        // K' = max(K, K''); the bound with a direct pigeonhole proof (any
+        // n_y distinct candidates outside the pinned values violate the
+        // counting clause, so |candidates| ≤ (n_y − 1) + K'' ≤ K + K'') is
+        // the SUM, which is what the Lean certification proves — so the
+        // engine emits K + K'' disjuncts (weaker conclusions are sound).
+        let mut nom_rhs: Vec<Term> = Vec::new();
         for l in &oc.head {
             let ls = l.apply(&subst);
+            if ground_o.is_some() {
+                if let Lit::Eq { s, t } = ls {
+                    if (s == Y && t == Y) || (is_comp(s) && t == Y) {
+                        nom_pending = true;
+                        if is_comp(s) && !nom_rhs.contains(&s) {
+                            nom_rhs.push(s);
+                        }
+                        continue;
+                    }
+                }
+            }
             if ls.is_valid_equation() {
                 return None;
             }
@@ -1354,6 +1631,32 @@ impl Engine {
                 }
             }
             head.push(ls);
+        }
+        if nom_pending {
+            let o = ground_o.unwrap();
+            let k_eff = self.nom_k + nom_rhs.len();
+            // The matched premise atom S(o,y) / S(y,o) supplies the role label.
+            let mut labelled = false;
+            'outer: for i in 0..candidates.len() {
+                let (_, matched) = candidates[i][idxs[i]];
+                if let Pred::Role { iri, s, t } = matched {
+                    let fwd = s == o && t == Y;
+                    let bwd = t == o && s == Y;
+                    if fwd || bwd {
+                        for k in 1..=k_eff as u16 {
+                            head.push(Lit::eq(Y, self.nom_term(o, iri, fwd, k)?));
+                        }
+                        labelled = true;
+                        break 'outer;
+                    }
+                }
+            }
+            if !labelled {
+                // No connecting role premise: the y-equality cannot be
+                // expressed against additional nominals; the conclusion
+                // degenerates to the pre-nominal tautology drop.
+                return None;
+            }
         }
         // plus each candidate clause's head minus the matched predicate
         let arena = &self.cc_arena[root as usize];
@@ -1474,6 +1777,287 @@ impl Engine {
         }
         let head = self.filter_head(head)?;
         Some(ContextClause::new(body, head, root, &self.sig))
+    }
+
+    /// Join cases 1+2 conclusion: resolve the ground body atom `a` of
+    /// `consumer` against `provider` (which has `a` maximal in its head):
+    /// `Γ ∧ Γ' → Δ ∨ Δ' ∨ Δ''`.
+    fn join_resolvent(
+        &self,
+        consumer: &ContextClause,
+        a: Pred,
+        provider: &ContextClause,
+        root: bool,
+    ) -> Option<ContextClause> {
+        let body: Vec<Pred> = consumer
+            .body
+            .iter()
+            .filter(|p| **p != a)
+            .chain(provider.body.iter())
+            .copied()
+            .collect();
+        let mut head: Vec<Lit> = consumer.head.clone();
+        for l in &provider.head {
+            if *l != Lit::P(a) {
+                head.push(*l);
+            }
+        }
+        let head = self.filter_head(head)?;
+        let c = ContextClause::new(body, head, root, &self.sig);
+        if c.is_head_tautology() {
+            return None;
+        }
+        Some(c)
+    }
+
+    /// Join case 3 conclusion: discharge the ground body atom `a = A'{x↦o}` of
+    /// `consumer` via the body-empty `provider` (`⊤ → Δ' ∨ A'`) and the
+    /// body-empty `bridge` (`⊤ → Δ'' ∨ x ≈ o`): `Γ → Δ ∨ Δ' ∨ Δ''`.
+    fn join_resolvent3(
+        &self,
+        consumer: &ContextClause,
+        a: Pred,
+        provider: &ContextClause,
+        aprime: Pred,
+        bridge: &ContextClause,
+        o: Term,
+        root: bool,
+    ) -> Option<ContextClause> {
+        let body: Vec<Pred> = consumer.body.iter().filter(|p| **p != a).copied().collect();
+        let mut head: Vec<Lit> = consumer.head.clone();
+        for l in &provider.head {
+            if *l != Lit::P(aprime) {
+                head.push(*l);
+            }
+        }
+        let bl = Lit::Eq { s: o, t: X };
+        for l in &bridge.head {
+            if *l != bl {
+                head.push(*l);
+            }
+        }
+        let head = self.filter_head(head)?;
+        let c = ContextClause::new(body, head, root, &self.sig);
+        if c.is_head_tautology() {
+            return None;
+        }
+        Some(c)
+    }
+
+    /// Join case 3 firings for one ground body atom `a` of `consumer`: each
+    /// way of writing `a = A'{x↦o}` (with `A'` a plain x-form, no composite
+    /// terms) is tried against the indexed bridges `⊤ → Δ'' ∨ x ≈ o` and the
+    /// body-empty providers with `A'` maximal.
+    fn join_case3_for(
+        &self,
+        ctx: &Context,
+        arena: &[ContextClause],
+        consumer: &ContextClause,
+        a: Pred,
+        root: bool,
+        out: &mut Vec<ContextClause>,
+    ) {
+        let mut variants: Vec<(Pred, Term)> = Vec::new();
+        match a {
+            Pred::Concept { iri, t } if is_individual(t) => {
+                variants.push((Pred::Concept { iri, t: X }, t));
+            }
+            Pred::Role { iri, s, t } if is_individual(s) && is_individual(t) => {
+                variants.push((Pred::Role { iri, s: X, t }, s));
+                variants.push((Pred::Role { iri, s, t: X }, t));
+                if s == t {
+                    variants.push((Pred::Role { iri, s: X, t: X }, s));
+                }
+            }
+            _ => {}
+        }
+        for (aprime, o) in variants {
+            let bridges = match ctx.bridge_index.get(&o) {
+                Some(b) => b,
+                None => continue,
+            };
+            let cands = match aprime {
+                Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
+                Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+            };
+            let cands = match cands {
+                Some(c) => c,
+                None => continue,
+            };
+            for &pi in cands {
+                let pcl = &arena[pi as usize];
+                if !pcl.body.is_empty() {
+                    continue; // Γ' = ⊤ required
+                }
+                if !pcl.max_head_predicates().any(|(p, _)| p == aprime) {
+                    continue;
+                }
+                for &bi in bridges {
+                    if bi == pi {
+                        continue;
+                    }
+                    let bcl = &arena[bi as usize];
+                    if let Some(r) =
+                        self.join_resolvent3(consumer, a, pcl, aprime, bcl, o, root)
+                    {
+                        out.push(r);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Join rule (arXiv:1805.01396 Table 3): in-context resolution on a ground
+    /// atom.  Cases 1+2 resolve a clause `A ∧ Γ → Δ` (ground body atom `A`,
+    /// arising from the verbatim-copied `C_i` of Pred/r-Pred) against a clause
+    /// with `A` maximal in its head; case 3 discharges `A = A'{x↦o}` via a
+    /// provider over `x` and an `x ≈ o` bridge.  Fired at work-off from every
+    /// arrival order (consumer, provider, or bridge last).  Inert without
+    /// individuals: all the indexes involved are then empty.
+    fn join(&self, id: usize, side: &ContextClause, root: bool) -> Vec<ContextClause> {
+        let mut out = Vec::new();
+        let ctx = &self.contexts[id];
+        if ctx.ground_body_index.is_empty() && ctx.bridge_index.is_empty() {
+            return out;
+        }
+        let arena = &self.cc_arena[root as usize];
+        // (a) `side` as provider: a maximal ground head atom resolves the
+        // ground body atom of every indexed consumer.
+        for (p, _) in side.max_head_predicates() {
+            if p.is_ground() {
+                if let Some(consumers) = ctx.ground_body_index.get(&p) {
+                    for &ci in consumers {
+                        if let Some(r) = self.join_resolvent(&arena[ci as usize], p, side, root) {
+                            out.push(r);
+                        }
+                    }
+                }
+            }
+        }
+        // (b) `side` as consumer: each ground body atom resolves against
+        // worked-off providers with that atom maximal, or via case 3.
+        for &a in side.body.iter().filter(|p| p.is_ground()) {
+            let cands = match a {
+                Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
+                Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+            };
+            if let Some(cands) = cands {
+                for &ci in cands {
+                    let c = &arena[ci as usize];
+                    if c.max_head_predicates().any(|(p, _)| p == a) {
+                        if let Some(r) = self.join_resolvent(side, a, c, root) {
+                            out.push(r);
+                        }
+                    }
+                }
+            }
+            self.join_case3_for(ctx, arena, side, a, root, &mut out);
+        }
+        // (c) `side` as a late-arriving case-3 bridge or provider.
+        if side.body.is_empty() {
+            for &l in &side.max_head {
+                match l {
+                    Lit::Eq { s, t } if is_individual(s) && t == X => {
+                        // bridge arrival: complete triples over individual s
+                        let o = s;
+                        for (atom, consumers) in &ctx.ground_body_index {
+                            let mut inds: Vec<Term> = Vec::new();
+                            pred_inds(atom, &mut inds);
+                            if !inds.contains(&o) {
+                                continue;
+                            }
+                            for &ci in consumers {
+                                let consumer = &arena[ci as usize];
+                                // re-run case 3 for this consumer/atom against
+                                // all bridges (now including `side`, which is
+                                // not yet indexed): inline the variant loop
+                                // with `side` as the bridge.
+                                let mut variants: Vec<(Pred, Term)> = Vec::new();
+                                match *atom {
+                                    Pred::Concept { iri, t } if t == o => {
+                                        variants.push((Pred::Concept { iri, t: X }, o));
+                                    }
+                                    Pred::Role { iri, s: rs, t: rt }
+                                        if is_individual(rs) && is_individual(rt) =>
+                                    {
+                                        if rs == o {
+                                            variants.push((Pred::Role { iri, s: X, t: rt }, o));
+                                        }
+                                        if rt == o {
+                                            variants.push((Pred::Role { iri, s: rs, t: X }, o));
+                                        }
+                                        if rs == o && rt == o {
+                                            variants.push((Pred::Role { iri, s: X, t: X }, o));
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                for (aprime, _) in variants {
+                                    let pcands = match aprime {
+                                        Pred::Concept { iri, .. } => {
+                                            ctx.head_concept_index.get(&iri)
+                                        }
+                                        Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                                    };
+                                    if let Some(pcands) = pcands {
+                                        for &pi in pcands {
+                                            let pcl = &arena[pi as usize];
+                                            if !pcl.body.is_empty()
+                                                || !pcl
+                                                    .max_head_predicates()
+                                                    .any(|(p, _)| p == aprime)
+                                            {
+                                                continue;
+                                            }
+                                            if let Some(r) = self.join_resolvent3(
+                                                consumer, *atom, pcl, aprime, side, o, root,
+                                            ) {
+                                                out.push(r);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Lit::P(p) if !p.is_ground() && p.is_function_free() => {
+                        // provider arrival: for each indexed bridge individual
+                        // o, `p{x↦o}` may be a consumer's ground body atom.
+                        let mentions_x = match p {
+                            Pred::Concept { t, .. } => t == X,
+                            Pred::Role { s, t, .. } => s == X || t == X,
+                        };
+                        if !mentions_x {
+                            continue;
+                        }
+                        let bridge_os: Vec<Term> = ctx.bridge_index.keys().copied().collect();
+                        for o in bridge_os {
+                            let a = p.apply(&|t| if t == X { o } else { t });
+                            if !a.is_ground() {
+                                continue;
+                            }
+                            let consumers = match ctx.ground_body_index.get(&a) {
+                                Some(c) => c,
+                                None => continue,
+                            };
+                            for &bi in &ctx.bridge_index[&o] {
+                                let bcl = &arena[bi as usize];
+                                for &ci in consumers {
+                                    let consumer = &arena[ci as usize];
+                                    if let Some(r) = self
+                                        .join_resolvent3(consumer, a, side, p, bcl, o, root)
+                                    {
+                                        out.push(r);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
     }
 
     /// Factor rule (Table 2): from a clause whose head contains two equalities
@@ -1822,7 +2406,9 @@ impl Engine {
                         new_succ.push((p, !multi.contains(&p.max_term())));
                     } else if Some(id) != self.ground_ctx {
                         if let Some((yform, o)) = root_succ_form(&p) {
-                            if !ctx.pushed_succ.contains(&yform) {
+                            if !ctx.pushed_succ.contains(&yform)
+                                && !rsucc_blocked(ctx, arena, c, &p)
+                            {
                                 ground_succ.push((yform, o));
                             }
                         }
@@ -1978,9 +2564,73 @@ impl Engine {
                     (e, pushed, pushed.len() > seen)
                 })
                 .collect();
+            // Distinct source contexts and per-source freshness for the
+            // ground-sender (r-Pred) path: a source is dirty when any of its
+            // individual-labelled edges gained a pushed predicate.
+            let mut sources: Vec<(usize, Term, bool)> = Vec::new();
+            if ground_sender {
+                for (e, _, dirty) in &edges {
+                    match sources.iter_mut().find(|(u, _, _)| *u == e.0) {
+                        Some(s) => {
+                            s.2 |= *dirty;
+                            if e.1 < s.1 {
+                                s.1 = e.1; // smallest label as the stable representative
+                            }
+                        }
+                        None => sources.push((e.0, e.1, *dirty)),
+                    }
+                }
+            }
             for (i, &ci) in ctx.pred_pool.iter().enumerate() {
                 let c = &arena[ci as usize];
                 let new_clause = i >= hwm;
+                // r-Pred (ground sender, x-free clauses): each body atom may be
+                // discharged over a DIFFERENT individual-labelled edge of the
+                // same source u (the paper's ⟨u, v_r, o_i⟩ per A_i), or — when
+                // ground — copied verbatim (the C_i) provided u announced its
+                // individuals.  Head individuals (e.g. Nom's fresh additional
+                // nominals) need no edge: requiring one made every Nom
+                // conclusion undeliverable.  Clauses mentioning x keep the
+                // per-edge path below: their x is instantiated by the edge
+                // label, so each edge yields a different conclusion.
+                if ground_sender && !cc_mentions_x(c) {
+                    for &(u, label, dirty_u) in &sources {
+                        if !new_clause && !dirty_u {
+                            continue;
+                        }
+                        pred_checks += 1;
+                        let mut ok = true;
+                        for b in &c.body {
+                            let mut inds: Vec<Term> = Vec::new();
+                            pred_inds(b, &mut inds);
+                            let discharged = inds.iter().any(|o| {
+                                ctx.predecessors
+                                    .get(&(u, *o))
+                                    .map_or(false, |s| s.contains(b))
+                            });
+                            let copied = b.is_ground()
+                                && !inds.is_empty()
+                                && inds
+                                    .iter()
+                                    .all(|o| ctx.predecessors.contains_key(&(u, *o)));
+                            if !(discharged || copied) {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        if ok {
+                            let edge = (u, label);
+                            let sent = ctx
+                                .pushed_pred
+                                .get(&edge)
+                                .map_or(false, |s| s.contains(&(i as u32)));
+                            if !sent {
+                                to_send.push((edge, i as u32));
+                            }
+                        }
+                    }
+                    continue;
+                }
                 for (edge, pushed, dirty_edge) in &edges {
                     // (old clause, unchanged edge): already checked at this
                     // edge's pushed-length — skip.
@@ -2683,4 +3333,182 @@ impl Engine {
         self.contexts.len()
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cx(iri: Iri, t: Term) -> Pred {
+        Pred::Concept { iri, t }
+    }
+    fn rl(iri: Iri, s: Term, t: Term) -> Pred {
+        Pred::Role { iri, s, t }
+    }
+
+    fn supers_of(e: &Engine, name: &str) -> Vec<String> {
+        e.subsumptions()
+            .into_iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v)
+            .unwrap_or_default()
+    }
+
+    /// arXiv:1805.01396 Example 3 — the O+I+Q interaction that needs the Nom
+    /// rule (additional nominals): A ⊑ ∃R.B1 ⊓ ∃R.B2, every B1/B2 element has
+    /// an incoming S-edge from o, S is functional, ∃R.(B1⊓B2) ⊑ C.  Both
+    /// anonymous R-successors of an A-element are S-successors of o, hence
+    /// merged by functionality into one element (the additional nominal),
+    /// which is then B1 ⊓ B2, so A ⊑ C.
+    #[test]
+    fn nom_rule_oiq_example3() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b1 = sig.concept("B1");
+        let b2 = sig.concept("B2");
+        let c = sig.concept("C");
+        let rr = sig.role("R");
+        let ss = sig.role("S");
+        let o = ind_term(1);
+        let f = fterm(1);
+        let g = fterm(2);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(rr, X, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b1, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(rr, X, g))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b2, g))]),
+            OntologyClause::new(vec![cx(b1, X)], vec![Lit::P(rl(ss, o, X))]),
+            OntologyClause::new(vec![cx(b2, X)], vec![Lit::P(rl(ss, o, X))]),
+            // functionality of S: S(x,z1) ∧ S(x,z2) → z1 ≈ z2
+            OntologyClause::new(
+                vec![rl(ss, X, zvar(1)), rl(ss, X, zvar(2))],
+                vec![Lit::eq(zvar(1), zvar(2))],
+            ),
+            // ∃R.(B1 ⊓ B2) ⊑ C
+            OntologyClause::new(
+                vec![rl(rr, zvar(1), X), cx(b1, X), cx(b2, X)],
+                vec![Lit::P(cx(c, zvar(1)))],
+            ),
+        ];
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run_for(&[a]);
+        let sups = supers_of(&e, "A");
+        assert!(
+            sups.contains(&"C".to_string()),
+            "expected A ⊑ C via the Nom rule, got {:?}",
+            sups
+        );
+        assert!(!e.inconsistent());
+    }
+
+    /// Negative control for Nom: without the functionality clause the two
+    /// successors need not merge, so A ⊑ C must NOT be derived.
+    #[test]
+    fn nom_rule_no_counting_no_merge() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b1 = sig.concept("B1");
+        let b2 = sig.concept("B2");
+        let c = sig.concept("C");
+        let rr = sig.role("R");
+        let ss = sig.role("S");
+        let o = ind_term(1);
+        let f = fterm(1);
+        let g = fterm(2);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(rr, X, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b1, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(rr, X, g))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b2, g))]),
+            OntologyClause::new(vec![cx(b1, X)], vec![Lit::P(rl(ss, o, X))]),
+            OntologyClause::new(vec![cx(b2, X)], vec![Lit::P(rl(ss, o, X))]),
+            OntologyClause::new(
+                vec![rl(rr, zvar(1), X), cx(b1, X), cx(b2, X)],
+                vec![Lit::P(cx(c, zvar(1)))],
+            ),
+        ];
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run_for(&[a]);
+        let sups = supers_of(&e, "A");
+        assert!(
+            !sups.contains(&"C".to_string()),
+            "A ⊑ C must not be derived without functionality, got {:?}",
+            sups
+        );
+        assert!(!e.inconsistent());
+    }
+
+    /// Filler-merge through a nominal (the Phase-1 witness, engine-level):
+    /// A ⊑ ∃r.({o}⊓B), A ⊑ ∃r.({o}⊓C), B⊓C ⊑ E, ∃r.E ⊑ G entails A ⊑ G.
+    /// Clausified with individuals as constants (DL8 for the {o} conjuncts:
+    /// the filler definers imply x ≈ o).
+    #[test]
+    fn nominal_filler_merge() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let ee = sig.concept("E");
+        let g = sig.concept("G");
+        let d1 = sig.concept("__d1");
+        let d2 = sig.concept("__d2");
+        let r = sig.role("r");
+        let o = ind_term(1);
+        let f1 = fterm(1);
+        let f2 = fterm(2);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(d1, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f2))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(d2, f2))]),
+            // definers: __d1 ⊑ {o} ⊓ B, __d2 ⊑ {o} ⊓ C
+            OntologyClause::new(vec![cx(d1, X)], vec![Lit::eq(X, o)]),
+            OntologyClause::new(vec![cx(d1, X)], vec![Lit::P(cx(b, X))]),
+            OntologyClause::new(vec![cx(d2, X)], vec![Lit::eq(X, o)]),
+            OntologyClause::new(vec![cx(d2, X)], vec![Lit::P(cx(c, X))]),
+            OntologyClause::new(vec![cx(b, X), cx(c, X)], vec![Lit::P(cx(ee, X))]),
+            OntologyClause::new(
+                vec![rl(r, X, zvar(1)), cx(ee, zvar(1))],
+                vec![Lit::P(cx(g, X))],
+            ),
+        ];
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run_for(&[a]);
+        let sups = supers_of(&e, "A");
+        assert!(
+            sups.contains(&"G".to_string()),
+            "expected A ⊑ G via nominal filler merge, got {:?}",
+            sups
+        );
+        assert!(!e.inconsistent());
+    }
+
+    /// ABox + nominal unsat: C(o) asserted, B ⊑ {o}, B ⊓ owl-disjoint with C
+    /// via B(x) ∧ C(x) → ⊥, and A ⊑ ∃r.B forces the successor to BE o, which
+    /// is both B and C — A is unsatisfiable.
+    #[test]
+    fn nominal_ground_clash() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let r = sig.role("r");
+        let o = ind_term(1);
+        let f = fterm(1);
+        let clauses = vec![
+            OntologyClause::new(vec![], vec![Lit::P(cx(c, o))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::eq(X, o)]),
+            OntologyClause::new(vec![cx(b, X), cx(c, X)], vec![]),
+        ];
+        let mut e = Engine::new(sig, clauses, 0);
+        e.run_for(&[a]);
+        let sups = supers_of(&e, "A");
+        assert!(
+            sups.contains(&"owl:Nothing".to_string()),
+            "expected A unsatisfiable (successor is o, which is C and B), got {:?}",
+            sups
+        );
+    }
 }

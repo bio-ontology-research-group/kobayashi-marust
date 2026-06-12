@@ -1,7 +1,43 @@
 # Nominal support in the CB engine (ALCHOIQ calculus)
 
-Status: DESIGN (2026-06-12). The last structural completeness gap besides
-datatypes (excluded from the goal). Target calculus: Tena Cucala, Cuenca Grau,
+Status: PHASES 0–3 IMPLEMENTED (2026-06-12). Phases 0+1 (frontend DL7/DL8 +
+ground ABox; engine v_r, r-Succ/r-Pred, grounded Hyper, Table-2 deltas) landed
+first; Phase 2 (Join, r-Succ condition (*), the Nom rule with additional
+nominals) and Phase 3 (Lean soundness certification,
+`lean/ContextCalculus/Nominals.lean`) followed. All six witness probes pass
+(the five Phase-1 probes plus `oracle/ontologies/nom_oiq_funct.ofn`, the
+paper's Example 3 — the O+I+Q interaction that *requires* Nom), each matching
+the HermiT oracle. Still gated by `KM_NOMINALS=1` pending the 60-ontology
+corpus A/B and performance work.
+
+Phase-2 implementation notes (engine.rs):
+- Nom fires inside `build_hyper_resolvent` in the ground context when σ(x)=o
+  and a head a-equality instantiates to `y≈y` / `y≈f(o')` (previously dropped
+  as a tautology — exactly the lost constraint). The emitted disjunction has
+  `K + K''` additional nominals, NOT the paper's `K` (or its proof's
+  `max(K,K'')`): the certified covering bound (`nom_cover` in Lean) is the sum
+  `(n−1) + K''`, and wider disjunctions are sound. Additional nominals are
+  interned per `(o, S, orientation, k)` with a budget (`KM_NOM_BUDGET`,
+  default 4096; exhaustion is reported, never silent).
+- The Hyper candidate scan includes the side clause at non-side positions in
+  the ground context (given-clause `S_v ∪ {C}` semantics): elsewhere the
+  self-pair is provably redundant, but `S(x,z₁)∧S(x,z₂)` matching the same
+  `S(o,y)` hypothesis twice is the Nom trigger. The symmetric-group strict
+  pruning likewise admits the equal-`y` assignment in the ground context.
+- Join: per-context `ground_body_index` (clauses by ground body atom) and
+  `bridge_index` (body-empty clauses with maximal `x≈o`); cases 1+2 fire from
+  both arrival orders plus a `pred_local` refire on ground maximal heads;
+  case 3 fires from consumer, provider, and bridge arrival.
+- r-Succ (*): a push of `Γ → Δ ∨ Aσ` is blocked when a worked-off clause
+  `Γ'' → Δ'' ∨ ⋁L_i` with `Γ''⊆Γ, Δ''⊆Δ` has only merge-form `L_i`
+  (`x≈o, y≈o, x≈y`) — per-context `merge_clauses` index.
+- r-Pred pipeline: body atoms may be discharged over different
+  individual-labelled edges of the same source (the paper's per-`A_i` edges);
+  ground `C_i` copy verbatim when their individuals are announced; head
+  individuals (Nom's fresh nominals) need no edge — the old head-individual
+  edge filter made Nom conclusions undeliverable.
+
+The original design notes follow. Target calculus: Tena Cucala, Cuenca Grau,
 Horrocks, "Consequence-based Reasoning for Description Logics with Disjunction,
 Inverse Roles, Number Restrictions, and Nominals", IJCAI 2018
 (arXiv:1805.01396). The engine header has referenced its Table 3
