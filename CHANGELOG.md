@@ -4,6 +4,49 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Nominals: grounded CB reasoning (`KM_NOMINALS`, default off) — Phases 0+1
+
+KM's prior nominal handling replaced `{o}` with a fresh concept proxy
+`__nom__o` and lifted unconditional ABox facts; sound but incomplete whenever
+the singleton property matters. Minimal witness (HermiT-confirmed,
+`oracle/ontologies/nom_merge_sub.ofn`): `A ⊑ ∃r.({o}⊓B)`, `A ⊑ ∃r.({o}⊓C)`,
+`B⊓C ⊑ E`, `∃r.E ⊑ G` entails `A ⊑ G`, which the proxy misses (the two
+successors stay distinct). 60 of the 592 benchmarked ORE ontologies use
+`ObjectOneOf`/`ObjectHasValue`.
+
+Implements the ALCHOIQ consequence-based calculus (Tena Cucala, Cuenca Grau,
+Horrocks, IJCAI 2018; arXiv:1805.01396) behind `KM_NOMINALS`, mapped in
+`docs/NOMINALS-CB.md`. Phase 0 (frontend): under the flag, `augment` emits the
+DL7/DL8 defining clauses `⊤ → __nom__o(o)` and `__nom__o(x) → x ≈ o` plus the
+ground ABox clauses, and fences ontologies with individuals off the elc path;
+off-flag the output is byte-identical. Phase 1 (engine):
+
+- Term space re-encoded to `z < y < x < o_k < f(x) < f(o)` (individuals below
+  the Skolem terms, `f(o)` composites packed positionally), a pure id-space
+  relabeling validated byte-identical vs the prior binary on `ore_ont_16461`
+  and the cardinality probes. The order satisfies Def 3 of the calculus given
+  the existing predecessor-trigger-bottom refinement.
+- One ground (nominal root) context `v_r` is the only place Hyper grounds the
+  central variable (`σ(x) ∈ Σo`); it is created eagerly when ground facts
+  exist and holds all ground inference. Ground ontology facts seed `v_r`
+  fully and every other context on demand (first clause mentioning the
+  individual).
+- The Su^r forms (`B(o)`, `S(x,o)`, `S(o,x)`) push their y-form to `v_r` over
+  individual-labelled edges (r-Succ); `v_r`'s ground conclusions flow back
+  through the existing Pred machinery (r-Pred), with an edge-coverage
+  discipline that kept a naive version from livelocking. `x ≈ o` crosses an
+  `f` edge as `f(x) ≈ o`, which the receiver's Eq rule rewrites into ground
+  atoms. A `v_r` empty clause is global inconsistency.
+
+All five witness probes pass (HermiT-checked): `nom_merge_sub` and the DL8
+merge derive the expected subsumption, the two-distinct-nominals negative
+stays underivable, and `{o}⊑B, {o}⊑C, B⊓C⊑⊥` is reported inconsistent.
+Off-flag and SRIQ-path output are unchanged (every new branch is unreachable
+without individuals in the clause set). Known cost on the flagged path:
+ABox-heavy ontologies slow down (`ore_ont_10594` 0.6 s → 85 s) — perf and the
+remaining rules (Join, the r-Succ side condition, Nom) plus Lean
+re-certification are future phases before the flag can default on.
+
 ### Frontend: AtMost recognition (`≤n r.F` on the LHS could never fire)
 
 The mirror of the AtLeast gap below, found by inspection: the AtMost
