@@ -10,6 +10,7 @@ pub mod abox_consistency;
 pub mod clauses;
 pub mod data_abox;
 pub mod data_range;
+pub mod datatypes;
 pub mod iri;
 pub mod normalise;
 pub mod parse;
@@ -231,6 +232,27 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // after declared names, to leave the internal-name order unchanged for
     // ontologies with no empty range.
     tbox.extend(data_ranges.empty_range_constraints(&mut reg));
+    // Datatype (concrete-domain) relations between the `__dt__` abstraction
+    // concepts occurring in the clause set: membership, value (in)equality,
+    // range subsumption/disjointness, and finite covers, decided per the
+    // OWL 2 datatype map and emitted as ordinary clauses (unknown relations
+    // emit nothing, so unsupported corners keep the old sound abstraction).
+    // KM_NO_DATATYPES restores the bare abstraction for A/B debugging.
+    if std::env::var_os("KM_NO_DATATYPES").is_none() {
+        let mut dt_names: BTreeSet<String> = BTreeSet::new();
+        for c in &tbox {
+            for a in c.body.iter().chain(c.head.iter()) {
+                if let Atom::Concept(name, _) = a {
+                    if name.starts_with("__dt__") {
+                        dt_names.insert(name.clone());
+                    }
+                }
+            }
+        }
+        if !dt_names.is_empty() {
+            tbox.extend(datatypes::datatype_relation_clauses(&dt_names, 8));
+        }
+    }
     t.lap("rbox+domain+declared");
 
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON

@@ -34,11 +34,66 @@ fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
     }
 }
 
-/// Port of `_dt_concept`.
+/// The tokeniser ends a string token at its closing quote, so a typed or
+/// language-tagged literal `"lex"^^dt` / `"lex"@lang` arrives as TWO sibling
+/// atoms.  Re-glue them: returns the joined literal when `args[i]` is a
+/// string atom whose successor is a `^^`/`@` suffix (and how many atoms were
+/// consumed).
+pub(super) fn glue_literal(args: &[&Node], i: usize) -> Option<(String, usize)> {
+    let first = args.get(i)?.as_atom()?;
+    if !first.starts_with('"') {
+        return None;
+    }
+    if let Some(next) = args.get(i + 1).and_then(|n| n.as_atom()) {
+        if next.starts_with("^^") || next.starts_with('@') {
+            return Some((format!("{}{}", first, next), 2));
+        }
+    }
+    Some((first.to_string(), 1))
+}
+
+/// Canonical text of a data-range node, used to key the abstraction concept
+/// for complex ranges (facet restrictions, DataOneOf, …).  Adjacent
+/// string-atom + `^^dt`/`@lang` pairs are re-glued into one literal token so
+/// distinct typed literals stay distinct.
+fn serialize_node(n: &Node) -> String {
+    match n {
+        Node::Atom(s) => (*s).to_string(),
+        Node::List(h, args) => {
+            let refs: Vec<&Node> = args.iter().collect();
+            let mut out = String::from(*h);
+            out.push('(');
+            let mut i = 0;
+            let mut first = true;
+            while i < refs.len() {
+                if !first {
+                    out.push(' ');
+                }
+                first = false;
+                if let Some((lit, used)) = glue_literal(&refs, i) {
+                    out.push_str(&lit);
+                    i += used;
+                } else {
+                    out.push_str(&serialize_node(refs[i]));
+                    i += 1;
+                }
+            }
+            out.push(')');
+            out
+        }
+    }
+}
+
+/// Port of `_dt_concept`.  Complex ranges are keyed by their canonical text:
+/// the old shared `__dt__opaque` name collapsed *different* facet
+/// restrictions to one concept, which can invent subsumptions between their
+/// consumers (the same hazard `dt_value_concept` fixed for literals).
+/// Distinct ranges as distinct concepts can only lose an unsatisfiability,
+/// never invent a subsumption.
 fn dt_concept(node: &Node) -> Concept {
     match node {
         Node::Atom(s) => Concept::Name(format!("__dt__{}", short_base(s))),
-        _ => Concept::Name("__dt__opaque".to_string()),
+        _ => Concept::Name(format!("__dt__c__{}", serialize_node(node))),
     }
 }
 
@@ -46,13 +101,13 @@ fn dt_concept(node: &Node) -> Concept {
 /// `v`. Sharing one `__dt__val` concept across all values (the old behaviour)
 /// collapses e.g. `Chinese ≡ ∃langCode."zh"` and `English ≡ ∃langCode."en"` to
 /// the same concept, inventing the unsound subsumption Chinese ≡ English (seen
-/// on ore_ont_13132 / 9881). Keying by the literal restores the `dt_concept`
-/// invariant: distinct data values are distinct concepts, never asserted
-/// disjoint, so the abstraction can only lose an unsatisfiability
-/// (incompleteness), never invent a subsumption.
-fn dt_value_concept(node: Option<&Node>) -> Concept {
-    match node.and_then(|n| n.as_atom()) {
-        Some(v) => Concept::Name(format!("__dt__val__{}", v)),
+/// on ore_ont_13132 / 9881). Keying by the *glued* literal (lexical form plus
+/// the `^^datatype`/`@lang` suffix the tokeniser splits off) keeps distinct
+/// typed values distinct; the datatype-oracle pass then derives the genuine
+/// equalities/memberships between them.
+fn dt_value_concept(args: &[&Node], i: usize) -> Concept {
+    match glue_literal(args, i) {
+        Some((v, _)) => Concept::Name(format!("__dt__val__{}", v)),
         None => Concept::Name("__dt__val__opaque".to_string()),
     }
 }
@@ -138,20 +193,28 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
                 Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
                 Box::new(dt_concept(&args[1])),
             )),
-            "DataHasValue" => Ok(Concept::Exists(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                Box::new(dt_value_concept(args.get(1))),
-            )),
+            "DataHasValue" => {
+                let refs: Vec<&Node> = args.iter().collect();
+                Ok(Concept::Exists(
+                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Box::new(dt_value_concept(&refs, 1)),
+                ))
+            }
             "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
                 let n: i64 = args[0]
                     .as_atom()
                     .and_then(|s| s.parse().ok())
                     .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args[0])))?;
                 let r = Role::Name(reg.short(args[1].as_atom().unwrap_or("")));
+                // Unqualified data cardinalities count ALL successors: the old
+                // `__dt__val` filler only counted nodes carrying that one
+                // concept, so e.g. `≤1 p` never clashed with two DataHasValue
+                // successors (their classes are `__dt__val__<v>`, not
+                // `__dt__val`).  `⊤` is the correct unqualified filler.
                 let filler = if args.len() > 2 {
                     dt_concept(&args[2])
                 } else {
-                    Concept::Name("__dt__val".to_string())
+                    Concept::Top
                 };
                 match *head {
                     "DataMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
@@ -329,11 +392,63 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         | "DisjointObjectProperties" | "ObjectPropertyDomain" | "ObjectPropertyRange" => {
             // not part of the SROIQ core we validate here
         }
-        other if other.starts_with("Data")
-            || other == "DatatypeDefinition"
-            || other == "HasKey" =>
-        {
-            // datatype axioms: sound over-approximation by dropping
+        // Data property axioms: data properties are abstracted as roles whose
+        // fillers are data-node concepts (`__dt__…`), so the standard role
+        // machinery captures their OWL semantics.  These were previously
+        // dropped wholesale — a real incompleteness: ore_ont_6999's
+        // `Distortion_Type_Affine ⊑ =2 affc2` with `Functional(affc2)` is
+        // unsatisfiable, which the dropped functionality silently missed.
+        "FunctionalDataProperty" => {
+            o.add(Axiom::FunctionalRole(reg.short(args[0].as_atom().unwrap_or(""))));
+        }
+        "SubDataPropertyOf" => {
+            o.add(Axiom::RoleInclusion(
+                reg.short(args[0].as_atom().unwrap_or("")),
+                reg.short(args[1].as_atom().unwrap_or("")),
+            ));
+        }
+        "EquivalentDataProperties" => {
+            let ps: Vec<String> = args
+                .iter()
+                .map(|a| reg.short(a.as_atom().unwrap_or("")))
+                .collect();
+            for i in 0..ps.len() {
+                for j in (i + 1)..ps.len() {
+                    o.add(Axiom::RoleInclusion(ps[i].clone(), ps[j].clone()));
+                    o.add(Axiom::RoleInclusion(ps[j].clone(), ps[i].clone()));
+                }
+            }
+        }
+        "DisjointDataProperties" => {
+            let ps: Vec<String> = args
+                .iter()
+                .map(|a| reg.short(a.as_atom().unwrap_or("")))
+                .collect();
+            for i in 0..ps.len() {
+                for j in (i + 1)..ps.len() {
+                    o.add(Axiom::DisjointRoles(ps[i].clone(), ps[j].clone()));
+                }
+            }
+        }
+        "DataPropertyRange" => {
+            // range(p) = D ≡ ⊤ ⊑ ∀p.D over the range's abstraction concept.
+            // (data_range.rs separately derives the empty-range constraints;
+            // DataPropertyDomain already has its own arm above.)
+            o.add(Axiom::SubClassOf(
+                Concept::Top,
+                Concept::Forall(
+                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Box::new(dt_concept(args[1])),
+                ),
+            ));
+        }
+        "DatatypeDefinition" => {
+            o.add(Axiom::EquivalentClasses(dt_concept(args[0]), dt_concept(args[1])));
+        }
+        other if other.starts_with("Data") || other == "HasKey" => {
+            // remaining datatype axioms (negative assertions, keys): sound to
+            // drop — they only constrain named individuals, so dropping can
+            // lose an inconsistency, never invent a consequence
         }
         _ => {
             // anything else: silently skipped
