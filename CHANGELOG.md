@@ -4,6 +4,38 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Datatypes: data-property axioms + a concrete-domain oracle
+
+Closes the datatype gap (the last incomplete-vs-gold ontology): ore_ont_6999
+is now byte-equal to gold — `Distortion_Type_Affine ⊑ =2 affc2` with
+`Functional(affc2)` is correctly unsatisfiable. Two layers, both frontend
+(no calculus change, no Lean re-cert needed):
+
+1. **Axiom translation** (`parse.rs`; previously every `Data*` axiom was
+   dropped): functionality → role functionality, sub/equivalent/disjoint
+   data properties → the role counterparts, ranges → `∀p.__dt__D`,
+   `DatatypeDefinition` → concept equivalence. Unqualified data cardinalities
+   now count ALL successors (`⊤` filler — the old `__dt__val` filler made
+   `≤ n` blind to `DataHasValue` successors). Complex ranges are keyed by
+   canonical text (one shared `__dt__opaque` could invent subsumptions
+   between different facet restrictions) and typed literals are re-glued
+   with their `^^datatype` / `@lang` suffix (the tokeniser splits them off,
+   which collapsed same-lexical different-type values).
+2. **Pairwise oracle** (`frontend/datatypes.rs`): for the `__dt__` concepts
+   occurring in the clause set, decide — per the OWL 2 datatype map — value
+   membership, value (in)equality (exact rationals across the decimal tower
+   and dyadic float/double, strings, booleans), range subsumption and
+   disjointness (integer-tower bounds, string-family tower, partition
+   disjointness, interval separation), and finite covers (boolean, DataOneOf,
+   small integer intervals): `__dt__D(x) → ⋁ __dt__val__vᵢ(x)`, which with
+   value disjointness gives finite-range counting through the engine's
+   ordinary equality reasoning. Every relation is emitted as a plain concept
+   clause; unknown decisions emit nothing (the old sound abstraction).
+   `KM_NO_DATATYPES` disables the oracle pass for A/B.
+
+82 cargo tests pass (5 new oracle tests). Full-corpus validation sweep
+pending; built and validated on unimatrix while ws was unreachable.
+
 ### Nominals Phase 2+3: Join, r-Succ (*), the Nom rule, and Lean certification
 
 Completes the ALCHOIQ calculus implementation behind `KM_NOMINALS` (Table 3 of
