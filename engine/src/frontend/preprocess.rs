@@ -230,6 +230,16 @@ pub fn chain_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
             })
             .collect();
         c_on_y.sort();
+        // NOTE (known gap, docs/role-chain): an empty `c_on_y` is the
+        // pure-domain consumer `T(x,y) → Head(x)` (`ObjectPropertyDomain`).
+        // The chain `R∘S⊑T` should still fire (`∃R.∃S.⊤ ⊑ Head`), but two
+        // things block it here: (1) `domain_range_clauses` are added in
+        // mod.rs pass 2, AFTER this runs in `augment` pass 1, so the domain
+        // consumer is not yet visible; (2) reordering breaks the reg.short
+        // name-assignment invariant (byte-identity). Plus the 11745 case also
+        // needs the chain to compose with TRANSITIVE `part_of`. Reproducer:
+        // /tmp/probe_chain_domain.ofn; minimal real witness:
+        // oracle/ontologies/11745_unsat_core.ofn (GO_0008046 unsat missed).
         if c_on_y.is_empty() || c.head.is_empty() {
             continue;
         }

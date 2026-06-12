@@ -1,0 +1,31 @@
+Prefix(:=<urn:unnamed:ontology#ont4062649313237337#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+
+Ontology(<urn:unnamed:ontology#ont4062649313237337>
+
+
+TransitiveObjectProperty(<http://www.obofoundry.org/ro/ro.owl#part_of>)
+ObjectPropertyDomain(<http://www.obofoundry.org/ro/ro.owl#results_in_developmental_progression_of> <http://purl.org/obo/owl/GO#GO_0008150>)
+EquivalentClasses(<http://purl.org/obo/owl/GO#GO_0000902> ObjectIntersectionOf(<http://purl.org/obo/owl/GO#GO_0009653> ObjectSomeValuesFrom(<http://www.obofoundry.org/ro/ro.owl#has_output> <http://purl.org/obo/owl/GO#GO_0005623>)))
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0000904> <http://purl.org/obo/owl/GO#GO_0000902>)
+DisjointClasses(<http://purl.org/obo/owl/GO#GO_0003674> <http://purl.org/obo/owl/GO#GO_0008150>)
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0004871> <http://purl.org/obo/owl/GO#GO_0060089>)
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0004872> <http://purl.org/obo/owl/GO#GO_0004871>)
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0004888> <http://purl.org/obo/owl/GO#GO_0004872>)
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0007409> ObjectSomeValuesFrom(<http://www.obofoundry.org/ro/ro.owl#part_of> <http://purl.org/obo/owl/GO#GO_0048667>))
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0007411> ObjectSomeValuesFrom(<http://www.obofoundry.org/ro/ro.owl#part_of> <http://purl.org/obo/owl/GO#GO_0007409>))
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0008046> <http://purl.org/obo/owl/GO#GO_0004888>)
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0008046> ObjectSomeValuesFrom(<http://www.obofoundry.org/ro/ro.owl#part_of> <http://purl.org/obo/owl/GO#GO_0007411>))
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0009653> ObjectSomeValuesFrom(<http://www.obofoundry.org/ro/ro.owl#part_of> <http://purl.org/obo/owl/GO#GO_0048856>))
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0048667> <http://purl.org/obo/owl/GO#GO_0000904>)
+EquivalentClasses(<http://purl.org/obo/owl/GO#GO_0048856> ObjectIntersectionOf(<http://purl.org/obo/owl/GO#GO_0032502> ObjectSomeValuesFrom(<http://www.obofoundry.org/ro/ro.owl#results_in_complete_development_of> <http://purl.org/obo/owl/UBERON#UBERON_0000061>)))
+SubClassOf(<http://purl.org/obo/owl/GO#GO_0060089> <http://purl.org/obo/owl/GO#GO_0003674>)
+SubObjectPropertyOf(ObjectPropertyChain(<http://www.obofoundry.org/ro/ro.owl#part_of> <http://www.obofoundry.org/ro/ro.owl#results_in_complete_development_of>) <http://www.obofoundry.org/ro/ro.owl#results_in_developmental_progression_of>)
+ClassAssertion(<http://purl.org/obo/owl/GO#GO_0008046> <urn:probe:x>)
+ClassAssertion(ObjectComplementOf(<http://www.w3.org/2002/07/owl#Nothing>) <urn:probe:x>)
+)
