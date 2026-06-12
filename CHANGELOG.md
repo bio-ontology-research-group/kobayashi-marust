@@ -4,6 +4,17 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Nominal-mode r-Pred announcement guard (10594 livelock fix)
+
+The Phase-2 per-source r-Pred path let body-empty ground clauses pass the
+body-discharge check vacuously, spraying every ground fact to every context
+with a root edge (ore_ont_10594, ~1900 individuals: 3.5M+ Pred messages,
+ok → timeout under `KM_NOMINALS`). Restored the announcement guard (an edge
+per mentioned individual) with additional nominals (id ≥ `nom_base`) exempt —
+they are exactly what Nom conclusions carry and what no context can have
+announced. 10594: timeout → 192 s, now faster than the Phase-1 engine on the
+same host with identical published output.
+
 ### Datatypes: data-property axioms + a concrete-domain oracle
 
 Closes the datatype gap (the last incomplete-vs-gold ontology): ore_ont_6999
