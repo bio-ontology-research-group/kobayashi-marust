@@ -33,21 +33,20 @@ thread_local! {
 #[derive(Clone)]
 struct CentralSubst {
     map: HashMap<Term, Term>,
+    /// Grounded Hyper (σ(x) ∈ Σo, arXiv:1805.01396): permitted only in the
+    /// ground (nominal root) context — everywhere else the central variable
+    /// maps to itself, as before. Binding x in one ground match and to X in
+    /// another is rejected either way (a worked-off provider's residues are
+    /// copied unsubstituted, so mixing the two would be unsound).
+    allow_ground: bool,
 }
 impl CentralSubst {
-    fn new() -> Self {
-        CentralSubst { map: HashMap::new() }
+    fn new(allow_ground: bool) -> Self {
+        CentralSubst { map: HashMap::new(), allow_ground }
     }
     fn add(&mut self, i: Term, o: Term) -> bool {
         if is_central(i) {
-            // The central variable maps to itself or — grounded Hyper of the
-            // nominal calculus (σ(x) ∈ Σo, arXiv:1805.01396) — consistently to
-            // one individual. Without individuals in the clause set the o == X
-            // arm is the only one reachable, as before.
-            if o == X {
-                return self.map.get(&X).map_or(true, |&e| e == X);
-            }
-            if is_individual(o) {
+            if o == X || (self.allow_ground && is_individual(o)) {
                 return match self.map.get(&X) {
                     Some(&e) => e == o,
                     None => {
@@ -121,6 +120,57 @@ fn sym_groups_ok(oc: &OntologyClause, exempt: &[Term], sigma: &CentralSubst) -> 
         }
     }
     true
+}
+
+/// Su^r detection (arXiv:1805.01396): a max-head atom about an individual —
+/// `B(o)`, `S(x,o)`, `S(o,x)` — whose y-form (`B(o)`, `S(y,o)`, `S(o,y)`) is
+/// pushed to the ground context by r-Succ, labelled by the individual.
+fn root_succ_form(p: &Pred) -> Option<(Pred, Term)> {
+    match *p {
+        Pred::Concept { iri, t } if is_individual(t) => Some((Pred::Concept { iri, t }, t)),
+        Pred::Role { iri, s, t } => {
+            if is_central(s) && is_individual(t) {
+                Some((Pred::Role { iri, s: Y, t }, t))
+            } else if is_individual(s) && is_central(t) {
+                Some((Pred::Role { iri, s, t: Y }, s))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Collect the individuals mentioned by a predicate (decoding `f(o)`
+/// composites) into `out`, deduplicated.
+fn pred_inds(p: &Pred, out: &mut Vec<Term>) {
+    fn push(t: Term, out: &mut Vec<Term>) {
+        let t = if is_comp(t) { comp_parts(t).1 } else { t };
+        if is_individual(t) && !out.contains(&t) {
+            out.push(t);
+        }
+    }
+    match *p {
+        Pred::Concept { t, .. } => push(t, out),
+        Pred::Role { s, t, .. } => {
+            push(s, out);
+            push(t, out);
+        }
+    }
+}
+
+fn lit_inds(l: &Lit, out: &mut Vec<Term>) {
+    match l {
+        Lit::P(p) => pred_inds(p, out),
+        Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+            for &v in &[*s, *t] {
+                let v = if is_comp(v) { comp_parts(v).1 } else { v };
+                if is_individual(v) && !out.contains(&v) {
+                    out.push(v);
+                }
+            }
+        }
+    }
 }
 
 /// Forward inter-context mapping for Succ: {f(x) -> x, x -> y}; for a
@@ -205,7 +255,12 @@ fn unify(sigma: &mut CentralSubst, body: &Pred, head: &Pred) -> bool {
 #[derive(Default)]
 struct Ontology {
     clauses: Vec<OntologyClause>,
-    facts: Vec<usize>,               // indices of empty-body clauses
+    facts: Vec<usize>,               // indices of empty-body clauses (x-form only)
+    /// Ground facts (empty-body clauses whose head mentions an individual),
+    /// keyed by each individual they mention. Seeded fully into the ground
+    /// context and on demand into a context that first derives an atom about
+    /// that individual (docs/NOMINALS-CB.md); empty without nominal mode.
+    ground_facts: HashMap<Term, Vec<usize>>,
     concept_clauses: HashMap<Iri, Vec<usize>>, // body Concept(iri,x)
     forward_role_clauses: HashMap<Iri, Vec<usize>>, // body Role(iri,x,_)
     backward_role_clauses: HashMap<Iri, Vec<usize>>, // body Role(iri,_,x)
@@ -327,6 +382,9 @@ struct Context {
     /// Entries are arena ids.
     succ_pool: Vec<u32>,
     succ_hwm: usize,
+    /// Individuals whose ground ontology facts have been seeded into this
+    /// context (demand-driven; see `Ontology::ground_facts`).
+    seeded_inds: HashSet<Term>,
     /// `true` if a new worked-off clause or a new predecessor edge/pushed
     /// predicate has appeared since the last `propagate`.  When `false`,
     /// `propagate` has no new Succ/Pred message to emit (the `pushed_succ` /
@@ -363,6 +421,7 @@ impl Context {
             edge_seen: HashMap::new(),
             succ_pool: Vec::new(),
             succ_hwm: 0,
+            seeded_inds: HashSet::new(),
             dirty: true,
         }
     }
@@ -580,6 +639,10 @@ pub struct Engine {
     contexts: Vec<Context>,
     core_index: HashMap<Vec<Pred>, usize>,
     msgs: VecDeque<Msg>,
+    /// The ground (nominal root) context `v_r`: the one context where Hyper
+    /// may ground the central variable. Created lazily on the first r-Succ
+    /// push or ground fact; None for ontologies without individuals.
+    ground_ctx: Option<usize>,
     /// Pay-as-you-go expansion: one successor context per function symbol `f`,
     /// instead of a single shared empty-core context for every anonymous
     /// successor (the trivial strategy).  Successors generated by distinct
@@ -666,7 +729,19 @@ impl Engine {
         for c in ont_clauses {
             let idx = ont.clauses.len();
             if c.body.is_empty() {
-                ont.facts.push(idx);
+                // Ground facts (heads mentioning an individual) seed the
+                // ground context fully and other contexts on demand.
+                let mut inds: Vec<Term> = Vec::new();
+                for l in &c.head {
+                    lit_inds(l, &mut inds);
+                }
+                if inds.is_empty() {
+                    ont.facts.push(idx);
+                } else {
+                    for o in inds {
+                        ont.ground_facts.entry(o).or_default().push(idx);
+                    }
+                }
             } else {
                 // unsatisfiable predicate: single body pred, empty head
                 if c.body.len() == 1 && c.head.is_empty() {
@@ -706,6 +781,7 @@ impl Engine {
             ont,
             contexts: Vec::new(),
             core_index: HashMap::new(),
+            ground_ctx: None,
             msgs: VecDeque::new(),
             successor_ctxs: HashMap::new(),
             central_index: HashMap::new(),
@@ -841,17 +917,46 @@ impl Engine {
     /// part of every context-independent closure, so a context seeded from a
     /// shared closure must NOT also call this (the facts are already present).
     fn add_facts(&mut self, id: usize) {
-        let root = self.contexts[id].root;
         let facts: Vec<usize> = self.ont.facts.clone();
         for fi in facts {
-            let head = self.ont.clauses[fi].head.clone();
-            // apply identity (facts have no neighbour vars); filter invalid eqs / nothing
-            let head = self.filter_head(head);
-            if let Some(head) = head {
-                let c = ContextClause::new(vec![], head, root, &self.sig);
-                self.add_clause(id, c);
-            }
+            self.seed_fact(id, fi);
         }
+    }
+
+    /// Seed one ontology fact (empty-body clause `fi`) into context `id`.
+    fn seed_fact(&mut self, id: usize, fi: usize) {
+        let root = self.contexts[id].root;
+        let head = self.ont.clauses[fi].head.clone();
+        // apply identity (facts have no neighbour vars); filter invalid eqs / nothing
+        let head = self.filter_head(head);
+        if let Some(head) = head {
+            let c = ContextClause::new(vec![], head, root, &self.sig);
+            self.add_clause(id, c);
+        }
+    }
+
+    /// The ground (nominal root) context `v_r`, created on first use: empty
+    /// core, fully pre-seeded with every ground ontology fact, and the only
+    /// context where Hyper grounds the central variable.
+    fn ground_context(&mut self) -> usize {
+        if let Some(id) = self.ground_ctx {
+            return id;
+        }
+        let id = self.contexts.len();
+        let ctx = Context::new(id, vec![], false, None);
+        self.contexts.push(ctx);
+        self.ground_ctx = Some(id);
+        let inds: Vec<Term> = self.ont.ground_facts.keys().copied().collect();
+        self.contexts[id].seeded_inds.extend(inds);
+        self.init_context(id);
+        let mut fis: Vec<usize> = self.ont.ground_facts.values().flatten().copied().collect();
+        fis.sort_unstable();
+        fis.dedup();
+        for fi in fis {
+            self.seed_fact(id, fi);
+        }
+        self.saturate(id);
+        id
     }
 
     /// Filter a head literal vector: apply the Ineq rule (drop `t != t`),
@@ -904,6 +1009,26 @@ impl Engine {
             let ctx = &mut self.contexts[id];
             ctx.back_subsume(arena, &clause, nb, nh);
         }
+        // Demand-driven ground-fact seeding (nominal mode): the first clause
+        // mentioning an individual brings that individual's ground ontology
+        // facts into this context (they are Hyper/Eq providers here). The
+        // ground context is fully pre-seeded at creation.
+        let mut new_inds: Vec<Term> = Vec::new();
+        if !self.ont.ground_facts.is_empty() {
+            let mut inds: Vec<Term> = Vec::new();
+            for p in &clause.body {
+                pred_inds(p, &mut inds);
+            }
+            for l in &clause.head {
+                lit_inds(l, &mut inds);
+            }
+            let ctx = &mut self.contexts[id];
+            for o in inds {
+                if ctx.seeded_inds.insert(o) {
+                    new_inds.push(o);
+                }
+            }
+        }
         let cid = match existing {
             Some(c) => c,
             None => self.intern_cc(root, clause),
@@ -911,6 +1036,13 @@ impl Engine {
         let ctx = &mut self.contexts[id];
         ctx.clause_keys.insert(cid);
         ctx.todo.push_back(cid);
+        for o in new_inds {
+            if let Some(fis) = self.ont.ground_facts.get(&o) {
+                for fi in fis.clone() {
+                    self.seed_fact(id, fi);
+                }
+            }
+        }
         true
     }
 
@@ -1020,23 +1152,25 @@ impl Engine {
             }
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
             // function-free head of predicates plus (nominal mode) the Pr
-            // equality forms `x ≈ o` / `o ≈ o'` (canonical `Eq{o, x}` /
-            // `Eq{o, o'}` — individuals sit above x in the term order); other
-            // equalities stay local, as before.  Succ-eligible: some maximal
-            // head predicate is on a function term (succ-trigger candidate).
+            // equality forms `x ≈ o` / `y ≈ o` / `o ≈ o'` (canonical
+            // `Eq{o, ·}` — individuals sit above x and y in the term order);
+            // other equalities stay local, as before.  Succ-eligible: some
+            // maximal head predicate is on a function term (succ-trigger
+            // candidate) or is an Su^r ground form (r-Succ candidate).
             let pred_eligible = clause.head.iter().all(|l| {
                 l.is_function_free()
                     && match l {
                         Lit::P(_) => true,
                         Lit::Eq { s, t } => {
-                            is_individual(*s) && (*t == X || is_individual(*t))
+                            is_individual(*s)
+                                && (*t == X || *t == Y || is_individual(*t))
                         }
                         Lit::Ineq { .. } => false,
                     }
             });
             let succ_eligible = clause
                 .max_head_predicates()
-                .any(|(p, _)| is_function(p.max_term()));
+                .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
@@ -1140,7 +1274,7 @@ impl Engine {
             let mut order: Vec<usize> = (0..n).collect();
             order.sort_by_key(|&i| candidates[i].len());
             let mut chosen = vec![0usize; n];
-            let sigma = CentralSubst::new();
+            let sigma = CentralSubst::new(self.ground_ctx == Some(id));
             // side-position variables are exempt from symmetric-group pruning
             let exempt: Vec<Term> = if oc.sym_groups.is_empty() {
                 Vec::new()
@@ -1257,10 +1391,6 @@ impl Engine {
             let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
             let mut ok = true;
             for &bp in &pc.body {
-                if bp.is_ground() {
-                    ground.push(bp);
-                    continue;
-                }
                 let mut v = Vec::new();
                 if bp == max {
                     v.push((usize::MAX, bp));
@@ -1277,6 +1407,10 @@ impl Engine {
                     }
                 }
                 if v.is_empty() {
+                    if bp.is_ground() {
+                        ground.push(bp);
+                        continue;
+                    }
                     ok = false;
                     break;
                 }
@@ -1640,6 +1774,10 @@ impl Engine {
         // propagate; succ triggers only arise from new worked-off clauses, and
         // `pushed_succ` still dedups within and across scans).
         let mut new_succ: Vec<(Pred, bool)> = Vec::new();
+        // r-Succ (nominal calculus): ground max-head atoms about an
+        // individual push their y-form to the ground context, edge labelled
+        // by the individual.
+        let mut ground_succ: Vec<(Pred, Term)> = Vec::new();
         let succ_start = self.contexts[id].succ_hwm;
         self.stat_succ_scans += (self.contexts[id].succ_pool.len() - succ_start) as u64;
         {
@@ -1682,7 +1820,21 @@ impl Engine {
                         && !ctx.pushed_succ.contains(&p)
                     {
                         new_succ.push((p, !multi.contains(&p.max_term())));
+                    } else if Some(id) != self.ground_ctx {
+                        if let Some((yform, o)) = root_succ_form(&p) {
+                            if !ctx.pushed_succ.contains(&yform) {
+                                ground_succ.push((yform, o));
+                            }
+                        }
                     }
+                }
+            }
+        }
+        if !ground_succ.is_empty() {
+            let target = self.ground_context();
+            for (p, o) in ground_succ {
+                if self.contexts[id].pushed_succ.insert(p) {
+                    self.msgs.push_back(Msg::Succ { from: id, f: o, p, target });
                 }
             }
         }
@@ -1948,10 +2100,11 @@ impl Engine {
         to
     }
 
-    /// Pred rule for a freshly received neighbor pred clause: resolve all its
-    /// nonground body predicates against worked-off clauses of context `id`;
-    /// ground body atoms (nominal mode) are copied verbatim to the resolvent
-    /// body (arXiv:1805.01396 Table 2 Pred).
+    /// Pred rule for a freshly received neighbor pred clause: resolve its
+    /// body predicates against worked-off clauses of context `id`. Ground
+    /// body atoms (nominal mode) resolve like the others when a provider
+    /// exists and are otherwise copied verbatim to the resolvent body (the
+    /// C_i of arXiv:1805.01396 Pred / r-Pred).
     fn pred_from_neighbor(&self, id: usize, pc: &PredClause, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
@@ -1959,10 +2112,6 @@ impl Engine {
         let mut ground: Vec<Pred> = Vec::new();
         let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
         for &bp in &pc.body {
-            if bp.is_ground() {
-                ground.push(bp);
-                continue;
-            }
             let mut v = Vec::new();
             let cand = match bp {
                 Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
@@ -1976,6 +2125,10 @@ impl Engine {
                 }
             }
             if v.is_empty() {
+                if bp.is_ground() {
+                    ground.push(bp);
+                    continue;
+                }
                 return out; // a body predicate has no provider: no resolvent
             }
             candidates.push(v);
@@ -2044,6 +2197,13 @@ impl Engine {
     /// classification be parallelised across disjoint concept chunks.
     pub fn run_for(&mut self, queries: &[Iri]) {
         let prof = std::env::var("KM_PROF").is_ok();
+        // Ground (nominal root) context: eager when the ontology has ground
+        // facts — a contradiction among the individuals alone (detected only
+        // here) is global inconsistency, independent of any query.
+        if !self.ont.ground_facts.is_empty() {
+            let gid = self.ground_context();
+            self.propagate(gid);
+        }
         // Root contexts: one per named (query) concept.
         for (qi, &iri) in queries.iter().enumerate() {
             let core = vec![Pred::Concept { iri, t: X }];
@@ -2475,15 +2635,31 @@ impl Engine {
         // concept literally named owl:Thing makes this independent of the input
         // vocabulary (the normaliser maps owl:Thing to an internal proxy, so the
         // old name-based check was effectively dead — audit M2).
+        // The ground context derives the empty clause when the individuals
+        // alone are contradictory (e.g. {o} ⊑ B, {o} ⊑ C, B ⊓ C ⊑ ⊥) — the
+        // individuals exist in every model, so that too is global
+        // inconsistency.
         let arena = &self.cc_arena[1];
-        self.contexts.iter().any(|ctx| {
+        let top_bot = self.contexts.iter().any(|ctx| {
             ctx.root
                 && ctx.core.is_empty()
                 && ctx.worked_off.iter().any(|&ci| {
                     let c = &arena[ci as usize];
                     c.body.is_empty() && c.head.is_empty()
                 })
-        })
+        });
+        if top_bot {
+            return true;
+        }
+        if let Some(gid) = self.ground_ctx {
+            let ctx = &self.contexts[gid];
+            let arena = &self.cc_arena[ctx.root as usize];
+            return ctx.worked_off.iter().any(|&ci| {
+                let c = &arena[ci as usize];
+                c.body.is_empty() && c.head.is_empty()
+            });
+        }
+        false
     }
 
     pub fn num_contexts(&self) -> usize {
