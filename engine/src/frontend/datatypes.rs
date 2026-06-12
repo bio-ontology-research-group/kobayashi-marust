@@ -963,6 +963,24 @@ fn cx(name: &str) -> Atom {
     Atom::Concept(name.to_string(), Term::Var("x".to_string()))
 }
 
+/// Singleton clause for a value concept: a data node IS its value, so two
+/// nodes carrying the same value concept are equal —
+/// `__dt__val__v(z₁) ∧ __dt__val__v(z₂) → z₁ ≈ z₂`.  This is what makes
+/// finite-range counting clash: a cover plus value disjointness pins each
+/// node to a value, and the singleton clauses merge nodes sharing one,
+/// contradicting the `≉` witnesses of a `≥ n` restriction.
+fn singleton_clause(name: &str) -> DLClause {
+    let z1 = Term::Var("y0".to_string());
+    let z2 = Term::Var("y1".to_string());
+    clause(
+        [
+            Atom::Concept(name.to_string(), z1.clone()),
+            Atom::Concept(name.to_string(), z2.clone()),
+        ],
+        [Atom::Eq(z1, z2)],
+    )
+}
+
 /// The datatype-relation clauses for the `__dt__` concepts in `names`
 /// (collected from the clause set).  Every emitted clause is justified by the
 /// OWL 2 datatype map; unknown relations emit nothing.  `cap` bounds the
@@ -971,6 +989,12 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
     let entries: Vec<DtEntry> = names.iter().filter_map(|n| classify_name(n)).collect();
     let mut out: Vec<DLClause> = Vec::new();
     let mut new_val_names: BTreeSet<String> = BTreeSet::new();
+    // every value concept is a singleton (a data node IS its value)
+    for e in &entries {
+        if let DtEntry::Value(an, _) = e {
+            out.push(singleton_clause(an));
+        }
+    }
     for (i, a) in entries.iter().enumerate() {
         match a {
             DtEntry::Value(an, av) => {
@@ -1057,6 +1081,11 @@ pub fn datatype_relation_clauses(names: &BTreeSet<String>, cap: usize) -> Vec<DL
             .filter(|n| !names.contains(*n))
             .filter_map(|n| classify_name(n))
             .collect();
+        for f in &fresh {
+            if let DtEntry::Value(fname, _) = f {
+                out.push(singleton_clause(fname));
+            }
+        }
         for f in &fresh {
             let (fname, fval) = match f {
                 DtEntry::Value(n, v) => (n, v),

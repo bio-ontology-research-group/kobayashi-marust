@@ -1,0 +1,9 @@
+Prefix(:=<http://x.org/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x.org/data_value_clash>
+Declaration(Class(:A))
+Declaration(DataProperty(:p))
+FunctionalDataProperty(:p)
+SubClassOf(:A DataHasValue(:p "1"^^xsd:integer))
+SubClassOf(:A DataHasValue(:p "2"^^xsd:integer))
+)

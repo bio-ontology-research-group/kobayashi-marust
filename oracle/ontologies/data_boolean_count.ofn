@@ -1,0 +1,7 @@
+Prefix(:=<http://x.org/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x.org/data_boolean_count>
+Declaration(Class(:A))
+Declaration(DataProperty(:p))
+SubClassOf(:A DataMinCardinality(3 :p xsd:boolean))
+)
