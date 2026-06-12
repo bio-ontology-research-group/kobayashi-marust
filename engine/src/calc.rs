@@ -95,6 +95,14 @@ pub fn comp_term(f: Term, o: Term) -> Term {
 pub fn is_comp(t: Term) -> bool {
     t >= COMP_BASE
 }
+/// Decompose a composite `f(o)` term into `(f, o)` (the `fterm` and the
+/// individual).
+#[inline]
+pub fn comp_parts(t: Term) -> (Term, Term) {
+    debug_assert!(is_comp(t));
+    let v = t - COMP_BASE;
+    (FTERM_BASE + (v >> COMP_IND_BITS), v & ((1 << COMP_IND_BITS) - 1))
+}
 #[inline]
 pub fn term_max(a: Term, b: Term) -> Term {
     a.max(b)
@@ -134,6 +142,19 @@ impl Pred {
         match *self {
             Pred::Concept { t, .. } => !is_function(t),
             Pred::Role { s, t, .. } => !is_function(s) && !is_function(t),
+        }
+    }
+    /// `true` iff every term is an individual or an `f(o)` composite — a
+    /// ground atom of the nominal calculus (B(o), S(o,o'), …). Ground body
+    /// atoms are copied verbatim by the Pred rule rather than resolved
+    /// against the predecessor (arXiv:1805.01396 Table 2).
+    pub fn is_ground(&self) -> bool {
+        fn g(t: Term) -> bool {
+            is_individual(t) || is_comp(t)
+        }
+        match *self {
+            Pred::Concept { t, .. } => g(t),
+            Pred::Role { s, t, .. } => g(s) && g(t),
         }
     }
     pub fn apply(&self, sigma: &dyn Fn(Term) -> Term) -> Pred {
@@ -357,7 +378,14 @@ impl Pred {
             // churn; skip it (the fact still flows to predecessors via Pred).
             Pred::Concept { iri, t } => is_function(t) && !sig.is_reach(iri),
             Pred::Role { s, t, .. } => {
-                (is_central(s) && is_function(t)) || (is_central(t) && is_function(s))
+                (is_central(s) && is_function(t))
+                    || (is_central(t) && is_function(s))
+                    // Grounded existentials (nominal calculus): the parent of
+                    // an `f(o)` successor is the individual o, so role atoms
+                    // `S(o, f(o))` / `S(f(o), o)` trigger Succ exactly like
+                    // `S(x, f(x))` / `S(f(x), x)` do.
+                    || (is_individual(s) && is_comp(t) && comp_parts(t).1 == s)
+                    || (is_individual(t) && is_comp(s) && comp_parts(s).1 == t)
             }
         }
     }

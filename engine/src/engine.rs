@@ -40,7 +40,23 @@ impl CentralSubst {
     }
     fn add(&mut self, i: Term, o: Term) -> bool {
         if is_central(i) {
-            return o == X;
+            // The central variable maps to itself or — grounded Hyper of the
+            // nominal calculus (σ(x) ∈ Σo, arXiv:1805.01396) — consistently to
+            // one individual. Without individuals in the clause set the o == X
+            // arm is the only one reachable, as before.
+            if o == X {
+                return self.map.get(&X).map_or(true, |&e| e == X);
+            }
+            if is_individual(o) {
+                return match self.map.get(&X) {
+                    Some(&e) => e == o,
+                    None => {
+                        self.map.insert(X, o);
+                        true
+                    }
+                };
+            }
+            return false;
         }
         match self.map.get(&i) {
             Some(&existing) => existing == o,
@@ -51,11 +67,19 @@ impl CentralSubst {
         }
     }
     fn apply(&self, v: Term) -> Term {
-        if v == X || is_function(v) {
-            v
-        } else {
-            *self.map.get(&v).unwrap_or(&v)
+        if v == X {
+            return *self.map.get(&X).unwrap_or(&X);
         }
+        if is_function(v) {
+            // f(x) under a grounded central becomes the composite f(o).
+            if let Some(&b) = self.map.get(&X) {
+                if b != X {
+                    return comp_term(v, b);
+                }
+            }
+            return v;
+        }
+        *self.map.get(&v).unwrap_or(&v)
     }
     fn get(&self, v: Term) -> Option<Term> {
         self.map.get(&v).copied()
@@ -99,19 +123,40 @@ fn sym_groups_ok(oc: &OntologyClause, exempt: &[Term], sigma: &CentralSubst) -> 
     true
 }
 
-/// Forward inter-context mapping for Succ: {f(x) -> x, x -> y}.
+/// Forward inter-context mapping for Succ: {f(x) -> x, x -> y}; for a
+/// grounded edge labelled by a composite `f(o)` it is {f(o) -> x, o -> y}
+/// (the parent of the `f(o)` element is the individual o, not the sender's
+/// central element — arXiv:1805.01396 root-context Succ).
 fn forwards(f: Term, v: Term) -> Term {
     if v == f {
-        X
-    } else if v == X {
+        return X;
+    }
+    if is_comp(f) {
+        let (_, o) = comp_parts(f);
+        return if v == o { Y } else { v };
+    }
+    if v == X {
         Y
     } else {
         // neighbour/other terms do not occur in a succ trigger predicate
         v
     }
 }
-/// Backward inter-context substitution for Pred: {y -> x, x -> f(x)}.
+/// Backward inter-context substitution for Pred: {y -> x, x -> f(x)}; for a
+/// grounded edge labelled `f(o)` it is {y -> o, x -> f(o)} — conclusions
+/// about the parent are conclusions about the individual o, and they arrive
+/// ground.
 fn backwards(f: Term, v: Term) -> Term {
+    if is_comp(f) {
+        let (_, o) = comp_parts(f);
+        return if v == Y {
+            o
+        } else if v == X {
+            f
+        } else {
+            v
+        };
+    }
     if v == Y {
         X
     } else if v == X {
@@ -124,18 +169,20 @@ fn backwards(f: Term, v: Term) -> Term {
 // ------------------------------- unification -------------------------------
 
 fn can_unify(body: &Pred, head_max: &Pred) -> bool {
+    // A central body term must match a central head term or — grounded Hyper
+    // of the nominal calculus — an individual; a neighbour body term (e.g.
+    // C(y) in `R(x,y) ∧ C(y) -> D(x)`) may bind to any head term, including a
+    // function term C(f(x)).  (Pure syntactic unification — sound regardless
+    // of the body term's role.)
+    fn central_ok(b: Term, h: Term) -> bool {
+        !is_central(b) || is_central(h) || is_individual(h)
+    }
     match (body, head_max) {
         (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) => {
-            // A central body term must match a central head term; a neighbour
-            // body term (e.g. C(y) in `R(x,y) ∧ C(y) -> D(x)`) may bind to any
-            // head term, including a function term C(f(x)).  (Pure syntactic
-            // unification — sound regardless of the body term's role.)
-            i1 == i2 && (!is_central(*t1) || is_central(*t2))
+            i1 == i2 && central_ok(*t1, *t2)
         }
         (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Role { iri: i2, s: s2, t: t2 }) => {
-            i1 == i2
-                && (!is_central(*s1) || is_central(*s2))
-                && (!is_central(*t1) || is_central(*t2))
+            i1 == i2 && central_ok(*s1, *s2) && central_ok(*t1, *t2)
         }
         _ => false,
     }
@@ -483,11 +530,16 @@ impl Context {
     }
 }
 
-/// A pred clause (substitution already applied): body and head over x / f(x).
+/// A pred clause (substitution already applied): body and head over x / f(x),
+/// plus — in nominal mode — ground atoms over individuals and the propagated
+/// equality form `f(x) ≈ o` (image of a successor's `x ≈ o`, the Pr extension
+/// of the ALCHOIQ calculus). Heads are full literals so those equalities
+/// survive the crossing; without individuals only `Lit::P` heads ever enter
+/// the pred pool, so this is representation-only for the SRIQ fragment.
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct PredClause {
     body: Vec<Pred>,
-    head: Vec<Pred>,
+    head: Vec<Lit>,
 }
 
 /// Content hash for interning (collisions are resolved by exact comparison,
@@ -967,13 +1019,21 @@ impl Engine {
                 }
             }
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
-            // function-free, predicate-only head (mirrors the filter in
-            // `propagate`'s Pred section).  Succ-eligible: some maximal head
-            // predicate is on a function term (succ-trigger candidate).
-            let pred_eligible = clause
-                .head
-                .iter()
-                .all(|l| l.is_function_free() && matches!(l, Lit::P(_)));
+            // function-free head of predicates plus (nominal mode) the Pr
+            // equality forms `x ≈ o` / `o ≈ o'` (canonical `Eq{o, x}` /
+            // `Eq{o, o'}` — individuals sit above x in the term order); other
+            // equalities stay local, as before.  Succ-eligible: some maximal
+            // head predicate is on a function term (succ-trigger candidate).
+            let pred_eligible = clause.head.iter().all(|l| {
+                l.is_function_free()
+                    && match l {
+                        Lit::P(_) => true,
+                        Lit::Eq { s, t } => {
+                            is_individual(*s) && (*t == X || is_individual(*t))
+                        }
+                        Lit::Ineq { .. } => false,
+                    }
+            });
             let succ_eligible = clause
                 .max_head_predicates()
                 .any(|(p, _)| is_function(p.max_term()));
@@ -1190,13 +1250,17 @@ impl Engine {
             if !pc.body.iter().any(|b| *b == max) {
                 continue;
             }
-            // For each body predicate, candidate clauses with that predicate
-            // maximal in head; `max` is provided by `side`.
-            let n = pc.body.len();
-            let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(n);
+            // For each nonground body predicate, candidate clauses with that
+            // predicate maximal in head; `max` is provided by `side`. Ground
+            // body atoms (nominal mode) are copied to the resolvent body.
+            let mut ground: Vec<Pred> = Vec::new();
+            let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
             let mut ok = true;
-            for i in 0..n {
-                let bp = pc.body[i];
+            for &bp in &pc.body {
+                if bp.is_ground() {
+                    ground.push(bp);
+                    continue;
+                }
                 let mut v = Vec::new();
                 if bp == max {
                     v.push((usize::MAX, bp));
@@ -1221,9 +1285,12 @@ impl Engine {
             if !ok {
                 continue;
             }
+            let n = candidates.len();
             let mut idxs = vec![0usize; n];
             loop {
-                if let Some(c) = self.build_pred_resolvent(id, side, pc, &candidates, &idxs, root) {
+                if let Some(c) =
+                    self.build_pred_resolvent(id, side, pc, &ground, &candidates, &idxs, root)
+                {
                     out.push(c);
                 }
                 let mut k = 0;
@@ -1252,14 +1319,15 @@ impl Engine {
         id: usize,
         side: &ContextClause,
         pc: &PredClause,
+        ground: &[Pred],
         candidates: &[Vec<(usize, Pred)>],
         idxs: &[usize],
         root: bool,
     ) -> Option<ContextClause> {
         let _ = id;
         let arena = &self.cc_arena[root as usize];
-        let mut head: Vec<Lit> = pc.head.iter().map(|p| Lit::P(*p)).collect();
-        let mut body: Vec<Pred> = Vec::new();
+        let mut head: Vec<Lit> = pc.head.clone();
+        let mut body: Vec<Pred> = ground.to_vec();
         for i in 0..candidates.len() {
             let (ci, matched) = candidates[i][idxs[i]];
             let clause = if ci == usize::MAX { side } else { &arena[ci] };
@@ -1767,7 +1835,9 @@ impl Engine {
                         continue;
                     }
                     pred_checks += 1;
-                    if c.body.iter().all(|b| pushed.contains(b)) {
+                    // Ground body atoms (nominal mode) are copied verbatim by
+                    // the Pred rule, not resolved over the edge.
+                    if c.body.iter().all(|b| b.is_ground() || pushed.contains(b)) {
                         let sent = ctx
                             .pushed_pred
                             .get(*edge)
@@ -1851,14 +1921,10 @@ impl Engine {
             for p in &from_ctx.core {
                 body.push(p.apply(&subst));
             }
-            let head: Vec<Pred> = clause
-                .head
-                .iter()
-                .filter_map(|l| match l {
-                    Lit::P(p) => Some(p.apply(&subst)),
-                    _ => None,
-                })
-                .collect();
+            // Full literals: pool-eligible heads are predicates plus (nominal
+            // mode) the individual equality forms; `x ≈ o` crosses as
+            // `f(x) ≈ o`, which the receiver's Eq rule then rewrites.
+            let head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
             PredClause { body, head }
         };
         let pid = self.intern_pred(pc);
@@ -1883,15 +1949,20 @@ impl Engine {
     }
 
     /// Pred rule for a freshly received neighbor pred clause: resolve all its
-    /// body predicates against worked-off clauses of context `id`.
+    /// nonground body predicates against worked-off clauses of context `id`;
+    /// ground body atoms (nominal mode) are copied verbatim to the resolvent
+    /// body (arXiv:1805.01396 Table 2 Pred).
     fn pred_from_neighbor(&self, id: usize, pc: &PredClause, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
-        let n = pc.body.len();
-        let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(n);
-        for i in 0..n {
-            let bp = pc.body[i];
+        let mut ground: Vec<Pred> = Vec::new();
+        let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
+        for &bp in &pc.body {
+            if bp.is_ground() {
+                ground.push(bp);
+                continue;
+            }
             let mut v = Vec::new();
             let cand = match bp {
                 Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
@@ -1909,11 +1980,12 @@ impl Engine {
             }
             candidates.push(v);
         }
+        let n = candidates.len();
         let mut idxs = vec![0usize; n];
         loop {
             // build resolvent (no side clause; all from worked-off)
-            let mut head: Vec<Lit> = pc.head.iter().map(|p| Lit::P(*p)).collect();
-            let mut body: Vec<Pred> = Vec::new();
+            let mut head: Vec<Lit> = pc.head.clone();
+            let mut body: Vec<Pred> = ground.clone();
             for i in 0..n {
                 let (ci, matched) = candidates[i][idxs[i]];
                 let clause = &arena[ci];
