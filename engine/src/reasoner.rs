@@ -386,6 +386,76 @@ mod tests {
     }
 
     #[test]
+    fn min_cardinality_recognition() {
+        // P ⊑ ∃r.J1, P ⊑ ∃r.J2, J1 ⊑ J, J2 ⊑ J, J1 ⊓ J2 ⊑ ⊥, ≥2 r.J ⊑ G
+        // (recognition clause: r(x,y1) ∧ J(y1) ∧ r(x,y2) ∧ J(y2) → G(x) ∨ y1≈y2)
+        // ⟹ P ⊑ G: the merged-witness disjunct dies via disjointness.
+        let eqa = |a: JTerm, b: JTerm| JAtom::Eq { left: a, right: b };
+        let rr = run(vec![
+            cl(vec![c("P", vx())], vec![r("r", vx(), fx("f1"))]),
+            cl(vec![c("P", vx())], vec![c("J1", fx("f1"))]),
+            cl(vec![c("P", vx())], vec![r("r", vx(), fx("f2"))]),
+            cl(vec![c("P", vx())], vec![c("J2", fx("f2"))]),
+            cl(vec![c("J1", vx())], vec![c("J", vx())]),
+            cl(vec![c("J2", vx())], vec![c("J", vx())]),
+            cl(vec![c("J1", vx()), c("J2", vx())], vec![]),
+            cl(
+                vec![
+                    r("r", vx(), vn("y1")),
+                    c("J", vn("y1")),
+                    r("r", vx(), vn("y2")),
+                    c("J", vn("y2")),
+                ],
+                vec![c("G", vx()), eqa(vn("y1"), vn("y2"))],
+            ),
+        ]);
+        assert!(supers(&rr, "P").contains("G"), "expected P ⊑ G, got {:?}", supers(&rr, "P"));
+    }
+
+    #[test]
+    fn min_cardinality_recognition_three_witnesses() {
+        // Same as min_cardinality_recognition but with three pairwise-disjoint
+        // witnesses and a ≥3 recognition clause (3 equality disjuncts in the
+        // head).  Pins the central-strategy fact-core fix: refuting the
+        // disjuncts needs per-disjunct conditional refutations from the
+        // successor context ([A1,A2]→⊥ etc.), which a union core (A1,A2,A3
+        // asserted at once) cannot supply.
+        let eqa = |a: JTerm, b: JTerm| JAtom::Eq { left: a, right: b };
+        let mut clauses = vec![cl(
+            vec![
+                r("r", vx(), vn("y1")),
+                c("J", vn("y1")),
+                r("r", vx(), vn("y2")),
+                c("J", vn("y2")),
+                r("r", vx(), vn("y3")),
+                c("J", vn("y3")),
+            ],
+            vec![
+                c("G", vx()),
+                eqa(vn("y1"), vn("y2")),
+                eqa(vn("y1"), vn("y3")),
+                eqa(vn("y2"), vn("y3")),
+            ],
+        )];
+        for i in 1..=3 {
+            let (ai, fi) = (format!("A{}", i), format!("f{}", i));
+            clauses.push(cl(vec![c("P", vx())], vec![r("r", vx(), fx(&fi))]));
+            clauses.push(cl(vec![c("P", vx())], vec![c(&ai, fx(&fi))]));
+            clauses.push(cl(vec![c(&ai, vx())], vec![c("J", vx())]));
+        }
+        for i in 1..=3 {
+            for j in (i + 1)..=3 {
+                clauses.push(cl(
+                    vec![c(&format!("A{}", i), vx()), c(&format!("A{}", j), vx())],
+                    vec![],
+                ));
+            }
+        }
+        let rr = run(clauses);
+        assert!(supers(&rr, "P").contains("G"), "expected P ⊑ G, got {:?}", supers(&rr, "P"));
+    }
+
+    #[test]
     fn role_hierarchy_and_domain() {
         // R ⊑ S, ∃S.⊤ ⊑ A, and B ⊑ ∃R.⊤  ⟹  B ⊑ A
         let rr = run(vec![

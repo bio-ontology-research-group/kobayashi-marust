@@ -4,6 +4,98 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Frontend: ≥n recognition clause for n ≥ 2 (the 16461 min-cardinality gap)
+
+The clausifier (`normalise.rs`, `Concept::AtLeast`) emitted the recognition
+direction of a reified `Q ≡ ≥n r.F` only for n == 1 (the plain ∃-recognition
+clause). For n ≥ 2 no clause could ever derive Q, so a qualified
+min-cardinality on the LHS of a subsumption never fired: ore_ont_16461's
+single missing subsumption, reproduced in a 21-clause probe (`P ⊑ ∃r.J1,
+P ⊑ ∃r.J2, J1⊑J, J2⊑J, Disjoint(J1,J2), ≥2 r.J ⊑ G ⊬ P⊑G`).
+
+Fix: emit the standard contrapositive clausification `¬Q ⊑ ≤(n-1) r.F`, i.e.
+`r(x,y0) ∧ F(y0) ∧ ... ∧ r(x,y_{n-1}) ∧ F(y_{n-1}) → Q(x) ∨ ⋁_{i<j} yi≈yj` —
+the same clause shape the AtMost branch already produces and the engine's
+Hyper + Eq/Factor machinery already reasons over (multi-neighbour-variable
+bodies, equality heads). No calculus change, no Lean re-cert: only the input
+clause set is completed; the emitted clause is the definitional-extension
+direction of the reified Q and is logically equivalent to `≥n r.F ⊑ Q`.
+(n == 0 falls out correctly as `→ Q(x)`, since `≥0 r.F ≡ ⊤`.)
+
+The probe now derives P ⊑ G. Frontend output is byte-identical on
+ontologies without min/exact-cardinality ≥ 2 (checked on 10); 27 corpus
+ontologies are affected and were re-validated against gold. New tests:
+`reasoner::tests::min_cardinality_recognition` (engine-level, the probe) and
+`frontend::normalise::tests::atleast_two_recognition_clause`.
+
+**Polarity gating**: the recognition clause is pure cost when the `≥n`
+occurs only positively (RHS — intro direction suffices), and on
+existential-rich ontologies it feeds the live-disjunction blow-up (a single
+unqualified `≥5 setting-for` recognition clause on ore_ont_15672/DOLCE
+doubles the pipeline wall time: the resolvent residues create new Hyper
+providers, mutually incomparable under subsumption). The pre-pass
+(`mark_polarity`) now records each AtLeast's polarities; recognition is
+emitted unless the concept is PROVEN positive-only (negative or unseen ⇒
+emit, so coverage gaps keep the complete behaviour). Even gated,
+ore_ont_15672's genuinely-negative `≥5` (an EquivalentClasses conjunct)
+keeps its recognition clause and the ontology joins the live-disjunction
+timeout family — recovering it is the ordered-resolution workstream, not a
+cardinality issue. Test:
+`frontend::normalise::tests::atleast_recognition_polarity_gated`.
+
+### Engine: symmetric-group pruning in the Hyper join
+
+The recognition/at-most clause shape is fully symmetric in its neighbour
+variables, so the backtracking join enumerated every permutation (and every
+equal-term repeat) of each candidate combination — `k^n` assignments where
+`C(k,n)` are distinct, ruinous for n ≥ 4. `OntologyClause` now precomputes
+its exchange-invariant variable groups (pairwise swap-invariance,
+union-find; transpositions of a connected component generate its full
+symmetric group), flagging groups whose head carries an equality for every
+pair. The join prunes assignments whose group terms are not sorted (strictly
+sorted for flagged groups: an equal-term assignment makes some head equality
+`t≈t`, a tautology `build_hyper_resolvent` drops). Side-clause variables are
+exempt (the side clause is pinned to its body position and not
+interchangeable with worked-off candidates). Output-preserving: every pruned
+assignment is a permutation of a kept one and yields the identical canonical
+resolvent (heads/bodies are sorted and deduped; `Lit::eq` normalises
+orientation), so the derived set is unchanged — no Lean re-cert.
+
+### Engine: central-strategy successor cores must hold facts only
+
+With the recognition clause in place, n = 2 worked but n ≥ 3 still stalled
+(probe: P with 3 pairwise-disjoint r-successors, `≥3 r.J ⊑ G` ⊬ P ⊑ G; the
+real ore_ont_16461 needs n = 4). Trace: P's context correctly derives
+`⊤ → A2(f1) | A3(f1) | Q` by paramodulation, but the central strategy had
+pushed the disjunctively derived triggers A2(f1), A3(f1) into the successor
+CORE alongside the fact A1(f1). The `[A1,A2,A3]`-core context derives ⊥, and
+apply_pred conditions the push-back on the whole core — a clause
+`A1(f1) ∧ A2(f1) ∧ A3(f1) → ⊥` that would have to cut TWO literals of the
+same disjunction at once, which no resolution step can do. The per-disjunct
+refutations (`A1 ∧ A2 → ⊥`, `A1 ∧ A3 → ⊥`) were unavailable because the
+hypothesis clauses `p → p` added by apply_succ were subsumed by the
+over-large core's `⊤ → p`. The legacy non-central strategy (empty cores,
+pure hypotheses) does not have the bug — KM_NO_CENTRAL=1 derives G on every
+probe, confirming the diagnosis.
+
+Fix: a successor core now contains only the σ-image of FACT triggers (unit
+clauses `⊤ → p(f)` in the predecessor); disjunctively or conditionally
+derived triggers still travel as Succ messages (edge bookkeeping +
+hypothesis `p → p` at the target) but stay out of the core, so their
+consequences return conditioned on `p` alone and each disjunct is cut
+individually. Context identity (`central_successor_for_core`) keys on the
+fact core; hypothesis-only trigger growth keeps the same target and sends
+just the new triggers. No calculus-rule change (Hyper/Pred/Succ/Eq schemata
+untouched, no Lean re-cert, same category as the central-strategy landing):
+cores shrink, so the context invariant (core ∧ body → head entailed) is
+preserved, and every previously derived consequence is still derived — the
+fact-trigger cores reproduce the old behaviour exactly on ontologies where
+all succ triggers are facts (the common case: existential successors).
+New test: `reasoner::tests::min_cardinality_recognition_three_witnesses`.
+With both fixes the full ore_ont_16461 derives the gold-only subsumption
+`Patient1 ⊑ Systemic_JIA_Patient` (≥4 hasAffectedJoint.Joint over 5
+pairwise-disjoint joint successors).
+
 ### Engine: clause interning (Pred pipeline + global arena) — peak RSS −77%
 
 KM_MEMSTATS accounting (new, diagnostics-only) on ore_ont_9944 at fixpoint

@@ -57,6 +57,46 @@ impl CentralSubst {
             *self.map.get(&v).unwrap_or(&v)
         }
     }
+    fn get(&self, v: Term) -> Option<Term> {
+        self.map.get(&v).copied()
+    }
+}
+
+/// Symmetric-group pruning for the Hyper join: for each exchange-invariant
+/// neighbour-variable group of `oc`, require the bound members' terms to be
+/// sorted in group order (strictly when the head carries an equality for every
+/// pair of the group — an equal-term assignment then makes some head equality
+/// trivially true, a tautology `build_hyper_resolvent` would drop anyway).
+/// Every pruned full assignment is a permutation of exactly one kept one and
+/// produces the identical canonical resolvent, so the derived set is
+/// unchanged; only duplicate (and tautological) enumeration is skipped.
+/// Variables occurring in the side-clause body position are exempt: the side
+/// clause is pinned to that position, so its binding is not interchangeable
+/// with the worked-off candidates.
+fn sym_groups_ok(oc: &OntologyClause, exempt: &[Term], sigma: &CentralSubst) -> bool {
+    for (g, strict) in &oc.sym_groups {
+        let mut prev: Option<Term> = None;
+        for &v in g {
+            if exempt.contains(&v) {
+                continue;
+            }
+            let t = match sigma.get(v) {
+                Some(t) => t,
+                None => continue,
+            };
+            if let Some(p) = prev {
+                if *strict {
+                    if p >= t {
+                        return false;
+                    }
+                } else if p > t {
+                    return false;
+                }
+            }
+            prev = Some(t);
+        }
+    }
+    true
 }
 
 /// Forward inter-context mapping for Succ: {f(x) -> x, x -> y}.
@@ -196,6 +236,18 @@ struct Context {
     /// `f` is keyed by the σ-image of this set (its core); when the set grows,
     /// the edge re-targets a new context with the larger core.
     trigger_sets: HashMap<Term, std::collections::BTreeSet<Pred>>,
+    /// Central strategy: the subset of `trigger_sets[f]` whose triggers were
+    /// derived as unit facts (`⊤ → p`, no body, no disjunction) in this
+    /// context.  ONLY these enter the successor's core: a disjunctively
+    /// derived trigger is not known to hold, so asserting it in the core
+    /// would make every consequence the successor pushes back conditional on
+    /// the WHOLE core at once (an n-way simultaneous cut no resolution step
+    /// can perform), losing the per-disjunct refutations completeness needs
+    /// (the ≥n min-cardinality recognition stall on ore_ont_16461).
+    /// Non-fact triggers still travel as Succ messages and become hypothesis
+    /// clauses `p → p` at the target, so their consequences come back
+    /// conditioned on `p` alone.
+    fact_trigger_sets: HashMap<Term, std::collections::BTreeSet<Pred>>,
     /// predecessor edges: (predecessor ctx id, function term) -> pushed predicates
     predecessors: HashMap<(usize, Term), HashSet<Pred>>,
     pushed_succ: HashSet<Pred>,
@@ -255,6 +307,7 @@ impl Context {
             neighbor_pred_seen: HashSet::new(),
             successors: HashMap::new(),
             trigger_sets: HashMap::new(),
+            fact_trigger_sets: HashMap::new(),
             predecessors: HashMap::new(),
             pushed_succ: HashSet::new(),
             pushed_pred: HashMap::new(),
@@ -1028,7 +1081,16 @@ impl Engine {
             order.sort_by_key(|&i| candidates[i].len());
             let mut chosen = vec![0usize; n];
             let sigma = CentralSubst::new();
-            self.hyper_join(id, side, oc, &candidates, &order, 0, &sigma, &mut chosen, root, &mut out);
+            // side-position variables are exempt from symmetric-group pruning
+            let exempt: Vec<Term> = if oc.sym_groups.is_empty() {
+                Vec::new()
+            } else {
+                match oc.body[side_pos] {
+                    Pred::Concept { t, .. } => vec![t],
+                    Pred::Role { s, t, .. } => vec![s, t],
+                }
+            };
+            self.hyper_join(id, side, oc, &candidates, &order, 0, &sigma, &exempt, &mut chosen, root, &mut out);
         }
         out
     }
@@ -1046,6 +1108,7 @@ impl Engine {
         order: &[usize],
         depth: usize,
         sigma: &CentralSubst,
+        exempt: &[Term],
         chosen: &mut Vec<usize>,
         root: bool,
         out: &mut Vec<ContextClause>,
@@ -1059,9 +1122,11 @@ impl Engine {
         let pos = order[depth];
         for (j, &(_ci, p)) in candidates[pos].iter().enumerate() {
             let mut s2 = sigma.clone();
-            if unify(&mut s2, &oc.body[pos], &p) {
+            if unify(&mut s2, &oc.body[pos], &p)
+                && (oc.sym_groups.is_empty() || sym_groups_ok(oc, exempt, &s2))
+            {
                 chosen[pos] = j;
-                self.hyper_join(id, side, oc, candidates, order, depth + 1, &s2, chosen, root, out);
+                self.hyper_join(id, side, oc, candidates, order, depth + 1, &s2, exempt, chosen, root, out);
             }
         }
     }
@@ -1506,7 +1571,7 @@ impl Engine {
         // ---- Succ ---- (semi-naive: scan only pool entries added since the last
         // propagate; succ triggers only arise from new worked-off clauses, and
         // `pushed_succ` still dedups within and across scans).
-        let mut new_succ: Vec<Pred> = Vec::new();
+        let mut new_succ: Vec<(Pred, bool)> = Vec::new();
         let succ_start = self.contexts[id].succ_hwm;
         self.stat_succ_scans += (self.contexts[id].succ_pool.len() - succ_start) as u64;
         {
@@ -1514,12 +1579,41 @@ impl Engine {
             let arena = &self.cc_arena[ctx.root as usize];
             for &ci in &ctx.succ_pool[succ_start..] {
                 let c = &arena[ci as usize];
+                // Core-eligibility: a trigger may enter the successor core only
+                // if it is the SOLE succ-trigger over its function term in this
+                // clause's head.  A core atom is discharged by cutting it from
+                // its source clause (residue literals accumulate in the
+                // resolvent), which works for any single trigger — body
+                // conditions and other-term disjuncts ride along.  But two
+                // triggers over the same f from ONE head (e.g. the
+                // `… → A2(f)|A3(f)|Q` of a min-card case split) cannot both be
+                // cut from the same clause, so conditioning a push-back on both
+                // at once loses the per-disjunct refutations completeness
+                // needs; such triggers stay hypotheses (`p → p` at the target).
+                let mut multi: Vec<Term> = Vec::new();
+                {
+                    let mut seen: Vec<Term> = Vec::new();
+                    for l in &c.head {
+                        if let Lit::P(p) = l {
+                            let t = p.max_term();
+                            if is_function(t) && p.is_succ_trigger(&self.sig) {
+                                if seen.contains(&t) {
+                                    if !multi.contains(&t) {
+                                        multi.push(t);
+                                    }
+                                } else {
+                                    seen.push(t);
+                                }
+                            }
+                        }
+                    }
+                }
                 for (p, _) in c.max_head_predicates() {
                     if is_function(p.max_term())
                         && p.is_succ_trigger(&self.sig)
                         && !ctx.pushed_succ.contains(&p)
                     {
-                        new_succ.push(p);
+                        new_succ.push((p, !multi.contains(&p.max_term())));
                     }
                 }
             }
@@ -1527,7 +1621,7 @@ impl Engine {
         self.contexts[id].succ_hwm = self.contexts[id].succ_pool.len();
         if !self.central {
             // Legacy pay-as-you-go strategy: one empty-core successor per `f`.
-            for p in new_succ {
+            for (p, _) in new_succ {
                 let f = p.max_term();
                 let target = self.successor_for(f);
                 // forward map: f -> x, x -> y
@@ -1551,6 +1645,7 @@ impl Engine {
             // earlier back-pushed consequences remain sound because apply_pred
             // conditions them on that context's own core.
             let mut grew: Vec<Term> = Vec::new();
+            let mut new_by_f: HashMap<Term, Vec<Pred>> = HashMap::new();
             {
                 // Redundant-trigger skip (KM_NO_TRIGSKIP to disable): a concept
                 // trigger `C(f)` whose successor context for `f` already derives
@@ -1566,7 +1661,7 @@ impl Engine {
                 let trigskip = std::env::var_os("KM_NO_TRIGSKIP").is_none();
                 let mut redundant: Vec<Pred> = Vec::new();
                 if trigskip {
-                    for p in &new_succ {
+                    for (p, _) in &new_succ {
                         if let Pred::Concept { iri, t } = *p {
                             let f = t;
                             if let Some(&sid) = self.contexts[id].successors.get(&f) {
@@ -1578,7 +1673,7 @@ impl Engine {
                     }
                 }
                 let ctx = &mut self.contexts[id];
-                for p in new_succ {
+                for (p, is_fact) in new_succ {
                     // Always mark pushed so we never re-process this trigger.
                     ctx.pushed_succ.insert(p);
                     if redundant.contains(&p) {
@@ -1586,6 +1681,10 @@ impl Engine {
                     }
                     let f = p.max_term();
                     ctx.trigger_sets.entry(f).or_default().insert(p);
+                    if is_fact {
+                        ctx.fact_trigger_sets.entry(f).or_default().insert(p);
+                    }
+                    new_by_f.entry(f).or_default().push(p);
                     if !grew.contains(&f) {
                         grew.push(f);
                     }
@@ -1593,17 +1692,35 @@ impl Engine {
             }
             for f in grew {
                 let raw: Vec<Pred> = self.contexts[id].trigger_sets[&f].iter().copied().collect();
-                let mut core: Vec<Pred> = raw.iter().map(|p| p.apply(&|v| forwards(f, v))).collect();
+                // The successor core is the σ-image of the FACT triggers only;
+                // disjunctively/conditionally derived triggers stay hypotheses
+                // (see `fact_trigger_sets`).
+                let mut core: Vec<Pred> = self.contexts[id]
+                    .fact_trigger_sets
+                    .get(&f)
+                    .map(|s| s.iter().map(|p| p.apply(&|v| forwards(f, v))).collect())
+                    .unwrap_or_default();
                 core.sort();
                 core.dedup();
                 let target = self.central_successor_for_core(core);
                 let prev = self.contexts[id].successors.insert(f, target);
-                // New target (first push or grown set): send the full set so the
-                // new context's edge records every pushed predicate.  (A new raw
-                // trigger always changes the σ-image, so `prev == Some(target)`
-                // only happens if nothing changed — nothing to send then.)
                 if prev != Some(target) {
+                    // New target (first push or fact-core growth): send the full
+                    // set so the new context's edge records every pushed
+                    // predicate.
                     for p in &raw {
+                        self.msgs.push_back(Msg::Succ {
+                            from: id,
+                            f,
+                            p: p.apply(&|v| forwards(f, v)),
+                            target,
+                        });
+                    }
+                } else {
+                    // Same target (hypothesis-only growth): send just the new
+                    // triggers so the target gains their edge bookkeeping and
+                    // hypothesis clauses.
+                    for p in &new_by_f[&f] {
                         self.msgs.push_back(Msg::Succ {
                             from: id,
                             f,
@@ -1704,8 +1821,11 @@ impl Engine {
         // pushed back to this predecessor, so the next propagate must re-scan.
         self.contexts[target].dirty = true;
         // Succ rule: add hypothesis clause  p -> p.  Saturate unconditionally:
-        // under the central strategy the hypothesis is subsumed by the core's
-        // `-> p` (so add_clause returns false), but the core clauses seeded at
+        // under the central strategy a FACT trigger's hypothesis is subsumed by
+        // the core's `-> p` (add_clause returns false), while a disjunctively
+        // derived trigger's hypothesis is genuinely new and saturates — its
+        // consequences come back conditioned on `p` alone, which is what the
+        // per-disjunct cuts need.  Either way the core clauses seeded at
         // context creation still sit in `todo` and must be worked off.
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
@@ -2152,8 +2272,10 @@ impl Engine {
                 );
                 add(
                     "trigger_sets",
-                    ctx.trigger_sets.values().map(|s| s.len()).sum(),
-                    ctx.trigger_sets.values().map(|s| 24 + s.len() * (szp + 8)).sum(),
+                    ctx.trigger_sets.values().map(|s| s.len()).sum::<usize>()
+                        + ctx.fact_trigger_sets.values().map(|s| s.len()).sum::<usize>(),
+                    ctx.trigger_sets.values().map(|s| 24 + s.len() * (szp + 8)).sum::<usize>()
+                        + ctx.fact_trigger_sets.values().map(|s| 24 + s.len() * (szp + 8)).sum::<usize>(),
                 );
                 add(
                     "predecessor_edges(pushed)",

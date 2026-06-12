@@ -48,15 +48,109 @@ fn subset_lit(a: &[Lit], b: &[Lit]) -> bool {
 pub struct OntologyClause {
     pub body: Vec<Pred>,
     pub head: Vec<Lit>,
+    /// Groups of ≥2 neighbour variables the clause is invariant under
+    /// exchanging (sorted ascending), with `true` if the head holds an
+    /// equality for EVERY pair of the group.  Number-restriction clauses
+    /// (`r(x,y1) ∧ C(y1) ∧ ... ∧ r(x,yn) ∧ C(yn) → Δ ∨ ⋁ yi≈yj`) are fully
+    /// symmetric: Hyper assignments that permute the group map to the same
+    /// canonical resolvent, and (when the flag is set) equal-term assignments
+    /// substitute some head equality to `t≈t`, a tautology.  The Hyper join
+    /// uses this to enumerate only term-sorted assignments per group instead
+    /// of all `k^n` tuples.
+    pub sym_groups: Vec<(Vec<Term>, bool)>,
 }
 
 impl OntologyClause {
     pub fn new(body: Vec<Pred>, head: Vec<Lit>) -> OntologyClause {
-        OntologyClause {
-            body: sort_dedup_pred(body),
-            head: sort_dedup_lit(head),
+        let body = sort_dedup_pred(body);
+        let head = sort_dedup_lit(head);
+        let sym_groups = sym_groups(&body, &head);
+        OntologyClause { body, head, sym_groups }
+    }
+}
+
+/// Compute the symmetric neighbour-variable groups of a clause: `u ~ v` iff
+/// swapping `u` and `v` everywhere maps body and head to themselves (as sets).
+/// Exchange-invariance is transitive over a chain of invariant pairs, so the
+/// union-find of invariant PAIRS gives groups invariant under any permutation.
+fn sym_groups(body: &[Pred], head: &[Lit]) -> Vec<(Vec<Term>, bool)> {
+    let mut vars: Vec<Term> = Vec::new();
+    for p in body {
+        match *p {
+            Pred::Concept { t, .. } => {
+                if is_neighbour(t) && t != Y && !vars.contains(&t) {
+                    vars.push(t);
+                }
+            }
+            Pred::Role { s, t, .. } => {
+                for u in [s, t] {
+                    if is_neighbour(u) && u != Y && !vars.contains(&u) {
+                        vars.push(u);
+                    }
+                }
+            }
         }
     }
+    if vars.len() < 2 {
+        return Vec::new();
+    }
+    vars.sort();
+    let swap = |a: Term, b: Term| move |t: Term| if t == a { b } else if t == b { a } else { t };
+    let invariant = |a: Term, b: Term| -> bool {
+        let s = swap(a, b);
+        let mut b2: Vec<Pred> = body.iter().map(|p| p.apply(&s)).collect();
+        b2.sort();
+        let mut h2: Vec<Lit> = head.iter().map(|l| l.apply(&s)).collect();
+        h2.sort();
+        h2.dedup();
+        b2 == body && h2 == head
+    };
+    // group by union-find over invariant pairs
+    let n = vars.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    fn find(parent: &mut Vec<usize>, i: usize) -> usize {
+        let mut r = i;
+        while parent[r] != r {
+            r = parent[r];
+        }
+        let mut c = i;
+        while parent[c] != c {
+            let next = parent[c];
+            parent[c] = r;
+            c = next;
+        }
+        r
+    }
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if invariant(vars[i], vars[j]) {
+                let (ri, rj) = (find(&mut parent, i), find(&mut parent, j));
+                if ri != rj {
+                    parent[rj] = ri;
+                }
+            }
+        }
+    }
+    let mut groups: std::collections::HashMap<usize, Vec<Term>> = std::collections::HashMap::new();
+    for i in 0..n {
+        let r = find(&mut parent, i);
+        groups.entry(r).or_default().push(vars[i]);
+    }
+    let has_eq = |a: Term, b: Term| -> bool {
+        head.iter().any(|l| matches!(*l, Lit::Eq { s, t } if (s == a && t == b) || (s == b && t == a)))
+    };
+    let mut out: Vec<(Vec<Term>, bool)> = Vec::new();
+    for (_, mut g) in groups {
+        if g.len() < 2 {
+            continue;
+        }
+        g.sort();
+        let strict = (0..g.len())
+            .all(|i| ((i + 1)..g.len()).all(|j| has_eq(g[i], g[j])));
+        out.push((g, strict));
+    }
+    out.sort();
+    out
 }
 
 /// A clause derived inside a context: `body -> head` with body a conjunction of

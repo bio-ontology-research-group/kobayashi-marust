@@ -94,6 +94,14 @@ pub struct Clausifier {
     pub hooks: GroundHooks,
     universal_role_emitted: bool,
     pub needs_forall_intro: HashSet<Concept>,
+    /// Polarities at which each `AtLeast` concept occurs (from the pre-pass).
+    /// The n ≥ 2 recognition clause is expensive (multi-variable body, all-
+    /// pairs equality head), so it is emitted only when the concept may occur
+    /// negatively: seen negative, or not seen by the pre-pass at all (the
+    /// conservative default — only a pre-pass-PROVEN positive-only occurrence
+    /// skips it, so unseen occurrences keep the complete behaviour).
+    pub atleast_pos: HashSet<Concept>,
+    pub atleast_neg: HashSet<Concept>,
 }
 
 impl Clausifier {
@@ -106,6 +114,8 @@ impl Clausifier {
             hooks: GroundHooks::default(),
             universal_role_emitted: false,
             needs_forall_intro: HashSet::new(),
+            atleast_pos: HashSet::new(),
+            atleast_neg: HashSet::new(),
         }
     }
 
@@ -131,6 +141,13 @@ impl Clausifier {
             }
             Concept::Not(b) => self.mark_polarity(b, !neg),
             Concept::AtLeast(_, _, f) | Concept::AtMost(_, _, f) => {
+                if matches!(c, Concept::AtLeast(..)) {
+                    if neg {
+                        self.atleast_neg.insert(c.clone());
+                    } else {
+                        self.atleast_pos.insert(c.clone());
+                    }
+                }
                 self.mark_polarity(f, true);
                 self.mark_polarity(f, false);
             }
@@ -386,6 +403,27 @@ impl Clausifier {
                         ],
                         [qx],
                     ));
+                } else if *n == 0 || !self.atleast_pos.contains(c) || self.atleast_neg.contains(c) {
+                    // Recognition for n != 1: the contrapositive ¬Q ⊑ ≤(n-1) r.F,
+                    // i.e. n r-successors in F are either not all distinct or Q
+                    // holds. Same clause shape as AtMost below. (n == 0 yields an
+                    // empty body, making Q a fact: ≥0 r.F ≡ ⊤ — always emitted.)
+                    // Skipped only when the polarity pre-pass PROVED the concept
+                    // occurs positively only (then Q is never needed in a body
+                    // and the clause is pure cost — the ore_ont_15672 blow-up).
+                    let ys: Vec<Term> = (0..*n).map(|i| Term::Var(format!("y{}", i))).collect();
+                    let mut body_atoms: Vec<Atom> = Vec::new();
+                    for yi in &ys {
+                        body_atoms.push(Atom::Role(role_name.clone(), x.clone(), yi.clone()));
+                        body_atoms.push(Atom::Concept(filler_name.clone(), yi.clone()));
+                    }
+                    let mut head_atoms: Vec<Atom> = vec![qx];
+                    for i in 0..ys.len() {
+                        for j in (i + 1)..ys.len() {
+                            head_atoms.push(Atom::Eq(ys[i].clone(), ys[j].clone()));
+                        }
+                    }
+                    self.clauses.push(clause(body_atoms, head_atoms));
                 }
             }
             Concept::AtMost(n, role, filler) => {
@@ -424,6 +462,65 @@ impl Clausifier {
 impl Default for Clausifier {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `≥n r.F` (n ≥ 2) must get a recognition clause
+    /// `r(x,y0) ∧ F(y0) ∧ ... ∧ r(x,y_{n-1}) ∧ F(y_{n-1}) → Q ∨ ⋁ yi≈yj`,
+    /// otherwise a min-cardinality on the LHS of a subsumption can never fire
+    /// (the ore_ont_16461 incompleteness).
+    #[test]
+    fn atleast_two_recognition_clause() {
+        let mut cf = Clausifier::new();
+        let c = Concept::AtLeast(
+            2,
+            Role::Name("r".to_string()),
+            Box::new(Concept::Name("J".to_string())),
+        );
+        let q = cf.q(&c);
+        let qx = Atom::Concept(q, var_x());
+        let found = cf.clauses.iter().any(|cl| {
+            cl.body.len() == 4
+                && cl.head.len() == 2
+                && cl.head.contains(&qx)
+                && cl.head.iter().any(|a| matches!(a, Atom::Eq(_, _)))
+                && cl.body.iter().filter(|a| matches!(a, Atom::Role(..))).count() == 2
+                && cl.body.iter().filter(|a| matches!(a, Atom::Concept(..))).count() == 2
+        });
+        assert!(found, "missing ≥2 recognition clause; got {:#?}", cf.clauses);
+    }
+
+    /// Polarity gating: a pre-pass-proven positive-only `≥n` skips the
+    /// recognition clause; a negative (or unseen) occurrence emits it.
+    #[test]
+    fn atleast_recognition_polarity_gated() {
+        let mk = || {
+            Concept::AtLeast(
+                2,
+                Role::Name("r".to_string()),
+                Box::new(Concept::Name("J".to_string())),
+            )
+        };
+        let has_recognition = |cf: &Clausifier| {
+            cf.clauses
+                .iter()
+                .any(|cl| cl.body.len() == 4 && cl.head.iter().any(|a| matches!(a, Atom::Eq(_, _))))
+        };
+        // positive-only: skipped
+        let mut cf = Clausifier::new();
+        cf.mark_polarity(&mk(), false);
+        cf.q(&mk());
+        assert!(!has_recognition(&cf), "positive-only ≥2 must not emit recognition");
+        // both polarities: emitted
+        let mut cf = Clausifier::new();
+        cf.mark_polarity(&mk(), false);
+        cf.mark_polarity(&mk(), true);
+        cf.q(&mk());
+        assert!(has_recognition(&cf), "negative ≥2 must emit recognition");
     }
 }
 
