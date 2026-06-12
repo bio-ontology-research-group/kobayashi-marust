@@ -491,9 +491,12 @@ def classify(ofn_path: str) -> dict:
             # passing completeness certificate (KM_ELC_CERT) lets it answer;
             # otherwise it exits 3 and the context engine runs as usual.
             proc = None
-            if rbox_safe:
+            portfolio_on = bool(clauses_path is not None
+                                and os.environ.get("KM_ELC_PORTFOLIO"))
+            if rbox_safe and not portfolio_on:
                 proc = run_reasoner_file([elc_bin()], clauses_path)
-            elif os.environ.get("KM_ELC_FORCE"):
+            elif (not rbox_safe) and not portfolio_on \
+                    and os.environ.get("KM_ELC_FORCE"):
                 # Forced attempt on a non-EL-safe RBox: only a passing
                 # completeness certificate (KM_ELC_CERT) lets elc answer, and a
                 # FAILING attempt can be arbitrarily expensive (saturation +
@@ -532,8 +535,12 @@ def classify(ofn_path: str) -> dict:
             # stays under the job memcap.
             elc_race = None
             elc_out_path = None
+            # The race covers BOTH rbox-safe and unsafe ontologies: a
+            # rbox-safe ontology with non-EL clauses needs the certificate
+            # (the bare elc exits 3 on it), and a pure-EL one wins the race
+            # immediately anyway.
             if use_rust_el and clauses_path is not None \
-                    and os.environ.get("KM_ELC_PORTFOLIO") and not rbox_safe:
+                    and os.environ.get("KM_ELC_PORTFOLIO"):
                 elc_env = dict(os.environ)
                 elc_env.setdefault("KM_ELC_CERT", "2")
                 # output to a file: certified answers can be hundreds of MB,
