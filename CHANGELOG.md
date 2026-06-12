@@ -4,6 +4,40 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Frontend: role-chain recognition for pure-domain consumers (`KM_CHAIN_DOMAIN`)
+
+Recovers `ore_ont_11745`, the last unsound-vs-gold ontology: with the flag,
+full 11745 is byte-identical to Konclude gold (438277 subsumptions, 1592
+unsatisfiable classes, `GO_0008046` correctly unsatisfiable). It was a genuine
+unsat under-detection (HermiT-confirmed; an 18-axiom witness reduced from a
+STAR module), not the parallel-pipeline artifact earlier assumed.
+
+Root cause: `chain_clauses` / `transitivity_clauses` run inside `augment`
+(frontend pass 1) and recognise a chain `R∘S⊑T` only when a TBox consumer
+carries a concept on the chain target. A *pure-domain* consumer
+`T(x,y) → D(x)` (from `ObjectPropertyDomain(T, D)`) has no such concept and is
+added only in pass 2, so the chain feeding a domain restriction was never
+recognised. In 11745, `GO_0008046` is a molecular_function (a `SubClassOf`
+chain) and, via a transitive `part_of` chain plus `part_of∘ricdo⊑ridpo` with
+`domain(ridpo) = biological_process`, also a biological_process; the two are
+disjoint, so the class is unsatisfiable. KM reached the chain filler
+(`__trans__part_of__GO_0048856`) but never composed it with the domain
+restriction, so it missed the clash and emitted the class's ordinary
+superclasses (scored as unsound, though KM never derived anything false).
+
+Fix (gated by `KM_CHAIN_DOMAIN` while validated corpus-wide; reordering the
+passes is blocked by the `reg.short` name-assignment byte-identity invariant):
+`augment` now also returns the detected `ChainInfo`, and after
+`domain_range_clauses` are built, `domain_consumer_chain_clauses` emits the
+missing recognitions for pure-domain consumers of chain targets — the
+`__chain__S__` recognition (any `S`-edge) plus the `R`-composition, and when
+`R` is transitive the full `__trans__` up-propagation so the chain composes
+across `part_of` hops. Additive and sound (only fresh recognition clauses;
+standard chain unfolding, no calculus change, no Lean re-cert): off-flag output
+is byte-identical. Reproducers:
+`oracle/ontologies/{11745_unsat_core,chain_domain_propagation}.ofn`. Tests:
+`domain_consumer_chain_recognition`, `domain_consumer_transitive_chain_recognition`.
+
 ### Nominals: grounded CB reasoning (`KM_NOMINALS`, default off) — Phases 0+1
 
 KM's prior nominal handling replaced `{o}` with a fresh concept proxy
