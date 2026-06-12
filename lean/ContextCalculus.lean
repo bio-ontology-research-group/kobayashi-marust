@@ -11,3 +11,4 @@ import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm
 import ContextCalculus.CompletenessFO
+import ContextCalculus.Nominals
