@@ -1458,16 +1458,55 @@ fn repair_certify(
             is_named[c as usize] = true;
         }
     }
-    let mut pass_states: Vec<State> = Vec::new();
-    'pass: for pol in 0..2usize {
+    // disjointness pairs (NF2 with a ⊥ head), for greedy choice avoidance:
+    // when repairing a covering disjunction at a node, prefer a disjunct that
+    // is not already disjoint with the node's labels
+    let mut disj: HashMap<u32, HashSet<u32>> = HashMap::default();
+    for f in &nfs.nf2 {
+        if f.sup == BOTTOM {
+            disj.entry(f.sub1).or_default().insert(f.sub2);
+            disj.entry(f.sub2).or_default().insert(f.sub1);
+        }
+    }
+
+    // base-satisfiable named nodes: a repair that drives one of these to ⊥
+    // is a wrong choice (the criterion would fail), treated as a conflict
+    let base_alive_named: Vec<u32> = (0..n as u32)
+        .filter(|&c| is_named[c as usize] && !base.sub_super[c as usize].contains(&BOTTOM))
+        .collect();
+
+    enum PassOut {
+        /// the base model already satisfies everything (plain certificate)
+        Pristine,
+        /// a complete pass model plus the provenance of its direct repair
+        /// additions ((node, concept) -> choosing clause)
+        Model(State, HashMap<(u32, u32), usize>),
+        /// a ⊥-clause fired on a repair choice: ban that (node, clause,
+        /// disjunct) triple and retry
+        Conflict((u32, usize, u32)),
+        Fail,
+    }
+
+    // One repair pass under a per-clause choice-polarity vector.  Choices are
+    // greedy (skip disjuncts disjoint with the node's current labels) with
+    // the polarity as the tie-break, and every direct concept addition is
+    // recorded so a later ⊥-violation can be traced back to the choice that
+    // caused it (conflict-driven restart).
+    let run_pass = |polv: &[bool],
+                    pass_label: usize,
+                    banned: &HashSet<(u32, usize, u32)>|
+     -> PassOut {
         let mut st = base.fork();
         let mut nf4_buf: Vec<u32> = Vec::new();
-        // One shared work budget per pass across all of its rounds.
         let mut budget: u64 = 400_000_000;
         let mut adds: u64 = 0;
-        // at-most repairs merge nodes; merged ids mirror their representative
         let mut repr: Vec<u32> = (0..n as u32).collect();
         let mut merged: Vec<u32> = Vec::new();
+        let mut prov: HashMap<(u32, u32), usize> = HashMap::default();
+        // chronological choice log (node, clause, disjunct) for blame when
+        // the direct lookup misses (conflicting facts often arrive via the
+        // closure, not directly)
+        let mut chrono: Vec<(u32, usize, u32)> = Vec::new();
         for round in 1..=MAX_ROUNDS {
             let mut viols: Vec<(usize, Vec<u32>)> = Vec::new();
             let crep: Vec<u32> = (0..n as u32).map(|i| uf_find(&mut repr, i)).collect();
@@ -1483,76 +1522,159 @@ fn repair_certify(
             );
             if clean {
                 if adds == 0 {
-                    // No repair was needed: the base canonical model already
-                    // satisfies everything (the plain certificate). No second
-                    // pass and no intersection required.
-                    if debug {
-                        eprintln!("KM_ELC_CERT repair: base model already complete");
-                    }
-                    return true;
+                    return PassOut::Pristine;
                 }
                 if debug {
                     eprintln!(
-                        "KM_ELC_CERT repair pass {pol}: model complete after {} rounds, \
+                        "KM_ELC_CERT repair pass {pass_label}: model complete after {} rounds, \
                          {adds} additions (budget_left={budget})",
                         round - 1
                     );
                 }
-                pass_states.push(st);
-                continue 'pass;
+                return PassOut::Model(st, prov);
             }
             if viols.is_empty() {
-                // Budget exhaustion mid-enumeration: nothing trustworthy to
-                // repair, fail this pass conservatively.
                 if debug {
-                    eprintln!("KM_ELC_CERT repair pass {pol}: budget exhausted (round {round})");
+                    eprintln!(
+                        "KM_ELC_CERT repair pass {pass_label}: budget exhausted (round {round})"
+                    );
                 }
-                continue 'pass;
+                return PassOut::Fail;
             }
             for (rci, asg) in &viols {
-                // The chosen disjunct: first/last addable head atom. An eq
-                // atom cannot be "made true" by adding facts — it is repaired
-                // by MERGING the two bound elements (the at-most semantics);
-                // a clause with an empty head and a satisfied body is a
-                // genuine ⊥-violation, unrepairable.
                 let head = &rcs[*rci].head;
-                let pick = if pol == 0 {
-                    head.iter().find(|a| !matches!(a, RAtom::Eq { .. }))
+                // addable candidates in this clause's preference order
+                let cands: Vec<&RAtom> = if polv[*rci] {
+                    head.iter().rev().filter(|a| !matches!(a, RAtom::Eq { .. })).collect()
                 } else {
-                    head.iter().rev().find(|a| !matches!(a, RAtom::Eq { .. }))
+                    head.iter().filter(|a| !matches!(a, RAtom::Eq { .. })).collect()
                 };
+                // choice: prefer an unbanned candidate not disjoint with
+                // the node's labels, then any unbanned one, then anything
+                let mut pick: Option<&RAtom> = None;
+                for a in &cands {
+                    let ok = match **a {
+                        RAtom::C { cid, v } => {
+                            let nd = uf_find(&mut repr, asg[v]);
+                            !banned.contains(&(nd, *rci, cid))
+                                && !disj.get(&cid).is_some_and(|ds| {
+                                    ds.iter().any(|d| st.sub_super[nd as usize].contains(d))
+                                })
+                        }
+                        _ => true,
+                    };
+                    if ok {
+                        pick = Some(*a);
+                        break;
+                    }
+                }
+                if pick.is_none() {
+                    for a in &cands {
+                        let ok = match **a {
+                            RAtom::C { cid, v } => {
+                                let nd = uf_find(&mut repr, asg[v]);
+                                !banned.contains(&(nd, *rci, cid))
+                            }
+                            _ => true,
+                        };
+                        if ok {
+                            pick = Some(*a);
+                            break;
+                        }
+                    }
+                }
+                if pick.is_none() {
+                    pick = cands.first().copied();
+                }
                 match pick {
                     Some(&RAtom::C { cid, v }) => {
                         let nd = uf_find(&mut repr, asg[v]);
                         st.add_sub(nd, cid);
+                        prov.entry((nd, cid)).or_insert(*rci);
+                        chrono.push((nd, *rci, cid));
                     }
                     Some(&RAtom::R { rid, s, t }) => {
                         let sn = uf_find(&mut repr, asg[s]);
                         let tn = uf_find(&mut repr, asg[t]);
                         st.add_edge(sn, rid, tn);
                     }
-                    _ => match head.iter().find_map(|a| match *a {
+                    Some(&RAtom::Eq { .. }) => unreachable!("eq filtered from cands"),
+                    None => match head.iter().find_map(|a| match *a {
                         RAtom::Eq { s, t } => Some((s, t)),
                         _ => None,
                     }) {
                         Some((s, t)) => {
                             // an earlier merge in THIS round may already have
                             // unified the pair (violations were enumerated
-                            // against the round-start state): nothing to do,
-                            // the next recheck confirms
+                            // against the round-start state)
                             if uf_find(&mut repr, asg[s]) == uf_find(&mut repr, asg[t]) {
                                 continue;
                             }
                             merge_nodes(&mut st, &mut repr, &mut merged, asg[s], asg[t]);
                         }
                         None => {
-                            if debug {
-                                eprintln!(
-                                    "KM_ELC_CERT repair pass {pol}: clause {rci} violated \
-                                     with empty head (genuine inconsistency instance)"
-                                );
+                            // ⊥-clause violated: blame the direct repair
+                            // choice that put a body concept there; failing
+                            // that, the last choice made at the conflicting
+                            // node; failing that, the last choice globally
+                            // (chronological backtracking).
+                            let mut blame: Option<(u32, usize, u32)> = None;
+                            for a in &rcs[*rci].body {
+                                if let RAtom::C { cid, v } = *a {
+                                    let nd = uf_find(&mut repr, asg[v]);
+                                    if let Some(&src) = prov.get(&(nd, cid)) {
+                                        if !banned.contains(&(nd, src, cid)) {
+                                            blame = Some((nd, src, cid));
+                                            break;
+                                        }
+                                    }
+                                }
                             }
-                            continue 'pass;
+                            if blame.is_none() {
+                                let mut conf_nodes: Vec<u32> = Vec::new();
+                                for a in &rcs[*rci].body {
+                                    if let RAtom::C { v, .. } | RAtom::R { s: v, .. } = *a {
+                                        conf_nodes.push(uf_find(&mut repr, asg[v]));
+                                    }
+                                }
+                                blame = chrono
+                                    .iter()
+                                    .rev()
+                                    .find(|t| {
+                                        conf_nodes.contains(&uf_find(&mut repr, t.0))
+                                            && !banned.contains(*t)
+                                    })
+                                    .copied()
+                                    .or_else(|| {
+                                        chrono
+                                            .iter()
+                                            .rev()
+                                            .find(|t| !banned.contains(*t))
+                                            .copied()
+                                    });
+                            }
+                            match blame {
+                                Some(triple) => {
+                                    if debug {
+                                        eprintln!(
+                                            "KM_ELC_CERT repair pass {pass_label}: clause \
+                                             {rci} conflict, banning choice {:?}",
+                                            triple
+                                        );
+                                    }
+                                    return PassOut::Conflict(triple);
+                                }
+                                None => {
+                                    if debug {
+                                        eprintln!(
+                                            "KM_ELC_CERT repair pass {pass_label}: clause \
+                                             {rci} violated with empty head (no choices made \
+                                             — genuine inconsistency)"
+                                        );
+                                    }
+                                    return PassOut::Fail;
+                                }
+                            }
                         }
                     },
                 }
@@ -1571,73 +1693,233 @@ fn repair_certify(
                     st.edges[b as usize] = st.edges[a as usize].clone();
                 }
             }
+            // a repair choice cascaded a base-satisfiable named witness to ⊥:
+            // the killing choice was made at SOME newly-⊥ node (the cascade
+            // travels the closure, e.g. a poisoned existential filler kills
+            // its sources) — blame the most recent unbanned choice at any
+            // newly-dead node, else at the witness itself, else anywhere
+            for &c in &base_alive_named {
+                let cr = uf_find(&mut repr, c);
+                if st.sub_super[cr as usize].contains(&BOTTOM) {
+                    let blame = chrono
+                        .iter()
+                        .rev()
+                        .find(|t| {
+                            !banned.contains(*t) && {
+                                let nd = uf_find(&mut repr, t.0);
+                                st.sub_super[nd as usize].contains(&BOTTOM)
+                                    && !base.sub_super[nd as usize].contains(&BOTTOM)
+                            }
+                        })
+                        .copied()
+                        .or_else(|| {
+                            chrono
+                                .iter()
+                                .rev()
+                                .find(|t| {
+                                    uf_find(&mut repr, t.0) == cr && !banned.contains(*t)
+                                })
+                                .copied()
+                        })
+                        .or_else(|| {
+                            chrono.iter().rev().find(|t| !banned.contains(*t)).copied()
+                        });
+                    match blame {
+                        Some(triple) => {
+                            if debug {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pass_label}: witness {} died, \
+                                     banning choice {:?}",
+                                    c, triple
+                                );
+                            }
+                            return PassOut::Conflict(triple);
+                        }
+                        None => {
+                            if debug {
+                                eprintln!(
+                                    "KM_ELC_CERT repair pass {pass_label}: witness {} died \
+                                     with no choices made (genuinely unsatisfiable?)",
+                                    c
+                                );
+                            }
+                            return PassOut::Fail;
+                        }
+                    }
+                }
+            }
         }
         if debug {
-            eprintln!("KM_ELC_CERT repair pass {pol}: no convergence in {MAX_ROUNDS} rounds");
+            eprintln!(
+                "KM_ELC_CERT repair pass {pass_label}: no convergence in {MAX_ROUNDS} rounds"
+            );
+        }
+        PassOut::Fail
+    };
+
+    const RESTART_CAP: usize = 64;
+    let mut pass_states: Vec<(State, HashMap<(u32, u32), usize>)> = Vec::new();
+    let polv0 = vec![false; rcs.len()];
+    let mut banned0: HashSet<(u32, usize, u32)> = HashSet::default();
+    for seed in 0..2usize {
+        let polv = vec![seed == 1; rcs.len()];
+        let mut banned: HashSet<(u32, usize, u32)> = HashSet::default();
+        let mut restarts = 0usize;
+        loop {
+            match run_pass(&polv, seed, &banned) {
+                PassOut::Pristine => {
+                    if debug {
+                        eprintln!("KM_ELC_CERT repair: base model already complete");
+                    }
+                    return true;
+                }
+                PassOut::Model(st, prov) => {
+                    if seed == 0 {
+                        banned0 = banned.clone();
+                    }
+                    pass_states.push((st, prov));
+                    break;
+                }
+                PassOut::Conflict(triple) => {
+                    if restarts >= RESTART_CAP || !banned.insert(triple) {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair pass {seed}: conflicts persist after \
+                                 {restarts} restarts"
+                            );
+                        }
+                        break;
+                    }
+                    restarts += 1;
+                }
+                PassOut::Fail => break,
+            }
         }
     }
     if pass_states.is_empty() {
         return false;
     }
-    // Intersection criterion on every named, base-satisfiable node.
-    for c in 0..n {
-        if !is_named[c] || base.sub_super[c].contains(&BOTTOM) {
-            continue; // not a query subject / already reported unsatisfiable
-        }
-        // Named concepts the repair added at this node, intersected across the
-        // pass models where the node stays satisfiable.
-        let mut inter: Option<HashSet<u32>> = None;
-        for st in &pass_states {
-            if st.sub_super[c].contains(&BOTTOM) {
+    // Intersection criterion with REFINEMENT.  An undetermined pair — a named
+    // concept the repair added at a named node in EVERY surviving pass model —
+    // is not necessarily entailed: re-run a targeted pass with the choices
+    // that produced it banned; a completing pass refutes the pair (its model
+    // lacks it) and shrinks the undetermined set.  Pairs no targeted pass can
+    // refute fail the certificate conservatively (they may be genuine
+    // consequences the EL lower bound missed, in which case only the context
+    // engine can answer).
+    const REFINE_CAP: usize = 8;
+    for refine in 0..=REFINE_CAP {
+        let mut undet: Vec<(u32, u32)> = Vec::new();
+        for c in 0..n {
+            if !is_named[c] || base.sub_super[c].contains(&BOTTOM) {
                 continue;
             }
-            let extras: HashSet<u32> = st.sub_super[c]
-                .iter()
-                .copied()
-                .filter(|&d| is_named[d as usize] && !base.sub_super[c].contains(&d))
-                .collect();
-            inter = Some(match inter {
-                None => extras,
-                Some(prev) => prev.intersection(&extras).copied().collect(),
-            });
-            if inter.as_ref().is_some_and(|s| s.is_empty()) {
-                break;
+            let mut inter: Option<HashSet<u32>> = None;
+            for (st, _) in &pass_states {
+                if st.sub_super[c].contains(&BOTTOM) {
+                    continue;
+                }
+                let extras: HashSet<u32> = st.sub_super[c]
+                    .iter()
+                    .copied()
+                    .filter(|&d| is_named[d as usize] && !base.sub_super[c].contains(&d))
+                    .collect();
+                inter = Some(match inter {
+                    None => extras,
+                    Some(prev) => prev.intersection(&extras).copied().collect(),
+                });
+                if inter.as_ref().is_some_and(|s| s.is_empty()) {
+                    break;
+                }
+            }
+            match inter {
+                None => {
+                    // Unsatisfiable in every pass model: no witness that the
+                    // base "satisfiable" verdict is right.
+                    if debug {
+                        eprintln!(
+                            "KM_ELC_CERT repair fail: {} unsat in every pass model",
+                            it.name(c as u32)
+                        );
+                    }
+                    return false;
+                }
+                Some(set) => {
+                    for d in set {
+                        undet.push((c as u32, d));
+                    }
+                }
             }
         }
-        match &inter {
-            None => {
-                // Unsatisfiable in every pass model: no witness that the base
-                // "satisfiable" verdict is right.
-                if debug {
-                    eprintln!(
-                        "KM_ELC_CERT repair fail: {} unsat in every pass model",
-                        it.name(c as u32)
-                    );
-                }
-                return false;
+        if undet.is_empty() {
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT repair pass: {} model(s) agree with the EL lower bound",
+                    pass_states.len()
+                );
             }
-            Some(s) if !s.is_empty() => {
-                // Forced in every surviving model but not derived: the EL
-                // answer might be incomplete here. Undetermined -> fallback.
-                if debug {
-                    eprintln!(
-                        "KM_ELC_CERT repair fail: {} undetermined supers at {}",
-                        s.len(),
-                        it.name(c as u32)
-                    );
-                }
-                return false;
+            return true;
+        }
+        if refine == REFINE_CAP {
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT repair fail: {} undetermined pairs persist after \
+                     {REFINE_CAP} refinement passes",
+                    undet.len()
+                );
             }
-            _ => {}
+            return false;
+        }
+        let mut new_bans = 0usize;
+        for &(nd, a) in &undet {
+            for (_, prov) in &pass_states {
+                if let Some(&rci) = prov.get(&(nd, a)) {
+                    if banned0.insert((nd, rci, a)) {
+                        new_bans += 1;
+                    }
+                }
+            }
+        }
+        if new_bans == 0 {
+            if debug {
+                eprintln!(
+                    "KM_ELC_CERT repair fail: {} undetermined pairs with no traceable \
+                     choices (closure-forced — possibly genuine consequences)",
+                    undet.len()
+                );
+            }
+            return false;
+        }
+        let mut restarts = 0usize;
+        loop {
+            match run_pass(&polv0, 2 + refine, &banned0) {
+                PassOut::Pristine => return true,
+                PassOut::Model(st, prov) => {
+                    pass_states.push((st, prov));
+                    break;
+                }
+                PassOut::Conflict(triple) => {
+                    if restarts >= RESTART_CAP || !banned0.insert(triple) {
+                        if debug {
+                            eprintln!(
+                                "KM_ELC_CERT repair fail: refinement pass {refine} stuck in \
+                                 conflicts"
+                            );
+                        }
+                        return false;
+                    }
+                    restarts += 1;
+                }
+                PassOut::Fail => {
+                    if debug {
+                        eprintln!("KM_ELC_CERT repair fail: refinement pass {refine} failed");
+                    }
+                    return false;
+                }
+            }
         }
     }
-    if debug {
-        eprintln!(
-            "KM_ELC_CERT repair pass: {} model(s) agree with the EL lower bound",
-            pass_states.len()
-        );
-    }
-    true
+    unreachable!("refinement loop returns within the cap")
 }
 
 // ---------------------------------------------------------------------------
