@@ -102,6 +102,11 @@ pub struct Clausifier {
     /// skips it, so unseen occurrences keep the complete behaviour).
     pub atleast_pos: HashSet<Concept>,
     pub atleast_neg: HashSet<Concept>,
+    /// Same for `AtMost`: the recognition direction (`≤n r.F ⊑ Q` via
+    /// excluded middle + n+1 distinct witnesses) is emitted only when the
+    /// concept may occur negatively.
+    pub atmost_pos: HashSet<Concept>,
+    pub atmost_neg: HashSet<Concept>,
 }
 
 impl Clausifier {
@@ -116,6 +121,8 @@ impl Clausifier {
             needs_forall_intro: HashSet::new(),
             atleast_pos: HashSet::new(),
             atleast_neg: HashSet::new(),
+            atmost_pos: HashSet::new(),
+            atmost_neg: HashSet::new(),
         }
     }
 
@@ -141,12 +148,15 @@ impl Clausifier {
             }
             Concept::Not(b) => self.mark_polarity(b, !neg),
             Concept::AtLeast(_, _, f) | Concept::AtMost(_, _, f) => {
-                if matches!(c, Concept::AtLeast(..)) {
-                    if neg {
-                        self.atleast_neg.insert(c.clone());
-                    } else {
-                        self.atleast_pos.insert(c.clone());
-                    }
+                let (pos, neg_set) = if matches!(c, Concept::AtLeast(..)) {
+                    (&mut self.atleast_pos, &mut self.atleast_neg)
+                } else {
+                    (&mut self.atmost_pos, &mut self.atmost_neg)
+                };
+                if neg {
+                    neg_set.insert(c.clone());
+                } else {
+                    pos.insert(c.clone());
                 }
                 self.mark_polarity(f, true);
                 self.mark_polarity(f, false);
@@ -430,7 +440,7 @@ impl Clausifier {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
                 let ys: Vec<Term> = (0..=*n).map(|i| Term::Var(format!("y{}", i))).collect();
-                let mut body_atoms: Vec<Atom> = vec![qx];
+                let mut body_atoms: Vec<Atom> = vec![qx.clone()];
                 for yi in &ys {
                     body_atoms.push(Atom::Role(role_name.clone(), x.clone(), yi.clone()));
                     body_atoms.push(Atom::Concept(filler_name.clone(), yi.clone()));
@@ -442,6 +452,35 @@ impl Clausifier {
                     }
                 }
                 self.clauses.push(clause(body_atoms, head_atoms));
+                // Recognition: `≤n r.F ⊑ Q` via excluded middle — NQ stands for
+                // ¬Q ≡ ≥(n+1) r.F (n+1 pairwise-distinct witnesses), so a
+                // context whose constraints refute the witnesses derives Q.
+                // Emitted only when the AtMost may occur negatively (a LHS /
+                // body position); the ⊤ → Q ∨ NQ split fires in every context,
+                // so a pre-pass-proven positive-only occurrence skips it.
+                if !self.atmost_pos.contains(c) || self.atmost_neg.contains(c) {
+                    let nq = self.fresh();
+                    let nqx = Atom::Concept(nq.clone(), x.clone());
+                    self.clauses.push(clause([], [qx.clone(), nqx.clone()]));
+                    self.clauses.push(clause([qx, nqx.clone()], []));
+                    let g = |i: i64| Term::Fun(format!("f_{}_{}", nq, i), Box::new(x.clone()));
+                    for i in 0..=*n {
+                        self.clauses.push(clause(
+                            [nqx.clone()],
+                            [Atom::Role(role_name.clone(), x.clone(), g(i))],
+                        ));
+                        self.clauses.push(clause(
+                            [nqx.clone()],
+                            [Atom::Concept(filler_name.clone(), g(i))],
+                        ));
+                    }
+                    for i in 0..=*n {
+                        for j in (i + 1)..=*n {
+                            self.clauses
+                                .push(clause([nqx.clone(), Atom::Eq(g(i), g(j))], []));
+                        }
+                    }
+                }
             }
             Concept::Name(_) => unreachable!("q() short-circuits ConceptName"),
         }
@@ -521,6 +560,41 @@ mod tests {
         cf.mark_polarity(&mk(), true);
         cf.q(&mk());
         assert!(has_recognition(&cf), "negative ≥2 must emit recognition");
+    }
+
+    /// AtMost recognition (`≤n r.F ⊑ Q` via excluded middle + n+1 distinct
+    /// witnesses) is emitted for negative/unseen occurrences and skipped for
+    /// proven positive-only ones.
+    #[test]
+    fn atmost_recognition_polarity_gated() {
+        let mk = || {
+            Concept::AtMost(
+                1,
+                Role::Name("r".to_string()),
+                Box::new(Concept::Name("J".to_string())),
+            )
+        };
+        // The excluded-middle clause `⊤ → Q ∨ NQ` marks the recognition.
+        let has_recognition = |cf: &Clausifier| {
+            cf.clauses
+                .iter()
+                .any(|cl| cl.body.is_empty() && cl.head.len() == 2
+                    && cl.head.iter().all(|a| matches!(a, Atom::Concept(..))))
+        };
+        // positive-only: skipped
+        let mut cf = Clausifier::new();
+        cf.mark_polarity(&mk(), false);
+        cf.q(&mk());
+        assert!(!has_recognition(&cf), "positive-only ≤1 must not emit recognition");
+        // negative: emitted (excluded middle + 2 witnesses + 1 distinctness)
+        let mut cf = Clausifier::new();
+        cf.mark_polarity(&mk(), true);
+        cf.q(&mk());
+        assert!(has_recognition(&cf), "negative ≤1 must emit recognition");
+        // unseen (no pre-pass): emitted — the conservative default
+        let mut cf = Clausifier::new();
+        cf.q(&mk());
+        assert!(has_recognition(&cf), "unseen ≤1 must emit recognition");
     }
 }
 

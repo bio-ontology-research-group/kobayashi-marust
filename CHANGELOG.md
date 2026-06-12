@@ -4,6 +4,22 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Frontend: AtMost recognition (`≤n r.F` on the LHS could never fire)
+
+The mirror of the AtLeast gap below, found by inspection: the AtMost
+clausification emitted only the constraint direction, so nothing could ever
+derive the reified Q and `≤n r.F ⊑ G` was silently incomplete (not
+exercised by ORE gold so far). Fix: excluded-middle recognition — fresh NQ
+with `⊤ → Q ∨ NQ`, `Q ⊓ NQ ⊑ ⊥`, and NQ ⊑ ≥(n+1) r.F (n+1 witnesses with
+pairwise inequalities); a context that refutes the witnesses derives Q.
+Polarity-gated (the `⊤ → Q ∨ NQ` split fires in every context): emitted for
+negative or unseen occurrences, skipped only when the pre-pass proves the
+occurrence positive-only. Probes: `∀r.⊥ ⊢ ≤1 r.J` (vacuous) and
+functionality ⊢ `≤2 r.J` (merge-derived) both derive G; negative probes
+stay sound. In-corpus clause changes are confined to current timeouts
+(10702, 1194, 14817). Test:
+`frontend::normalise::tests::atmost_recognition_polarity_gated`.
+
 ### Frontend: ≥n recognition clause for n ≥ 2 (the 16461 min-cardinality gap)
 
 The clausifier (`normalise.rs`, `Concept::AtLeast`) emitted the recognition
