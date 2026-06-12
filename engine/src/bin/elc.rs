@@ -20,6 +20,11 @@ struct Output {
     subsumptions: std::collections::BTreeMap<String, Vec<String>>,
     inconsistent: bool,
     dropped: usize,
+    /// named subjects the completeness certificate could not determine; the
+    /// caller classifies exactly these with the context engine (exit code 4
+    /// signals a nonempty residue)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unresolved: Vec<String>,
 }
 
 fn main() {
@@ -57,10 +62,12 @@ fn main() {
                 eprintln!("KM_ELC_TIMING classify={:.2}s ({} subjects)", t2.elapsed().as_secs_f64(), res.subsumptions.len());
             }
             let t3 = Instant::now();
+            let partial = !res.unresolved.is_empty();
             let out = Output {
                 subsumptions: res.subsumptions,
                 inconsistent: res.inconsistent,
                 dropped: 0,
+                unresolved: res.unresolved,
             };
             let stdout = std::io::stdout();
             let mut w = std::io::BufWriter::new(stdout.lock());
@@ -72,6 +79,10 @@ fn main() {
             let _ = w.flush();
             if timing {
                 eprintln!("KM_ELC_TIMING serialise={:.2}s total={:.2}s", t3.elapsed().as_secs_f64(), t0.elapsed().as_secs_f64());
+            }
+            if partial {
+                // certified for every subject EXCEPT the listed residue
+                exit(4);
             }
         }
         // not EL++: caller must use the disjunctive context engine.

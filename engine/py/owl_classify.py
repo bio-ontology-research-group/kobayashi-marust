@@ -151,13 +151,40 @@ _LIVE_ENGINES = []
 _RACE_WON = threading.Event()
 
 
+def _resolve_residue(partial, clauses_path, clauses):
+    """Complete a PARTIAL certified-elc answer (exit 4): the certificate
+    determined every named subject except `partial["unresolved"]`; classify
+    exactly those with the context engine (KM_QUERIES limits the root
+    contexts) and merge. Sound and complete: the certified subjects are exact
+    by the per-subject criterion, the residue by the engine."""
+    names = partial.pop("unresolved", [])
+    if not names:
+        return partial
+    os.environ["KM_QUERIES"] = ",".join(names)
+    _RACE_WON.clear()
+    try:
+        proc = _run_engine_adaptive(clauses_path, clauses)
+    finally:
+        os.environ.pop("KM_QUERIES", None)
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr)
+    eng = json.loads(proc.stdout)
+    subs = partial.get("subsumptions", {})
+    subs.update(eng.get("subsumptions", {}))
+    partial["subsumptions"] = subs
+    partial["inconsistent"] = bool(partial.get("inconsistent")) or bool(
+        eng.get("inconsistent"))
+    return partial
+
+
 def _race_adaptive_vs_elc(clauses_path, clauses, elc_proc, elc_out_path):
     """Race `_run_engine_adaptive` (in a thread) against the already-started
     certified-elc process writing to `elc_out_path`. Both sides only ever
     produce sound AND complete answers (a failing certificate exits 3), so the
     first one wins and the loser is killed. The racing elc runs under its own
     RSS cap (`KM_ELC_PORT_MEM_GB`, default 8 GiB)."""
-    cap = int(float(os.environ.get("KM_ELC_PORT_MEM_GB", "8")) * (1 << 30))
+    cap_gb = float(os.environ.get("KM_ELC_PORT_MEM_GB", "8"))
+    cap = int(cap_gb * (1 << 30))
     done = {}
 
     def run_cb():
@@ -168,7 +195,25 @@ def _race_adaptive_vs_elc(clauses_path, clauses, elc_proc, elc_out_path):
 
     th = threading.Thread(target=run_cb, daemon=True)
     th.start()
+    # A PARTIAL certificate (elc exit 4) answers all but a small residue of
+    # subjects.  The residue still needs the context engine, which can be as
+    # expensive as the full classification (the shared TBox closure dominates)
+    # — so the partial result spawns a THIRD racer (a query-restricted engine
+    # run under the elc memory cap) instead of forfeiting the full engine's
+    # progress.  First finisher wins: full engine alone, or partial + residue.
+    partial = None
+    tgt = {}
+    tgt_thread = None
     elc_lost = False
+
+    def run_targeted(names):
+        try:
+            tgt["proc"] = _run_engine(
+                clauses_path, clauses, rss_cap_gb=cap_gb,
+                extra_env={"KM_QUERIES": ",".join(names)})
+        except BaseException as e:
+            tgt["exc"] = e
+
     while True:
         rc = elc_proc.poll()
         if rc is not None and not elc_lost:
@@ -181,7 +226,43 @@ def _race_adaptive_vs_elc(clauses_path, clauses, elc_proc, elc_out_path):
                         pass
                 with open(elc_out_path) as f:
                     return json.load(f)
-            elc_lost = True  # exit 3 / crash: only the engine can answer now
+            if rc == 4 and partial is None:
+                with open(elc_out_path) as f:
+                    partial = json.load(f)
+                names = partial.pop("unresolved", [])
+                if not names:
+                    _RACE_WON.set()
+                    for p in list(_LIVE_ENGINES):
+                        try:
+                            p.kill()
+                        except Exception:
+                            pass
+                    return partial
+                tgt_thread = threading.Thread(
+                    target=run_targeted, args=(names,), daemon=True)
+                tgt_thread.start()
+                elc_lost = True  # elc itself is done; the racers continue
+            elif rc != 4:
+                elc_lost = True  # exit 3 / crash: the engine must answer
+
+        if tgt_thread is not None and not tgt_thread.is_alive():
+            proc2 = tgt.get("proc")
+            if proc2 is not None and proc2.returncode == 0:
+                _RACE_WON.set()
+                for p in list(_LIVE_ENGINES):
+                    try:
+                        p.kill()
+                    except Exception:
+                        pass
+                eng = json.loads(proc2.stdout)
+                subs = partial.get("subsumptions", {})
+                subs.update(eng.get("subsumptions", {}))
+                partial["subsumptions"] = subs
+                partial["inconsistent"] = bool(partial.get("inconsistent")) or bool(
+                    eng.get("inconsistent"))
+                return partial
+            tgt_thread = None  # targeted failed; the full engine remains
+
         if not th.is_alive():
             break
         if rc is None:
@@ -196,6 +277,13 @@ def _race_adaptive_vs_elc(clauses_path, clauses, elc_proc, elc_out_path):
         elc_proc.kill()
     except Exception:
         pass
+    # the full engine answered: stop a still-running targeted racer
+    _RACE_WON.set()
+    for p in list(_LIVE_ENGINES):
+        try:
+            p.kill()
+        except Exception:
+            pass
     if "exc" in done:
         raise done["exc"]
     proc = done["proc"]
@@ -422,6 +510,9 @@ def classify(ofn_path: str) -> dict:
             if proc is not None:
                 if proc.returncode == 3:
                     out = None
+                elif proc.returncode == 4:
+                    out = _resolve_residue(
+                        json.loads(proc.stdout), clauses_path, clauses)
                 elif proc.returncode != 0:
                     raise RuntimeError(proc.stderr)
                 else:

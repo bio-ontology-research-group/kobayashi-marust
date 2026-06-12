@@ -1442,6 +1442,17 @@ fn merge_nodes(st: &mut State, repr: &mut [u32], merged: &mut Vec<u32>, x: u32, 
     }
 }
 
+/// Certificate verdict: `Pass` answers everything; `Partial(subjects)`
+/// answers every named subject EXCEPT the listed ones (their truth could not
+/// be pinned between the EL lower bound and the model upper bounds — the
+/// caller resolves exactly those with the context engine); `Fail` answers
+/// nothing.
+pub enum CertOutcome {
+    Pass,
+    Partial(Vec<u32>),
+    Fail,
+}
+
 fn repair_certify(
     rcs: &[RClause],
     nfs: &Nfs,
@@ -1449,7 +1460,7 @@ fn repair_certify(
     base: &State,
     it: &Interner,
     debug: bool,
-) -> bool {
+) -> CertOutcome {
     const MAX_ROUNDS: usize = 64;
     let n = base.sub_super.len();
     let mut is_named = vec![false; n];
@@ -1494,7 +1505,8 @@ fn repair_certify(
     // caused it (conflict-driven restart).
     let run_pass = |polv: &[bool],
                     pass_label: usize,
-                    banned: &HashSet<(u32, usize, u32)>|
+                    banned: &HashSet<(u32, usize, u32)>,
+                    tolerate_deaths: bool|
      -> PassOut {
         let mut st = base.fork();
         let mut nf4_buf: Vec<u32> = Vec::new();
@@ -1699,6 +1711,9 @@ fn repair_certify(
             // its sources) — blame the most recent unbanned choice at any
             // newly-dead node, else at the witness itself, else anywhere
             for &c in &base_alive_named {
+                if tolerate_deaths {
+                    break;
+                }
                 let cr = uf_find(&mut repr, c);
                 if st.sub_super[cr as usize].contains(&BOTTOM) {
                     let blame = chrono
@@ -1765,19 +1780,21 @@ fn repair_certify(
         let polv = vec![seed == 1; rcs.len()];
         let mut banned: HashSet<(u32, usize, u32)> = HashSet::default();
         let mut restarts = 0usize;
+        let mut got_model = false;
         loop {
-            match run_pass(&polv, seed, &banned) {
+            match run_pass(&polv, seed, &banned, false) {
                 PassOut::Pristine => {
                     if debug {
                         eprintln!("KM_ELC_CERT repair: base model already complete");
                     }
-                    return true;
+                    return CertOutcome::Pass;
                 }
                 PassOut::Model(st, prov) => {
                     if seed == 0 {
                         banned0 = banned.clone();
                     }
                     pass_states.push((st, prov));
+                    got_model = true;
                     break;
                 }
                 PassOut::Conflict(triple) => {
@@ -1795,20 +1812,33 @@ fn repair_certify(
                 PassOut::Fail => break,
             }
         }
+        if !got_model {
+            // strict passes kept dying: accept a model that lets witnesses
+            // die — their subjects become unresolved residue for the engine
+            if let PassOut::Model(st, prov) = run_pass(&polv, seed + 10, &banned, true) {
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair pass {seed}: death-tolerant model accepted"
+                    );
+                }
+                if seed == 0 {
+                    banned0 = banned.clone();
+                }
+                pass_states.push((st, prov));
+            }
+        }
     }
     if pass_states.is_empty() {
-        return false;
+        return CertOutcome::Fail;
     }
-    // Intersection criterion with REFINEMENT.  An undetermined pair — a named
-    // concept the repair added at a named node in EVERY surviving pass model —
-    // is not necessarily entailed: re-run a targeted pass with the choices
-    // that produced it banned; a completing pass refutes the pair (its model
-    // lacks it) and shrinks the undetermined set.  Pairs no targeted pass can
-    // refute fail the certificate conservatively (they may be genuine
-    // consequences the EL lower bound missed, in which case only the context
-    // engine can answer).
+    // Per-subject intersection criterion with refinement.  Subjects whose
+    // truth cannot be pinned (unsat in every surviving model, or with
+    // undetermined extra supers after the refinement passes) become the
+    // unresolved residue; everything else is answered exactly.
     const REFINE_CAP: usize = 8;
-    for refine in 0..=REFINE_CAP {
+    let mut refine = 0usize;
+    loop {
+        let mut unsat_subjects: Vec<u32> = Vec::new();
         let mut undet: Vec<(u32, u32)> = Vec::new();
         for c in 0..n {
             if !is_named[c] || base.sub_super[c].contains(&BOTTOM) {
@@ -1833,17 +1863,7 @@ fn repair_certify(
                 }
             }
             match inter {
-                None => {
-                    // Unsatisfiable in every pass model: no witness that the
-                    // base "satisfiable" verdict is right.
-                    if debug {
-                        eprintln!(
-                            "KM_ELC_CERT repair fail: {} unsat in every pass model",
-                            it.name(c as u32)
-                        );
-                    }
-                    return false;
-                }
+                None => unsat_subjects.push(c as u32),
                 Some(set) => {
                     for d in set {
                         undet.push((c as u32, d));
@@ -1851,25 +1871,45 @@ fn repair_certify(
                 }
             }
         }
-        if undet.is_empty() {
+        if undet.is_empty() || refine >= REFINE_CAP {
+            let mut unresolved: Vec<u32> = unsat_subjects;
+            unresolved.extend(undet.iter().map(|p| p.0));
+            unresolved.sort_unstable();
+            unresolved.dedup();
+            if unresolved.is_empty() {
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT repair pass: {} model(s) agree with the EL lower bound",
+                        pass_states.len()
+                    );
+                }
+                return CertOutcome::Pass;
+            }
+            let cap: usize = std::env::var("KM_ELC_RESIDUE_CAP")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(64);
+            if unresolved.len() <= cap {
+                if debug {
+                    eprintln!(
+                        "KM_ELC_CERT partial: {} unresolved subject(s) left for the \
+                         context engine",
+                        unresolved.len()
+                    );
+                }
+                return CertOutcome::Partial(unresolved);
+            }
             if debug {
                 eprintln!(
-                    "KM_ELC_CERT repair pass: {} model(s) agree with the EL lower bound",
-                    pass_states.len()
+                    "KM_ELC_CERT repair fail: {} unresolved subjects exceed the residue cap",
+                    unresolved.len()
                 );
             }
-            return true;
+            return CertOutcome::Fail;
         }
-        if refine == REFINE_CAP {
-            if debug {
-                eprintln!(
-                    "KM_ELC_CERT repair fail: {} undetermined pairs persist after \
-                     {REFINE_CAP} refinement passes",
-                    undet.len()
-                );
-            }
-            return false;
-        }
+        // refinement: ban the choices behind the undetermined pairs and run
+        // one more targeted pass; dead ends just finalize with the residue
+        refine += 1;
         let mut new_bans = 0usize;
         for &(nd, a) in &undet {
             for (_, prov) in &pass_states {
@@ -1881,45 +1921,31 @@ fn repair_certify(
             }
         }
         if new_bans == 0 {
-            if debug {
-                eprintln!(
-                    "KM_ELC_CERT repair fail: {} undetermined pairs with no traceable \
-                     choices (closure-forced — possibly genuine consequences)",
-                    undet.len()
-                );
-            }
-            return false;
+            refine = REFINE_CAP;
+            continue;
         }
         let mut restarts = 0usize;
         loop {
-            match run_pass(&polv0, 2 + refine, &banned0) {
-                PassOut::Pristine => return true,
+            match run_pass(&polv0, 20 + refine, &banned0, true) {
+                PassOut::Pristine => return CertOutcome::Pass,
                 PassOut::Model(st, prov) => {
                     pass_states.push((st, prov));
                     break;
                 }
                 PassOut::Conflict(triple) => {
                     if restarts >= RESTART_CAP || !banned0.insert(triple) {
-                        if debug {
-                            eprintln!(
-                                "KM_ELC_CERT repair fail: refinement pass {refine} stuck in \
-                                 conflicts"
-                            );
-                        }
-                        return false;
+                        refine = REFINE_CAP;
+                        break;
                     }
                     restarts += 1;
                 }
                 PassOut::Fail => {
-                    if debug {
-                        eprintln!("KM_ELC_CERT repair fail: refinement pass {refine} failed");
-                    }
-                    return false;
+                    refine = REFINE_CAP;
+                    break;
                 }
             }
         }
     }
-    unreachable!("refinement loop returns within the cap")
 }
 
 // ---------------------------------------------------------------------------
@@ -1928,6 +1954,10 @@ fn repair_certify(
 
 /// The engine-shaped classification result (mirrors `el_route.classify`'s dict).
 pub struct ElResult {
+    /// named subjects the certificate could NOT determine (nonempty only in
+    /// repair mode): the caller must classify exactly these with the context
+    /// engine and merge; every other subject's answer is exact.
+    pub unresolved: Vec<String>,
     /// `concept -> [super-concepts]` (full internal names; `owl:Nothing` for ⊥).
     pub subsumptions: std::collections::BTreeMap<String, Vec<String>>,
     pub inconsistent: bool,
@@ -1972,6 +2002,7 @@ pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
 fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<ElResult> {
+    let mut unresolved: Vec<String> = Vec::new();
     let mut it = Interner::new();
     let (mut nfs, residual, skolem_filler) = to_nf(clauses, &mut it)?;
     let rcs = if residual.is_empty() {
@@ -2006,22 +2037,38 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
         if debug {
             eprintln!("KM_ELC_CERT checking {} residual clauses", rcs.len());
         }
-        let certified = match cert {
-            CertMode::Check => check_certificate(&rcs, &nfs, &res, debug),
+        let outcome = match cert {
+            CertMode::Check => {
+                if check_certificate(&rcs, &nfs, &res, debug) {
+                    CertOutcome::Pass
+                } else {
+                    CertOutcome::Fail
+                }
+            }
             CertMode::Repair => repair_certify(&rcs, &nfs, &idx, &res, &it, debug),
             CertMode::Off => unreachable!("residual with cert off returns early"),
         };
-        if !certified {
-            return None;
+        match outcome {
+            CertOutcome::Pass => {}
+            CertOutcome::Partial(subjects) => {
+                unresolved = subjects.iter().map(|&c| it.name(c).to_string()).collect();
+            }
+            CertOutcome::Fail => return None,
         }
     }
 
+    let unresolved_set: std::collections::BTreeSet<&str> =
+        unresolved.iter().map(|s| s.as_str()).collect();
     let mut subsumptions = std::collections::BTreeMap::new();
     for (c, sups) in res.sub_super.iter().enumerate() {
         let c = c as u32;
         // ⊤/⊥ as a *subject* give trivially-true ⊤⊑X / ⊥⊑X, which no reasoner
         // reports as a class subsumption — skip them.
         if c == TOP || c == BOTTOM {
+            continue;
+        }
+        // unresolved subjects are answered by the context engine instead
+        if unresolved_set.contains(it.name(c)) {
             continue;
         }
         let mut out = Vec::new();
@@ -2043,6 +2090,7 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
     Some(ElResult {
         subsumptions,
         inconsistent: el_inconsistent,
+        unresolved,
     })
 }
 
@@ -2247,7 +2295,9 @@ mod tests {
     fn repair_fails_when_disjunction_forces_subsumption() {
         // ⊤ → A ∨ B with A ⊑ D and B ⊑ D entails C ⊑ D for every class C,
         // which EL completion cannot derive: D survives in the intersection at
-        // the C node, so the certificate must fail (context-engine fallback).
+        // the C node, so C must NOT be answered by the certificate — it is
+        // either handed to the context engine as unresolved residue (partial
+        // verdict) or the whole certificate fails.
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[], &[c("A", "x"), c("B", "x")]),
@@ -2255,15 +2305,29 @@ mod tests {
             cl(&[c("B", "x")], &[c("D", "x")]),
             cl(&[c("C", "x")], &[c("C", "x")]),
         ));
-        assert!(classify_inner(&cs, CertMode::Repair, false).is_none());
+        match classify_inner(&cs, CertMode::Repair, false) {
+            None => {}
+            Some(res) => {
+                assert!(
+                    res.unresolved.iter().any(|n| n == "C"),
+                    "C must be unresolved, got {:?}",
+                    res.unresolved
+                );
+                assert!(
+                    !res.subsumptions.contains_key("C"),
+                    "C must not be answered by the certificate"
+                );
+            }
+        }
     }
 
     #[test]
     fn repair_fails_when_both_choices_force_bottom() {
         // ⊤ → A ∨ B with both disjuncts unsatisfiable: the ontology is
         // inconsistent but EL completion does not see it. Every repair choice
-        // kills every node, so no pass model can witness C's satisfiability
-        // and the certificate must fail.
+        // kills every node, so no pass model can witness C's satisfiability:
+        // C must be unresolved residue (the engine then detects the
+        // inconsistency) or the certificate must fail outright.
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[], &[c("A", "x"), c("B", "x")]),
@@ -2271,7 +2335,20 @@ mod tests {
             cl(&[c("B", "x")], &[]),
             cl(&[c("C", "x")], &[c("C", "x")]),
         ));
-        assert!(classify_inner(&cs, CertMode::Repair, false).is_none());
+        match classify_inner(&cs, CertMode::Repair, false) {
+            None => {}
+            Some(res) => {
+                assert!(
+                    res.unresolved.iter().any(|n| n == "C"),
+                    "C must be unresolved, got {:?}",
+                    res.unresolved
+                );
+                assert!(
+                    !res.subsumptions.contains_key("C"),
+                    "C must not be answered by the certificate"
+                );
+            }
+        }
     }
 
     #[test]

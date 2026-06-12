@@ -236,7 +236,16 @@ impl Reasoner {
     }
 
     pub fn saturate(&mut self) {
-        let queries = self.build_engine().named_queries();
+        let mut queries = self.build_engine().named_queries();
+        // KM_QUERIES: classify only the named subjects listed (comma-
+        // separated internal names) — the certified-EL hybrid's residue path:
+        // elc answers every subject its certificate determined, and the
+        // context engine resolves just the leftovers (one root context each,
+        // sound and complete per query independently of the subset).
+        if let Ok(qs) = std::env::var("KM_QUERIES") {
+            let want: std::collections::HashSet<&str> = qs.split(',').collect();
+            queries.retain(|&iri| want.contains(self.sig0.concept_names[iri as usize].as_str()));
+        }
         let threads = Self::want_threads().min(queries.len().max(1));
         // Sequential path: one engine over all queries (preserves cross-query
         // context sharing -- fastest when single-threaded).
