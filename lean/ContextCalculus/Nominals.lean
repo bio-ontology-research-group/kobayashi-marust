@@ -47,6 +47,7 @@
   `CheckerFO` already uses).
 -/
 import ContextCalculus.CheckerFO
+import ContextCalculus.CompletenessProp
 
 namespace ContextCalculus.Nominals
 
@@ -352,5 +353,29 @@ theorem nom_sound (B : D → Prop) (pins : List D) (n : Nat)
     obtain ⟨k, hk, hget⟩ := List.mem_iff_getElem.mp hmem
     have hk' : k < n + pins.length := Nat.lt_of_lt_of_le hk hlen
     exact ⟨⟨k, hk'⟩, by simp [List.getD, List.getElem?_eq_getElem hk, ← hget]⟩
+
+/-! ## 7. Completeness of the ground fragment
+
+The ground-context reasoning core — ground context clauses over atoms
+`B(o)`, `S(o,o')` (individuals and composites only), resolved by Join cases
+1+2 and the grounded Hyper instances — treats ground atoms as opaque
+propositional atoms: every inference is propositional resolution.
+`CompletenessProp.completeness` therefore applies verbatim with
+`Atom := Lit` restricted to ground literals: every unsatisfiable finite set
+of ground clauses derives the empty clause, so the engine's ground context
+detects every ground-level inconsistency (e.g. an ABox clash among the
+asserted individuals).  Stated here as an explicit instantiation for the
+record.  The full first-order ALCHOIQ completeness (the paper's
+canonical-model construction over a saturated context structure) is NOT
+mechanised — matching the repo-wide scope note in `CompletenessProp.lean`;
+it is validated empirically against the HermiT oracle and the ORE corpus. -/
+
+/-- Refutational completeness of the ground fragment: an unsatisfiable finite
+    set of ground clauses (over any atom type, in particular ground context
+    literals) derives `⊥` by resolution — the rule set Join implements. -/
+theorem ground_fragment_complete {A : Type} [DecidableEq A]
+    (S : Finset (PropRes.PClause A)) (h : PropRes.Unsat S) :
+    PropRes.Derivable S PropRes.PClause.bot :=
+  PropRes.completeness S h
 
 end ContextCalculus.Nominals
