@@ -183,11 +183,15 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let domain_range = preprocess::domain_range_clauses(&rbox);
     // Chain / transitivity recognition for pure-domain consumers of chain
     // targets (e.g. `R∘S⊑T, domain(T)=D`): these consumers only exist now, so
-    // `augment`'s pass-1 chain/transitivity encodings missed them. Gated by
-    // KM_CHAIN_DOMAIN while validated; additive and sound (fresh recognition
-    // clauses only), so off-flag output is unchanged. Run before extending so
-    // the recognitions see the same `domain_range` set.
-    if std::env::var_os("KM_CHAIN_DOMAIN").is_some() {
+    // `augment`'s pass-1 chain/transitivity encodings missed them. Additive
+    // and sound (fresh recognition clauses only); required for completeness
+    // (ore_ont_11745's unsat detection). DEFAULT ON since the full-corpus
+    // validation sweep (5976: 0 unsound, 0 incomplete vs gold modulo the
+    // datatype gap); KM_NO_CHAIN_DOMAIN restores the prior output for A/B
+    // debugging. Cost: chain-heavy ontologies (2313, 8737) can run past the
+    // benchmark budget — honest resource limits, never silent approximation.
+    // Run before extending so the recognitions see the same `domain_range` set.
+    if std::env::var_os("KM_NO_CHAIN_DOMAIN").is_none() {
         tbox.extend(preprocess::domain_consumer_chain_clauses(&chain_info, &domain_range));
     }
     tbox.extend(domain_range);

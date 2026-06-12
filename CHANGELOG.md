@@ -4,6 +4,23 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Chain-domain recognition validated corpus-wide; now DEFAULT ON
+
+Full sweep 5976 (`KM_CHAIN_DOMAIN=1`, all 591 gold-comparable ontologies):
+**543 ok / 46 timeout / 2 memout; vs Konclude gold 542 agree / 0 unsound /
+1 incomplete / 0 both-disagree.** The single incomplete is `ore_ont_6999`,
+whose one missing subsumption (`Distortion_Type_Affine`) is the known
+*datatype* gap (identical in the old config) — within SROIQ-minus-datatypes
+the corpus is now **0 unsound, 0 incomplete vs gold**, the first fully clean
+correctness table. `ore_ont_11745` confirmed fixed at full scale (ok,
+unsat=1592, gold-equal).
+
+Landing: the pass is now default-on (`KM_NO_CHAIN_DOMAIN` opts out for A/B
+debugging), per the completeness mandate and the disjunction-ordering
+precedent. Cost vs the 5941 baseline: `ore_ont_2313` and `ore_ont_8737`
+(chain-heavy; 8737 ran ~206 s before) go ok → timeout — honest resource
+limits, not silent approximation.
+
 ### Frontend: role-chain recognition for pure-domain consumers (`KM_CHAIN_DOMAIN`)
 
 Recovers `ore_ont_11745`, the last unsound-vs-gold ontology: with the flag,
