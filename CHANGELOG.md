@@ -4,6 +4,17 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Sweep 6016: the first fully clean correctness table (datatypes included)
+
+Full sweep with the datatype layer + chain-domain default + Phase-2 engine
+(binaries `ofn-dt` / `kobayashi-marust-p2`): **545 ok / 45 timeout /
+1 memout; vs Konclude gold 545 agree / 0 incomplete / 0 unsound /
+0 both-disagree** — every completed ontology byte-equal to gold, with no
+exclusions (ore_ont_6999's datatype gap closed). Zero status regressions vs
+sweep 5976 and two recoveries (ore_ont_2397, ore_ont_8737 timeout → ok), so
+the new clauses cost nothing net. The 3524 giant's stdout-runaway recurred
+mid-sweep and is now fixed at the root (`KM_EMIT_CLAUSES` gating below).
+
 ### Nominal-mode r-Pred announcement guard (10594 livelock fix)
 
 The Phase-2 per-source r-Pred path let body-empty ground clauses pass the
