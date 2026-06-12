@@ -152,11 +152,16 @@ def rust_context_saturate(
     """
     payload = {"clauses": [_clause_to_json(c) for c in tbox]}
 
+    env = dict(os.environ)
+    # this path consumes the derived-clause echo (the engine omits it by
+    # default: on giant ontologies it blew the benchmark driver's memory)
+    env["KM_EMIT_CLAUSES"] = "1"
     proc = subprocess.run(
         [str(_binary_path())],
         input=json.dumps(payload),
         capture_output=True,
         text=True,
+        env=env,
     )
     if proc.returncode != 0:
         raise RuntimeError(

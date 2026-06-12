@@ -40,9 +40,17 @@ fn main() {
         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
         .collect();
 
+    // The derived-clause echo doubles the output volume and is only consumed
+    // by the certificate path (rust_context.py, which sets KM_EMIT_CLAUSES).
+    // On giant ontologies (ore_ont_3524, 305 MB) the unconditional echo blew
+    // the harness driver past 190 GB RSS buffering engine stdout.
     let out = JOutput {
         subsumptions,
-        derived_clauses: r.emit_clauses(),
+        derived_clauses: if std::env::var_os("KM_EMIT_CLAUSES").is_some() {
+            r.emit_clauses()
+        } else {
+            Vec::new()
+        },
         inconsistent: r.inconsistent(),
         dropped: r.dropped_unsupported(),
     };
