@@ -1963,6 +1963,7 @@ impl Engine {
         // dominated runtime on existential-rich ontologies.
         let mut to_send: Vec<((usize, Term), u32)> = Vec::new();
         let mut pred_checks = 0u64;
+        let ground_sender = Some(id) == self.ground_ctx;
         let new_edge_seen: Vec<((usize, Term), usize)>;
         {
             let ctx = &self.contexts[id];
@@ -1987,9 +1988,25 @@ impl Engine {
                         continue;
                     }
                     pred_checks += 1;
-                    // Ground body atoms (nominal mode) are copied verbatim by
-                    // the Pred rule, not resolved over the edge.
-                    if c.body.iter().all(|b| b.is_ground() || pushed.contains(b)) {
+                    // Every body atom must be backed by this edge's pushed set
+                    // (for the ground context these are the r-Succ hypotheses
+                    // — the paper's "same u for every o_i" condition); and a
+                    // ground-context clause only flows to a context that has
+                    // announced every individual it mentions (an edge per
+                    // individual), which keeps ground conclusions from being
+                    // sprayed across unrelated contexts.
+                    if c.body.iter().all(|b| pushed.contains(b))
+                        && (!ground_sender || {
+                            let mut inds: Vec<Term> = Vec::new();
+                            for p in &c.body {
+                                pred_inds(p, &mut inds);
+                            }
+                            for l in &c.head {
+                                lit_inds(l, &mut inds);
+                            }
+                            inds.iter().all(|o| ctx.predecessors.contains_key(&(edge.0, *o)))
+                        })
+                    {
                         let sent = ctx
                             .pushed_pred
                             .get(*edge)
