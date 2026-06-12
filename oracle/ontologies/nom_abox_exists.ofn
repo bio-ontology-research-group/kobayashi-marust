@@ -1,0 +1,11 @@
+Prefix(:=<http://x.org/>)
+Ontology(<http://x.org/nom2>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:G))
+Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:o))
+ClassAssertion(:B :o)
+SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:o)))
+SubClassOf(ObjectSomeValuesFrom(:r :B) :G)
+)
