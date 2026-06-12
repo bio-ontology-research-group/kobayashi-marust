@@ -492,9 +492,37 @@ fn is_chain_axiom(c: &DLClause) -> bool {
 pub fn augment(tbox: Vec<DLClause>, abox: &[DLClause], hooks: &GroundHooks) -> Vec<DLClause> {
     let mut base: Vec<DLClause> = tbox.iter().filter(|c| !is_chain_axiom(c)).cloned().collect();
     base.extend(nominal_clauses(abox, hooks));
+    if std::env::var_os("KM_NOMINALS").is_some() {
+        base.extend(abox.iter().cloned());
+        base.extend(nominal_defining_clauses(hooks));
+    }
     base.extend(transitivity_clauses(&tbox));
     base.extend(chain_clauses(&tbox));
     base
+}
+
+/// DL7/DL8 defining clauses that make each nominal proxy concept exact
+/// instead of an over-approximation: `⊤ → __nom__o(o)` ({o} ⊑ __nom__o) and
+/// `__nom__o(x) → x ≈ o` (__nom__o ⊑ {o}). Together with the ground ABox
+/// clauses these give the engine the full nominal semantics (Phase 0 of
+/// docs/NOMINALS-CB.md); only emitted under KM_NOMINALS. Sorted by proxy
+/// name so the output is deterministic.
+pub fn nominal_defining_clauses(hooks: &GroundHooks) -> Vec<DLClause> {
+    let mut pairs: Vec<(&String, &String)> = hooks.nominal_to_individual.iter().collect();
+    pairs.sort();
+    let x = var_x();
+    let mut out = Vec::new();
+    for (nom, ind) in pairs {
+        out.push(clause(
+            [],
+            [Atom::Concept(nom.clone(), Term::Ind(ind.clone()))],
+        ));
+        out.push(clause(
+            [Atom::Concept(nom.clone(), x.clone())],
+            [Atom::Eq(x.clone(), Term::Ind(ind.clone()))],
+        ));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -512,6 +540,32 @@ mod tests {
 
     fn pair(r: &str, s: &str) -> (String, String) {
         (r.to_string(), s.to_string())
+    }
+
+    #[test]
+    fn nominal_defining_clauses_dl7_dl8() {
+        let mut hooks = GroundHooks::default();
+        hooks
+            .nominal_to_individual
+            .insert("__nom__o".to_string(), "o".to_string());
+        let out = nominal_defining_clauses(&hooks);
+        assert_eq!(out.len(), 2);
+        // DL7: ⊤ → __nom__o(o)
+        assert_eq!(
+            out[0],
+            clause(
+                [],
+                [Atom::Concept("__nom__o".to_string(), Term::Ind("o".to_string()))]
+            )
+        );
+        // DL8: __nom__o(x) → x ≈ o
+        assert_eq!(
+            out[1],
+            clause(
+                [Atom::Concept("__nom__o".to_string(), var_x())],
+                [Atom::Eq(var_x(), Term::Ind("o".to_string()))]
+            )
+        );
     }
 
     #[test]

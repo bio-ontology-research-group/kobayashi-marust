@@ -125,6 +125,11 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
+    // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
+    // clause set (docs/NOMINALS-CB.md Phase 0); those are not EL, so fence the
+    // ontology off the elc path up front.
+    let nominals_mode = std::env::var_os("KM_NOMINALS").is_some();
+    let has_individuals = !abox.is_empty() || !hooks.nominal_to_individual.is_empty();
     let mut tbox = preprocess::augment(tbox, &abox, &hooks);
     // Inverse-role bridge clauses (swapped-orientation role heads) are not EL;
     // elc's screen rejects them, but route past it up front. The rbox-record
@@ -195,7 +200,9 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let inverses_inert = role_inverses
         .iter()
         .all(|(r, s)| !relevant.contains(r) && !relevant.contains(s));
-    let el_rbox_safe = rbox::el_rbox_safe_relaxed(&rbox, &relevant) && inverses_inert;
+    let el_rbox_safe = rbox::el_rbox_safe_relaxed(&rbox, &relevant)
+        && inverses_inert
+        && !(nominals_mode && has_individuals);
     t.lap("relevance+prune");
     let mut declared = Vec::new();
     for name in declared_raw {
