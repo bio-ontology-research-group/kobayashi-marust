@@ -20,6 +20,15 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::calc::*;
 use crate::clause::*;
 
+/// A batch message reduced to a self-contained, target-local operation, ready
+/// to apply with no further cross-context reads (the sender side of a Pred
+/// message is pre-resolved into `pid` serially before the parallel phase).
+/// Used only by the gated parallel message-apply path (`KM_PAR_SAT`).
+enum Op {
+    Succ { from: usize, f: Term, p: Pred },
+    Pred { pid: u32 },
+}
+
 thread_local! {
     /// Hyper-call counter (only read under KM_STATS). Thread-local because
     /// `hyper` takes `&self`; reset per Engine run via `reset_hyper_calls`.
@@ -164,7 +173,7 @@ fn is_merge_lit(l: &Lit) -> bool {
 /// `Γ'' ⊆ Γ`, `Δ'' ⊆ Δ`, and every `L_i` a merge-form literal (≥ 1 of them) —
 /// the element may itself be a nominal or merge with its predecessor, so the
 /// calculus defers to equality reasoning instead of creating the edge.
-fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &Pred) -> bool {
+fn rsucc_blocked(ctx: &Context, arena: &ArenaView, c: &ContextClause, a: &Pred) -> bool {
     'cand: for &mi in &ctx.merge_clauses {
         let m = &arena[mi as usize];
         if !m.body.iter().all(|b| c.body.contains(b)) {
@@ -512,7 +521,7 @@ impl Context {
     /// time, so a single entry per iri reproduces the original candidate
     /// sequence without duplicates).  Appending in work-off order keeps each
     /// list in candidate order.
-    fn index_clause(&mut self, arena: &[ContextClause], cid: u32) {
+    fn index_clause(&mut self, arena: &ArenaView, cid: u32) {
         let c = &arena[cid as usize];
         let mut concept_iris: Vec<Iri> = Vec::new();
         let mut role_iris: Vec<Iri> = Vec::new();
@@ -572,7 +581,7 @@ impl Context {
     /// back-subsumption physically removes clauses from `worked_off` (which
     /// shifts the indices the maps refer to); removals are comparatively rare,
     /// so a full rebuild keeps the common (append-only) path fast.
-    fn rebuild_head_index(&mut self, arena: &[ContextClause]) {
+    fn rebuild_head_index(&mut self, arena: &ArenaView) {
         self.head_concept_index.clear();
         self.head_role_index.clear();
         self.head_lit_index.clear();
@@ -591,7 +600,7 @@ impl Context {
     /// index (every non-empty-head subsumer shares a head literal with
     /// `clause`); `todo` is scanned linearly (it is the small work queue).
     /// The `(nb, nh)` length pre-filter skips clauses that cannot subsume.
-    fn fwd_subsumed(&self, arena: &[ContextClause], clause: &ContextClause, nb: usize, nh: usize) -> bool {
+    fn fwd_subsumed(&self, arena: &ArenaView, clause: &ContextClause, nb: usize, nh: usize) -> bool {
         for &ci in &self.empty_head_wo {
             let c = &arena[ci as usize];
             if c.body.len() <= nb && c.test_strengthening(clause) == -1 {
@@ -626,7 +635,7 @@ impl Context {
     /// removes nothing, so the expensive full `worked_off` scan and index
     /// rebuild are skipped entirely.  Same removed set and survivor order as a
     /// full linear scan, so the result is unchanged.
-    fn back_subsume(&mut self, arena: &[ContextClause], clause: &ContextClause, nb: usize, nh: usize) {
+    fn back_subsume(&mut self, arena: &ArenaView, clause: &ContextClause, nb: usize, nh: usize) {
         // The incoming clause must not remove an existing *identical* clause
         // (callers reject exact duplicates before back-subsuming, but the guard
         // mirrors the historical key check).
@@ -691,6 +700,35 @@ impl Context {
             self.clause_keys.remove(&ci);
         }
     }
+
+    /// Rewrite the worker-local arena ids of this context to global ids after a
+    /// parallel saturation. During the parallel phase a worker interns its
+    /// newly-derived clauses into a thread-local overlay, assigning ids
+    /// `>= base_len`; the serial merge then interns those clauses into the
+    /// global arena (deduplicating) and passes the resulting global ids in
+    /// `remap` (indexed by `local_id - base_len`). Ids `< base_len` are
+    /// pre-existing global ids and are left untouched. Every field that stores a
+    /// `cc_arena` id is rewritten; `neighbor_pred`/`neighbor_pred_seen` hold
+    /// `pred_interned` ids (a separate, serially-interned arena) and
+    /// `pushed_pred`/`edge_seen` hold pool *positions*/lengths, so none of those
+    /// are touched.
+    fn remap_local_ids(&mut self, base_len: u32, remap: &[u32]) {
+        let m = |id: u32| -> u32 {
+            if id < base_len { id } else { remap[(id - base_len) as usize] }
+        };
+        for v in self.worked_off.iter_mut() { *v = m(*v); }
+        for v in self.empty_head_wo.iter_mut() { *v = m(*v); }
+        for v in self.pred_pool.iter_mut() { *v = m(*v); }
+        for v in self.succ_pool.iter_mut() { *v = m(*v); }
+        for v in self.merge_clauses.iter_mut() { *v = m(*v); }
+        for v in self.todo.iter_mut() { *v = m(*v); }
+        self.clause_keys = self.clause_keys.iter().map(|&id| m(id)).collect();
+        for vec in self.head_concept_index.values_mut() { for v in vec.iter_mut() { *v = m(*v); } }
+        for vec in self.head_role_index.values_mut() { for v in vec.iter_mut() { *v = m(*v); } }
+        for vec in self.head_lit_index.values_mut() { for v in vec.iter_mut() { *v = m(*v); } }
+        for vec in self.ground_body_index.values_mut() { for v in vec.iter_mut() { *v = m(*v); } }
+        for vec in self.bridge_index.values_mut() { for v in vec.iter_mut() { *v = m(*v); } }
+    }
 }
 
 /// A pred clause (substitution already applied): body and head over x / f(x),
@@ -712,6 +750,76 @@ fn content_hash<T: std::hash::Hash>(t: &T) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     t.hash(&mut h);
     h.finish()
+}
+
+// --------------------- arena view / interner (parallel-ready) --------------
+
+/// Read view over interned clauses of one ordering domain. `Whole` = the global
+/// arena (serial path). `Split` = committed-global clauses (ids < base.len())
+/// followed by a worker's thread-local newly-derived clauses (ids >= base.len()).
+#[derive(Clone, Copy)]
+enum ArenaView<'a> {
+    Whole(&'a [ContextClause]),
+    Split { base: &'a [ContextClause], local: &'a [ContextClause] },
+}
+impl std::ops::Index<usize> for ArenaView<'_> {
+    type Output = ContextClause;
+    #[inline]
+    fn index(&self, i: usize) -> &ContextClause {
+        match self {
+            ArenaView::Whole(s) => &s[i],
+            ArenaView::Split { base, local } => {
+                let b = base.len();
+                if i < b { &base[i] } else { &local[i - b] }
+            }
+        }
+    }
+}
+impl ArenaView<'_> {
+    #[inline] fn len(&self) -> usize {
+        match self { ArenaView::Whole(s) => s.len(), ArenaView::Split { base, local } => base.len() + local.len() }
+    }
+}
+
+/// Intern target for newly-derived clauses: the global engine arena (serial) or
+/// a worker-local overlay (parallel, to be used later). `find`/`intern` mirror
+/// the old `cc_find`/`intern_cc` exactly so output (the content-interned set) is
+/// unchanged.
+enum Interner<'a> {
+    Global { arena: &'a mut Vec<ContextClause>, idx: &'a mut HashMap<u64, Vec<u32>> },
+    #[allow(dead_code)]
+    Local  { base: &'a [ContextClause], gidx: &'a HashMap<u64, Vec<u32>>, local: Vec<ContextClause>, lidx: HashMap<u64, Vec<u32>> },
+}
+impl Interner<'_> {
+    #[inline] fn view(&self) -> ArenaView<'_> {
+        match self {
+            Interner::Global { arena, .. } => ArenaView::Whole(arena),
+            Interner::Local { base, local, .. } => ArenaView::Split { base, local },
+        }
+    }
+    fn find(&self, c: &ContextClause) -> Option<u32> {
+        let h = content_hash(&(&c.body, &c.head));
+        match self {
+            Interner::Global { arena, idx } => idx.get(&h)?.iter().copied().find(|&i| { let a = &arena[i as usize]; a.body == c.body && a.head == c.head }),
+            Interner::Local { base, gidx, local, .. } => {
+                if let Some(ids) = gidx.get(&h) { for &i in ids { let a = &base[i as usize]; if a.body == c.body && a.head == c.head { return Some(i); } } }
+                let bl = base.len() as u32;
+                // local ids share the SAME hash map keyed structure; scan lidx
+                if let Interner::Local { lidx, .. } = self {
+                    if let Some(ids) = lidx.get(&h) { for &i in ids { let a = &local[(i - bl) as usize]; if a.body == c.body && a.head == c.head { return Some(i); } } }
+                }
+                None
+            }
+        }
+    }
+    fn intern(&mut self, c: ContextClause) -> u32 {
+        if let Some(i) = self.find(&c) { return i; }
+        let h = content_hash(&(&c.body, &c.head));
+        match self {
+            Interner::Global { arena, idx } => { let id = arena.len() as u32; arena.push(c); idx.entry(h).or_default().push(id); id }
+            Interner::Local { base, local, lidx, .. } => { let id = base.len() as u32 + local.len() as u32; local.push(c); lidx.entry(h).or_default().push(id); id }
+        }
+    }
 }
 
 // ------------------------------- messages ----------------------------------
@@ -851,6 +959,27 @@ pub struct Engine {
     stat_saturate: u64,
 }
 
+/// Per-context saturation driver: bundles the immutable engine state the core
+/// rules read plus an `Interner` (the single mutable target for newly-derived
+/// clauses).  Constructed fresh per drive call for exactly ONE ordering domain
+/// (root vs non-root), so the interner's arena/index pair is the domain's pair
+/// and the rule logic routes every arena access through `self.interner`.
+/// The nominal RefCell/Cell fields are kept as shared refs (single-threaded
+/// engine; never converted to Mutex).
+struct Sat<'a> {
+    sig: &'a Sig,
+    ont: &'a Ontology,
+    equality: bool,
+    ground_ctx: Option<usize>,
+    pred_interned: &'a [PredClause],
+    nom_table: &'a std::cell::RefCell<HashMap<(Term, Iri, bool, u16), Term>>,
+    nom_next: &'a std::cell::Cell<i32>,
+    nom_truncated: &'a std::cell::Cell<bool>,
+    nom_k: usize,
+    nom_budget: usize,
+    interner: Interner<'a>,
+}
+
 impl Engine {
     pub fn new(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> Engine {
         let mut sig = sig;
@@ -982,7 +1111,9 @@ impl Engine {
 
     /// Find the arena id of a clause with this exact (body, head) content in
     /// the given ordering domain, if it was ever interned.  The arena is
-    /// content-unique, so at most one id matches.
+    /// content-unique, so at most one id matches.  (Superseded by
+    /// `Interner::find`; kept for reference / non-Sat callers.)
+    #[allow(dead_code)]
     fn cc_find(&self, root: bool, c: &ContextClause) -> Option<u32> {
         let d = root as usize;
         let h = content_hash(&(&c.body, &c.head));
@@ -993,7 +1124,8 @@ impl Engine {
     }
 
     /// Intern a context clause in the given ordering domain, returning its
-    /// stable arena id.
+    /// stable arena id.  (Superseded by `Interner::intern`.)
+    #[allow(dead_code)]
     fn intern_cc(&mut self, root: bool, c: ContextClause) -> u32 {
         if let Some(i) = self.cc_find(root, &c) {
             return i;
@@ -1043,9 +1175,9 @@ impl Engine {
             self.ensure_shared_root_closure();
             let closure = self.shared_root_closure.as_ref().unwrap().clone();
             for c in closure {
-                self.seed_worked_off(id, c);
+                self.drive_seed_worked_off(id, c);
             }
-            self.add_core(id);
+            self.drive_add_core(id);
         } else {
             self.init_context(id);
         }
@@ -1063,7 +1195,7 @@ impl Engine {
         let ctx = Context::new(id, vec![], true, None);
         self.contexts.push(ctx);
         self.init_context(id);
-        self.saturate(id);
+        self.drive_saturate(id);
         let closure = self.contexts[id].worked_off.clone();
         debug_assert_eq!(id, self.contexts.len() - 1);
         self.contexts.pop();
@@ -1072,46 +1204,8 @@ impl Engine {
 
     /// Core rule + facts for a freshly created context, then schedule saturation.
     fn init_context(&mut self, id: usize) {
-        self.add_core(id);
-        self.add_facts(id);
-    }
-
-    /// Core rule for context `id`: the empty clause if a core predicate is
-    /// owl:Nothing, else one `-> p` clause per core predicate.
-    fn add_core(&mut self, id: usize) {
-        let root = self.contexts[id].root;
-        let core = self.contexts[id].core.clone();
-        if core.iter().any(|p| self.sig.is_nothing_pred(p)) {
-            let c = ContextClause::new(vec![], vec![], root, &self.sig);
-            self.add_clause(id, c);
-        } else {
-            for p in core {
-                let c = ContextClause::new(vec![], vec![Lit::P(p)], root, &self.sig);
-                self.add_clause(id, c);
-            }
-        }
-    }
-
-    /// Ontology facts (empty-body clauses) seeded into context `id`.  These are
-    /// part of every context-independent closure, so a context seeded from a
-    /// shared closure must NOT also call this (the facts are already present).
-    fn add_facts(&mut self, id: usize) {
-        let facts: Vec<usize> = self.ont.facts.clone();
-        for fi in facts {
-            self.seed_fact(id, fi);
-        }
-    }
-
-    /// Seed one ontology fact (empty-body clause `fi`) into context `id`.
-    fn seed_fact(&mut self, id: usize, fi: usize) {
-        let root = self.contexts[id].root;
-        let head = self.ont.clauses[fi].head.clone();
-        // apply identity (facts have no neighbour vars); filter invalid eqs / nothing
-        let head = self.filter_head(head);
-        if let Some(head) = head {
-            let c = ContextClause::new(vec![], head, root, &self.sig);
-            self.add_clause(id, c);
-        }
+        self.drive_add_core(id);
+        self.drive_add_facts(id);
     }
 
     /// The ground (nominal root) context `v_r`, created on first use: empty
@@ -1132,10 +1226,105 @@ impl Engine {
         fis.sort_unstable();
         fis.dedup();
         for fi in fis {
-            self.seed_fact(id, fi);
+            self.drive_seed_fact(id, fi);
         }
-        self.saturate(id);
+        self.drive_saturate(id);
         id
+    }
+
+    // -------- drive wrappers: construct a Sat and call into the core --------
+
+    /// Build a `Sat` over context `id`'s ordering domain (root/non-root) and run
+    /// `f` with the context.  All core-rule access to the clause arena routes
+    /// through the Sat's `Interner::Global`, which is exactly `cc_arena[d]` /
+    /// `cc_intern_idx[d]`, so behaviour and the interned set are unchanged.
+    #[inline]
+    fn with_sat<R>(&mut self, id: usize, f: impl FnOnce(&mut Sat, &mut Context) -> R) -> R {
+        let d = self.contexts[id].root as usize;
+        let Engine {
+            sig, ont, equality, ground_ctx, pred_interned,
+            nom_table, nom_next, nom_truncated, nom_k, nom_budget,
+            cc_arena, cc_intern_idx, contexts, ..
+        } = self;
+        let mut sat = Sat {
+            sig: &*sig, ont: &*ont, equality: *equality, ground_ctx: *ground_ctx,
+            pred_interned: &pred_interned[..],
+            nom_table: &*nom_table, nom_next: &*nom_next, nom_truncated: &*nom_truncated,
+            nom_k: *nom_k, nom_budget: *nom_budget,
+            interner: Interner::Global { arena: &mut cc_arena[d], idx: &mut cc_intern_idx[d] },
+        };
+        f(&mut sat, &mut contexts[id])
+    }
+
+    fn drive_saturate(&mut self, id: usize) {
+        self.stat_saturate += 1;
+        self.with_sat(id, |sat, ctx| sat.saturate(ctx));
+    }
+
+    fn drive_add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
+        // add_clause may seed ground facts, which needs ont.facts (already in
+        // Sat via `ont`); routed entirely inside Sat.
+        self.with_sat(id, |sat, ctx| sat.add_clause(ctx, clause))
+    }
+
+    fn drive_add_core(&mut self, id: usize) {
+        self.with_sat(id, |sat, ctx| sat.add_core(ctx));
+    }
+
+    fn drive_add_facts(&mut self, id: usize) {
+        self.with_sat(id, |sat, ctx| sat.add_facts(ctx));
+    }
+
+    fn drive_seed_fact(&mut self, id: usize, fi: usize) {
+        self.with_sat(id, |sat, ctx| sat.seed_fact(ctx, fi));
+    }
+
+    fn drive_seed_worked_off(&mut self, id: usize, cid: u32) {
+        self.with_sat(id, |sat, ctx| sat.seed_worked_off(ctx, cid));
+    }
+
+    fn drive_apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) -> usize {
+        self.with_sat(target, |sat, ctx| sat.apply_succ(ctx, from, f, p))
+    }
+}
+
+impl<'a> Sat<'a> {
+    /// Core rule for `ctx`: the empty clause if a core predicate is owl:Nothing,
+    /// else one `-> p` clause per core predicate.
+    fn add_core(&mut self, ctx: &mut Context) {
+        let root = ctx.root;
+        let core = ctx.core.clone();
+        if core.iter().any(|p| self.sig.is_nothing_pred(p)) {
+            let c = ContextClause::new(vec![], vec![], root, self.sig);
+            self.add_clause(ctx, c);
+        } else {
+            for p in core {
+                let c = ContextClause::new(vec![], vec![Lit::P(p)], root, self.sig);
+                self.add_clause(ctx, c);
+            }
+        }
+    }
+
+    /// Ontology facts (empty-body clauses) seeded into `ctx`.  These are part of
+    /// every context-independent closure, so a context seeded from a shared
+    /// closure must NOT also call this (the facts are already present).
+    fn add_facts(&mut self, ctx: &mut Context) {
+        let facts: Vec<usize> = self.ont.facts.clone();
+        for fi in facts {
+            self.seed_fact(ctx, fi);
+        }
+    }
+
+    /// Seed one ontology fact (empty-body clause `fi`) into `ctx`.
+    fn seed_fact(&mut self, ctx: &mut Context, fi: usize) {
+        let root = ctx.root;
+        let head = self.ont.clauses[fi].head.clone();
+        // apply identity (facts have no neighbour vars); filter invalid eqs / nothing
+        let head = self.filter_head(head);
+        if let Some(head) = head {
+            let c = ContextClause::new(vec![], head, root, self.sig);
+            self.add_clause(ctx, c);
+        }
     }
 
     /// Filter a head literal vector: apply the Ineq rule (drop `t != t`),
@@ -1162,31 +1351,27 @@ impl Engine {
 
     /// Redundancy-aware clause addition (Elim): skip if subsumed; remove clauses
     /// it subsumes; enqueue to todo.  Returns true if added.
-    fn add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
+    fn add_clause(&mut self, ctx: &mut Context, clause: ContextClause) -> bool {
         if clause.is_head_tautology() {
             return false;
         }
-        let root = self.contexts[id].root;
-        let d = root as usize;
         // Exact-duplicate check: the arena id is the canonical content key.
-        let existing = self.cc_find(root, &clause);
+        let existing = self.interner.find(&clause);
         if let Some(cid) = existing {
-            if self.contexts[id].clause_keys.contains(&cid) {
+            if ctx.clause_keys.contains(&cid) {
                 return false;
             }
         }
         let (nb, nh) = (clause.body.len(), clause.head.len());
-        let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[d];
+        let arena = self.interner.view();
         // Forward subsumption: skip if some existing clause subsumes `clause`.
-        if ctx.fwd_subsumed(arena, &clause, nb, nh) {
+        if ctx.fwd_subsumed(&arena, &clause, nb, nh) {
             return false;
         }
         // Back-subsumption: drop existing clauses that `clause` strengthens.
         {
-            let arena = &self.cc_arena[d];
-            let ctx = &mut self.contexts[id];
-            ctx.back_subsume(arena, &clause, nb, nh);
+            let arena = self.interner.view();
+            ctx.back_subsume(&arena, &clause, nb, nh);
         }
         // Demand-driven ground-fact seeding (nominal mode): the first clause
         // mentioning an individual brings that individual's ground ontology
@@ -1201,7 +1386,6 @@ impl Engine {
             for l in &clause.head {
                 lit_inds(l, &mut inds);
             }
-            let ctx = &mut self.contexts[id];
             for o in inds {
                 if ctx.seeded_inds.insert(o) {
                     new_inds.push(o);
@@ -1210,15 +1394,14 @@ impl Engine {
         }
         let cid = match existing {
             Some(c) => c,
-            None => self.intern_cc(root, clause),
+            None => self.interner.intern(clause),
         };
-        let ctx = &mut self.contexts[id];
         ctx.clause_keys.insert(cid);
         ctx.todo.push_back(cid);
         for o in new_inds {
-            if let Some(fis) = self.ont.ground_facts.get(&o) {
-                for fi in fis.clone() {
-                    self.seed_fact(id, fi);
+            if let Some(fis) = self.ont.ground_facts.get(&o).cloned() {
+                for fi in fis {
+                    self.seed_fact(ctx, fi);
                 }
             }
         }
@@ -1226,25 +1409,23 @@ impl Engine {
     }
 
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
-    fn saturate(&mut self, id: usize) {
-        self.stat_saturate += 1;
+    fn saturate(&mut self, ctx: &mut Context) {
         let trace_sat = std::env::var("KM_SAT").is_ok();
         let prof = std::env::var("KM_PROF").is_ok();
         let (mut iters, mut subsumed, mut nhyper, mut npred, mut neqp, mut neqe, mut nfact, mut nadded) =
             (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
-        let d = self.contexts[id].root as usize;
+        let id = ctx.id;
         loop {
-            let cid = match self.contexts[id].todo.pop_front() {
+            let cid = match ctx.todo.pop_front() {
                 Some(c) => c,
                 None => break,
             };
             // Transient working copy (the arena entry is shared across contexts
-            // and rule code needs it while `self` is mutated).
-            let clause = self.cc_arena[d][cid as usize].clone();
+            // and rule code needs it while the interner is mutated).
+            let clause = self.interner.view()[cid as usize].clone();
             if prof {
                 iters += 1;
                 if iters % 200_000 == 0 {
-                    let ctx = &self.contexts[id];
                     eprintln!(
                         "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={}",
                         id, iters, subsumed, nadded, ctx.todo.len(), ctx.worked_off.len(),
@@ -1260,16 +1441,15 @@ impl Engine {
             // consequences.  Sound (a subsumed clause is entailed by its
             // subsumer, so dropping it preserves completeness).
             {
-                let ctx = &self.contexts[id];
-                let arena = &self.cc_arena[d];
+                let arena = self.interner.view();
                 let (nb, nh) = (clause.body.len(), clause.head.len());
-                if ctx.fwd_subsumed(arena, &clause, nb, nh) {
-                    self.contexts[id].clause_keys.remove(&cid);
+                if ctx.fwd_subsumed(&arena, &clause, nb, nh) {
+                    ctx.clause_keys.remove(&cid);
                     if prof { subsumed += 1; }
                     continue;
                 }
             }
-            let root = self.contexts[id].root;
+            let root = ctx.root;
             // Fire rules per maximal head literal.
             let max_head: Vec<Lit> = clause.max_head().collect();
             for max in &max_head {
@@ -1278,22 +1458,22 @@ impl Engine {
                         // Hyper fires on every maximal head predicate; the
                         // candidate ontology clauses are those with a body atom
                         // (central or neighbour) that can unify with `p`.
-                        let results = self.hyper(id, &clause, *p, root);
+                        let results = self.hyper(ctx, &clause, *p, root);
                         if prof { nhyper += results.len() as u64; }
                         for r in results {
-                            if self.add_clause(id, r) && prof { nadded += 1; }
+                            if self.add_clause(ctx, r) && prof { nadded += 1; }
                         }
                         if is_function(p.max_term()) {
-                            let results = self.pred_local(id, &clause, *p, root);
+                            let results = self.pred_local(ctx, &clause, *p, root);
                             if prof { npred += results.len() as u64; }
                             for r in results {
-                                if self.add_clause(id, r) && prof { nadded += 1; }
+                                if self.add_clause(ctx, r) && prof { nadded += 1; }
                             }
                             if self.equality {
-                                let results = self.eq_from_pred(id, &clause, *max, root);
+                                let results = self.eq_from_pred(ctx, &clause, *max, root);
                                 if prof { neqp += results.len() as u64; }
                                 for r in results {
-                                    if self.add_clause(id, r) && prof { nadded += 1; }
+                                    if self.add_clause(ctx, r) && prof { nadded += 1; }
                                 }
                             }
                         } else if p.is_ground() {
@@ -1302,16 +1482,16 @@ impl Engine {
                             // copied ground body atoms (C_i) of neighbour pred
                             // clauses, which the function-term refire above
                             // never revisits.
-                            let results = self.pred_local(id, &clause, *p, root);
+                            let results = self.pred_local(ctx, &clause, *p, root);
                             if prof { npred += results.len() as u64; }
                             for r in results {
-                                if self.add_clause(id, r) && prof { nadded += 1; }
+                                if self.add_clause(ctx, r) && prof { nadded += 1; }
                             }
                             if self.equality {
-                                let results = self.eq_from_pred(id, &clause, *max, root);
+                                let results = self.eq_from_pred(ctx, &clause, *max, root);
                                 if prof { neqp += results.len() as u64; }
                                 for r in results {
-                                    if self.add_clause(id, r) && prof { nadded += 1; }
+                                    if self.add_clause(ctx, r) && prof { nadded += 1; }
                                 }
                             }
                         }
@@ -1319,10 +1499,10 @@ impl Engine {
                     Lit::Eq { .. } if self.equality => {
                         // This equality is the paramodulation source: rewrite
                         // matching literals of worked-off clauses.
-                        let results = self.eq_from_equation(id, &clause, *max, root);
+                        let results = self.eq_from_equation(ctx, &clause, *max, root);
                         if prof { neqe += results.len() as u64; }
                         for r in results {
-                            if self.add_clause(id, r) && prof { nadded += 1; }
+                            if self.add_clause(ctx, r) && prof { nadded += 1; }
                         }
                     }
                     Lit::Ineq { .. } if self.equality => {
@@ -1330,10 +1510,10 @@ impl Engine {
                         // with worked-off equalities (the reverse direction, so
                         // the equality/inequality clash is found regardless of
                         // derivation order).
-                        let results = self.eq_from_pred(id, &clause, *max, root);
+                        let results = self.eq_from_pred(ctx, &clause, *max, root);
                         if prof { neqp += results.len() as u64; }
                         for r in results {
-                            if self.add_clause(id, r) && prof { nadded += 1; }
+                            if self.add_clause(ctx, r) && prof { nadded += 1; }
                         }
                     }
                     _ => {}
@@ -1344,15 +1524,15 @@ impl Engine {
                 let results = self.factor(&clause, root);
                 if prof { nfact += results.len() as u64; }
                 for r in results {
-                    if self.add_clause(id, r) && prof { nadded += 1; }
+                    if self.add_clause(ctx, r) && prof { nadded += 1; }
                 }
             }
             // Join rule (nominal calculus): in-context resolution on ground
             // atoms; no-op (empty indexes) without individuals.
             {
-                let results = self.join(id, &clause, root);
+                let results = self.join(ctx, &clause, root);
                 for r in results {
-                    if self.add_clause(id, r) && prof { nadded += 1; }
+                    if self.add_clause(ctx, r) && prof { nadded += 1; }
                 }
             }
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
@@ -1377,8 +1557,7 @@ impl Engine {
                 .max_head_predicates()
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             {
-                let arena = &self.cc_arena[d];
-                let ctx = &mut self.contexts[id];
+                let arena = self.interner.view();
                 if pred_eligible {
                     ctx.pred_pool.push(cid);
                 }
@@ -1386,21 +1565,20 @@ impl Engine {
                     ctx.succ_pool.push(cid);
                 }
                 ctx.worked_off.push(cid);
-                ctx.index_clause(arena, cid);
+                ctx.index_clause(&arena, cid);
                 ctx.dirty = true;
             }
             if trace_sat {
-                let c = &self.contexts[id];
-                let arena = &self.cc_arena[d];
+                let arena = self.interner.view();
+                let c = &*ctx;
                 let wl = c.worked_off.len();
                 if wl % 10000 == 0 {
                     let maxb = c.worked_off.iter().map(|&ci| arena[ci as usize].body.len()).max().unwrap_or(0);
                     let maxh = c.worked_off.iter().map(|&ci| arena[ci as usize].head.len()).max().unwrap_or(0);
-                    let nctx = self.contexts.len();
                     eprintln!(
-                        "KM_SAT ctx={} root={} core_len={} todo={} wo={} max_body={} max_head={} ncontexts={} hyper={}",
+                        "KM_SAT ctx={} root={} core_len={} todo={} wo={} max_body={} max_head={} hyper={}",
                         id, c.root, c.core.len(), c.todo.len(), wl,
-                        maxb, maxh, nctx, HYPER_CALLS.with(|x| x.get())
+                        maxb, maxh, HYPER_CALLS.with(|x| x.get())
                     );
                 }
             }
@@ -1409,11 +1587,11 @@ impl Engine {
 
     /// Hyper rule.  `side` is the just-popped clause; `max` one of its maximal
     /// head predicates.
-    fn hyper(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+    fn hyper(&self, ctx: &Context, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
+        let id = ctx.id;
         let mut out = Vec::new();
-        let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         for oci in self.ont.clauses_cand(&max) {
             let oc = &self.ont.clauses[oci];
             let n = oc.body.len();
@@ -1664,7 +1842,7 @@ impl Engine {
             }
         }
         // plus each candidate clause's head minus the matched predicate
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         let mut body: Vec<Pred> = Vec::new();
         for i in 0..candidates.len() {
             let (ci, matched) = candidates[i][idxs[i]];
@@ -1676,17 +1854,16 @@ impl Engine {
             }
             body.extend_from_slice(&clause.body);
         }
-        Some(ContextClause::new(body, head, root, &self.sig))
+        Some(ContextClause::new(body, head, root, self.sig))
     }
 
     /// Local Pred rule: resolve pred clauses (pushed from successors) whose body
     /// predicates are maximal in the head of clauses with the function term.
     /// Here `max` is a head predicate of `side` containing a function term; we
     /// resolve any neighbour pred clause whose body contains `max`.
-    fn pred_local(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+    fn pred_local(&self, ctx: &Context, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
-        let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         for &pid in &ctx.neighbor_pred {
             let pc = &self.pred_interned[pid as usize];
             if !pc.body.iter().any(|b| *b == max) {
@@ -1731,7 +1908,7 @@ impl Engine {
             let mut idxs = vec![0usize; n];
             loop {
                 if let Some(c) =
-                    self.build_pred_resolvent(id, side, pc, &ground, &candidates, &idxs, root)
+                    self.build_pred_resolvent(side, pc, &ground, &candidates, &idxs, root)
                 {
                     out.push(c);
                 }
@@ -1758,7 +1935,6 @@ impl Engine {
 
     fn build_pred_resolvent(
         &self,
-        id: usize,
         side: &ContextClause,
         pc: &PredClause,
         ground: &[Pred],
@@ -1766,8 +1942,7 @@ impl Engine {
         idxs: &[usize],
         root: bool,
     ) -> Option<ContextClause> {
-        let _ = id;
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         let mut head: Vec<Lit> = pc.head.clone();
         let mut body: Vec<Pred> = ground.to_vec();
         for i in 0..candidates.len() {
@@ -1781,7 +1956,7 @@ impl Engine {
             body.extend_from_slice(&clause.body);
         }
         let head = self.filter_head(head)?;
-        Some(ContextClause::new(body, head, root, &self.sig))
+        Some(ContextClause::new(body, head, root, self.sig))
     }
 
     /// Join cases 1+2 conclusion: resolve the ground body atom `a` of
@@ -1808,7 +1983,7 @@ impl Engine {
             }
         }
         let head = self.filter_head(head)?;
-        let c = ContextClause::new(body, head, root, &self.sig);
+        let c = ContextClause::new(body, head, root, self.sig);
         if c.is_head_tautology() {
             return None;
         }
@@ -1842,7 +2017,7 @@ impl Engine {
             }
         }
         let head = self.filter_head(head)?;
-        let c = ContextClause::new(body, head, root, &self.sig);
+        let c = ContextClause::new(body, head, root, self.sig);
         if c.is_head_tautology() {
             return None;
         }
@@ -1856,7 +2031,7 @@ impl Engine {
     fn join_case3_for(
         &self,
         ctx: &Context,
-        arena: &[ContextClause],
+        arena: &ArenaView,
         consumer: &ContextClause,
         a: Pred,
         root: bool,
@@ -1919,13 +2094,12 @@ impl Engine {
     /// provider over `x` and an `x ≈ o` bridge.  Fired at work-off from every
     /// arrival order (consumer, provider, or bridge last).  Inert without
     /// individuals: all the indexes involved are then empty.
-    fn join(&self, id: usize, side: &ContextClause, root: bool) -> Vec<ContextClause> {
+    fn join(&self, ctx: &Context, side: &ContextClause, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
-        let ctx = &self.contexts[id];
         if ctx.ground_body_index.is_empty() && ctx.bridge_index.is_empty() {
             return out;
         }
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         // (a) `side` as provider: a maximal ground head atom resolves the
         // ground body atom of every indexed consumer.
         for (p, _) in side.max_head_predicates() {
@@ -1956,7 +2130,7 @@ impl Engine {
                     }
                 }
             }
-            self.join_case3_for(ctx, arena, side, a, root, &mut out);
+            self.join_case3_for(ctx, &arena, side, a, root, &mut out);
         }
         // (c) `side` as a late-arriving case-3 bridge or provider.
         if side.body.is_empty() {
@@ -2092,7 +2266,7 @@ impl Engine {
                             .collect();
                         newhead.push(Lit::ineq(t, t2));
                         if let Some(h) = self.filter_head(newhead) {
-                            let c = ContextClause::new(clause.body.clone(), h, root, &self.sig);
+                            let c = ContextClause::new(clause.body.clone(), h, root, self.sig);
                             if !c.is_head_tautology() {
                                 out.push(c);
                             }
@@ -2106,10 +2280,9 @@ impl Engine {
 
     /// Eq rule where the max literal is a predicate containing a rewritable term,
     /// resolved against worked-off equality clauses.
-    fn eq_from_pred(&self, id: usize, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
+    fn eq_from_pred(&self, ctx: &Context, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
-        let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         let mterm = max.max_term();
         for &ci in &ctx.worked_off {
             let c = &arena[ci as usize];
@@ -2127,10 +2300,9 @@ impl Engine {
     }
 
     /// Eq rule where the max literal is itself an equality/inequality.
-    fn eq_from_equation(&self, id: usize, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
+    fn eq_from_equation(&self, ctx: &Context, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
-        let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         let s = match max {
             Lit::Eq { s, .. } | Lit::Ineq { s, .. } => s,
             _ => return out,
@@ -2202,14 +2374,16 @@ impl Engine {
         let mut body = clause.body.clone();
         body.extend_from_slice(&eq_clause.body);
         let head = self.filter_head(head)?;
-        let c = ContextClause::new(body, head, root, &self.sig);
+        let c = ContextClause::new(body, head, root, self.sig);
         if c.is_head_tautology() {
             None
         } else {
             Some(c)
         }
     }
+}
 
+impl Engine {
     // -------------------- inter-context propagation ------------------------
 
     /// The successor context for function symbol `f` (pay-as-you-go strategy).
@@ -2244,7 +2418,7 @@ impl Engine {
         // context-specific consequences.
         let closure = self.shared_closure.as_ref().unwrap().clone();
         for c in closure {
-            self.seed_worked_off(id, c);
+            self.drive_seed_worked_off(id, c);
         }
         id
     }
@@ -2265,9 +2439,9 @@ impl Engine {
             self.ensure_shared_closure();
             let closure = self.shared_closure.as_ref().unwrap().clone();
             for c in closure {
-                self.seed_worked_off(id, c);
+                self.drive_seed_worked_off(id, c);
             }
-            self.add_core(id);
+            self.drive_add_core(id);
         } else {
             self.init_context(id);
         }
@@ -2287,7 +2461,7 @@ impl Engine {
         let ctx = Context::new(id, vec![], false, None);
         self.contexts.push(ctx);
         self.init_context(id); // seeds empty-body ontology facts (no core)
-        self.saturate(id);
+        self.drive_saturate(id);
         let closure = self.contexts[id].worked_off.clone();
         // Discard the throwaway: nothing references `id` (no edges, not in
         // `successor_ctxs`/`core_index`, no query), so popping it keeps the
@@ -2295,41 +2469,6 @@ impl Engine {
         debug_assert_eq!(id, self.contexts.len() - 1);
         self.contexts.pop();
         self.shared_closure = Some(closure);
-    }
-
-    /// Place an already-derived clause into context `id`'s worked-off set without
-    /// firing any rules: mirrors the bookkeeping tail of `saturate` (clause-key
-    /// set, semi-naive Pred/Succ pools, head indexes, dirty flag) so the seeded
-    /// clause participates in later resolution and propagation exactly as if it
-    /// had been worked off normally.
-    fn seed_worked_off(&mut self, id: usize, cid: u32) {
-        let d = self.contexts[id].root as usize;
-        let (pred_eligible, succ_eligible) = {
-            let clause = &self.cc_arena[d][cid as usize];
-            (
-                clause
-                    .head
-                    .iter()
-                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
-                clause
-                    .max_head_predicates()
-                    .any(|(p, _)| is_function(p.max_term())),
-            )
-        };
-        let arena = &self.cc_arena[d];
-        let ctx = &mut self.contexts[id];
-        if !ctx.clause_keys.insert(cid) {
-            return;
-        }
-        if pred_eligible {
-            ctx.pred_pool.push(cid);
-        }
-        if succ_eligible {
-            ctx.succ_pool.push(cid);
-        }
-        ctx.worked_off.push(cid);
-        ctx.index_clause(arena, cid);
-        ctx.dirty = true;
     }
 
     /// `true` if context `sid` has derived concept `iri` on its central
@@ -2371,7 +2510,7 @@ impl Engine {
         self.stat_succ_scans += (self.contexts[id].succ_pool.len() - succ_start) as u64;
         {
             let ctx = &self.contexts[id];
-            let arena = &self.cc_arena[ctx.root as usize];
+            let arena = ArenaView::Whole(&self.cc_arena[ctx.root as usize]);
             for &ci in &ctx.succ_pool[succ_start..] {
                 let c = &arena[ci as usize];
                 // Core-eligibility: a trigger may enter the successor core only
@@ -2412,7 +2551,7 @@ impl Engine {
                     } else if Some(id) != self.ground_ctx {
                         if let Some((yform, o)) = root_succ_form(&p) {
                             if !ctx.pushed_succ.contains(&yform)
-                                && !rsucc_blocked(ctx, arena, c, &p)
+                                && !rsucc_blocked(ctx, &arena, c, &p)
                             {
                                 ground_succ.push((yform, o));
                             }
@@ -2721,42 +2860,15 @@ impl Engine {
         }
     }
 
-    /// Apply a Succ message: record the edge and add the hypothesis clause,
-    /// saturating the target.  Returns the target id; the caller propagates it
-    /// (deferred, batched: many messages may target the same context, and
-    /// propagating once after the whole batch -- rather than per message --
-    /// avoids re-scanning the edge/pool sets thousands of times on
-    /// disjunction/role-chain ontologies, without changing the fixpoint).
-    fn apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) -> usize {
-        // record predecessor edge
-        self.contexts[target]
-            .predecessors
-            .entry((from, f))
-            .or_default()
-            .insert(p);
-        // a new edge / pushed predicate may let existing worked-off clauses be
-        // pushed back to this predecessor, so the next propagate must re-scan.
-        self.contexts[target].dirty = true;
-        // Succ rule: add hypothesis clause  p -> p.  Saturate unconditionally:
-        // under the central strategy a FACT trigger's hypothesis is subsumed by
-        // the core's `-> p` (add_clause returns false), while a disjunctively
-        // derived trigger's hypothesis is genuinely new and saturates — its
-        // consequences come back conditioned on `p` alone, which is what the
-        // per-disjunct cuts need.  Either way the core clauses seeded at
-        // context creation still sit in `todo` and must be worked off.
-        let root = self.contexts[target].root;
-        let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
-        self.add_clause(target, c);
-        self.saturate(target);
-        target
-    }
-
     /// Apply a Pred message: back-substitute and add the resulting pred clause /
     /// resolvents, saturating `to`.  Returns `to`; the caller propagates it
-    /// (deferred, batched -- see `apply_succ`).
+    /// (deferred, batched -- see `apply_succ`).  `intern_pred` runs here (serial,
+    /// mutating the engine pred-intern table); the receiver-side derivation runs
+    /// inside `Sat` over the target's ordering domain.
     fn apply_pred(&mut self, to: usize, from: usize, edge_label: Term, pool_idx: u32) -> usize {
         let pc = self.pred_payload(from, edge_label, pool_idx);
-        self.apply_pred_payload(to, pc)
+        let pid = self.intern_pred(pc);
+        self.with_sat(to, |sat, ctx| sat.apply_pred_payload(ctx, pid))
     }
 
     /// The sender-side half of a Pred message: back-substitute the sender's
@@ -2786,41 +2898,257 @@ impl Engine {
         PredClause { body, head }
     }
 
-    /// The receiver-side half of a Pred message: intern the back-substituted
-    /// clause, dedup against prior arrivals, fire the Pred rule against `to`'s
-    /// worked-off clauses, and saturate `to`. Mutates only context `to` (plus
-    /// the shared arena / intern tables). Returns `to`.
-    fn apply_pred_payload(&mut self, to: usize, pc: PredClause) -> usize {
-        let pid = self.intern_pred(pc);
+    /// Gated (`KM_PAR_SAT`) parallel message-apply phase. Applies one batch of
+    /// the inter-context fixpoint concurrently across DISTINCT target contexts,
+    /// then merges serially. Correctness rests on three facts about the apply
+    /// (not propagate) phase: (1) applying a message saturates only its target
+    /// context and never creates a context; (2) the only cross-context read (a
+    /// Pred message's sender) is pre-resolved here into `pid` before any target
+    /// is mutated; (3) saturation is monotone/confluent, so grouping a target's
+    /// messages and saturating once yields the same derived clause set as the
+    /// serial one-at-a-time loop. Each worker interns newly-derived clauses into
+    /// a thread-local overlay (the global arena stays read-only during the
+    /// parallel phase); the serial merge re-interns them into the global arena
+    /// (deduplicating) and remaps the context's local ids. Output (the
+    /// content-interned clause set, hence the subsumptions) is identical to the
+    /// serial path; only internal arena-id assignment differs. The caller gates
+    /// this to non-nominal, individual-free runs (`ground_ctx` None, `nom_k` 0),
+    /// so the per-worker nominal cells stay empty/unused. Returns
+    /// `(touched contexts, nsucc, npred, truncated)`.
+    fn apply_batch_parallel(
+        &mut self,
+        batch: Vec<Msg>,
+        guard: &mut usize,
+        msg_cap: usize,
+    ) -> (Vec<usize>, u64, u64, bool) {
+        use rayon::prelude::*;
+        let (mut nsucc, mut npred) = (0u64, 0u64);
+        let mut truncated = false;
+        // Pre-pass (serial): reduce each message to a target-local Op, grouped by
+        // target context (in first-seen order). The Pred sender read and
+        // `intern_pred` both happen here, so the parallel phase needs no
+        // cross-context access.
+        let mut order: Vec<usize> = Vec::new();
+        let mut groups: HashMap<usize, Vec<Op>> = HashMap::new();
+        for msg in batch {
+            *guard += 1;
+            if *guard > msg_cap {
+                eprintln!(
+                    "WARNING: kobayashi-marust message fixpoint hit the {} cap; \
+                     classification may be incomplete (truncated). {} pending messages dropped.",
+                    msg_cap,
+                    self.msgs.len()
+                );
+                truncated = true;
+                break;
+            }
+            let (target, op) = match msg {
+                Msg::Succ { from, f, p, target } => {
+                    nsucc += 1;
+                    (target, Op::Succ { from, f, p })
+                }
+                Msg::Pred { to, from, edge_label, pool_idx } => {
+                    npred += 1;
+                    let pc = self.pred_payload(from, edge_label, pool_idx);
+                    let pid = self.intern_pred(pc);
+                    (to, Op::Pred { pid })
+                }
+            };
+            groups
+                .entry(target)
+                .or_insert_with(|| {
+                    order.push(target);
+                    Vec::new()
+                })
+                .push(op);
+        }
+        if order.is_empty() {
+            return (Vec::new(), nsucc, npred, truncated);
+        }
+        // Per-domain arena lengths at phase start: worker-local ids count from here.
+        let base_len = [self.cc_arena[0].len() as u32, self.cc_arena[1].len() as u32];
+        // Move each target context out of the engine (placeholder left behind) so
+        // a worker can own it mutably; pair it with its ops.
+        let owned: Vec<(usize, Context, Vec<Op>)> = order
+            .iter()
+            .map(|&id| {
+                let ops = groups.remove(&id).unwrap();
+                let ctx =
+                    std::mem::replace(&mut self.contexts[id], Context::new(0, Vec::new(), false, None));
+                (id, ctx, ops)
+            })
+            .collect();
+        // Parallel: each worker saturates its owned context against a read-only
+        // view of the global arena (its domain) plus a private local overlay.
+        let sig = &self.sig;
+        let ont = &self.ont;
+        let eq = self.equality;
+        let gc = self.ground_ctx;
+        let pi = &self.pred_interned[..];
+        let nk = self.nom_k;
+        let nb = self.nom_budget;
+        let cc = &self.cc_arena;
+        let ccidx = &self.cc_intern_idx;
+        let mut results: Vec<(usize, Context, Vec<ContextClause>)> = owned
+            .into_par_iter()
+            .map(|(id, mut ctx, ops)| {
+                let d = ctx.root as usize;
+                // Gated non-nominal: these stay empty/unused.
+                let nt = std::cell::RefCell::new(HashMap::new());
+                let nn = std::cell::Cell::new(0i32);
+                let ntr = std::cell::Cell::new(false);
+                let mut sat = Sat {
+                    sig,
+                    ont,
+                    equality: eq,
+                    ground_ctx: gc,
+                    pred_interned: pi,
+                    nom_table: &nt,
+                    nom_next: &nn,
+                    nom_truncated: &ntr,
+                    nom_k: nk,
+                    nom_budget: nb,
+                    interner: Interner::Local {
+                        base: &cc[d],
+                        gidx: &ccidx[d],
+                        local: Vec::new(),
+                        lidx: HashMap::new(),
+                    },
+                };
+                for op in &ops {
+                    match op {
+                        Op::Succ { from, f, p } => {
+                            sat.apply_succ(&mut ctx, *from, *f, *p);
+                        }
+                        Op::Pred { pid } => {
+                            sat.apply_pred_payload(&mut ctx, *pid);
+                        }
+                    }
+                }
+                let local = match sat.interner {
+                    Interner::Local { local, .. } => local,
+                    _ => unreachable!(),
+                };
+                (id, ctx, local)
+            })
+            .collect();
+        // Merge (serial, deterministic by id): intern each worker's local clauses
+        // into the global arena and remap that context's local ids.
+        results.sort_by_key(|(id, _, _)| *id);
+        let mut touched = Vec::with_capacity(results.len());
+        for (id, mut ctx, local) in results {
+            let d = ctx.root as usize;
+            let mut remap = Vec::with_capacity(local.len());
+            for c in local {
+                remap.push(self.intern_cc(ctx.root, c));
+            }
+            ctx.remap_local_ids(base_len[d], &remap);
+            self.contexts[id] = ctx;
+            touched.push(id);
+        }
+        (touched, nsucc, npred, truncated)
+    }
+}
+
+impl<'a> Sat<'a> {
+    /// Apply a Succ message: record the edge and add the hypothesis clause,
+    /// saturating the target.  Returns the target id; the caller propagates it
+    /// (deferred, batched: many messages may target the same context, and
+    /// propagating once after the whole batch -- rather than per message --
+    /// avoids re-scanning the edge/pool sets thousands of times on
+    /// disjunction/role-chain ontologies, without changing the fixpoint).
+    fn apply_succ(&mut self, ctx: &mut Context, from: usize, f: Term, p: Pred) -> usize {
+        let target = ctx.id;
+        // record predecessor edge
+        ctx.predecessors
+            .entry((from, f))
+            .or_default()
+            .insert(p);
+        // a new edge / pushed predicate may let existing worked-off clauses be
+        // pushed back to this predecessor, so the next propagate must re-scan.
+        ctx.dirty = true;
+        // Succ rule: add hypothesis clause  p -> p.  Saturate unconditionally:
+        // under the central strategy a FACT trigger's hypothesis is subsumed by
+        // the core's `-> p` (add_clause returns false), while a disjunctively
+        // derived trigger's hypothesis is genuinely new and saturates — its
+        // consequences come back conditioned on `p` alone, which is what the
+        // per-disjunct cuts need.  Either way the core clauses seeded at
+        // context creation still sit in `todo` and must be worked off.
+        let root = ctx.root;
+        let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, self.sig);
+        self.add_clause(ctx, c);
+        self.saturate(ctx);
+        target
+    }
+
+    /// Place an already-derived clause into `ctx`'s worked-off set without
+    /// firing any rules: mirrors the bookkeeping tail of `saturate` (clause-key
+    /// set, semi-naive Pred/Succ pools, head indexes, dirty flag) so the seeded
+    /// clause participates in later resolution and propagation exactly as if it
+    /// had been worked off normally.
+    fn seed_worked_off(&mut self, ctx: &mut Context, cid: u32) {
+        let arena = self.interner.view();
+        let (pred_eligible, succ_eligible) = {
+            let clause = &arena[cid as usize];
+            (
+                clause
+                    .head
+                    .iter()
+                    .all(|l| l.is_function_free() && matches!(l, Lit::P(_))),
+                clause
+                    .max_head_predicates()
+                    .any(|(p, _)| is_function(p.max_term())),
+            )
+        };
+        if !ctx.clause_keys.insert(cid) {
+            return;
+        }
+        if pred_eligible {
+            ctx.pred_pool.push(cid);
+        }
+        if succ_eligible {
+            ctx.succ_pool.push(cid);
+        }
+        ctx.worked_off.push(cid);
+        ctx.index_clause(&arena, cid);
+        ctx.dirty = true;
+    }
+
+    /// The receiver-side half of a Pred message: dedup against prior arrivals,
+    /// fire the Pred rule against `to`'s worked-off clauses, and saturate `to`.
+    /// Mutates only the target context (plus the shared arena / intern tables).
+    /// `pid` is the already-interned back-substituted clause id (interned by the
+    /// Engine-level `apply_pred` wrapper).  Returns `to`.
+    fn apply_pred_payload(&mut self, ctx: &mut Context, pid: u32) -> usize {
+        let to = ctx.id;
         // Duplicate arrival (same substituted clause already received, e.g. from
         // a successor's pre- and post-growth contexts): everything it could
         // contribute was already derived, so skip the re-derivation.
-        if !self.contexts[to].neighbor_pred_seen.insert(pid) {
+        if !ctx.neighbor_pred_seen.insert(pid) {
             return to;
         }
-        self.contexts[to].neighbor_pred.push(pid);
+        ctx.neighbor_pred.push(pid);
         // Apply Pred rule against worked-off clauses of `to`.
-        let root = self.contexts[to].root;
+        let root = ctx.root;
         let results = {
             let pc = &self.pred_interned[pid as usize];
-            self.pred_from_neighbor(to, pc, root)
+            self.pred_from_neighbor(ctx, pc, root)
         };
         for r in results {
-            self.add_clause(to, r);
+            self.add_clause(ctx, r);
         }
-        self.saturate(to);
+        self.saturate(ctx);
         to
     }
 
     /// Pred rule for a freshly received neighbor pred clause: resolve its
-    /// body predicates against worked-off clauses of context `id`. Ground
+    /// body predicates against worked-off clauses of `ctx`. Ground
     /// body atoms (nominal mode) resolve like the others when a provider
     /// exists and are otherwise copied verbatim to the resolvent body (the
     /// C_i of arXiv:1805.01396 Pred / r-Pred).
-    fn pred_from_neighbor(&self, id: usize, pc: &PredClause, root: bool) -> Vec<ContextClause> {
+    fn pred_from_neighbor(&self, ctx: &Context, pc: &PredClause, root: bool) -> Vec<ContextClause> {
         let mut out = Vec::new();
-        let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[root as usize];
+        let arena = self.interner.view();
         let mut ground: Vec<Pred> = Vec::new();
         let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
         for &bp in &pc.body {
@@ -2862,7 +3190,7 @@ impl Engine {
                 body.extend_from_slice(&clause.body);
             }
             if let Some(head) = self.filter_head(head) {
-                out.push(ContextClause::new(body, head, root, &self.sig));
+                out.push(ContextClause::new(body, head, root, self.sig));
             }
             if n == 0 {
                 break;
@@ -2886,7 +3214,9 @@ impl Engine {
         }
         out
     }
+}
 
+impl Engine {
     // ------------------------------ driver ---------------------------------
 
     /// All named (non-internal, non-Nothing) concepts, i.e. the default query set.
@@ -2920,7 +3250,7 @@ impl Engine {
         for (qi, &iri) in queries.iter().enumerate() {
             let core = vec![Pred::Concept { iri, t: X }];
             let id = self.get_or_create_context(core, true, Some(iri));
-            self.saturate(id);
+            self.drive_saturate(id);
             self.propagate(id);
             if prof && (qi + 1) % 50 == 0 {
                 eprintln!(
@@ -2940,7 +3270,7 @@ impl Engine {
         // named in the input (audit M2). It carries query=None, so `subsumptions`
         // skips it and it never contributes to the classification output.
         let top = self.get_or_create_context(vec![], true, None);
-        self.saturate(top);
+        self.drive_saturate(top);
         self.propagate(top);
         // Process inter-context messages to fixpoint, *batched*: drain the whole
         // pending set, apply each message (which saturates its target but does
@@ -2969,8 +3299,31 @@ impl Engine {
             .and_then(|s| s.parse().ok())
             .unwrap_or(25_000_000);
         let mut truncated = false;
+        // Gated (`KM_PAR_SAT`) parallel message-apply: only for individual-free,
+        // non-nominal runs (so the nominal interior-mutable state is never
+        // touched concurrently and no cross-context ground reads occur). The
+        // `ground_ctx.is_none()` guard is re-checked per batch in case a ground
+        // context appears mid-run. Output is identical to the serial path.
+        let par_eligible = std::env::var_os("KM_PAR_SAT").is_some() && self.nom_k == 0;
+        let mut par_batches = 0u64;
+        let mut par_ops = 0u64;
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
+            if par_eligible && self.ground_ctx.is_none() && batch.len() > 1 {
+                par_batches += 1;
+                par_ops += batch.len() as u64;
+                let (touched, ns, np, tr) = self.apply_batch_parallel(batch, &mut guard, msg_cap);
+                nsucc_msgs += ns;
+                npred_msgs += np;
+                if tr {
+                    truncated = true;
+                    break;
+                }
+                for id in touched {
+                    self.propagate(id);
+                }
+                continue;
+            }
             let mut touched: Vec<usize> = Vec::new();
             let mut seen: HashSet<usize> = HashSet::new();
             for msg in batch {
@@ -3033,7 +3386,7 @@ impl Engine {
                 let t = match msg {
                     Msg::Succ { from, f, p, target } => {
                         nsucc_msgs += 1;
-                        self.apply_succ(from, f, p, target)
+                        self.drive_apply_succ(from, f, p, target)
                     }
                     Msg::Pred {
                         to,
@@ -3055,6 +3408,12 @@ impl Engine {
             for id in touched {
                 self.propagate(id);
             }
+        }
+        if prof {
+            eprintln!(
+                "KM_PROF par_sat eligible={} parallel_batches={} parallel_ops={}",
+                par_eligible, par_batches, par_ops
+            );
         }
         if std::env::var("KM_DUMP_WO").is_ok() {
             let fmt_t = |t: Term| -> String {
