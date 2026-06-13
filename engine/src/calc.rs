@@ -504,6 +504,32 @@ fn seq_order() -> bool {
     *FLAG.get_or_init(|| std::env::var_os("KM_SEQ_ORDER").is_some())
 }
 
+thread_local! {
+    /// Direction B (docs/DISJUNCTION-SPLITTING.md): when set, same-term concepts
+    /// are TOTALLY ordered (an ordered-resolution, tame, terminating closure).
+    /// The splitting driver (reasoner.rs) turns this ON while saturating a branch
+    /// — the residual fact-disjunctions then become split points, and the driver
+    /// recovers what the total order hides by branching on them — and turns it
+    /// OFF for the complete-ordering FALLBACK run (a query whose closure carries
+    /// a disjunction the propositional-on-x driver cannot split). Ordered
+    /// resolution alone is incomplete (the `KM_ORDERED_ALL` verdict); ordered +
+    /// splitting is complete (the split is exhaustive case analysis), and the
+    /// fallback must therefore use the unordered (complete) regime — hence the
+    /// per-run thread-local rather than a process-global flag.
+    static BRANCH_ORDERED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Set the Direction-B branch-ordered mode for the current thread (the
+/// splitting driver toggles this around branch vs fallback runs).
+pub fn set_branch_ordered(b: bool) {
+    BRANCH_ORDERED.with(|c| c.set(b));
+}
+
+#[inline]
+fn branch_ordered() -> bool {
+    BRANCH_ORDERED.with(|c| c.get())
+}
+
 #[inline]
 fn eqn_s(l: &Lit) -> Term {
     match *l {
@@ -546,7 +572,10 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
         if t1 == t2 {
             // KM_ORDERED_ALL: total order among same-term concepts in EVERY
             // context (root included) — ordered resolution everywhere.
-            if ordered_all() {
+            // Direction B branches use the same total order (per-thread,
+            // BRANCH_ORDERED) to keep each branch's closure tame; the splitting
+            // driver restores completeness.
+            if ordered_all() || branch_ordered() {
                 return i1 <= i2;
             }
             // KM_SEQ_ORDER: Sequoia-faithful — internal definers totally

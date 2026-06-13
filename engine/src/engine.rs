@@ -851,6 +851,21 @@ pub struct Engine {
     stat_saturate: u64,
 }
 
+/// Direction B (`KM_SPLIT`): the consequences of one query context's closure,
+/// read for the splitting driver. `units` are the forced `⊤ → B(x)` subsumers
+/// in this branch; `disjunctions` are the residual `⊤ → l1(x) ∨ … ∨ lk(x)`
+/// fact-disjunctions (all concept-on-x) that are the branch's split points.
+/// `foreign` is set when a residual multi-head clause is NOT all-concept-on-x
+/// (a disjunction over roles/equalities/successor terms): such a clause cannot
+/// be split by the propositional-on-x driver, so the driver falls back to the
+/// (complete) default engine for that query rather than risk incompleteness.
+pub struct ClosureFacts {
+    pub unsat: bool,
+    pub foreign: bool,
+    pub units: Vec<Iri>,
+    pub disjunctions: Vec<Vec<Iri>>,
+}
+
 impl Engine {
     pub fn new(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> Engine {
         let mut sig = sig;
@@ -3389,6 +3404,154 @@ impl Engine {
 
     pub fn num_contexts(&self) -> usize {
         self.contexts.len()
+    }
+
+    /// Direction B (`KM_SPLIT`): classify query `Q` under the extra branch
+    /// assumptions `assume` (each `a(x)` added to the root core), running the
+    /// ordered (tame) closure to fixpoint, and report the resulting
+    /// `ClosureFacts`. Used by the splitting driver on a FRESH engine per branch
+    /// (so each call's context graph is independent — branch isolation is by
+    /// construction). Soundness: the assumptions extend the query's hypothesis
+    /// conjunction, so every derived `⊤ → B(x)` holds in every model satisfying
+    /// `Q ⊓ ⨅assume`.
+    pub fn classify_assume(&mut self, query: Iri, assume: &[Iri]) -> ClosureFacts {
+        if !self.ont.ground_facts.is_empty() {
+            let gid = self.ground_context();
+            self.propagate(gid);
+        }
+        let mut core = vec![Pred::Concept { iri: query, t: X }];
+        for &a in assume {
+            core.push(Pred::Concept { iri: a, t: X });
+        }
+        let id = self.get_or_create_context(core, true, Some(query));
+        self.saturate(id);
+        self.propagate(id);
+        // Seed ⊤ so a global inconsistency surfaces as this context's ⊥ too
+        // (the shared root closure it was seeded from already carries the TBox).
+        let top = self.get_or_create_context(vec![], true, None);
+        self.saturate(top);
+        self.propagate(top);
+        self.run_msg_fixpoint_min();
+        self.read_closure(id)
+    }
+
+    /// Minimal inter-context message fixpoint (the `run_for` loop without the
+    /// profiling/trace/dump instrumentation). On the `KM_MSG_CAP` backstop it
+    /// drops the remaining messages (sound; the branch closure is then a sound
+    /// under-approximation — the driver's `foreign` fallback covers correctness).
+    fn run_msg_fixpoint_min(&mut self) {
+        let msg_cap: usize = std::env::var("KM_MSG_CAP")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(25_000_000);
+        let mut guard = 0usize;
+        while !self.msgs.is_empty() {
+            let batch: Vec<Msg> = self.msgs.drain(..).collect();
+            let mut touched: Vec<usize> = Vec::new();
+            let mut seen: HashSet<usize> = HashSet::new();
+            for msg in batch {
+                guard += 1;
+                if guard > msg_cap {
+                    self.msgs.clear();
+                    break;
+                }
+                let t = match msg {
+                    Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
+                    Msg::Pred { to, from, edge_label, pool_idx } => {
+                        self.apply_pred(to, from, edge_label, pool_idx)
+                    }
+                };
+                if seen.insert(t) {
+                    touched.push(t);
+                }
+            }
+            for id in touched {
+                self.propagate(id);
+            }
+        }
+    }
+
+    /// Read the closure of query context `id` into a `ClosureFacts`
+    /// (Direction B). `⊤ → ⊥` in the query context → `unsat`; `⊤ → B(x)` → a
+    /// unit subsumer; a body-empty all-concept-on-x multi-head clause → a
+    /// residual split-point disjunction.
+    ///
+    /// CONSERVATIVE COMPLETENESS GUARD: the ordered (tame) per-branch closure is
+    /// complete for the query readout ONLY when the SOLE disjunctions anywhere in
+    /// the branch are the body-empty concept-on-x fact-disjunctions of the query
+    /// context (the points we actually split). Any other multi-head clause — a
+    /// conditional disjunction, a role/equality disjunction, or a disjunction in
+    /// a successor context — can hide a forced unit under the total order
+    /// (`KM_ORDERED_ALL`'s incompleteness), and the splitting driver does not
+    /// resolve it. So if any such clause exists we set `foreign`, and the driver
+    /// falls back to the complete default engine for this query. This keeps
+    /// `KM_SPLIT` SOUND + COMPLETE on every ontology (the recovered fragment is
+    /// the one whose only nondeterminism is query-level concept disjunctions over
+    /// Horn successors; everything else falls back). Structural splitting of the
+    /// other disjunctions is the next increment (docs/DISJUNCTION-SPLITTING.md).
+    fn read_closure(&self, id: usize) -> ClosureFacts {
+        let mut cf = ClosureFacts {
+            unsat: false,
+            foreign: false,
+            units: Vec::new(),
+            disjunctions: Vec::new(),
+        };
+        // Guard scan: any disjunction that is not a query-context body-empty
+        // concept-on-x fact-disjunction disqualifies the split (→ fall back).
+        'scan: for (cid, ctx) in self.contexts.iter().enumerate() {
+            let arena = &self.cc_arena[ctx.root as usize];
+            for &ci in &ctx.worked_off {
+                let c = &arena[ci as usize];
+                if c.head.len() <= 1 {
+                    continue;
+                }
+                let acceptable = cid == id
+                    && c.body.is_empty()
+                    && c.head.iter().all(|l| {
+                        matches!(l, Lit::P(Pred::Concept { t, .. }) if is_central(*t))
+                    });
+                if !acceptable {
+                    cf.foreign = true;
+                    break 'scan;
+                }
+            }
+        }
+        if cf.foreign {
+            return cf;
+        }
+        // Query-context readout: units, split points, and ⊥.
+        let ctx = &self.contexts[id];
+        let arena = &self.cc_arena[ctx.root as usize];
+        for &ci in &ctx.worked_off {
+            let c = &arena[ci as usize];
+            if !c.body.is_empty() {
+                continue;
+            }
+            if c.head.is_empty() {
+                cf.unsat = true;
+                continue;
+            }
+            let mut concepts: Vec<Iri> = Vec::with_capacity(c.head.len());
+            let mut all_cx = true;
+            for l in &c.head {
+                match l {
+                    Lit::P(Pred::Concept { iri, t }) if is_central(*t) => concepts.push(*iri),
+                    _ => {
+                        all_cx = false;
+                        break;
+                    }
+                }
+            }
+            if !all_cx {
+                continue; // single non-concept-x head literal: not a subsumer
+            }
+            if concepts.len() == 1 {
+                cf.units.push(concepts[0]);
+            } else {
+                cf.disjunctions.push(concepts);
+            }
+        }
+        cf
     }
 
 }

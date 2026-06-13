@@ -15,6 +15,19 @@ fn short(name: &str) -> &str {
     name.rsplit(['#', '/']).next().unwrap_or(name)
 }
 
+/// Outcome of one branch of the Direction-B splitting search
+/// (docs/DISJUNCTION-SPLITTING.md).
+enum SplitBranch {
+    /// The branch derived ⊥ — impossible under its decisions.
+    Closed,
+    /// A leaf model; the concept iris forced as `⊤ → B(x)` units in it.
+    Open(BTreeSet<Iri>),
+    /// A residual disjunction could not be split (a role/equality/successor
+    /// disjunct, or the per-query node budget was exhausted): the driver falls
+    /// back to the complete default engine for this query.
+    Foreign,
+}
+
 /// Reasoner: parses input clauses, then classifies by running the verified
 /// context-calculus `Engine` over disjoint chunks of the named query concepts
 /// **in parallel** (rayon), merging the per-chunk results.  Each query's
@@ -235,6 +248,120 @@ impl Reasoner {
         }
     }
 
+    /// Direction B splitting recursion. A fresh engine per node gives branch
+    /// isolation; `classify_assume` runs the ordered (tame) closure under the
+    /// current decisions; a residual fact-disjunction with no satisfied disjunct
+    /// is the next split point. A subsumer is forced iff it is a unit in EVERY
+    /// open branch (the intersection); a query is unsatisfiable iff every branch
+    /// closes. Sound by construction (proof by cases over an exhaustive
+    /// disjunction); complete on the covered fragment (it falls back to the
+    /// default engine on any disjunction it cannot split — `Foreign`).
+    fn split_recurse(&self, query: Iri, decisions: &[Iri], budget: &mut usize) -> SplitBranch {
+        if *budget == 0 {
+            return SplitBranch::Foreign;
+        }
+        *budget -= 1;
+        let mut e = self.build_engine();
+        // Branch closures run under the tame ordered regime.
+        set_branch_ordered(true);
+        let cf = e.classify_assume(query, decisions);
+        if cf.unsat {
+            return SplitBranch::Closed;
+        }
+        if cf.foreign {
+            return SplitBranch::Foreign;
+        }
+        let satisfied: std::collections::HashSet<Iri> =
+            decisions.iter().copied().chain(cf.units.iter().copied()).collect();
+        let pick = cf
+            .disjunctions
+            .iter()
+            .find(|d| !d.iter().any(|l| satisfied.contains(l)))
+            .cloned();
+        match pick {
+            // Leaf: no open disjunction left → a Horn-like branch in which the
+            // ordered closure surfaces every forced unit.
+            None => SplitBranch::Open(cf.units.into_iter().collect()),
+            Some(d) => {
+                let mut acc: Option<BTreeSet<Iri>> = None;
+                for &li in &d {
+                    let mut dd = decisions.to_vec();
+                    dd.push(li);
+                    match self.split_recurse(query, &dd, budget) {
+                        SplitBranch::Foreign => return SplitBranch::Foreign,
+                        SplitBranch::Closed => {}
+                        SplitBranch::Open(s) => {
+                            acc = Some(match acc {
+                                None => s,
+                                Some(a) => a.intersection(&s).copied().collect(),
+                            });
+                        }
+                    }
+                }
+                match acc {
+                    None => SplitBranch::Closed, // every disjunct closed
+                    Some(s) => SplitBranch::Open(s),
+                }
+            }
+        }
+    }
+
+    /// Direction B (`KM_SPLIT`) classification driver: split-classify each query,
+    /// falling back to the default engine for queries whose closure carries a
+    /// disjunction the propositional-on-x driver cannot split.
+    fn saturate_split(&mut self, queries: &[Iri]) {
+        // Global inconsistency (⊤ ⊑ ⊥), detected once via an empty-query run
+        // under the complete (unordered) regime.
+        set_branch_ordered(false);
+        let inc = {
+            let mut e = self.build_engine();
+            e.run_for(&[]);
+            e.inconsistent()
+        };
+        let node_budget: usize = std::env::var("KM_SPLIT_BUDGET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(200_000);
+        let mut subs: Vec<(String, Vec<String>)> = Vec::new();
+        let mut fallback: Vec<Iri> = Vec::new();
+        for &q in queries {
+            let mut budget = node_budget;
+            match self.split_recurse(q, &[], &mut budget) {
+                SplitBranch::Foreign => fallback.push(q),
+                SplitBranch::Closed => {
+                    let a = self.sig0.concept_names[q as usize].clone();
+                    subs.push((a, vec!["owl:Nothing".to_string()]));
+                }
+                SplitBranch::Open(set) => {
+                    let a = self.sig0.concept_names[q as usize].clone();
+                    let supers: Vec<String> = set
+                        .into_iter()
+                        .filter(|&i| i != q)
+                        .map(|i| self.sig0.concept_names[i as usize].clone())
+                        .collect();
+                    subs.push((a, supers));
+                }
+            }
+        }
+        if std::env::var_os("KM_PROF").is_some() {
+            eprintln!(
+                "KM_PROF split: queries={} split_classified={} fallback={}",
+                queries.len(),
+                queries.len() - fallback.len(),
+                fallback.len()
+            );
+        }
+        self.absorb(subs, inc, 0);
+        if !fallback.is_empty() {
+            // Fallback queries run under the complete (unordered) regime.
+            set_branch_ordered(false);
+            let mut e = self.build_engine();
+            e.run_for(&fallback);
+            let (s, i, n) = (e.subsumptions(), e.inconsistent(), e.num_contexts());
+            self.absorb(s, i, n);
+        }
+    }
+
     pub fn saturate(&mut self) {
         let mut queries = self.build_engine().named_queries();
         // KM_QUERIES: classify only the named subjects listed (comma-
@@ -245,6 +372,12 @@ impl Reasoner {
         if let Ok(qs) = std::env::var("KM_QUERIES") {
             let want: std::collections::HashSet<&str> = qs.split(',').collect();
             queries.retain(|&iri| want.contains(self.sig0.concept_names[iri as usize].as_str()));
+        }
+        // Direction B (docs/DISJUNCTION-SPLITTING.md): split-classify when
+        // KM_SPLIT is set. Gated, default OFF.
+        if std::env::var_os("KM_SPLIT").is_some() {
+            self.saturate_split(&queries);
+            return;
         }
         let threads = Self::want_threads().min(queries.len().max(1));
         // Sequential path: one engine over all queries (preserves cross-query
