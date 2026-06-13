@@ -458,6 +458,26 @@ fn root_only_incomp() -> bool {
     *FLAG.get_or_init(|| std::env::var_os("KM_ROOT_ONLY_INCOMP").is_some())
 }
 
+/// `KM_ORDERED_ALL=1`: ordered resolution in EVERY context, root included.
+/// Same-term concept literals are totally ordered by iri (Hyper fires only on
+/// the ordering-maximal disjunct). Sequoia-style ordered-resolution experiment
+/// targeting the live-disjunction blow-up class (10702, 9540, 1603, ...).
+///
+/// EMPIRICAL VERDICT (2026-06-13 A/B, jobs 6123/6125): INCOMPLETE, do NOT use
+/// as a default. The naive total order STALLS the consequence readout — an
+/// entailed unit `⊤ → B(x)` is lost when B is a non-maximal disjunct whose
+/// maximal partner is unresolvable. Measured: recovers 12698/2313/5107 ST, but
+/// 12698 miss=1, 5107 miss=5 (recovered-but-incomplete), and it regresses the
+/// previously-passing 13383 (miss=1: `…WithoutChangingOfDimension ⊑ Unit`, both
+/// named). Only 2313 was gold-complete. A complete ordered variant needs the
+/// Sequoia residue / negative-literal-selection machinery (deep engine work +
+/// full revalidation) — deferred. Flag kept gated/off as a documented artifact.
+fn ordered_all() -> bool {
+    use std::sync::OnceLock;
+    static FLAG: OnceLock<bool> = OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_ORDERED_ALL").is_some())
+}
+
 #[inline]
 fn eqn_s(l: &Lit) -> Term {
     match *l {
@@ -498,6 +518,11 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     // case split there.  Validation: probe + corpus A/B before any default.
     if let (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) = (p1, p2) {
         if t1 == t2 {
+            // KM_ORDERED_ALL: total order among same-term concepts in EVERY
+            // context (root included) — ordered resolution everywhere.
+            if ordered_all() {
+                return i1 <= i2;
+            }
             if root || !root_only_incomp() {
                 return i1 == i2;
             }

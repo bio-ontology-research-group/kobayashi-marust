@@ -1,5 +1,6 @@
 import ContextCalculus.Basic
 import ContextCalculus.CompletenessProp
+import ContextCalculus.CompletenessOrdered
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.CompletenessContext
@@ -11,4 +12,5 @@ import ContextCalculus.Checker
 import ContextCalculus.CheckerFO
 import ContextCalculus.CheckerTerm
 import ContextCalculus.CompletenessFO
+import ContextCalculus.CompletenessInverse
 import ContextCalculus.Nominals
