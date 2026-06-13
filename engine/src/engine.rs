@@ -555,7 +555,7 @@ impl Context {
             }
         }
         if c.body.is_empty() {
-            for &l in &c.max_head {
+            for l in c.max_head() {
                 if let Lit::Eq { s, t } = l {
                     if is_individual(s) && t == X {
                         self.bridge_index.entry(s).or_default().push(cid);
@@ -1271,7 +1271,7 @@ impl Engine {
             }
             let root = self.contexts[id].root;
             // Fire rules per maximal head literal.
-            let max_head = clause.max_head.clone();
+            let max_head: Vec<Lit> = clause.max_head().collect();
             for max in &max_head {
                 match max {
                     Lit::P(p) => {
@@ -1960,7 +1960,7 @@ impl Engine {
         }
         // (c) `side` as a late-arriving case-3 bridge or provider.
         if side.body.is_empty() {
-            for &l in &side.max_head {
+            for l in side.max_head() {
                 match l {
                     Lit::Eq { s, t } if is_individual(s) && t == X => {
                         // bridge arrival: complete triples over individual s
@@ -2113,10 +2113,10 @@ impl Engine {
         let mterm = max.max_term();
         for &ci in &ctx.worked_off {
             let c = &arena[ci as usize];
-            for l in &c.max_head {
-                if let Lit::Eq { s, t } = *l {
+            for l in c.max_head() {
+                if let Lit::Eq { s, t } = l {
                     if s == mterm && max.contains_at_rewrite_position(s) {
-                        if let Some(res) = self.build_eq(side, max, c, s, t, *l, root) {
+                        if let Some(res) = self.build_eq(side, max, c, s, t, l, root) {
                             out.push(res);
                         }
                     }
@@ -2137,11 +2137,11 @@ impl Engine {
         };
         for &ci in &ctx.worked_off {
             let c = &arena[ci as usize];
-            for l in &c.max_head {
-                if l.contains_at_rewrite_position(s) && *l != max {
+            for l in c.max_head() {
+                if l.contains_at_rewrite_position(s) && l != max {
                     if let Lit::Eq { s: es, t: et } = max {
                         // side provides equality es==et, rewrite l
-                        if let Some(res) = self.build_eq(c, *l, side, es, et, max, root) {
+                        if let Some(res) = self.build_eq(c, l, side, es, et, max, root) {
                             out.push(res);
                         }
                     }
@@ -3173,7 +3173,8 @@ impl Engine {
             let szl = size_of::<Lit>();
             let szcc = size_of::<ContextClause>();
             let cc_heap = |c: &ContextClause| {
-                c.body.capacity() * szp + c.head.capacity() * szl + c.max_head.capacity() * szl
+                // max_head is now a u64 mask inside the struct (no heap).
+                c.body.capacity() * szp + c.head.capacity() * szl
             };
             let mut cat: Vec<(&str, usize, usize)> = Vec::new(); // (name, count, bytes)
             let mut add = |name: &'static str, n: usize, b: usize| {

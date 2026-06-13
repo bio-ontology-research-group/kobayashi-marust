@@ -159,20 +159,42 @@ fn sym_groups(body: &[Pred], head: &[Lit]) -> Vec<(Vec<Term>, bool)> {
 pub struct ContextClause {
     pub body: Vec<Pred>,
     pub head: Vec<Lit>,
-    /// Cached maximal head literals under the context ordering.
-    pub max_head: Vec<Lit>,
+    /// Bitmask over `head` positions of the ordering-maximal literals: bit `i`
+    /// is set iff `head[i]` is maximal.  Replaces a cached `Vec<Lit>` copy of
+    /// the maximal literals — one fewer heap allocation and no duplicated
+    /// literals per clause (the dominant per-clause memory cost; see
+    /// `max_head()`).  Heads with more than 64 literals (vanishingly rare) fall
+    /// back to "all maximal", a sound over-approximation: Hyper firing on a
+    /// non-maximal literal is sound, only less pruning.
+    pub max_head_mask: u64,
 }
 
 impl ContextClause {
     pub fn new(body: Vec<Pred>, head: Vec<Lit>, root: bool, sig: &Sig) -> ContextClause {
         let body = sort_dedup_pred(body);
         let head = sort_dedup_lit(head);
-        let max_head = max_head_literals(&head, root, sig);
+        let max_head_mask = compute_max_head_mask(&head, root, sig);
         ContextClause {
             body,
             head,
-            max_head,
+            max_head_mask,
         }
+    }
+
+    /// Iterate the ordering-maximal head literals, decoded from
+    /// `max_head_mask`.  Replaces the old cached `max_head: Vec<Lit>` field;
+    /// yields `head[i]` for each set bit (or every head literal when the head
+    /// exceeds 64 literals, the sound over-approximation).
+    #[inline]
+    pub fn max_head(&self) -> impl Iterator<Item = Lit> + '_ {
+        let all = self.head.len() > 64;
+        self.head.iter().enumerate().filter_map(move |(i, &l)| {
+            if all || (self.max_head_mask >> i) & 1 == 1 {
+                Some(l)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn is_horn(&self) -> bool {
@@ -203,8 +225,8 @@ impl ContextClause {
     }
     /// Maximal head predicates (the predicate subset of `max_head`).
     pub fn max_head_predicates(&self) -> impl Iterator<Item = (Pred, Lit)> + '_ {
-        self.max_head.iter().filter_map(|l| match l {
-            Lit::P(p) => Some((*p, *l)),
+        self.max_head().filter_map(|l| match l {
+            Lit::P(p) => Some((p, l)),
             _ => None,
         })
     }
@@ -227,11 +249,18 @@ impl ContextClause {
     }
 }
 
-/// Compute the ordering-maximal head literals: `l` is maximal iff there is no
-/// different `k` in the head with `l <= k`.
-pub fn max_head_literals(head: &[Lit], root: bool, sig: &Sig) -> Vec<Lit> {
-    head.iter()
-        .copied()
-        .filter(|l| head.iter().all(|k| k == l || !lteq(l, k, root, sig)))
-        .collect()
+/// Compute the maximal-head bitmask: bit `i` set iff `head[i]` is maximal
+/// (no different `k` in the head with `head[i] <= k`).  Heads longer than 64
+/// literals get mask 0 and rely on the "all maximal" fallback in `max_head()`.
+pub fn compute_max_head_mask(head: &[Lit], root: bool, sig: &Sig) -> u64 {
+    if head.len() > 64 {
+        return 0;
+    }
+    let mut mask = 0u64;
+    for (i, l) in head.iter().enumerate() {
+        if head.iter().all(|k| k == l || !lteq(l, k, root, sig)) {
+            mask |= 1u64 << i;
+        }
+    }
+    mask
 }
