@@ -31,7 +31,13 @@ thread_local! {
 }
 #[inline]
 fn stat_expand() {
-    STATS.with(|s| { let (e, t, b) = s.get(); s.set((e + 1, t, b)); });
+    STATS.with(|s| {
+        let (e, t, b) = s.get();
+        s.set((e + 1, t, b));
+        if (e + 1) % 200_000 == 0 && std::env::var_os("KM_TAB_STATS").is_some() {
+            eprintln!("KM_TAB_STATS progress expands={} branch_tries={} backtracks={}", e + 1, t, b);
+        }
+    });
 }
 #[inline]
 fn stat_try() {
@@ -1033,6 +1039,9 @@ impl Tableau {
                         g.add_edge(r, s, t);
                         g.add_concept(t, fil);
                         ex_changed = true;
+                        if g.n() % 100_000 == 0 && std::env::var_os("KM_TAB_STATS").is_some() {
+                            eprintln!("KM_TAB_STATS saturate nodes={}", g.n());
+                        }
                     }
                 }
             }
