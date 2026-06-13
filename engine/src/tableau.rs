@@ -1474,9 +1474,18 @@ impl Tableau {
     /// Returns `Some(conflict)` on a clash. ∃ successors inherit the obligation's
     /// dependency set.
     fn saturate_inc(&self, g: &mut Graph, mut queue: VecDeque<NewFact>) -> Option<DepSet> {
+        let prog = std::env::var_os("KM_TAB_STATS").is_some();
+        let mut inc_round = 0u64;
         loop {
+            inc_round += 1;
+            if prog {
+                eprintln!("KM_TAB_STATS saturate_inc round={} nodes={} queue={} (entering horn_inc)", inc_round, g.n(), queue.len());
+            }
             if let Some(c) = self.horn_inc(g, &mut queue) {
                 return Some(c);
+            }
+            if prog {
+                eprintln!("KM_TAB_STATS saturate_inc round={} horn_inc DONE nodes={}", inc_round, g.n());
             }
             let mut ex_changed = false;
             for s in 0..g.n() {
