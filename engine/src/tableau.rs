@@ -58,7 +58,7 @@ pub type Node = usize;
 pub const X: Var = 0;
 
 /// A concept literal `A` or `¬A` (post-NNF, so concepts are atomic).
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct CLit {
     pub neg: bool,
     pub c: C,
@@ -811,7 +811,8 @@ impl Tableau {
                     for &l in root_label {
                         q.push_back(NewFact::Concept(a, l));
                     }
-                    matches!(self.expand_inc(&mut g, q, 0), Outcome::Sat)
+                    let mut st = SearchState::new();
+                    matches!(self.expand_inc(&mut g, q, 0, &mut st), Outcome::Sat)
                 } else {
                     false
                 }
@@ -1532,7 +1533,25 @@ impl Tableau {
     /// conflict that does *not* mention `dl+1`, the choice is irrelevant, so the
     /// whole disjunction is abandoned and the conflict propagates up (skipping
     /// untried siblings and any irrelevant intervening decisions).
-    fn expand_inc(&self, g: &mut Graph, queue: VecDeque<NewFact>, dl: u32) -> Outcome {
+    ///
+    /// Direction C — no-good (conflict-clause) learning (`st`): backjumping
+    /// throws the clash reason away once it unwinds; with live disjunctions the
+    /// same combination is then re-derived in countless sibling subtrees
+    /// (measured: ore_ont_5303's first model build does 75k+ branch tries). `st`
+    /// caches each clash's decision set as a learned no-good and prunes any later
+    /// branch that re-asserts it. Sound on the non-careful path: it has no merges
+    /// or inverse navigation, so a successor's node id is stable across sibling
+    /// branches (`rollback` resets the node counter), and a learned no-good — a
+    /// set of `(node, concept-literal)` decisions that provably clash — stays
+    /// valid for any sibling that reaches the same decisions. (Disabled via
+    /// `KM_TAB_NOLEARN` for A/B; inert on the careful path, which tracks no deps.)
+    fn expand_inc(
+        &self,
+        g: &mut Graph,
+        queue: VecDeque<NewFact>,
+        dl: u32,
+        st: &mut SearchState,
+    ) -> Outcome {
         stat_expand();
         if let Some(c) = self.saturate_inc(g, queue) {
             return Outcome::Conflict(c);
@@ -1542,17 +1561,58 @@ impl Tableau {
             let mut accum = DepSet::new();
             for v in &head {
                 stat_try();
+                st.n_try += 1;
+                if st.stats && st.n_try % 20000 == 0 {
+                    eprintln!("KM_TAB_STATS nogood heartbeat tries={} learned={} hits={} skips={} dl={}", st.n_try, st.n_learn, st.n_hit, st.n_skip, dl);
+                }
                 let cp = g.checkpoint();
                 let mut ddep = bdep.clone();
                 ddep.insert(level);
                 let pend = self.resolve_head(g, v, &subst, ddep);
-                let mut child: VecDeque<NewFact> = VecDeque::new();
-                let conflict = match self.apply_pending(g, vec![pend], &mut child) {
-                    Some(c) => Some(c),
-                    None => match self.expand_inc(g, child, level) {
-                        Outcome::Sat => return Outcome::Sat,
-                        Outcome::Conflict(c) => Some(c),
-                    },
+                // Decision literal for learning (Concept disjuncts, non-careful).
+                let dlit = if st.on {
+                    match &pend {
+                        PendHead::Concept(n, l, _) => Some((*n, *l)),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let conflict = if let Some(d) = dlit {
+                    // No-good pruning: if asserting `d` completes a learned
+                    // no-good, this branch is known to clash — skip its subtree.
+                    if let Some(c) = st.check(d, level) {
+                        st.n_hit += 1;
+                        if st.stats && st.n_hit % 20000 == 0 {
+                            eprintln!("KM_TAB_STATS nogood hits={} learned={} skips={}", st.n_hit, st.n_learn, st.n_skip);
+                        }
+                        Some(c)
+                    } else {
+                        st.push(level, Some(d));
+                        let mut child: VecDeque<NewFact> = VecDeque::new();
+                        let r = match self.apply_pending(g, vec![pend], &mut child) {
+                            Some(c) => Some(c),
+                            None => match self.expand_inc(g, child, level, st) {
+                                // Model found: leave `g` intact for the caller.
+                                Outcome::Sat => return Outcome::Sat,
+                                Outcome::Conflict(c) => Some(c),
+                            },
+                        };
+                        st.pop(level, Some(d));
+                        r
+                    }
+                } else {
+                    st.push(level, None);
+                    let mut child: VecDeque<NewFact> = VecDeque::new();
+                    let r = match self.apply_pending(g, vec![pend], &mut child) {
+                        Some(c) => Some(c),
+                        None => match self.expand_inc(g, child, level, st) {
+                            Outcome::Sat => return Outcome::Sat,
+                            Outcome::Conflict(c) => Some(c),
+                        },
+                    };
+                    st.pop(level, None);
+                    r
                 };
                 g.rollback_to(cp);
                 stat_backtrack();
@@ -1569,9 +1629,138 @@ impl Tableau {
             // be satisfied given the earlier decisions in `accum` and the reasons
             // this disjunction fired (`bdep`).
             accum.union_with(&bdep);
+            // Learn the no-good: the decisions (at the levels in `accum`) that
+            // together force this clash. Reused to prune sibling/cousin branches.
+            if st.on {
+                st.learn(&accum);
+            }
             return Outcome::Conflict(accum);
         }
         Outcome::Sat
+    }
+}
+
+/// Direction C no-good (conflict-clause) learning state for the non-careful
+/// incremental DFS, rebuilt per `find_model`. A *decision* is a Concept disjunct
+/// choice `(node, literal)`; a *no-good* is a set of decisions that provably
+/// clash. Node ids are stable across sibling branches within one `find_model`
+/// (rollback resets the node counter), so a no-good learned in one subtree
+/// soundly prunes any sibling that reasserts the same combination.
+struct SearchState {
+    on: bool,
+    /// level → the decision literal made at that level on the current path.
+    level_lit: Vec<Option<(Node, CLit)>>,
+    /// decision literal → the level at which it sits on the current path.
+    lit_level: HashMap<(Node, CLit), u32>,
+    /// the Concept decisions currently on the path (for subset checks).
+    path_set: HashSet<(Node, CLit)>,
+    /// learned no-goods (each a sorted, deduped decision set).
+    learned: Vec<Vec<(Node, CLit)>>,
+    /// literal → indices of learned no-goods containing it (watch index).
+    by_lit: HashMap<(Node, CLit), Vec<usize>>,
+    cap: usize,
+    n_learn: u64,
+    n_hit: u64,
+    n_skip: u64,
+    n_try: u64,
+    stats: bool,
+}
+
+impl SearchState {
+    fn new() -> Self {
+        let on = std::env::var_os("KM_TAB_NOLEARN").is_none();
+        let cap = std::env::var("KM_TAB_LEARN_CAP")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(500_000);
+        SearchState {
+            on,
+            level_lit: Vec::new(),
+            lit_level: HashMap::new(),
+            path_set: HashSet::new(),
+            learned: Vec::new(),
+            by_lit: HashMap::new(),
+            cap,
+            n_learn: 0,
+            n_hit: 0,
+            n_skip: 0,
+            n_try: 0,
+            stats: std::env::var_os("KM_TAB_STATS").is_some(),
+        }
+    }
+
+    fn push(&mut self, level: u32, d: Option<(Node, CLit)>) {
+        if self.level_lit.len() <= level as usize {
+            self.level_lit.resize(level as usize + 1, None);
+        }
+        self.level_lit[level as usize] = d;
+        if let Some(l) = d {
+            self.lit_level.insert(l, level);
+            self.path_set.insert(l);
+        }
+    }
+
+    fn pop(&mut self, level: u32, d: Option<(Node, CLit)>) {
+        if let Some(l) = d {
+            self.lit_level.remove(&l);
+            self.path_set.remove(&l);
+        }
+        if (level as usize) < self.level_lit.len() {
+            self.level_lit[level as usize] = None;
+        }
+    }
+
+    /// If asserting decision `d` at `level` completes a learned no-good (all its
+    /// other literals are already on the path), return the conflict `DepSet` —
+    /// the levels of that no-good's decisions — so the branch clashes without
+    /// exploring its subtree.
+    fn check(&self, d: (Node, CLit), level: u32) -> Option<DepSet> {
+        let idxs = self.by_lit.get(&d)?;
+        for &i in idxs {
+            let ng = &self.learned[i];
+            if ng.iter().all(|l| *l == d || self.path_set.contains(l)) {
+                let mut ds = DepSet::new();
+                for l in ng {
+                    if *l == d {
+                        ds.insert(level);
+                    } else if let Some(&lv) = self.lit_level.get(l) {
+                        ds.insert(lv);
+                    }
+                }
+                return Some(ds);
+            }
+        }
+        None
+    }
+
+    /// Learn the no-good = the decision literals at the levels in `accum`. Skipped
+    /// if any of those levels was a non-Concept decision (no stable literal to
+    /// record) — sound, just learns less.
+    fn learn(&mut self, accum: &DepSet) {
+        if self.learned.len() >= self.cap || accum.v.is_empty() {
+            return;
+        }
+        let mut ng: Vec<(Node, CLit)> = Vec::with_capacity(accum.v.len());
+        for &lv in &accum.v {
+            match self.level_lit.get(lv as usize).copied().flatten() {
+                Some(l) => ng.push(l),
+                None => {
+                    self.n_skip += 1; // non-Concept decision at this level: don't learn
+                    return;
+                }
+            }
+        }
+        self.n_learn += 1;
+        ng.sort_unstable();
+        ng.dedup();
+        if ng.is_empty() {
+            return;
+        }
+        let idx = self.learned.len();
+        for l in &ng {
+            self.by_lit.entry(*l).or_default().push(idx);
+        }
+        self.learned.push(ng);
     }
 }
 
