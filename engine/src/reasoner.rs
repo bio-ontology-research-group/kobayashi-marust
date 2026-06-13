@@ -256,19 +256,79 @@ impl Reasoner {
             self.absorb(subs, inc, n);
             return;
         }
-        // Parallel path: split the named concepts into `threads` chunks and run
-        // an independent engine per chunk concurrently, then merge.
-        let chunk_len = queries.len().div_ceil(threads);
-        let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();
-        let partials: Vec<(Vec<(String, Vec<String>)>, bool, usize)> = chunks
-            .par_iter()
-            .map(|chunk| {
-                let mut e = self.build_engine();
-                e.run_for(chunk);
-                (e.subsumptions(), e.inconsistent(), e.num_contexts())
-            })
-            .collect();
-        for (subs, inc, n) in partials {
+        // Static-schedule escape hatch (A/B + debugging): the original
+        // contiguous chunking — `threads` engines, one fixed slice of the query
+        // list each. Kept reachable via KM_STATIC_SCHED so the dynamic scheduler
+        // below can be compared against it without rebuilding.
+        if std::env::var_os("KM_STATIC_SCHED").is_some() {
+            let chunk_len = queries.len().div_ceil(threads);
+            let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();
+            let partials: Vec<(Vec<(String, Vec<String>)>, bool, usize)> = chunks
+                .par_iter()
+                .map(|chunk| {
+                    let mut e = self.build_engine();
+                    e.run_for(chunk);
+                    (e.subsumptions(), e.inconsistent(), e.num_contexts())
+                })
+                .collect();
+            for (subs, inc, n) in partials {
+                self.absorb(subs, inc, n);
+            }
+            return;
+        }
+        // Dynamic work-stealing path (default): `threads` long-lived engines
+        // drain a shared atomic cursor over the query list in guided-size grabs
+        // (large early — low atomic contention and intra-engine cross-query
+        // context sharing — shrinking to 1 near the tail for load balance). A
+        // worker that finishes its grab immediately steals the next, so a single
+        // heavy query or a *cluster* of heavy queries that the static scheduler
+        // bins into one contiguous chunk (the measured ore_ont_12141 imbalance,
+        // where the hard concepts were adjacent in the named ordering and one
+        // chunk serialised the whole run) no longer idles the other workers.
+        //
+        // Each engine is independent (its own context graph), and a query's
+        // subsumers do not depend on which other queries are co-classified
+        // (run_for's contract), so the union of per-engine subsumptions is the
+        // full, correct result for any partition. This is a pure scheduling
+        // change: the derived set is partition-independent (confluent), so the
+        // output matches the sequential path and no Lean re-certification is
+        // needed.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let n = queries.len();
+        let cursor = AtomicUsize::new(0);
+        let this: &Reasoner = self;
+        let queries_ref: &[Iri] = &queries;
+        let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, usize)>> =
+            std::sync::Mutex::new(Vec::with_capacity(threads));
+        rayon::scope(|s| {
+            for _ in 0..threads {
+                s.spawn(|_| {
+                    let mut e = this.build_engine();
+                    let mut did_any = false;
+                    loop {
+                        let seen = cursor.load(Ordering::Relaxed);
+                        if seen >= n {
+                            break;
+                        }
+                        // Guided self-scheduling: grab ~1/(2·threads) of what is
+                        // left, clamped to [1, 64].
+                        let grab = ((n - seen) / (2 * threads)).clamp(1, 64);
+                        let start = cursor.fetch_add(grab, Ordering::Relaxed);
+                        if start >= n {
+                            break;
+                        }
+                        let end = (start + grab).min(n);
+                        e.run_for(&queries_ref[start..end]);
+                        did_any = true;
+                    }
+                    if did_any {
+                        let part = (e.subsumptions(), e.inconsistent(), e.num_contexts());
+                        partials.lock().unwrap().push(part);
+                    }
+                });
+            }
+        });
+        for (subs, inc, n) in partials.into_inner().unwrap() {
             self.absorb(subs, inc, n);
         }
     }

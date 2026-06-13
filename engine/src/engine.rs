@@ -2755,25 +2755,42 @@ impl Engine {
     /// resolvents, saturating `to`.  Returns `to`; the caller propagates it
     /// (deferred, batched -- see `apply_succ`).
     fn apply_pred(&mut self, to: usize, from: usize, edge_label: Term, pool_idx: u32) -> usize {
+        let pc = self.pred_payload(from, edge_label, pool_idx);
+        self.apply_pred_payload(to, pc)
+    }
+
+    /// The sender-side half of a Pred message: back-substitute the sender's
+    /// pool entry + core into the pred clause that crosses the edge. Reads only
+    /// the (immutable) sender context `from` — `&self`, no mutation — so it is
+    /// safe to call for every batched message up front, before any target is
+    /// mutated. Isolating this read is what lets `apply_pred_payload` run in
+    /// parallel across distinct targets without a sender/target aliasing race on
+    /// the sender's append-only `pred_pool`.
+    fn pred_payload(&self, from: usize, edge_label: Term, pool_idx: u32) -> PredClause {
         // Back-substitute: y -> x, x -> f(x).  The sender's pool entry and core
         // are immutable once created, so resolving them here reads exactly the
         // snapshot a send-time copy would have carried.
-        let pc = {
-            let from_ctx = &self.contexts[from];
-            let arena = &self.cc_arena[from_ctx.root as usize];
-            let clause = &arena[from_ctx.pred_pool[pool_idx as usize] as usize];
-            let f = edge_label;
-            let subst = |v: Term| backwards(f, v);
-            let mut body: Vec<Pred> = clause.body.iter().map(|p| p.apply(&subst)).collect();
-            for p in &from_ctx.core {
-                body.push(p.apply(&subst));
-            }
-            // Full literals: pool-eligible heads are predicates plus (nominal
-            // mode) the individual equality forms; `x ≈ o` crosses as
-            // `f(x) ≈ o`, which the receiver's Eq rule then rewrites.
-            let head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
-            PredClause { body, head }
-        };
+        let from_ctx = &self.contexts[from];
+        let arena = &self.cc_arena[from_ctx.root as usize];
+        let clause = &arena[from_ctx.pred_pool[pool_idx as usize] as usize];
+        let f = edge_label;
+        let subst = |v: Term| backwards(f, v);
+        let mut body: Vec<Pred> = clause.body.iter().map(|p| p.apply(&subst)).collect();
+        for p in &from_ctx.core {
+            body.push(p.apply(&subst));
+        }
+        // Full literals: pool-eligible heads are predicates plus (nominal
+        // mode) the individual equality forms; `x ≈ o` crosses as
+        // `f(x) ≈ o`, which the receiver's Eq rule then rewrites.
+        let head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
+        PredClause { body, head }
+    }
+
+    /// The receiver-side half of a Pred message: intern the back-substituted
+    /// clause, dedup against prior arrivals, fire the Pred rule against `to`'s
+    /// worked-off clauses, and saturate `to`. Mutates only context `to` (plus
+    /// the shared arena / intern tables). Returns `to`.
+    fn apply_pred_payload(&mut self, to: usize, pc: PredClause) -> usize {
         let pid = self.intern_pred(pc);
         // Duplicate arrival (same substituted clause already received, e.g. from
         // a successor's pre- and post-growth contexts): everything it could
