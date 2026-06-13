@@ -525,8 +525,11 @@ pub fn set_branch_ordered(b: bool) {
     BRANCH_ORDERED.with(|c| c.set(b));
 }
 
+/// `true` while the Direction-B splitting driver is saturating a branch (the
+/// tame ordered regime + unit-propagation resolvent suppression). Read by the
+/// engine's Hyper builder as well as the ordering.
 #[inline]
-fn branch_ordered() -> bool {
+pub fn branch_ordered() -> bool {
     BRANCH_ORDERED.with(|c| c.get())
 }
 

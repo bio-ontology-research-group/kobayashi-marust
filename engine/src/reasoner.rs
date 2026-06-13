@@ -269,6 +269,9 @@ impl Reasoner {
             return SplitBranch::Foreign;
         }
         *budget -= 1;
+        if std::env::var_os("KM_PROF").is_some() && *budget % 100 == 0 {
+            eprintln!("KM_PROF split node budget_left={} depth={}", *budget, decisions.len());
+        }
         let mut e = self.build_engine();
         // Branch closures run under the tame ordered regime.
         set_branch_ordered(true);

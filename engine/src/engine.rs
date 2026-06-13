@@ -1715,6 +1715,30 @@ impl Engine {
         }
         // plus each candidate clause's head minus the matched predicate
         let arena = &self.cc_arena[root as usize];
+        // Direction B unit-propagation mode (`branch_ordered`): suppress a
+        // resolvent that combines TWO OR MORE derived disjunctions (premise
+        // clauses with a multi-literal head). That fact×fact resolution is the
+        // multiplication that blows up the per-branch closure. With exhaustive
+        // splitting the missing consequence is recovered by splitting one of the
+        // disjunctive premises — it becomes a unit, then resolves normally — so
+        // suppressing it keeps the closure tame without losing completeness on
+        // the split-recovered fragment (validated by A/B vs the default engine).
+        // The ontology rule head is NOT counted: a single rule application
+        // introducing a fresh disjunction is bounded; only derived×derived blows
+        // up. Inert when `branch_ordered` is false (the default/fallback engine).
+        if branch_ordered() {
+            let mut disj_premises = 0usize;
+            for i in 0..candidates.len() {
+                let (ci, _) = candidates[i][idxs[i]];
+                let clause = if ci == usize::MAX { side } else { &arena[ci] };
+                if clause.head.len() > 1 {
+                    disj_premises += 1;
+                    if disj_premises >= 2 {
+                        return None;
+                    }
+                }
+            }
+        }
         let mut body: Vec<Pred> = Vec::new();
         for i in 0..candidates.len() {
             let (ci, matched) = candidates[i][idxs[i]];
@@ -3515,6 +3539,7 @@ impl Engine {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(25_000_000);
+        let prof = std::env::var_os("KM_PROF").is_some();
         let mut guard = 0usize;
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
@@ -3522,6 +3547,12 @@ impl Engine {
             let mut seen: HashSet<usize> = HashSet::new();
             for msg in batch {
                 guard += 1;
+                if prof && guard % 50000 == 0 {
+                    eprintln!(
+                        "KM_PROF split-fixpoint guard={} contexts={} msgs_pending={}",
+                        guard, self.contexts.len(), self.msgs.len()
+                    );
+                }
                 if guard > msg_cap {
                     self.msgs.clear();
                     break;
