@@ -49,6 +49,28 @@ Increment 1 lands the correct splitting machinery and the soundness+completeness
 guard; it is a no-op on the benchmark (falls back on the hard family) and stays
 default OFF.
 
+**Increment 2 — structural splitting (`d57e30d`).** Generalises the split from
+query-root fact-disjunctions to disjunctions in ANY context, keyed by the
+context's core (`branch_decisions: core → assumed disjunct facts`, seeded when a
+context with that core is created; cores are deterministic given the decisions,
+so the same successor context arises and gets the same seed across the
+fresh-engine-per-branch runs). This is how a disjunct is assumed in a SUCCESSOR
+context — the structure the live-`∀ + ⊔` family actually has (`A ⊑ ∀R.(C ⊔ D)`).
+SOUNDNESS guard `chain_unique_contexts`: split only contexts reachable from a
+root by single successor edges — the central strategy merges contexts by core,
+so a context reached by ≥2 edges represents successors that could pick disjuncts
+independently and a shared split would force them to agree (unsound). Everything
+else (non-chain-unique, role/eq/non-central disjunctions) falls back.
+
+Validation: 66+16 tests; **14/14 byte-identical** A/B; 13383 identical. SOUND.
+Recovery on the timeout family: still **0** — the split now *engages* on
+successor disjunctions (5303/5107/12698 split rather than immediately falling
+back) but the branch search **does not converge in time without conflict-driven
+learning**. Measured: 5303, 5107, 12698 all time out mid-split. The pruning that
+makes splitting competitive is increment 3 (extract the `⊥` decision-core, learn
+blocking clauses, reuse closed cores via the arena) — which is precisely a
+**caching tableau**, i.e. where Direction B converges with Direction C.
+
 ### Parallel-speed work: dynamic query scheduler (landed) + the parallelism ceiling
 
 Speed push aimed at the timeout tail, learning from Konclude (whose two main
