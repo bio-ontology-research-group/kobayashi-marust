@@ -4,6 +4,61 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Parallel-speed work: dynamic query scheduler (landed) + the parallelism ceiling
+
+Speed push aimed at the timeout tail, learning from Konclude (whose two main
+speed sources are aggressive parallelism + lazy tableau-with-caching for
+nondeterminism). Findings, with a thread-scaling probe (job 6227, node005,
+KM_THREADS ∈ {1,8,16}, 480 s / 220 GB) partitioning the failures by family:
+
+**Lever 1 — dynamic work-stealing query scheduler (LANDED, `7bc8611`).**
+The old parallel path split the named concepts into `threads` static
+contiguous chunks, one fixed engine each; when the hard query concepts cluster
+in the named ordering they land in one chunk and serialise the whole run
+(measured on ore_ont_12141). Replaced with `threads` long-lived engines
+draining a shared atomic cursor in guided-size grabs (large early for low
+contention + intra-engine cross-query context sharing, shrinking to 1 at the
+tail), so a finished worker steals the next. Pure scheduling change — each
+engine is independent and a query's subsumers don't depend on co-classified
+queries (run_for contract), so the partition-independent union is confluent:
+no Lean re-cert. `KM_STATIC_SCHED` restores the old path for A/B. Validated:
+66+16 cargo tests; subsumptions byte-identical across KM_THREADS=1 / dynamic-8
+/ static-8 on 8 onts (16461, 16076, 7270, 7482, 10019, 8169, 13018, 9635).
+Also split `apply_pred` into `pred_payload` (reads only the immutable sender)
++ `apply_pred_payload` (mutates only the target) — output-neutral, isolates
+the one sender/target aliasing read as a precondition for a future parallel
+message-apply phase.
+
+**Lever 2 — intra-saturation parallelism: scoped, then shelved as low-ROI.**
+Konclude parallelises the saturation itself; KM only parallelises *across
+queries*. The missing piece (concurrent context saturation) is the only lever
+for "one giant saturation" onts that query-parallelism can't split. But two
+facts make it a poor investment under the real benchmark limits (240 s, 20 GB):
+
+- *Cost:* the saturation core touches the shared arena + intern tables
+  directly across ~70 sites (only 6 are the `&[ContextClause]` slice
+  signatures; the rest are `saturate`/`add_clause`/`hyper`/`intern_cc`/
+  `cc_find` reaching `self.cc_arena` directly). True parallel saturation means
+  parameterising that whole core over an arena+intern abstraction (each worker
+  sees committed-global ++ its-own-new clauses) or a locked concurrent context
+  graph — a multi-session, Lean-adjacent refactor needing iterative validation.
+- *Payoff (probe 6227 + memory facts):* the speed-recoverable set is ~1 ont.
+  - 12141 + the disjunction family: timeout at 1/8/16 threads, and 8/16
+    threads **explode to ~204 GB** — parallelism-resistant *and*
+    memory-explosive; needs the algorithmic lever (ordered resolution /
+    tableau / BCP), not threads.
+  - 16444 (59 GB) and 9724/GALEN (27 GB): both **over the 20 GB memcap**, so
+    they are memouts regardless of speed.
+  - 16303: th=1 and th=16 both timeout at an **identical 4.93 GB peak** — the
+    textbook family-B signature (query-parallelism completely inert; one giant
+    saturation). The lone genuine intra-saturation target: fits the memcap but
+    needs ~8–10× scaling to clear 240 s.
+
+  Conclusion: bank Lever 1; **shelve Lever 2** (multi-session core refactor,
+  memory-neutral, reaches ~1 ont); the productive next lever is the
+  disjunction family's algorithmic fix (the largest timeout group, provably
+  out of parallelism's reach).
+
 ### Sweep 6016: the first fully clean correctness table (datatypes included)
 
 Full sweep with the datatype layer + chain-domain default + Phase-2 engine
