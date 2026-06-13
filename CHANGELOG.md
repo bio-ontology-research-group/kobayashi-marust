@@ -41,6 +41,30 @@ real ALCH ORE ontologies (ore_ont_11949/9509/10309/13503/2485) the cached
 classification is **set-identical** to the validated `expand_inc` output (132 / 81
 / 6 / 113 / 1 subsumptions). No regression to the default build (66 + 16 tests).
 
+**Conflict-directed backjumping + label-based no-good learning (per-node DPLL).**
+`local_search` now tracks, for every derived literal, the set of source concept
+literals (seed-base + disjunction decisions) it depends on (`cdep`, maintained on a
+trail so branches undo in place instead of cloning the working set). On a clash —
+complementary pair, ⊥-clause, or an unsatisfiable ∃-successor — the conflict is
+that source-literal reason. When asserting a disjunct `d` yields a conflict not
+mentioning `d`, the choice was irrelevant and the search backjumps past the whole
+disjunction. When every disjunct of a node fails, the resolved conflict
+(`guard ∪ ⋃(conf_i \ {d_i})`) is learned as a no-good. Crucially these no-goods
+range over CONCEPT LITERALS, not node instances, so one no-good prunes EVERY node
+whose label contains it — the cross-node generalisation the earlier
+`(node, literal)` learning (16ec50b) lacked. Learning is restricted to nodes with
+no imposed clauses (where the derivation is node-independent), keeping it sound.
+Validated: 16 tableau tests + the 5 real ALCH onts still set-identical to
+`expand_inc` (a trail-undo bug that briefly produced unsound extra subsumptions on
+ore_ont_9509/10309 was caught by the A/B and fixed — a clashing literal must be
+trailed before the early return). Measured on ore_ont_5303: learning fires hard
+(134 no-goods, ~9.7k prune hits) yet the ontology still times out — the search
+backtracks through an exponential per-node region at ∃-depth ~226 that learning
+prunes but does not eliminate, and smaller no-goods (`KM_TAB_LEARN_MAX=64`)
+generalise better than large ones. The production-stack optimisations are in place
+and sound but do not close this family within budget; this is the 5th technique to
+reach the same wall.
+
 **Recovery of the live-`∀ + ⊔` timeout family = 0** (honest negative result). On
 ore_ont_5303 the checker builds a genuinely deep ∃-chain (>1000 successors) whose
 labels are pairwise incomparable, so subset blocking rarely fires — the same

@@ -2289,9 +2289,20 @@ struct CacheRun<'a> {
     /// the ∃-successor ancestors currently being computed, each with its
     /// Horn-closed concept set, for subset blocking.
     stack: Vec<(CKey, Vec<CLit>)>,
+    /// Learned no-goods: concept-literal sets proven jointly unsatisfiable (w.r.t.
+    /// the global TBox). Because they range over concept literals, a single
+    /// no-good prunes EVERY node whose label contains it — the cross-node
+    /// generalisation node-instance learning lacked. Watched by their smallest
+    /// literal (`ng_watch`).
+    nogoods: Vec<Vec<CLit>>,
+    ng_watch: HashMap<CLit, Vec<usize>>,
+    learn_cap: usize,
+    learn_max: usize,
     stats: bool,
     n_seed: u64,
     n_branch: u64,
+    n_learn: u64,
+    n_nghit: u64,
 }
 
 /// `a ⊆ b` for sorted, deduped slices.
@@ -2309,6 +2320,29 @@ fn subset_sorted<T: Ord>(a: &[T], b: &[T]) -> bool {
     true
 }
 
+/// A *reason* is the sorted set of source concept literals (seed-base + disjunction
+/// decisions) a derived literal or a conflict depends on. Conflict-directed
+/// backjumping uses it to skip irrelevant decisions; a learned no-good is the
+/// reason of a clash, and because it ranges over concept literals (not node
+/// instances) it prunes any node whose label contains it.
+fn merge_into(acc: &mut Vec<CLit>, src: &[CLit]) {
+    for &l in src {
+        if let Err(i) = acc.binary_search(&l) {
+            acc.insert(i, l);
+        }
+    }
+}
+fn reason_of<'b>(cdep: &'b HashMap<CLit, Vec<CLit>>, l: CLit) -> &'b [CLit] {
+    cdep.get(&l).map(|v| v.as_slice()).unwrap_or(&[])
+}
+fn union_reasons(lits: &[CLit], cdep: &HashMap<CLit, Vec<CLit>>) -> Vec<CLit> {
+    let mut r = Vec::new();
+    for &l in lits {
+        merge_into(&mut r, reason_of(cdep, l));
+    }
+    r
+}
+
 impl<'a> CacheRun<'a> {
     fn new(tab: &'a Tableau, prog: &'a CProg) -> Self {
         CacheRun {
@@ -2316,10 +2350,68 @@ impl<'a> CacheRun<'a> {
             prog,
             cache: HashMap::new(),
             stack: Vec::new(),
+            nogoods: Vec::new(),
+            ng_watch: HashMap::new(),
+            learn_cap: std::env::var("KM_TAB_LEARN_CAP")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(2_000_000),
+            learn_max: std::env::var("KM_TAB_LEARN_MAX")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(64),
             stats: std::env::var_os("KM_TAB_STATS").is_some(),
             n_seed: 0,
             n_branch: 0,
+            n_learn: 0,
+            n_nghit: 0,
         }
+    }
+
+    /// Record a learned no-good (a clash reason), watched by its smallest literal.
+    /// Skipped if empty (unconditional — handled by the consistency check), too
+    /// large, or the cap is hit.
+    fn learn(&mut self, conf: &[CLit]) {
+        if conf.is_empty() || conf.len() > self.learn_max || self.nogoods.len() >= self.learn_cap {
+            return;
+        }
+        let mut ng = conf.to_vec();
+        ng.sort_unstable();
+        ng.dedup();
+        let idx = self.nogoods.len();
+        self.ng_watch.entry(ng[0]).or_default().push(idx);
+        self.nogoods.push(ng);
+        self.n_learn += 1;
+    }
+
+    /// If `set` contains a learned no-good, return its clash reason (for
+    /// backjumping); else `None`.
+    fn check_nogood(&self, set: &HashSet<CLit>, cdep: &HashMap<CLit, Vec<CLit>>) -> Option<Vec<CLit>> {
+        for l in set {
+            if let Some(idxs) = self.ng_watch.get(l) {
+                for &i in idxs {
+                    if self.nogoods[i].iter().all(|x| set.contains(x)) {
+                        return Some(union_reasons(&self.nogoods[i], cdep));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Like `check_nogood` but only reports whether a no-good fires (for the
+    /// dependency-free witness path).
+    fn has_nogood(&self, set: &HashSet<CLit>) -> bool {
+        for l in set {
+            if let Some(idxs) = self.ng_watch.get(l) {
+                for &i in idxs {
+                    if self.nogoods[i].iter().all(|x| set.contains(x)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     /// Subset blocking (sound for ALCH without inverse / number / nominals): a node
@@ -2409,17 +2501,149 @@ impl<'a> CacheRun<'a> {
         }
     }
 
-    /// First unsatisfied disjunction active on `set` (node-local then imposed), or
-    /// `None` if the node is propositionally complete.
+    /// Horn-close `set` with reason tracking (`cdep`: each derived literal → its
+    /// source-literal reason). Returns `Some(reason)` of the clash if one fires.
+    /// Sets `tainted` if any imposed clause contributed (then a derived no-good is
+    /// not node-generalisable, so the caller does not learn it).
+    fn close_dep(
+        &self,
+        set: &mut HashSet<CLit>,
+        cdep: &mut HashMap<CLit, Vec<CLit>>,
+        imposed: &[(Vec<CLit>, Vec<CLit>)],
+        trail: &mut Vec<CLit>,
+        tainted: &mut bool,
+    ) -> Option<Vec<CLit>> {
+        let p = self.prog;
+        if p.clash_empty {
+            return Some(Vec::new());
+        }
+        let mut wl: Vec<CLit> = set.iter().copied().collect();
+        for &h in &p.horn_empty {
+            if set.insert(h) {
+                cdep.insert(h, Vec::new());
+                trail.push(h);
+                wl.push(h);
+            }
+        }
+        loop {
+            while let Some(l) = wl.pop() {
+                if set.contains(&l.complement()) {
+                    let mut r = cdep.get(&l).cloned().unwrap_or_default();
+                    merge_into(&mut r, reason_of(cdep, l.complement()));
+                    return Some(r);
+                }
+                if let Some(idxs) = p.horn_by_lit.get(&l) {
+                    for &i in idxs {
+                        let (b, h) = &p.node_horn[i];
+                        if b.iter().all(|x| set.contains(x)) && set.insert(*h) {
+                            // trail FIRST, so the literal is undone even when it
+                            // immediately clashes (else it leaks into siblings).
+                            trail.push(*h);
+                            let r = union_reasons(b, cdep);
+                            if set.contains(&h.complement()) {
+                                let mut rr = r;
+                                merge_into(&mut rr, reason_of(cdep, h.complement()));
+                                return Some(rr);
+                            }
+                            cdep.insert(*h, r);
+                            wl.push(*h);
+                        }
+                    }
+                }
+                if let Some(idxs) = p.clash_by_lit.get(&l) {
+                    for &i in idxs {
+                        let b = &p.node_clash[i];
+                        if b.iter().all(|x| set.contains(x)) {
+                            return Some(union_reasons(b, cdep));
+                        }
+                    }
+                }
+            }
+            let mut more: Vec<CLit> = Vec::new();
+            for (b, h) in imposed {
+                if b.iter().all(|x| set.contains(x)) {
+                    *tainted = true;
+                    let r = union_reasons(b, cdep);
+                    if h.is_empty() {
+                        return Some(r);
+                    }
+                    if h.len() == 1 && set.insert(h[0]) {
+                        trail.push(h[0]);
+                        if set.contains(&h[0].complement()) {
+                            let mut rr = r;
+                            merge_into(&mut rr, reason_of(cdep, h[0].complement()));
+                            return Some(rr);
+                        }
+                        cdep.insert(h[0], r);
+                        more.push(h[0]);
+                    }
+                }
+            }
+            if !p.domain.is_empty() {
+                for (rd, dc) in &p.domain {
+                    let src = p.node_exists.iter().find(|(b, r0, _)| {
+                        p.role_le(*r0, *rd) && b.iter().all(|x| set.contains(x))
+                    });
+                    if let Some((b, _, _)) = src {
+                        if set.insert(*dc) {
+                            trail.push(*dc);
+                            let r = union_reasons(b, cdep);
+                            if set.contains(&dc.complement()) {
+                                let mut rr = r;
+                                merge_into(&mut rr, reason_of(cdep, dc.complement()));
+                                return Some(rr);
+                            }
+                            cdep.insert(*dc, r);
+                            more.push(*dc);
+                        }
+                    }
+                }
+            }
+            if more.is_empty() {
+                return None;
+            }
+            wl = more;
+        }
+    }
+
+    /// The clash reason for an unsatisfiable `r0`-successor with filler `fil`: the
+    /// reasons of the node literals that built the (unsatisfiable) successor seed —
+    /// the obligation's body and every triggered universal's body.
+    fn succ_conflict(
+        &self,
+        set: &HashSet<CLit>,
+        cdep: &HashMap<CLit, Vec<CLit>>,
+        r0: R,
+        fil: CLit,
+    ) -> Vec<CLit> {
+        let p = self.prog;
+        let mut r = Vec::new();
+        if let Some((b, _, _)) = p
+            .node_exists
+            .iter()
+            .find(|(b, rr, ff)| *rr == r0 && *ff == fil && b.iter().all(|x| set.contains(x)))
+        {
+            merge_into(&mut r, &union_reasons(b, cdep));
+        }
+        for u in &p.uni {
+            if p.role_le(r0, u.role) && u.xbody.iter().all(|x| set.contains(x)) {
+                merge_into(&mut r, &union_reasons(&u.xbody, cdep));
+            }
+        }
+        r
+    }
+
+    /// First unsatisfied disjunction active on `set` (node-local then imposed),
+    /// returned as `(guard, disjuncts)`, or `None` if propositionally complete.
     fn first_disj(
         &self,
         set: &HashSet<CLit>,
         imposed: &[(Vec<CLit>, Vec<CLit>)],
-    ) -> Option<Vec<CLit>> {
+    ) -> Option<(Vec<CLit>, Vec<CLit>)> {
         let p = self.prog;
         for (b, h) in &p.node_disj {
             if b.iter().all(|l| set.contains(l)) && !h.iter().any(|d| set.contains(d)) {
-                return Some(h.clone());
+                return Some((b.clone(), h.clone()));
             }
         }
         for (b, h) in imposed {
@@ -2427,7 +2651,7 @@ impl<'a> CacheRun<'a> {
                 && b.iter().all(|l| set.contains(l))
                 && !h.iter().any(|d| set.contains(d))
             {
-                return Some(h.clone());
+                return Some((b.clone(), h.clone()));
             }
         }
         None
@@ -2474,7 +2698,16 @@ impl<'a> CacheRun<'a> {
             return (s, false);
         }
         let mut set: HashSet<CLit> = key.base.iter().copied().collect();
-        if self.close(&mut set, &key.imposed) {
+        let mut cdep: HashMap<CLit, Vec<CLit>> = HashMap::with_capacity(key.base.len() * 2);
+        for &l in &key.base {
+            cdep.insert(l, vec![l]);
+        }
+        let mut tainted = false;
+        let mut trail = Vec::new();
+        if self
+            .close_dep(&mut set, &mut cdep, &key.imposed, &mut trail, &mut tainted)
+            .is_some()
+        {
             self.cache.insert(key.clone(), false);
             return (false, false);
         }
@@ -2486,64 +2719,114 @@ impl<'a> CacheRun<'a> {
         self.stack.push((key.clone(), curv));
         self.n_seed += 1;
         if self.stats && self.n_seed % 200_000 == 0 {
-            eprintln!("KM_TAB_STATS cache: seeds={} stack={} cache={}", self.n_seed, self.stack.len(), self.cache.len());
+            eprintln!(
+                "KM_TAB_STATS cache: seeds={} stack={} cache={} nogoods={} nghit={}",
+                self.n_seed, self.stack.len(), self.cache.len(), self.nogoods.len(), self.n_nghit
+            );
         }
-        let (sat, used) = self.local_search(key, set);
+        let res = self.local_search(key, &mut set, &mut cdep);
         self.stack.pop();
-        if !sat {
-            self.cache.insert(key.clone(), false);
-        } else if !used {
-            self.cache.insert(key.clone(), true);
+        match res {
+            Ok(used) => {
+                if !used {
+                    self.cache.insert(key.clone(), true);
+                }
+                (true, used)
+            }
+            Err(conf) => {
+                self.cache.insert(key.clone(), false);
+                if key.imposed.is_empty() {
+                    self.learn(&conf);
+                }
+                (false, false)
+            }
         }
-        (sat, used)
     }
 
-    /// Level-1 propositional DPLL on one node: branch through the disjunctions to a
-    /// complete clash-free assignment whose every ∃-successor is satisfiable.
-    /// Returns `(found, used_blocking)`; transient (no caching of partial
-    /// assignments). `set` is Horn-closed and clash-free on entry.
+    /// Level-1 propositional DPLL on one node with conflict-directed backjumping +
+    /// label-based no-good learning. `Ok(used_blocking)` = a clash-free complete
+    /// assignment with all ∃-successors satisfiable; `Err(reason)` = the node is
+    /// unsatisfiable, `reason` the source-literal set responsible (drives backjump
+    /// in the caller and is learned as a node-generalisable no-good).
     ///
     /// Eager ∃-pruning: every active obligation's successor is checked at *every*
-    /// level, not just at a complete leaf. Sound because a partial node-set imposes
-    /// FEWER universals on a successor than the complete set, so an unsatisfiable
-    /// partial successor stays unsatisfiable as constraints are added — a bad
-    /// disjunct choice is then pruned at its shallow decision instead of after the
-    /// whole node is resolved.
-    fn local_search(&mut self, key: &CKey, set: HashSet<CLit>) -> (bool, bool) {
+    /// level (sound: a partial node-set imposes FEWER universals, so a partial
+    /// successor that is unsatisfiable stays so). Backjumping: when asserting a
+    /// disjunct `d` yields a conflict not mentioning `d`, `d` was irrelevant — the
+    /// conflict is returned past the whole disjunction (skipping its siblings).
+    fn local_search(
+        &mut self,
+        key: &CKey,
+        set: &mut HashSet<CLit>,
+        cdep: &mut HashMap<CLit, Vec<CLit>>,
+    ) -> Result<bool, Vec<CLit>> {
+        // label-based pruning: a learned no-good already in this label ⇒ unsat.
+        if let Some(r) = self.check_nogood(set, cdep) {
+            self.n_nghit += 1;
+            return Err(r);
+        }
         let mut used_any = false;
         // eager: prune as soon as any active obligation's successor is unsat.
-        for (r0, fil) in self.obligations(&set) {
-            let succ = self.build_succ(&set, r0, fil);
+        for (r0, fil) in self.obligations(set) {
+            let succ = self.build_succ(set, r0, fil);
             let (sat, used) = self.sat_seed(&succ);
             used_any |= used;
             if !sat {
-                return (false, used_any);
+                return Err(self.succ_conflict(set, cdep, r0, fil));
             }
         }
-        if let Some(disj) = self.first_disj(&set, &key.imposed) {
-            self.n_branch += 1;
-            if self.stats && self.n_branch % 2_000_000 == 0 {
-                eprintln!(
-                    "KM_TAB_STATS cache: branches={} seeds={} cache={} stack={} curset={}",
-                    self.n_branch, self.n_seed, self.cache.len(), self.stack.len(), set.len()
-                );
-            }
-            for d in disj {
-                let mut s2 = set.clone();
-                s2.insert(d);
-                if self.close(&mut s2, &key.imposed) {
-                    continue; // this disjunct clashes; try the next
-                }
-                let (sat, used) = self.local_search(key, s2);
-                if sat {
-                    return (true, used | used_any);
-                }
-                used_any |= used;
-            }
-            return (false, used_any);
+        let (guard, disj) = match self.first_disj(set, &key.imposed) {
+            Some(gd) => gd,
+            None => return Ok(used_any), // complete; all successors satisfiable
+        };
+        self.n_branch += 1;
+        if self.stats && self.n_branch % 2_000_000 == 0 {
+            eprintln!(
+                "KM_TAB_STATS cache: branches={} seeds={} cache={} stack={} nogoods={} nghit={}",
+                self.n_branch, self.n_seed, self.cache.len(), self.stack.len(),
+                self.nogoods.len(), self.n_nghit
+            );
         }
-        // complete and all (already-checked) successors satisfiable.
-        (true, used_any)
+        // the disjunction fires because of its guard; that is part of the conflict.
+        let mut accum = union_reasons(&guard, cdep);
+        for d in disj {
+            // assert `d` and Horn-close, recording every literal added on a trail
+            // so the branch can be undone without cloning `set` / `cdep`.
+            let mut trail: Vec<CLit> = Vec::new();
+            if set.insert(d) {
+                cdep.insert(d, vec![d]);
+                trail.push(d);
+            }
+            let mut tainted = false;
+            let conf = match self.close_dep(set, cdep, &key.imposed, &mut trail, &mut tainted) {
+                Some(c) => Some(c),
+                None => match self.local_search(key, set, cdep) {
+                    Ok(u) => return Ok(u | used_any), // model found; leave `set` as is
+                    Err(c) => Some(c),
+                },
+            };
+            // undo this branch's additions before trying the next disjunct.
+            for l in &trail {
+                set.remove(l);
+                cdep.remove(l);
+            }
+            let conf = conf.unwrap();
+            if conf.binary_search(&d).is_err() {
+                // `d` is irrelevant to this clash — every sibling clashes the same
+                // way. Backjump past the whole disjunction.
+                return Err(conf);
+            }
+            for &x in &conf {
+                if x != d {
+                    merge_into(&mut accum, &[x]);
+                }
+            }
+        }
+        // every disjunct failed: `accum` is this node's clash reason.
+        if key.imposed.is_empty() {
+            self.learn(&accum);
+        }
+        Err(accum)
     }
 
     /// Find one model of `key` and return its completed root concept set (for
@@ -2571,13 +2854,16 @@ impl<'a> CacheRun<'a> {
     }
 
     fn witness_rec(&mut self, key: &CKey, set: HashSet<CLit>) -> Option<Vec<CLit>> {
+        if self.has_nogood(&set) {
+            return None;
+        }
         for (r0, fil) in self.obligations(&set) {
             let succ = self.build_succ(&set, r0, fil);
             if !self.sat_seed(&succ).0 {
                 return None;
             }
         }
-        if let Some(disj) = self.first_disj(&set, &key.imposed) {
+        if let Some((_guard, disj)) = self.first_disj(&set, &key.imposed) {
             for d in disj {
                 let mut s2 = set.clone();
                 s2.insert(d);
