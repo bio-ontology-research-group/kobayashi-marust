@@ -4,6 +4,51 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Direction B: disjunction case-splitting (`KM_SPLIT`, increment 1, gated OFF)
+
+The algorithmic lever for the live-`∀ + ⊔` timeout family (the largest timeout
+group, out of parallelism's reach). Design: docs/DISJUNCTION-SPLITTING.md.
+Instead of unrestricted resolution on incomparable disjunctions (the blow-up),
+classify a query by semantic case splitting: branch on a derived fact-disjunction
+`⊤ → l1(x) ∨ … ∨ lk(x)`, intersect the forced units over the open branches, and
+close a branch on `⊥`. Each branch runs the tame ordered-resolution closure (a
+per-thread `BRANCH_ORDERED` total order); the fallback runs the complete
+(unordered) regime — ordered resolution alone is incomplete (the `KM_ORDERED_ALL`
+verdict), so the two must be separated per-run, not by a process-global flag.
+
+`classify_assume(query, assume)` runs a branch closure on a fresh engine
+(isolation by construction) and reads `ClosureFacts` (forced units, split-point
+disjunctions, `⊥`). A **conservative completeness guard** sets `foreign` →
+fall back to the complete default engine whenever ANY context holds a
+disjunction that is not a query-context body-empty concept-on-x fact-disjunction
+(a conditional/role/equality disjunction, or a successor-context disjunction):
+the total order could hide a forced unit there and the propositional-on-x driver
+does not split it. So `KM_SPLIT` is **SOUND + COMPLETE on every ontology** — the
+recovered fragment is the queries whose only nondeterminism is concept
+disjunctions on `x` over Horn successors; everything else falls back.
+
+Validation (66+16 tests; A/B vs the default engine):
+- **14/14 byte-identical** on the finishable small onts (the guard only ever
+  increases fallback, and fallback == default).
+- **ore_ont_13383: identical**, where split fully classifies all 368 queries
+  with **0 fallback** — the splitting itself (not the fallback) yields the
+  correct complete answer on a real named-disjunction ontology.
+- Honest correction: an earlier pre-fix run appeared to "solve" 5107 — that was
+  the incomplete ordered *fallback* finishing fast with WRONG answers; with the
+  per-run ordering fix 5107 correctly falls back to the complete engine.
+- **Recovery on the disjunction timeout family: 0** (5107, 5303, 12698, 2313,
+  …). Their hard nondeterminism is at the successor/conditional level, so they
+  either fall back (→ complete-engine timeout) or the per-branch closure itself
+  times out. Recovering them needs **structural splitting** — splitting
+  disjunctions inside successor contexts and conditional disjunctions, with
+  branch-scoped messaging — which is increment 2 (the genuinely multi-session,
+  Lean-cert'd core). Direction A (ordered + selection + residue readout) layers
+  on increment 2.
+
+Increment 1 lands the correct splitting machinery and the soundness+completeness
+guard; it is a no-op on the benchmark (falls back on the hard family) and stays
+default OFF.
+
 ### Parallel-speed work: dynamic query scheduler (landed) + the parallelism ceiling
 
 Speed push aimed at the timeout tail, learning from Konclude (whose two main

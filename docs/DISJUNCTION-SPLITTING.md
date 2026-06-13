@@ -146,3 +146,47 @@ marginal recovery.
 4. **Direction A residue readout.** On top of `KM_SEQ_ORDER`.
 5. **Lean re-cert** (tasks #23 splitting, #25 residue).
 6. **Full ORE-2015 sweep + gold table; Direction C worth analysis.**
+
+## 6. Increment 1 outcome (landed, gated `KM_SPLIT` OFF)
+
+Built: `classify_assume` + `read_closure` (engine.rs), `split_recurse` +
+`saturate_split` (reasoner.rs), the per-thread `BRANCH_ORDERED` order (calc.rs),
+and the conservative completeness guard.
+
+Validated SOUND + COMPLETE: 14/14 byte-identical to the default engine on the
+finishable onts; ore_ont_13383 identical with all 368 queries split-classified
+and 0 fallback (the splitting machinery is correct on a real named-disjunction
+ont, independent of the fallback). The earlier apparent "5107 solve" was a
+pre-fix artifact (the incomplete ordered *fallback*); fixed.
+
+Benchmark recovery: **0**. The live-`∀ + ⊔` timeout family puts its
+nondeterminism at the successor/conditional level (`A ⊑ ∀R.(C ⊔ D)`, `A ⊑ ∃R.⊤`
+→ the disjunction `C ⊔ D` lives in the *successor* context, not the query
+context), which increment 1 does not split → it falls back (→ complete-engine
+timeout) or the per-branch ordered closure itself times out (5303, 5107).
+
+## 7. Increment 2 — structural splitting (the benchmark-mover)
+
+The narrow class increment 1 recovers (query-level concept disjunctions over
+Horn successors) does not overlap the timeout family. To move the benchmark the
+splitting must reach the disjunctions where they actually live:
+
+- **Conditional disjunctions** `Γ → B(x) ∨ C(x)` with `Γ` satisfied: already
+  become fact-disjunctions once `Γ`'s atoms are derived units (Hyper resolves
+  the body), so these are largely handled — the remaining gap is genuinely
+  *successor* disjunctions.
+- **Successor-context disjunctions**: a branch must be able to assume a disjunct
+  *in a successor context*, not only in the query root. The fresh-engine-per-root
+  model cannot express that (successor cores are derived, not seeded). This needs
+  one of: (a) a decision trail inside a single engine's saturation (assume a
+  disjunct in a specific context, propagate, backjump on `⊥` — true DPLL(CB)), or
+  (b) generalising "decisions" to `(context-core, disjunct)` pairs reproduced
+  across branch engines. (a) is the principled design and the larger rewrite.
+- **Conflict-driven learning** (increment 3) then prevents the branch count from
+  exploding: extract the decision-core of each `⊥`, learn a blocking clause,
+  reuse closed cores across contexts via the interned arena.
+
+This is the multi-session, soundness-critical, Lean-cert'd core (task #23). It is
+also where Direction B converges with Direction C (§4): a decision trail with
+learned blocking clauses *is* a caching (hyper)tableau — the open question for
+task #27 is whether to build it into the CB engine (B) or onto `tableau_cli` (C).
