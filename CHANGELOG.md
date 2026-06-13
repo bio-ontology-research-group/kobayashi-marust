@@ -4,6 +4,59 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Direction C: label-caching (global-caching) tableau (`KM_TAB_CACHE`, gated OFF)
+
+A from-scratch rewrite of the tableau's non-careful (ALCH, no inverse / number /
+nominals) path from a single global DFS over one shared completion graph into a
+**label-keyed global-caching** decision procedure (Goré–Nguyen). The motivating
+fact: in ALCH without inverse roles, a node's satisfiability depends ONLY on its
+concept label, so a label proven (un)satisfiable stays so wherever it recurs — the
+result caches across every node AND across every classify query. `expand_inc`'s
+no-good learning could not exploit this because its no-goods were over node-
+INSTANCE `(node, literal)` decisions (commit 16ec50b, measured insufficient).
+
+Design (in `tableau.rs`, behind `KM_TAB_CACHE`; `build_cprog` falls back to the
+complete `expand_inc` on any clause outside the recognised shapes, so soundness is
+never at risk):
+- **Two levels.** Level 1 (per node, transient, never cached): a propositional
+  DPLL over the node's disjunctions. Level 2 (cached across nodes + queries): the
+  satisfiability of each ∃-successor *seed* (its filler plus the universals
+  propagated onto it), keyed by `CKey`.
+- **`∃r.C ⊑ D` internalisation.** The someValuesFrom-on-LHS clauses
+  `r(x,y) ∧ C(y) → D(x)` (82 of them in ore_ont_5303) become the disjunction
+  `D ⊔ ∀r.¬C`, the universal disjunct represented as a synthetic marker concept
+  carrying a `Uni` that pushes `¬C` to the node's r-successors when chosen.
+- **Sound cycle handling without an SCC pass.** UNSAT seeds are always cached
+  (sound: unsat under optimistic blocking ⇒ unsat in every context); a SAT verdict
+  is cached only when its witness used no on-stack blocking (`used == false`) — a
+  genuine finite model, sound to reuse anywhere.
+- **Eager ∃-pruning** (every active obligation's successor checked at every DPLL
+  level, sound because a partial node-set imposes fewer universals), **subset
+  blocking** over the ancestor stack (sound GFP blocking for ALCH; Dickson's lemma
+  bounds every ∃-chain), and a **semi-naive indexed `close()`** (Horn closure fires
+  only clauses a newly-derived literal triggers; ~50× over the naive scan).
+
+**Correctness validated:** 16 tableau unit tests pass through the cache path; on 5
+real ALCH ORE ontologies (ore_ont_11949/9509/10309/13503/2485) the cached
+classification is **set-identical** to the validated `expand_inc` output (132 / 81
+/ 6 / 113 / 1 subsumptions). No regression to the default build (66 + 16 tests).
+
+**Recovery of the live-`∀ + ⊔` timeout family = 0** (honest negative result). On
+ore_ont_5303 the checker builds a genuinely deep ∃-chain (>1000 successors) whose
+labels are pairwise incomparable, so subset blocking rarely fires — the same
+deep-model wall that already makes 5303 a timeout for `expand_inc` itself. The
+per-node propositional search (120 disjunctions on the ⊤ node) is partly tamed by
+eager pruning but the combined depth × width is not. On three other ALCH onts
+(8937 / 1420 / 4856) the cached path is *slower* than `expand_inc` (deep-recursion
++ eager re-checking underperform the global DFS), so it is not a strict win and
+stays gated OFF. The architecture is sound, validated, and the foundation for a
+caching tableau; closing the gap to Konclude on this family needs the full
+production-reasoner stack (dependency-directed backjumping + label-based learning
+inside the per-node DPLL, smarter blocking), a multi-session engineering effort
+rather than an algorithmic gap. This is the 4th approach (CB resolution, CB
+splitting, tableau no-good learning, caching tableau) to hit the same wall on this
+family; KM stays sound + complete on everything it finishes.
+
 ### Direction B: disjunction case-splitting (`KM_SPLIT`, increment 1, gated OFF)
 
 The algorithmic lever for the live-`∀ + ⊔` timeout family (the largest timeout

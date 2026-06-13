@@ -768,6 +768,11 @@ impl Tableau {
     /// `root_label` w.r.t. the clauses.) Returns true iff a clash-free complete
     /// completion graph exists.
     pub fn consistent(&self, root_label: &[CLit]) -> bool {
+        if std::env::var_os("KM_TAB_CACHE").is_some() && !self.careful() {
+            if let Some(prog) = self.build_cprog() {
+                return self.consistent_cached(root_label, &prog);
+            }
+        }
         self.find_model(root_label).is_some()
     }
 
@@ -1798,6 +1803,14 @@ impl Tableau {
     /// careful path no dependencies are tracked, so every candidate is confirmed,
     /// exactly as before.)
     pub fn classify(&self, named: &[C]) -> (bool, Vec<C>, Vec<(C, C)>) {
+        // Label-caching fast path (global caching) for the non-careful ALCH
+        // fragment, when every clause fits the recognised shapes. Same answers as
+        // the search-based `classify`, decided by caching instead of DFS.
+        if std::env::var_os("KM_TAB_CACHE").is_some() && !self.careful() {
+            if let Some(prog) = self.build_cprog() {
+                return self.classify_cached(named, &prog);
+            }
+        }
         if std::env::var_os("KM_TAB_STATS").is_some() {
             eprintln!("KM_TAB_STATS classify START: {} named, checking consistent([])", named.len());
         }
@@ -1863,6 +1876,721 @@ impl Tableau {
             );
         }
         (consistent, unsat, subs)
+    }
+}
+
+// ============== label-caching tableau (global caching, KM_TAB_CACHE) ==============
+//
+// The non-careful `expand_inc` builds ONE global model by DFS over a single shared
+// graph: a clash deep in the tree backtracks the whole path, and no-good learning
+// over `(node, literal)` decisions does not generalise across the distinct deep
+// nodes (measured on ore_ont_5303: a ~1840-node model, ~8600 sequential disjunction
+// decisions, ~1% no-good hit rate). The fix is to decide satisfiability per *label*
+// rather than per *node*: in ALCH WITHOUT inverse roles, number restrictions, or
+// nominals, a node's satisfiability depends ONLY on its concept label (no
+// information flows back up the tree), so a label proven (un)satisfiable stays so
+// wherever it recurs — the result caches across every node AND across every classify
+// query.
+//
+// This is global caching (Goré–Nguyen): build the finite AND–OR graph of reachable
+// labels (states shared through a cache), then take the least fixpoint of "unsat"
+// (equivalently the greatest fixpoint of "sat"), which is exactly sound blocking for
+// ALCH+GCI cyclic models. Entered only when `!careful()` and every clause fits the
+// recognised shapes — `build_cprog` returns `None` otherwise, so the caller falls
+// back to the complete `expand_inc` and soundness is never at risk. Gated by
+// `KM_TAB_CACHE`; the same answers as `expand_inc`, decided by caching instead of
+// search.
+
+/// A node-local label: the concept literals seeded on the node plus the
+/// node-local clauses imposed on it by its parent's universals (`∀r.(…)`), each
+/// `(body ⇒ head)` with head length 0 = ⊥, 1 = Horn, ≥2 = disjunction. Canonical
+/// (all vectors sorted + deduped) so equal labels share one graph node.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct CKey {
+    base: Vec<CLit>,
+    imposed: Vec<(Vec<CLit>, Vec<CLit>)>,
+}
+impl CKey {
+    fn canon(mut base: Vec<CLit>, mut imposed: Vec<(Vec<CLit>, Vec<CLit>)>) -> CKey {
+        base.sort_unstable();
+        base.dedup();
+        for (b, h) in imposed.iter_mut() {
+            b.sort_unstable();
+            b.dedup();
+            h.sort_unstable();
+            h.dedup();
+        }
+        imposed.sort_unstable();
+        imposed.dedup();
+        CKey { base, imposed }
+    }
+}
+
+/// A binary universal `xbody(x) ∧ r(x,y) ∧ ybody(y) → yhead(y)` (yhead len 0 = ⊥,
+/// 1 = Horn fact/clause on the successor, ≥2 = a disjunction imposed on it).
+struct Uni {
+    xbody: Vec<CLit>,
+    role: R,
+    ybody: Vec<CLit>,
+    yhead: Vec<CLit>,
+}
+
+/// The recognised ALCH program extracted from the clause set. `build_cprog`
+/// returns `None` for any clause outside these shapes (⇒ fall back to the
+/// complete path), so the cached checker is only ever run where it faithfully
+/// reproduces the clause semantics.
+struct CProg {
+    node_horn: Vec<(Vec<CLit>, CLit)>,      // body(x) → head(x)
+    node_clash: Vec<Vec<CLit>>,             // body(x) → ⊥
+    node_disj: Vec<(Vec<CLit>, Vec<CLit>)>, // body(x) → ⊔ head(x)  (head.len ≥ 2)
+    node_exists: Vec<(Vec<CLit>, R, CLit)>, // body(x) → ∃r.fil(x)
+    uni: Vec<Uni>,
+    domain: Vec<(R, CLit)>, // a node carrying an ∃r-obligation is a domain instance
+    supers: HashMap<R, HashSet<R>>, // r → {s : r ⊑⁺ s} (proper transitive supers)
+    // semi-naive Horn-closure index: a clause is (re)checked only when a body
+    // literal it mentions is newly derived, instead of rescanning all clauses.
+    horn_by_lit: HashMap<CLit, Vec<usize>>, // node_horn idx, keyed by each body lit
+    horn_empty: Vec<CLit>,                  // heads of empty-body node_horn (⊤ ⊑ h)
+    clash_by_lit: HashMap<CLit, Vec<usize>>, // node_clash idx, keyed by each body lit
+    clash_empty: bool,                       // an empty-body ⊥-clause (KB ⊨ ⊥)
+}
+impl CProg {
+    /// `r0 ⊑* target` (an r0-edge is also a target-edge).
+    fn role_le(&self, r0: R, target: R) -> bool {
+        r0 == target || self.supers.get(&r0).is_some_and(|s| s.contains(&target))
+    }
+}
+
+impl Tableau {
+    /// Extract the recognised ALCH program, or `None` if any clause is outside
+    /// the recognised shapes (caller must then use the complete `expand_inc`).
+    fn build_cprog(&self) -> Option<CProg> {
+        let mut node_horn = Vec::new();
+        let mut node_clash = Vec::new();
+        let mut node_disj = Vec::new();
+        let mut node_exists = Vec::new();
+        let mut uni = Vec::new();
+        let mut domain = Vec::new();
+        let mut subrole: Vec<(R, R)> = Vec::new();
+        // synthetic marker concepts for universal disjuncts `∀r.L` (the
+        // internalisation of `∃r.¬L ⊑ …`). Allocated past the real concept ids;
+        // each carries a `Uni` that pushes `L` to its r-successors when chosen.
+        let mut maxc: C = 0;
+        for info in &self.clauses {
+            for a in info.cl.body.iter().chain(info.cl.head.iter()) {
+                match a {
+                    Atom::Concept { lit, .. } => maxc = maxc.max(lit.c + 1),
+                    Atom::Exists { fil, .. } => maxc = maxc.max(fil.c + 1),
+                    _ => {}
+                }
+            }
+        }
+        let mut next_marker: C = maxc;
+        let mut markers: HashMap<(R, CLit), C> = HashMap::new();
+        let dbg = std::env::var_os("KM_TAB_STATS").is_some();
+        macro_rules! fence {
+            ($ci:expr, $why:expr) => {{
+                if dbg {
+                    eprintln!(
+                        "KM_TAB_STATS build_cprog FENCE clause#{} ({}): body={} head={}",
+                        $ci, $why, self.clauses[$ci].cl.body.len(), self.clauses[$ci].cl.head.len()
+                    );
+                }
+                return None;
+            }};
+        }
+
+        for (ci, info) in self.clauses.iter().enumerate() {
+            let cl = &info.cl;
+            // ---- subrole detection: body=[Role], head=[Role], same direction ----
+            if cl.body.len() == 1 && cl.head.len() == 1 {
+                if let (Atom::Role { r: rb, s: sb, t: tb }, Atom::Role { r: rh, s: sh, t: th }) =
+                    (&cl.body[0], &cl.head[0])
+                {
+                    if sb == sh && tb == th {
+                        subrole.push((*rb, *rh)); // r ⊑ s
+                        continue;
+                    }
+                    fence!(ci, "inverse-role(reversed Role head)");
+                }
+            }
+            // ---- partition the body into x-concepts, y-concepts, one role ----
+            let mut bx: Vec<CLit> = Vec::new();
+            let mut by: Vec<CLit> = Vec::new();
+            let mut body_role: Option<R> = None;
+            for a in &cl.body {
+                match a {
+                    Atom::Concept { lit, t } => {
+                        if *t == 0 {
+                            bx.push(*lit)
+                        } else if *t == 1 {
+                            by.push(*lit)
+                        } else {
+                            fence!(ci, "body concept var>=2");
+                        }
+                    }
+                    Atom::Role { r, s, t } => {
+                        if *s == 0 && *t == 1 && body_role.is_none() {
+                            body_role = Some(*r)
+                        } else {
+                            fence!(ci, "body role not (x,y) or 2nd role");
+                        }
+                    }
+                    _ => fence!(ci, "Eq/Exists in body"), // out of fragment
+                }
+            }
+            // ---- existential head: body must be all-x concepts, no role ----
+            if cl.head.len() == 1 {
+                if let Atom::Exists { r, fil, t } = &cl.head[0] {
+                    if *t == 0 && by.is_empty() && body_role.is_none() {
+                        node_exists.push((bx, *r, *fil));
+                        continue;
+                    }
+                    fence!(ci, "exists head with y-body or role-body");
+                }
+            }
+            // ---- gather head concepts by variable ----
+            let mut hx: Vec<CLit> = Vec::new();
+            let mut hy: Vec<CLit> = Vec::new();
+            for a in &cl.head {
+                match a {
+                    Atom::Concept { lit, t } => {
+                        if *t == 0 {
+                            hx.push(*lit)
+                        } else if *t == 1 {
+                            hy.push(*lit)
+                        } else {
+                            fence!(ci, "head concept var>=2");
+                        }
+                    }
+                    _ => fence!(ci, "non-concept head (Role/Exists/Eq)"),
+                }
+            }
+            match body_role {
+                None => {
+                    // node-local clause on x (body all-x, head all-x).
+                    if !by.is_empty() || !hy.is_empty() {
+                        fence!(ci, "node-local clause with y-atoms but no role");
+                    }
+                    if cl.head.is_empty() {
+                        node_clash.push(bx);
+                    } else if hx.len() == 1 {
+                        node_horn.push((bx, hx[0]));
+                    } else {
+                        node_disj.push((bx, hx));
+                    }
+                }
+                Some(r) => {
+                    if !hx.is_empty() && !hy.is_empty() {
+                        fence!(ci, "mixed-variable head (x and y)");
+                    }
+                    if !hx.is_empty() {
+                        // head on the source x.
+                        if by.is_empty() {
+                            // pure `r(x,y) → D(x)` (single concept): domain.
+                            if hx.len() != 1 {
+                                fence!(ci, "disjunctive domain head");
+                            }
+                            domain.push((r, hx[0]));
+                        } else {
+                            // `bx(x) ∧ r(x,y) ∧ cy(y) → hx(x)` = `bx ⊓ ∃r.cy ⊑ ⊔hx`,
+                            // internalised to the disjunction `hx ⊔ ∀r.¬cy` guarded
+                            // by bx. The universal disjunct ∀r.¬cy is a synthetic
+                            // marker concept carrying a Uni that pushes ¬cy to the
+                            // node's r-successors when the marker is chosen.
+                            if by.len() != 1 {
+                                fence!(ci, "backward head with |Cy| != 1");
+                            }
+                            let neg_cy = by[0].complement();
+                            let key = (r, neg_cy);
+                            let m = if let Some(&m) = markers.get(&key) {
+                                m
+                            } else {
+                                let id = next_marker;
+                                next_marker += 1;
+                                markers.insert(key, id);
+                                uni.push(Uni {
+                                    xbody: vec![CLit::pos(id)],
+                                    role: r,
+                                    ybody: vec![],
+                                    yhead: vec![neg_cy],
+                                });
+                                id
+                            };
+                            let mut disjuncts = hx;
+                            disjuncts.push(CLit::pos(m));
+                            node_disj.push((bx, disjuncts));
+                        }
+                    } else {
+                        // universal `xbody(x) ∧ r ∧ ybody(y) → hy(y)` (hy empty = ⊥).
+                        uni.push(Uni { xbody: bx, role: r, ybody: by, yhead: hy });
+                    }
+                }
+            }
+        }
+
+        // reflexive-free transitive super-role closure from the subrole pairs.
+        let mut supers: HashMap<R, HashSet<R>> = HashMap::new();
+        let subs: HashSet<R> = subrole.iter().map(|&(a, _)| a).collect();
+        for &r in &subs {
+            let mut seen: HashSet<R> = HashSet::new();
+            let mut frontier = vec![r];
+            while let Some(cur) = frontier.pop() {
+                for &(a, b) in &subrole {
+                    if a == cur && seen.insert(b) {
+                        frontier.push(b);
+                    }
+                }
+            }
+            seen.remove(&r);
+            supers.insert(r, seen);
+        }
+        // semi-naive Horn-closure index.
+        let mut horn_by_lit: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut horn_empty: Vec<CLit> = Vec::new();
+        for (i, (b, h)) in node_horn.iter().enumerate() {
+            if b.is_empty() {
+                horn_empty.push(*h);
+            } else {
+                for &l in b {
+                    let v = horn_by_lit.entry(l).or_default();
+                    if !v.contains(&i) {
+                        v.push(i);
+                    }
+                }
+            }
+        }
+        let mut clash_by_lit: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut clash_empty = false;
+        for (i, b) in node_clash.iter().enumerate() {
+            if b.is_empty() {
+                clash_empty = true;
+            } else {
+                for &l in b {
+                    let v = clash_by_lit.entry(l).or_default();
+                    if !v.contains(&i) {
+                        v.push(i);
+                    }
+                }
+            }
+        }
+        Some(CProg {
+            node_horn, node_clash, node_disj, node_exists, uni, domain, supers,
+            horn_by_lit, horn_empty, clash_by_lit, clash_empty,
+        })
+    }
+
+    /// Cached single consistency check (used for direct `consistent` calls).
+    fn consistent_cached(&self, root_label: &[CLit], prog: &CProg) -> bool {
+        with_big_stack(|| {
+            let mut run = CacheRun::new(self, prog);
+            run.sat_seed(&CKey::canon(root_label.to_vec(), Vec::new())).0
+        })
+    }
+
+    /// Cached classification: one shared seed cache across every query (the
+    /// `consistent([])`, each `{A}` satisfiability, and every `{A,¬B}`
+    /// confirmation test reuse the same cache of ∃-successor satisfiability).
+    /// Same output contract as `classify`.
+    fn classify_cached(&self, named: &[C], prog: &CProg) -> (bool, Vec<C>, Vec<(C, C)>) {
+        with_big_stack(|| {
+            let mut run = CacheRun::new(self, prog);
+            if run.stats {
+                eprintln!(
+                    "KM_TAB_STATS cache: START prog node_horn={} node_disj={} node_exists={} uni={} domain={} clash={}",
+                    prog.node_horn.len(), prog.node_disj.len(), prog.node_exists.len(),
+                    prog.uni.len(), prog.domain.len(), prog.node_clash.len()
+                );
+            }
+            let consistent = run.sat_seed(&CKey::canon(Vec::new(), Vec::new())).0;
+            if run.stats {
+                eprintln!("KM_TAB_STATS cache: consistent([])={} seeds={} branches={}", consistent, run.n_seed, run.n_branch);
+            }
+            if !consistent {
+                return (false, named.to_vec(), Vec::new());
+            }
+            let named_set: HashSet<C> = named.iter().copied().collect();
+            let mut unsat = Vec::new();
+            let mut cand: Vec<(C, Vec<C>)> = Vec::new();
+            for (ai, &a) in named.iter().enumerate() {
+                if run.stats && ai % 25 == 0 {
+                    eprintln!(
+                        "KM_TAB_STATS cache: classify {}/{} seeds={} cache={} subs_cand={}",
+                        ai, named.len(), run.n_seed, run.cache.len(),
+                        cand.iter().map(|(_, s)| s.len()).sum::<usize>()
+                    );
+                }
+                match run.witness(&CKey::canon(vec![CLit::pos(a)], Vec::new())) {
+                    None => unsat.push(a),
+                    Some(cur) => {
+                        // model-based candidate pruning: every subsumer of A is in
+                        // this one model's completed root label; confirm with {A,¬B}.
+                        let mut sup: Vec<C> = cur
+                            .iter()
+                            .filter(|l| !l.neg && l.c != a && named_set.contains(&l.c))
+                            .map(|l| l.c)
+                            .collect();
+                        sup.sort_unstable();
+                        sup.dedup();
+                        cand.push((a, sup));
+                    }
+                }
+            }
+            let mut subs = Vec::new();
+            for (a, sup) in &cand {
+                for &b in sup {
+                    if !run.sat_seed(&CKey::canon(vec![CLit::pos(*a), CLit::neg(b)], Vec::new())).0
+                    {
+                        subs.push((*a, b));
+                    }
+                }
+            }
+            if run.stats {
+                eprintln!(
+                    "KM_TAB_STATS cache: DONE seeds={} cache={} unsat_named={} subs={}",
+                    run.n_seed, run.cache.len(), unsat.len(), subs.len()
+                );
+            }
+            (consistent, unsat, subs)
+        })
+    }
+}
+
+/// Run `f` on a worker thread with a large stack: the recursive satisfiability
+/// search can nest as deep as the model (thousands of frames on the
+/// live-disjunction ontologies), which would overflow the default 8 MB stack.
+fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    std::thread::scope(|s| {
+        std::thread::Builder::new()
+            .stack_size(4 << 30)
+            .spawn_scoped(s, f)
+            .expect("spawn tableau worker")
+            .join()
+            .expect("tableau worker panicked")
+    })
+}
+
+/// The two-level global-caching checker. Level 1 (per node): a transient
+/// propositional DPLL over the node's disjunctions — never cached, so the
+/// exponential partial-assignment space does not enter the cache. Level 2 (cached
+/// across nodes AND queries): the satisfiability of each ∃-successor *seed* (its
+/// filler plus the universals propagated onto it), keyed by `CKey`.
+///
+/// `cache` holds only *unconditional* verdicts. UNSAT is always cached (sound: a
+/// seed unsatisfiable even under optimistic blocking is unsatisfiable in every
+/// context). A SAT verdict is cached only when its witness used no blocking
+/// assumption (`used == false`) — then it is a genuine finite model, sound to
+/// reuse anywhere. SAT-via-blocking (a cycle) is returned but not cached, which
+/// keeps the greatest-fixpoint semantics sound without an SCC pass.
+struct CacheRun<'a> {
+    tab: &'a Tableau,
+    prog: &'a CProg,
+    cache: HashMap<CKey, bool>,
+    /// the ∃-successor ancestors currently being computed, each with its
+    /// Horn-closed concept set, for subset blocking.
+    stack: Vec<(CKey, Vec<CLit>)>,
+    stats: bool,
+    n_seed: u64,
+    n_branch: u64,
+}
+
+/// `a ⊆ b` for sorted, deduped slices.
+fn subset_sorted<T: Ord>(a: &[T], b: &[T]) -> bool {
+    let mut j = 0;
+    for x in a {
+        while j < b.len() && &b[j] < x {
+            j += 1;
+        }
+        if j >= b.len() || &b[j] != x {
+            return false;
+        }
+        j += 1;
+    }
+    true
+}
+
+impl<'a> CacheRun<'a> {
+    fn new(tab: &'a Tableau, prog: &'a CProg) -> Self {
+        CacheRun {
+            tab,
+            prog,
+            cache: HashMap::new(),
+            stack: Vec::new(),
+            stats: std::env::var_os("KM_TAB_STATS").is_some(),
+            n_seed: 0,
+            n_branch: 0,
+        }
+    }
+
+    /// Subset blocking (sound for ALCH without inverse / number / nominals): a node
+    /// whose Horn-closed concept set is ⊆ an ancestor's, and whose imposed clauses
+    /// are ⊆ that ancestor's, is at most as constrained, so it reuses the
+    /// ancestor's model (the greatest-fixpoint blocking assumption). By Dickson's
+    /// lemma this bounds every ∃-chain, giving termination.
+    fn blocked(&self, curv: &[CLit], imposed: &[(Vec<CLit>, Vec<CLit>)]) -> bool {
+        self.stack.iter().any(|(ak, acur)| {
+            curv.len() <= acur.len()
+                && imposed.len() <= ak.imposed.len()
+                && subset_sorted(curv, acur)
+                && subset_sorted(imposed, &ak.imposed)
+        })
+    }
+
+    /// Horn-close `set` against the program and `imposed` clauses. Returns `true`
+    /// iff it clashes (complementary pair, or a node-local/imposed ⊥-clause fires).
+    fn close(&self, set: &mut HashSet<CLit>, imposed: &[(Vec<CLit>, Vec<CLit>)]) -> bool {
+        let p = self.prog;
+        if p.clash_empty {
+            return true;
+        }
+        if set.iter().any(|l| !l.neg && set.contains(&l.complement())) {
+            return true;
+        }
+        // empty-body Horn facts (⊤ ⊑ h) fire unconditionally.
+        for &h in &p.horn_empty {
+            set.insert(h);
+        }
+        // semi-naive worklist: a literal triggers only the clauses that mention it.
+        let mut wl: Vec<CLit> = set.iter().copied().collect();
+        loop {
+            while let Some(l) = wl.pop() {
+                if let Some(idxs) = p.horn_by_lit.get(&l) {
+                    for &i in idxs {
+                        let (b, h) = &p.node_horn[i];
+                        if b.iter().all(|x| set.contains(x)) && set.insert(*h) {
+                            if set.contains(&h.complement()) {
+                                return true;
+                            }
+                            wl.push(*h);
+                        }
+                    }
+                }
+                if let Some(idxs) = p.clash_by_lit.get(&l) {
+                    for &i in idxs {
+                        if p.node_clash[i].iter().all(|x| set.contains(x)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            // imposed clauses + domain are few; rescan and re-seed the worklist
+            // with anything they add.
+            let mut added: Vec<CLit> = Vec::new();
+            for (b, h) in imposed {
+                if b.iter().all(|x| set.contains(x)) {
+                    if h.is_empty() {
+                        return true;
+                    }
+                    if h.len() == 1 && set.insert(h[0]) {
+                        if set.contains(&h[0].complement()) {
+                            return true;
+                        }
+                        added.push(h[0]);
+                    }
+                }
+            }
+            if !p.domain.is_empty() {
+                let active: Vec<R> = p
+                    .node_exists
+                    .iter()
+                    .filter(|(b, _, _)| b.iter().all(|x| set.contains(x)))
+                    .map(|(_, r, _)| *r)
+                    .collect();
+                for (rd, dc) in &p.domain {
+                    if active.iter().any(|&r0| p.role_le(r0, *rd)) && set.insert(*dc) {
+                        added.push(*dc);
+                    }
+                }
+            }
+            if added.is_empty() {
+                return false;
+            }
+            wl = added;
+        }
+    }
+
+    /// First unsatisfied disjunction active on `set` (node-local then imposed), or
+    /// `None` if the node is propositionally complete.
+    fn first_disj(
+        &self,
+        set: &HashSet<CLit>,
+        imposed: &[(Vec<CLit>, Vec<CLit>)],
+    ) -> Option<Vec<CLit>> {
+        let p = self.prog;
+        for (b, h) in &p.node_disj {
+            if b.iter().all(|l| set.contains(l)) && !h.iter().any(|d| set.contains(d)) {
+                return Some(h.clone());
+            }
+        }
+        for (b, h) in imposed {
+            if h.len() >= 2
+                && b.iter().all(|l| set.contains(l))
+                && !h.iter().any(|d| set.contains(d))
+            {
+                return Some(h.clone());
+            }
+        }
+        None
+    }
+
+    /// The distinct ∃-obligations active on a complete `set`.
+    fn obligations(&self, set: &HashSet<CLit>) -> Vec<(R, CLit)> {
+        let mut obls: Vec<(R, CLit)> = Vec::new();
+        for (b, r, fil) in &self.prog.node_exists {
+            if b.iter().all(|l| set.contains(l)) {
+                let o = (*r, *fil);
+                if !obls.contains(&o) {
+                    obls.push(o);
+                }
+            }
+        }
+        obls
+    }
+
+    /// The seed label of an `r0`-successor with filler `fil`: the filler plus every
+    /// universal the parent's completed set triggers over a super-role of `r0`
+    /// (forced facts folded into the base, conditional/disjunctive ones imposed).
+    fn build_succ(&self, parent: &HashSet<CLit>, r0: R, fil: CLit) -> CKey {
+        let p = self.prog;
+        let mut base = vec![fil];
+        let mut imposed: Vec<(Vec<CLit>, Vec<CLit>)> = Vec::new();
+        for u in &p.uni {
+            if p.role_le(r0, u.role) && u.xbody.iter().all(|l| parent.contains(l)) {
+                if u.ybody.is_empty() && u.yhead.len() == 1 {
+                    base.push(u.yhead[0]);
+                } else {
+                    imposed.push((u.ybody.clone(), u.yhead.clone()));
+                }
+            }
+        }
+        CKey::canon(base, imposed)
+    }
+
+    /// Is the seed `key` satisfiable? Returns `(sat, used_blocking)` where
+    /// `used_blocking` is true iff the witness relied on a cyclic (on-stack)
+    /// blocking assumption (then the SAT verdict is not cached).
+    fn sat_seed(&mut self, key: &CKey) -> (bool, bool) {
+        if let Some(&s) = self.cache.get(key) {
+            return (s, false);
+        }
+        let mut set: HashSet<CLit> = key.base.iter().copied().collect();
+        if self.close(&mut set, &key.imposed) {
+            self.cache.insert(key.clone(), false);
+            return (false, false);
+        }
+        let mut curv: Vec<CLit> = set.iter().copied().collect();
+        curv.sort_unstable();
+        if self.blocked(&curv, &key.imposed) {
+            return (true, true); // blocked: reuse an ancestor's model (GFP)
+        }
+        self.stack.push((key.clone(), curv));
+        self.n_seed += 1;
+        if self.stats && self.n_seed % 200_000 == 0 {
+            eprintln!("KM_TAB_STATS cache: seeds={} stack={} cache={}", self.n_seed, self.stack.len(), self.cache.len());
+        }
+        let (sat, used) = self.local_search(key, set);
+        self.stack.pop();
+        if !sat {
+            self.cache.insert(key.clone(), false);
+        } else if !used {
+            self.cache.insert(key.clone(), true);
+        }
+        (sat, used)
+    }
+
+    /// Level-1 propositional DPLL on one node: branch through the disjunctions to a
+    /// complete clash-free assignment whose every ∃-successor is satisfiable.
+    /// Returns `(found, used_blocking)`; transient (no caching of partial
+    /// assignments). `set` is Horn-closed and clash-free on entry.
+    ///
+    /// Eager ∃-pruning: every active obligation's successor is checked at *every*
+    /// level, not just at a complete leaf. Sound because a partial node-set imposes
+    /// FEWER universals on a successor than the complete set, so an unsatisfiable
+    /// partial successor stays unsatisfiable as constraints are added — a bad
+    /// disjunct choice is then pruned at its shallow decision instead of after the
+    /// whole node is resolved.
+    fn local_search(&mut self, key: &CKey, set: HashSet<CLit>) -> (bool, bool) {
+        let mut used_any = false;
+        // eager: prune as soon as any active obligation's successor is unsat.
+        for (r0, fil) in self.obligations(&set) {
+            let succ = self.build_succ(&set, r0, fil);
+            let (sat, used) = self.sat_seed(&succ);
+            used_any |= used;
+            if !sat {
+                return (false, used_any);
+            }
+        }
+        if let Some(disj) = self.first_disj(&set, &key.imposed) {
+            self.n_branch += 1;
+            if self.stats && self.n_branch % 2_000_000 == 0 {
+                eprintln!(
+                    "KM_TAB_STATS cache: branches={} seeds={} cache={} stack={} curset={}",
+                    self.n_branch, self.n_seed, self.cache.len(), self.stack.len(), set.len()
+                );
+            }
+            for d in disj {
+                let mut s2 = set.clone();
+                s2.insert(d);
+                if self.close(&mut s2, &key.imposed) {
+                    continue; // this disjunct clashes; try the next
+                }
+                let (sat, used) = self.local_search(key, s2);
+                if sat {
+                    return (true, used | used_any);
+                }
+                used_any |= used;
+            }
+            return (false, used_any);
+        }
+        // complete and all (already-checked) successors satisfiable.
+        (true, used_any)
+    }
+
+    /// Find one model of `key` and return its completed root concept set (for
+    /// classify candidate extraction), or `None` if `key` is unsatisfiable.
+    fn witness(&mut self, key: &CKey) -> Option<Vec<CLit>> {
+        if let Some(&s) = self.cache.get(key) {
+            if !s {
+                return None;
+            }
+        }
+        let mut set: HashSet<CLit> = key.base.iter().copied().collect();
+        if self.close(&mut set, &key.imposed) {
+            self.cache.insert(key.clone(), false);
+            return None;
+        }
+        let mut curv: Vec<CLit> = set.iter().copied().collect();
+        curv.sort_unstable();
+        self.stack.push((key.clone(), curv));
+        let w = self.witness_rec(key, set);
+        self.stack.pop();
+        if w.is_none() {
+            self.cache.insert(key.clone(), false);
+        }
+        w
+    }
+
+    fn witness_rec(&mut self, key: &CKey, set: HashSet<CLit>) -> Option<Vec<CLit>> {
+        for (r0, fil) in self.obligations(&set) {
+            let succ = self.build_succ(&set, r0, fil);
+            if !self.sat_seed(&succ).0 {
+                return None;
+            }
+        }
+        if let Some(disj) = self.first_disj(&set, &key.imposed) {
+            for d in disj {
+                let mut s2 = set.clone();
+                s2.insert(d);
+                if self.close(&mut s2, &key.imposed) {
+                    continue;
+                }
+                if let Some(w) = self.witness_rec(key, s2) {
+                    return Some(w);
+                }
+            }
+            return None;
+        }
+        Some(set.into_iter().collect())
     }
 }
 
