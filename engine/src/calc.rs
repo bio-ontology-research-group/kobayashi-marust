@@ -478,6 +478,32 @@ fn ordered_all() -> bool {
     *FLAG.get_or_init(|| std::env::var_os("KM_ORDERED_ALL").is_some())
 }
 
+/// `KM_SEQ_ORDER=1`: Sequoia-faithful literal ordering on same-term concepts.
+/// The fix for the live-disjunction blow-up that `KM_ORDERED_ALL` got wrong.
+///
+/// `KM_ORDERED_ALL` totally ordered ALL same-term concepts by raw iri — named
+/// included — which stalls the readout: an entailed unit `⊤ → B(x)` is hidden
+/// when the named super B sits non-maximally behind a maximal sibling.  Sequoia
+/// keys the order on NAMED vs AUXILIARY, not on raw iri:
+///   * INTERNAL definers/disjuncts (`Sig::is_internal`: `Q_*`, `def_*`,
+///     `__trans__*`, ...) are TOTALLY ordered (by iri) and sit ABOVE the named
+///     concepts → Hyper fires only on the ordering-maximal definer = ordered
+///     resolution (the `CompletenessOrdered` regime), which tames the
+///     normaliser-introduced disjunction explosion.
+///   * NAMED (query-classifiable) concepts stay MUTUALLY INCOMPARABLE at the
+///     bottom → Hyper fires on every named disjunct (the `CompletenessProp`
+///     unrestricted regime), so a forced named unit always surfaces and the
+///     forward `⊤ → B(x)` readout stays complete.  This is exactly the shape of
+///     Sequoia's `ContextLiteralOrdering` (query concepts incomparable + below;
+///     everything else ordered above), which is published-complete for SROIQ
+///     classification.  Unlike `KM_ORDERED_ALL` it never orders named concepts
+///     against each other, so it does not regress 13383.
+fn seq_order() -> bool {
+    use std::sync::OnceLock;
+    static FLAG: OnceLock<bool> = OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_SEQ_ORDER").is_some())
+}
+
 #[inline]
 fn eqn_s(l: &Lit) -> Term {
     match *l {
@@ -522,6 +548,19 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
             // context (root included) — ordered resolution everywhere.
             if ordered_all() {
                 return i1 <= i2;
+            }
+            // KM_SEQ_ORDER: Sequoia-faithful — internal definers totally
+            // ordered ABOVE named concepts; named concepts incomparable at the
+            // bottom.  Keys on is_internal (named vs auxiliary), not on root.
+            if seq_order() {
+                let in1 = sig.is_internal(*i1);
+                let in2 = sig.is_internal(*i2);
+                return match (in1, in2) {
+                    (true, true) => i1 <= i2,   // ordered resolution on definers
+                    (false, false) => i1 == i2, // incomparable named (complete readout)
+                    (false, true) => true,      // named ≤ internal (named at bottom)
+                    (true, false) => false,     // internal not ≤ named
+                };
             }
             if root || !root_only_incomp() {
                 return i1 == i2;
