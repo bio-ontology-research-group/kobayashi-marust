@@ -59,6 +59,33 @@ facts make it a poor investment under the real benchmark limits (240 s, 20 GB):
   disjunction family's algorithmic fix (the largest timeout group, provably
   out of parallelism's reach).
 
+**Lever 2 — built anyway (`KM_PAR_SAT`, default OFF), confirmed inert.**
+Branch `lever2-parsat`, commit `fb117df`. The core was parameterised over an
+arena+intern abstraction (`ArenaView{Whole,Split}`, `Interner{Global,Local}`,
+`Sat<'a>` bundling the saturation state, `with_sat` disjoint-borrow helper) —
+an output-neutral refactor (8/8 onts byte-identical, 66+16 tests). On top of
+it, `apply_batch_parallel` parallelises the inter-context message fixpoint:
+when a batch carries >1 messages to distinct contexts and the ontology is
+nominal-free (`nom_k==0`) and individual-free (`ground_ctx` is `None`), the
+target contexts are moved out and saturated concurrently via rayon, each worker
+writing into a thread-local clause overlay (a `Split` arena view = read-only
+global base ++ local new clauses), followed by a serial merge that interns the
+local clauses into the global arena and remaps their ids
+(`Context::remap_local_ids`). Correct: 8/8 byte-identical to serial and it
+converges (16076: `parallel_batches=2 parallel_ops=10 exit=0`).
+
+But it delivers no speedup, for a structural reason: **the message fixpoint is
+near-sequential.** Across probed onts the parallel batches are size 0–2 (≤10
+ops total per ontology) — there is essentially no simultaneous message fan-out
+to exploit. The eligible family-B onts are also unreachable by it: 16303 is
+ABox-bearing (185 individuals → `ground_ctx` is `Some` → ineligible), and 6682
+is query-bound rather than saturation-bound (110,717 queries — the lever for it
+is Lever 1, which `KM_PAR_SAT` *disables*, since engine-level `par_iter` nested
+under the reasoner-level query rayon scope deadlocks; hence the usage rule
+`KM_PAR_SAT` ⟹ `KM_THREADS=1`). The build is kept gated-off for any future
+ontology that exhibits wide message fan-out. This empirically confirms the
+shelve call above.
+
 ### Sweep 6016: the first fully clean correctness table (datatypes included)
 
 Full sweep with the datatype layer + chain-domain default + Phase-2 engine
