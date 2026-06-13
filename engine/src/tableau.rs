@@ -959,7 +959,13 @@ impl Tableau {
     /// nominal o-rule (singleton merges). Returns `false` on clash (empty-head
     /// clause, or `A` and `¬A` on a node).
     fn horn_saturate(&self, g: &mut Graph) -> bool {
+        let prog = std::env::var_os("KM_TAB_STATS").is_some();
+        let mut hs_iter = 0u64;
         loop {
+            hs_iter += 1;
+            if prog && hs_iter % 200 == 0 {
+                eprintln!("KM_TAB_STATS horn_saturate iter={} nodes={}", hs_iter, g.n());
+            }
             let mut changed = false;
             for info in &self.clauses {
                 if info.disjunctive || !self.matchable(info, g) {
@@ -1020,7 +1026,13 @@ impl Tableau {
     /// ∃ round (all unsatisfied obligations on non-blocked nodes get a fresh
     /// successor), repeated until a fixpoint. Sound + terminating for ALCH/SH.
     fn saturate(&self, g: &mut Graph) -> bool {
+        let prog = std::env::var_os("KM_TAB_STATS").is_some();
+        let mut sat_round = 0u64;
         loop {
+            sat_round += 1;
+            if prog {
+                eprintln!("KM_TAB_STATS saturate round={} nodes={} (entering horn_saturate)", sat_round, g.n());
+            }
             if !self.horn_saturate(g) {
                 return false;
             }
@@ -1039,7 +1051,7 @@ impl Tableau {
                         g.add_edge(r, s, t);
                         g.add_concept(t, fil);
                         ex_changed = true;
-                        if g.n() % 100_000 == 0 && std::env::var_os("KM_TAB_STATS").is_some() {
+                        if g.n() % 2_000 == 0 && std::env::var_os("KM_TAB_STATS").is_some() {
                             eprintln!("KM_TAB_STATS saturate nodes={}", g.n());
                         }
                     }
@@ -1588,7 +1600,13 @@ impl Tableau {
     /// careful path no dependencies are tracked, so every candidate is confirmed,
     /// exactly as before.)
     pub fn classify(&self, named: &[C]) -> (bool, Vec<C>, Vec<(C, C)>) {
+        if std::env::var_os("KM_TAB_STATS").is_some() {
+            eprintln!("KM_TAB_STATS classify START: {} named, checking consistent([])", named.len());
+        }
         let consistent = self.consistent(&[]);
+        if std::env::var_os("KM_TAB_STATS").is_some() {
+            eprintln!("KM_TAB_STATS classify: consistent([])={}", consistent);
+        }
         if !consistent {
             // everything is unsatisfiable; report all named as unsat.
             return (false, named.to_vec(), Vec::new());
@@ -1599,7 +1617,11 @@ impl Tableau {
         // For each satisfiable A: record deterministic subsumers directly, and
         // keep only the choice-dependent ones for the confirmation test.
         let mut cand: Vec<(C, Vec<C>)> = Vec::new();
-        for &a in named {
+        let prog = std::env::var_os("KM_TAB_STATS").is_some();
+        for (ai, &a) in named.iter().enumerate() {
+            if prog && ai % 25 == 0 {
+                eprintln!("KM_TAB_STATS classify phase1 concept {}/{} subs_so_far={}", ai, named.len(), subs.len());
+            }
             match self.find_model(&[CLit::pos(a)]) {
                 None => unsat.push(a),
                 Some(g) => {
@@ -1621,10 +1643,17 @@ impl Tableau {
             }
         }
         let definite = subs.len();
+        let total_cand: usize = cand.iter().map(|(_, s)| s.len()).sum();
+        if prog {
+            eprintln!("KM_TAB_STATS classify phase1 DONE: definite={} candidates_to_confirm={}", definite, total_cand);
+        }
         let mut confirmed = 0;
         for (a, sup) in &cand {
             for &b in sup {
                 confirmed += 1;
+                if prog && confirmed % 200 == 0 {
+                    eprintln!("KM_TAB_STATS classify phase2 confirm {}/{}", confirmed, total_cand);
+                }
                 if !self.consistent(&[CLit::pos(*a), CLit::neg(b)]) {
                     subs.push((*a, b));
                 }
