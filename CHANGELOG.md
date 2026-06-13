@@ -63,13 +63,33 @@ independently and a shared split would force them to agree (unsound). Everything
 else (non-chain-unique, role/eq/non-central disjunctions) falls back.
 
 Validation: 66+16 tests; **14/14 byte-identical** A/B; 13383 identical. SOUND.
-Recovery on the timeout family: still **0** — the split now *engages* on
-successor disjunctions (5303/5107/12698 split rather than immediately falling
-back) but the branch search **does not converge in time without conflict-driven
-learning**. Measured: 5303, 5107, 12698 all time out mid-split. The pruning that
-makes splitting competitive is increment 3 (extract the `⊥` decision-core, learn
-blocking clauses, reuse closed cores via the arena) — which is precisely a
-**caching tableau**, i.e. where Direction B converges with Direction C.
+Recovery on the timeout family: still **0**.
+
+**Increment 3 — unit-propagation mode + the measured ceiling of lazy splitting
+(`079da53`).** The Hyper resolvent builder, under the split regime, suppresses
+resolvents that combine ≥2 derived disjunctions (the fact×fact multiplication),
+so a branch's per-context clause population stays tame and exhaustive splitting
+recovers the suppressed derivations. Sound (14/14 A/B; 13383 identical, full
+split / 0 fallback). But it still recovers **0** of the timeout family, and the
+node-rate + fixpoint instrumentation shows WHY — two failure modes, both fatal
+to *lazy* splitting (saturate to fixpoint, THEN read + split disjunctions):
+- 5303/5107/12698/10702: the per-query closure (saturate + inter-context
+  message fixpoint) does not complete (<100 split nodes, no progress markers in
+  40 s) — the blow-up is in computing the closure ITSELF, before any disjunction
+  is available to split. Splitting on top of a closure that never finishes can't
+  help.
+- 2313: the split loop completes but all 1688 queries fall back (disjunctions in
+  non-chain-unique contexts, which the soundness guard refuses to share-split) →
+  the complete default engine then times out.
+
+Conclusion: recovery requires splitting **interleaved** with saturation (decide
+before the closure explodes) — an incremental decision trail with backtracking —
+which fights the monotone append-only arena (retraction). That architecture is a
+hypertableau, and the measurement **tilts the Direction C verdict toward a
+dedicated/standalone tableau** rather than retrofitting interleaved retraction
+into the CB engine. Increments 1–3 land the sound splitting machinery + the
+unit-prop component a future interleaved version reuses; all gated `KM_SPLIT`
+OFF, no benchmark change.
 
 ### Parallel-speed work: dynamic query scheduler (landed) + the parallelism ceiling
 

@@ -190,3 +190,36 @@ This is the multi-session, soundness-critical, Lean-cert'd core (task #23). It i
 also where Direction B converges with Direction C (§4): a decision trail with
 learned blocking clauses *is* a caching (hyper)tableau — the open question for
 task #27 is whether to build it into the CB engine (B) or onto `tableau_cli` (C).
+
+## 8. Increment 3 outcome + the measured ceiling (decisive)
+
+Built (`079da53`, gated): a **unit-propagation mode** — the Hyper resolvent
+builder suppresses resolvents combining ≥2 derived disjunctions, so a branch's
+per-context clause population stays tame. Sound (14/14 A/B; 13383 identical, full
+split / 0 fallback). Recovers **0** of the timeout family.
+
+Instrumentation (node-rate + fixpoint profiling) reveals why, and it is an
+architectural ceiling of *lazy* splitting (saturate to fixpoint, THEN split):
+- **5303/5107/12698/10702**: the per-query closure (saturate + the inter-context
+  message fixpoint) does not complete — the blow-up is in computing the closure
+  ITSELF, *before* any disjunction is exposed to split. You cannot split your way
+  out of a closure that never finishes.
+- **2313**: the split loop completes but every query falls back (disjunctions in
+  non-chain-unique contexts the soundness guard refuses to share-split) → the
+  complete engine times out.
+
+**Therefore lazy splitting over the monotone CB engine cannot recover this
+family.** Recovery needs splitting **interleaved** with saturation — an
+incremental decision trail that decides *before* the closure explodes and
+backtracks on conflict. Interleaving + backtracking fights the engine's monotone,
+append-only clause arena (retraction has no cheap implementation here).
+
+**Refined Direction C verdict (task #27):** earlier this doc leaned "build the
+trail into the CB engine (C-by-integration)." The measurement revises that: the
+required interleave-and-retract architecture is exactly what a tableau is built
+for and exactly what the monotone CB engine is built to avoid. So a
+**dedicated/standalone caching tableau is now the cleaner path** for this family,
+not a retrofit of the CB engine — provided `tableau_cli` is brought to
+benchmark grade (it currently errors/hangs on real ORE inputs). The honest
+recommendation flips: for the disjunction-blow-up family, invest in the tableau
+(C) as a routed sub-solver, not in forcing an incremental trail into the CB core.
