@@ -849,6 +849,14 @@ pub struct Engine {
     stat_pred_checks: u64,
     stat_succ_scans: u64,
     stat_saturate: u64,
+    /// Direction B (`KM_SPLIT`) increment 2: per-context-core assumed disjunct
+    /// facts. When a context with a core present here is (first) created, the
+    /// listed concept facts `⊤ → d(x)` are seeded into it — this is how the
+    /// splitting driver assumes a disjunct in a SUCCESSOR context, not only the
+    /// query root. Cores are deterministic given the decisions, so the same
+    /// context arises (and gets the same seed) across the fresh-engine-per-branch
+    /// runs. Empty in the default (non-split) path.
+    branch_decisions: HashMap<Vec<Pred>, Vec<Iri>>,
 }
 
 /// Direction B (`KM_SPLIT`): the consequences of one query context's closure,
@@ -863,7 +871,11 @@ pub struct ClosureFacts {
     pub unsat: bool,
     pub foreign: bool,
     pub units: Vec<Iri>,
-    pub disjunctions: Vec<Vec<Iri>>,
+    /// Split points: `(context core, disjunct concept-iris on that context's
+    /// central variable)`. Increment 2 splits disjunctions in ANY context (not
+    /// just the query root), keyed by the context's core so the decision is
+    /// reproducible across fresh-engine-per-branch runs.
+    pub split_points: Vec<(Vec<Pred>, Vec<Iri>)>,
 }
 
 impl Engine {
@@ -992,7 +1004,14 @@ impl Engine {
             stat_pred_checks: 0,
             stat_succ_scans: 0,
             stat_saturate: 0,
+            branch_decisions: HashMap::new(),
         }
+    }
+
+    /// Install the Direction-B per-core assumed-disjunct decisions (see
+    /// `branch_decisions`). Called by the splitting driver before a branch run.
+    pub fn set_branch_decisions(&mut self, d: HashMap<Vec<Pred>, Vec<Iri>>) {
+        self.branch_decisions = d;
     }
 
     /// Find the arena id of a clause with this exact (body, head) content in
@@ -1063,6 +1082,22 @@ impl Engine {
             self.add_core(id);
         } else {
             self.init_context(id);
+        }
+        // Direction B increment 2: seed the assumed-disjunct facts for this
+        // core, if the splitting driver decided one here.
+        if !self.branch_decisions.is_empty() {
+            if let Some(ds) = self.branch_decisions.get(&self.contexts[id].core).cloned() {
+                let root = self.contexts[id].root;
+                for d in ds {
+                    let c = ContextClause::new(
+                        vec![],
+                        vec![Lit::P(Pred::Concept { iri: d, t: X })],
+                        root,
+                        &self.sig,
+                    );
+                    self.add_clause(id, c);
+                }
+            }
         }
         id
     }
@@ -3406,23 +3441,20 @@ impl Engine {
         self.contexts.len()
     }
 
-    /// Direction B (`KM_SPLIT`): classify query `Q` under the extra branch
-    /// assumptions `assume` (each `a(x)` added to the root core), running the
-    /// ordered (tame) closure to fixpoint, and report the resulting
-    /// `ClosureFacts`. Used by the splitting driver on a FRESH engine per branch
-    /// (so each call's context graph is independent — branch isolation is by
-    /// construction). Soundness: the assumptions extend the query's hypothesis
-    /// conjunction, so every derived `⊤ → B(x)` holds in every model satisfying
-    /// `Q ⊓ ⨅assume`.
-    pub fn classify_assume(&mut self, query: Iri, assume: &[Iri]) -> ClosureFacts {
+    /// Direction B (`KM_SPLIT`): run the ordered (tame) closure of query `Q`
+    /// under the current `branch_decisions` (assumed disjunct facts per context
+    /// core — installed via `set_branch_decisions` before the call), to fixpoint,
+    /// and report the resulting `ClosureFacts`. Used by the splitting driver on a
+    /// FRESH engine per branch (so the context graph is independent — branch
+    /// isolation by construction). Soundness: each assumed disjunct is one
+    /// disjunct of an entailed disjunction in its context, so the readout is one
+    /// case of an exhaustive case analysis the driver intersects.
+    pub fn classify_split_run(&mut self, query: Iri) -> ClosureFacts {
         if !self.ont.ground_facts.is_empty() {
             let gid = self.ground_context();
             self.propagate(gid);
         }
-        let mut core = vec![Pred::Concept { iri: query, t: X }];
-        for &a in assume {
-            core.push(Pred::Concept { iri: a, t: X });
-        }
+        let core = vec![Pred::Concept { iri: query, t: X }];
         let id = self.get_or_create_context(core, true, Some(query));
         self.saturate(id);
         self.propagate(id);
@@ -3433,6 +3465,45 @@ impl Engine {
         self.propagate(top);
         self.run_msg_fixpoint_min();
         self.read_closure(id)
+    }
+
+    /// The set of "chain-unique" contexts: those reachable from a root context
+    /// by a path of single successor edges. A context is chain-unique iff it has
+    /// no predecessor edge (a root) or exactly ONE predecessor edge from a
+    /// chain-unique context. Splitting a disjunction is sound ONLY in a
+    /// chain-unique context: the central strategy MERGES contexts by core, so a
+    /// context reached by two distinct successor edges (≥2 predecessor edges, or
+    /// a predecessor that is itself non-unique) represents two successors that
+    /// could independently pick different disjuncts; forcing them to agree (which
+    /// a shared split does) would be unsound. In a chain-unique context the
+    /// element is the unique successor along a functional chain from the query
+    /// root, so a shared split is exactly a case analysis on that one element.
+    fn chain_unique_contexts(&self) -> HashSet<usize> {
+        let mut safe: HashSet<usize> = HashSet::new();
+        loop {
+            let mut changed = false;
+            for (id, ctx) in self.contexts.iter().enumerate() {
+                if safe.contains(&id) {
+                    continue;
+                }
+                let ok = if ctx.predecessors.is_empty() {
+                    true
+                } else if ctx.predecessors.len() == 1 {
+                    let (pid, _) = ctx.predecessors.keys().next().unwrap();
+                    safe.contains(pid)
+                } else {
+                    false
+                };
+                if ok {
+                    safe.insert(id);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        safe
     }
 
     /// Minimal inter-context message fixpoint (the `run_for` loop without the
@@ -3471,55 +3542,71 @@ impl Engine {
         }
     }
 
-    /// Read the closure of query context `id` into a `ClosureFacts`
-    /// (Direction B). `⊤ → ⊥` in the query context → `unsat`; `⊤ → B(x)` → a
-    /// unit subsumer; a body-empty all-concept-on-x multi-head clause → a
-    /// residual split-point disjunction.
+    /// Read the closure into a `ClosureFacts` (Direction B increment 2). The
+    /// query context `id` gives the readout: `⊤ → ⊥` → `unsat`; `⊤ → B(x)` → a
+    /// unit subsumer. Split points are body-empty all-concept-on-central-var
+    /// fact-disjunctions in ANY context, keyed by that context's core.
     ///
-    /// CONSERVATIVE COMPLETENESS GUARD: the ordered (tame) per-branch closure is
-    /// complete for the query readout ONLY when the SOLE disjunctions anywhere in
-    /// the branch are the body-empty concept-on-x fact-disjunctions of the query
-    /// context (the points we actually split). Any other multi-head clause — a
-    /// conditional disjunction, a role/equality disjunction, or a disjunction in
-    /// a successor context — can hide a forced unit under the total order
-    /// (`KM_ORDERED_ALL`'s incompleteness), and the splitting driver does not
-    /// resolve it. So if any such clause exists we set `foreign`, and the driver
-    /// falls back to the complete default engine for this query. This keeps
-    /// `KM_SPLIT` SOUND + COMPLETE on every ontology (the recovered fragment is
-    /// the one whose only nondeterminism is query-level concept disjunctions over
-    /// Horn successors; everything else falls back). Structural splitting of the
-    /// other disjunctions is the next increment (docs/DISJUNCTION-SPLITTING.md).
+    /// SOUNDNESS + COMPLETENESS GUARDS (set `foreign` → driver falls back to the
+    /// complete default engine):
+    /// - a body-empty multi-head clause that is NOT all-concept-on-central-var (a
+    ///   role/equality disjunction, or a disjunction on a successor/neighbour
+    ///   term) — the propositional split cannot assume it as a fact;
+    /// - a splittable disjunction in a context that is NOT chain-unique — sharing
+    ///   the split across merged occurrences would be unsound (see
+    ///   `chain_unique_contexts`).
+    /// Body-NONEMPTY multi-head clauses (conditional disjunctions) are allowed:
+    /// once their body atoms are derived as units (in some branch) Hyper resolves
+    /// them into body-empty fact-disjunctions, which are then split; until then
+    /// they are inert. So splitting every reachable fact-disjunction in
+    /// chain-unique contexts is complete for the recovered fragment, and anything
+    /// outside it falls back. Empirically validated by A/B vs the default engine.
     fn read_closure(&self, id: usize) -> ClosureFacts {
         let mut cf = ClosureFacts {
             unsat: false,
             foreign: false,
             units: Vec::new(),
-            disjunctions: Vec::new(),
+            split_points: Vec::new(),
         };
-        // Guard scan: any disjunction that is not a query-context body-empty
-        // concept-on-x fact-disjunction disqualifies the split (→ fall back).
-        'scan: for (cid, ctx) in self.contexts.iter().enumerate() {
+        let safe = self.chain_unique_contexts();
+        for (cid, ctx) in self.contexts.iter().enumerate() {
             let arena = &self.cc_arena[ctx.root as usize];
             for &ci in &ctx.worked_off {
                 let c = &arena[ci as usize];
                 if c.head.len() <= 1 {
                     continue;
                 }
-                let acceptable = cid == id
-                    && c.body.is_empty()
-                    && c.head.iter().all(|l| {
-                        matches!(l, Lit::P(Pred::Concept { t, .. }) if is_central(*t))
-                    });
-                if !acceptable {
-                    cf.foreign = true;
-                    break 'scan;
+                // a disjunction (multi-head clause)
+                let all_concept_central = c.head.iter().all(|l| {
+                    matches!(l, Lit::P(Pred::Concept { t, .. }) if is_central(*t))
+                });
+                if !all_concept_central {
+                    cf.foreign = true; // role/eq/non-central disjunction
+                    return cf;
                 }
+                if c.body.is_empty() {
+                    // a fact-disjunction: a split point, but only if this context
+                    // is chain-unique (else a shared split would be unsound)
+                    if !safe.contains(&cid) {
+                        cf.foreign = true;
+                        return cf;
+                    }
+                    let disjuncts: Vec<Iri> = c
+                        .head
+                        .iter()
+                        .map(|l| match l {
+                            Lit::P(Pred::Concept { iri, .. }) => *iri,
+                            _ => unreachable!(),
+                        })
+                        .collect();
+                    cf.split_points.push((ctx.core.clone(), disjuncts));
+                }
+                // body-nonempty concept-central multi-head: conditional
+                // disjunction, allowed (converts to a fact-disjunction when its
+                // body is derived, or stays inert).
             }
         }
-        if cf.foreign {
-            return cf;
-        }
-        // Query-context readout: units, split points, and ⊥.
+        // Query-context readout: units and ⊥.
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[ctx.root as usize];
         for &ci in &ctx.worked_off {
@@ -3531,24 +3618,12 @@ impl Engine {
                 cf.unsat = true;
                 continue;
             }
-            let mut concepts: Vec<Iri> = Vec::with_capacity(c.head.len());
-            let mut all_cx = true;
-            for l in &c.head {
-                match l {
-                    Lit::P(Pred::Concept { iri, t }) if is_central(*t) => concepts.push(*iri),
-                    _ => {
-                        all_cx = false;
-                        break;
+            if c.head.len() == 1 {
+                if let Lit::P(Pred::Concept { iri, t }) = c.head[0] {
+                    if is_central(t) {
+                        cf.units.push(iri);
                     }
                 }
-            }
-            if !all_cx {
-                continue; // single non-concept-x head literal: not a subsumer
-            }
-            if concepts.len() == 1 {
-                cf.units.push(concepts[0]);
-            } else {
-                cf.disjunctions.push(concepts);
             }
         }
         cf

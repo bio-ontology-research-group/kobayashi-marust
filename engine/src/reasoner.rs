@@ -248,15 +248,23 @@ impl Reasoner {
         }
     }
 
-    /// Direction B splitting recursion. A fresh engine per node gives branch
-    /// isolation; `classify_assume` runs the ordered (tame) closure under the
-    /// current decisions; a residual fact-disjunction with no satisfied disjunct
-    /// is the next split point. A subsumer is forced iff it is a unit in EVERY
-    /// open branch (the intersection); a query is unsatisfiable iff every branch
-    /// closes. Sound by construction (proof by cases over an exhaustive
-    /// disjunction); complete on the covered fragment (it falls back to the
-    /// default engine on any disjunction it cannot split — `Foreign`).
-    fn split_recurse(&self, query: Iri, decisions: &[Iri], budget: &mut usize) -> SplitBranch {
+    /// Direction B increment 2 splitting recursion. A fresh engine per node gives
+    /// branch isolation; `classify_split_run` runs the ordered (tame) closure
+    /// under the current per-core `decisions` (assumed disjunct facts, reproduced
+    /// because cores are deterministic); a fact-disjunction in any chain-unique
+    /// context with no already-assumed disjunct is the next split point. A
+    /// subsumer is forced iff it is a query unit in EVERY open branch (the
+    /// intersection); a query is unsatisfiable iff every branch closes. Sound by
+    /// construction (proof by cases over an exhaustive disjunction, restricted to
+    /// chain-unique contexts so a shared split is a single-element case analysis);
+    /// it falls back to the complete default engine on any disjunction it cannot
+    /// soundly split (`Foreign`).
+    fn split_recurse(
+        &self,
+        query: Iri,
+        decisions: &HashMap<Vec<Pred>, Vec<Iri>>,
+        budget: &mut usize,
+    ) -> SplitBranch {
         if *budget == 0 {
             return SplitBranch::Foreign;
         }
@@ -264,29 +272,33 @@ impl Reasoner {
         let mut e = self.build_engine();
         // Branch closures run under the tame ordered regime.
         set_branch_ordered(true);
-        let cf = e.classify_assume(query, decisions);
+        e.set_branch_decisions(decisions.clone());
+        let cf = e.classify_split_run(query);
         if cf.unsat {
             return SplitBranch::Closed;
         }
         if cf.foreign {
             return SplitBranch::Foreign;
         }
-        let satisfied: std::collections::HashSet<Iri> =
-            decisions.iter().copied().chain(cf.units.iter().copied()).collect();
+        // Pick an undecided split point: a (core, disjuncts) for which we have
+        // not already assumed one of the disjuncts in that core.
         let pick = cf
-            .disjunctions
+            .split_points
             .iter()
-            .find(|d| !d.iter().any(|l| satisfied.contains(l)))
+            .find(|(core, ds)| match decisions.get(core) {
+                None => true,
+                Some(assumed) => !ds.iter().any(|d| assumed.contains(d)),
+            })
             .cloned();
         match pick {
-            // Leaf: no open disjunction left → a Horn-like branch in which the
-            // ordered closure surfaces every forced unit.
+            // Leaf: no open split point → every fact-disjunction is decided, so
+            // the ordered closure surfaces every forced query unit.
             None => SplitBranch::Open(cf.units.into_iter().collect()),
-            Some(d) => {
+            Some((core, ds)) => {
                 let mut acc: Option<BTreeSet<Iri>> = None;
-                for &li in &d {
-                    let mut dd = decisions.to_vec();
-                    dd.push(li);
+                for &d in &ds {
+                    let mut dd = decisions.clone();
+                    dd.entry(core.clone()).or_default().push(d);
                     match self.split_recurse(query, &dd, budget) {
                         SplitBranch::Foreign => return SplitBranch::Foreign,
                         SplitBranch::Closed => {}
@@ -326,7 +338,8 @@ impl Reasoner {
         let mut fallback: Vec<Iri> = Vec::new();
         for &q in queries {
             let mut budget = node_budget;
-            match self.split_recurse(q, &[], &mut budget) {
+            let init: HashMap<Vec<Pred>, Vec<Iri>> = HashMap::new();
+            match self.split_recurse(q, &init, &mut budget) {
                 SplitBranch::Foreign => fallback.push(q),
                 SplitBranch::Closed => {
                     let a = self.sig0.concept_names[q as usize].clone();
