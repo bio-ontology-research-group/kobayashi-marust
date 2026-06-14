@@ -2329,6 +2329,15 @@ struct CacheRun<'a> {
     tab: &'a Tableau,
     prog: &'a CProg,
     cache: HashMap<CKey, bool>,
+    /// Conditional SAT cache (pseudo-model caching): a seed satisfiable only via
+    /// blocking on an on-stack ancestor at level i. Valid exactly while that
+    /// ancestor is on the stack — every lookup then happens inside the ancestor's
+    /// subtree, which is discarded if the ancestor fails — so it is purged when the
+    /// blocker frame pops (`cond_at[i]` lists the keys to drop). Maps key → blocker
+    /// level. This caches the deep ∃-chain whose verdicts depend on a stable
+    /// shallow ancestor, turning re-search into cache hits.
+    cond: HashMap<CKey, usize>,
+    cond_at: Vec<Vec<CKey>>,
     /// the ∃-successor ancestors currently being computed, each with its
     /// Horn-closed concept set, for subset blocking.
     stack: Vec<(CKey, Vec<CLit>)>,
@@ -2402,6 +2411,8 @@ impl<'a> CacheRun<'a> {
             tab,
             prog,
             cache: HashMap::new(),
+            cond: HashMap::new(),
+            cond_at: Vec::new(),
             stack: Vec::new(),
             nogoods: Vec::new(),
             ng_watch: HashMap::new(),
@@ -2483,13 +2494,21 @@ impl<'a> CacheRun<'a> {
     /// are ⊆ that ancestor's, is at most as constrained, so it reuses the
     /// ancestor's model (the greatest-fixpoint blocking assumption). By Dickson's
     /// lemma this bounds every ∃-chain, giving termination.
-    fn blocked(&self, curv: &[CLit], imposed: &[(Vec<CLit>, Vec<CLit>)]) -> bool {
-        self.stack.iter().any(|(ak, acur)| {
-            curv.len() <= acur.len()
-                && imposed.len() <= ak.imposed.len()
-                && subset_sorted(curv, acur)
-                && subset_sorted(imposed, &ak.imposed)
-        })
+    /// Returns the stack level of the *deepest* blocking ancestor (largest index,
+    /// for maximal locality so self-contained cycles cache as early as possible),
+    /// or `None` if the node is not blocked.
+    fn blocked(&self, curv: &[CLit], imposed: &[(Vec<CLit>, Vec<CLit>)]) -> Option<usize> {
+        self.stack
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, (ak, acur))| {
+                curv.len() <= acur.len()
+                    && imposed.len() <= ak.imposed.len()
+                    && subset_sorted(curv, acur)
+                    && subset_sorted(imposed, &ak.imposed)
+            })
+            .map(|(i, _)| i)
     }
 
     /// Horn-close `set` against the program and `imposed` clauses. Returns `true`
@@ -2827,12 +2846,18 @@ impl<'a> CacheRun<'a> {
         CKey::canon(base, imposed)
     }
 
-    /// Is the seed `key` satisfiable? Returns `(sat, used_blocking)` where
-    /// `used_blocking` is true iff the witness relied on a cyclic (on-stack)
-    /// blocking assumption (then the SAT verdict is not cached).
-    fn sat_seed(&mut self, key: &CKey) -> (bool, bool) {
+    /// Is the seed `key` satisfiable? Returns `(sat, block_level)` where
+    /// `block_level` is the shallowest stack level the SAT verdict depends on via
+    /// blocking (`usize::MAX` if the model is self-contained / unconditional). A
+    /// verdict is cached only when unconditional; a conditional one propagates its
+    /// dependency to the caller so the dependency-owning ancestor can confirm it.
+    fn sat_seed(&mut self, key: &CKey) -> (bool, usize) {
         if let Some(&s) = self.cache.get(key) {
-            return (s, false);
+            return (s, usize::MAX); // a cached verdict is unconditional (genuine)
+        }
+        if let Some(&i) = self.cond.get(key) {
+            // conditional SAT, still valid (its blocker at level i is on the stack).
+            return (true, i);
         }
         let mut set: HashSet<CLit> = key.base.iter().copied().collect();
         let mut cdep: HashMap<CLit, Vec<CLit>> = HashMap::with_capacity(key.base.len() * 2);
@@ -2849,14 +2874,21 @@ impl<'a> CacheRun<'a> {
             if !tainted {
                 self.learn(&conf);
             }
-            return (false, false);
+            return (false, usize::MAX);
         }
         let mut curv: Vec<CLit> = set.iter().copied().collect();
         curv.sort_unstable();
-        if self.blocked(&curv, &key.imposed) {
-            return (true, true); // blocked: reuse an ancestor's model (GFP)
+        // this seed's stack level (index it will occupy once pushed).
+        let my_level = self.stack.len();
+        if let Some(i) = self.blocked(&curv, &key.imposed) {
+            // blocked on ancestor at level i (< my_level): SAT, conditional on that
+            // ancestor's model. Cache conditionally (purged when level i pops).
+            self.cond.insert(key.clone(), i);
+            self.cond_at[i].push(key.clone());
+            return (true, i);
         }
         self.stack.push((key.clone(), curv));
+        self.cond_at.push(Vec::new());
         self.n_seed += 1;
         if self.stats && self.n_seed % self.hb == 0 {
             eprintln!(
@@ -2865,30 +2897,46 @@ impl<'a> CacheRun<'a> {
             );
         }
         // seed entry: first DPLL step always does a full eager check (dirty).
-        let res = self.local_search(key, &mut set, &mut cdep, &mut tlits, true, false);
+        let res = self.local_search(key, &mut set, &mut cdep, &mut tlits, true, usize::MAX);
         self.stack.pop();
+        // this frame is gone: drop the conditional entries that depended on it.
+        for k in self.cond_at.pop().into_iter().flatten() {
+            self.cond.remove(&k);
+        }
         match res {
-            Ok(used) => {
-                if !used {
+            Ok(bl) => {
+                // `bl` = shallowest stack level any blocking in this subtree relied
+                // on. If `bl >= my_level`, every back-edge stayed inside this seed's
+                // subtree: a self-contained finite cyclic model, so the SAT verdict
+                // is unconditional and cacheable (pseudo-model caching). If
+                // `bl < my_level`, the model depends on an ancestor at level `bl`
+                // above this seed — cache conditionally (valid while that ancestor
+                // is on the stack) and propagate the dependency upward.
+                if bl >= my_level {
                     self.cache.insert(key.clone(), true);
+                    (true, usize::MAX)
+                } else {
+                    self.cond.insert(key.clone(), bl);
+                    self.cond_at[bl].push(key.clone());
+                    (true, bl)
                 }
-                (true, used)
             }
             Err((conf, tainted)) => {
                 self.cache.insert(key.clone(), false);
                 if !tainted {
                     self.learn(&conf);
                 }
-                (false, false)
+                (false, usize::MAX)
             }
         }
     }
 
     /// Level-1 propositional DPLL on one node with conflict-directed backjumping +
-    /// label-based no-good learning. `Ok(used_blocking)` = a clash-free complete
-    /// assignment with all ∃-successors satisfiable; `Err(reason)` = the node is
-    /// unsatisfiable, `reason` the source-literal set responsible (drives backjump
-    /// in the caller and is learned as a node-generalisable no-good).
+    /// label-based no-good learning. `Ok(block_level)` = a clash-free complete
+    /// assignment with all ∃-successors satisfiable, where `block_level` is the
+    /// shallowest stack level any blocking in this subtree relied on (`usize::MAX`
+    /// if none); `Err(reason)` = the node is unsatisfiable, `reason` the source-
+    /// literal set responsible (drives backjump in the caller and may be learned).
     ///
     /// Eager ∃-pruning: every active obligation's successor is checked at *every*
     /// level (sound: a partial node-set imposes FEWER universals, so a partial
@@ -2904,10 +2952,10 @@ impl<'a> CacheRun<'a> {
         tlits: &mut HashSet<CLit>,
         // `dirty` = this DPLL step may have changed obligations/successors (a
         // trigger literal was added); when false the eager ∃-check is skipped and
-        // `inherited_used` (the enclosing full check's blocking flag) carries over.
+        // `inherited_block` (the enclosing full check's blocker level) carries over.
         dirty: bool,
-        inherited_used: bool,
-    ) -> Result<bool, (Vec<CLit>, bool)> {
+        inherited_block: usize,
+    ) -> Result<usize, (Vec<CLit>, bool)> {
         self.n_dpll += 1;
         self.max_depth = self.max_depth.max(self.stack.len());
         if self.stats && self.n_dpll % self.hb == 0 {
@@ -2928,13 +2976,13 @@ impl<'a> CacheRun<'a> {
         // obligations and their successors are identical to the enclosing full
         // check, so reuse its blocking flag and skip the rescan entirely.
         // (KM_TAB_EAGER=0 defers this to propositional completion instead.)
-        let mut used_any = inherited_used;
+        let mut block_min = inherited_block;
         if self.eager && dirty {
-            used_any = false;
+            block_min = usize::MAX;
             for (r0, fil) in self.obligations(set) {
                 let succ = self.build_succ(set, r0, fil);
-                let (sat, used) = self.sat_seed(&succ);
-                used_any |= used;
+                let (sat, bl) = self.sat_seed(&succ);
+                block_min = block_min.min(bl);
                 if !sat {
                     return Err(self.succ_conflict(set, cdep, tlits, r0, fil));
                 }
@@ -2948,14 +2996,14 @@ impl<'a> CacheRun<'a> {
                 if !self.eager {
                     for (r0, fil) in self.obligations(set) {
                         let succ = self.build_succ(set, r0, fil);
-                        let (sat, used) = self.sat_seed(&succ);
-                        used_any |= used;
+                        let (sat, bl) = self.sat_seed(&succ);
+                        block_min = block_min.min(bl);
                         if !sat {
                             return Err(self.succ_conflict(set, cdep, tlits, r0, fil));
                         }
                     }
                 }
-                return Ok(used_any); // complete; all successors satisfiable
+                return Ok(block_min); // complete; all successors satisfiable
             }
         };
         self.n_branch += 1;
@@ -2986,8 +3034,10 @@ impl<'a> CacheRun<'a> {
                 None => {
                     // the child step is dirty iff it added a trigger literal.
                     let child_dirty = trail.iter().any(|l| self.prog.trigger_lits.contains(l));
-                    match self.local_search(key, set, cdep, tlits, child_dirty, used_any) {
-                        Ok(u) => return Ok(u | used_any), // model found; leave `set` as is
+                    match self.local_search(key, set, cdep, tlits, child_dirty, block_min) {
+                        // model found; leave `set` as is. Propagate the shallowest
+                        // blocker level seen (this branch and the eager check).
+                        Ok(bl) => return Ok(bl.min(block_min)),
                         Err((c, t)) => {
                             ctaint = t;
                             Some(c)
@@ -3040,10 +3090,11 @@ impl<'a> CacheRun<'a> {
         let mut curv: Vec<CLit> = set.iter().copied().collect();
         curv.sort_unstable();
         self.stack.push((key.clone(), curv));
+        self.cond_at.push(Vec::new());
         let w = self.witness_rec(key, set);
         self.stack.pop();
-        if w.is_none() {
-            self.cache.insert(key.clone(), false);
+        for k in self.cond_at.pop().into_iter().flatten() {
+            self.cond.remove(&k);
         }
         w
     }
