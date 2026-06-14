@@ -1963,6 +1963,9 @@ struct CProg {
     trigger_lits: HashSet<CLit>,
     // build_succ index: obligation-role → applicable uni indices (role_le).
     uni_for_role: HashMap<R, Vec<usize>>,
+    // upper bound on concept ids (real concepts + synthetic markers). Sizes the
+    // per-concept VSIDS activity / phase-saving arrays.
+    n_concepts: C,
 }
 impl CProg {
     /// `r0 ⊑* target` (an r0-edge is also a target-edge).
@@ -2220,6 +2223,7 @@ impl Tableau {
             node_horn, node_clash, node_disj, node_exists, uni, domain, supers,
             horn_by_lit, horn_empty, clash_by_lit, clash_empty, marker_role,
             trigger_lits, uni_for_role,
+            n_concepts: next_marker,
         })
     }
 
@@ -2358,6 +2362,31 @@ struct CacheRun<'a> {
     /// eager ∃-pruning at every DPLL step (KM_TAB_EAGER, default true). When
     /// false, successors are checked only at propositional completion.
     eager: bool,
+    // --- Tier 1 search heuristics (gated; pure decision-order / phase choice,
+    //     so they cannot change the SAT/UNSAT verdict and need no Lean re-cert) ---
+    /// VSIDS-style branching (KM_TAB_VSIDS): branch on the conflict-active
+    /// disjunction / disjunct rather than program order, so the search focuses
+    /// on the conflict-dense region instead of oscillating.
+    vsids: bool,
+    activity: Vec<f64>, // per-concept conflict activity (indexed by C)
+    act_inc: f64,
+    act_decay: f64,
+    /// phase saving (KM_TAB_PHASE): prefer the last polarity that completed a
+    /// model for a concept, so re-search after backjump repeats good choices.
+    phase_save: bool,
+    saved: Vec<i8>, // 0 = unset, 1 = prefer positive, -1 = prefer negative
+    /// Luby restarts of the per-seed DPLL (KM_TAB_RESTART): abandon the current
+    /// search tree once `conflicts_since >= restart_limit` and re-enter from the
+    /// seed base. Learned no-goods + VSIDS activity persist, so the fresh search
+    /// exploits them from the top instead of staying stuck deep in the ∃-chain.
+    /// Sound: restarting only re-orders the (terminating, complete) DPLL search.
+    restart: bool,
+    restart_unit: u64,    // restart_limit = luby_v * restart_unit
+    luby_u: u64,          // Knuth reluctant-doubling state
+    luby_v: u64,
+    conflicts_since: u64, // conflicts since the last restart
+    restart_limit: u64,
+    restart_pending: bool,
     stats: bool,
     n_seed: u64,
     n_dpll: u64,
@@ -2405,6 +2434,14 @@ fn union_reasons(lits: &[CLit], cdep: &HashMap<CLit, Vec<CLit>>) -> Vec<CLit> {
     r
 }
 
+/// Outcome of the per-node DPLL: either a conflict (with its source-literal
+/// reason and taint flag) or a restart request that unwinds the recursion to the
+/// enclosing `sat_seed`, which re-enters the search from the seed base.
+enum SearchErr {
+    Conflict(Vec<CLit>, bool),
+    Restart,
+}
+
 impl<'a> CacheRun<'a> {
     fn new(tab: &'a Tableau, prog: &'a CProg) -> Self {
         CacheRun {
@@ -2433,6 +2470,38 @@ impl<'a> CacheRun<'a> {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(200_000),
             eager: std::env::var("KM_TAB_EAGER").map(|s| s != "0").unwrap_or(true),
+            vsids: std::env::var("KM_TAB_VSIDS").map(|s| s != "0").unwrap_or(false),
+            activity: if std::env::var("KM_TAB_VSIDS").map(|s| s != "0").unwrap_or(false) {
+                vec![0.0; prog.n_concepts as usize]
+            } else {
+                Vec::new()
+            },
+            act_inc: 1.0,
+            act_decay: std::env::var("KM_TAB_VSIDS_DECAY")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.95),
+            phase_save: std::env::var("KM_TAB_PHASE").map(|s| s != "0").unwrap_or(false),
+            saved: if std::env::var("KM_TAB_PHASE").map(|s| s != "0").unwrap_or(false) {
+                vec![0i8; prog.n_concepts as usize]
+            } else {
+                Vec::new()
+            },
+            restart: std::env::var("KM_TAB_RESTART").map(|s| s != "0").unwrap_or(false),
+            restart_unit: std::env::var("KM_TAB_RESTART_UNIT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&u| u > 0)
+                .unwrap_or(100),
+            luby_u: 1,
+            luby_v: 1,
+            conflicts_since: 0,
+            restart_limit: std::env::var("KM_TAB_RESTART_UNIT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&u| u > 0)
+                .unwrap_or(100),
+            restart_pending: false,
             stats: std::env::var_os("KM_TAB_STATS").is_some(),
             n_seed: 0,
             n_dpll: 0,
@@ -2749,12 +2818,107 @@ impl<'a> CacheRun<'a> {
     /// disjuncts, from_imposed)`, or `None` if propositionally complete. A node-
     /// local disjunction is global; an imposed one is node-specific, so conflicts
     /// derived under it must not be learned globally (`from_imposed = true`).
+    /// VSIDS: bump one concept's activity, rescaling all scores if it overflows.
+    fn act_bump(&mut self, c: C) {
+        let i = c as usize;
+        if i >= self.activity.len() {
+            return;
+        }
+        self.activity[i] += self.act_inc;
+        if self.activity[i] > 1e100 {
+            for a in self.activity.iter_mut() {
+                *a *= 1e-100;
+            }
+            self.act_inc *= 1e-100;
+        }
+    }
+    /// VSIDS: bump every concept mentioned in a conflict reason.
+    fn act_bump_reason(&mut self, conf: &[CLit]) {
+        if !self.vsids {
+            return;
+        }
+        for l in conf {
+            self.act_bump(l.c);
+        }
+    }
+    /// VSIDS: age past activity (one decay step per resolved conflict).
+    fn act_decay_step(&mut self) {
+        if self.vsids && self.act_decay > 0.0 {
+            self.act_inc /= self.act_decay;
+        }
+    }
+    /// The activity of a disjunct (0 when VSIDS is off / out of range).
+    fn act_of(&self, d: &CLit) -> f64 {
+        if self.vsids {
+            self.activity.get(d.c as usize).copied().unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    }
+    /// Advance the Luby reluctant-doubling sequence (1,1,2,1,1,2,4,...) and set
+    /// the next restart threshold to `luby_v * restart_unit`.
+    fn luby_step(&mut self) {
+        if (self.luby_u & self.luby_u.wrapping_neg()) == self.luby_v {
+            self.luby_u += 1;
+            self.luby_v = 1;
+        } else {
+            self.luby_v = self.luby_v.saturating_mul(2);
+        }
+        self.restart_limit = self.luby_v.saturating_mul(self.restart_unit).max(1);
+    }
+    /// Count a resolved node conflict; arm a restart when the budget is reached.
+    fn note_conflict(&mut self) {
+        if !self.restart {
+            return;
+        }
+        self.conflicts_since += 1;
+        if self.conflicts_since >= self.restart_limit {
+            self.restart_pending = true;
+        }
+    }
+    /// Phase saving: remember the polarity of a disjunct that completed a model.
+    fn save_phase(&mut self, d: CLit) {
+        if !self.phase_save {
+            return;
+        }
+        if let Some(s) = self.saved.get_mut(d.c as usize) {
+            *s = if d.neg { -1 } else { 1 };
+        }
+    }
+
     fn first_disj(
         &self,
         set: &HashSet<CLit>,
         imposed: &[(Vec<CLit>, Vec<CLit>)],
     ) -> Option<(Vec<CLit>, Vec<CLit>, bool)> {
         let p = self.prog;
+        // VSIDS: among all applicable, unsatisfied disjunctions, branch on the one
+        // whose most-active disjunct is highest (focus the search on the
+        // conflict-dense region). Pure decision-order: any applicable disjunction
+        // is a sound branch point, so this cannot change the verdict.
+        if self.vsids {
+            let mut best: Option<(f64, &Vec<CLit>, &Vec<CLit>, bool)> = None;
+            for (b, h) in &p.node_disj {
+                if b.iter().all(|l| set.contains(l)) && !h.iter().any(|d| set.contains(d)) {
+                    let score = h.iter().map(|d| self.act_of(d)).fold(f64::NEG_INFINITY, f64::max);
+                    if best.as_ref().map_or(true, |&(s, ..)| score > s) {
+                        best = Some((score, b, h, false));
+                    }
+                }
+            }
+            for (b, h) in imposed {
+                if h.len() >= 2
+                    && b.iter().all(|l| set.contains(l))
+                    && !h.iter().any(|d| set.contains(d))
+                {
+                    let score = h.iter().map(|d| self.act_of(d)).fold(f64::NEG_INFINITY, f64::max);
+                    if best.as_ref().map_or(true, |&(s, ..)| score > s) {
+                        best = Some((score, b, h, true));
+                    }
+                }
+            }
+            return best.map(|(_, b, h, imp)| (b.clone(), h.clone(), imp));
+        }
         for (b, h) in &p.node_disj {
             if b.iter().all(|l| set.contains(l)) && !h.iter().any(|d| set.contains(d)) {
                 return Some((b.clone(), h.clone(), false));
@@ -2804,6 +2968,31 @@ impl<'a> CacheRun<'a> {
     /// strategy 2 floats all markers first. `disj` is taken by value and the
     /// reordered vector returned.
     fn order_disj(&self, set: &HashSet<CLit>, disj: Vec<CLit>) -> Vec<CLit> {
+        // VSIDS / phase saving take precedence over the static KM_TAB_ORD strategy:
+        // try the most conflict-active disjunct first, with a saved-phase match as
+        // tie-break. Still a pure reordering — the verdict is unchanged.
+        if self.vsids || self.phase_save {
+            let phase_rank = |d: &CLit| -> u8 {
+                if !self.phase_save {
+                    return 1;
+                }
+                match self.saved.get(d.c as usize).copied().unwrap_or(0) {
+                    s if s > 0 && !d.neg => 0,
+                    s if s < 0 && d.neg => 0,
+                    _ => 1,
+                }
+            };
+            let mut v = disj;
+            // sort by (descending activity, matching saved phase first); stable so
+            // program order breaks remaining ties.
+            v.sort_by(|a, b| {
+                self.act_of(b)
+                    .partial_cmp(&self.act_of(a))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(phase_rank(a).cmp(&phase_rank(b)))
+            });
+            return v;
+        }
         if self.ord == 0 {
             return disj;
         }
@@ -2897,7 +3086,40 @@ impl<'a> CacheRun<'a> {
             );
         }
         // seed entry: first DPLL step always does a full eager check (dirty).
-        let res = self.local_search(key, &mut set, &mut cdep, &mut tlits, true, usize::MAX);
+        self.restart_pending = false;
+        let mut res = self.local_search(key, &mut set, &mut cdep, &mut tlits, true, usize::MAX);
+        // Luby restarts: re-enter the DPLL from the seed base when the conflict
+        // budget is hit. Learned no-goods + VSIDS activity persist (they prune and
+        // redirect the fresh search — the point of the restart). Conditional SAT
+        // entries blocked on THIS frame are dropped: they were justified by the
+        // partial model we are abandoning, so they must be re-derived. Cache
+        // (unconditional SAT / all UNSAT) entries stay sound and are kept.
+        while matches!(res, Err(SearchErr::Restart)) {
+            self.luby_step();
+            self.conflicts_since = 0;
+            self.restart_pending = false;
+            let stale: Vec<CKey> = std::mem::take(&mut self.cond_at[my_level]);
+            for k in stale {
+                self.cond.remove(&k);
+            }
+            set = key.base.iter().copied().collect();
+            cdep = HashMap::with_capacity(key.base.len() * 2);
+            for &l in &key.base {
+                cdep.insert(l, vec![l]);
+            }
+            tlits = HashSet::new();
+            let mut tr: Vec<CLit> = Vec::new();
+            let mut tn = false;
+            if let Some(conf) =
+                self.close_dep(&mut set, &mut cdep, &key.imposed, &mut tr, &mut tlits, &mut tn)
+            {
+                // unreachable in practice (the base closed cleanly on first entry),
+                // but handle defensively as a genuine unsat.
+                res = Err(SearchErr::Conflict(conf, tn));
+                break;
+            }
+            res = self.local_search(key, &mut set, &mut cdep, &mut tlits, true, usize::MAX);
+        }
         self.stack.pop();
         // this frame is gone: drop the conditional entries that depended on it.
         for k in self.cond_at.pop().into_iter().flatten() {
@@ -2921,13 +3143,14 @@ impl<'a> CacheRun<'a> {
                     (true, bl)
                 }
             }
-            Err((conf, tainted)) => {
+            Err(SearchErr::Conflict(conf, tainted)) => {
                 self.cache.insert(key.clone(), false);
                 if !tainted {
                     self.learn(&conf);
                 }
                 (false, usize::MAX)
             }
+            Err(SearchErr::Restart) => unreachable!("restart consumed by the loop above"),
         }
     }
 
@@ -2955,9 +3178,14 @@ impl<'a> CacheRun<'a> {
         // `inherited_block` (the enclosing full check's blocker level) carries over.
         dirty: bool,
         inherited_block: usize,
-    ) -> Result<usize, (Vec<CLit>, bool)> {
+    ) -> Result<usize, SearchErr> {
         self.n_dpll += 1;
         self.max_depth = self.max_depth.max(self.stack.len());
+        // a restart was armed by a conflict elsewhere: abandon this branch and
+        // unwind to the enclosing `sat_seed`, which re-enters from the seed base.
+        if self.restart_pending {
+            return Err(SearchErr::Restart);
+        }
         if self.stats && self.n_dpll % self.hb == 0 {
             eprintln!(
                 "KM_TAB_STATS cache: dpll={} branches={} seeds={} cache={} depth={}/{} nogoods={} nghit={}",
@@ -2969,7 +3197,7 @@ impl<'a> CacheRun<'a> {
         // Learned no-goods are global, so this conflict is untainted.
         if let Some(r) = self.check_nogood(set, cdep) {
             self.n_nghit += 1;
-            return Err((r, false));
+            return Err(SearchErr::Conflict(r, false));
         }
         // eager: prune as soon as any active obligation's successor is unsat.
         // Incremental: when nothing trigger-relevant changed (`!dirty`), the
@@ -2984,7 +3212,9 @@ impl<'a> CacheRun<'a> {
                 let (sat, bl) = self.sat_seed(&succ);
                 block_min = block_min.min(bl);
                 if !sat {
-                    return Err(self.succ_conflict(set, cdep, tlits, r0, fil));
+                    let (c, t) = self.succ_conflict(set, cdep, tlits, r0, fil);
+                    self.note_conflict();
+                    return Err(SearchErr::Conflict(c, t));
                 }
             }
         }
@@ -2999,7 +3229,9 @@ impl<'a> CacheRun<'a> {
                         let (sat, bl) = self.sat_seed(&succ);
                         block_min = block_min.min(bl);
                         if !sat {
-                            return Err(self.succ_conflict(set, cdep, tlits, r0, fil));
+                            let (c, t) = self.succ_conflict(set, cdep, tlits, r0, fil);
+                            self.note_conflict();
+                            return Err(SearchErr::Conflict(c, t));
                         }
                     }
                 }
@@ -3037,8 +3269,22 @@ impl<'a> CacheRun<'a> {
                     match self.local_search(key, set, cdep, tlits, child_dirty, block_min) {
                         // model found; leave `set` as is. Propagate the shallowest
                         // blocker level seen (this branch and the eager check).
-                        Ok(bl) => return Ok(bl.min(block_min)),
-                        Err((c, t)) => {
+                        Ok(bl) => {
+                            // this disjunct completed a model: remember its phase.
+                            self.save_phase(d);
+                            return Ok(bl.min(block_min));
+                        }
+                        // restart armed: undo this branch and propagate upward so the
+                        // enclosing `sat_seed` re-enters from the seed base.
+                        Err(SearchErr::Restart) => {
+                            for l in &trail {
+                                set.remove(l);
+                                cdep.remove(l);
+                                tlits.remove(l);
+                            }
+                            return Err(SearchErr::Restart);
+                        }
+                        Err(SearchErr::Conflict(c, t)) => {
                             ctaint = t;
                             Some(c)
                         }
@@ -3052,11 +3298,14 @@ impl<'a> CacheRun<'a> {
                 tlits.remove(l);
             }
             let conf = conf.unwrap();
+            // VSIDS: this branch clashed — reward the literals responsible.
+            self.act_bump_reason(&conf);
             let branch_taint = ctaint || disj_ctx_tainted;
             if conf.binary_search(&d).is_err() {
                 // `d` is irrelevant to this clash — every sibling clashes the same
                 // way. Backjump past the whole disjunction.
-                return Err((conf, branch_taint));
+                self.note_conflict();
+                return Err(SearchErr::Conflict(conf, branch_taint));
             }
             node_tainted |= ctaint;
             for &x in &conf {
@@ -3071,7 +3320,10 @@ impl<'a> CacheRun<'a> {
         if !node_tainted {
             self.learn(&accum);
         }
-        Err((accum, node_tainted))
+        // VSIDS: age activity once per resolved node conflict.
+        self.act_decay_step();
+        self.note_conflict();
+        Err(SearchErr::Conflict(accum, node_tainted))
     }
 
     /// Find one model of `key` and return its completed root concept set (for
