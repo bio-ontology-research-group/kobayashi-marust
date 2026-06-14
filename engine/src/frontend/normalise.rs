@@ -107,6 +107,18 @@ pub struct Clausifier {
     /// concept may occur negatively.
     pub atmost_pos: HashSet<Concept>,
     pub atmost_neg: HashSet<Concept>,
+    /// Polarity-gated definitional clausification (KM_ABSORB, default off).
+    /// For a reified And/Or/Not concept, emit the definition direction `Q → C`
+    /// only when C occurs positively and the recognition direction `C → Q` only
+    /// when C occurs negatively (Plaisted-Greenbaum). This drops the unguarded
+    /// `⊤ → Q ∨ A` excluded-middle clause for a negation that never appears on a
+    /// subclass LHS (e.g. a disjointness `X ⊑ ¬A`) and turns a disjunction on the
+    /// LHS into Horn rules — both shrink the live-disjunction blow-up at source.
+    /// Verdict-preserving (equisatisfiable), validated by classification result
+    /// vs gold, not byte-identical output.
+    absorb: bool,
+    def_pos: HashSet<Concept>,
+    def_neg: HashSet<Concept>,
 }
 
 impl Clausifier {
@@ -123,11 +135,43 @@ impl Clausifier {
             atleast_neg: HashSet::new(),
             atmost_pos: HashSet::new(),
             atmost_neg: HashSet::new(),
+            absorb: std::env::var("KM_ABSORB").map(|s| s != "0").unwrap_or(false),
+            def_pos: HashSet::new(),
+            def_neg: HashSet::new(),
+        }
+    }
+
+    /// Which definitional directions to emit for a reified And/Or/Not concept:
+    /// `(want_def, want_rec)` = (emit `Q → C`, emit `C → Q`). With absorption off,
+    /// both (the full `Q ≡ C`). With it on: keyed on the polarity the pre-pass
+    /// recorded — positive ⇒ def direction, negative ⇒ recognition direction. A
+    /// concept the pre-pass never saw (e.g. introduced by an ABox assertion) is
+    /// emitted both ways, so unseen occurrences keep the complete behaviour.
+    fn want_dirs(&self, c: &Concept) -> (bool, bool) {
+        if !self.absorb {
+            return (true, true);
+        }
+        let p = self.def_pos.contains(c);
+        let n = self.def_neg.contains(c);
+        if !p && !n {
+            (true, true) // unseen: conservative
+        } else {
+            (p, n)
         }
     }
 
     /// Port of `mark_polarity`. `c` is assumed NNF.
     pub fn mark_polarity(&mut self, c: &Concept, neg: bool) {
+        // Record the polarity of every reified And/Or/Not concept for absorption
+        // (`neg == false` ⇒ positive occurrence, `true` ⇒ negative). Mirrors the
+        // existing AtLeast/AtMost recording below.
+        if matches!(c, Concept::And(_) | Concept::Or(_) | Concept::Not(_)) {
+            if neg {
+                self.def_neg.insert(c.clone());
+            } else {
+                self.def_pos.insert(c.clone());
+            }
+        }
         match c {
             Concept::Forall(_, f) => {
                 if neg {
@@ -250,6 +294,10 @@ impl Clausifier {
         let x = var_x();
         let y = var_y();
         let qx = Atom::Concept(q.to_string(), x.clone());
+        // Absorption gating (And/Or/Not only): `want_def` = emit `Q → C`,
+        // `want_rec` = emit `C → Q`. Both true unless absorption proved one
+        // direction unneeded by polarity. (No effect on the other concept kinds.)
+        let (want_def, want_rec) = self.want_dirs(c);
 
         match c {
             Concept::Top => {
@@ -272,8 +320,12 @@ impl Clausifier {
                         [Atom::Concept(proxy.clone(), x.clone())],
                     ));
                     let ax = Atom::Concept(proxy, x.clone());
-                    self.clauses.push(clause([qx.clone(), ax.clone()], []));
-                    self.clauses.push(clause([], [qx, ax]));
+                    if want_def {
+                        self.clauses.push(clause([qx.clone(), ax.clone()], []));
+                    }
+                    if want_rec {
+                        self.clauses.push(clause([], [qx, ax]));
+                    }
                     return;
                 }
                 let ax = match inner.as_ref() {
@@ -287,8 +339,15 @@ impl Clausifier {
                     Concept::Name(n) => Atom::Concept(n.clone(), x.clone()),
                     _ => panic!("nested negation should have been removed by nnf()"),
                 };
-                self.clauses.push(clause([qx.clone(), ax.clone()], []));
-                self.clauses.push(clause([], [qx, ax]));
+                // `Q ∧ A → ⊥` (def: Q ⊑ ¬A) and `⊤ → Q ∨ A` (rec: ¬A ⊑ Q). The
+                // recognition clause is the unguarded excluded-middle disjunction
+                // dropped when ¬A never occurs on a subclass LHS.
+                if want_def {
+                    self.clauses.push(clause([qx.clone(), ax.clone()], []));
+                }
+                if want_rec {
+                    self.clauses.push(clause([], [qx, ax]));
+                }
             }
             Concept::And(conjuncts) => {
                 let atoms: Vec<Atom> = conjuncts
@@ -298,10 +357,15 @@ impl Clausifier {
                         Atom::Concept(qn, x.clone())
                     })
                     .collect();
-                for a in &atoms {
-                    self.clauses.push(clause([qx.clone()], [a.clone()]));
+                // def: Q ⊑ Cᵢ (one per conjunct); rec: ⨅Cᵢ ⊑ Q. Both Horn.
+                if want_def {
+                    for a in &atoms {
+                        self.clauses.push(clause([qx.clone()], [a.clone()]));
+                    }
                 }
-                self.clauses.push(clause(atoms, [qx]));
+                if want_rec {
+                    self.clauses.push(clause(atoms, [qx]));
+                }
             }
             Concept::Or(disjuncts) => {
                 let atoms: Vec<Atom> = disjuncts
@@ -311,9 +375,15 @@ impl Clausifier {
                         Atom::Concept(qn, x.clone())
                     })
                     .collect();
-                self.clauses.push(clause([qx.clone()], atoms.clone()));
-                for a in atoms {
-                    self.clauses.push(clause([a], [qx.clone()]));
+                // def: Q ⊑ ⨆Cᵢ (the disjunctive head — dropped when the Or never
+                // occurs positively); rec: each Cᵢ ⊑ Q (Horn).
+                if want_def {
+                    self.clauses.push(clause([qx.clone()], atoms.clone()));
+                }
+                if want_rec {
+                    for a in atoms {
+                        self.clauses.push(clause([a], [qx.clone()]));
+                    }
                 }
             }
             Concept::Exists(role, filler) => {
@@ -595,6 +665,46 @@ mod tests {
         let mut cf = Clausifier::new();
         cf.q(&mk());
         assert!(has_recognition(&cf), "unseen ≤1 must emit recognition");
+    }
+
+    /// Absorption: a negation that occurs only positively (e.g. `X ⊑ ¬A`) keeps
+    /// the constraint `Q ∧ A → ⊥` but drops the unguarded excluded-middle
+    /// `⊤ → Q ∨ A`. Without absorption both are emitted; a negative occurrence
+    /// re-enables the recognition clause.
+    #[test]
+    fn absorb_drops_positive_only_excluded_middle() {
+        let not_a = || Concept::Not(Box::new(Concept::Name("A".to_string())));
+        let excluded_middle = |cf: &Clausifier| {
+            cf.clauses.iter().any(|cl| {
+                cl.body.is_empty()
+                    && cl.head.len() == 2
+                    && cl.head.iter().all(|a| matches!(a, Atom::Concept(..)))
+            })
+        };
+        let constraint_clause = |cf: &Clausifier| {
+            cf.clauses
+                .iter()
+                .any(|cl| cl.head.is_empty() && cl.body.len() == 2)
+        };
+        // absorption OFF: positive-only negation still emits both.
+        let mut cf = Clausifier::new();
+        cf.mark_polarity(&not_a(), false);
+        cf.q(&not_a());
+        assert!(excluded_middle(&cf) && constraint_clause(&cf));
+        // absorption ON, positive-only: constraint kept, excluded middle dropped.
+        let mut cf = Clausifier::new();
+        cf.absorb = true;
+        cf.mark_polarity(&not_a(), false);
+        cf.q(&not_a());
+        assert!(constraint_clause(&cf), "def direction Q∧A→⊥ must remain");
+        assert!(!excluded_middle(&cf), "positive-only ¬A must drop ⊤→Q∨A");
+        // absorption ON, also negative: excluded middle re-enabled.
+        let mut cf = Clausifier::new();
+        cf.absorb = true;
+        cf.mark_polarity(&not_a(), false);
+        cf.mark_polarity(&not_a(), true);
+        cf.q(&not_a());
+        assert!(excluded_middle(&cf), "negative ¬A must re-emit ⊤→Q∨A");
     }
 }
 
