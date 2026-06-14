@@ -4,6 +4,53 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Frontend absorption: polarity-gated definitional clausification (+10 ORE coverage, 545 → 555)
+
+`KM_ABSORB` (default off) extends the clausifier's polarity pre-pass to And/Or/Not
+definers and emits only the definition direction the concept's polarity needs
+(Plaisted-Greenbaum): `Q → C` only when C occurs positively, `C → Q` only when it
+occurs negatively; unseen concepts (e.g. ABox assertions) keep both directions.
+This drops, at the source, the unguarded excluded-middle disjunction `⊤ → Q ∨ A`
+emitted for every reified negation that never appears on a subclass LHS (the
+disjointness idiom `X ⊑ ¬A`), and turns an LHS disjunction into Horn rules.
+
+Measured (`ofn`, on vs off): ore_ont_1340 104 → 0 disjunctive heads, 3905 106 → 0,
+14450 106 → 0 (fully Horn); residual disjunctions are genuine RHS disjunctions and
+are untouched (5303 38 → 37, so 5303 still times out — needs CB ordered resolution).
+
+Validation sweep 6304 (`KM_ABSORB=1`, tableau race off) vs the 545 baseline:
+**555 ok / 34 timeout / 1 memout**, gold table **0 unsound / 0 incomplete / 0 both**
+(verdict-preserving confirmed at corpus scale — the synthetic definers are never
+query targets, so their polarities are fixed by the ontology). 11 recoveries
+(1340, 3905, 14450, 12698, 16303, **16444 the long-standing memout**, 2397, 4205,
+6212, 7775, **8737 a giant**); 1 regression: **ore_ont_6246** goes 0.35 s/78 MB →
+18.5 GB OOM/timeout — dropping the (PG-redundant) AND def directions on a DOLCE-
+style covering+disjointness TBox perturbs the CB engine into a blow-up. Net +10.
+Kept gated pending a safe deployment (absorbed/plain portfolio for +11/-0, or a
+fix for the 6246 cliff) — see memory `project_km_absorption`.
+
+### Tableau Tier-1 search heuristics: VSIDS + phase saving + Luby restarts (gated; not a coverage win)
+
+`KM_TAB_VSIDS` / `KM_TAB_PHASE` / `KM_TAB_RESTART` (all default off) add CDCL-style
+search control to the label-caching tableau's per-node DPLL. Pure decision-order /
+redundancy, so no Lean re-cert; 2313 stays byte-identical under every combination.
+Empirically they reduce distinct-seed count ~26 % and learn 5× more no-goods on
+ore_ont_5303 but recover none of the 7 cache-eligible ORE timeouts: their wall is
+the ∃-chain seed-space explosion (depth ~483, tens of thousands of incomparable
+successor labels), not per-node propositional search. Kept as gated infrastructure;
+the live-disjunction family needs disjunction reduction at the source (absorption,
+above) or CB-side ordered resolution.
+
+### CB-vs-tableau race hardened: provably zero-cost to the engine
+
+`_race_cb_vs_tableau` now starts the engine first at full cores and spawns the
+tableau lazily off the critical path (`KM_TAB_RACE_DELAY`, default 30 s) at
+`nice 19`, with robust cancellation. An ontology the engine finishes within the
+delay pays zero tableau cost. (A faithful same-node/same-binary A/B showed the
+prior race was already net-neutral on the sweep, exonerating it as a regression
+cause; the apparent 18-ont drop vs the stale 564 baseline was the Jun 12-13
+correctness commits, not the race.)
+
 ### Direction C cache path: taint-aware learning + incremental pruning + pseudo-model caching (recovers ore_ont_2313)
 
 Profiling the label-caching tableau (`KM_TAB_CACHE`) on the live-∀+⊔ family
