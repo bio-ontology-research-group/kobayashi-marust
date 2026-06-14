@@ -4,6 +4,59 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Direction C cache path: taint-aware learning + incremental pruning + pseudo-model caching (recovers ore_ont_2313)
+
+Profiling the label-caching tableau (`KM_TAB_CACHE`) on the live-∀+⊔ family
+(ore_ont_5303) pinned the wall: a deep ∃-chain (∃-depth 96 → 226+) of
+*incomparable* node labels, where (a) no-good learning was disabled at exactly
+those nodes and (b) blocking-SAT seeds were recomputed endlessly (cache stuck
+~200 against 100k+ seed evaluations). Four sound, gated optimisations, validated
+set-identical to the trusted `expand_inc` on 19 in-fragment ORE ontologies (0
+wrong answers, 0 panics); commits `dbb474a`, `8231873`.
+
+- **Taint-aware global learning at imposed nodes** (the key algorithmic lever).
+  Learning was gated to `key.imposed.is_empty()`, which switches it off at every
+  deep ∃-chain node (all carry imposed universals). Replaced with per-literal
+  taint propagation in `close_dep`: a derived literal is tainted iff its
+  derivation used an imposed (node-specific) clause, and a conflict is learned
+  globally iff its whole derivation is untainted (provable from the TBox alone) —
+  sound even under imposed constraints, which a coarse "any imposed fired" flag
+  would wrongly forbid. `succ_conflict` and `first_disj` report taint;
+  `local_search` threads it. On 5303 this breaks the hard-stop at ∃-depth 96 and
+  the search advances to 144+ (no-goods 166 → 800+).
+
+- **Pseudo-model caching of blocking-SAT verdicts.** The `used: bool` blocking
+  flag became `block_level: usize` = the shallowest stack level any blocking in a
+  subtree relied on (`blocked()` returns the deepest blocking ancestor for
+  locality). (1) *Self-contained*: a subtree that only blocks on itself-or-deeper
+  (`block_level >= own level`) is a self-contained finite cyclic model → cache
+  unconditionally. (2) *Conditional*: a seed satisfiable only by blocking on an
+  ancestor at level i is cached in a `cond` map valid while that ancestor is on
+  the stack (purged on its pop) — every lookup then happens inside the ancestor's
+  subtree, which is discarded if it fails. This caches the deep chain whose
+  verdicts depend on a stable shallow ancestor, turning re-search into hits.
+
+- **Incremental eager ∃-pruning** (`KM_TAB_EAGER`, default on). The eager
+  successor check ran ~59 `build_succ` calls at every one of >1M DPLL steps. A
+  step adding no *trigger* literal (one that can change an obligation or fire a
+  universal) leaves obligations + successors unchanged, so the rescan is skipped.
+  Plus a per-role uni index for `build_succ`. ~1.77x throughput on 5303.
+
+- **Disjunct ordering** (`KM_TAB_ORD`, default 0 = program order). Floats vacuous
+  `∀r.L` markers first (`ORD=1`). Measured: program order beats the shallow-model
+  bias on 5303 (depth 363 vs 96); pure reordering, set-identical.
+
+**Results (cache path, ord=0):** RECOVERS **ore_ont_2313** — a live-∀+⊔ family
+timeout — finishing with 13967 subsumptions **byte-identical to the Konclude gold
+signature**. Recovers ore_ont_2066 and ore_ont_5089 (previously timed out on the
+cache path). 5303 runs ~3x faster (2.5M → 8M DPLL/280s, ∃-depth 483) but still
+does not finish — the search accelerates and deepens yet oscillates rather than
+converging (590k no-good hits); 1603, 12141 also still time out. The family is
+not fully closed within budget: the residue is Konclude-grade search control, not
+a missing soundness/completeness mechanism. Diagnostics: `KM_TAB_HB`,
+dpll/depth/cache counters. `engine/py/tab_emit.py` emits a cached TInput from an
+ontology for standalone cache-path tuning.
+
 ### Direction C: label-caching (global-caching) tableau (`KM_TAB_CACHE`, gated OFF)
 
 A from-scratch rewrite of the tableau's non-careful (ALCH, no inverse / number /
