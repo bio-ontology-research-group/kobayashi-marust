@@ -412,6 +412,144 @@ def _run_engine_adaptive(clauses_path, clauses):
     return proc
 
 
+def _tableau_to_out(tout: dict) -> dict:
+    """Convert the hypertableau `TOutput` (consistent flag, [A,B] subsumption
+    pairs, unsatisfiable list) into the engine's `out` shape ({name: [supers]},
+    inconsistent flag) so the shared output-mapping code handles it unchanged.
+    Unsatisfiable classes are emitted as subsumed by ⊥ (the downstream
+    BOTTOM-super check then records them)."""
+    subs: dict = {}
+    for pair in tout.get("subsumptions", []):
+        a, b = pair[0], pair[1]
+        subs.setdefault(a, []).append(b)
+    for u in tout.get("unsatisfiable", []):
+        subs.setdefault(u, []).append("owl:Nothing")
+    return {"subsumptions": subs,
+            "inconsistent": not tout.get("consistent", True),
+            "dropped": 0}
+
+
+def _spawn_tableau(clauses_path, clauses):
+    """If this ontology is a live-disjunction, in-fragment (ALCH, no inverse /
+    number / nominals, nothing dropped/fenced) case, start the label-caching
+    hypertableau (`KM_TAB_CACHE`) as a racer and return `(proc, out_path)`, else
+    `None`. The tableau is single-threaded and tiny in memory, so racing it next
+    to the context engine costs ~one core and recovers the live-∀+⊔ family the
+    engine times out on. Both procedures are sound + complete on this fragment, so
+    the first to finish wins (see `_race_cb_vs_tableau`). Gated by `KM_TAB_RACE`."""
+    if not os.environ.get("KM_TAB_RACE"):
+        return None
+    tab_bin = os.environ.get("KM_TAB_BIN")
+    if not tab_bin or not os.path.exists(tab_bin):
+        return None
+    try:
+        cl = clauses if clauses is not None else \
+            json.load(open(clauses_path))["clauses"]
+    except Exception:
+        return None
+    # skip giants (TInput build + cache path are for small/medium disjunctive
+    # ontologies; the engine path owns the giants).
+    max_cl = int(os.environ.get("KM_TAB_MAX_CLAUSES", "20000"))
+    if len(cl) > max_cl:
+        return None
+    # no disjunctive head => deterministic => the engine handles it; adding the
+    # tableau buys nothing.
+    if not any(len(c.get("head", [])) >= 2 for c in cl):
+        return None
+    try:
+        import cb_to_ht
+        tin = cb_to_ht.convert(cl, None)
+    except Exception:
+        return None
+    # only race when the TInput FAITHFULLY represents the ontology: anything
+    # dropped/fenced or any inverse/number/nominal means the cache path could
+    # answer an under-specified problem, so defer entirely to the engine.
+    if tin.get("fenced") or tin.get("dropped") or tin.get("inverse") \
+            or tin.get("number") or tin.get("nominals"):
+        return None
+    env = dict(os.environ)
+    env["KM_TAB_CACHE"] = "1"
+    env.setdefault("KM_TAB_ORD", "0")
+    fd, out_path = tempfile.mkstemp(suffix=".tabrace.json")
+    try:
+        proc = subprocess.Popen(
+            [tab_bin], stdin=subprocess.PIPE, stdout=os.fdopen(fd, "w"),
+            stderr=subprocess.DEVNULL, text=True, env=env)
+    except Exception:
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        if os.path.exists(out_path):
+            os.unlink(out_path)
+        return None
+
+    def feed():
+        try:
+            json.dump(tin, proc.stdin)
+            proc.stdin.close()
+        except Exception:
+            pass
+
+    threading.Thread(target=feed, daemon=True).start()
+    return (proc, out_path)
+
+
+def _race_cb_vs_tableau(clauses_path, clauses, tab_proc, tab_out):
+    """Race `_run_engine_adaptive` (in a thread) against the already-started
+    label-caching hypertableau writing to `tab_out`. Both are sound + complete on
+    the recognised fragment, so the first finisher wins and the loser is killed.
+    Returns the engine-shaped `out` dict."""
+    done: dict = {}
+
+    def run_cb():
+        try:
+            done["proc"] = _run_engine_adaptive(clauses_path, clauses)
+        except BaseException as e:  # surfaced below if the tableau does not win
+            done["exc"] = e
+
+    th = threading.Thread(target=run_cb, daemon=True)
+    th.start()
+    try:
+        while True:
+            if tab_proc is not None:
+                rc = tab_proc.poll()
+                if rc is not None:
+                    won = None
+                    if rc == 0:
+                        try:
+                            with open(tab_out) as f:
+                                won = _tableau_to_out(json.load(f))
+                        except Exception:
+                            won = None
+                    if won is not None:
+                        _RACE_WON.set()
+                        for p in list(_LIVE_ENGINES):
+                            try:
+                                p.kill()
+                            except Exception:
+                                pass
+                        return won
+                    tab_proc = None  # tableau failed/fenced: the engine must answer
+            if not th.is_alive():
+                break
+            time.sleep(0.05)
+    finally:
+        if tab_proc is not None:
+            try:
+                tab_proc.kill()
+            except Exception:
+                pass
+        if os.path.exists(tab_out):
+            os.unlink(tab_out)
+    if "exc" in done:
+        raise done["exc"]
+    proc = done["proc"]
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr)
+    return json.loads(proc.stdout)
+
+
 def classify(ofn_path: str) -> dict:
     # Front-end: Rust `ofn` binary (fast; env-gated) or the Python normaliser.
     # Both yield the same clause set plus the output-mapping data (full IRI of
@@ -552,10 +690,17 @@ def classify(ofn_path: str) -> dict:
                     text=True, env=elc_env)
             try:
                 if elc_race is None:
-                    proc = _run_engine_adaptive(clauses_path, clauses)
-                    if proc.returncode != 0:
-                        raise RuntimeError(proc.stderr)
-                    out = json.loads(proc.stdout)
+                    # race the context engine against the label-caching tableau on
+                    # in-fragment live-disjunction ontologies (no-op otherwise).
+                    tab = _spawn_tableau(clauses_path, clauses)
+                    if tab is not None:
+                        out = _race_cb_vs_tableau(
+                            clauses_path, clauses, tab[0], tab[1])
+                    else:
+                        proc = _run_engine_adaptive(clauses_path, clauses)
+                        if proc.returncode != 0:
+                            raise RuntimeError(proc.stderr)
+                        out = json.loads(proc.stdout)
                 else:
                     # leave one core to the (single-threaded) certificate
                     # racer: with the engine on all cores it gets starved and
