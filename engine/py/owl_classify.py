@@ -471,9 +471,14 @@ def _spawn_tableau(clauses_path, clauses):
     env["KM_TAB_CACHE"] = "1"
     env.setdefault("KM_TAB_ORD", "0")
     fd, out_path = tempfile.mkstemp(suffix=".tabrace.json")
+    # Run the tableau at the lowest scheduling priority: it must consume only
+    # cycles the engine leaves idle (the disjunctive hot path is largely
+    # single-threaded, so cores sit idle), never preempting the engine and
+    # tipping an ontology the engine would have finished over the wall cap.
+    nice = ["nice", "-n", "19"] if os.environ.get("KM_TAB_RACE_NICE", "1") != "0" else []
     try:
         proc = subprocess.Popen(
-            [tab_bin], stdin=subprocess.PIPE, stdout=os.fdopen(fd, "w"),
+            nice + [tab_bin], stdin=subprocess.PIPE, stdout=os.fdopen(fd, "w"),
             stderr=subprocess.DEVNULL, text=True, env=env)
     except Exception:
         try:
@@ -495,11 +500,22 @@ def _spawn_tableau(clauses_path, clauses):
     return (proc, out_path)
 
 
-def _race_cb_vs_tableau(clauses_path, clauses, tab_proc, tab_out):
-    """Race `_run_engine_adaptive` (in a thread) against the already-started
-    label-caching hypertableau writing to `tab_out`. Both are sound + complete on
-    the recognised fragment, so the first finisher wins and the loser is killed.
-    Returns the engine-shaped `out` dict."""
+def _race_cb_vs_tableau(clauses_path, clauses):
+    """Race `_run_engine_adaptive` against a LAZILY-spawned label-caching
+    hypertableau. The race is engineered to *never* penalise the engine on the
+    ontologies it already handles:
+
+      * the engine starts first and keeps every core;
+      * the tableau is built (clause read + `cb_to_ht.convert`) and spawned off the
+        critical path in a background thread, and only after a grace delay
+        (`KM_TAB_RACE_DELAY`, default 30 s). An ontology the engine finishes within
+        the delay therefore pays ZERO tableau cost — no clause read, no conversion,
+        no extra process;
+      * once spawned, the tableau runs at `nice 19` (see `_spawn_tableau`), so it
+        consumes only cycles the engine leaves idle and cannot slow it down.
+
+    Both sides are sound + complete on the recognised fragment, so the first
+    finisher wins and the loser is killed. Returns the engine-shaped `out` dict."""
     done: dict = {}
 
     def run_cb():
@@ -510,8 +526,44 @@ def _race_cb_vs_tableau(clauses_path, clauses, tab_proc, tab_out):
 
     th = threading.Thread(target=run_cb, daemon=True)
     th.start()
+
+    # Lazily build + spawn the tableau racer, off the engine's critical path.
+    tab: dict = {}
+    cancel = threading.Event()
+    delay = float(os.environ.get("KM_TAB_RACE_DELAY", "30"))
+
+    def prep():
+        t0 = time.time()
+        while time.time() - t0 < delay:
+            if not th.is_alive() or cancel.is_set():
+                return  # engine already finished: never spend a cycle on the tableau
+            time.sleep(0.2)
+        if not th.is_alive() or cancel.is_set():
+            return
+        r = _spawn_tableau(clauses_path, clauses)
+        if r is None:
+            return
+        # if the engine won while we were converting/spawning, discard immediately
+        # so a stray tableau cannot leak into the next ontology in the chunk.
+        if cancel.is_set():
+            try:
+                r[0].kill()
+            except Exception:
+                pass
+            if os.path.exists(r[1]):
+                os.unlink(r[1])
+            return
+        tab["proc"], tab["out"] = r
+
+    prep_th = threading.Thread(target=prep, daemon=True)
+    prep_th.start()
+
+    tab_proc = None
+    tab_out = None
     try:
         while True:
+            if tab_proc is None and "proc" in tab:
+                tab_proc, tab_out = tab["proc"], tab["out"]
             if tab_proc is not None:
                 rc = tab_proc.poll()
                 if rc is not None:
@@ -535,13 +587,18 @@ def _race_cb_vs_tableau(clauses_path, clauses, tab_proc, tab_out):
                 break
             time.sleep(0.05)
     finally:
-        if tab_proc is not None:
+        # stop the prep thread and reap any tableau it spawned (now or racing us).
+        cancel.set()
+        prep_th.join(timeout=2.0)
+        tp = tab.get("proc")
+        if tp is not None:
             try:
-                tab_proc.kill()
+                tp.kill()
             except Exception:
                 pass
-        if os.path.exists(tab_out):
-            os.unlink(tab_out)
+        to = tab.get("out") or tab_out
+        if to and os.path.exists(to):
+            os.unlink(to)
     if "exc" in done:
         raise done["exc"]
     proc = done["proc"]
@@ -691,11 +748,11 @@ def classify(ofn_path: str) -> dict:
             try:
                 if elc_race is None:
                     # race the context engine against the label-caching tableau on
-                    # in-fragment live-disjunction ontologies (no-op otherwise).
-                    tab = _spawn_tableau(clauses_path, clauses)
-                    if tab is not None:
-                        out = _race_cb_vs_tableau(
-                            clauses_path, clauses, tab[0], tab[1])
+                    # in-fragment live-disjunction ontologies. The tableau is
+                    # spawned lazily/niced inside the racer, so this is free for
+                    # ontologies the engine finishes quickly (no-op otherwise).
+                    if os.environ.get("KM_TAB_RACE"):
+                        out = _race_cb_vs_tableau(clauses_path, clauses)
                     else:
                         proc = _run_engine_adaptive(clauses_path, clauses)
                         if proc.returncode != 0:
