@@ -4,6 +4,34 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Absorption portfolio deployed + validated: sequential plain/absorbed (545 → 554, gold-clean)
+
+`KM_ABSORB_PORTFOLIO` (in `owl_classify.py`, gated; enabled in the `kmpf` sbatch
+alongside `KM_ABSORB=1` and the `ofn-absorb` frontend) runs the absorbed clause
+set as the primary and, *sequentially* (one engine resident at a time, to respect
+the 20 GB memcap), probes the plain clause set first for `KM_ABSORB_PROBE_S` (8 s)
+to catch the absorption-cliff cases before committing to the absorbed run. A
+concurrent race is ruled out by memory: legitimate absorbed runs already reach
+~18 GB, so a second engine alongside blows the cap (the concurrent variant caused
+7 memouts in cancelled sweep 6338).
+
+Validation sweep **6524** (sequential portfolio) vs the 545 baseline:
+**554 ok / 34 timeout / 2 memout**, gold table **554 agree / 0 unsound /
+0 incomplete / 0 both** — fully gold-clean at corpus scale. **+10 recovered**
+(1340, 2397, 3905, 4205, 6212, 7775, 12698, 14450, 16303, **16444**); **−1
+regressed: ore_ont_6246**. Net **+9 (545 → 554)**.
+
+6246 is the lone miss and the gap to the intended +11/−0: its plain run is
+sub-second on an idle node but pathologically slow under contention, and the
+8 s wall-clock probe landed on a busy node (node007), missed, took the absorbed
+path, and blew to 18.6 GB / timeout. The probe is wall-clock so it is node-load
+sensitive; the clean fix is a cheap static plain/absorbed router (decide from the
+clause set, not from a timed race) rather than widening `KM_ABSORB_PROBE_S` (which
+would delay the genuinely absorbed-only onts). The 2 memouts (10860, 15491) were
+already not-ok in the baseline, not regressions. The portfolio is verdict-equal by
+construction (absorption is equisatisfiable; whichever clause set answers first is
+sound + complete).
+
 ### Frontend absorption: polarity-gated definitional clausification (+10 ORE coverage, 545 → 555)
 
 `KM_ABSORB` (default off) extends the clausifier's polarity pre-pass to And/Or/Not

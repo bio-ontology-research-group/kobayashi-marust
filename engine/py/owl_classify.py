@@ -293,7 +293,7 @@ def _race_adaptive_vs_elc(clauses_path, clauses, elc_proc, elc_out_path):
 
 
 def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=None,
-                time_cap_s=None, argv=None):
+                time_cap_s=None, argv=None, nice=False):
     """Run the context engine on the clause set, optionally forcing a thread
     count (`KM_THREADS`) and/or an RSS watchdog (GiB). The watchdog polls the
     engine's resident set and kills *only the engine child* (leaving this driver
@@ -312,6 +312,11 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
     if extra_env:
         env.update(extra_env)
     argv = argv or [str(engine_path())]
+    if nice:
+        # the niced racer (plain-clause engine in the absorption portfolio) must
+        # only consume cores the primary leaves idle, so it cannot slow the
+        # primary's hard-case win; it still finishes the fast cliff cases.
+        argv = ["nice", "-n", "19"] + argv
     stdin_f = open(clauses_path) if clauses_path is not None else subprocess.PIPE
     p = subprocess.Popen(argv, stdin=stdin_f if clauses_path is not None else subprocess.PIPE,
                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
@@ -369,7 +374,7 @@ def _run_engine(clauses_path, clauses, threads=None, rss_cap_gb=None, extra_env=
     return _EngineResult(p.returncode, out, err, oom["hit"], timed["hit"])
 
 
-def _run_engine_adaptive(clauses_path, clauses):
+def _run_engine_adaptive(clauses_path, clauses, nice=False, threads=None):
     """Parallel attempt under an RSS+time watchdog; on overflow/timeout/failure,
     fall back to a single-threaded legacy (per-`f` pay-as-you-go) run.
 
@@ -391,11 +396,13 @@ def _run_engine_adaptive(clauses_path, clauses):
     tcap = os.environ.get("KM_CENTRAL_TIME_CAP")
     tcap = float(tcap) if tcap else 190.0
     central_on = not os.environ.get("KM_NO_CENTRAL")
-    first = os.environ.get("KM_THREADS")  # None or e.g. "16"; first attempt as-is
+    # first attempt thread count: an explicit override (the absorption portfolio
+    # gives the plain racer a small dedicated count) else the env KM_THREADS.
+    first = str(threads) if threads is not None else os.environ.get("KM_THREADS")
     # Time-cap the first attempt only when the central strategy is active (so an
     # explicit KM_NO_CENTRAL run keeps the prior unbounded-time behaviour).
     proc = _run_engine(clauses_path, clauses, threads=first, rss_cap_gb=cap,
-                       time_cap_s=(tcap if central_on else None))
+                       time_cap_s=(tcap if central_on else None), nice=nice)
     if (proc.oom or proc.timed_out or proc.returncode != 0) \
             and not os.environ.get("KM_NO_RETRY"):
         if central_on:
@@ -405,10 +412,10 @@ def _run_engine_adaptive(clauses_path, clauses):
             # in time/memory (the remaining harness budget + external memcap bound
             # it).
             proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None,
-                               extra_env={"KM_NO_CENTRAL": "1"})
+                               extra_env={"KM_NO_CENTRAL": "1"}, nice=nice)
         elif first != "1":
             # Explicit legacy run: keep the original single-threaded retry.
-            proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None)
+            proc = _run_engine(clauses_path, clauses, threads=1, rss_cap_gb=None, nice=nice)
     return proc
 
 
@@ -607,6 +614,81 @@ def _race_cb_vs_tableau(clauses_path, clauses):
     return json.loads(proc.stdout)
 
 
+def _ofn_clauses_file(ofn_path: str, absorb: bool):
+    """Run `ofn` once with KM_ABSORB forced on/off and stream the clause set to a
+    temp file (engine stdin shape). Returns the path (caller unlinks) or None on
+    failure. Used by the absorption portfolio to obtain the *plain* clause set
+    alongside the (primary) absorbed one."""
+    env = dict(os.environ)
+    env["KM_ABSORB"] = "1" if absorb else "0"
+    fd, path = tempfile.mkstemp(suffix=".clauses.json")
+    os.close(fd)
+    try:
+        with open(path, "w") as cf:
+            proc = subprocess.run([ofn_bin(), ofn_path], stdout=cf,
+                                  stderr=subprocess.DEVNULL, env=env)
+        if proc.returncode != 0:
+            os.unlink(path)
+            return None
+        return path
+    except Exception:
+        if os.path.exists(path):
+            os.unlink(path)
+        return None
+
+
+def _race_absorbed_plain(ofn_path: str, absorbed_path):
+    """Absorption portfolio (KM_ABSORB_PORTFOLIO), run SEQUENTIALLY to respect the
+    job memcap. Absorption removes the unguarded excluded-middle disjunctions that
+    recover the live-disjunction family, but on rare ontologies (a DOLCE-style
+    covering+disjointness TBox, ore_ont_6246) the removed clauses perturb the
+    engine into an ~18 GB blow-up that the *plain* clause set classifies in <1 s.
+    A concurrent race is ruled out by memory: legitimate absorbed runs already use
+    up to ~18 GB (ore_ont_12698, 16444), so a second engine alongside blows the
+    20 GB cap. Instead:
+
+      1. run the PLAIN clause set first under a short time probe
+         (`KM_ABSORB_PROBE_S`, default 8 s) at full cores — it aims to catch the
+         fast plain cliff cases (6246 is ~0.35 s on an idle compute node) cheaply,
+         at low memory;
+      2. if it does not finish in the probe window, discard it and run the
+         ABSORBED set alone with the full time/RSS budget (it recovers the family).
+
+    Only one engine is ever resident, so memory never doubles. Both clause sets
+    are verdict-equal (absorption is equisatisfiable), so whichever answers is a
+    sound + complete classification. Returns the engine `out`.
+
+    CAVEAT (sweep 6524): the probe is wall-clock, so the plain win is node-load
+    sensitive. 6246's plain run is sub-second on an idle node but pathologically
+    slow under contention; when the probe lands on a busy node it misses, the
+    absorbed blow-up is taken, and 6246 times out. So the portfolio recovered the
+    +10 absorbed family gold-clean but did NOT save 6246 (net +9, not +11). Raise
+    `KM_ABSORB_PROBE_S` to widen the plain window at the cost of delaying the
+    genuinely absorbed-only onts; a cleaner fix is a cheap static plain/absorbed
+    router instead of a wall-clock probe."""
+    plain_path = _ofn_clauses_file(ofn_path, absorb=False)
+    try:
+        if plain_path is not None:
+            probe = float(os.environ.get("KM_ABSORB_PROBE_S", "8"))
+            cap = os.environ.get("KM_PAR_MEM_GB")
+            cap = float(cap) if cap else 18.0
+            # plain probe: single capped attempt (no adaptive retry — the probe is
+            # only meant to catch the fast plain wins, e.g. the 6246 cliff).
+            pp = _run_engine(plain_path, None, threads=os.environ.get("KM_THREADS"),
+                             rss_cap_gb=cap, time_cap_s=probe)
+            if pp.returncode == 0:
+                return json.loads(pp.stdout)
+        # plain absent or didn't finish fast: the absorbed set is the intended
+        # winner, run it alone with the full budget.
+        proc = _run_engine_adaptive(absorbed_path, None)
+        if proc.returncode != 0:
+            raise RuntimeError(proc.stderr)
+        return json.loads(proc.stdout)
+    finally:
+        if plain_path is not None and os.path.exists(plain_path):
+            os.unlink(plain_path)
+
+
 def classify(ofn_path: str) -> dict:
     # Front-end: Rust `ofn` binary (fast; env-gated) or the Python normaliser.
     # Both yield the same clause set plus the output-mapping data (full IRI of
@@ -747,11 +829,20 @@ def classify(ofn_path: str) -> dict:
                     text=True, env=elc_env)
             try:
                 if elc_race is None:
+                    # Absorption portfolio: when KM_ABSORB is on, the primary
+                    # clause set is absorbed; race it (full cores) against the
+                    # plain clause set (niced) so the rare absorption blow-up
+                    # (ore_ont_6246) is covered by the plain run. Needs the source
+                    # ofn_path (zero-copy gives only the absorbed clause file).
+                    if os.environ.get("KM_ABSORB_PORTFOLIO") \
+                            and os.environ.get("KM_ABSORB", "0") != "0" \
+                            and clauses_path is not None:
+                        out = _race_absorbed_plain(ofn_path, clauses_path)
                     # race the context engine against the label-caching tableau on
                     # in-fragment live-disjunction ontologies. The tableau is
                     # spawned lazily/niced inside the racer, so this is free for
                     # ontologies the engine finishes quickly (no-op otherwise).
-                    if os.environ.get("KM_TAB_RACE"):
+                    elif os.environ.get("KM_TAB_RACE"):
                         out = _race_cb_vs_tableau(clauses_path, clauses)
                     else:
                         proc = _run_engine_adaptive(clauses_path, clauses)
