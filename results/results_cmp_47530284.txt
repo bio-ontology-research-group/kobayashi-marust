@@ -1,0 +1,72 @@
+# ORE-2015 side-by-side reasoner comparison (IBEX job 47530284)
+# 584 gold onts (587 minus 3 giants absent on IBEX); ceiling 600s/56GB, 16 cores;
+# all reasoners run sequentially on the SAME node per ont. Mon Jun 15 01:39:19 PM +03 2026
+
+# ontologies with >=1 record: 584
+
+## Status counts (per reasoner)
+reasoner      ok  timeout  memout  error  unsup  parse  noresult
+konclude     582        0       0      2      0      0         0
+elk          584        0       0      0      0      0         0
+hermit       563       21       0      0      0      0         0
+km           558       26       0      0      0      0         0
+
+## Correctness vs Konclude-gold (sig.gz byte-identical)
+reasoner    MATCH  DIFF  NOSIG
+konclude      582     0      2
+elk           527    57      0
+hermit        555     8     21
+km            558     0     26
+
+## Solvable-within grid: count of onts with status=ok AND wall<=T AND peak<=M
+
+### konclude   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       431   521   539   543   543   543   543   543
+    4       431   523   547   563   564   564   564   564
+    8       431   523   547   571   579   579   579   579
+   16       431   523   547   571   581   581   582   582
+   32       431   523   547   571   581   581   582   582
+   56       431   523   547   571   581   581   582   582
+
+### elk   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       405   562   563   563   563   563   563   563
+    4       405   568   574   576   576   576   576   576
+    8       405   568   577   584   584   584   584   584
+   16       405   568   577   584   584   584   584   584
+   32       405   568   577   584   584   584   584   584
+   56       405   568   577   584   584   584   584   584
+
+### hermit   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       123   384   397   408   421   428   431   431
+    4       123   409   432   452   465   475   482   482
+    8       123   411   443   480   501   513   522   523
+   16       123   411   447   493   520   537   547   551
+   32       123   411   447   494   521   541   558   563
+   56       123   411   447   494   521   541   558   563
+
+### km   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       416   485   517   525   525   526   526   526
+    4       416   485   518   535   539   542   542   542
+    8       416   485   518   536   548   554   554   554
+   16       416   485   518   536   549   555   556   556
+   32       416   485   518   536   549   555   556   556
+   56       416   485   518   536   549   556   558   558
+
+## Wall (s) / Peak (MB) percentiles over OK runs
+reasoner    n_ok | wall_p50 wall_p90 wall_p99 wall_max | peak_p50 peak_p90 peak_max
+konclude     582 |   0.2541   5.0333  36.1949 154.2954 |    120.4   1227.2  12158.1
+elk          584 |   0.7364    2.243  12.3439  18.5347 |    234.9   1291.6   6759.1
+hermit       563 |   1.7114  41.3255 293.5144 561.4175 |    716.7   4793.7  29052.9
+km           558 |   0.3267   7.2632  80.2267  261.442 |     37.8    674.9  45166.7
+
+## Coverage relationships
+solved by >=1 reasoner: 584 / 584
+solved by NONE: 0: 
+konclude-only (no other reasoner solves): 0: 
+elk-only (no other reasoner solves): 0: 
+hermit-only (no other reasoner solves): 0: 
+km-only (no other reasoner solves): 0: 
