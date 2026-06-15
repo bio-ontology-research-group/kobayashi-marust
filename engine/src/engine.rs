@@ -2983,6 +2983,15 @@ impl Engine {
     /// classification be parallelised across disjoint concept chunks.
     pub fn run_for(&mut self, queries: &[Iri]) {
         let prof = std::env::var("KM_PROF").is_ok();
+        // KM_CTXSPLIT: one-shot diagnostic for the shared-successor parallel
+        // strategy. Splits wall time into root-seeding (per-query, parallelisable)
+        // vs the inter-context message fixpoint (builds the query-independent
+        // successor graph), and splits worked-off clauses into root vs successor
+        // contexts. Tells whether sharing the successor graph across query-parallel
+        // workers can recover the central-OOM cluster, or whether the bottleneck
+        // is the (sequential) successor build itself.
+        let ctxsplit = std::env::var("KM_CTXSPLIT").is_ok();
+        let t_start = std::time::Instant::now();
         // Ground (nominal root) context: eager when the ontology has ground
         // facts — a contradiction among the individuals alone (detected only
         // here) is global inconsistency, independent of any query.
@@ -3016,6 +3025,7 @@ impl Engine {
         let top = self.get_or_create_context(vec![], true, None);
         self.saturate(top);
         self.propagate(top);
+        let t_seed = t_start.elapsed();
         // Process inter-context messages to fixpoint, *batched*: drain the whole
         // pending set, apply each message (which saturates its target but does
         // not propagate), recording the touched contexts, then propagate each
@@ -3129,6 +3139,58 @@ impl Engine {
             for id in touched {
                 self.propagate(id);
             }
+        }
+        if ctxsplit {
+            let t_total = t_start.elapsed();
+            let t_fix = t_total.saturating_sub(t_seed);
+            // Per-class context + worked-off + pred-pool split.
+            let (mut qroot_n, mut other_root_n, mut succ_n) = (0usize, 0usize, 0usize);
+            let (mut qroot_wo, mut other_root_wo, mut succ_wo) = (0usize, 0usize, 0usize);
+            let (mut qroot_np, mut succ_np) = (0usize, 0usize);
+            // largest successor contexts (the shared-build hot spots)
+            let mut succ_sizes: Vec<usize> = Vec::new();
+            let mut top_succ: usize = 0;
+            for c in &self.contexts {
+                let wo = c.worked_off.len();
+                let np = c.neighbor_pred.len();
+                if c.root && c.query.is_some() {
+                    qroot_n += 1;
+                    qroot_wo += wo;
+                    qroot_np += np;
+                } else if c.root {
+                    other_root_n += 1;
+                    other_root_wo += wo;
+                } else {
+                    succ_n += 1;
+                    succ_wo += wo;
+                    succ_np += np;
+                    succ_sizes.push(wo);
+                    if wo > top_succ {
+                        top_succ = wo;
+                    }
+                }
+            }
+            succ_sizes.sort_unstable_by(|a, b| b.cmp(a));
+            let top10_succ_wo: usize = succ_sizes.iter().take(10).sum();
+            let total_wo = qroot_wo + other_root_wo + succ_wo;
+            eprintln!(
+                "KM_CTXSPLIT queries={} | t_seed_ms={} t_msgfix_ms={} t_total_ms={} \
+                 (seed={:.0}% fix={:.0}%) | succ_msgs={} pred_msgs={} guard={}",
+                queries.len(),
+                t_seed.as_millis(), t_fix.as_millis(), t_total.as_millis(),
+                100.0 * t_seed.as_secs_f64() / t_total.as_secs_f64().max(1e-9),
+                100.0 * t_fix.as_secs_f64() / t_total.as_secs_f64().max(1e-9),
+                nsucc_msgs, npred_msgs, guard
+            );
+            eprintln!(
+                "KM_CTXSPLIT contexts: qroot={} other_root={} succ={} | \
+                 worked_off: qroot={} ({:.0}%) other_root={} succ={} ({:.0}%) total={} | \
+                 succ neighbor_pred={} qroot neighbor_pred={} | top_succ_wo={} top10_succ_wo={}",
+                qroot_n, other_root_n, succ_n,
+                qroot_wo, 100.0 * qroot_wo as f64 / (total_wo.max(1)) as f64,
+                other_root_wo, succ_wo, 100.0 * succ_wo as f64 / (total_wo.max(1)) as f64,
+                total_wo, succ_np, qroot_np, top_succ, top10_succ_wo
+            );
         }
         if std::env::var("KM_DUMP_WO").is_ok() {
             let fmt_t = |t: Term| -> String {
