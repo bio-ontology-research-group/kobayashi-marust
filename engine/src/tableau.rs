@@ -1664,6 +1664,11 @@ struct SearchState {
     /// literal → indices of learned no-goods containing it (watch index).
     by_lit: HashMap<(Node, CLit), Vec<usize>>,
     cap: usize,
+    /// KM_TAB_MIN: drop a freshly learned no-good if an already-learned one is a
+    /// subset of it (the shorter no-good is strictly stronger and fires earlier),
+    /// keeping the no-good DB minimal so `check` prunes harder and the search
+    /// converges instead of drowning in redundant weak no-goods.
+    minimize: bool,
     n_learn: u64,
     n_hit: u64,
     n_skip: u64,
@@ -1686,6 +1691,7 @@ impl SearchState {
             learned: Vec::new(),
             by_lit: HashMap::new(),
             cap,
+            minimize: std::env::var_os("KM_TAB_MIN").is_some(),
             n_learn: 0,
             n_hit: 0,
             n_skip: 0,
@@ -1755,12 +1761,34 @@ impl SearchState {
                 }
             }
         }
-        self.n_learn += 1;
         ng.sort_unstable();
         ng.dedup();
         if ng.is_empty() {
             return;
         }
+        // Forward subsumption: if a shorter learned no-good is already a subset of
+        // `ng`, `ng` is redundant (the subset fires whenever `ng` would, sooner).
+        // Candidates share at least one literal with `ng`, so scan only the watch
+        // lists of `ng`'s literals.
+        if self.minimize && !self.learned.is_empty() {
+            let ngset: HashSet<(Node, CLit)> = ng.iter().copied().collect();
+            let mut seen: HashSet<usize> = HashSet::new();
+            for l in &ng {
+                if let Some(idxs) = self.by_lit.get(l) {
+                    for &i in idxs {
+                        if !seen.insert(i) {
+                            continue;
+                        }
+                        let other = &self.learned[i];
+                        if other.len() <= ng.len() && other.iter().all(|x| ngset.contains(x)) {
+                            self.n_skip += 1;
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        self.n_learn += 1;
         let idx = self.learned.len();
         for l in &ng {
             self.by_lit.entry(*l).or_default().push(idx);
