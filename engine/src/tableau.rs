@@ -2424,6 +2424,21 @@ struct CacheRun<'a> {
     n_branch: u64,
     n_learn: u64,
     n_nghit: u64,
+    /// Subsumption SAT cache (KM_TAB_SUBCACHE): SAT is downward-closed in
+    /// (base, imposed). A self-contained (unconditional) model for a MORE
+    /// constrained key K is also a model for any key whose base ⊆ K.base and
+    /// imposed ⊆ K.imposed: Horn closure is monotone (fewer inputs derive a
+    /// subset), and the dropped universals / ∃-obligations were all already
+    /// satisfied by K's model. So a seed subsumed by an unconditionally-SAT
+    /// anchor is SAT without search. Anchors (the search-proven unconditional
+    /// SAT keys, line 3280) are indexed by every base literal; a lookup scans the
+    /// watch list of the seed's first base literal (capped at `subcache_scan`)
+    /// for a base+imposed superset. Pure redundancy/caching — the SAT/UNSAT
+    /// verdicts and derived subsumptions are unchanged, so no Lean re-cert.
+    subcache: bool,
+    sat_keys: Vec<CKey>,
+    sat_watch: HashMap<CLit, Vec<usize>>,
+    subcache_scan: usize,
 }
 
 /// `a ⊆ b` for sorted, deduped slices.
@@ -2572,6 +2587,14 @@ impl<'a> CacheRun<'a> {
             n_branch: 0,
             n_learn: 0,
             n_nghit: 0,
+            subcache: env_on("KM_TAB_SUBCACHE", false),
+            sat_keys: Vec::new(),
+            sat_watch: HashMap::new(),
+            subcache_scan: std::env::var("KM_TAB_SUBCACHE_SCAN")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&u| u > 0)
+                .unwrap_or(512),
         }
     }
 
@@ -2616,6 +2639,48 @@ impl<'a> CacheRun<'a> {
                     if self.nogoods[i].iter().all(|x| set.contains(x)) {
                         return true;
                     }
+                }
+            }
+        }
+        false
+    }
+
+    /// Cache a search-proven *unconditional*-SAT key and index it as a
+    /// subsumption anchor (watched by every base literal) when KM_TAB_SUBCACHE
+    /// is on. Only unconditional SAT keys become anchors — a conditional model
+    /// (blocked on a stack ancestor) is not self-contained and would be unsound
+    /// to reuse by subsumption.
+    fn cache_sat(&mut self, key: &CKey) {
+        self.cache.insert(key.clone(), true);
+        if !self.subcache || key.base.is_empty() {
+            return;
+        }
+        let idx = self.sat_keys.len();
+        for &l in &key.base {
+            self.sat_watch.entry(l).or_default().push(idx);
+        }
+        self.sat_keys.push(key.clone());
+    }
+
+    /// `true` iff some indexed SAT anchor K has `key.base ⊆ K.base` and
+    /// `key.imposed ⊆ K.imposed` (so `key` is SAT by downward-closure, reusing
+    /// K's self-contained model). Scans the watch list of `key`'s first base
+    /// literal newest-first, capped at `subcache_scan`; a miss falls through to
+    /// the full search (still sound, only loses the shortcut).
+    fn subsumed_sat(&self, key: &CKey) -> bool {
+        if !self.subcache || key.base.is_empty() {
+            return false;
+        }
+        let l0 = key.base[0];
+        if let Some(idxs) = self.sat_watch.get(&l0) {
+            for &i in idxs.iter().rev().take(self.subcache_scan) {
+                let k = &self.sat_keys[i];
+                if key.base.len() <= k.base.len()
+                    && key.imposed.len() <= k.imposed.len()
+                    && subset_sorted(&key.base, &k.base)
+                    && subset_sorted(&key.imposed, &k.imposed)
+                {
+                    return true;
                 }
             }
         }
@@ -3190,6 +3255,12 @@ impl<'a> CacheRun<'a> {
             // conditional SAT, still valid (its blocker at level i is on the stack).
             return (true, i);
         }
+        // subsumption SAT cache: an unconditionally-SAT anchor with a superset
+        // base + imposed already proves this seed satisfiable (downward-closure).
+        if self.subsumed_sat(key) {
+            self.cache.insert(key.clone(), true);
+            return (true, usize::MAX);
+        }
         let mut set: HashSet<CLit> = key.base.iter().copied().collect();
         let mut cdep: HashMap<CLit, Vec<CLit>> = HashMap::with_capacity(key.base.len() * 2);
         for &l in &key.base {
@@ -3277,7 +3348,7 @@ impl<'a> CacheRun<'a> {
                 // above this seed — cache conditionally (valid while that ancestor
                 // is on the stack) and propagate the dependency upward.
                 if bl >= my_level {
-                    self.cache.insert(key.clone(), true);
+                    self.cache_sat(key);
                     (true, usize::MAX)
                 } else {
                     self.cond.insert(key.clone(), bl);
