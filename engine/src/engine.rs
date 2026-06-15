@@ -1003,8 +1003,12 @@ impl Engine {
             // Portfolio candidate flags (cached once; default OFF/inert).
             core_cap: std::env::var("KM_CORE_CAP").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
             seed_from_subset: std::env::var_os("KM_SEED_FROM_SUBSET").is_some(),
-            todo_units_first: std::env::var_os("KM_TODO_UNITS_FIRST").is_some(),
-            early_unsat: std::env::var_os("KM_EARLY_UNSAT").is_some(),
+            // Default ON (sound: units-first is confluent scheduling, early-unsat
+            // is a ⊥-subsumes-all short-circuit). Validated gold-clean + net
+            // faster + recovers 10908 across the full ORE corpus (IBEX 47526798,
+            // results/keep-improvements-20260615.txt). Opt out with KM_NO_*.
+            todo_units_first: !std::env::var_os("KM_NO_TODO_UNITS_FIRST").is_some(),
+            early_unsat: !std::env::var_os("KM_NO_EARLY_UNSAT").is_some(),
             shared_closure: None,
             shared_root_closure: None,
             equality: true,
