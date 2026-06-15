@@ -2001,6 +2001,14 @@ impl Tableau {
         let mut next_marker: C = maxc;
         let mut markers: HashMap<(R, CLit), C> = HashMap::new();
         let dbg = std::env::var_os("KM_TAB_STATS").is_some();
+        // lazy-unfolding absorption (KM_TAB_LAZY): a node-local clause
+        // `body → ⋁head` is logically `body ⊓ ⋀{¬l : l∈head, l negative} → ⋁{pos head}`.
+        // Moving the negative head literals into the body GUARDS the disjunction so
+        // it only fires when the guard holds (lazy), and collapses it to a Horn
+        // rule (1 positive disjunct) or a clash (0) where possible — eliminating the
+        // always-active covering disjunctions that drive the ∀+⊔ width explosion.
+        // Sound (the clause is logically unchanged); off by default.
+        let lazy = std::env::var_os("KM_TAB_LAZY").is_some();
         macro_rules! fence {
             ($ci:expr, $why:expr) => {{
                 if dbg {
@@ -2010,6 +2018,34 @@ impl Tableau {
                     );
                 }
                 return None;
+            }};
+        }
+        // route a node-local (body → ⋁head) clause into horn / clash / disj,
+        // applying lazy absorption first when enabled.
+        macro_rules! push_node_clause {
+            ($body:expr, $head:expr) => {{
+                let mut b: Vec<CLit> = $body;
+                let mut h: Vec<CLit> = $head;
+                if lazy {
+                    let mut i = 0;
+                    while i < h.len() {
+                        if h[i].neg {
+                            b.push(h[i].complement());
+                            h.swap_remove(i);
+                        } else {
+                            i += 1;
+                        }
+                    }
+                    b.sort_unstable();
+                    b.dedup();
+                }
+                if h.is_empty() {
+                    node_clash.push(b);
+                } else if h.len() == 1 {
+                    node_horn.push((b, h[0]));
+                } else {
+                    node_disj.push((b, h));
+                }
             }};
         }
 
@@ -2085,13 +2121,7 @@ impl Tableau {
                     if !by.is_empty() || !hy.is_empty() {
                         fence!(ci, "node-local clause with y-atoms but no role");
                     }
-                    if cl.head.is_empty() {
-                        node_clash.push(bx);
-                    } else if hx.len() == 1 {
-                        node_horn.push((bx, hx[0]));
-                    } else {
-                        node_disj.push((bx, hx));
-                    }
+                    push_node_clause!(bx, hx);
                 }
                 Some(r) => {
                     if !hx.is_empty() && !hy.is_empty() {
@@ -2132,7 +2162,9 @@ impl Tableau {
                             };
                             let mut disjuncts = hx;
                             disjuncts.push(CLit::pos(m));
-                            node_disj.push((bx, disjuncts));
+                            // marker is positive, so absorption can at most collapse
+                            // this to `bx ⊓ ⋀¬hx → marker` (Horn), never a clash.
+                            push_node_clause!(bx, disjuncts);
                         }
                     } else {
                         // universal `xbody(x) ∧ r ∧ ybody(y) → hy(y)` (hy empty = ⊥).
@@ -2239,6 +2271,51 @@ impl Tableau {
     /// `consistent([])`, each `{A}` satisfiability, and every `{A,¬B}`
     /// confirmation test reuse the same cache of ∃-successor satisfiability).
     /// Same output contract as `classify`.
+    /// Told subsumers (KM_TAB_TOLD): subsumptions readable straight off the
+    /// clause set without search — a unary Horn rule `A(x) → B(x)`
+    /// (node_horn body `[A⁺]`, head `B⁺`) IS the axiom `A ⊑ B`, and a fact
+    /// `⊤ → T⁺` (horn_empty) is `⊤ ⊑ T`. Transitively closed over all concepts
+    /// (intermediates may be unnamed), emitting only named (a,b) pairs. These are
+    /// genuine subsumptions, so the classifier can record them WITHOUT a sat-test
+    /// (and they are a subset of the model-derived candidates, so the result is
+    /// unchanged — just fewer confirmation queries).
+    fn told_closure(&self, prog: &CProg, named: &HashSet<C>) -> HashMap<C, HashSet<C>> {
+        // direct told edges A -> B.
+        let mut succ: HashMap<C, Vec<C>> = HashMap::new();
+        for (body, head) in &prog.node_horn {
+            if body.len() == 1 && !body[0].neg && !head.neg && body[0].c != head.c {
+                succ.entry(body[0].c).or_default().push(head.c);
+            }
+        }
+        // ⊤ ⊑ T tops: a virtual edge from every concept to each top.
+        let tops: Vec<C> = prog.horn_empty.iter().filter(|l| !l.neg).map(|l| l.c).collect();
+        let mut out: HashMap<C, HashSet<C>> = HashMap::new();
+        for &a in named {
+            let mut seen: HashSet<C> = HashSet::new();
+            let mut stack = vec![a];
+            while let Some(x) = stack.pop() {
+                if let Some(ns) = succ.get(&x) {
+                    for &b in ns {
+                        if seen.insert(b) {
+                            stack.push(b);
+                        }
+                    }
+                }
+            }
+            let mut reach: HashSet<C> = seen.into_iter().filter(|b| named.contains(b)).collect();
+            for &t in &tops {
+                if t != a && named.contains(&t) {
+                    reach.insert(t);
+                }
+            }
+            reach.remove(&a);
+            if !reach.is_empty() {
+                out.insert(a, reach);
+            }
+        }
+        out
+    }
+
     fn classify_cached(&self, named: &[C], prog: &CProg) -> (bool, Vec<C>, Vec<(C, C)>) {
         with_big_stack(|| {
             let mut run = CacheRun::new(self, prog);
@@ -2283,14 +2360,30 @@ impl Tableau {
                     }
                 }
             }
+            let told = if std::env::var_os("KM_TAB_TOLD").is_some() {
+                self.told_closure(prog, &named_set)
+            } else {
+                HashMap::new()
+            };
+            let mut n_told = 0usize;
             let mut subs = Vec::new();
             for (a, sup) in &cand {
+                let told_a = told.get(a);
                 for &b in sup {
+                    // told subsumer: A ⊑ B is read off the clause set, no sat-test.
+                    if told_a.map_or(false, |s| s.contains(&b)) {
+                        subs.push((*a, b));
+                        n_told += 1;
+                        continue;
+                    }
                     if !run.sat_seed(&CKey::canon(vec![CLit::pos(*a), CLit::neg(b)], Vec::new())).0
                     {
                         subs.push((*a, b));
                     }
                 }
+            }
+            if run.stats {
+                eprintln!("KM_TAB_STATS cache: told_subsumers_used={}", n_told);
             }
             if run.stats {
                 eprintln!(
@@ -2447,6 +2540,16 @@ struct CacheRun<'a> {
     /// Pure search-order/pruning over the same complete branch set — verdicts
     /// unchanged, no Lean re-cert. Gated off by default.
     sembr: bool,
+    /// Global structural node-type caching (KM_TAB_TYPECACHE): the exact-key
+    /// `cache` is keyed by a seed's PRE-closure (base, imposed). But a node's
+    /// satisfiability depends only on its STRUCTURAL TYPE — the Horn-CLOSED
+    /// concept set `curv` plus the universals `imposed` on it (and the global
+    /// program). Two seeds with different bases that close to the same
+    /// (curv, imposed) are the same subproblem, so they share the verdict. This
+    /// collapses distinct seeds onto one type — a stronger generalisation than
+    /// the pre-close key. Unconditional verdicts only (mirrors `cache`).
+    typecache: bool,
+    type_cache: HashMap<(Vec<CLit>, Vec<(Vec<CLit>, Vec<CLit>)>), bool>,
 }
 
 /// `a ⊆ b` for sorted, deduped slices.
@@ -2604,6 +2707,8 @@ impl<'a> CacheRun<'a> {
                 .filter(|&u| u > 0)
                 .unwrap_or(512),
             sembr: env_on("KM_TAB_SEMBR", false),
+            typecache: env_on("KM_TAB_TYPECACHE", false),
+            type_cache: HashMap::new(),
         }
     }
 
@@ -3289,6 +3394,19 @@ impl<'a> CacheRun<'a> {
         }
         let mut curv: Vec<CLit> = set.iter().copied().collect();
         curv.sort_unstable();
+        // global structural node-type cache: a verdict for this CLOSED type
+        // (curv + imposed) is unconditional and transfers to any seed that closes
+        // to it. Captured `tkey` is re-used to store the verdict below.
+        let tkey = if self.typecache {
+            let k = (curv.clone(), key.imposed.clone());
+            if let Some(&s) = self.type_cache.get(&k) {
+                self.cache.insert(key.clone(), s);
+                return (s, usize::MAX);
+            }
+            Some(k)
+        } else {
+            None
+        };
         // this seed's stack level (index it will occupy once pushed).
         let my_level = self.stack.len();
         if let Some(i) = self.blocked(&curv, &key.imposed) {
@@ -3358,8 +3476,13 @@ impl<'a> CacheRun<'a> {
                 // is on the stack) and propagate the dependency upward.
                 if bl >= my_level {
                     self.cache_sat(key);
+                    if let Some(k) = tkey {
+                        self.type_cache.insert(k, true);
+                    }
                     (true, usize::MAX)
                 } else {
+                    // conditional (depends on an ancestor's model): NOT a
+                    // self-contained type verdict, so it must not enter type_cache.
                     self.cond.insert(key.clone(), bl);
                     self.cond_at[bl].push(key.clone());
                     (true, bl)
@@ -3367,6 +3490,9 @@ impl<'a> CacheRun<'a> {
             }
             Err(SearchErr::Conflict(conf, tainted)) => {
                 self.cache.insert(key.clone(), false);
+                if let Some(k) = tkey {
+                    self.type_cache.insert(k, false);
+                }
                 if !tainted {
                     self.learn(&conf);
                 }
