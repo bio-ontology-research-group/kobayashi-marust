@@ -4,6 +4,40 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Cache-tableau convergence control — Glucose dynamic restart + no-good DB reduction (KM_TAB_CONV)
+
+Targets the live `∀ + ⊔` disjunction family (5303, 1603, 12141, 10702, 9540, …):
+onts the cache tableau reaches but where the DPLL search *oscillates* and never
+converges (5303: ~8 M dpll steps, depth 483, still times out). The machinery
+that should help — Luby restarts, VSIDS, phase saving — already existed but was
+gated off and "recovered 0", because two things were missing:
+
+1. **Unbounded no-good store.** `learn_cap` defaulted to 2 000 000 and
+   `check_nogood` runs on *every* DPLL step over the watch lists, so the store
+   itself made each step super-linear. Added **size/quality-based DB reduction**
+   (`maybe_reduce`): once the store passes `reduce_at` (30 000), keep all "glue"
+   (size ≤ 2) lemmas plus the shortest half and rebuild the watch index. Sound —
+   a no-good is an entailed lemma, so dropping it only loses pruning.
+2. **Pure-Luby restarts fight the deep ∃-chain cache.** A fixed schedule
+   restarts mid-chain and discards the conditional pseudo-model cache, forcing a
+   full re-walk. Replaced with a **Glucose dynamic restart** (`note_conflict`):
+   restart when the *recent* conflict quality (proxied by reason size, smaller =
+   better) is materially worse than the global average — the oscillation
+   signature — **unless the search is currently deep** (the blocking rule: it is
+   building a large model, so do not throw the deep chain's cache away just as it
+   converges). Driven off *every* resolved conflict, tainted or not, so it
+   engages on the imposed-disjunction (∀+⊔) family where global learning rarely
+   fires; VSIDS activity + phase saving still accumulate across restarts to
+   redirect the fresh search.
+
+`KM_TAB_CONV=1` bundles the stack (VSIDS + phase + dynamic restart + reduction);
+individual flags (`KM_TAB_DYNRESTART`, `KM_TAB_REDUCE`, `KM_TAB_VSIDS`,
+`KM_TAB_PHASE`, tunables `KM_TAB_DYN_MARGIN`/`_BLOCK`/`_WIN`, `KM_TAB_REDUCE_AT`)
+still override. All of it is pure search-order / redundant-lemma management — it
+cannot change the SAT/UNSAT verdict — so no Lean re-cert. Reached in the pipeline
+via the existing `KM_TAB_RACE` cache racer (which inherits the job env). Default
+OFF pending the IBEX A/B (disjbase vs disjconv, jobs 47529537/8).
+
 ### Auto-route KM_SEQ_ORDER by DISJ_INT — self-selecting Sequoia ordering (+6, net faster, gold-clean)
 
 Commit `9aee987`. Rather than ship `KM_SEQ_ORDER` default-on (which taxes

@@ -2387,6 +2387,36 @@ struct CacheRun<'a> {
     conflicts_since: u64, // conflicts since the last restart
     restart_limit: u64,
     restart_pending: bool,
+    // --- Convergence control (KM_TAB_CONV / KM_TAB_DYNRESTART / KM_TAB_REDUCE):
+    //     Glucose-style adaptive restart + no-good database reduction. All are
+    //     pure search-order / redundant-lemma management (a learned no-good is
+    //     an entailed lemma, so dropping it only loses pruning, never
+    //     soundness; restart order cannot change the SAT/UNSAT verdict), so
+    //     none of this needs Lean re-cert.
+    /// Dynamic (Glucose) restart: restart when the *recent* learned-no-good
+    /// quality (proxied by size — shorter prunes more) is worse than the global
+    /// average, i.e. the search has stopped producing strong lemmas and is
+    /// oscillating. A "blocking" rule suppresses the restart when the search is
+    /// deep (near a model) so it does not throw away a deep ∃-chain's
+    /// conditional cache just as it converges.
+    dyn_restart: bool,
+    qwin: std::collections::VecDeque<u32>, // recent no-good sizes (bounded)
+    qwin_sum: u64,
+    qwin_cap: usize,
+    qglob_sum: u64,
+    qglob_cnt: u64,
+    dyn_margin: f64,  // restart when recent_avg > dyn_margin * global_avg
+    dwin: std::collections::VecDeque<u32>, // recent search depths (bounded)
+    dwin_sum: u64,
+    block_factor: f64, // suppress restart while depth > block_factor * avg_depth
+    /// No-good DB reduction: when the store exceeds `reduce_at`, drop the
+    /// longest (lowest-quality) half, always keeping size <= 2 "glue" lemmas,
+    /// then rebuild the watch index. Keeps `check_nogood` (run every DPLL step)
+    /// cheap and focused.
+    reduce: bool,
+    reduce_at: usize,
+    n_restart: u64,
+    n_reduce: u64,
     stats: bool,
     n_seed: u64,
     n_dpll: u64,
@@ -2444,6 +2474,11 @@ enum SearchErr {
 
 impl<'a> CacheRun<'a> {
     fn new(tab: &'a Tableau, prog: &'a CProg) -> Self {
+        // KM_TAB_CONV bundles the convergence stack (VSIDS + phase saving +
+        // dynamic restart + no-good reduction) — the combination that closes
+        // the oscillating ∀+⊔ family. Individual flags still override.
+        let conv = std::env::var_os("KM_TAB_CONV").is_some();
+        let env_on = |k: &str, d: bool| std::env::var(k).map(|s| s != "0").unwrap_or(d);
         CacheRun {
             tab,
             prog,
@@ -2470,8 +2505,8 @@ impl<'a> CacheRun<'a> {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(200_000),
             eager: std::env::var("KM_TAB_EAGER").map(|s| s != "0").unwrap_or(true),
-            vsids: std::env::var("KM_TAB_VSIDS").map(|s| s != "0").unwrap_or(false),
-            activity: if std::env::var("KM_TAB_VSIDS").map(|s| s != "0").unwrap_or(false) {
+            vsids: env_on("KM_TAB_VSIDS", conv),
+            activity: if env_on("KM_TAB_VSIDS", conv) {
                 vec![0.0; prog.n_concepts as usize]
             } else {
                 Vec::new()
@@ -2481,13 +2516,13 @@ impl<'a> CacheRun<'a> {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0.95),
-            phase_save: std::env::var("KM_TAB_PHASE").map(|s| s != "0").unwrap_or(false),
-            saved: if std::env::var("KM_TAB_PHASE").map(|s| s != "0").unwrap_or(false) {
+            phase_save: env_on("KM_TAB_PHASE", conv),
+            saved: if env_on("KM_TAB_PHASE", conv) {
                 vec![0i8; prog.n_concepts as usize]
             } else {
                 Vec::new()
             },
-            restart: std::env::var("KM_TAB_RESTART").map(|s| s != "0").unwrap_or(false),
+            restart: env_on("KM_TAB_RESTART", false),
             restart_unit: std::env::var("KM_TAB_RESTART_UNIT")
                 .ok()
                 .and_then(|s| s.parse().ok())
@@ -2502,6 +2537,34 @@ impl<'a> CacheRun<'a> {
                 .filter(|&u| u > 0)
                 .unwrap_or(100),
             restart_pending: false,
+            dyn_restart: env_on("KM_TAB_DYNRESTART", conv),
+            qwin: std::collections::VecDeque::new(),
+            qwin_sum: 0,
+            qwin_cap: std::env::var("KM_TAB_DYN_WIN")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&u| u > 0)
+                .unwrap_or(50),
+            qglob_sum: 0,
+            qglob_cnt: 0,
+            dyn_margin: std::env::var("KM_TAB_DYN_MARGIN")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0.8),
+            dwin: std::collections::VecDeque::new(),
+            dwin_sum: 0,
+            block_factor: std::env::var("KM_TAB_DYN_BLOCK")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1.4),
+            reduce: env_on("KM_TAB_REDUCE", conv),
+            reduce_at: std::env::var("KM_TAB_REDUCE_AT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&u| u > 0)
+                .unwrap_or(30_000),
+            n_restart: 0,
+            n_reduce: 0,
             stats: std::env::var_os("KM_TAB_STATS").is_some(),
             n_seed: 0,
             n_dpll: 0,
@@ -2526,6 +2589,7 @@ impl<'a> CacheRun<'a> {
         self.ng_watch.entry(ng[0]).or_default().push(idx);
         self.nogoods.push(ng);
         self.n_learn += 1;
+        self.maybe_reduce();
     }
 
     /// If `set` contains a learned no-good, return its clash reason (for
@@ -2866,15 +2930,93 @@ impl<'a> CacheRun<'a> {
         }
         self.restart_limit = self.luby_v.saturating_mul(self.restart_unit).max(1);
     }
-    /// Count a resolved node conflict; arm a restart when the budget is reached.
-    fn note_conflict(&mut self) {
-        if !self.restart {
+    /// Count a resolved conflict (`conf_len` = size of its reason); arm a restart.
+    /// Two policies, composable:
+    ///   - static Luby (KM_TAB_RESTART): restart once `conflicts_since` hits the
+    ///     Luby threshold.
+    ///   - dynamic Glucose (KM_TAB_DYNRESTART): restart once the *recent* conflict
+    ///     quality (size, smaller = better) is materially worse than the global
+    ///     average — the signature of an oscillating search — unless the search is
+    ///     currently deep (the blocking rule: it is building a large model, so do
+    ///     not discard the deep ∃-chain's conditional cache).
+    /// Driven off every resolved conflict (tainted or not) so it engages on the
+    /// imposed-disjunction (∀+⊔) family where global learning rarely fires.
+    fn note_conflict(&mut self, conf_len: usize) {
+        if !(self.restart || self.dyn_restart) {
             return;
         }
         self.conflicts_since += 1;
-        if self.conflicts_since >= self.restart_limit {
-            self.restart_pending = true;
+        if self.dyn_restart {
+            self.register_quality(conf_len as u32);
+            if self.qwin.len() >= self.qwin_cap && self.qglob_cnt > 0 {
+                let recent_avg = self.qwin_sum as f64 / self.qwin.len() as f64;
+                let global_avg = self.qglob_sum as f64 / self.qglob_cnt as f64;
+                let deep = if !self.dwin.is_empty() {
+                    let avg_depth = self.dwin_sum as f64 / self.dwin.len() as f64;
+                    (self.stack.len() as f64) > self.block_factor * avg_depth
+                } else {
+                    false
+                };
+                if !deep && recent_avg * self.dyn_margin > global_avg {
+                    self.restart_pending = true;
+                    self.n_restart += 1;
+                    self.qwin.clear(); // fresh window: do not immediately re-trigger
+                    self.qwin_sum = 0;
+                }
+            }
         }
+        if self.restart && self.conflicts_since >= self.restart_limit {
+            self.restart_pending = true;
+            self.n_restart += 1;
+        }
+    }
+    /// Feed one resolved-conflict size (and the current depth) into the rolling
+    /// Glucose windows + the all-time averages.
+    fn register_quality(&mut self, sz: u32) {
+        self.qglob_sum += sz as u64;
+        self.qglob_cnt += 1;
+        self.qwin.push_back(sz);
+        self.qwin_sum += sz as u64;
+        if self.qwin.len() > self.qwin_cap {
+            if let Some(old) = self.qwin.pop_front() {
+                self.qwin_sum -= old as u64;
+            }
+        }
+        let d = self.stack.len() as u32;
+        self.dwin.push_back(d);
+        self.dwin_sum += d as u64;
+        if self.dwin.len() > self.qwin_cap {
+            if let Some(old) = self.dwin.pop_front() {
+                self.dwin_sum -= old as u64;
+            }
+        }
+    }
+    /// No-good DB reduction: when the store exceeds `reduce_at`, keep all "glue"
+    /// (size <= 2) lemmas plus the shortest half, and rebuild the watch index.
+    /// Sound (no-goods are entailed lemmas; dropping them only loses pruning) and
+    /// the point of it: `check_nogood` runs on every DPLL step over the watch
+    /// lists, so an unbounded store turns each step super-linear.
+    fn maybe_reduce(&mut self) {
+        if !self.reduce || self.nogoods.len() < self.reduce_at {
+            return;
+        }
+        let mut idx: Vec<usize> = (0..self.nogoods.len()).collect();
+        idx.sort_by_key(|&i| self.nogoods[i].len());
+        let keep_n = (self.reduce_at / 2).max(1);
+        let mut keep: Vec<Vec<CLit>> = Vec::with_capacity(keep_n + 16);
+        for (rank, &i) in idx.iter().enumerate() {
+            if self.nogoods[i].len() <= 2 || rank < keep_n {
+                keep.push(std::mem::take(&mut self.nogoods[i]));
+            }
+        }
+        self.nogoods = keep;
+        self.ng_watch.clear();
+        for (i, ng) in self.nogoods.iter().enumerate() {
+            if let Some(&l0) = ng.first() {
+                self.ng_watch.entry(l0).or_default().push(i);
+            }
+        }
+        self.n_reduce += 1;
     }
     /// Phase saving: remember the polarity of a disjunct that completed a model.
     fn save_phase(&mut self, d: CLit) {
@@ -3188,9 +3330,10 @@ impl<'a> CacheRun<'a> {
         }
         if self.stats && self.n_dpll % self.hb == 0 {
             eprintln!(
-                "KM_TAB_STATS cache: dpll={} branches={} seeds={} cache={} depth={}/{} nogoods={} nghit={}",
+                "KM_TAB_STATS cache: dpll={} branches={} seeds={} cache={} depth={}/{} nogoods={} nghit={} restarts={} reduces={}",
                 self.n_dpll, self.n_branch, self.n_seed, self.cache.len(),
-                self.stack.len(), self.max_depth, self.nogoods.len(), self.n_nghit
+                self.stack.len(), self.max_depth, self.nogoods.len(), self.n_nghit,
+                self.n_restart, self.n_reduce
             );
         }
         // label-based pruning: a learned no-good already in this label ⇒ unsat.
@@ -3213,7 +3356,7 @@ impl<'a> CacheRun<'a> {
                 block_min = block_min.min(bl);
                 if !sat {
                     let (c, t) = self.succ_conflict(set, cdep, tlits, r0, fil);
-                    self.note_conflict();
+                    self.note_conflict(c.len());
                     return Err(SearchErr::Conflict(c, t));
                 }
             }
@@ -3230,7 +3373,7 @@ impl<'a> CacheRun<'a> {
                         block_min = block_min.min(bl);
                         if !sat {
                             let (c, t) = self.succ_conflict(set, cdep, tlits, r0, fil);
-                            self.note_conflict();
+                            self.note_conflict(c.len());
                             return Err(SearchErr::Conflict(c, t));
                         }
                     }
@@ -3304,7 +3447,7 @@ impl<'a> CacheRun<'a> {
             if conf.binary_search(&d).is_err() {
                 // `d` is irrelevant to this clash — every sibling clashes the same
                 // way. Backjump past the whole disjunction.
-                self.note_conflict();
+                self.note_conflict(conf.len());
                 return Err(SearchErr::Conflict(conf, branch_taint));
             }
             node_tainted |= ctaint;
@@ -3322,7 +3465,7 @@ impl<'a> CacheRun<'a> {
         }
         // VSIDS: age activity once per resolved node conflict.
         self.act_decay_step();
-        self.note_conflict();
+        self.note_conflict(accum.len());
         Err(SearchErr::Conflict(accum, node_tainted))
     }
 
