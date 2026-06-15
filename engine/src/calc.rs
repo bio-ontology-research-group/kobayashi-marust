@@ -498,10 +498,41 @@ fn ordered_all() -> bool {
 ///     everything else ordered above), which is published-complete for SROIQ
 ///     classification.  Unlike `KM_ORDERED_ALL` it never orders named concepts
 ///     against each other, so it does not regress 13383.
+/// Effective seq-order state. `2` = undecided (router has not run yet); `1`/`0`
+/// = on/off as decided by the auto-router or an env override. Stored as a
+/// process-global atomic so the parallel workers (set up after the router runs
+/// in `Reasoner::saturate`) all observe the same value with a single relaxed
+/// load in the `pred_lteq` hot path.
+static SEQ_ORDER: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(2);
+
+/// Auto-route `KM_SEQ_ORDER`: enable the Sequoia definer ordering iff the
+/// ontology has a disjunctive head containing an internal definer (the
+/// `DISJ_INT >= 1` rule — the only onts that benefit; pure-Horn / named-only-
+/// disjunction onts pay the `is_internal` overhead with no gain, so they route
+/// off). Validated across the full ORE corpus (results/seqorder-routing-*.txt):
+/// keeps all +6 recoveries and the meaningful speedups, avoids 27/28 slowdowns.
+/// Both orderings are complete (named concepts stay incomparable either way), so
+/// this only selects the faster validated regime per ontology. Env still wins:
+/// `KM_SEQ_ORDER` forces on, `KM_NO_SEQ_ORDER` forces off.
+pub fn set_seq_order_auto(on: bool) {
+    let eff = if std::env::var_os("KM_SEQ_ORDER").is_some() {
+        true
+    } else if std::env::var_os("KM_NO_SEQ_ORDER").is_some() {
+        false
+    } else {
+        on
+    };
+    SEQ_ORDER.store(if eff { 1 } else { 0 }, std::sync::atomic::Ordering::Relaxed);
+}
+
 fn seq_order() -> bool {
-    use std::sync::OnceLock;
-    static FLAG: OnceLock<bool> = OnceLock::new();
-    *FLAG.get_or_init(|| std::env::var_os("KM_SEQ_ORDER").is_some())
+    match SEQ_ORDER.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => true,
+        0 => false,
+        // Router has not run (e.g. a code path that orders before saturation):
+        // fall back to the explicit env flag, preserving the prior behaviour.
+        _ => std::env::var_os("KM_SEQ_ORDER").is_some(),
+    }
 }
 
 thread_local! {

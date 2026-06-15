@@ -378,7 +378,32 @@ impl Reasoner {
         }
     }
 
+    /// `DISJ_INT >= 1`: does any clause head hold a disjunction (>= 2 concept
+    /// literals) in which at least one concept is an internal (normaliser-
+    /// introduced) definer? This is the routing feature for `KM_SEQ_ORDER`:
+    /// only such ontologies benefit from the Sequoia definer ordering (see
+    /// `calc::set_seq_order_auto`).
+    fn has_internal_definer_disjunction(&self) -> bool {
+        self.clauses0.iter().any(|c| {
+            let mut nconc = 0usize;
+            let mut has_internal = false;
+            for l in &c.head {
+                if let Lit::P(Pred::Concept { iri, .. }) = l {
+                    nconc += 1;
+                    if self.sig0.is_internal(*iri) {
+                        has_internal = true;
+                    }
+                }
+            }
+            nconc >= 2 && has_internal
+        })
+    }
+
     pub fn saturate(&mut self) {
+        // Auto-route the Sequoia definer ordering before any saturation (the
+        // parallel workers below all read the resulting global). Env overrides
+        // win inside `set_seq_order_auto`.
+        set_seq_order_auto(self.has_internal_definer_disjunction());
         let mut queries = self.build_engine().named_queries();
         // KM_QUERIES: classify only the named subjects listed (comma-
         // separated internal names) — the certified-EL hybrid's residue path:
