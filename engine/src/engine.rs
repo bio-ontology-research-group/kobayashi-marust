@@ -17,8 +17,19 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use smallvec::SmallVec;
+
 use crate::calc::*;
 use crate::clause::*;
+
+/// Posting list for the per-context head indexes.  Most head keys in a context
+/// resolve to a single clause id (unit heads dominate), so inlining up to two
+/// ids avoids a heap allocation (and its allocator rounding) per key.  On the
+/// big throughput onts the head indexes are the #1 context-memory category
+/// (≈37-50% of RSS), almost all of it Vec-header + heap-alloc overhead for
+/// singleton postings; SmallVec collapses that.  Output-identical: a posting is
+/// the same id sequence, stored inline below the spill threshold.
+type Posting = SmallVec<[u32; 2]>;
 
 thread_local! {
     /// Hyper-call counter (only read under KM_STATS). Thread-local because
@@ -337,16 +348,19 @@ impl Ontology {
     /// Candidate ontology clauses that may resolve with a context-clause head
     /// predicate `max` (i.e. have a body atom that can unify with `max`).
     /// Over-approximates by predicate iri; `can_unify` filters precisely.
-    fn clauses_cand(&self, max: &Pred) -> Vec<usize> {
-        let mut v = match *max {
-            Pred::Concept { iri, .. } => {
-                self.concept_body_any.get(&iri).cloned().unwrap_or_default()
-            }
-            Pred::Role { iri, .. } => self.role_body_any.get(&iri).cloned().unwrap_or_default(),
-        };
-        v.sort_unstable();
-        v.dedup();
-        v
+    fn clauses_cand(&self, max: &Pred) -> &[usize] {
+        match *max {
+            Pred::Concept { iri, .. } => self
+                .concept_body_any
+                .get(&iri)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]),
+            Pred::Role { iri, .. } => self
+                .role_body_any
+                .get(&iri)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[]),
+        }
     }
 }
 
@@ -374,8 +388,8 @@ struct Context {
     /// of `worked_off`.  Concept and role iris live in separate namespaces, so
     /// they are indexed separately; `can_unify` / exact-predicate tests still
     /// filter precisely, so the candidate set (and its order) is unchanged.
-    head_concept_index: HashMap<Iri, Vec<u32>>,
-    head_role_index: HashMap<Iri, Vec<u32>>,
+    head_concept_index: HashMap<Iri, Posting>,
+    head_role_index: HashMap<Iri, Posting>,
     /// Subsumption index over `worked_off`: each clause is recorded under every
     /// literal of its head.  A clause `c` can subsume `clause` only if
     /// `c.head ⊆ clause.head`, so every true subsumer with a non-empty head is
@@ -384,7 +398,7 @@ struct Context {
     /// the intersection of these lists.  Empty-head clauses (which subsume on
     /// the body alone) are tracked separately.  This replaces the per-`add`
     /// linear scan of `worked_off` for both forward and backward subsumption.
-    head_lit_index: HashMap<Lit, Vec<u32>>,
+    head_lit_index: HashMap<Lit, Posting>,
     empty_head_wo: Vec<u32>,
     todo: VecDeque<u32>,
     /// pred clauses pushed in from successor contexts (already back-substituted),
@@ -643,7 +657,7 @@ impl Context {
         } else {
             // smallest head-literal list (None if some head literal is absent,
             // in which case no clause contains all of `clause.head`).
-            let mut best: Option<&Vec<u32>> = None;
+            let mut best: Option<&Posting> = None;
             for l in &clause.head {
                 match self.head_lit_index.get(l) {
                     None => {
@@ -945,6 +959,20 @@ impl Engine {
                 }
             }
             ont.clauses.push(c);
+        }
+        // Sort+dedup the body-predicate candidate lists ONCE: the ontology is
+        // immutable, so `clauses_cand` returns an already-canonical borrowed
+        // slice instead of cloning+sorting+deduping on every Hyper call.
+        // Output-identical (same candidate set, same order); just not rebuilt
+        // per call.  (`concept_body_any` can list a clause twice when its body
+        // mentions the same concept iri on two terms, e.g. `C(x) ∧ C(y)`.)
+        for v in ont.concept_body_any.values_mut() {
+            v.sort_unstable();
+            v.dedup();
+        }
+        for v in ont.role_body_any.values_mut() {
+            v.sort_unstable();
+            v.dedup();
         }
         // Nom-rule parameters: K + 1 = the largest z_i index over the ontology,
         // and fresh additional nominals are allocated above every input
@@ -1503,7 +1531,7 @@ impl Engine {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
-        for oci in self.ont.clauses_cand(&max) {
+        for &oci in self.ont.clauses_cand(&max) {
             let oc = &self.ont.clauses[oci];
             let n = oc.body.len();
             // pick the first body position that can unify with `max` for the side condition
