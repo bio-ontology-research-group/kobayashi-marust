@@ -4,6 +4,49 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Auto-route KM_SEQ_ORDER by DISJ_INT — self-selecting Sequoia ordering (+6, net faster, gold-clean)
+
+Commit `9aee987`. Rather than ship `KM_SEQ_ORDER` default-on (which taxes
+near-Horn onts — 6423 went 6 s → 126 s forced), the engine now decides per
+ontology. `Reasoner::saturate` computes **DISJ_INT** (does any clause head hold
+≥ 2 concept literals with ≥ 1 internal/normaliser definer?) and calls
+`calc::set_seq_order_auto`, enabling the Sequoia definer ordering only when
+DISJ_INT ≥ 1. Env still wins: `KM_SEQ_ORDER` forces on, `KM_NO_SEQ_ORDER` forces
+off. Both orderings are complete (named concepts stay mutually incomparable
+either way), so the router only selects the faster validated regime — no Lean
+delta beyond the definer-ordering follow-up already noted below.
+
+Why DISJ_INT is the right feature (`results/seqorder-routing-20260615.txt`,
+full-corpus DISJ_INT × regression wall-deltas): `KM_SEQ_ORDER` only changes
+derivation when same-term literals include internal definers, so it helps exactly
+the onts with definer-disjunctions and merely adds `is_internal` overhead on the
+rest. The rule keeps all +6 recoveries and 7/11 speedups, avoids 27/28 slowdowns
+(incl. the 6423 +120 s outlier, DISJ_INT = 0 → off); only 18/540 passers route on.
+
+Confirmed two ways on IBEX (new binary, 83 cargo tests pass):
+- **Auto sweep, no env flag** (47522857, 587 onts): **546 MATCH, 0 DIFF**,
+  gained the same +6 (5107 6246 6682 10908 11016 11291), lost none — set
+  *identical* to forced-on. `results/auto-route-confirm-20260615.txt`.
+- **Same-sweep base(forced-off) vs auto A/B** (47523500, 2×587, same nodes):
+  base 540 / auto 545 MATCH, both 0 DIFF, lost none; on the 540 both-pass onts
+  **auto is net −24.6 % wall** (1968 s vs 2610 s) — it captures the
+  disjunction-ont speedups while routing pure-Horn onts off (6423 back to 13 s).
+  10908 (~190 s) is borderline: ok in the dedicated sweep at 133 s, timed out
+  under the heavier 2-arm contention here; base misses it too, so not a
+  regression. `results/auto-route-AB-20260615.txt`.
+
+Combination round 2 (47521666, `results/combo2-20260615.txt`): `seqorder` ×
+{corecap, earlyunsat, unitsfirst, split, tabrace} recovered **0** of the 29
+hardest remaining onts — the residual (disjunction-convergence + throughput
+memory) is algorithmically hard, not reachable by composing these performance
+levers. (The memory levers do reduce RSS — corecap/units/split flip 15491/10860
+memout→timeout — just not enough to finish.)
+
+Deploy: the auto-routing binary is the deliverable (no config change needed —
+auto is the default). ws was down this session, so it was built on IBEX; a
+production rollout means deploying the rebuilt binary to unimatrix and a
+confirmation sweep.
+
 ### KM_SEQ_ORDER regression sweep: +6, zero regressions, gold-clean (deploy gate PASSED)
 
 The portfolio (below) found `KM_SEQ_ORDER` recovers +6 onts. Before deploy, the
