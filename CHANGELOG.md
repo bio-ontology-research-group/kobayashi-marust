@@ -4,6 +4,40 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Candidate portfolio vs the 36 failing onts (branch `portfolio-candidates`, IBEX)
+
+Method (user-directed): instead of deep-diving one improvement, implement several
+gated candidates in one binary and race them — and the existing flags — against
+the exact failing set on IBEX, gold-compared at 240 s / 20 GB, then combine the
+winners. Self-validating: a wrong arm shows as GOLD=DIFF, never a false win.
+
+Failing set = the 36 onts where Konclude=ok but KM≠ok in sweep 6524 (554 ok / 34
+timeout / 2 memout): 10621 10702 10860 10908 11016 11291 11460 1194 12141 12653
+14817 15491 15516 15672 15803 1603 2669 3215 4604 4669 5107 5303 541 6246 6682
+6934 7246 7499 7581 7914 8737 9024 9540 9635 9663 9724.
+
+New gated candidates (all default OFF/inert; commit `31764e0`):
+- `KM_CORE_CAP=K` — cap the central successor core size; excess fact triggers
+  ride back as `p→p` hypotheses (completeness-safe), bounding the core-growth
+  cascade (the shared root cause of the throughput and disjunction blow-ups).
+- `KM_SEED_FROM_SUBSET` — seed a grown-core successor from its (subset-core)
+  predecessor-in-the-chain instead of re-deriving; sound, fixpoint-preserving.
+- `KM_TODO_UNITS_FIRST` — work off empty-body (fact) clauses first; confluent.
+- `KM_EARLY_UNSAT` — clear a context's todo once it derives ⊥ (subsumes all).
+
+Portfolio arms (14): base, corecap4, corecap8, seedsubset, unitsfirst,
+earlyunsat, combo(all 4), nocentral(ST), highcap(MSG_CAP=200M), split, seqorder,
+notrigskip, threads16, tabrace(cache tableau). Results: see the per-arm × ont
+table appended below when the array (IBEX job 47519642) completes;
+raw results committed under `results/portfolio-YYYYMMDD.txt`.
+
+Why this replaced the shelved single-candidate work: the shared-successor parallel
+strategy was **measurement-falsified** this session (`KM_CTXSPLIT` diagnostic,
+commit `2674a11`). On 9663 the clause arena is only 6–8 % of memory; ~half is
+per-context `head_indexes` across ~79k contexts, and single-thread central exceeds
+20 GB at convergence (115 GB at 4M messages), so query parallelism only multiplies
+per-context memory. The cluster is intrinsic-scale, not parallelizable-duplication.
+
 ### Absorption portfolio deployed + validated: sequential plain/absorbed (545 → 554, gold-clean)
 
 `KM_ABSORB_PORTFOLIO` (in `owl_classify.py`, gated; enabled in the `kmpf` sbatch
