@@ -4,6 +4,35 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Tableau race un-shadowed by the absorption portfolio + gate relaxation for faithfully-encoded number/inverse/nominals (KM_TAB_FEAT)
+
+Side-by-side ORE benchmark (Konclude/ELK/HermiT/KM, one ont per job, all
+reasoners sequential on the same IBEX node, 600 s / 56 GB) showed KM and HermiT
+time out on DISJOINT sets: 17 onts time out KM but HermiT solves (the live ∀+⊔
+disjunction family), 12 time out HermiT but KM solves (near-Horn throughput).
+Attacking the HermiT-solves-KM-does-not set surfaced two issues:
+
+1. **The tableau racer was dead in production.** Routing was
+   `if KM_ABSORB_PORTFOLIO and KM_ABSORB: _race_absorbed_plain(...)` /
+   `elif KM_TAB_RACE: _race_cb_vs_tableau(...)` — mutually exclusive, and the
+   production config sets both absorb flags, so `KM_TAB_RACE` was never reached.
+   `_race_cb_vs_tableau` now takes an `engine_run` callable and the absorb
+   portfolio runs *inside* the tableau race (the tableau is lazy/niced/
+   single-threaded, so it costs ~nothing on onts the engine finishes fast).
+2. **The race gate deferred on any number/inverse/nominal flag**, even when
+   cb_to_ht encoded the feature losslessly (`dropped==0`, `fenced==[]`).
+   `KM_TAB_FEAT` lets the tableau race those when nothing was dropped; soundness
+   is validated by gold comparison.
+
+Diagnosis of the 15 gold-having targets (none out-of-fragment — all
+`dropped==0, fenced==[]`): with the race reached + gate relaxed, **9635 is
+recovered gold-clean** (0.4 s, 159 subsumptions, byte-identical to Konclude
+gold). The other 14 still time out at 600 s: KM's cache tableau does not
+converge on them (5303/9024: 4–5 M dpll steps, depth 400–760, 1000+ restarts;
+1603/12653/15672: number/nominals route to the non-cache careful/expand path
+which does not terminate). Closing those needs HermiT-grade tableau search
+(anchored/pairwise blocking + dependency-directed backjumping), not a gate flag.
+
 ### Cache-tableau convergence control — Glucose dynamic restart + no-good DB reduction (KM_TAB_CONV)
 
 Targets the live `∀ + ⊔` disjunction family (5303, 1603, 12141, 10702, 9540, …):

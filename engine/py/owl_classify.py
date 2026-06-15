@@ -468,12 +468,21 @@ def _spawn_tableau(clauses_path, clauses):
         tin = cb_to_ht.convert(cl, None)
     except Exception:
         return None
-    # only race when the TInput FAITHFULLY represents the ontology: anything
-    # dropped/fenced or any inverse/number/nominal means the cache path could
-    # answer an under-specified problem, so defer entirely to the engine.
-    if tin.get("fenced") or tin.get("dropped") or tin.get("inverse") \
-            or tin.get("number") or tin.get("nominals"):
+    # only race when the TInput FAITHFULLY represents the ontology. fenced
+    # records or dropped clauses mean the encoding is lossy -> always defer to
+    # the engine (the cache path would answer an under-specified problem).
+    if tin.get("fenced") or tin.get("dropped"):
         return None
+    # number / inverse / nominal restrictions are faithfully ENCODED by
+    # cb_to_ht (<=n via eq-merge, inverse via both-direction edges + pairwise
+    # blocking, nominals via SHOQ proxy roots + equality blocking) and the
+    # tableau has the matching merge/blocking machinery. They are gated off by
+    # default (conservative); KM_TAB_FEAT lets the tableau race them when the
+    # encoding dropped nothing. Soundness + completeness on these features is
+    # validated by gold comparison before this is turned on by default.
+    if not os.environ.get("KM_TAB_FEAT"):
+        if tin.get("inverse") or tin.get("number") or tin.get("nominals"):
+            return None
     env = dict(os.environ)
     env["KM_TAB_CACHE"] = "1"
     env.setdefault("KM_TAB_ORD", "0")
@@ -507,9 +516,14 @@ def _spawn_tableau(clauses_path, clauses):
     return (proc, out_path)
 
 
-def _race_cb_vs_tableau(clauses_path, clauses):
-    """Race `_run_engine_adaptive` against a LAZILY-spawned label-caching
-    hypertableau. The race is engineered to *never* penalise the engine on the
+def _race_cb_vs_tableau(clauses_path, clauses, engine_run=None):
+    """Race a context-engine procedure against a LAZILY-spawned label-caching
+    hypertableau. `engine_run`, if given, is a zero-arg callable returning the
+    engine `out` dict (e.g. the absorbed/plain portfolio); it defaults to a
+    single `_run_engine_adaptive`. Either way the tableau races the SAME
+    disjunctive ontology and the first sound+complete finisher wins, so the
+    tableau is no longer shadowed when the absorption portfolio is the engine
+    path. The race is engineered to *never* penalise the engine on the
     ontologies it already handles:
 
       * the engine starts first and keeps every core;
@@ -527,7 +541,10 @@ def _race_cb_vs_tableau(clauses_path, clauses):
 
     def run_cb():
         try:
-            done["proc"] = _run_engine_adaptive(clauses_path, clauses)
+            if engine_run is not None:
+                done["out"] = engine_run()
+            else:
+                done["proc"] = _run_engine_adaptive(clauses_path, clauses)
         except BaseException as e:  # surfaced below if the tableau does not win
             done["exc"] = e
 
@@ -608,6 +625,8 @@ def _race_cb_vs_tableau(clauses_path, clauses):
             os.unlink(to)
     if "exc" in done:
         raise done["exc"]
+    if "out" in done:          # engine_run path: already an `out` dict
+        return done["out"]
     proc = done["proc"]
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr)
@@ -837,7 +856,19 @@ def classify(ofn_path: str) -> dict:
                     if os.environ.get("KM_ABSORB_PORTFOLIO") \
                             and os.environ.get("KM_ABSORB", "0") != "0" \
                             and clauses_path is not None:
-                        out = _race_absorbed_plain(ofn_path, clauses_path)
+                        # absorption portfolio is the engine path. The tableau
+                        # racer is lazily/niced/single-threaded, so it must run
+                        # ALONGSIDE the portfolio (not be shadowed by it): wrap
+                        # the portfolio as the engine procedure inside the race
+                        # so the live-disjunction family the engine times out on
+                        # is still recovered by the tableau.
+                        if os.environ.get("KM_TAB_RACE"):
+                            out = _race_cb_vs_tableau(
+                                clauses_path, clauses,
+                                engine_run=lambda: _race_absorbed_plain(
+                                    ofn_path, clauses_path))
+                        else:
+                            out = _race_absorbed_plain(ofn_path, clauses_path)
                     # race the context engine against the label-caching tableau on
                     # in-fragment live-disjunction ontologies. The tableau is
                     # spawned lazily/niced inside the racer, so this is free for
