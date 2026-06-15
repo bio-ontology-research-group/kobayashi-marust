@@ -2439,6 +2439,14 @@ struct CacheRun<'a> {
     sat_keys: Vec<CKey>,
     sat_watch: HashMap<CLit, Vec<usize>>,
     subcache_scan: usize,
+    /// Semantic branching (KM_TAB_SEMBR): once a relevant disjunct `d`'s subtree
+    /// is refuted, every model of this node's context has `¬d`, so assert it for
+    /// the remaining sibling branches (instead of only undoing `d`). This is the
+    /// n-ary DPLL semantic split — it lets the next disjuncts' Horn closure use
+    /// `¬d`, pruning the incomparable-successor WIDTH that subsumption cannot.
+    /// Pure search-order/pruning over the same complete branch set — verdicts
+    /// unchanged, no Lean re-cert. Gated off by default.
+    sembr: bool,
 }
 
 /// `a ⊆ b` for sorted, deduped slices.
@@ -2595,6 +2603,7 @@ impl<'a> CacheRun<'a> {
                 .and_then(|s| s.parse().ok())
                 .filter(|&u| u > 0)
                 .unwrap_or(512),
+            sembr: env_on("KM_TAB_SEMBR", false),
         }
     }
 
@@ -3466,6 +3475,9 @@ impl<'a> CacheRun<'a> {
         // the disjunction fires because of its guard; that is part of the conflict.
         let mut accum = union_reasons(&guard, cdep);
         let mut node_tainted = disj_ctx_tainted;
+        // semantic branching (KM_TAB_SEMBR): ¬d literals asserted for this node's
+        // remaining siblings once disjunct d is refuted. Undone when the node fails.
+        let mut node_trail: Vec<CLit> = Vec::new();
         for d in self.order_disj(set, disj) {
             // assert `d` and Horn-close, recording every literal added on a trail
             // so the branch can be undone without cloning `set` / `cdep` / `tlits`.
@@ -3491,7 +3503,7 @@ impl<'a> CacheRun<'a> {
                         // restart armed: undo this branch and propagate upward so the
                         // enclosing `sat_seed` re-enters from the seed base.
                         Err(SearchErr::Restart) => {
-                            for l in &trail {
+                            for l in trail.iter().chain(node_trail.iter()) {
                                 set.remove(l);
                                 cdep.remove(l);
                                 tlits.remove(l);
@@ -3518,6 +3530,11 @@ impl<'a> CacheRun<'a> {
             if conf.binary_search(&d).is_err() {
                 // `d` is irrelevant to this clash — every sibling clashes the same
                 // way. Backjump past the whole disjunction.
+                for l in &node_trail {
+                    set.remove(l);
+                    cdep.remove(l);
+                    tlits.remove(l);
+                }
                 self.note_conflict(conf.len());
                 return Err(SearchErr::Conflict(conf, branch_taint));
             }
@@ -3527,10 +3544,38 @@ impl<'a> CacheRun<'a> {
                     merge_into(&mut accum, &[x]);
                 }
             }
+            // semantic branching: `d` is relevant to its clash and its subtree had
+            // no model, so every model of this node's context has `¬d`. Assert it
+            // for the remaining siblings (the next disjuncts' close_dep then
+            // propagates its Horn consequences and clashes earlier). Reason = the
+            // source literals (other than `d`) that refuted `d`, so `¬d` resolves
+            // correctly in later conflict analysis; tainted iff that refutation was
+            // node-specific (so downstream derivations from it stay node-local).
+            if self.sembr {
+                let nd = d.complement();
+                if !set.contains(&nd) {
+                    let mut ndr: Vec<CLit> = conf.iter().copied().filter(|&x| x != d).collect();
+                    ndr.sort_unstable();
+                    ndr.dedup();
+                    set.insert(nd);
+                    cdep.insert(nd, ndr);
+                    if branch_taint {
+                        tlits.insert(nd);
+                    }
+                    node_trail.push(nd);
+                }
+            }
         }
-        // every disjunct failed: `accum` is this node's clash reason. Learn it as a
-        // global no-good only if its derivation never used an imposed (node-
-        // specific) clause; otherwise it holds only under this node's constraints.
+        // every disjunct failed: `accum` is this node's clash reason. Undo the
+        // semantic-branching ¬d literals before unwinding (the node has no model).
+        for l in &node_trail {
+            set.remove(l);
+            cdep.remove(l);
+            tlits.remove(l);
+        }
+        // Learn it as a global no-good only if its derivation never used an imposed
+        // (node-specific) clause; otherwise it holds only under this node's
+        // constraints.
         if !node_tainted {
             self.learn(&accum);
         }
