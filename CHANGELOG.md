@@ -27,9 +27,43 @@ New gated candidates (all default OFF/inert; commit `31764e0`):
 
 Portfolio arms (14): base, corecap4, corecap8, seedsubset, unitsfirst,
 earlyunsat, combo(all 4), nocentral(ST), highcap(MSG_CAP=200M), split, seqorder,
-notrigskip, threads16, tabrace(cache tableau). Results: see the per-arm × ont
-table appended below when the array (IBEX job 47519642) completes;
-raw results committed under `results/portfolio-YYYYMMDD.txt`.
+notrigskip, threads16, tabrace(cache tableau).
+
+**Results (IBEX job 47519642, all 504 jobs complete; raw =
+`results/portfolio-20260615.txt`, script = `results/portfolio-20260615.sbatch`):
+9 GOLD=MATCH, 0 GOLD=DIFF (zero unsound across the whole grid), 495 NOSIG.**
+6 distinct onts recovered out of 36:
+
+| Ont | Recovered by | Fastest wall | Base |
+|---|---|---|---|
+| 5107  | seqorder, combo, unitsfirst | 28 s  | timeout |
+| 6246  | seqorder (137 s), tabrace (31 s) | 31 s | timeout |
+| 6682  | seqorder | 24 s  | timeout |
+| 10908 | seqorder | 197 s | timeout |
+| 11016 | seqorder | 1 s   | timeout |
+| 11291 | seqorder | 1 s   | timeout |
+
+Per-arm recovery count: **seqorder = 6** (all of them), combo = 1, unitsfirst = 1,
+tabrace = 1 — and every non-seqorder win is a subset of seqorder's. So the entire
+portfolio collapses to a single lever: **`KM_SEQ_ORDER` recovers +6, gold-clean.**
+The four new candidate flags (corecap/seedsubset/unitsfirst/earlyunsat) recover
+nothing seqorder doesn't, and corecap/highcap/threads16/notrigskip recover 0.
+`seqorder` also flips 2 base memouts into the converged set (base: 2 memout / 33
+timeout → seqorder: 1 memout / 6 ok / 29 timeout), so total-order resolution both
+bounds memory and converges faster on these. 11016/11291 finish in 1 s, meaning
+base's per-context ordering was the entire problem there, not the instance size.
+
+`KM_SEQ_ORDER` overturns the prior 6246 verdict (memory had it as a "genuine
+timeout, not recoverable"; total-order resolution cracks it at 137 s, 31 s under
+the cache-tableau race). 8737 reports STATUS=error in every arm — it is a giant
+absent from the IBEX corpus (already `ok` in production via `elc`), not a failure.
+
+Caveat before deploy: `KM_SEQ_ORDER` is known to OOM 5303, so it cannot go
+default-on without a regression check on the 554 currently-passing onts. Next step
+is a full-corpus sweep with `KM_SEQ_ORDER=1`; if it regresses passers it ships as a
+router/race (run on the failing tail only, additive-by-construction like
+`KM_ABSORB_PORTFOLIO`), otherwise default-on. Either way the +6 are sound (every
+recovery is byte-identical to Konclude gold).
 
 Why this replaced the shelved single-candidate work: the shared-successor parallel
 strategy was **measurement-falsified** this session (`KM_CTXSPLIT` diagnostic,
