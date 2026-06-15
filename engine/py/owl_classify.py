@@ -473,15 +473,21 @@ def _spawn_tableau(clauses_path, clauses):
     # the engine (the cache path would answer an under-specified problem).
     if tin.get("fenced") or tin.get("dropped"):
         return None
-    # number / inverse / nominal restrictions are faithfully ENCODED by
-    # cb_to_ht (<=n via eq-merge, inverse via both-direction edges + pairwise
-    # blocking, nominals via SHOQ proxy roots + equality blocking) and the
-    # tableau has the matching merge/blocking machinery. They are gated off by
-    # default (conservative); KM_TAB_FEAT lets the tableau race them when the
-    # encoding dropped nothing. Soundness + completeness on these features is
-    # validated by gold comparison before this is turned on by default.
+    # number / inverse restrictions are faithfully ENCODED by cb_to_ht (<=n via
+    # eq-merge, inverse via both-direction edges + pairwise blocking) and the
+    # tableau has the matching merge/blocking machinery; KM_TAB_FEAT lets the
+    # tableau race them when the encoding dropped nothing (validated gold-clean,
+    # e.g. ore_ont_9635 recovered byte-identical).
+    #
+    # NOMINALS stay deferred even under KM_TAB_FEAT: the tableau's SHOQ
+    # proxy-root encoding is INCOMPLETE here (ore_ont_10908, number+nominals,
+    # returned 87 of 6002 subsumptions and won the race with that wrong answer).
+    # The engine owns nominal ontologies until the tableau's nominal handling is
+    # made complete.
+    if tin.get("nominals"):
+        return None
     if not os.environ.get("KM_TAB_FEAT"):
-        if tin.get("inverse") or tin.get("number") or tin.get("nominals"):
+        if tin.get("inverse") or tin.get("number"):
             return None
     env = dict(os.environ)
     env["KM_TAB_CACHE"] = "1"
