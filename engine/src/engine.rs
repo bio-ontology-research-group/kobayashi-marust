@@ -776,6 +776,20 @@ pub struct Engine {
     central_index: HashMap<Vec<Pred>, usize>,
     /// cached strategy flag: central (default) vs per-`f` pay-as-you-go (KM_NO_CENTRAL)
     central: bool,
+    /// Portfolio candidate flags (default OFF/inert), cached from env at `new`:
+    /// `core_cap` (KM_CORE_CAP=K) caps the successor core size — excess fact
+    /// triggers ride back as `p→p` hypotheses (completeness-safe), bounding the
+    /// core-growth cascade; `seed_from_subset` (KM_SEED_FROM_SUBSET) seeds a
+    /// grown-core successor from its predecessor-in-the-chain instead of
+    /// re-deriving the shared closure + chain; `todo_units_first`
+    /// (KM_TODO_UNITS_FIRST) works off empty-body (fact) clauses first so
+    /// subsumption prunes earlier (confluent); `early_unsat` (KM_EARLY_UNSAT)
+    /// clears a context's todo once it derives ⊥ (the empty clause subsumes all,
+    /// so the rest is redundant — sound).
+    core_cap: usize,
+    seed_from_subset: bool,
+    todo_units_first: bool,
+    early_unsat: bool,
     /// Context-independent closure: the worked-off clauses of an empty-core,
     /// non-root context saturated from the ontology facts + TBox alone (no Succ
     /// hypotheses, no incoming edges).  These consequences are entailed by the
@@ -986,6 +1000,11 @@ impl Engine {
             successor_ctxs: HashMap::new(),
             central_index: HashMap::new(),
             central: std::env::var_os("KM_NO_CENTRAL").is_none(),
+            // Portfolio candidate flags (cached once; default OFF/inert).
+            core_cap: std::env::var("KM_CORE_CAP").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
+            seed_from_subset: std::env::var_os("KM_SEED_FROM_SUBSET").is_some(),
+            todo_units_first: std::env::var_os("KM_TODO_UNITS_FIRST").is_some(),
+            early_unsat: std::env::var_os("KM_EARLY_UNSAT").is_some(),
             shared_closure: None,
             shared_root_closure: None,
             equality: true,
@@ -1264,7 +1283,14 @@ impl Engine {
         };
         let ctx = &mut self.contexts[id];
         ctx.clause_keys.insert(cid);
-        ctx.todo.push_back(cid);
+        // KM_TODO_UNITS_FIRST: prioritise empty-body (fact) clauses so the strong
+        // subsumers are worked off first and prune the rest earlier. Pure work-off
+        // ordering — saturation is confluent, so the fixpoint/output is unchanged.
+        if self.todo_units_first && nb == 0 {
+            ctx.todo.push_front(cid);
+        } else {
+            ctx.todo.push_back(cid);
+        }
         for o in new_inds {
             if let Some(fis) = self.ont.ground_facts.get(&o) {
                 for fi in fis.clone() {
@@ -1438,6 +1464,15 @@ impl Engine {
                 ctx.worked_off.push(cid);
                 ctx.index_clause(arena, cid);
                 ctx.dirty = true;
+            }
+            // KM_EARLY_UNSAT: the empty clause (⊥) subsumes every other clause, so
+            // once it is worked off the remaining todo is redundant. It is already
+            // pred-eligible (empty head), so propagate still pushes the
+            // contradiction back. Sound: dropping subsumed clauses preserves
+            // completeness; the unsat verdict / pushback is retained.
+            if self.early_unsat && clause.body.is_empty() && clause.head.is_empty() {
+                self.contexts[id].todo.clear();
+                break;
             }
             if trace_sat {
                 let c = &self.contexts[id];
@@ -2327,7 +2362,7 @@ impl Engine {
     /// (the σ-image of a pushed trigger set), created on first use.  Seeded
     /// with the shared non-root closure (facts+TBox consequences) plus the
     /// Core rule for its core atoms.
-    fn central_successor_for_core(&mut self, core: Vec<Pred>) -> usize {
+    fn central_successor_for_core(&mut self, core: Vec<Pred>, seed_from: Option<usize>) -> usize {
         if let Some(&id) = self.central_index.get(&core) {
             return id;
         }
@@ -2335,15 +2370,28 @@ impl Engine {
         let ctx = Context::new(id, core.clone(), false, None);
         self.contexts.push(ctx);
         self.central_index.insert(core, id);
-        if std::env::var_os("KM_NO_SHARE").is_none() {
+        if std::env::var_os("KM_NO_SHARE").is_some() {
+            self.init_context(id);
+        } else if let Some(src) = seed_from {
+            // KM_SEED_FROM_SUBSET: the caller guarantees the source context's core
+            // is a subset of this core, so every clause `src` has worked off was
+            // derived from facts that also hold here — seed them directly instead
+            // of re-deriving the shared closure + the chain prefix.  `src`'s
+            // worked-off already includes the shared closure, so this subsumes the
+            // usual seed.  Sound + fixpoint-preserving (only re-derivable clauses
+            // are pre-seeded; the saturation then derives the remaining delta).
+            let wo = self.contexts[src].worked_off.clone();
+            for c in wo {
+                self.seed_worked_off(id, c);
+            }
+            self.add_core(id);
+        } else {
             self.ensure_shared_closure();
             let closure = self.shared_closure.as_ref().unwrap().clone();
             for c in closure {
                 self.seed_worked_off(id, c);
             }
             self.add_core(id);
-        } else {
-            self.init_context(id);
         }
         id
     }
@@ -2587,7 +2635,29 @@ impl Engine {
                     .unwrap_or_default();
                 core.sort();
                 core.dedup();
-                let target = self.central_successor_for_core(core);
+                // KM_CORE_CAP: bound the successor core size. The excess fact
+                // triggers stay in `raw` and arrive as `p→p` hypotheses at the
+                // target (their consequences come back conditioned on `p` alone),
+                // so completeness is preserved while the number of distinct cores
+                // (hence the core-growth cascade) is bounded.
+                if self.core_cap > 0 && core.len() > self.core_cap {
+                    core.truncate(self.core_cap);
+                }
+                // KM_SEED_FROM_SUBSET: seed the new (grown-core) successor from the
+                // previous target for this edge, but only when its core is a subset
+                // of the new core (so every seeded clause is valid here). Saves
+                // re-deriving the chain prefix.
+                let seed_src = if self.seed_from_subset {
+                    match self.contexts[id].successors.get(&f).copied() {
+                        Some(old) if self.contexts[old].core.iter().all(|p| core.contains(p)) => {
+                            Some(old)
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
+                let target = self.central_successor_for_core(core, seed_src);
                 let prev = self.contexts[id].successors.insert(f, target);
                 if prev != Some(target) {
                     // New target (first push or fact-core growth): send the full
