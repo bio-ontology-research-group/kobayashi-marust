@@ -4,6 +4,40 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### KM_SEQ_ORDER regression sweep: +6, zero regressions, gold-clean (deploy gate PASSED)
+
+The portfolio (below) found `KM_SEQ_ORDER` recovers +6 onts. Before deploy, the
+open risk was whether the Sequoia ordering regresses any currently-passing ont
+(memory had it OOMing 5303). Regression sweep (IBEX job 47520358, 1174 jobs = 2
+arms × 587 gold onts, 240 s / 20 GB, `KM_ABSORB=1`; raw =
+`results/regress-seqorder-20260615.txt`, script `…-20260615.sbatch`):
+
+| Arm | GOLD=MATCH | NOSIG | DIFF (unsound) |
+|---|---|---|---|
+| base       | 540 | 47 | 0 |
+| seqorder   | 546 | 41 | 0 |
+
+- **GAINED** (seqorder ok, base not): 5107 6246 6682 10908 11016 11291
+- **LOST / regressed** (base ok, seqorder not): **NONE**
+
+`KM_SEQ_ORDER` **strictly dominates** base on the full gold corpus: +6, 0
+regressions, 0 unsound (every one of its 546 answered onts is byte-identical to
+Konclude). 5303 stays a non-ok in both arms (it is in neither MATCH set), so its
+known OOM is not a regression. This is the strongest validation available — not
+just "no regression vs KM base" but "matches the gold reasoner on every ont it
+answers." **Verdict: deploy `KM_SEQ_ORDER=1` in the production config** (expected
+554 → 560 on the unimatrix pipeline; production sweep validates at scale).
+
+Soundness/completeness note (`engine/src/calc.rs:481`): `KM_SEQ_ORDER` keys the
+literal order on named-vs-auxiliary (Sequoia's `ContextLiteralOrdering`): named /
+query concepts stay mutually incomparable at the bottom (the unrestricted
+`CompletenessProp` regime the Lean proof certifies, so the forward `⊤→B(x)`
+readout remains complete), and only internal definers are totally ordered above
+(ordered resolution, resting on Sequoia's published SROIQ-classification
+completeness). The definer-ordering restriction is the one piece not covered by
+KM's current Lean proof; a follow-up Lean cert of ordered resolution on definers
+is warranted, but the corpus-wide gold-clean result is decisive empirical backing.
+
 ### Candidate portfolio vs the 36 failing onts (branch `portfolio-candidates`, IBEX)
 
 Method (user-directed): instead of deep-diving one improvement, implement several
