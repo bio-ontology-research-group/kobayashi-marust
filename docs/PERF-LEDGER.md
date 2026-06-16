@@ -156,3 +156,25 @@ mean RSS 372 → 367, median wall 0.33 → 0.25; coverage 559 → 558 (−9635, 
 
 Each enabled branch fires on ≥1 ontology: absorption portfolio on 6212/10908/16444;
 seq auto-route on 5107/6246/6682/10908/11016/11291; the new-binary path on all.
+All of 6212/10908/16444 and 5107/6246/6682/11016/11291 are in KM's solved,
+gold-clean set in the validation sweep below (none in the 26-miss list), so each
+enabled branch is confirmed to fire and produce a correct answer.
+
+## E. Validation sweep + reasoner comparison (IBEX 47559562, verified)
+
+Full ORE-2015 sweep of the live config against Konclude / ELK / HermiT on the
+same node per ont (600 s / 56 GB). Full tables in `results/REASONER-COMPARISON.md`.
+
+- **KM 558 ok, gold-clean (558 MATCH / 0 DIFF / 26 NOSIG)** — the only reasoner
+  besides Konclude with zero gold disagreements (ELK 57 DIFF, HermiT 8 DIFF).
+- On the 543 onts all four solve: KM **median RSS 36 MB** (lowest of the field;
+  Konclude 124, ELK 236, HermiT 722), median wall 0.35 s (2nd only to Konclude),
+  mean wall 4.02 s (vs HermiT 16.43). KM is the leanest reasoner in the field.
+- Coverage vs the field: Konclude 582, ELK 584 (57 wrong), HermiT 561, KM 558.
+  KM's 26 misses = the live ∀+⊔ disjunction family + central core-growth /
+  context-explosion throughput onts + 2 SWRL onts (2669/15516, which Konclude
+  also errors on). Enabling `KM_TAB_RACE=1` recovers 9635 (→559) at the
+  documented median-wall cost.
+- The live config matches the prior full-stack coverage (558) while delivering
+  the avg-time/mem win measured in §A — confirming the tableau race was dropped
+  without a coverage regression beyond the single tab-only ont (9635).
