@@ -132,11 +132,18 @@ family. Each search lever was measured on 5303/9024/2313/2066/5089:
 | Incremental "watch" disjunction scan (`fc24ae7`) | correct, **slightly slower** on 2313; controls byte-identical | drop (gated OFF) |
 | CDCL conflict-clause learning (`400ea8e`) | correct (39 tests, controls byte-identical), **family still times out** — learned no-goods over transient successor nodes go dormant on backtrack, so learning underperforms (matches legacy KM, which also has learning + caching and still fails 5303) | drop (gated OFF) |
 
-**Conclusion:** every standard search lever (ordering, branch-pick, restart,
-incremental scan, CDCL learning) is closed with proof; none win on average or
-close the family. The branch is banked. Closing the family needs the full
-HermiT/Konclude optimisation stack (cross-node label/core caching, model
-merging) — months, coverage-only, not an average-performance lever.
+**Conclusion (updated 2026-06-16):** the standard *search* levers (ordering,
+branch-pick, restart, CDCL learning) win nothing — but a HermiT trace
+(`docs/HERMIT-TRACE.md`) showed the real gap was **model folding, not search**.
+HermiT classifies 9024 with a 27-node model; the ht-port built 7,559 nodes
+because its anywhere-blocking cache was keyed on each node's creation-time
+(incomplete) label and never fired. Fixing it (`0cc8745`: real anywhere-subset
+blocking + default incremental scan) recovers **12141 and 9024 gold-clean** and
+makes **5303** finish in 0.93 s (incomplete by 1 under transitive roles, 0
+unsound). This is the first genuine progress on the family. Remaining:
+transitivity-complete folding for 5303-class onts, then wire routing
+(ALC(H) non-transitive disjunction onts → KM_HT) and run a full gold sweep
+before any default-on. Still coverage-only, not an average-performance lever.
 
 ## D. Integrated live configuration (post-integration)
 
