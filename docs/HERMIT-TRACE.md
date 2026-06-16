@@ -192,4 +192,58 @@ and time out (200 s). So:
   (HermiT's pairwise/core-on-stable-label, or proper transitivity encoding so
   subset stays complete) — the remaining work.
 
+(Note: 12141/9024 do contain `TransitiveObjectProperty` declarations, but their
+transitivity is vacuous for the class hierarchy, so subset blocking is complete
+on them; the full sweep below skip-routes them anyway under the conservative
+transitivity guard.)
+
+## Full-corpus gold sweep with KM_HT routed on (job 47563108)
+
+Routed every corpus ont to the fixed hypertableau **iff** ALC(H) (no number /
+inverse / nominals) **and** no transitive roles, comparing to Konclude gold.
+`results/ht_route_one.py` + `results/revalidate.py`.
+
+The raw sweep flagged 19 "unsound" onts, but that was a **comparison artifact**:
+KM's tableau output carries a `__<sourcefile>` localname-disambiguation suffix
+(`birnlex_878__NIF-GrossAnatomy.owl` vs gold `birnlex_878`) and emits
+`X ⊑ owl:Thing` / `X ⊑ X`, which the gold sigs filter. Re-validating with proper
+canonicalisation (strip `__`, drop owl:Thing/Nothing supers + self-subsumptions),
+over the **272 routed onts**:
+
+| outcome | count |
+|---|--:|
+| **gold-clean** | **250** |
+| incomplete (0 unsound) | 9 (8 minor 1–26 missing; 7216 near-total) |
+| timeout (240 s) | 12 (all non-transitive ALC(H)) |
+| missed inconsistency | 1 (**6720**: KM consistent, gold inconsistent) |
+| **spurious-subsumption unsound** | **0** |
+
+- **KM_HT is sound on subsumptions corpus-wide** (0 spurious after
+  canonicalisation) — the anywhere-subset blocking fix validated at scale.
+- **Not yet a safe production route**: 1 missed inconsistency (6720) + 9
+  incomplete (subset blocking is sound but not reliably complete — and
+  incompleteness appears on non-transitive onts too, so the transitivity guard
+  does not guarantee it).
+- **Recovery targets excluded**: all 26 production timeouts carry transitive
+  roles → skip-routed → KM_HT recovers **0** as-is. And 5303's transitivity is
+  *dropped upstream* (its TInput has 0 composition clauses, `fenced=[]`), so the
+  gap is in `ofn`/`ofn_rbox`, not blocking.
+
+Verdict: keep KM_HT **gated OFF**. The fix is sound and gold-clean on the large
+majority, but enabling the route today would add the 6720 inconsistency miss and
+9 incomplete answers while recovering none of the timeout targets.
+
+### Side experiments (smaller jobs, same session)
+
+- **Mechanism 1** (told-subsumers + transitive closure, `KM_HT_NO_TOLD`):
+  gold-clean but **0 speedup** on the family (9024 1:52.8 vs 1:52.2) — the cost
+  is a few hard per-test searches, not test count. Helps wide shallow onts, but
+  those route to elc.
+- **Transitivity encoding** (`cb_to_ht.py` Horrocks–Sattler ∀-propagation,
+  `KM_HT_NO_TRANS_ENC`): implemented but inert on 5303 (composition clause
+  dropped upstream — nothing to detect). Needs the frontend fix first.
+- **Blocking-mode battery on 5303**: only subset terminates; core (positive-eq)
+  and full-eq time out even on this tiny ont — sound-and-complete blocking is too
+  slow, the central tension.
+
 ## Concrete plan (in leverage order)
