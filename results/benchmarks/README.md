@@ -22,6 +22,11 @@ correct where.
   arm (HermiT QuasiOrder multi-model pruning). NOTE: its in-run "+1" for
   modelprune was not reproducible — see the correction banner and the file
   below.
+- `2026-06-17-emelim.md` — complementary-definer excluded-middle elimination
+  (`B≡¬A`), HT + CB. HT `KM_HT_EMELIM` +14 MATCH (folds the disjunction family
+  to HermiT's exact model size; 3 unsound all gold/engine artifacts). CB
+  `KM_EMELIM` +2 ok gold-CLEAN (recovers 16444 memout + 6212), lower memory,
+  0 regressions. Both gated default-off. HEAD `28597d4`.
 - `2026-06-17-ht-fullcorpus-panel.md` — fresh full-corpus 10-arm panel on
   committed `190fe53`. Best HT arm = `ht-default` (454 ok, 0 unsound). Shows
   `ht-modelprune` is a net −7 (447 ok) and overturns the earlier sample result;
