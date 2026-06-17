@@ -4,6 +4,32 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Hybrid CB/HT main reasoner: KM_HT hypertableau fills CB's coverage gap (monotone-safe)
+
+The ported HermiT-style hypertableau (`hypertableau.rs`, `KM_HT`, driven via
+`cb_to_ht`) is sound on its routable fragment (lossless conversion, no inverse,
+no nominals; ALCQ allowed) and classifies central-blow-up / context-explosion
+ontologies the CB engine times out on. Verified gold-clean through the *same*
+`ore_canon.canonicalize` that produces the gold signatures (`engine/py/ht_check.py`):
+HT is sound everywhere (no wrong subsumption) but incomplete on the live
+disjunction family, with no structural rule separating its complete from its
+incomplete onts — so it can never safely replace a CB answer.
+
+`owl_classify` gains `_spawn_ht` + `_race_cb_vs_ht` (gated `KM_HT_RACE`). CB is
+the certified primary on one fewer core; the HT racer (single-threaded, niced)
+fills only CB's gap:
+
+* `KM_HT_MODE=fallback` (default): HT's answer is used only on a CB failure /
+  `KM_HT_BUDGET_S` timeout — monotone, cannot regress a CB-solved ontology.
+* `KM_HT_MODE=race`: first valid finisher wins (faster, but can take an
+  HT-incomplete answer).
+
+Full ORE sweep (587 onts, 240 s / 20 GB, gold byte-clean; jobs 47570890 /
+47571283 / 47571284): base 558, **fallback 562 (+4: ore_ont_4604 9635 11460
+15491, 0 regressions)**, race 559 (+3, 2 regressions). Fallback deployed as the
+new main hybrid; race not used. HT engine brought from the `ht-port` branch (3
+files; CB core unchanged), all gated/inert by default. See `docs/HYBRID-CB-HT.md`.
+
 ### Tableau race un-shadowed by the absorption portfolio + gate relaxation for faithfully-encoded number/inverse/nominals (KM_TAB_FEAT)
 
 Side-by-side ORE benchmark (Konclude/ELK/HermiT/KM, one ont per job, all

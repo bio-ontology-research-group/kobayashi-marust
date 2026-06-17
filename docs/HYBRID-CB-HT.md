@@ -109,20 +109,54 @@ Why this is safe with zero regression risk:
 - HT is single-threaded and memory-light, so it racing alongside CB does not
   threaten the job memcap (the same property the existing KM_TAB racer relies on).
 
-## 5. Routing options under evaluation
+## 5. Routing options — full-corpus result (IBEX, 587 onts, 240 s / 20 GB)
 
-Per the directive to sweep every option and decide later, the full-corpus IBEX
-sweeps compare, against the current production baseline (564 ok):
+Both gated options were swept against the same build's base arm (`KM_ABSORB=1`,
+no HT), gold = byte-identical canonical signature. Jobs 47570890 (base),
+47571283 (fallback), 47571284 (race).
 
-- **Option 1 — safe coverage hybrid** (section 4). HT answer used only on CB
-  failure. Expected: +coverage (the HT_ONLY set), 0 regression. `KM_HT_FALLBACK`.
-- **Option 2 — speed race**: routable onts take the first finisher of CB ∥ HT.
-  Captures the 45 speed wins + coverage, but regresses the HT-incomplete onts
-  whenever HT wins the race with an incomplete answer. The sweep measures exactly
-  how many. `KM_HT_RACE`.
+| arm                    | ok + gold-MATCH | vs base                       | regressions |
+|------------------------|-----------------|-------------------------------|-------------|
+| base (CB only)         | 558             | --                            | --          |
+| **fallback** (KM_HT_MODE=fallback) | **562** | **+4: 4604, 9635, 11460, 15491** | **0**       |
+| race (KM_HT_MODE=race) | 559             | +3 (4604, 9635, 15491)        | 2 (868, 8486) |
 
-Option 1 is the expected default; Option 2 quantifies the speed-vs-correctness
-trade. Both are gated; the winner becomes the new main pipeline default.
+**Fallback wins decisively.** It recovers all four central-blow-up / context-
+explosion ontologies CB times out on, with **zero regressions** -- the monotone
+guarantee of section 4 held exactly. Race is strictly worse: it captures fewer
+gains (it loses 11460 -- race accepts HT only if HT finishes before the per-ont
+wall, and on this central-blow-up ont the niced HT is slowed by CB's memory
+pressure and misses that window, whereas fallback's KM_HT_BUDGET_S gives HT the
+full pre-timeout window) and it regresses 868 and 8486. Those two are
+large-closure onts (868 emits 14.8M subsumptions): in race mode HT wins, CB is
+killed mid-serialisation, and canonicalising HT's large output under the
+concurrent racer's memory/time pressure trips the per-ont wrapper -- a transient
+(868 re-runs clean standalone), but a fragility race mode introduces and fallback
+never does (fallback lets CB finish and only consults HT on a genuine CB failure).
+
+**Decision: KM_HT_MODE=fallback is the new main hybrid.** It is the
+zero-regression coverage win. Race is not deployed.
+
+The base arm here (558) is a leaner config than the fully-portfolioed deployed
+production (564 = base + absorption portfolio + DISJ_INT auto-route); the +4 HT
+onts are central-blow-up timeouts that the portfolio levers do not target
+(4604/11460 are the open task-#52 set), so fallback composes additively on top of
+the full production config. A confirmation sweep under the full portfolio config
+is the productionisation step.
+
+## 6. Deployment
+
+Enable on the benchmark/production config by adding to the engine env:
+
+```
+KM_HT_RACE=1            # turn on the HT racer
+KM_HT_MODE=fallback     # monotone-safe (default if unset)
+KM_TAB_BIN=<.../tableau_cli>   # the KM_HT-capable binary (already set in prod)
+```
+
+`KM_HT_BUDGET_S` (default 225) is the CB wall before HT may fill on a routable
+ontology; `KM_HT_NICE` (default 1) the racer priority. Everything is inert
+without `KM_HT_RACE`.
 
 ## 6. Artifacts
 

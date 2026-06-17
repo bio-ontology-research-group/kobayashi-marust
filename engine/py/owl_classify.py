@@ -732,10 +732,19 @@ def _race_cb_vs_ht(clauses_path, clauses, engine_run, mode="fallback"):
         return engine_run()
     ht_proc, ht_out = r
     # reserve one core for the (single-threaded) HT racer so it makes progress on
-    # the CB-timeout onts instead of being starved by the all-core CB run.
+    # the CB-timeout onts instead of being starved by the all-core CB run. Reserve
+    # from the CONFIGURED thread budget (the harness sets KM_THREADS to the Slurm
+    # allocation); os.cpu_count() reports the whole node, not the cpuset, so using
+    # it would oversubscribe and slow CB on every routable ontology.
     cur = os.environ.get("KM_THREADS")
-    if cur is None or (cur.isdigit() and int(cur) > 1):
-        os.environ["KM_THREADS"] = str(max(1, (os.cpu_count() or 2) - 1))
+    if cur is not None and cur.isdigit() and int(cur) > 1:
+        os.environ["KM_THREADS"] = str(int(cur) - 1)
+    elif cur is None:
+        try:
+            avail = len(os.sched_getaffinity(0))
+        except AttributeError:
+            avail = os.cpu_count() or 2
+        os.environ["KM_THREADS"] = str(max(1, avail - 1))
 
     done: dict = {}
 
