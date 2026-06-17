@@ -38,11 +38,19 @@ def is_bottom(n):
     return short(n) in BOTTOM
 
 
-def convert(clauses, rbox=None):
+def convert(clauses, rbox=None, named=None):
     """Convert moose CB clauses (+ optional RBox records from frontend.ofn_rbox)
     into a TInput dict for the Rust tableau. RBox in-fragment records (subrole,
     domain, range) are emitted as HT-clauses; fenced records are surfaced so the
-    caller can flag the ontology out-of-fragment (never silently dropped)."""
+    caller can flag the ontology out-of-fragment (never silently dropped).
+
+    `named` is the set of declared concept names from the frontend. A declared
+    class is ALWAYS a query, even when its local name happens to start with an
+    "internal-looking" prefix (Q_/__/aux_/def_) or contains ':' — e.g. real
+    classes Q_minus, Q_plus, Q_Fever. Without this escape such classes were
+    silently excluded from the query set and never classified (HT looked
+    incomplete on pure-Horn taxonomies that merely use Q_-prefixed names)."""
+    named_set = set(named or [])
     con_names, con_id = [], {}
     rol_names, rol_id = [], {}
 
@@ -412,7 +420,11 @@ def convert(clauses, rbox=None):
                                 "head": [{"k": "c", "neg": False, "c": u["c"], "t": r["t"]}]})
         ht_clauses.extend(extra)
 
-    queries = [cid(n) for n in con_names if not is_internal(n) and not is_bottom(n)]
+    # a declared (named) class is always a query, even if its local name looks
+    # internal (Q_minus, Q_plus, ...); only genuinely synthetic concepts
+    # (definers, slots, nominals — never declared) are excluded.
+    queries = [cid(n) for n in con_names
+               if (n in named_set or not is_internal(n)) and not is_bottom(n)]
     return {"concepts": con_names, "roles": rol_names, "clauses": ht_clauses,
             "queries": sorted(set(queries)), "dropped": dropped, "fenced": fenced,
             "inverse": bool(inverse_pairs), "number": number,

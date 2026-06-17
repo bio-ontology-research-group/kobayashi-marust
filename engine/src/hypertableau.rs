@@ -141,6 +141,10 @@ enum Trail {
     Concept(Node, CLit),
     Edge(R, Node, Node),
     NewNode,
+    /// eager mode: this node's deferred global disjunctions were fired; on
+    /// backtrack the firing (and its pending disjunctions) is undone, so clear
+    /// the flag to let it re-fire if the node becomes live again.
+    GlobalsFired(Node),
 }
 
 /// A pending propagation event: a freshly added fact / node whose triggered
@@ -176,6 +180,8 @@ pub struct Ext {
     in_edges: Vec<Vec<(R, Node)>>,
     pred: Vec<Option<Node>>,
     blockable: Vec<bool>,
+    /// eager mode: per-node flag — its deferred global ⊤-disjunctions have fired.
+    globals_fired: Vec<bool>,
     trail: Vec<Trail>,
     clash: Option<DepSet>,
     /// delta propagation worklist (drained by `Ht::propagate`).
@@ -219,6 +225,7 @@ impl Ext {
             in_edges: Vec::new(),
             pred: Vec::new(),
             blockable: Vec::new(),
+            globals_fired: Vec::new(),
             trail: Vec::new(),
             clash: None,
             queue: Vec::new(),
@@ -295,6 +302,7 @@ impl Ext {
         self.in_edges.push(Vec::new());
         self.pred.push(parent);
         self.blockable.push(blockable);
+        self.globals_fired.push(false);
         self.trail.push(Trail::NewNode);
         self.queue.push(Event::NodeNew(id));
         // assign a fresh unique stamp to this (possibly reused) node id.
@@ -399,6 +407,12 @@ impl Ext {
                     self.in_edges.pop();
                     self.pred.pop();
                     self.blockable.pop();
+                    self.globals_fired.pop();
+                }
+                Trail::GlobalsFired(node) => {
+                    if node < self.globals_fired.len() {
+                        self.globals_fired[node] = false;
+                    }
                 }
             }
         }
@@ -921,6 +935,15 @@ pub struct Ht {
     role_triggers: HashMap<R, Vec<(usize, usize)>>,
     /// empty-body (global) clauses, fired per node.
     global_clauses: Vec<usize>,
+    /// the disjunctive subset of `global_clauses` (≥2 concept head atoms): a
+    /// ⊤-headed disjunction fires on EVERY node. In eager mode these are NOT
+    /// fired on a node until it is confirmed unblocked, so a blocked node never
+    /// spawns their branch points (its blocker covers them) — the HermiT
+    /// model-folding lever. `global_disj_set` is the same set for O(1) skip.
+    global_disj: Vec<usize>,
+    global_disj_set: HashSet<usize>,
+    /// KM_HT_EAGER: defer global ⊤-disjunctions to unblocked nodes only.
+    eager: bool,
     ext: Ext,
     anywhere: bool,
     /// blocking signature: 0=core (positive-concept equality, default), 1=subset
@@ -929,6 +952,16 @@ pub struct Ht {
     cache: HashMap<u64, Vec<Node>>,
     steps: u64,
     backtracks: u64,
+    /// backtracks that were genuine backjumps (clash dep did NOT contain the
+    /// current level ⇒ skipped this branch point). If this is ≪ backtracks, the
+    /// dependency sets are too coarse and search degrades to chronological.
+    backjumps: u64,
+    /// times the negate-tried-disjunct fact was actually asserted (KM_HT_NEGTRIED).
+    negfired: u64,
+    /// number of disjunction case-splits started (≡ HermiT branchPointsPushed) and
+    /// the number of disjunct branches actually attempted (≡ model-search nodes).
+    branch_pushes: u64,
+    disjunct_tries: u64,
     stats: bool,
     hb: u64,
     tick: u64,
@@ -952,6 +985,11 @@ pub struct Ht {
     watch: bool,
     /// CDCL-style conflict-clause learning (KM_HT_LEARN).
     learn: bool,
+    /// HermiT startNextChoice: on a disjunct clash, assert the complement of the
+    /// tried disjunct (carrying the clash dep minus this branch level) before
+    /// trying the next, so the remaining disjuncts unit-propagate against the
+    /// known-false ones instead of re-expanding sibling subtrees (KM_HT_NEGTRIED).
+    negtried: bool,
     /// decision literal asserted at each branch level (index = level); used to
     /// turn a clash dep-set into a learned no-good. Reset per dfs(0) run.
     decisions: Vec<(Node, u64, CLit)>,
@@ -974,9 +1012,16 @@ impl Ht {
         let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
         let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
         let mut global_clauses = Vec::new();
+        let mut global_disj = Vec::new();
         for (cid, rec) in recs.iter().enumerate() {
             if rec.1.is_empty() {
                 global_clauses.push(cid);
+                // disjunctive global = empty body + ≥2 concept head atoms (the
+                // ⊤ ⊑ A ∨ B GCIs that fire and branch on every node).
+                let nhc = rec.0.head.iter().filter(|a| matches!(a, Atom::Concept { .. })).count();
+                if nhc >= 2 {
+                    global_disj.push(cid);
+                }
             }
             for (pos, a) in rec.1.iter().enumerate() {
                 match *a {
@@ -994,7 +1039,10 @@ impl Ht {
             clauses: recs,
             concept_triggers,
             role_triggers,
+            global_disj_set: global_disj.iter().copied().collect(),
+            global_disj,
             global_clauses,
+            eager: std::env::var_os("KM_HT_EAGER").is_some(),
             ext: Ext::new(),
             anywhere: std::env::var_os("KM_HT_ANCESTOR_ONLY").is_none(),
             // default 1 = SUBSET anywhere blocking: empirically the only mode
@@ -1012,6 +1060,10 @@ impl Ht {
             cache: HashMap::new(),
             steps: 0,
             backtracks: 0,
+            backjumps: 0,
+            negfired: 0,
+            branch_pushes: 0,
+            disjunct_tries: 0,
             stats: std::env::var_os("KM_HT_STATS").is_some(),
             hb: std::env::var("KM_HT_HB").ok().and_then(|s| s.parse().ok()).unwrap_or(200_000),
             tick: 0,
@@ -1030,6 +1082,7 @@ impl Ht {
             naive: std::env::var_os("KM_HT_NAIVE").is_some(),
             watch: std::env::var_os("KM_HT_NO_WATCH").is_none(),
             learn: std::env::var_os("KM_HT_LEARN").is_some(),
+            negtried: std::env::var_os("KM_HT_NEGTRIED").is_some(),
             decisions: Vec::new(),
             learned: Vec::new(),
             lwatch: HashMap::new(),
@@ -1147,34 +1200,54 @@ impl Ht {
         // transitive roles (dropped 1 subsumption on 5303). Full EQ (mode 2)
         // is complete but folds too little to terminate in time.
         let mode = self.block_mode;
-        let pc: Vec<usize> = (0..nn)
-            .map(|m| self.ext.concepts[m].keys().filter(|k| !k.neg).count())
-            .collect();
-        for n in 0..nn {
-            if !self.ext.blockable[n] {
-                continue;
-            }
-            let ln = &self.ext.concepts[n];
-            let lnlen = ln.len();
-            for m in 0..n {
-                if blocked[m] {
+        if mode == 0 || mode == 2 {
+            // O(n) hashed equality blocking — HermiT's BlockingSignatureCache idea.
+            // The equality modes block n by the FIRST earlier unblocked node with
+            // an identical signature, so a hash on the signature replaces the
+            // O(n²) pairwise scan with one pass (identical result; pure cost fix).
+            // mode 2: full label (pos+neg); mode 0 (core): positive concepts only.
+            // Signature key packs each literal as (c<<1)|neg, sorted for canonicity.
+            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
+            for n in 0..nn {
+                if !self.ext.blockable[n] {
                     continue;
                 }
-                let lm = &self.ext.concepts[m];
-                let hit = match mode {
-                    1 => lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)),
-                    2 => lm.len() == lnlen && ln.keys().all(|k| lm.contains_key(k)),
-                    _ => {
-                        // core: identical POSITIVE-concept set
-                        pc[m] == pc[n]
-                            && ln.keys().filter(|k| !k.neg).all(|k| lm.contains_key(k))
-                    }
-                };
-                if hit {
+                let mut sig: Vec<u64> = self.ext.concepts[n]
+                    .keys()
+                    .filter(|k| mode == 2 || !k.neg)
+                    .map(|k| ((k.c as u64) << 1) | (k.neg as u64))
+                    .collect();
+                sig.sort_unstable();
+                if !seen.insert(sig) {
+                    // an earlier unblocked node already carries this signature
                     blocked[n] = true;
-                    break;
                 }
             }
+        } else {
+            // mode 1 (subset): superset match has no hash, keep the O(n²) scan.
+            for n in 0..nn {
+                if !self.ext.blockable[n] {
+                    continue;
+                }
+                let ln = &self.ext.concepts[n];
+                let lnlen = ln.len();
+                for m in 0..n {
+                    if blocked[m] {
+                        continue;
+                    }
+                    let lm = &self.ext.concepts[m];
+                    if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                        blocked[n] = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if self.stats && nn > 200 {
+            let nb = blocked.iter().filter(|b| **b).count();
+            let blk = self.ext.blockable.iter().filter(|b| **b).count();
+            eprintln!("KM_HT [blocking] mode={} nodes={} blockable={} blocked={} ({}%)",
+                mode, nn, blk, nb, if nn > 0 { nb * 100 / nn } else { 0 });
         }
         blocked
     }
@@ -1216,6 +1289,13 @@ impl Ht {
                 Event::NodeNew(n) => {
                     for i in 0..self.global_clauses.len() {
                         let cid = self.global_clauses[i];
+                        // eager: defer the ⊤-disjunctions; they are fired in
+                        // `process_obligations` only on confirmed-unblocked nodes.
+                        // The Horn globals still fire (they build the label that
+                        // blocking and the deferred check depend on).
+                        if self.eager && self.global_disj_set.contains(&cid) {
+                            continue;
+                        }
                         fire_global(&self.clauses, &mut self.ext, cid, n);
                         if self.ext.has_clash() {
                             return;
@@ -1354,6 +1434,37 @@ impl Ht {
         // Batch-compute blocking once per pass (cheap once the model is folded;
         // anywhere-subset for the default ALC(H) route, ancestor-only otherwise).
         let blocked = if self.anywhere { Some(self.compute_blocked()) } else { None };
+        // EAGER (KM_HT_EAGER): fire the deferred global ⊤-disjunctions, but only on
+        // nodes that are NOT blocked. A blocked node's ⊤-disjunctions are covered
+        // by its blocker (anywhere blocking, ALC(H) no-inverse), so they never
+        // need their own branch points — this is what keeps HermiT's model (and
+        // its branch count) tiny. Because disjunct choices are not yet in the
+        // label at this point, blocking compares Horn-only labels and folds more.
+        if self.eager && !self.global_disj.is_empty() {
+            let nn = self.ext.num_nodes();
+            for n in 0..nn {
+                if self.ext.globals_fired[n] {
+                    continue;
+                }
+                let is_blk = match &blocked {
+                    Some(b) => b[n],
+                    None => ancestor_blocked(&self.ext, n),
+                };
+                if is_blk {
+                    continue; // blocked: blocker covers its ⊤-disjunctions
+                }
+                self.ext.globals_fired[n] = true;
+                self.ext.trail.push(Trail::GlobalsFired(n));
+                for i in 0..self.global_disj.len() {
+                    let cid = self.global_disj[i];
+                    fire_global(&self.clauses, &mut self.ext, cid, n);
+                }
+                made = true;
+                if self.ext.has_clash() {
+                    return made;
+                }
+            }
+        }
         let no = self.ext.obligations.len();
         for i in 0..no {
             let (n, r, fil, dep) = {
@@ -1569,8 +1680,10 @@ impl Ht {
                         eprintln!("TR branch depth={} level={} ndisj={}", depth, level, gd.disjuncts.len());
                     }
                     self.order_disjuncts(&mut gd.disjuncts);
+                    self.branch_pushes += 1;
                     let mut fail = dep_empty();
                     for (di, d) in gd.disjuncts.iter().enumerate() {
+                        self.disjunct_tries += 1;
                         let mark = self.ext.mark();
                         let dep = dep_add(&gd.dep, level);
                         if self.trace {
@@ -1597,9 +1710,34 @@ impl Ht {
                                 }
                                 self.ext.backtrack_to(mark);
                                 if !dep_contains(&cd, level) {
+                                    self.backjumps += 1;
                                     return Out::Conflict(cd);
                                 }
                                 fail = dep_union(&fail, &cd);
+                                // HermiT startNextChoice: D_di clashed under the other
+                                // choices in cd, so ¬D_di holds under those choices.
+                                // Assert it (dep = cd minus this branch level) so the
+                                // remaining disjuncts unit-propagate against it instead
+                                // of re-expanding the same subtree. The fact lands after
+                                // `mark`, so it persists across the next iterations and
+                                // is cleaned up when the caller backtracks past this
+                                // disjunction. Sound: cd∖{level} ⊨ ¬D_di.
+                                if self.negtried && di + 1 < gd.disjuncts.len() {
+                                    let ndep = dep_remove(&cd, level);
+                                    let comp = CLit { neg: !d.lit.neg, c: d.lit.c };
+                                    self.negfired += 1;
+                                    self.ext.add_concept(d.node, comp, &ndep);
+                                    if self.ext.has_clash() {
+                                        // ¬D_di immediately clashes ⇒ the disjunction is
+                                        // unsat under the current outer choices.
+                                        let cd2 = self.ext.clash_dep();
+                                        self.ext.backtrack_to(mark);
+                                        if !dep_contains(&cd2, level) {
+                                            return Out::Conflict(cd2);
+                                        }
+                                        return Out::Conflict(dep_remove(&dep_union(&fail, &cd2), level));
+                                    }
+                                }
                             }
                         }
                     }
@@ -1680,12 +1818,21 @@ impl Ht {
         let mut labels: Vec<(C, Vec<C>)> = Vec::new();
         for (qi, &a) in queries.iter().enumerate() {
             let q0 = self.start.elapsed().as_millis();
+            let bt0 = self.backtracks;
+            let bj0 = self.backjumps;
+            let nf0 = self.negfired;
+            let bp0 = self.branch_pushes;
+            let dt0 = self.disjunct_tries;
+            let st0 = self.steps;
             let sat = self.consistent(&[CLit::pos(a)])?;
             if self.stats {
                 let dt = self.start.elapsed().as_millis() - q0;
                 if dt > 200 || qi % 100 == 0 {
-                    eprintln!("KM_HT [classify-p1] qi={}/{} concept={} sat={} dt_ms={} nodes_last={}",
-                        qi, queries.len(), a, sat, dt, self.ext.num_nodes());
+                    eprintln!("KM_HT [classify-p1] qi={}/{} concept={} sat={} dt_ms={} nodes_last={} branch_pushes={} disjunct_tries={} backtracks={} backjumps={} negfired={} steps={}",
+                        qi, queries.len(), a, sat, dt, self.ext.num_nodes(),
+                        self.branch_pushes - bp0, self.disjunct_tries - dt0,
+                        self.backtracks - bt0, self.backjumps - bj0, self.negfired - nf0,
+                        self.steps - st0);
                 }
             }
             if !sat {
@@ -1731,6 +1878,21 @@ impl Ht {
             }
         } else {
             let satset: HashSet<C> = sat_q.iter().copied().collect();
+            // Multi-model pruning (HermiT QuasiOrderClassification, the
+            // m_possibleSubsumptions.removeAll step). Every model of A built
+            // during classification has A in its root label; any query concept
+            // ABSENT from that label is witnessed non-subsumed (A ⊓ ¬C is
+            // satisfiable in that model), so it can be dropped from A's candidate
+            // set WITHOUT a test. Phase 1 supplies one A-model (`lab`); each
+            // Phase-2 test that returns SAT (A ⋢ b) supplies a fresh A-model
+            // whose root label shrinks the residual we still have to test. Sound
+            // (only proven non-subsumers are removed) and output-identical to the
+            // un-pruned run; it only changes which/how-many tests fire. Gated
+            // KM_HT_MODELPRUNE for clean A/B. `tests` counts Phase-2 SAT calls so
+            // KM_HT_STATS can report the per-classify test count (the HermiT
+            // metric: O(classes), not O(classes^2)).
+            let modelprune = std::env::var_os("KM_HT_MODELPRUNE").is_some();
+            let mut tests: u64 = 0;
             for (a0, lab) in &labels {
                 let a = *a0;
                 // known = transitive closure of A's told subsumers (no test).
@@ -1758,10 +1920,17 @@ impl Ht {
                     .collect();
                 cand.sort_unstable();
                 cand.dedup();
+                // `possible` is the live residual; SAT models prune it as we go.
+                let mut possible: HashSet<C> =
+                    if modelprune { cand.iter().copied().collect() } else { HashSet::new() };
                 for b in cand {
                     if known.contains(&b) {
                         continue;
                     }
+                    if modelprune && !possible.contains(&b) {
+                        continue; // a prior A-model already witnessed A ⋢ b
+                    }
+                    tests += 1;
                     if !self.consistent(&[CLit::pos(a), CLit::neg(b)])? {
                         local.push(b);
                         known.insert(b);
@@ -1777,11 +1946,22 @@ impl Ht {
                                 }
                             }
                         }
+                    } else if modelprune {
+                        // SAT: this fresh A-model (A true, b false at root)
+                        // excludes every query concept missing from its root
+                        // label. Intersect the residual with it. True subsumers
+                        // hold in every A-model, so they survive.
+                        let m: HashSet<C> = self.root_pos_label().into_iter().collect();
+                        possible.retain(|c| m.contains(c));
                     }
                 }
                 for b in local {
                     subs.push((a, b));
                 }
+            }
+            if self.stats {
+                eprintln!("KM_HT [classify-p2] modelprune={} sat_q={} phase2_tests={}",
+                    modelprune, sat_q.len(), tests);
             }
         }
         if self.trace {
