@@ -10,6 +10,7 @@
 //! engine on `KM_QUERIES`. Races (absorbed/plain, CB/tableau, CB/HT, elc/CB)
 //! and the `cb_to_ht` conversion land in later phases.
 
+pub mod cb_to_ht;
 pub mod config;
 pub mod engine_run;
 pub mod frontend_run;

@@ -16,10 +16,43 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("classify") => classify_cmd(&args[2..]),
+        // hidden debug subcommand: stdin {clauses, rbox?} -> TInput JSON (the
+        // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
+        Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
             eprintln!("usage: km classify [--lines] <ontology.ofn>");
             exit(2);
         }
+    }
+}
+
+fn cb_to_ht_cmd() {
+    use kobayashi_marust::json_io::JClause;
+    use std::io::Read;
+    #[derive(serde::Deserialize)]
+    struct CbInput {
+        clauses: Vec<JClause>,
+        #[serde(default)]
+        rbox: Option<Vec<Vec<String>>>,
+    }
+    let mut buf = String::new();
+    if std::io::stdin().read_to_string(&mut buf).is_err() {
+        eprintln!("failed to read stdin");
+        exit(1);
+    }
+    let input: CbInput = match serde_json::from_str(&buf) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("bad input JSON: {e}");
+            exit(1);
+        }
+    };
+    let named = std::collections::HashSet::new();
+    let tin = orchestrate::cb_to_ht::convert(&input.clauses, input.rbox.as_deref(), &named);
+    let stdout = std::io::stdout();
+    if let Err(e) = serde_json::to_writer(stdout.lock(), &tin) {
+        eprintln!("serialise error: {e}");
+        exit(1);
     }
 }
 
