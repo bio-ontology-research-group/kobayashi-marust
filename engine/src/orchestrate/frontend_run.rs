@@ -57,3 +57,24 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
     let meta_parsed: Meta = serde_json::from_reader(File::open(meta.path())?)?;
     Ok((clauses, meta_parsed))
 }
+
+/// Run `ofn` once with `KM_ABSORB` forced on/off, streaming the (full) clause
+/// set to a temp file (the engine ignores the extra meta keys). Used by the
+/// absorption portfolio to obtain the *plain* clause set. Port of
+/// `_ofn_clauses_file`; returns None on any failure.
+pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath> {
+    let clauses = TempPath::new(".clauses.json");
+    let status = Command::new(cfg.ofn_bin())
+        .arg(ont)
+        .stdin(Stdio::null())
+        .stdout(File::create(clauses.path()).ok()?)
+        .stderr(Stdio::null())
+        .env("KM_ABSORB", if absorb { "1" } else { "0" })
+        .status()
+        .ok()?;
+    if status.code() == Some(0) {
+        Some(clauses)
+    } else {
+        None
+    }
+}

@@ -14,6 +14,7 @@ pub mod cb_to_ht;
 pub mod config;
 pub mod engine_run;
 pub mod frontend_run;
+pub mod race;
 pub mod tmpfile;
 
 use std::collections::{BTreeMap, HashSet};
@@ -95,8 +96,33 @@ pub struct Classification {
     pub dropped: usize,
 }
 
-fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
+pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
     Ok(serde_json::from_reader(BufReader::new(File::open(res.stdout.path())?))?)
+}
+
+/// The CB stack chosen by the production flags. Mirrors `owl_classify`'s
+/// `cb_stack` closure: absorption portfolio (KM_ABSORB_PORTFOLIO + KM_ABSORB) is
+/// raced against the tableau when KM_TAB_RACE, the tableau alone races the plain
+/// adaptive engine when only KM_TAB_RACE, else the bare adaptive engine.
+fn cb_stack(cfg: &Config, ont: &std::path::Path, clauses_path: &std::path::Path) -> Result<EngineOut, OrchestrateError> {
+    if cfg.absorb_portfolio && cfg.absorb_on {
+        if cfg.tab_race {
+            return race::race_cb_vs_tableau(cfg, clauses_path, || race::race_absorbed_plain(cfg, ont, clauses_path));
+        }
+        return race::race_absorbed_plain(cfg, ont, clauses_path);
+    }
+    if cfg.tab_race {
+        return race::race_cb_vs_tableau(cfg, clauses_path, || run_adaptive(cfg, clauses_path));
+    }
+    run_adaptive(cfg, clauses_path)
+}
+
+fn run_adaptive(cfg: &Config, clauses_path: &std::path::Path) -> Result<EngineOut, OrchestrateError> {
+    let res = engine_run::run_engine_adaptive(cfg, clauses_path, None)?;
+    if res.code != 0 {
+        return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+    }
+    parse_out(&res)
 }
 
 // ---------------------------------------------------------------------------
@@ -159,17 +185,7 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         }
         match out {
             Some(o) => o,
-            None => {
-                let res = engine_run::run_engine_adaptive(cfg, clauses_path.path(), None)?;
-                if res.code != 0 {
-                    return Err(OrchestrateError::Worker {
-                        bin: "engine".into(),
-                        code: res.code,
-                        stderr: res.stderr,
-                    });
-                }
-                parse_out(&res)?
-            }
+            None => cb_stack(cfg, ont, clauses_path.path())?,
         }
     };
 

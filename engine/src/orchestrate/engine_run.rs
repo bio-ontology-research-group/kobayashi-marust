@@ -12,10 +12,45 @@
 use std::fs::File;
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::tmpfile::TempPath;
 use super::{Config, OrchestrateError};
+
+// Engine children currently alive + a race-won flag — the analogue of
+// owl_classify's `_LIVE_ENGINES` / `_RACE_WON`. A race winner (tableau/HT/elc)
+// calls `cancel_and_kill_engines`, which SIGKILLs every live engine child and
+// stops any subsequent spawn (e.g. the adaptive single-threaded retry) from
+// starting. Process-global is correct: `km classify` handles one ontology per
+// process, so there is no cross-ontology leakage to reset.
+static LIVE: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+static CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// A race was won elsewhere: SIGKILL every live engine child and block new spawns.
+pub fn cancel_and_kill_engines() {
+    CANCEL.store(true, Ordering::SeqCst);
+    let pids = LIVE.lock().unwrap().clone();
+    for pid in pids {
+        unsafe {
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
+    }
+}
+/// Clear the race-won flag (mirrors `_RACE_WON.clear()` before residue resolution).
+pub fn reset_cancel() {
+    CANCEL.store(false, Ordering::SeqCst);
+}
+fn register(pid: u32) {
+    LIVE.lock().unwrap().push(pid);
+}
+fn deregister(pid: u32) {
+    let mut g = LIVE.lock().unwrap();
+    if let Some(i) = g.iter().position(|&p| p == pid) {
+        g.remove(i);
+    }
+}
 
 pub struct EngineResult {
     pub code: i32,
@@ -50,6 +85,18 @@ pub fn run_engine(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "worker".into());
 
+    // a race already answered: do not spawn (the racing thread may still be
+    // unwinding its adaptive retry). Mirrors `_RACE_WON.is_set()` -> -9.
+    if CANCEL.load(Ordering::SeqCst) {
+        return Ok(EngineResult {
+            code: -9,
+            stdout: TempPath::new(".cancelled"),
+            stderr: "race won: skip spawn".into(),
+            oom: false,
+            timed_out: false,
+        });
+    }
+
     let stdout_tmp = TempPath::new(".out.json");
     let stderr_tmp = TempPath::new(".err");
 
@@ -75,6 +122,7 @@ pub fn run_engine(
         .spawn()
         .map_err(|e| OrchestrateError::Spawn { bin: bin_name.clone(), source: e })?;
     let pid = child.id();
+    register(pid);
 
     let cap_bytes = rss_cap_gb.map(|g| (g * (1u64 << 30) as f64) as u64);
     let deadline = time_cap_s.map(|s| Instant::now() + Duration::from_secs_f64(s));
@@ -109,6 +157,7 @@ pub fn run_engine(
         }
     };
 
+    deregister(pid);
     let code = status.code().unwrap_or(-1); // signal-killed -> negative-ish; we branch on oom/timed/rc anyway
     let stderr = std::fs::read_to_string(stderr_tmp.path()).unwrap_or_default();
     Ok(EngineResult { code, stdout: stdout_tmp, stderr, oom, timed_out })
