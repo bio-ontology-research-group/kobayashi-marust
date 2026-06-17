@@ -639,6 +639,173 @@ def _race_cb_vs_tableau(clauses_path, clauses, engine_run=None):
     return json.loads(proc.stdout)
 
 
+def _ht_routable(tin: dict) -> bool:
+    """The KM_HT hypertableau is SOUND on this fragment (no wrong subsumption).
+    Route iff the cb_to_ht encoding is FAITHFUL (nothing fenced/dropped) and there
+    are no inverse roles (inverse needs the double-blocking the port lacks) and no
+    nominals (the SHOQ proxy-root encoding is incomplete -- ore_ont_10908). Number
+    restrictions (ALCQ) ARE allowed: cb_to_ht encodes them with slot-fillers +
+    eq-merge and HT classifies them gold-clean (ore_ont_9635). Datatype/hasValue
+    content is opaque to cb_to_ht (encoded as surrogate concepts) and HT does no
+    datatype reasoning, so HT is incomplete there -- but HT is only ever consulted
+    on a CB failure (see _race_cb_vs_ht fallback), so that cannot regress a passing
+    ontology. Structural fragment test only; never an ontology identity."""
+    if tin.get("fenced") or tin.get("dropped"):
+        return False
+    if tin.get("nominals") or tin.get("inverse"):
+        return False
+    return True
+
+
+def _spawn_ht(clauses_path, clauses):
+    """Spawn `tableau_cli` under KM_HT=1 (the ported HermiT-style hypertableau) as
+    a racer on the HT-routable fragment. Returns `(proc, out_path)` or None. The
+    HT is single-threaded and memory-light; it fills CB's coverage gap on the
+    central-blow-up / context-explosion ontologies CB times out on (ore_ont_4604,
+    9635, 11460, 15491). Gated by KM_HT_RACE via _race_cb_vs_ht."""
+    tab_bin = os.environ.get("KM_TAB_BIN")
+    if not tab_bin or not os.path.exists(tab_bin):
+        return None
+    try:
+        cl = clauses if clauses is not None else \
+            json.load(open(clauses_path))["clauses"]
+    except Exception:
+        return None
+    try:
+        import cb_to_ht
+        tin = cb_to_ht.convert(cl, None)
+    except Exception:
+        return None
+    if not _ht_routable(tin):
+        return None
+    env = dict(os.environ)
+    env["KM_HT"] = "1"
+    fd, out_path = tempfile.mkstemp(suffix=".htrace.json")
+    # HT runs on the core CB reserves for it (see _race_cb_vs_ht); a light nice
+    # keeps it from preempting CB on the ontologies CB finishes quickly.
+    nice_n = os.environ.get("KM_HT_NICE", "1")
+    argv = (["nice", "-n", nice_n] if nice_n and nice_n != "0" else []) + [tab_bin]
+    try:
+        proc = subprocess.Popen(
+            argv, stdin=subprocess.PIPE, stdout=os.fdopen(fd, "w"),
+            stderr=subprocess.DEVNULL, text=True, env=env)
+    except Exception:
+        try:
+            os.close(fd)
+        except Exception:
+            pass
+        if os.path.exists(out_path):
+            os.unlink(out_path)
+        return None
+
+    def feed():
+        try:
+            json.dump(tin, proc.stdin)
+            proc.stdin.close()
+        except Exception:
+            pass
+
+    threading.Thread(target=feed, daemon=True).start()
+    return (proc, out_path)
+
+
+def _race_cb_vs_ht(clauses_path, clauses, engine_run, mode="fallback"):
+    """Race the CB engine stack (`engine_run`, a zero-arg callable returning the
+    `out` dict) against the KM_HT hypertableau. CB is the Lean-certified sound +
+    complete engine; HT is SOUND but incomplete on the live-disjunction fragment,
+    so the win rule is correctness-aware:
+
+      * mode='fallback' (SAFE, default): CB is preferred whenever it finishes; HT's
+        answer is taken ONLY when CB fails (error) or does not finish within
+        KM_HT_BUDGET_S. This is monotone -- it cannot regress an ontology CB
+        solves, it only fills CB's coverage gap (the CB-timeout onts HT classifies
+        gold-clean). HT being incomplete on some routable onts is harmless because
+        those are exactly the ones CB solves, where CB's answer is the one used.
+      * mode='race' (SPEED): the first VALID finisher wins, capturing HT's speed
+        wins (e.g. 6246: 252 s -> 0.01 s) but possibly taking an HT-incomplete
+        answer on a CB-fast ont; the sweep measures that cost.
+
+    Returns the `out` dict. On a non-routable ontology HT never spawns and CB runs
+    alone. The HT is niced onto a single reserved core, so CB keeps the rest."""
+    r = _spawn_ht(clauses_path, clauses)
+    if r is None:
+        return engine_run()
+    ht_proc, ht_out = r
+    # reserve one core for the (single-threaded) HT racer so it makes progress on
+    # the CB-timeout onts instead of being starved by the all-core CB run.
+    cur = os.environ.get("KM_THREADS")
+    if cur is None or (cur.isdigit() and int(cur) > 1):
+        os.environ["KM_THREADS"] = str(max(1, (os.cpu_count() or 2) - 1))
+
+    done: dict = {}
+
+    def run_cb():
+        try:
+            done["out"] = engine_run()
+        except BaseException as e:
+            done["exc"] = e
+
+    th = threading.Thread(target=run_cb, daemon=True)
+    th.start()
+    budget = float(os.environ.get("KM_HT_BUDGET_S", "225"))
+    t0 = time.time()
+    ht_res = None
+    ht_polled = False
+
+    def poll_ht():
+        nonlocal ht_res, ht_polled
+        if ht_polled:
+            return
+        if ht_proc.poll() is None:
+            return
+        ht_polled = True
+        if ht_proc.returncode == 0:
+            try:
+                with open(ht_out) as f:
+                    ht_res = _tableau_to_out(json.load(f))
+            except Exception:
+                ht_res = None
+
+    def kill_cb():
+        _RACE_WON.set()
+        for p in list(_LIVE_ENGINES):
+            try:
+                p.kill()
+            except Exception:
+                pass
+
+    try:
+        while True:
+            poll_ht()
+            if "out" in done:                 # CB finished valid: always prefer CB
+                return done["out"]
+            if mode == "race":
+                if ht_res is not None:        # HT finished first (and valid)
+                    kill_cb()
+                    return ht_res
+                if "exc" in done:             # CB failed; HT is the only hope
+                    if ht_polled and ht_res is None:
+                        raise done["exc"]
+            else:                              # fallback
+                over = (time.time() - t0) > budget
+                if "exc" in done:              # CB errored: take HT if valid
+                    if ht_res is not None:
+                        return ht_res
+                    if ht_polled:
+                        raise done["exc"]
+                elif over and ht_res is not None:  # CB over budget: HT fills the gap
+                    kill_cb()
+                    return ht_res
+            time.sleep(0.05)
+    finally:
+        try:
+            ht_proc.kill()
+        except Exception:
+            pass
+        if os.path.exists(ht_out):
+            os.unlink(ht_out)
+
+
 def _ofn_clauses_file(ofn_path: str, absorb: bool):
     """Run `ofn` once with KM_ABSORB forced on/off and stream the clause set to a
     temp file (engine stdin shape). Returns the path (caller unlinks) or None on
@@ -854,38 +1021,44 @@ def classify(ofn_path: str) -> dict:
                     text=True, env=elc_env)
             try:
                 if elc_race is None:
-                    # Absorption portfolio: when KM_ABSORB is on, the primary
-                    # clause set is absorbed; race it (full cores) against the
-                    # plain clause set (niced) so the rare absorption blow-up
-                    # (ore_ont_6246) is covered by the plain run. Needs the source
-                    # ofn_path (zero-copy gives only the absorbed clause file).
-                    if os.environ.get("KM_ABSORB_PORTFOLIO") \
-                            and os.environ.get("KM_ABSORB", "0") != "0" \
-                            and clauses_path is not None:
-                        # absorption portfolio is the engine path. The tableau
-                        # racer is lazily/niced/single-threaded, so it must run
-                        # ALONGSIDE the portfolio (not be shadowed by it): wrap
-                        # the portfolio as the engine procedure inside the race
-                        # so the live-disjunction family the engine times out on
-                        # is still recovered by the tableau.
+                    def cb_stack():
+                        # Absorption portfolio: when KM_ABSORB is on, the primary
+                        # clause set is absorbed; race it (full cores) against the
+                        # plain clause set (niced) so the rare absorption blow-up
+                        # (ore_ont_6246) is covered by the plain run. Needs the
+                        # source ofn_path (zero-copy gives only the absorbed file).
+                        if os.environ.get("KM_ABSORB_PORTFOLIO") \
+                                and os.environ.get("KM_ABSORB", "0") != "0" \
+                                and clauses_path is not None:
+                            # absorption portfolio is the engine path. The tableau
+                            # racer is lazily/niced/single-threaded, so it must run
+                            # ALONGSIDE the portfolio (not be shadowed by it).
+                            if os.environ.get("KM_TAB_RACE"):
+                                return _race_cb_vs_tableau(
+                                    clauses_path, clauses,
+                                    engine_run=lambda: _race_absorbed_plain(
+                                        ofn_path, clauses_path))
+                            return _race_absorbed_plain(ofn_path, clauses_path)
+                        # race the context engine against the label-caching tableau
+                        # on in-fragment live-disjunction ontologies. Spawned
+                        # lazily/niced inside the racer (free for fast onts).
                         if os.environ.get("KM_TAB_RACE"):
-                            out = _race_cb_vs_tableau(
-                                clauses_path, clauses,
-                                engine_run=lambda: _race_absorbed_plain(
-                                    ofn_path, clauses_path))
-                        else:
-                            out = _race_absorbed_plain(ofn_path, clauses_path)
-                    # race the context engine against the label-caching tableau on
-                    # in-fragment live-disjunction ontologies. The tableau is
-                    # spawned lazily/niced inside the racer, so this is free for
-                    # ontologies the engine finishes quickly (no-op otherwise).
-                    elif os.environ.get("KM_TAB_RACE"):
-                        out = _race_cb_vs_tableau(clauses_path, clauses)
-                    else:
+                            return _race_cb_vs_tableau(clauses_path, clauses)
                         proc = _run_engine_adaptive(clauses_path, clauses)
                         if proc.returncode != 0:
                             raise RuntimeError(proc.stderr)
-                        out = json.loads(proc.stdout)
+                        return json.loads(proc.stdout)
+
+                    # New main hybrid (KM_HT_RACE): race the whole CB stack against
+                    # the KM_HT hypertableau. fallback mode is monotone-safe (HT
+                    # only fills CB's coverage gap, never replaces a CB answer);
+                    # race mode takes the first finisher (speed). No-op otherwise.
+                    if os.environ.get("KM_HT_RACE"):
+                        out = _race_cb_vs_ht(
+                            clauses_path, clauses, cb_stack,
+                            mode=os.environ.get("KM_HT_MODE", "fallback"))
+                    else:
+                        out = cb_stack()
                 else:
                     # leave one core to the (single-threaded) certificate
                     # racer: with the engine on all cores it gets starved and

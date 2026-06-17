@@ -57,6 +57,13 @@ pub type Node = usize;
 /// The center variable `x` of every HT-clause.
 pub const X: Var = 0;
 
+/// HermiT-style hypertableau (dependency-directed backjumping + disjunction
+/// learning + anywhere blocking), built bottom-up alongside the legacy paths.
+/// See the module header for the increment plan. Gated into `run_json` by
+/// `KM_HT=1` once the main loop lands (INCR 4).
+#[path = "hypertableau.rs"]
+pub mod hypertableau;
+
 /// A concept literal `A` or `¬A` (post-NNF, so concepts are atomic).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct CLit {
@@ -3861,15 +3868,53 @@ pub fn run_json(input: &str) -> Result<String, String> {
         .iter()
         .map(|c| Clause::new(c.body.iter().map(atom_of).collect(), c.head.iter().map(atom_of).collect()))
         .collect();
-    let mut t = Tableau::new(clauses);
-    t.set_pairwise(inp.inverse);
-    t.set_number(inp.number);
-    t.set_nominals(inp.nominals.clone());
     let queries: Vec<C> = if inp.queries.is_empty() {
         (0..inp.concepts.len() as C).collect()
     } else {
         inp.queries.clone()
     };
+
+    // KM_HT: route ALC(H) KBs (no number restrictions / nominals / inverses) to
+    // the ported HermiT hypertableau engine. Run on a large stack since the DFS
+    // recurses once per active branching point. Falls back to the legacy
+    // tableau if the KB is out of the ALC(H) fragment or the engine reports an
+    // out-of-fragment construct (returns None).
+    if std::env::var_os("KM_HT").is_some()
+        && !inp.number
+        && !inp.inverse
+        && inp.nominals.is_empty()
+    {
+        let ht_clauses = clauses.clone();
+        let q = queries.clone();
+        let res = std::thread::Builder::new()
+            .stack_size(1usize << 30)
+            .spawn(move || {
+                let mut ht = hypertableau::Ht::new(ht_clauses);
+                ht.classify(&q)
+            })
+            .map_err(|e| e.to_string())?
+            .join()
+            .map_err(|_| "hypertableau thread panicked".to_string())?;
+        if std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("TR run_json: thread joined (Ht dropped inside thread)");
+        }
+        if let Some((consistent, unsat, subs)) = res {
+            let name =
+                |c: C| inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"));
+            let out = TOutput {
+                consistent,
+                unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
+                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
+            };
+            return serde_json::to_string(&out).map_err(|e| e.to_string());
+        }
+        // None ⇒ out-of-fragment; fall through to the legacy tableau.
+    }
+
+    let mut t = Tableau::new(clauses);
+    t.set_pairwise(inp.inverse);
+    t.set_number(inp.number);
+    t.set_nominals(inp.nominals.clone());
     let (consistent, unsat, subs) = t.classify(&queries);
     let name = |c: C| inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"));
     let out = TOutput {

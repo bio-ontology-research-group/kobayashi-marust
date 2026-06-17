@@ -18,7 +18,7 @@ yet built) rather than silently passed through as a free concept name. Anything
 else (function terms in bodies, equalities we do not recognise) is DROPPED and
 counted, never silently approximated.
 """
-import json, sys
+import json, sys, os
 
 
 def short(n):
@@ -368,6 +368,49 @@ def convert(clauses, rbox=None):
     if inverse_pairs and number:
         fenced.append({"reason": "inverse+number(SHIQ)",
                        "detail": "inverse roles together with number restrictions"})
+
+    # ---- transitivity completeness: Horrocks-Sattler universal propagation ----
+    # KM_HT anywhere-subset blocking can drop transitive-role consequences (a
+    # blocked node never realises its R-successors, so a ∀R.C constraint that
+    # should reach the unravelled tail is lost). For a transitive role R and a
+    # canonical universal U = ∀R.C (clause R(x,y) ∧ U(x) → C(y)), the rule
+    #   U(x) ∧ R(x,y) → U(y)
+    # is sound (any R-successor of y is, by transitivity, an R-successor of x, so
+    # already has C) and restores completeness under subset blocking. Detect
+    # transitive roles from the R∘R⊑R composition clauses. Gated by
+    # KM_HT_NO_TRANS_ENC. No effect on ontologies without transitive roles.
+    transitive_roles = set()
+    if "KM_HT_NO_TRANS_ENC" not in os.environ:
+        for c in ht_clauses:
+            rb = [a for a in c["body"] if a.get("k") == "r"]
+            rh = [a for a in c["head"] if a.get("k") == "r"]
+            if len(c["body"]) == 2 and len(rb) == 2 and len(c["head"]) == 1 and len(rh) == 1:
+                r1, r2 = rb
+                h = rh[0]
+                if (r1["r"] == r2["r"] == h["r"] and r1["t"] == r2["s"]
+                        and h["s"] == r1["s"] and h["t"] == r2["t"] and r1["s"] != r2["t"]):
+                    transitive_roles.add(h["r"])
+        extra = []
+        seen = set()
+        if transitive_roles:
+            for c in ht_clauses:
+                rb = [a for a in c["body"] if a.get("k") == "r"]
+                cb = [a for a in c["body"] if a.get("k") == "c"]
+                ch = [a for a in c["head"] if a.get("k") == "c"]
+                if len(c["body"]) == 2 and len(rb) == 1 and len(cb) == 1:
+                    r = rb[0]
+                    u = cb[0]
+                    if (r["r"] in transitive_roles and not u.get("neg")
+                            and u["t"] == r["s"]
+                            and any(cc["t"] == r["t"] for cc in ch)):
+                        key = (r["r"], u["c"])
+                        if key not in seen:
+                            seen.add(key)
+                            extra.append({
+                                "body": [{"k": "r", "r": r["r"], "s": r["s"], "t": r["t"]},
+                                         {"k": "c", "neg": False, "c": u["c"], "t": r["s"]}],
+                                "head": [{"k": "c", "neg": False, "c": u["c"], "t": r["t"]}]})
+        ht_clauses.extend(extra)
 
     queries = [cid(n) for n in con_names if not is_internal(n) and not is_bottom(n)]
     return {"concepts": con_names, "roles": rol_names, "clauses": ht_clauses,
