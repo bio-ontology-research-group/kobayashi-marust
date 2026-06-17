@@ -19,4 +19,11 @@ correct where.
 
 - `2026-06-17-ht-matrix.md` — HT 9-arm version matrix (after the cb_to_ht
   query-set incompleteness fix) + proactive-router sim. Adds the `ht-modelprune`
-  arm (HermiT QuasiOrder multi-model pruning, output-identical).
+  arm (HermiT QuasiOrder multi-model pruning). NOTE: its in-run "+1" for
+  modelprune was not reproducible — see the correction banner and the file
+  below.
+- `2026-06-17-ht-fullcorpus-panel.md` — fresh full-corpus 10-arm panel on
+  committed `190fe53`. Best HT arm = `ht-default` (454 ok, 0 unsound). Shows
+  `ht-modelprune` is a net −7 (447 ok) and overturns the earlier sample result;
+  modelprune stays gated OFF. Soundness invariant (unsound=0) holds across all
+  arms; only incompleteness is ont 7216 (non-disjunction gap).
