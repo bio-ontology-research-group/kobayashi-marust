@@ -1,0 +1,295 @@
+//! Pure-Rust classify orchestrator — the replacement for
+//! `engine/py/owl_classify.py`. A typed supervisor that spawns the worker
+//! reasoners (`ofn`, `elc`, `kobayashi-marust`, and later `tableau_cli`) as
+//! subprocesses, preserving the process-isolation the memory-watchdog and the
+//! reasoner races depend on.
+//!
+//! Phase 1 (this file) implements the production path with all race flags off:
+//!   ofn --meta  ->  (el_rbox_safe ? elc : CB-engine-adaptive)  ->  output map.
+//! The elc PARTIAL-certificate residue (exit 4) is resolved by re-running the
+//! engine on `KM_QUERIES`. Races (absorbed/plain, CB/tableau, CB/HT, elc/CB)
+//! and the `cb_to_ht` conversion land in later phases.
+
+pub mod config;
+pub mod engine_run;
+pub mod frontend_run;
+pub mod tmpfile;
+
+use std::collections::{BTreeMap, HashSet};
+use std::fs::File;
+use std::io::{BufReader, Write};
+use std::path::Path;
+
+pub use config::Config;
+
+/// Local names denoting the bottom concept (⊥). Matches `owl_classify.BOTTOM`.
+fn is_bottom(s: &str) -> bool {
+    s == "Nothing" || s == "owl:Nothing" || s == "\u{22A5}"
+}
+
+// ---------------------------------------------------------------------------
+// errors (hand-rolled; no extra dependency)
+// ---------------------------------------------------------------------------
+#[derive(Debug)]
+pub enum OrchestrateError {
+    /// ofn exit 3: ontology outside the supported fragment (datatypes)
+    OutOfFragment(String),
+    /// a worker exited non-zero (other than the modelled elc 3/4 codes)
+    Worker { bin: String, code: i32, stderr: String },
+    /// failed to spawn a worker binary
+    Spawn { bin: String, source: std::io::Error },
+    Io(std::io::Error),
+    Json(serde_json::Error),
+}
+
+impl std::fmt::Display for OrchestrateError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OrchestrateError::OutOfFragment(m) => write!(f, "out of fragment: {m}"),
+            OrchestrateError::Worker { bin, code, stderr } => {
+                write!(f, "worker {bin} exited {code}: {stderr}")
+            }
+            OrchestrateError::Spawn { bin, source } => write!(f, "spawn {bin}: {source}"),
+            OrchestrateError::Io(e) => write!(f, "io: {e}"),
+            OrchestrateError::Json(e) => write!(f, "json: {e}"),
+        }
+    }
+}
+impl std::error::Error for OrchestrateError {}
+impl From<std::io::Error> for OrchestrateError {
+    fn from(e: std::io::Error) -> Self {
+        OrchestrateError::Io(e)
+    }
+}
+impl From<serde_json::Error> for OrchestrateError {
+    fn from(e: serde_json::Error) -> Self {
+        OrchestrateError::Json(e)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// data
+// ---------------------------------------------------------------------------
+/// The reasoner-output JSON shape shared by the engine and elc:
+/// `{subsumptions:{A:[B,...]}, inconsistent, dropped, unresolved}`.
+#[derive(serde::Deserialize, Default)]
+pub struct EngineOut {
+    #[serde(default)]
+    pub subsumptions: BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    pub inconsistent: bool,
+    #[serde(default)]
+    pub dropped: usize,
+    /// elc exit-4 residue (named subjects the certificate could not determine)
+    #[serde(default)]
+    pub unresolved: Vec<String>,
+}
+
+/// The final classification, serialised exactly like `owl_classify`'s output.
+#[derive(serde::Serialize)]
+pub struct Classification {
+    pub consistent: bool,
+    pub subsumptions: Vec<[String; 2]>,
+    pub unsatisfiable: Vec<String>,
+    pub dropped: usize,
+}
+
+fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
+    Ok(serde_json::from_reader(BufReader::new(File::open(res.stdout.path())?))?)
+}
+
+// ---------------------------------------------------------------------------
+// the conductor
+// ---------------------------------------------------------------------------
+pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateError> {
+    let (clauses_path, meta) = frontend_run::run_ofn_split(cfg, ont)?;
+
+    // The frontend proved the ABox forces an individual into disjoint named
+    // classes: inconsistent. The CB engine drops the ABox, so short-circuit.
+    if meta.abox_inconsistent {
+        return Ok(Classification {
+            consistent: false,
+            subsumptions: vec![],
+            unsatisfiable: vec![],
+            dropped: 0,
+        });
+    }
+
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    // In the Rust-frontend path the per-ontology short registry is empty, so
+    // `short(n) == n`; is_internal keys directly on the internal name.
+    let is_internal = |n: &str| -> bool {
+        if named.contains(n) {
+            return false;
+        }
+        n.starts_with("Q_")
+            || n.starts_with("__")
+            || n.starts_with("aux_")
+            || n.starts_with("def_")
+            || (n.contains(':') && !is_bottom(n))
+    };
+
+    // EL fast path (elc) when the RBox is EL-safe, else the CB engine.
+    let out: EngineOut = {
+        let mut out: Option<EngineOut> = None;
+        if meta.el_rbox_safe {
+            let res = engine_run::run_engine(
+                &cfg.elc_bin(),
+                clauses_path.path(),
+                None,
+                None,
+                None,
+                &[],
+                false,
+            )?;
+            match res.code {
+                3 => {} // not EL: fall through to the CB engine
+                4 => out = Some(resolve_residue(cfg, parse_out(&res)?, clauses_path.path())?),
+                0 => out = Some(parse_out(&res)?),
+                c => {
+                    return Err(OrchestrateError::Worker {
+                        bin: "elc".into(),
+                        code: c,
+                        stderr: res.stderr,
+                    })
+                }
+            }
+        }
+        match out {
+            Some(o) => o,
+            None => {
+                let res = engine_run::run_engine_adaptive(cfg, clauses_path.path(), None)?;
+                if res.code != 0 {
+                    return Err(OrchestrateError::Worker {
+                        bin: "engine".into(),
+                        code: res.code,
+                        stderr: res.stderr,
+                    });
+                }
+                parse_out(&res)?
+            }
+        }
+    };
+
+    // Output mapping: emit FULL IRIs (the harness canonicalises once); filter
+    // generated names; drop self-subsumptions; collect ⊥-subsumptions as unsat.
+    let full_iri = |n: &str| -> String { meta.iri_map.get(n).cloned().unwrap_or_else(|| n.to_string()) };
+    let mut subs: Vec<[String; 2]> = Vec::new();
+    let mut unsat: Vec<String> = Vec::new();
+    let mut unsat_names: HashSet<&str> = HashSet::new();
+    for (a, sups) in &out.subsumptions {
+        if is_internal(a) {
+            continue;
+        }
+        let fa = full_iri(a);
+        for s in sups {
+            if is_bottom(s) {
+                if !unsat.iter().any(|u| u == &fa) {
+                    unsat.push(fa.clone());
+                    unsat_names.insert(a.as_str());
+                }
+            } else if !is_internal(s) && s != a {
+                subs.push([fa.clone(), full_iri(s)]);
+            }
+        }
+    }
+    if unsat_names.iter().any(|n| asserted.contains(*n)) {
+        return Ok(Classification {
+            consistent: false,
+            subsumptions: vec![],
+            unsatisfiable: vec![],
+            dropped: out.dropped,
+        });
+    }
+    subs.sort();
+    unsat.sort();
+    Ok(Classification {
+        consistent: !out.inconsistent,
+        subsumptions: subs,
+        unsatisfiable: unsat,
+        dropped: out.dropped,
+    })
+}
+
+/// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
+/// the engine under `KM_QUERIES` and merge. Port of `_resolve_residue`.
+fn resolve_residue(
+    cfg: &Config,
+    mut partial: EngineOut,
+    clauses_path: &Path,
+) -> Result<EngineOut, OrchestrateError> {
+    let names = std::mem::take(&mut partial.unresolved);
+    if names.is_empty() {
+        return Ok(partial);
+    }
+    let q = names.join(",");
+    let res = engine_run::run_engine_adaptive(cfg, clauses_path, Some(&q))?;
+    if res.code != 0 {
+        return Err(OrchestrateError::Worker {
+            bin: "engine".into(),
+            code: res.code,
+            stderr: res.stderr,
+        });
+    }
+    let eng = parse_out(&res)?;
+    for (k, v) in eng.subsumptions {
+        partial.subsumptions.insert(k, v); // dict.update: eng overwrites partial
+    }
+    partial.inconsistent = partial.inconsistent || eng.inconsistent;
+    Ok(partial)
+}
+
+// ---------------------------------------------------------------------------
+// output formatting
+// ---------------------------------------------------------------------------
+/// A `serde_json` formatter matching Python's `json.dumps` default spacing
+/// (`", "` between items, `": "` after keys) so `km classify` stdout is
+/// byte-identical to `owl_classify.py` for ASCII IRIs.
+struct PyFmt;
+impl serde_json::ser::Formatter for PyFmt {
+    fn begin_array_value<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> std::io::Result<()> {
+        if first {
+            Ok(())
+        } else {
+            w.write_all(b", ")
+        }
+    }
+    fn begin_object_key<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> std::io::Result<()> {
+        if first {
+            Ok(())
+        } else {
+            w.write_all(b", ")
+        }
+    }
+    fn begin_object_value<W: ?Sized + Write>(&mut self, w: &mut W) -> std::io::Result<()> {
+        w.write_all(b": ")
+    }
+}
+
+impl Classification {
+    /// `json.dumps(res)`-compatible bytes.
+    pub fn to_json(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        {
+            let mut ser = serde_json::Serializer::with_formatter(&mut buf, PyFmt);
+            serde::Serialize::serialize(self, &mut ser).expect("serialise Classification");
+        }
+        buf
+    }
+
+    /// The dependency-free line format for the Java/Protégé plugin (`--lines`).
+    pub fn to_lines(&self) -> String {
+        let mut out = vec![
+            format!("CONSISTENT {}", if self.consistent { 1 } else { 0 }),
+            format!("DROPPED {}", self.dropped),
+        ];
+        for p in &self.subsumptions {
+            out.push(format!("SUB\t{}\t{}", p[0], p[1]));
+        }
+        for c in &self.unsatisfiable {
+            out.push(format!("UNSAT\t{}", c));
+        }
+        out.join("\n")
+    }
+}

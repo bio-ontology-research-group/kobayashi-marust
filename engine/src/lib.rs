@@ -12,4 +12,5 @@ pub mod elcomplete;
 pub mod engine;
 pub mod frontend;
 pub mod json_io;
+pub mod orchestrate;
 pub mod reasoner;
