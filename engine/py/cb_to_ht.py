@@ -38,6 +38,101 @@ def is_bottom(n):
     return short(n) in BOTTOM
 
 
+def _pos_concepts(atoms):
+    """If `atoms` are ALL positive concept atoms over a single variable, return
+    their concept ids; else None. (Used to recognise excluded-middle /
+    disjointness clauses, which are over the root var x.)"""
+    out, var = [], None
+    for a in atoms:
+        if a.get("k") != "c" or a.get("neg"):
+            return None
+        if var is None:
+            var = a["t"]
+        elif a["t"] != var:
+            return None
+        out.append(a["c"])
+    return out
+
+
+def _sub_atom(a, sub):
+    """Replace an eliminated concept id by the negation of its complement
+    (B := ¬A): flip the literal's polarity. Non-concept atoms pass through."""
+    if a.get("k") == "c" and a["c"] in sub:
+        return {"k": "c", "neg": not a.get("neg", False), "c": sub[a["c"]], "t": a["t"]}
+    return a
+
+
+def elim_complements(ht_clauses, con_names):
+    """KM_HT_EMELIM — sound+complete excluded-middle elimination for the HT path.
+
+    A complementary definer pair shows up as TWO clauses: ``⊤ ⊑ A ∨ B`` (empty
+    body, two positive concepts) and ``A ⊓ B ⊑ ⊥`` (two positive concepts, empty
+    head). Together these entail ``B ≡ ¬A`` (exactly one of A,B holds). KM's
+    clausifier names the negation of a (complex) concept as a fresh definer B and
+    then forces the excluded middle ``⊤ ⊑ A ∨ B`` as a disjunction that fires AND
+    branches on EVERY node — the cause of the HT model blow-up on the live-∀+⊔
+    family (HermiT keeps the negation implicit and never branches A∨¬A).
+
+    Substituting ``B := ¬A`` everywhere and dropping the two now-tautologous
+    clauses (``⊤⊑A∨¬A`` and ``A⊓¬A⊑⊥``) is model-preserving, hence sound AND
+    complete. We eliminate the internal (definer) side so named/query concepts
+    survive, and never eliminate a concept used as an existential filler (its
+    ``∃r.B`` occurrence cannot carry the ¬A rewrite)."""
+    em, dj = {}, set()
+    protected = set()
+    for c in ht_clauses:
+        for a in c["body"] + c["head"]:
+            if a.get("k") == "e":
+                protected.add(a["c"])          # existential filler concept
+        if not c["body"]:
+            h = _pos_concepts(c["head"])
+            if h and len(h) == 2 and h[0] != h[1]:
+                em[frozenset(h)] = True
+        if not c["head"]:
+            b = _pos_concepts(c["body"])
+            if b and len(b) == 2 and b[0] != b[1]:
+                dj.add(frozenset(b))
+    pairs = [p for p in em if p in dj]
+    if not pairs:
+        return ht_clauses, 0
+
+    def internal(i):
+        return is_internal(con_names[i])
+
+    sub, used = {}, set()
+    for p in pairs:
+        a, b = sorted(p)
+        if internal(b) and not internal(a):
+            elim, keep = b, a
+        elif internal(a) and not internal(b):
+            elim, keep = a, b
+        else:
+            elim, keep = b, a            # both internal/named: drop the larger id
+        if elim in protected:
+            continue                     # would break an ∃r.elim occurrence
+        if elim in used or keep in used:
+            continue                     # keep substitution chain-free
+        sub[elim] = keep
+        used.add(elim)
+        used.add(keep)
+    if not sub:
+        return ht_clauses, 0
+    elim_pairs = {frozenset((e, k)) for e, k in sub.items()}
+    out = []
+    for c in ht_clauses:
+        if not c["body"]:
+            h = _pos_concepts(c["head"])
+            if h and len(h) == 2 and frozenset(h) in elim_pairs:
+                continue                 # drop ⊤⊑A∨B
+        if not c["head"]:
+            b = _pos_concepts(c["body"])
+            if b and len(b) == 2 and frozenset(b) in elim_pairs:
+                continue                 # drop A⊓B⊑⊥
+        out.append({"body": [_sub_atom(a, sub) for a in c["body"]],
+                    "head": [_sub_atom(a, sub) for a in c["head"]]})
+    return out, len(sub)
+
+
 def convert(clauses, rbox=None, named=None):
     """Convert moose CB clauses (+ optional RBox records from frontend.ofn_rbox)
     into a TInput dict for the Rust tableau. RBox in-fragment records (subrole,
@@ -425,6 +520,12 @@ def convert(clauses, rbox=None, named=None):
     # (definers, slots, nominals — never declared) are excluded.
     queries = [cid(n) for n in con_names
                if (n in named_set or not is_internal(n)) and not is_bottom(n)]
+    # KM_HT_EMELIM: eliminate complementary-definer excluded-middle disjunctions
+    # (B≡¬A) so they stop firing/branching on every node (the HT model-fold gap).
+    if os.environ.get("KM_HT_EMELIM"):
+        ht_clauses, n_elim = elim_complements(ht_clauses, con_names)
+        if os.environ.get("KM_HT_STATS"):
+            sys.stderr.write("cb_to_ht [emelim] eliminated %d complementary pairs\n" % n_elim)
     return {"concepts": con_names, "roles": rol_names, "clauses": ht_clauses,
             "queries": sorted(set(queries)), "dropped": dropped, "fenced": fenced,
             "inverse": bool(inverse_pairs), "number": number,

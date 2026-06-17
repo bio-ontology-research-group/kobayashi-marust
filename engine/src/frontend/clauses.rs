@@ -74,6 +74,121 @@ pub fn constraint<B: IntoIterator<Item = Atom>>(body: B) -> DLClause {
     }
 }
 
+/// KM_EMELIM — complementary-definer excluded-middle elimination (the CB
+/// analogue of the HT-path `cb_to_ht.elim_complements`). A pair `⊤ ⊑ A ∨ B`
+/// (empty body, two concepts over one term) together with `A ⊓ B ⊑ ⊥` (empty
+/// head) entails `B ≡ ¬A`. The clausifier introduced B as a fresh definer for a
+/// negation and then forced excluded middle as a disjunctive fact that fires on
+/// every individual. Since the CB DL-clause form is positive (negation is
+/// body/head position), `B ≡ ¬A` is applied by MOVING each occurrence of B to
+/// the other side of `⊑` as A: a head B becomes a body A, a body B becomes a
+/// head A. Dropping the two now-tautologous defining clauses, this is
+/// model-preserving (sound + complete). The internal (definer) side is
+/// eliminated so named/query concepts survive. Substitution is kept chain-free.
+fn is_definer(s: &str) -> bool {
+    s.starts_with("Q_") || s.starts_with("__") || s.starts_with("aux_") || s.starts_with("def_")
+}
+
+/// If `atoms` are exactly two distinct Concept atoms over the SAME term, return
+/// their names (sorted); else None. (Matches the `⊤⊑A∨B` / `A⊓B⊑⊥` shape.)
+fn two_concepts_same_term(atoms: &[Atom]) -> Option<(String, String)> {
+    if atoms.len() != 2 {
+        return None;
+    }
+    if let (Atom::Concept(a, ta), Atom::Concept(b, tb)) = (&atoms[0], &atoms[1]) {
+        if ta == tb && a != b {
+            return Some(if a <= b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) });
+        }
+    }
+    None
+}
+
+pub fn elim_complements(tbox: Vec<DLClause>) -> (Vec<DLClause>, usize) {
+    use std::collections::{HashMap, HashSet};
+    let mut em: HashSet<(String, String)> = HashSet::new();
+    let mut dj: HashSet<(String, String)> = HashSet::new();
+    for c in &tbox {
+        if c.body.is_empty() {
+            if let Some(p) = two_concepts_same_term(&c.head) {
+                em.insert(p);
+            }
+        }
+        if c.head.is_empty() {
+            if let Some(p) = two_concepts_same_term(&c.body) {
+                dj.insert(p);
+            }
+        }
+    }
+    let pairs: Vec<(String, String)> = em.intersection(&dj).cloned().collect();
+    if pairs.is_empty() {
+        return (tbox, 0);
+    }
+    // elim -> keep  (elim ≡ ¬keep). Prefer eliminating the definer side.
+    let mut sub: HashMap<String, String> = HashMap::new();
+    let mut used: HashSet<String> = HashSet::new();
+    for (a, b) in &pairs {
+        let (elim, keep) = if is_definer(b) && !is_definer(a) {
+            (b, a)
+        } else if is_definer(a) && !is_definer(b) {
+            (a, b)
+        } else {
+            (b, a) // both/neither definer: drop the lexicographically larger (b >= a)
+        };
+        if used.contains(elim) || used.contains(keep) {
+            continue; // keep the substitution chain-free
+        }
+        sub.insert(elim.clone(), keep.clone());
+        used.insert(elim.clone());
+        used.insert(keep.clone());
+    }
+    if sub.is_empty() {
+        return (tbox, 0);
+    }
+    let elim_pairs: HashSet<(String, String)> = sub
+        .iter()
+        .map(|(e, k)| if e <= k { (e.clone(), k.clone()) } else { (k.clone(), e.clone()) })
+        .collect();
+    let n = sub.len();
+    let mut out: Vec<DLClause> = Vec::with_capacity(tbox.len());
+    for c in tbox {
+        // drop the defining `⊤⊑A∨B` / `A⊓B⊑⊥` clauses for eliminated pairs.
+        if c.body.is_empty() {
+            if let Some(p) = two_concepts_same_term(&c.head) {
+                if elim_pairs.contains(&p) {
+                    continue;
+                }
+            }
+        }
+        if c.head.is_empty() {
+            if let Some(p) = two_concepts_same_term(&c.body) {
+                if elim_pairs.contains(&p) {
+                    continue;
+                }
+            }
+        }
+        let mut nb: Vec<Atom> = Vec::new();
+        let mut nh: Vec<Atom> = Vec::new();
+        for a in &c.body {
+            match a {
+                Atom::Concept(name, t) if sub.contains_key(name) => {
+                    nh.push(Atom::Concept(sub[name].clone(), t.clone()))
+                }
+                _ => nb.push(a.clone()),
+            }
+        }
+        for a in &c.head {
+            match a {
+                Atom::Concept(name, t) if sub.contains_key(name) => {
+                    nb.push(Atom::Concept(sub[name].clone(), t.clone()))
+                }
+                _ => nh.push(a.clone()),
+            }
+        }
+        out.push(clause(nb, nh));
+    }
+    (out, n)
+}
+
 // ---- conversion to JSON (port of rust_context._term_to_json etc.) ----
 
 fn term_to_json(t: &Term) -> JTerm {

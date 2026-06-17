@@ -255,6 +255,20 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     }
     t.lap("rbox+domain+declared");
 
+    // KM_EMELIM: complementary-definer excluded-middle elimination (B≡¬A) — the
+    // CB analogue of the HT-path absorption. Removes the ⊤⊑A∨B disjunctive facts
+    // that otherwise produce covering disjuncts on every individual. Gated;
+    // default off ⇒ output byte-identical to the prior binary.
+    let tbox = if std::env::var_os("KM_EMELIM").is_some() {
+        let (t, n) = clauses::elim_complements(tbox);
+        if std::env::var_os("KM_OFN_TIMING").is_some() {
+            eprintln!("ofn [emelim] eliminated {} complementary pairs", n);
+        }
+        t
+    } else {
+        tbox
+    };
+
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON
     // clause set is built (rather than holding both in full at once).
     let mut jclauses: Vec<crate::json_io::JClause> =

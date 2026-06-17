@@ -182,6 +182,13 @@ pub struct Ext {
     blockable: Vec<bool>,
     /// eager mode: per-node flag — its deferred global ⊤-disjunctions have fired.
     globals_fired: Vec<bool>,
+    /// KM_HT_BLOCKSKIP: per-node blocked snapshot, refreshed at each branch
+    /// selection. A disjunction all of whose disjunct nodes are blocked is not
+    /// branched (its blocker already witnesses it) — see `refresh_blocked`.
+    blocked: Vec<bool>,
+    /// KM_HT_BLOCKSKIP active: suppress nondeterministic branching on blocked
+    /// nodes (sound + complete for the anywhere-blocked ALC(H) route).
+    blockskip: bool,
     trail: Vec<Trail>,
     clash: Option<DepSet>,
     /// delta propagation worklist (drained by `Ht::propagate`).
@@ -226,6 +233,8 @@ impl Ext {
             pred: Vec::new(),
             blockable: Vec::new(),
             globals_fired: Vec::new(),
+            blocked: Vec::new(),
+            blockskip: std::env::var_os("KM_HT_BLOCKSKIP").is_some(),
             trail: Vec::new(),
             clash: None,
             queue: Vec::new(),
@@ -883,10 +892,28 @@ enum DEval {
     Branch(Vec<GroundDisjunct>, DepSet),
 }
 
+/// KM_HT_BLOCKSKIP: a disjunction need not be branched if EVERY node carrying a
+/// disjunct is blocked. Each blocked node n is label-subset of an unblocked
+/// blocker m (anywhere blocking, ALC(H) no inverse); m sits on the frontier that
+/// IS branched, so n reuses m's choice. Sound: were n's disjunction all-dead (a
+/// clash), m's superset label would clash too, and m is branched. Complete: any
+/// subsumption forced through n is also forced through m.
+#[inline]
+fn disj_all_blocked(ext: &Ext, id: usize) -> bool {
+    ext.blockskip
+        && ext.pending[id]
+            .disjuncts
+            .iter()
+            .all(|&(n, _)| ext.blocked.get(n).copied().unwrap_or(false))
+}
+
 /// Evaluate pending disjunction `id`: is it satisfied, a clash (all disjuncts
 /// dead), forced (one live ⇒ unit), or branchable (>=2 live)? Same formula as the
 /// per-step scan, evaluated for a single disjunction.
 fn eval_disj(ext: &Ext, id: usize) -> DEval {
+    if disj_all_blocked(ext, id) {
+        return DEval::Satisfied;
+    }
     let pd = &ext.pending[id];
     let mut dead_dep = dep_empty();
     let mut live: Vec<GroundDisjunct> = Vec::new();
@@ -1080,7 +1107,11 @@ impl Ht {
             start: Instant::now(),
             trace: std::env::var_os("KM_HT_TRACE").is_some(),
             naive: std::env::var_os("KM_HT_NAIVE").is_some(),
-            watch: std::env::var_os("KM_HT_NO_WATCH").is_none(),
+            // blockskip needs the full pending re-scan so a disjunction whose
+            // node became unblocked is reconsidered (the watch path only revisits
+            // dirty/open ids and could miss the unblock).
+            watch: std::env::var_os("KM_HT_NO_WATCH").is_none()
+                && std::env::var_os("KM_HT_BLOCKSKIP").is_none(),
             learn: std::env::var_os("KM_HT_LEARN").is_some(),
             negtried: std::env::var_os("KM_HT_NEGTRIED").is_some(),
             decisions: Vec::new(),
@@ -1175,6 +1206,23 @@ impl Ht {
         // single-node view of anywhere-subset blocking; `process_obligations`
         // uses the cheaper batch `compute_blocked` (this stays for completeness).
         self.compute_blocked()[n]
+    }
+
+    /// KM_HT_BLOCKSKIP: recompute the per-node blocked snapshot used to suppress
+    /// branching on blocked nodes. Called once per branch selection (after the
+    /// propagation fixpoint), so the snapshot reflects the current labels. Cheap:
+    /// the same anywhere/ancestor computation `process_obligations` already runs.
+    fn refresh_blocked(&mut self) {
+        if !self.ext.blockskip {
+            return;
+        }
+        self.ext.blocked = if self.anywhere {
+            self.compute_blocked()
+        } else {
+            (0..self.ext.num_nodes())
+                .map(|n| ancestor_blocked(&self.ext, n))
+                .collect()
+        };
     }
 
     /// Anywhere SUBSET blocking — the HermiT model-folding KM was missing.
@@ -1311,10 +1359,17 @@ impl Ht {
     /// clash on an empty live set, and return the first genuine >=2-way branch.
     /// Satisfied entries are skipped (kept, so backtracking can revive them).
     fn next_action_from_pending(&mut self) -> Scan {
+        // KM_HT_BLOCKSKIP: refresh the blocked snapshot once for this branch
+        // selection (no-op unless blockskip is on), then skip any disjunction all
+        // of whose nodes are blocked.
+        self.refresh_blocked();
         let mut branch: Option<GD> = None;
         let np = self.ext.pending.len();
         for i in 0..np {
             self.heartbeat("scan");
+            if disj_all_blocked(&self.ext, i) {
+                continue;
+            }
             let m = self.ext.pending[i].disjuncts.len();
             let bdep = self.ext.pending[i].bdep.clone();
             let mut satisfied = false;
@@ -1789,6 +1844,35 @@ impl Ht {
     /// Positive named concepts true at the root individual of the model left in
     /// `self.ext` by the most recent satisfiable `consistent` call. Used for
     /// model-based subsumer pruning.
+    /// KM_HT_DUMPLABELS diagnostic: characterise the current model's node labels
+    /// (positive concepts) to see why equality blocking does/doesn't fold it.
+    fn dump_labels(&self) {
+        let nn = self.ext.num_nodes();
+        let mut sigs: Vec<Vec<C>> = Vec::with_capacity(nn);
+        for n in 0..nn {
+            let mut s: Vec<C> = self.ext.concepts[n].keys().filter(|k| !k.neg).map(|k| k.c).collect();
+            s.sort_unstable();
+            sigs.push(s);
+        }
+        let mut sizes: Vec<usize> = sigs.iter().map(|s| s.len()).collect();
+        sizes.sort_unstable();
+        let distinct: HashSet<&Vec<C>> = sigs.iter().collect();
+        let blocked = if self.anywhere { self.compute_blocked() } else { vec![false; nn] };
+        let nblk = blocked.iter().filter(|b| **b).count();
+        let med = if sizes.is_empty() { 0 } else { sizes[sizes.len() / 2] };
+        eprintln!(
+            "KM_HT [dumplabels] nodes={} distinct_pos_labels={} blocked={} label_size(min/med/max)={}/{}/{}",
+            nn, distinct.len(), nblk,
+            sizes.first().copied().unwrap_or(0), med, sizes.last().copied().unwrap_or(0)
+        );
+        // smallest 10 labels (raw concept ids) to eyeball what differs.
+        let mut by_size: Vec<&Vec<C>> = sigs.iter().collect();
+        by_size.sort_by_key(|s| s.len());
+        for s in by_size.iter().take(10) {
+            eprintln!("KM_HT [dumplabels]   |{}| {:?}", s.len(), s);
+        }
+    }
+
     fn root_pos_label(&self) -> Vec<C> {
         self.ext
             .concepts
@@ -1842,6 +1926,12 @@ impl Ht {
                 if !naive {
                     labels.push((a, self.root_pos_label()));
                 }
+            }
+            // KM_HT_DUMPLABELS: one-shot dump of the first concept's model — node
+            // count, distinct positive labels, size distribution, smallest labels.
+            // Diagnostic for the HermiT model-fold gap (compare to HermitNodeLabels).
+            if qi == 0 && std::env::var_os("KM_HT_DUMPLABELS").is_some() {
+                self.dump_labels();
             }
         }
 
