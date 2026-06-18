@@ -4,6 +4,38 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Live-disjunction family (5303): decision-on-demand + contrapositive enrichment (in progress, all gated default-off)
+
+Attack on the live ∀+⊔ family (5303/10702/1603/9540). Two mechanisms added, both
+sound clause-level enrichments, gated, default-off (no production impact, no Lean
+re-cert until empirically validated):
+
+- **`KM_HT_DOD`** (`tableau.rs`): DPLL-style unit propagation over disjunctions —
+  inside the saturation fixpoint, a fired disjunction whose disjuncts are all
+  refuted but one asserts that survivor deterministically (sound resolution, dep =
+  body ∪ refuting deps), one with all refuted clashes; only ≥2-open disjunctions
+  branch. The branch loop also skips refuted disjuncts (deps folded into the
+  no-good). `KM_HT_CONTRA` companion: contrapositive Horn clauses for clash clauses
+  (`A⊓B⊑⊥ ⇒ A→¬B, B→¬A`) so negative literals propagate and feed unit propagation.
+
+- **Key finding:** `run_json` (`tableau.rs:4482`) routes every ALC(H) KB to
+  `hypertableau::Ht`, not the legacy `Tableau`, whenever `KM_HT=1` (always set by
+  the orchestrator). The family runs on `Ht`. `Ht` already implements
+  decision-on-demand (`eval_disj`: Clash/Unit/Branch) plus `KM_HT_WATCH`,
+  `KM_HT_NEGTRIED`, `KM_HT_EAGER`, but a clash clause only `raise_clash`es when
+  both literals are present — `Ht` never derives the negatives its unit-propagation
+  needs. The contrapositive generator was therefore ported into **`Ht::new`**
+  (`hypertableau.rs`, `KM_HT_CONTRA`); the `tableau.rs` DOD/CONTRA remain for the
+  out-of-fragment fallback. Build green, 111 lib tests pass.
+
+- **Konclude divergence trace:** `docs/konclude-trace-5303.md` (showboat,
+  verify-clean) traces Konclude vs KM from source on 5303: Konclude keeps one
+  shared node per concept (not model-size), parks disjunctions and never splits
+  (harvesting subsumers via common-disjunct extraction), and SAT-tests only the
+  INSUFFICIENT residue (~5%); KM's HT builds a model-sized graph and case-splits.
+  CONTRA/DOD make individual disjunctions cheaper but do not change that structural
+  blow-up — empirical CONTRA×WATCH/NEGTRIED/EAGER measurement on `Ht` underway.
+
 ### Hybrid CB/HT main reasoner: KM_HT hypertableau fills CB's coverage gap (monotone-safe)
 
 The ported HermiT-style hypertableau (`hypertableau.rs`, `KM_HT`, driven via

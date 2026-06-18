@@ -1026,8 +1026,73 @@ pub struct Ht {
     lwatch: HashMap<(Node, CLit), Vec<usize>>,
 }
 
+/// Contrapositive Horn clauses for clash clauses (KM_HT_CONTRA). A clash clause
+/// `A1 ⊓ … ⊓ An ⊑ ⊥` (empty head, all-Concept body on one variable) entails its n
+/// contrapositives `⋀_{j≠i} Aj → ¬Ai`. `Ht` only `raise_clash`es a clash clause
+/// when *every* Ai is present (apply_head), so it never asserts `¬Ai`; yet its
+/// disjunction handling (`eval_disj`, `apply_head`) decides a disjunct is *dead*
+/// solely by its complement being present. The contrapositives feed exactly those
+/// negative facts in through ordinary Horn firing, so unit propagation can fire on
+/// complementary disjunctions and the negative branch's own consequences
+/// (`¬A ⊑ ∃r.B`) get derived. Each added clause is entailed ⇒ sound.
+fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
+    let mut extra = Vec::new();
+    for cl in clauses {
+        if !cl.head.is_empty() || cl.body.len() < 2 {
+            continue;
+        }
+        let mut lits: Vec<CLit> = Vec::with_capacity(cl.body.len());
+        let mut var: Option<Var> = None;
+        let mut ok = true;
+        for a in &cl.body {
+            match a {
+                Atom::Concept { lit, t } => {
+                    match var {
+                        None => var = Some(*t),
+                        Some(v) if v == *t => {}
+                        _ => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    lits.push(*lit);
+                }
+                _ => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if !ok {
+            continue;
+        }
+        let v = var.unwrap();
+        for i in 0..lits.len() {
+            let body: Vec<Atom> = lits
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, l)| Atom::Concept { lit: *l, t: v })
+                .collect();
+            let comp = CLit { neg: !lits[i].neg, c: lits[i].c };
+            extra.push(Clause { body, head: vec![Atom::Concept { lit: comp, t: v }] });
+        }
+    }
+    extra
+}
+
 impl Ht {
     pub fn new(clauses: Vec<Clause>) -> Ht {
+        let mut clauses = clauses;
+        // KM_HT_CONTRA: enrich clash clauses with their contrapositives so negative
+        // literals propagate, feeding Ht's existing unit-propagation (eval_disj).
+        if std::env::var_os("KM_HT_CONTRA").is_some() {
+            let extra = contrapositives(&clauses);
+            if std::env::var_os("KM_HT_STATS").is_some() {
+                eprintln!("KM_HT_STATS contrapositives added={}", extra.len());
+            }
+            clauses.extend(extra);
+        }
         let recs: Vec<ClauseRec> = clauses
             .into_iter()
             .map(|c| {

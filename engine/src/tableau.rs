@@ -47,6 +47,15 @@ fn stat_try() {
 fn stat_backtrack() {
     STATS.with(|s| { let (e, t, b) = s.get(); s.set((e, t, b + 1)); });
 }
+thread_local! {
+    /// (decision-on-demand unit survivors asserted, DOD clashes). Only printed
+    /// under KM_TAB_STATS; lets us confirm unit propagation actually fires.
+    static UNITS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+}
+#[inline]
+fn stat_unit(applied: u64, clashed: bool) {
+    UNITS.with(|s| { let (a, c) = s.get(); s.set((a + applied, c + clashed as u64)); });
+}
 
 /// Atomic concept id, atomic role id, clause variable, completion-graph node.
 pub type C = u32;
@@ -644,10 +653,90 @@ pub struct Tableau {
     /// before unguarded ⊤-level ones, deferring the excluded-middle / covering
     /// tautologies until nothing guarded is pending. Sound selection-order change.
     lazy: bool,
+    /// KM_HT_DOD — decision-on-demand (DPLL-style unit propagation). A disjunction
+    /// is never *branched* while it is still determined: inside the saturation
+    /// fixpoint, every fired disjunction whose head disjuncts are all refuted but
+    /// one has that one survivor asserted *deterministically* (with the refuting
+    /// literals' deps folded in — sound resolution), and one whose disjuncts are
+    /// *all* refuted clashes at once. Only genuinely open (≥2 unassigned disjuncts)
+    /// disjunctions reach the branch point in `expand_inc`. This is the true lazy
+    /// unfolding at the rule level — it collapses the per-node branching factor on
+    /// the live ∀+⊔ family (every excluded-middle choice forced by the deterministic
+    /// structure is propagated, not split). Non-careful path only. Changes what the
+    /// search derives ⇒ Lean re-cert before any default-on.
+    dod: bool,
+}
+
+/// Contrapositive Horn clauses for clash clauses (KM_HT_CONTRA). A clash clause
+/// `A1 ⊓ … ⊓ An ⊑ ⊥` (empty head, all-Concept body on one variable) is logically
+/// equivalent to its n contrapositives `⋀_{j≠i} Aj → ¬Ai`. The base hypertableau
+/// only detects the clash once *every* Ai is present; the contrapositives let it
+/// *derive* `¬Ai` as soon as the other n−1 hold, so negative literals propagate
+/// through Horn closure. Two things hinge on that: decision-on-demand unit
+/// propagation can fire on complementary disjunctions (no `¬Ai` is asserted
+/// otherwise, so DOD is inert), and the negative branch's own consequences
+/// (`¬A ⊑ ∃r.B`) get explored — the completeness gap that EMELIM silently drops.
+/// Each added clause is entailed by the original, so the addition is sound.
+fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
+    let mut extra = Vec::new();
+    for cl in clauses {
+        if !cl.head.is_empty() || cl.body.len() < 2 {
+            continue;
+        }
+        let mut lits: Vec<CLit> = Vec::with_capacity(cl.body.len());
+        let mut var: Option<Var> = None;
+        let mut ok = true;
+        for a in &cl.body {
+            match a {
+                Atom::Concept { lit, t } => {
+                    match var {
+                        None => var = Some(*t),
+                        Some(v) if v == *t => {}
+                        _ => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    lits.push(*lit);
+                }
+                // A clash gated by a role/eq atom is not a pure single-node
+                // concept clash — skip (its contrapositive is not a Horn unit).
+                _ => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if !ok {
+            continue;
+        }
+        let v = var.unwrap();
+        for i in 0..lits.len() {
+            let body: Vec<Atom> = lits
+                .iter()
+                .enumerate()
+                .filter(|(j, _)| *j != i)
+                .map(|(_, l)| Atom::Concept { lit: *l, t: v })
+                .collect();
+            let head = vec![Atom::Concept { lit: lits[i].complement(), t: v }];
+            extra.push(Clause::new(body, head));
+        }
+    }
+    extra
 }
 
 impl Tableau {
     pub fn new(clauses: Vec<Clause>) -> Tableau {
+        let mut clauses = clauses;
+        // KM_HT_CONTRA: enrich clash clauses with their contrapositives so negative
+        // literals propagate (prerequisite for decision-on-demand to do anything).
+        if std::env::var_os("KM_HT_CONTRA").is_some() {
+            let extra = contrapositives(&clauses);
+            if std::env::var_os("KM_TAB_STATS").is_some() {
+                eprintln!("KM_TAB_STATS contrapositives added={}", extra.len());
+            }
+            clauses.extend(extra);
+        }
         let infos = clauses
             .into_iter()
             .map(|cl| {
@@ -709,6 +798,7 @@ impl Tableau {
             unsatcache: std::env::var_os("KM_HT_UNSATCACHE").is_some(),
             eqblock: std::env::var_os("KM_HT_EQBLOCK").is_some(),
             lazy: std::env::var_os("KM_HT_LAZY").is_some(),
+            dod: std::env::var_os("KM_HT_DOD").is_some(),
         }
     }
 
@@ -868,8 +958,9 @@ impl Tableau {
         };
         if std::env::var("KM_TAB_STATS").is_ok() {
             let (e, t, b) = STATS.with(|s| s.get());
+            let (ua, uc) = UNITS.with(|s| s.get());
             eprintln!(
-                "KM_TAB_STATS expands={e} branch_tries={t} backtracks={b} nodes={}",
+                "KM_TAB_STATS expands={e} branch_tries={t} backtracks={b} dod_units={ua} dod_clashes={uc} nodes={}",
                 g.n()
             );
         }
@@ -1592,6 +1683,17 @@ impl Tableau {
             if prog {
                 eprintln!("KM_TAB_STATS saturate_inc round={} horn_inc DONE nodes={}", inc_round, g.n());
             }
+            // Decision-on-demand: propagate forced disjunction survivors before any
+            // ∃ round or branch. A unit survivor is a deterministic consequence, so
+            // it must be drained by `horn_inc` (and may unit-propagate further)
+            // before we generate successors — loop back when it changes the graph.
+            if self.dod {
+                match self.unit_prop_round(g, &mut queue) {
+                    Err(c) => return Some(c),
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                }
+            }
             let mut ex_changed = false;
             for s in 0..g.n() {
                 if self.node_blocked(g, s) {
@@ -1629,6 +1731,102 @@ impl Tableau {
                 return None;
             }
         }
+    }
+
+    /// Decision-on-demand unit propagation (KM_HT_DOD). One semi-naive scan of the
+    /// fired disjunctions, classifying each head disjunct against the target node's
+    /// current label:
+    ///   * *satisfied* (a disjunct already present) ⇒ the disjunction is true, skip;
+    ///   * *refuted* (a Concept disjunct whose complement is present) ⇒ that branch
+    ///     is dead, fold its dep into the running refute-dep;
+    ///   * *open* (anything else; non-Concept disjuncts are never refutable here) ⇒
+    ///     a still-possible branch.
+    /// If a fired disjunction has **no** open disjunct it clashes now — return the
+    /// conflict (body dep ∪ the refuting literals' deps). If it has **exactly one**
+    /// open disjunct, that survivor is *forced* (resolution against the refuted
+    /// ones), so assert it deterministically with dep = body dep ∪ refute-dep — no
+    /// branch. Disjunctions with ≥2 open disjuncts are left for the branch point.
+    ///
+    /// Returns `Ok(true)` if any survivor was asserted (caller re-saturates),
+    /// `Ok(false)` at a fixpoint, `Err(conflict)` on a clash. The dep bookkeeping
+    /// matches `apply_pending`/`fire_clause`, so backjumping and no-good learning
+    /// stay sound: a forced survivor depends on exactly the decisions that refuted
+    /// its siblings plus the body's, never on a branch level.
+    fn unit_prop_round(
+        &self,
+        g: &mut Graph,
+        queue: &mut VecDeque<NewFact>,
+    ) -> Result<bool, DepSet> {
+        let mut pending: Vec<PendHead> = Vec::new();
+        let mut conflict: Option<DepSet> = None;
+        for info in &self.clauses {
+            if !info.disjunctive || !self.matchable(info, g) {
+                continue;
+            }
+            self.match_visit(&info.cl, g, &mut |subst| {
+                let mut satisfied = false;
+                let mut open: Option<usize> = None;
+                let mut multi_open = false;
+                let mut refute_dep = DepSet::new();
+                for (i, v) in info.cl.head.iter().enumerate() {
+                    if self.head_atom_present(g, v, subst) {
+                        satisfied = true;
+                        break;
+                    }
+                    match v {
+                        Atom::Concept { lit, t } => {
+                            let n = g.find(subst.lookup(*t));
+                            if let Some(cd) = g.cdep[n].get(&lit.complement()) {
+                                refute_dep.union_with(cd); // refuted
+                            } else if open.is_none() {
+                                open = Some(i);
+                            } else {
+                                multi_open = true;
+                            }
+                        }
+                        // Edge / Exobl / Eq disjuncts are never refutable here, so
+                        // they are always open.
+                        _ => {
+                            if open.is_none() {
+                                open = Some(i);
+                            } else {
+                                multi_open = true;
+                            }
+                        }
+                    }
+                }
+                if satisfied || multi_open {
+                    return true; // already true, or a genuine branch — defer
+                }
+                let mut dep = self.body_dep(g, &info.cl, subst);
+                dep.union_with(&refute_dep);
+                match open {
+                    // All disjuncts refuted: the disjunction cannot hold.
+                    None => {
+                        conflict = Some(dep);
+                        false // stop the scan
+                    }
+                    // Exactly one open disjunct: it is forced. Assert it.
+                    Some(i) => {
+                        pending.push(self.resolve_head(g, &info.cl.head[i], subst, dep));
+                        true
+                    }
+                }
+            });
+            if conflict.is_some() {
+                break;
+            }
+        }
+        if let Some(c) = conflict {
+            stat_unit(0, true);
+            return Err(c);
+        }
+        let changed = !pending.is_empty();
+        stat_unit(pending.len() as u64, false);
+        if let Some(c) = self.apply_pending(g, pending, queue) {
+            return Err(c);
+        }
+        Ok(changed)
     }
 
     /// Incremental analogue of the non-careful `expand`, with dependency-directed
@@ -1673,6 +1871,21 @@ impl Tableau {
             let level = dl + 1;
             let mut accum = DepSet::new();
             for v in &head {
+                // DOD: a refuted disjunct (Concept whose complement is present)
+                // would clash on the spot. Skip it, but fold its refutation dep
+                // into `accum` so the disjunction-failed conflict still records
+                // exactly why this branch was dead (keeps backjumping/learning
+                // sound). After unit propagation the surviving disjunction has
+                // ≥2 open disjuncts, so at least two real branches remain.
+                if self.dod {
+                    if let Atom::Concept { lit, t } = v {
+                        let n = g.find(subst.lookup(*t));
+                        if let Some(cd) = g.cdep[n].get(&lit.complement()) {
+                            accum.union_with(cd);
+                            continue;
+                        }
+                    }
+                }
                 stat_try();
                 st.n_try += 1;
                 if st.stats && st.n_try % 20000 == 0 {
