@@ -30,7 +30,9 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
     let meta = TempPath::new(".meta.json");
     let stderr = TempPath::new(".ofn.err");
 
-    let status = Command::new(cfg.ofn_bin())
+    let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
+    let status = Command::new(&ofn_prog)
+        .args(&ofn_pre)
         .arg(ont)
         .arg("--meta")
         .arg(meta.path())
@@ -64,7 +66,9 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
 /// `_ofn_clauses_file`; returns None on any failure.
 pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath> {
     let clauses = TempPath::new(".clauses.json");
-    let status = Command::new(cfg.ofn_bin())
+    let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
+    let status = Command::new(&ofn_prog)
+        .args(&ofn_pre)
         .arg(ont)
         .stdin(Stdio::null())
         .stdout(File::create(clauses.path()).ok()?)

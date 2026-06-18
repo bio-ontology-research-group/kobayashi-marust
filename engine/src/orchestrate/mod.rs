@@ -195,9 +195,10 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     let out: EngineOut = {
         let portfolio_on = cfg.elc_portfolio;
         let mut out: Option<EngineOut> = None;
+        let (elc_prog, elc_pre) = cfg.elc_cmd();
         if meta.el_rbox_safe && !portfolio_on {
             // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
-            let res = engine_run::run_engine(&cfg.elc_bin(), clauses_path.path(), None, None, None, &[], false)?;
+            let res = engine_run::run_engine(&elc_prog, &elc_pre, clauses_path.path(), None, None, None, &[], false)?;
             out = handle_elc_result(cfg, res, clauses_path.path())?;
         } else if !meta.el_rbox_safe && !portfolio_on && cfg.elc_force {
             // KM_ELC_FORCE: attempt elc on a non-EL-safe RBox; only a passing
@@ -205,7 +206,8 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
             // be arbitrarily expensive, so bound it by wall clock + RSS. Hitting
             // either bound falls through to the CB engine exactly like exit 3.
             let res = engine_run::run_engine(
-                &cfg.elc_bin(),
+                &elc_prog,
+                &elc_pre,
                 clauses_path.path(),
                 None,
                 Some(cfg.elc_force_mem_gb),

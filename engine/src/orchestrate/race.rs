@@ -58,7 +58,7 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
     if !cfg.tab_race {
         return None;
     }
-    let tab_bin = cfg.tab_bin()?;
+    let (tab_prog, tab_pre) = cfg.tab_cmd();
     let cl: Vec<JClause> = {
         let f = File::open(clauses_path).ok()?;
         let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
@@ -87,10 +87,12 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
     let out_path = super::tmpfile::TempPath::new(".tabrace.json");
     let mut cmd = if cfg.tab_race_nice {
         let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(&tab_bin);
+        c.arg("-n").arg("19").arg(&tab_prog).args(&tab_pre);
         c
     } else {
-        Command::new(&tab_bin)
+        let mut c = Command::new(&tab_prog);
+        c.args(&tab_pre);
+        c
     };
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?)
@@ -204,8 +206,10 @@ pub fn race_absorbed_plain(
 ) -> Result<EngineOut, OrchestrateError> {
     if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
         let threads = engine_threads.map(|t| t.to_string());
+        let (engine_prog, engine_pre) = cfg.engine_cmd();
         let res = engine_run::run_engine(
-            &cfg.engine_bin(),
+            &engine_prog,
+            &engine_pre,
             plain.path(),
             threads.as_deref(),
             Some(cfg.par_mem_gb),
@@ -242,8 +246,10 @@ fn avail_cpus() -> usize {
 fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
     let out_path = super::tmpfile::TempPath::new(".elcrace.json");
     let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
-    let mut cmd = Command::new(cfg.elc_bin());
-    cmd.stdin(File::open(clauses_path).ok()?)
+    let (elc_prog, elc_pre) = cfg.elc_cmd();
+    let mut cmd = Command::new(&elc_prog);
+    cmd.args(&elc_pre)
+        .stdin(File::open(clauses_path).ok()?)
         .stdout(File::create(out_path.path()).ok()?)
         .stderr(Stdio::null())
         .env("KM_ELC_CERT", &cert);
@@ -323,8 +329,10 @@ pub fn race_adaptive_vs_elc(
                                 // Python inherits the (possibly reserved) global
                                 // KM_THREADS; we pass it explicitly for the same effect.
                                 let ts = engine_threads.map(|t| t.to_string());
+                                let (engine_prog, engine_pre) = cfg.engine_cmd();
                                 engine_run::run_engine(
-                                    &cfg.engine_bin(),
+                                    &engine_prog,
+                                    &engine_pre,
                                     clauses_path,
                                     ts.as_deref(),
                                     Some(cfg.elc_port_mem_gb),
@@ -429,7 +437,7 @@ fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
-    let tab_bin = cfg.tab_bin()?;
+    let (tab_prog, tab_pre) = cfg.tab_cmd();
     let cl: Vec<JClause> = {
         let f = File::open(clauses_path).ok()?;
         let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
@@ -444,10 +452,12 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // a light nice keeps HT from preempting CB on the onts CB finishes quickly.
     let mut cmd = if cfg.ht_nice != "0" && !cfg.ht_nice.is_empty() {
         let mut c = Command::new("nice");
-        c.arg("-n").arg(&cfg.ht_nice).arg(&tab_bin);
+        c.arg("-n").arg(&cfg.ht_nice).arg(&tab_prog).args(&tab_pre);
         c
     } else {
-        Command::new(&tab_bin)
+        let mut c = Command::new(&tab_prog);
+        c.args(&tab_pre);
+        c
     };
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?)

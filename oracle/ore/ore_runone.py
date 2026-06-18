@@ -70,8 +70,14 @@ def build(reasoner, ont, outpath):
         return [JAVA, XMX, "-cp", cp, "Oracle", ont], BENCH, env, "stdout"
     if reasoner == "km":
         env["KM_ENGINE"] = KM_ENGINE
-        env["PYTHONPATH"] = KM_PYTHONPATH
         env["KM_THREADS"] = env.get("KM_THREADS", "16")
+        # Prefer the pure-Rust `km classify` (the multi-call binary that spawns
+        # its own ofn/elc/engine/tableau workers); fall back to the Python
+        # orchestrator until the km binary is deployed. KM_BIN overrides the path.
+        km_bin = os.environ.get("KM_BIN", os.path.join(BENCH, "km", "km"))
+        if os.path.exists(km_bin):
+            return [km_bin, "classify", ont], None, env, "stdout"
+        env["PYTHONPATH"] = KM_PYTHONPATH
         return [KM_PYBIN, os.path.join(KM_PY, "owl_classify.py"), ont], None, env, "stdout"
     raise ValueError(reasoner)
 

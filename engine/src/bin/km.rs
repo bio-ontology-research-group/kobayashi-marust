@@ -1,26 +1,36 @@
-//! `km`: the multi-call entry point. `km classify <ont.ofn>` is the pure-Rust
-//! classify orchestrator (the replacement for `engine/py/owl_classify.py`); it
-//! spawns the worker reasoners (`ofn`/`elc`/`kobayashi-marust`/`tableau_cli`)
-//! resolved as siblings of this binary (or via the `KM_*_BIN` env overrides).
+//! `km`: the multi-call entry point — the whole reasoner in one binary.
 //!
-//! Worker subcommands (`km ofn|elc|engine|tableau`) collapse the standalone
-//! binaries into this one in a later phase; for now the orchestrator simply
-//! spawns the existing sibling binaries, so classifying needs no Python.
+//!   `km classify [--lines] <ont.ofn>`  the pure-Rust classify orchestrator
+//!                                      (replacement for `owl_classify.py`)
+//!   `km ofn|elc|engine|tableau`        the worker reasoners
+//!
+//! `km classify` spawns the workers by re-invoking ITSELF with the worker
+//! subcommand (`current_exe()` + `ofn`/`elc`/`engine`/`tableau`), unless a
+//! `KM_*_BIN` env var overrides a worker with a standalone binary. The standalone
+//! `ofn`/`elc`/`kobayashi-marust`/`tableau_cli` binaries remain as thin shims
+//! over the same `cli::*` entrypoints. Either way, classifying needs no Python.
 
 use std::path::Path;
 use std::process::exit;
 
+use kobayashi_marust::cli;
 use kobayashi_marust::orchestrate::{self, Config, OrchestrateError};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("classify") => classify_cmd(&args[2..]),
+        // worker subcommands: the orchestrator re-invokes `km <sub>` for these.
+        Some("ofn") => cli::run_ofn(&args[2..]),
+        Some("elc") => cli::run_elc(),
+        Some("engine") => cli::run_engine(),
+        Some("tableau") => cli::run_tableau(),
         // hidden debug subcommand: stdin {clauses, rbox?} -> TInput JSON (the
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
             eprintln!("usage: km classify [--lines] <ontology.ofn>");
+            eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
         }
     }

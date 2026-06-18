@@ -15,19 +15,25 @@ import java.util.List;
 
 /**
  * Bridge to the Kobayashi-MaRust engine: serialise the ontology to OWL
- * functional syntax, run the {@code owl_classify.py --lines} front-end (which
- * reuses moose's normalisation + the Rust engine), and parse the result.
+ * functional syntax, run the {@code --lines} classifier, and parse the result.
+ *
+ * <p>Prefers the pure-Rust {@code km classify --lines} (the multi-call binary
+ * that spawns its own ofn/elc/engine/tableau workers) when {@code km.bin} /
+ * {@code KM_BIN} is configured; otherwise falls back to
+ * {@code python owl_classify.py --lines}.
  *
  * <p>Configuration (system property, else environment variable, else default):
  * <ul>
+ *   <li>{@code km.bin} / {@code KM_BIN} — path to the {@code km} binary. When
+ *       set, {@code km classify --lines} is used (no Python). Default: none.</li>
  *   <li>{@code km.home} / {@code KM_HOME} — repository root (to locate the
  *       bridge script and engine). Default: {@code user.dir}.</li>
- *   <li>{@code km.python} / {@code KM_PYTHON} — Python interpreter. Default
- *       {@code python3}.</li>
- *   <li>{@code km.classify} / {@code KM_CLASSIFY} — path to owl_classify.py.
- *       Default {@code <km.home>/engine/py/owl_classify.py}.</li>
+ *   <li>{@code km.python} / {@code KM_PYTHON} — Python interpreter (fallback).
+ *       Default {@code python3}.</li>
+ *   <li>{@code km.classify} / {@code KM_CLASSIFY} — path to owl_classify.py
+ *       (fallback). Default {@code <km.home>/engine/py/owl_classify.py}.</li>
  *   <li>{@code km.engine} / {@code KM_ENGINE} — path to the engine binary
- *       (else autodetected by the script).</li>
+ *       (else autodetected / self-dispatched).</li>
  * </ul>
  */
 public final class Classifier {
@@ -50,6 +56,7 @@ public final class Classifier {
 
     public static Result classify(OWLOntology ontology) throws Exception {
         String home = cfg("km.home", "KM_HOME", System.getProperty("user.dir"));
+        String kmBin = cfg("km.bin", "KM_BIN", null);
         String python = cfg("km.python", "KM_PYTHON", "python3");
         String script = cfg("km.classify", "KM_CLASSIFY",
                 home + File.separator + "engine" + File.separator + "py"
@@ -63,9 +70,11 @@ public final class Classifier {
             mgr.saveOntology(ontology, new FunctionalSyntaxDocumentFormat(),
                     org.semanticweb.owlapi.model.IRI.create(tmp.toUri()));
 
-            // 2. Run the bridge.
-            ProcessBuilder pb = new ProcessBuilder(
-                    python, script, "--lines", tmp.toString());
+            // 2. Run the classifier: the pure-Rust `km classify --lines` when a
+            //    km binary is configured, else the Python `owl_classify.py`.
+            ProcessBuilder pb = (kmBin != null)
+                    ? new ProcessBuilder(kmBin, "classify", "--lines", tmp.toString())
+                    : new ProcessBuilder(python, script, "--lines", tmp.toString());
             if (engine != null) pb.environment().put("KM_ENGINE", engine);
             pb.redirectErrorStream(false);
             Process proc = pb.start();

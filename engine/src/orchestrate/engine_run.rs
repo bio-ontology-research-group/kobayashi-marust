@@ -72,7 +72,8 @@ pub(crate) fn read_rss(pid: u32) -> Option<u64> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn run_engine(
-    binary: &Path,
+    program: &Path,
+    prefix: &[String],
     clauses_path: &Path,
     threads: Option<&str>,
     rss_cap_gb: Option<f64>,
@@ -80,7 +81,7 @@ pub fn run_engine(
     extra_env: &[(&str, &str)],
     nice: bool,
 ) -> Result<EngineResult, OrchestrateError> {
-    let bin_name = binary
+    let bin_name = program
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "worker".into());
@@ -103,10 +104,12 @@ pub fn run_engine(
     let mut cmd = if nice {
         // the niced racer only consumes cores the primary leaves idle.
         let mut c = Command::new("nice");
-        c.arg("-n").arg("19").arg(binary);
+        c.arg("-n").arg("19").arg(program).args(prefix);
         c
     } else {
-        Command::new(binary)
+        let mut c = Command::new(program);
+        c.args(prefix);
+        c
     };
     cmd.stdin(File::open(clauses_path)?)
         .stdout(File::create(stdout_tmp.path())?)
@@ -176,7 +179,7 @@ pub fn run_engine_adaptive(
     queries: Option<&str>,
     threads: Option<usize>,
 ) -> Result<EngineResult, OrchestrateError> {
-    let engine = cfg.engine_bin();
+    let (engine, engine_pre) = cfg.engine_cmd();
     let central_on = !cfg.no_central;
 
     // first-attempt thread count: explicit override, else the ambient KM_THREADS.
@@ -193,6 +196,7 @@ pub fn run_engine_adaptive(
     // when the central strategy is active.
     let mut proc = run_engine(
         &engine,
+        &engine_pre,
         clauses_path,
         first.as_deref(),
         Some(cfg.par_mem_gb),
@@ -210,10 +214,10 @@ pub fn run_engine_adaptive(
             if let Some(q) = queries {
                 env2.push(("KM_QUERIES", q));
             }
-            proc = run_engine(&engine, clauses_path, Some("1"), None, None, &env2, false)?;
+            proc = run_engine(&engine, &engine_pre, clauses_path, Some("1"), None, None, &env2, false)?;
         } else if first.as_deref() != Some("1") {
             // explicit legacy run: single-threaded retry
-            proc = run_engine(&engine, clauses_path, Some("1"), None, None, &env1, false)?;
+            proc = run_engine(&engine, &engine_pre, clauses_path, Some("1"), None, None, &env1, false)?;
         }
     }
     Ok(proc)

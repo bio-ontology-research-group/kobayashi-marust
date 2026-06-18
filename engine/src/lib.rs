@@ -7,6 +7,7 @@
 //! `{"clauses":[...]}` contract.
 
 pub mod calc;
+pub mod cli;
 pub mod clause;
 pub mod elcomplete;
 pub mod engine;
@@ -14,3 +15,4 @@ pub mod frontend;
 pub mod json_io;
 pub mod orchestrate;
 pub mod reasoner;
+pub mod tableau;

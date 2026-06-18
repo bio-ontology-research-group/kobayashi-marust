@@ -1,0 +1,270 @@
+//! Worker entrypoints for the multi-call `km` binary and the standalone shims.
+//!
+//! The reasoner ships as ONE binary: `km classify` is the orchestrator and
+//! `km ofn|elc|engine|tableau` are the workers it spawns (re-invoking itself via
+//! `current_exe`). The historical standalone binaries (`ofn`, `elc`,
+//! `kobayashi-marust`, `tableau_cli`) remain as thin shims that call straight
+//! into these same functions, so nothing that hard-codes a worker path breaks.
+//!
+//! Each function reads its stdin/args, writes stdout, and `exit`s with the exact
+//! code the standalone binary used (3 = out-of-fragment / not-EL, 4 = elc PARTIAL
+//! certificate, 1 = error), so behaviour is byte-identical either way.
+
+use std::collections::BTreeMap;
+use std::io::{Read, Write};
+use std::process::exit;
+
+use crate::json_io::{JClause, JInput, JOutput};
+
+// ---------------------------------------------------------------------------
+// ofn — OWL functional-syntax normalisation frontend
+// ---------------------------------------------------------------------------
+#[derive(serde::Serialize)]
+struct OfnOutput {
+    clauses: Vec<JClause>,
+    iri_map: BTreeMap<String, String>,
+    named: Vec<String>,
+    declared: Vec<String>,
+    el_rbox_safe: bool,
+    abox_inconsistent: bool,
+    asserted_classes: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct OfnMeta {
+    iri_map: BTreeMap<String, String>,
+    named: Vec<String>,
+    declared: Vec<String>,
+    el_rbox_safe: bool,
+    abox_inconsistent: bool,
+    asserted_classes: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct OfnClausesOnly {
+    clauses: Vec<JClause>,
+}
+
+/// `args` are the post-subcommand arguments: `args[0]` = ontology path, optional
+/// `args[1] == "--meta"` and `args[2]` = meta-file path. (For the standalone
+/// `ofn` binary this is `env::args()[1..]`; for `km ofn` it is `env::args()[2..]`.)
+pub fn run_ofn(args: &[String]) {
+    use crate::frontend::ofn_to_clauses;
+    if args.is_empty() {
+        eprintln!("usage: ofn <ontology.ofn> [--meta <meta.json>]");
+        exit(2);
+    }
+    let path = &args[0];
+    let meta_path: Option<&str> = match args.get(1).map(String::as_str) {
+        Some("--meta") => match args.get(2) {
+            Some(p) => Some(p.as_str()),
+            None => {
+                eprintln!("--meta requires a path argument");
+                exit(2);
+            }
+        },
+        _ => None,
+    };
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("failed to read {}: {}", path, e);
+            exit(1);
+        }
+    };
+    let result = match ofn_to_clauses(&text) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("out of fragment: {}", e.0);
+            exit(3);
+        }
+    };
+    // Stream JSON to a buffered stdout (the clause array dominates peak memory).
+    let stdout = std::io::stdout();
+    let mut w = std::io::BufWriter::new(stdout.lock());
+
+    if let Some(mp) = meta_path {
+        let meta = OfnMeta {
+            iri_map: result.iri_map,
+            named: result.named,
+            declared: result.declared,
+            el_rbox_safe: result.el_rbox_safe,
+            abox_inconsistent: result.abox_inconsistent,
+            asserted_classes: result.asserted_classes,
+        };
+        match std::fs::File::create(mp) {
+            Ok(f) => {
+                let mut mw = std::io::BufWriter::new(f);
+                if let Err(e) = serde_json::to_writer(&mut mw, &meta) {
+                    eprintln!("meta serialise error: {}", e);
+                    exit(1);
+                }
+                let _ = mw.flush();
+            }
+            Err(e) => {
+                eprintln!("failed to write meta {}: {}", mp, e);
+                exit(1);
+            }
+        }
+        let out = OfnClausesOnly { clauses: result.clauses };
+        if let Err(e) = serde_json::to_writer(&mut w, &out) {
+            eprintln!("serialise error: {}", e);
+            exit(1);
+        }
+    } else {
+        let out = OfnOutput {
+            clauses: result.clauses,
+            iri_map: result.iri_map,
+            named: result.named,
+            declared: result.declared,
+            el_rbox_safe: result.el_rbox_safe,
+            abox_inconsistent: result.abox_inconsistent,
+            asserted_classes: result.asserted_classes,
+        };
+        if let Err(e) = serde_json::to_writer(&mut w, &out) {
+            eprintln!("serialise error: {}", e);
+            exit(1);
+        }
+    }
+    let _ = w.write_all(b"\n");
+    let _ = w.flush();
+}
+
+// ---------------------------------------------------------------------------
+// elc — EL++ completion fast path
+// ---------------------------------------------------------------------------
+#[derive(serde::Serialize)]
+struct ElcOutput {
+    subsumptions: BTreeMap<String, Vec<String>>,
+    inconsistent: bool,
+    dropped: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    unresolved: Vec<String>,
+}
+
+pub fn run_elc() {
+    use crate::elcomplete;
+    use std::time::Instant;
+    let timing = std::env::var("KM_ELC_TIMING").is_ok();
+    let t0 = Instant::now();
+    // Raw bytes + `from_slice` skips full-buffer UTF-8 validation (matters on the
+    // ~750 MB ORE giants that classify right at the timeout).
+    let mut buf: Vec<u8> = Vec::new();
+    if let Err(e) = std::io::stdin().lock().read_to_end(&mut buf) {
+        eprintln!("failed to read stdin: {}", e);
+        exit(1);
+    }
+    if timing {
+        eprintln!("KM_ELC_TIMING read={:.2}s ({} MB)", t0.elapsed().as_secs_f64(), buf.len() >> 20);
+    }
+    let t1 = Instant::now();
+    let input: JInput = match serde_json::from_slice(&buf) {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("bad input JSON: {}", e);
+            exit(1);
+        }
+    };
+    drop(buf);
+    if timing {
+        eprintln!("KM_ELC_TIMING parse={:.2}s ({} clauses)", t1.elapsed().as_secs_f64(), input.clauses.len());
+    }
+    let t2 = Instant::now();
+    match elcomplete::classify(&input.clauses) {
+        Some(res) => {
+            if timing {
+                eprintln!("KM_ELC_TIMING classify={:.2}s ({} subjects)", t2.elapsed().as_secs_f64(), res.subsumptions.len());
+            }
+            let t3 = Instant::now();
+            let partial = !res.unresolved.is_empty();
+            let out = ElcOutput {
+                subsumptions: res.subsumptions,
+                inconsistent: res.inconsistent,
+                dropped: 0,
+                unresolved: res.unresolved,
+            };
+            let stdout = std::io::stdout();
+            let mut w = std::io::BufWriter::new(stdout.lock());
+            if let Err(e) = serde_json::to_writer(&mut w, &out) {
+                eprintln!("serialise error: {}", e);
+                exit(1);
+            }
+            let _ = w.flush();
+            if timing {
+                eprintln!("KM_ELC_TIMING serialise={:.2}s total={:.2}s", t3.elapsed().as_secs_f64(), t0.elapsed().as_secs_f64());
+            }
+            if partial {
+                exit(4); // certified for every subject EXCEPT the listed residue
+            }
+        }
+        None => exit(3), // not EL++: caller uses the disjunctive context engine
+    }
+}
+
+// ---------------------------------------------------------------------------
+// engine — the consequence-based disjunctive context saturation reasoner
+// ---------------------------------------------------------------------------
+pub fn run_engine() {
+    use crate::reasoner::Reasoner;
+    let mut buf = String::new();
+    if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+        eprintln!("failed to read stdin: {e}");
+        exit(1);
+    }
+    let input: JInput = match serde_json::from_str(&buf) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("failed to parse input JSON: {e}");
+            exit(1);
+        }
+    };
+
+    let mut r = Reasoner::new(&input.clauses);
+    r.saturate();
+
+    let subs = r.subsumptions();
+    let subsumptions = subs.into_iter().map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>())).collect();
+
+    // The derived-clause echo doubles output volume and is only consumed by the
+    // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on
+    // the giant ontologies.
+    let out = JOutput {
+        subsumptions,
+        derived_clauses: if std::env::var_os("KM_EMIT_CLAUSES").is_some() {
+            r.emit_clauses()
+        } else {
+            Vec::new()
+        },
+        inconsistent: r.inconsistent(),
+        dropped: r.dropped_unsupported(),
+    };
+
+    let s = serde_json::to_string(&out).expect("serialise output");
+    let stdout = std::io::stdout();
+    let mut h = stdout.lock();
+    h.write_all(s.as_bytes()).expect("write stdout");
+    h.write_all(b"\n").expect("write newline");
+}
+
+// ---------------------------------------------------------------------------
+// tableau — the ALC(HOQ) hypertableau (TInput on stdin -> TOutput on stdout)
+// ---------------------------------------------------------------------------
+pub fn run_tableau() {
+    let mut buf = String::new();
+    if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
+        eprintln!("failed to read stdin: {e}");
+        exit(1);
+    }
+    match crate::tableau::run_json(&buf) {
+        Ok(s) => {
+            let stdout = std::io::stdout();
+            let mut h = stdout.lock();
+            h.write_all(s.as_bytes()).expect("write stdout");
+            h.write_all(b"\n").expect("write newline");
+        }
+        Err(e) => {
+            eprintln!("tableau error: {e}");
+            exit(1);
+        }
+    }
+}

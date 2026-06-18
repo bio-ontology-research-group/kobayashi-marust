@@ -101,27 +101,29 @@ impl Config {
         }
     }
 
-    fn sibling(&self, name: &str) -> PathBuf {
-        match self.self_exe.parent() {
-            Some(dir) => dir.join(name),
-            None => PathBuf::from(name),
+    /// A worker invocation as `(program, leading_args)`: the `KM_*_BIN` override
+    /// as a standalone program (no leading args), else THIS binary re-invoked
+    /// with the worker subcommand (the single-binary `km <sub>` model). Spawn
+    /// sites build a `Command` from the program and prepend the leading args.
+    fn worker_cmd(&self, ov: &Option<PathBuf>, sub: &str) -> (PathBuf, Vec<String>) {
+        match ov {
+            Some(p) => (p.clone(), Vec::new()),
+            None => (self.self_exe.clone(), vec![sub.to_string()]),
         }
     }
-
-    pub fn ofn_bin(&self) -> PathBuf {
-        self.ofn_bin_override.clone().unwrap_or_else(|| self.sibling("ofn"))
+    pub fn ofn_cmd(&self) -> (PathBuf, Vec<String>) {
+        self.worker_cmd(&self.ofn_bin_override, "ofn")
     }
-    pub fn elc_bin(&self) -> PathBuf {
-        self.elc_bin_override.clone().unwrap_or_else(|| self.sibling("elc"))
+    pub fn elc_cmd(&self) -> (PathBuf, Vec<String>) {
+        self.worker_cmd(&self.elc_bin_override, "elc")
     }
-    pub fn engine_bin(&self) -> PathBuf {
-        self.engine_bin_override
-            .clone()
-            .unwrap_or_else(|| self.sibling("kobayashi-marust"))
+    pub fn engine_cmd(&self) -> (PathBuf, Vec<String>) {
+        self.worker_cmd(&self.engine_bin_override, "engine")
     }
-    /// Tableau binary. Unlike the others, `_spawn_tableau` only races when
-    /// `KM_TAB_BIN` is explicitly set and exists, so there is no sibling default.
-    pub fn tab_bin(&self) -> Option<PathBuf> {
-        self.tab_bin_override.clone().filter(|p| p.exists())
+    /// Tableau worker. Unlike the others it is gated at the call site by
+    /// `KM_TAB_RACE` / `KM_HT_RACE` (the spawn functions check those), so here it
+    /// always resolves — the `KM_TAB_BIN` override, else `km tableau`.
+    pub fn tab_cmd(&self) -> (PathBuf, Vec<String>) {
+        self.worker_cmd(&self.tab_bin_override, "tableau")
     }
 }
