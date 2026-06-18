@@ -189,6 +189,119 @@ pub fn elim_complements(tbox: Vec<DLClause>) -> (Vec<DLClause>, usize) {
     (out, n)
 }
 
+/// KM_ABSORB_HOIST — common-disjunct hoisting (the CB/EL analogue of Konclude's
+/// `CCommonDisjunctConceptExtractionPreProcess`). For a covering disjunction
+/// `⊤ ⊑ A₁ ∨ … ∨ Aₙ` (a clause with empty body whose head is ≥2 concept atoms
+/// over one shared variable), any concept `X` that subsumes *every* disjunct
+/// (`Aᵢ ⊑ X` told directly, or `Aᵢ = X`) is a sound consequence `⊤ ⊑ X` by the
+/// ⊔-distribution lemma `A⊑X ∧ B⊑X ⟹ A⊔B⊑X`.
+///
+/// We only ever ADD the unit fact; the disjunction is never deleted (it carries
+/// strictly more information than `⊤⊑X`). So this is a *redundant-clause
+/// addition* of a clause already entailed by the input — it cannot change the set
+/// of entailed subsumptions, only let the engine's forward/backward subsumption
+/// and the EL completion prune disjunctive width earlier. Being sound by
+/// construction (the added clause is a logical consequence), it needs no Lean
+/// re-certification.
+///
+/// `told` is a one-step map `A ↦ {X | A⊑X told as a unit clause}` (plus the
+/// reflexive `A ∈ told[A]`); one step keeps it linear and is enough for the
+/// common covering-axiom shape. Returns the augmented tbox and the number of
+/// unit facts added.
+pub fn hoist_common_disjuncts(tbox: Vec<DLClause>) -> (Vec<DLClause>, usize) {
+    use std::collections::{HashMap, HashSet};
+
+    // The single variable a universal (`⊤ ⊑ …`) clause ranges over. Both the
+    // covering disjunctions and the told units we read are over this variable.
+    fn single_var_concept(a: &Atom) -> Option<(&str, &Term)> {
+        match a {
+            Atom::Concept(name, t @ Term::Var(_)) => Some((name.as_str(), t)),
+            _ => None,
+        }
+    }
+
+    // told[A] = direct named super-concepts of A from unit clauses `A(x) -> X(x)`.
+    let mut told: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for c in &tbox {
+        if c.body.len() == 1 && c.head.len() == 1 {
+            if let (Some((a, ta)), Some((x, tx))) =
+                (single_var_concept(&c.body[0]), single_var_concept(&c.head[0]))
+            {
+                if ta == tx {
+                    told.entry(a).or_default().insert(x);
+                }
+            }
+        }
+    }
+
+    // For each covering disjunction, hoist the concepts common to every disjunct.
+    let mut additions: Vec<DLClause> = Vec::new();
+    let mut emitted: HashSet<String> = HashSet::new();
+    for c in &tbox {
+        if !c.body.is_empty() || c.head.len() < 2 {
+            continue;
+        }
+        // head must be purely concept atoms over ONE shared variable.
+        let mut var: Option<&Term> = None;
+        let mut disjuncts: Vec<&str> = Vec::with_capacity(c.head.len());
+        let mut ok = true;
+        for a in &c.head {
+            match single_var_concept(a) {
+                Some((name, t)) => {
+                    if *var.get_or_insert(t) != t {
+                        ok = false;
+                        break;
+                    }
+                    disjuncts.push(name);
+                }
+                None => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        let Some(var) = var.filter(|_| ok && !disjuncts.is_empty()) else {
+            continue;
+        };
+
+        // candidate supers of the first disjunct (its told supers ∪ {itself}),
+        // intersected with the supers of every other disjunct.
+        fn supers<'a>(
+            told: &HashMap<&'a str, HashSet<&'a str>>,
+            a: &'a str,
+        ) -> HashSet<&'a str> {
+            let mut s = told.get(a).cloned().unwrap_or_default();
+            s.insert(a);
+            s
+        }
+        let mut common = supers(&told, disjuncts[0]);
+        for &d in &disjuncts[1..] {
+            let s = supers(&told, d);
+            common.retain(|x| s.contains(x));
+            if common.is_empty() {
+                break;
+            }
+        }
+        // `⊤ ⊑ X` for each common super X that is not itself one of the trivial
+        // self-covers (a single disjunct repeated) — emit each at most once.
+        for x in common {
+            // skip the degenerate case where the disjunction is `⊤ ⊑ X ∨ X ∨ …`
+            // (already canonicalised away) and skip duplicates.
+            if emitted.insert(x.to_string()) {
+                additions.push(fact([Atom::Concept(x.to_string(), var.clone())]));
+            }
+        }
+    }
+
+    let n = additions.len();
+    if n == 0 {
+        return (tbox, 0);
+    }
+    let mut out = tbox;
+    out.extend(additions);
+    (out, n)
+}
+
 // ---- conversion to JSON (port of rust_context._term_to_json etc.) ----
 
 fn term_to_json(t: &Term) -> JTerm {
@@ -229,5 +342,52 @@ pub fn clause_to_json(c: &DLClause) -> JClause {
     JClause {
         body: c.body.iter().map(atom_to_json).collect(),
         head: c.head.iter().map(atom_to_json).collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn conc(name: &str) -> Atom {
+        Atom::Concept(name.to_string(), var_x())
+    }
+
+    #[test]
+    fn hoist_extracts_common_super_of_every_disjunct() {
+        // ⊤ ⊑ A ∨ B ;  A ⊑ X ;  B ⊑ X   ⟹   ⊤ ⊑ X  (sound: A⊔B ⊑ X)
+        let tbox = vec![
+            fact([conc("A"), conc("B")]),
+            clause([conc("A")], [conc("X")]),
+            clause([conc("B")], [conc("X")]),
+        ];
+        let (out, n) = hoist_common_disjuncts(tbox);
+        assert_eq!(n, 1, "exactly one unit fact hoisted");
+        assert!(
+            out.contains(&fact([conc("X")])),
+            "⊤⊑X must be present after hoisting"
+        );
+    }
+
+    #[test]
+    fn hoist_skips_when_no_common_super() {
+        // ⊤ ⊑ A ∨ B ;  A ⊑ X ;  B ⊑ Y   ⟹   nothing common, no addition.
+        let tbox = vec![
+            fact([conc("A"), conc("B")]),
+            clause([conc("A")], [conc("X")]),
+            clause([conc("B")], [conc("Y")]),
+        ];
+        let (out, n) = hoist_common_disjuncts(tbox.clone());
+        assert_eq!(n, 0);
+        assert_eq!(out.len(), tbox.len());
+    }
+
+    #[test]
+    fn hoist_is_sound_self_cover() {
+        // ⊤ ⊑ A ∨ B with no told supers: A and B each cover themselves, but the
+        // intersection {A}∩{B} is empty ⇒ no spurious ⊤⊑A or ⊤⊑B.
+        let tbox = vec![fact([conc("A"), conc("B")])];
+        let (_out, n) = hoist_common_disjuncts(tbox);
+        assert_eq!(n, 0, "must not hoist a disjunct as if it were universal");
     }
 }

@@ -269,6 +269,23 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         tbox
     };
 
+    // KM_ABSORB_HOIST: common-disjunct hoisting (P3, Konclude
+    // CCommonDisjunctConceptExtractionPreProcess). Adds the sound unit
+    // consequence `⊤⊑X` for any X that subsumes every disjunct of a covering
+    // disjunction `⊤⊑A₁∨…∨Aₙ`, letting subsumption prune disjunctive width
+    // earlier. Pure clause ADDITION of an already-entailed fact ⇒ no re-cert,
+    // and inert (adds nothing) on ontologies without covering disjunctions, so
+    // default-off keeps output byte-identical to the prior binary.
+    let tbox = if std::env::var_os("KM_ABSORB_HOIST").is_some() {
+        let (t, n) = clauses::hoist_common_disjuncts(tbox);
+        if std::env::var_os("KM_OFN_TIMING").is_some() {
+            eprintln!("ofn [hoist] added {} common-disjunct unit facts", n);
+        }
+        t
+    } else {
+        tbox
+    };
+
     // Consume `tbox` while converting, so the DLClause set is freed as the JSON
     // clause set is built (rather than holding both in full at once).
     let mut jclauses: Vec<crate::json_io::JClause> =

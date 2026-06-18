@@ -111,6 +111,11 @@ impl Interner {
         &self.names[id as usize]
     }
 
+    /// Non-creating lookup (P1 hoisting reads ids of already-seen concepts only).
+    fn id(&self, s: &str) -> Option<u32> {
+        self.map.get(s).copied()
+    }
+
     fn len(&self) -> usize {
         self.names.len()
     }
@@ -1998,6 +2003,97 @@ pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
     classify_inner(clauses, cert, debug)
 }
 
+/// KM_ELC_HOIST (P1) — *semantic* common-disjunct extraction, the EL-side
+/// counterpart of the frontend's syntactic `hoist_common_disjuncts`. After the
+/// EL subset is saturated, a parked residual disjunction `D ⊑ A₁ ∨ … ∨ Aₙ` lets
+/// us derive `D ⊑ X` for every `X` that subsumes all disjuncts in the *completed*
+/// relation (`Aᵢ ⊑ X` ∈ `sub_super`, or `Aᵢ = X`) — the ⊔-distribution lemma
+/// `A⊑X ∧ B⊑X ⟹ A⊔B⊑X`. This recovers subsumptions the EL completion dropped by
+/// parking the disjunction, *without* expanding it. The completion saw only the
+/// EL part, so this finds supers the frontend pass cannot (they require
+/// EL-derived subsumptions). Sound by the lemma; it only adds entailed pairs, so
+/// it can shrink the certificate's INSUFFICIENT residue but never make it unsound.
+///
+/// Handles disjunctions with an empty body (`⊤⊑…`, subject = ⊤) or a single
+/// concept body (`D⊑…`); multi-concept (conjunctive) bodies are left to the CB
+/// engine. Disjuncts naming concepts the EL pass never interned are skipped
+/// (they carry no completed supers). Returns the number of pairs added.
+fn hoist_residual_disjuncts(
+    residual: &[JClause],
+    it: &Interner,
+    sub_super: &mut [HashSet<u32>],
+) -> usize {
+    let n = sub_super.len() as u32;
+    // (name, term) of a concept atom over a *variable*; None for anything else.
+    fn var_concept(a: &JAtom) -> Option<(&str, &JTerm)> {
+        match concept_of(a) {
+            Some((name, t)) if matches!(tk(t), Tk::Var(_)) => Some((name, t)),
+            _ => None,
+        }
+    }
+    let mut added = 0usize;
+    for c in residual {
+        if c.head.len() < 2 {
+            continue;
+        }
+        // head: ≥2 concept atoms, all over ONE shared variable, nothing else.
+        let mut hvar: Option<&JTerm> = None;
+        let mut disjuncts: Vec<u32> = Vec::with_capacity(c.head.len());
+        let mut ok = true;
+        for a in &c.head {
+            match var_concept(a) {
+                Some((name, t)) if *hvar.get_or_insert(t) == t => match it.id(name) {
+                    Some(id) if id < n => disjuncts.push(id),
+                    _ => {
+                        ok = false;
+                        break;
+                    }
+                },
+                _ => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if !ok || disjuncts.len() < 2 {
+            continue;
+        }
+        let hvar = hvar.unwrap();
+        // subject: ⊤ (empty body) or a single concept over the SAME variable.
+        let subject = match c.body.len() {
+            0 => TOP,
+            1 => match var_concept(&c.body[0]) {
+                Some((name, t)) if t == hvar => match it.id(name) {
+                    Some(id) if id < n => id,
+                    _ => continue,
+                },
+                _ => continue,
+            },
+            _ => continue,
+        };
+        // common supers = ∩ over disjuncts of (sub_super[d] ∪ {d}).
+        let supers_of = |d: u32| -> HashSet<u32> {
+            let mut s = sub_super[d as usize].clone();
+            s.insert(d);
+            s
+        };
+        let mut common = supers_of(disjuncts[0]);
+        for &d in &disjuncts[1..] {
+            let s = supers_of(d);
+            common.retain(|x| s.contains(x));
+            if common.is_empty() {
+                break;
+            }
+        }
+        for x in common {
+            if x != subject && x != TOP && sub_super[subject as usize].insert(x) {
+                added += 1;
+            }
+        }
+    }
+    added
+}
+
 /// Core of [`classify`] with the certificate mode explicit (the env read is in
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
@@ -2029,7 +2125,7 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
     let mut st = init_state(&nfs, n);
     let mut nf4_buf: Vec<u32> = Vec::new();
     run(&idx, &mut st, &mut nf4_buf);
-    let res = st;
+    let mut res = st;
     // An inconsistent EL subset makes the full ontology inconsistent
     // (monotonicity), so that answer is exact without a certificate.
     let el_inconsistent = res.sub_super[TOP as usize].contains(&BOTTOM);
@@ -2054,6 +2150,17 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
                 unresolved = subjects.iter().map(|&c| it.name(c).to_string()).collect();
             }
             CertOutcome::Fail => return None,
+        }
+    }
+
+    // KM_ELC_HOIST (P1): recover subsumptions hidden in parked disjunctions via
+    // the ⊔-distribution lemma over the completed relation. Sound (adds only
+    // entailed pairs), so it runs after the certificate without affecting its
+    // verdict; inert when there are no residual disjunctions.
+    if !residual.is_empty() && std::env::var_os("KM_ELC_HOIST").is_some() {
+        let added = hoist_residual_disjuncts(&residual, &it, &mut res.sub_super);
+        if debug {
+            eprintln!("KM_ELC_HOIST added {added} common-disjunct subsumptions");
         }
     }
 
@@ -2158,6 +2265,34 @@ mod tests {
             cl(&[c("A", "x")], &[c("D", "x"), c("E", "x")]),
         ));
         assert!(classify_inner(&cs, CertMode::Check, false).is_none());
+    }
+
+    #[test]
+    fn elc_hoist_recovers_common_disjunct_super() {
+        // Completed EL relation: A⊑X, B⊑X. Parked residual: D ⊑ A ∨ B.
+        // ⊔-distribution ⟹ D ⊑ X (a subsumption hidden in the parked disjunction).
+        let mut it = Interner::new();
+        let (a, b, x, d) = (it.intern("A"), it.intern("B"), it.intern("X"), it.intern("D"));
+        let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); it.len()];
+        sub_super[a as usize].insert(x);
+        sub_super[b as usize].insert(x);
+        let residual = clauses(&format!("[{}]", cl(&[c("D", "x")], &[c("A", "x"), c("B", "x")])));
+        let added = hoist_residual_disjuncts(&residual, &it, &mut sub_super);
+        assert_eq!(added, 1, "exactly D⊑X recovered");
+        assert!(sub_super[d as usize].contains(&x), "D⊑X must be derived");
+    }
+
+    #[test]
+    fn elc_hoist_skips_when_no_common_super() {
+        // A⊑X, B⊑Y. D ⊑ A ∨ B has no common super ⟹ nothing recovered.
+        let mut it = Interner::new();
+        let (a, b, x, y, _d) =
+            (it.intern("A"), it.intern("B"), it.intern("X"), it.intern("Y"), it.intern("D"));
+        let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); it.len()];
+        sub_super[a as usize].insert(x);
+        sub_super[b as usize].insert(y);
+        let residual = clauses(&format!("[{}]", cl(&[c("D", "x")], &[c("A", "x"), c("B", "x")])));
+        assert_eq!(hoist_residual_disjuncts(&residual, &it, &mut sub_super), 0);
     }
 
     #[test]

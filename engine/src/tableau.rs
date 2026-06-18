@@ -1857,24 +1857,121 @@ impl Tableau {
             // everything is unsatisfiable; report all named as unsat.
             return (false, named.to_vec(), Vec::new());
         }
+        // ---- P4: (un)satisfiability cache over root labels (KM_HT_CACHE) ----
+        // Konclude keys SAT verdicts by a node-label signature and reuses them
+        // across the whole classification: an UNSAT label makes every superset
+        // unsat; a SAT label makes every subset sat. Sound — a model of a larger
+        // constraint set satisfies any subset of it, and adding constraints to an
+        // unsatisfiable set keeps it unsatisfiable. Off ⇒ no caching (default).
+        struct SatCache {
+            on: bool,
+            exact: HashMap<Vec<CLit>, bool>,
+            unsat: Vec<Vec<CLit>>, // sorted unsat cores (superset ⇒ unsat)
+            sat: Vec<Vec<CLit>>,   // sorted sat labels (subset ⇒ sat)
+            hits: u64,
+        }
+        // `a ⊆ b` for two sorted, deduped label vectors.
+        fn subset(a: &[CLit], b: &[CLit]) -> bool {
+            if a.len() > b.len() {
+                return false;
+            }
+            let mut j = 0;
+            for x in a {
+                while j < b.len() && &b[j] < x {
+                    j += 1;
+                }
+                if j >= b.len() || &b[j] != x {
+                    return false;
+                }
+                j += 1;
+            }
+            true
+        }
+        impl SatCache {
+            const CAP: usize = 1 << 15;
+            fn key(label: &[CLit]) -> Vec<CLit> {
+                let mut k = label.to_vec();
+                k.sort_unstable();
+                k.dedup();
+                k
+            }
+            fn query(&mut self, key: &[CLit]) -> Option<bool> {
+                if !self.on {
+                    return None;
+                }
+                if let Some(&v) = self.exact.get(key) {
+                    self.hits += 1;
+                    return Some(v);
+                }
+                if self.unsat.iter().any(|u| subset(u, key)) {
+                    self.hits += 1;
+                    return Some(false);
+                }
+                if self.sat.iter().any(|s| subset(key, s)) {
+                    self.hits += 1;
+                    return Some(true);
+                }
+                None
+            }
+            fn insert(&mut self, key: Vec<CLit>, verdict: bool) {
+                if !self.on {
+                    return;
+                }
+                if self.exact.len() < Self::CAP {
+                    self.exact.insert(key.clone(), verdict);
+                }
+                let bucket = if verdict { &mut self.sat } else { &mut self.unsat };
+                if bucket.len() < Self::CAP {
+                    bucket.push(key);
+                }
+            }
+        }
+        let mut cache = SatCache {
+            on: std::env::var_os("KM_HT_CACHE").is_some(),
+            exact: HashMap::new(),
+            unsat: Vec::new(),
+            sat: Vec::new(),
+            hits: 0,
+        };
+
         let named_set: HashSet<C> = named.iter().copied().collect();
         let mut unsat = Vec::new();
         let mut subs = Vec::new();
         // For each satisfiable A: record deterministic subsumers directly, and
         // keep only the choice-dependent ones for the confirmation test.
         let mut cand: Vec<(C, Vec<C>)> = Vec::new();
+        // P2: full named-concept root label of one model of A (used by the
+        // pseudo-model refutation below). Only populated under KM_HT_PMMERGE.
+        let p2 = std::env::var_os("KM_HT_PMMERGE").is_some();
+        let mut lab: HashMap<C, HashSet<C>> = HashMap::new();
         let prog = std::env::var_os("KM_TAB_STATS").is_some();
         for (ai, &a) in named.iter().enumerate() {
             if prog && ai % 25 == 0 {
                 eprintln!("KM_TAB_STATS classify phase1 concept {}/{} subs_so_far={}", ai, named.len(), subs.len());
             }
+            let key = SatCache::key(&[CLit::pos(a)]);
+            if cache.query(&key) == Some(false) {
+                unsat.push(a);
+                continue;
+            }
             match self.find_model(&[CLit::pos(a)]) {
-                None => unsat.push(a),
+                None => {
+                    cache.insert(key, false);
+                    unsat.push(a)
+                }
                 Some(g) => {
+                    cache.insert(key, true);
                     let mut uncertain = Vec::new();
+                    let mut labset = HashSet::new();
                     for l in g.concepts[0].iter() {
-                        if l.neg || l.c == a || !named_set.contains(&l.c) {
+                        if l.neg || !named_set.contains(&l.c) {
                             continue;
+                        }
+                        if l.c == a {
+                            continue;
+                        }
+                        if p2 {
+                            labset.insert(l.c);
                         }
                         let definite = matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
                         if definite {
@@ -1882,6 +1979,9 @@ impl Tableau {
                         } else {
                             uncertain.push(l.c);
                         }
+                    }
+                    if p2 {
+                        lab.insert(a, labset);
                     }
                     uncertain.sort_unstable();
                     cand.push((a, uncertain));
@@ -1893,21 +1993,126 @@ impl Tableau {
         if prog {
             eprintln!("KM_TAB_STATS classify phase1 DONE: definite={} candidates_to_confirm={}", definite, total_cand);
         }
-        let mut confirmed = 0;
+
+        // ---- P2: KPSet classification gate (KM_HT_PMMERGE) ----
+        // Build the transitive closure of the *definite* (choice-free)
+        // subsumptions found in phase 1. `tc[A]` = definite supers of A;
+        // `tcrev[A]` = definite subs of A. These seed the known-subsumer set and
+        // are the sound channels for propagation: confirmed `A⊑B` flows DOWN to
+        // definite subs of A; refuted `A⋢B` flows UP to known supers of A.
+        let mut tc: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut tcrev: HashMap<C, HashSet<C>> = HashMap::new();
+        if p2 {
+            for &(a, b) in &subs {
+                tc.entry(a).or_default().insert(b);
+            }
+            loop {
+                let mut changed = false;
+                let keys: Vec<C> = tc.keys().copied().collect();
+                for a in keys {
+                    let supers: Vec<C> = tc[&a].iter().copied().collect();
+                    for b in supers {
+                        if let Some(bs) = tc.get(&b).cloned() {
+                            let ea = tc.entry(a).or_default();
+                            for x in bs {
+                                if x != a && ea.insert(x) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !changed {
+                    break;
+                }
+            }
+            for (a, sup) in &tc {
+                for b in sup {
+                    tcrev.entry(*b).or_default().insert(*a);
+                }
+            }
+        }
+        // `pos[A]` = known supers of A (definite TC, grows with confirmations);
+        // `neg[A]` = known non-supers of A.
+        let mut pos = tc.clone();
+        let mut neg: HashMap<C, HashSet<C>> = HashMap::new();
+
+        let mut confirmed = 0; // real tableau tests issued
+        let (mut skipped_known, mut pm_refuted, mut prop) = (0u64, 0u64, 0u64);
         for (a, sup) in &cand {
             for &b in sup {
+                if p2 {
+                    if pos.get(a).is_some_and(|s| s.contains(&b)) {
+                        // already entailed (TC or a prior confirmation): record it
+                        // without a test.
+                        subs.push((*a, b));
+                        skipped_known += 1;
+                        continue;
+                    }
+                    if neg.get(a).is_some_and(|s| s.contains(&b)) {
+                        skipped_known += 1;
+                        continue;
+                    }
+                    // pseudo-model refutation: if some definite super X of b is
+                    // absent from a model of A, then A⋢X, so A⋢b (else A⊑b⊑X).
+                    if let (Some(la), Some(bsup)) = (lab.get(a), tc.get(&b)) {
+                        if bsup.iter().any(|x| *x != b && !la.contains(x)) {
+                            neg.entry(*a).or_default().insert(b);
+                            for &s in pos.get(a).into_iter().flatten() {
+                                neg.entry(s).or_default().insert(b);
+                            }
+                            pm_refuted += 1;
+                            continue;
+                        }
+                    }
+                }
                 confirmed += 1;
                 if prog && confirmed % 200 == 0 {
                     eprintln!("KM_TAB_STATS classify phase2 confirm {}/{}", confirmed, total_cand);
                 }
-                if !self.consistent(&[CLit::pos(*a), CLit::neg(b)]) {
+                let key = SatCache::key(&[CLit::pos(*a), CLit::neg(b)]);
+                let sat = match cache.query(&key) {
+                    Some(v) => v,
+                    None => {
+                        let v = self.consistent(&[CLit::pos(*a), CLit::neg(b)]);
+                        cache.insert(key, v);
+                        v
+                    }
+                };
+                if !sat {
                     subs.push((*a, b));
+                    if p2 {
+                        // confirm A⊑b: transitivity + confirm-down to definite subs.
+                        let bsup = pos.get(&b).cloned().unwrap_or_default();
+                        let pa = pos.entry(*a).or_default();
+                        pa.insert(b);
+                        pa.extend(bsup.iter().copied());
+                        for &d in tcrev.get(a).into_iter().flatten() {
+                            if pos.entry(d).or_default().insert(b) {
+                                subs.push((d, b));
+                                prop += 1;
+                            }
+                        }
+                    }
+                } else if p2 {
+                    // refute A⋢b: up to known supers of A.
+                    neg.entry(*a).or_default().insert(b);
+                    for &s in pos.get(a).into_iter().flatten() {
+                        neg.entry(s).or_default().insert(b);
+                    }
                 }
             }
         }
+        if p2 {
+            subs.sort_unstable();
+            subs.dedup();
+        }
         if std::env::var("KM_TAB_STATS").is_ok() {
             eprintln!(
-                "KM_TAB_STATS classify: definite_subs={definite} (no test) confirm_tests={confirmed}"
+                "KM_TAB_STATS classify: definite_subs={definite} (no test) confirm_tests={confirmed} \
+                 p2_skipped_known={skipped_known} p2_pseudomodel_refuted={pm_refuted} p2_propagated={prop} \
+                 cache_hits={}",
+                cache.hits
             );
         }
         (consistent, unsat, subs)
