@@ -72,8 +72,29 @@ Config flags:
 6. KM remains fast on the bulk: median wall 0.22–0.32 s, median peak 24–73 MB
    across all configs.
 
-## Deployable recommendation
+## Update — EMELIM completeness fix (commit `554fc87`)
 
-`base + ht_emelim` (565 gold-clean, 0 unsound, 1 incomplete, monotone-safe), plus a
-**giant-exclusion router for `elcport`** to chase the remaining central onts toward
-the 568 union. Do **not** deploy blanket-`ALL`.
+The one incomplete above (5303 under `ht_emelim`) was EMELIM dropping the
+excluded-middle of a complementary pair whose negated side drives a consequence
+(`¬Q⊑∃hasComponentPart.Q17`), silently losing one subsumption. Fix: EMELIM keeps a
+pair unfolded when a member both drives a consequence and is **not** independently
+Horn-derivable (so the consequence would be lost by the drop). Re-swept `ht_emelim`
+and `ALL` with the fix (faithful canon, job `47635072`):
+
+| config | gold-clean | unsound | incomplete | timeout | wall mean | wall med | mem mean | mem med |
+|---|---|---|---|---|---|---|---|---|
+| base | 558 | 0 | 0 | 29 | 3.15 s | 0.22 s | 430 | 24 |
+| **ht_emelim (fixed)** | **564** | **0** | **0** | **23** | 5.61 s | 0.23 s | 551 | 25 |
+| ALL (fixed) | 561 | 0 | 0 | 26 | 7.02 s | 0.68 s | 605 | 65 |
+
+`ht_emelim` delta vs base: **+6** (11460, 12141, 15491, 4604, 9024, 9635), 0 losses,
+**0 incomplete corpus-wide**. The fix moves 5303 (incomplete→timeout) and 541
+(clean-fold→timeout, its consequence side is not Horn-derivable) to honest
+timeouts — one ont traded to remove all incompleteness. Union now 567.
+
+## Deployable recommendation (post-fix)
+
+`base + ht_emelim` = **564 gold-clean, 0 unsound, 0 incomplete, 23 timeout**,
+monotone-safe and now **fully sound + complete** (no incomplete route). Add a
+**giant-exclusion router for `elcport`** (+15803/6212/7246 without the −2 giant
+regression) to chase the 567 union. Do **not** deploy blanket-`ALL`.
