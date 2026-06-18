@@ -98,3 +98,37 @@ timeouts — one ont traded to remove all incompleteness. Union now 567.
 monotone-safe and now **fully sound + complete** (no incomplete route). Add a
 **giant-exclusion router for `elcport`** (+15803/6212/7246 without the −2 giant
 regression) to chase the 567 union. Do **not** deploy blanket-`ALL`.
+
+## Update — combined router wired + made default (commits `99a71d8`, `896e3be`)
+
+The recommendation above is now implemented and the default. `classify()` runs a
+**combined router**: when the elc-portfolio and HT-race arms are both on, HT races
+against the inner (CB-adaptive vs certified-elc) portfolio rather than bare CB, so
+one pass reaches the *union* of both recovery sets (fixing the mutual-exclusion that
+made blanket-`ALL` lose ht_emelim's gains). A **giant-exclusion guard** (`>100 MB`)
+keeps the 3 giants off the OOM-prone concurrent race.
+
+Router sweep (job `47636078`, faithful canon):
+
+| config | clean | unsound | incomplete | timeout | wall mean | wall med | mem mean | mem med |
+|---|---|---|---|---|---|---|---|---|
+| base | 558 | 0 | 0 | 29 | 3.15 s | 0.22 s | 430 | 24 |
+| ht_emelim | 564 | 0 | 0 | 23 | 5.61 s | 0.23 s | 551 | 25 |
+| **router** | **565** | **0** | **0** | **22** | 4.98 s | 0.36 s | 553 | 72 |
+
+Router vs base: **+7** (`11460, 12141, 15491, 4604, 7246, 9024, 9635`), **0 losses**,
+strict superset of `ht_emelim` (picks up `7246` via the giant-guarded elcport arm).
+It lands at 565 vs the theoretical 567 union — `15803`/`6212` (elcport-only central
+recoveries) do not survive the combined race; a residual, not a regression.
+
+The router config was then made the **default** (opt-out via `KM_NO_ELC_PORTFOLIO` /
+`KM_NO_HT_RACE` / `KM_NO_HT_EMELIM`; `ht_mode` already defaults to `fallback`). A
+**no-env-flag confirmation sweep** (job `47636367`) reproduces the router exactly:
+
+| config | clean | unsound | incomplete | timeout |
+|---|---|---|---|---|
+| **default (no flags)** | **565** | **0** | **0** | **22** |
+| router (explicit flags) | 565 | 0 | 0 | 22 |
+
+set-identical (+0/−0). **`km classify` now ships the +7 router out of the box,
+sound + complete, monotone-safe.**
