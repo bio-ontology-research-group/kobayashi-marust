@@ -2094,6 +2094,96 @@ fn hoist_residual_disjuncts(
     added
 }
 
+/// KM_ELC_RESIDUE_STATS — measure the INSUFFICIENT residue (Konclude's notion):
+/// after EL saturation, how many concepts are touched by a parked disjunction
+/// with no disjunct in their completed label. Reports before/after the
+/// common-disjunct hoist so we can see how much the deterministic distribution
+/// lemma resolves. Decides whether a shared-node residue-gate would pay off:
+/// a small INSUFFICIENT set ⇒ route few concepts to a complete tester (fast +
+/// complete); a near-total set ⇒ the gate buys nothing for this ontology.
+fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u32>]) {
+    let n = sub_super.len() as u32;
+    fn var_concept(a: &JAtom) -> Option<(&str, &JTerm)> {
+        match concept_of(a) {
+            Some((name, t)) if matches!(tk(t), Tk::Var(_)) => Some((name, t)),
+            _ => None,
+        }
+    }
+    // Parse parked disjunctions into (subject, disjuncts); subject = TOP for an
+    // empty body, a single concept for a one-atom body; multi-body skipped.
+    let mut parked: Vec<(u32, Vec<u32>)> = Vec::new();
+    for c in residual {
+        if c.head.len() < 2 {
+            continue;
+        }
+        let mut hvar: Option<&JTerm> = None;
+        let mut disjuncts: Vec<u32> = Vec::with_capacity(c.head.len());
+        let mut ok = true;
+        for a in &c.head {
+            match var_concept(a) {
+                Some((name, t)) if *hvar.get_or_insert(t) == t => match it.id(name) {
+                    Some(id) if id < n => disjuncts.push(id),
+                    _ => {
+                        ok = false;
+                        break;
+                    }
+                },
+                _ => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if !ok || disjuncts.len() < 2 {
+            continue;
+        }
+        let hvar = hvar.unwrap();
+        let subject = match c.body.len() {
+            0 => TOP,
+            1 => match var_concept(&c.body[0]) {
+                Some((name, t)) if t == hvar => match it.id(name) {
+                    Some(id) if id < n => id,
+                    _ => continue,
+                },
+                _ => continue,
+            },
+            _ => continue,
+        };
+        parked.push((subject, disjuncts));
+    }
+    // A concept C is INSUFFICIENT if some parked disjunction holds at C (subject is
+    // ⊤, is C, or subsumes C) yet no disjunct is in C's completed label.
+    let count_insuff = |ss: &[HashSet<u32>]| -> usize {
+        let mut insuff = 0usize;
+        for c in 0..n {
+            if c == TOP || c == BOTTOM {
+                continue;
+            }
+            let lab = &ss[c as usize];
+            let live = parked.iter().any(|(subj, disj)| {
+                let holds = *subj == TOP || *subj == c || lab.contains(subj);
+                holds && disj.iter().all(|&d| d != c && !lab.contains(&d))
+            });
+            if live {
+                insuff += 1;
+            }
+        }
+        insuff
+    };
+    let named = (n as usize).saturating_sub(2); // minus TOP/BOTTOM
+    let top_level = parked.iter().filter(|(s, _)| *s == TOP).count();
+    let pre = count_insuff(sub_super);
+    let added = hoist_residual_disjuncts(residual, it, sub_super);
+    let post = count_insuff(sub_super);
+    eprintln!(
+        "KM_ELC_RESIDUE_STATS concepts={named} parked_disjunctions={} (top_level={top_level}) \
+         insufficient_pre_hoist={pre} ({:.0}%) hoist_added={added} insufficient_post_hoist={post} ({:.0}%)",
+        parked.len(),
+        100.0 * pre as f64 / named.max(1) as f64,
+        100.0 * post as f64 / named.max(1) as f64,
+    );
+}
+
 /// Core of [`classify`] with the certificate mode explicit (the env read is in
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
@@ -2126,6 +2216,16 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
     let mut nf4_buf: Vec<u32> = Vec::new();
     run(&idx, &mut st, &mut nf4_buf);
     let mut res = st;
+    // KM_ELC_RESIDUE_STATS: measurement-only. After EL saturation (+ a local
+    // common-disjunct hoist), report how many concepts the deterministic
+    // saturation leaves INSUFFICIENT — i.e. touched by a parked disjunction with
+    // no disjunct in their completed label (Konclude's INSUFFICIENT). This is the
+    // size of the residue a shared-node residue-gate would have to SAT-test; it
+    // decides whether that architecture pays off. Prints and exits (no classify).
+    if std::env::var_os("KM_ELC_RESIDUE_STATS").is_some() {
+        residue_stats(&residual, &it, &mut res.sub_super);
+        return None;
+    }
     // An inconsistent EL subset makes the full ontology inconsistent
     // (monotonicity), so that answer is exact without a certificate.
     let el_inconsistent = res.sub_super[TOP as usize].contains(&BOTTOM);
