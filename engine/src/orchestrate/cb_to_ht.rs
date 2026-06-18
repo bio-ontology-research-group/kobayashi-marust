@@ -684,14 +684,43 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut em_seen: HashSet<(usize, usize)> = HashSet::new();
     let mut dj: HashSet<(usize, usize)> = HashSet::new();
     let mut protected: HashSet<usize> = HashSet::new();
+    // Concepts that appear in the body of a clause with a NON-EMPTY head, i.e. a
+    // concept that drives a forward consequence. For a complementary pair B≡¬A,
+    // both A and B are only ever *derived* through the excluded-middle ⊤⊑A∨B (or a
+    // clash); dropping that disjunction (what folding does) therefore loses any
+    // consequence keyed on the dropped side. BUT if that side is *independently*
+    // derivable — it is the sole atom of some Horn head `X ⊑ B` (or `⊤ ⊑ B`) — then
+    // its consequence still fires without the disjunction, so folding stays
+    // complete. So a pair is unsafe to fold only when a member BOTH drives a
+    // consequence (`body_drives`) AND is not Horn-derivable (`head_horn`). This is
+    // the completeness fix for the live ∀+⊔ family: it keeps 5303's
+    // `¬Q ⊑ ∃hasComponentPart.Q17` pair unfolded (¬Q is only born of the excluded
+    // middle) while still folding the disjunction-family onts whose folded side is
+    // Horn-derivable (12141/541/9024), which EMELIM legitimately classifies clean.
+    let mut body_drives: HashSet<usize> = HashSet::new();
+    let mut head_horn: HashSet<usize> = HashSet::new();
     let pair = |v: &[usize]| -> (usize, usize) {
         let (a, b) = (v[0], v[1]);
         if a <= b { (a, b) } else { (b, a) }
     };
     for c in &ht {
+        let head_nonempty = !c.head.is_empty();
         for a in c.body.iter().chain(c.head.iter()) {
             if let HAtom::Exist { c: fc, .. } = a {
                 protected.insert(*fc);
+            }
+        }
+        if head_nonempty {
+            for a in &c.body {
+                if let HAtom::Concept { c: bc, .. } = a {
+                    body_drives.insert(*bc);
+                }
+            }
+        }
+        // Horn-derivable: the concept is the single atom of this clause's head.
+        if c.head.len() == 1 {
+            if let HAtom::Concept { c: hc, .. } = c.head[0] {
+                head_horn.insert(hc);
             }
         }
         if c.body.is_empty() {
@@ -721,6 +750,15 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
+        // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
+        // drives a consequence and is NOT independently (Horn) derivable — then
+        // dropping the disjunction would silence that consequence. A consequence
+        // whose side is Horn-derivable survives the drop, so that pair still folds.
+        let unsafe_a = body_drives.contains(&a) && !head_horn.contains(&a);
+        let unsafe_b = body_drives.contains(&b) && !head_horn.contains(&b);
+        if unsafe_a || unsafe_b {
+            continue;
+        }
         let (elim, keep) = if internal(b) && !internal(a) {
             (b, a)
         } else if internal(a) && !internal(b) {
