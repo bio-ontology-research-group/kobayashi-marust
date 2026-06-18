@@ -32,3 +32,10 @@ correct where.
   `ht-modelprune` is a net −7 (447 ok) and overturns the earlier sample result;
   modelprune stays gated OFF. Soundness invariant (unsound=0) holds across all
   arms; only incompleteness is ont 7216 (non-disjunction gap).
+- `2026-06-18-km-cb-ht-ablation.md` — KM-only CB+HT optimization ablation, full
+  587 corpus, faithful `ore_canon` (HEAD `6207bae`). `ht_emelim` is the global
+  winner (565 gold-clean / 0 unsound / 1 incomplete=5303 / 21 timeout, +7 vs base
+  558). Blanket-`ALL` (561) is *worse* than `ht_emelim` alone — `elcport` regresses
+  2 giants; a router beats blanket-on. `absorb`/`tabrace` now +0 (subsumed by base);
+  `KM_HT_CONTRA` neutral. Union 568. Deployable: `base + ht_emelim` + giant-excluded
+  `elcport`.
