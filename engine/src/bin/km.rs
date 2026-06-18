@@ -25,15 +25,45 @@ fn main() {
         Some("elc") => cli::run_elc(),
         Some("engine") => cli::run_engine(),
         Some("tableau") => cli::run_tableau(),
+        // routing features: the structural + DL-construct vector the decision-tree
+        // router consumes. `km features <ont>...` prints one JSON object per
+        // ontology (NDJSON for >1) — same code path used at classify time.
+        Some("features") => features_cmd(&args[2..]),
         // hidden debug subcommand: stdin {clauses, rbox?} -> TInput JSON (the
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
             eprintln!("usage: km classify [--lines] <ontology.ofn>");
+            eprintln!("       km features <ontology.ofn> ...");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
         }
     }
+}
+
+fn features_cmd(rest: &[String]) {
+    let onts: Vec<&str> = rest.iter().map(String::as_str).filter(|a| !a.starts_with("--")).collect();
+    if onts.is_empty() {
+        eprintln!("usage: km features <ontology.ofn> ...");
+        exit(2);
+    }
+    let cfg = Config::from_env();
+    let multi = onts.len() > 1;
+    let stdout = std::io::stdout();
+    let mut w = stdout.lock();
+    use std::io::Write;
+    for o in onts {
+        let f = orchestrate::features::extract(&cfg, Path::new(o));
+        if multi {
+            // NDJSON: one compact object per line (the training-table format)
+            let _ = serde_json::to_writer(&mut w, &f);
+            let _ = w.write_all(b"\n");
+        } else {
+            let s = serde_json::to_string_pretty(&f).unwrap_or_default();
+            let _ = writeln!(w, "{s}");
+        }
+    }
+    let _ = w.flush();
 }
 
 fn cb_to_ht_cmd() {
