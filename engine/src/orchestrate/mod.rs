@@ -194,7 +194,11 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
     // forced attempt — it races a certified elc against the engine below.
     let out: EngineOut = {
-        let portfolio_on = cfg.elc_portfolio;
+        // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
+        // and elc side by side); keep them on the safe single-arm paths (bare elc
+        // when EL-safe, else the CB stack) by suppressing the portfolio for them.
+        let is_giant = std::fs::metadata(ont).map(|m| m.len() > 100_000_000).unwrap_or(false);
+        let portfolio_on = cfg.elc_portfolio && !is_giant;
         let mut out: Option<EngineOut> = None;
         let (elc_prog, elc_pre) = cfg.elc_cmd();
         if meta.el_rbox_safe && !portfolio_on {
@@ -223,7 +227,16 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         match out {
             Some(o) => o,
             None => {
-                if portfolio_on {
+                if portfolio_on && cfg.ht_race {
+                    // Combined router: HT races against (CB-adaptive vs certified
+                    // elc). Per ont, whichever sound+complete arm finishes first
+                    // wins; in fallback mode HT answers only when the CB/elc arm
+                    // fails or runs past budget (monotone-safe). This reaches the
+                    // union of the HT and elc-portfolio recoveries in one pass.
+                    race::race_cb_vs_ht(cfg, clauses_path.path(), &cfg.ht_mode, |th| {
+                        race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)
+                    })?
+                } else if portfolio_on {
                     // race the certified EL path against the context engine; both
                     // are sound+complete so the first finisher wins. Reserve a core
                     // (only when KM_THREADS is unset) for the certificate racer.
