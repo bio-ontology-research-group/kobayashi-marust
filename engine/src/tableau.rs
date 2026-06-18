@@ -620,6 +620,18 @@ pub struct Tableau {
     /// is fenced by the converter because the NI-rule for root chains is not
     /// built.
     nominals: Vec<C>,
+    /// KM_HT_BLOCKSKIP — do not branch a disjunction on a *blocked* node (its
+    /// blocker carries a superset label and resolves it; the unravelling copies
+    /// that resolution). Sound only on the inverse-free subset-blocking path; the
+    /// direct realisation of "kill the per-node branching" (folds the model the
+    /// way HermiT folds 197 nodes to ~3). Read once at construction.
+    blockskip: bool,
+    /// KM_HT_UNSATCACHE — within-search cache of node concept-labels proven
+    /// intrinsically unsatisfiable (a disjunction on the node failed independent
+    /// of every other decision). Inverse-free ⇒ a node's label determines its
+    /// satisfiability, so any later node whose label is a superset clashes at
+    /// once. The "within-search" ~1000x lever; sound on the non-careful path.
+    unsatcache: bool,
 }
 
 impl Tableau {
@@ -681,6 +693,8 @@ impl Tableau {
             pairwise: false,
             number: false,
             nominals: Vec::new(),
+            blockskip: std::env::var_os("KM_HT_BLOCKSKIP").is_some(),
+            unsatcache: std::env::var_os("KM_HT_UNSATCACHE").is_some(),
         }
     }
 
@@ -1114,6 +1128,10 @@ impl Tableau {
     /// matched body's dependency set (empty on the careful path, which does not
     /// track dependencies), for backjumping.
     fn find_disjunctive(&self, g: &Graph) -> Option<(Vec<Atom>, Subst, DepSet)> {
+        // BLOCKSKIP: on the inverse-free subset-blocking path, a disjunction whose
+        // every target node is blocked need not be branched — the blocker resolves
+        // it and the unravelling copies that resolution. Sound only there.
+        let blockskip = self.blockskip && !self.careful();
         for info in &self.clauses {
             if !info.disjunctive || !self.matchable(info, g) {
                 continue;
@@ -1123,6 +1141,9 @@ impl Tableau {
             let mut found: Option<Subst> = None;
             self.match_visit(&info.cl, g, &mut |subst| {
                 if info.cl.head.iter().all(|v| !self.head_atom_present(g, v, subst)) {
+                    if blockskip && self.disj_all_blocked(g, &info.cl.head, subst) {
+                        return true; // every target node blocked: skip, keep searching
+                    }
                     found = Some(subst.clone());
                     false
                 } else {
@@ -1135,6 +1156,28 @@ impl Tableau {
             }
         }
         None
+    }
+
+    /// True iff every head atom of a disjunction targets a blocked node (so the
+    /// disjunction need not be expanded — BLOCKSKIP).
+    fn disj_all_blocked(&self, g: &Graph, head: &[Atom], subst: &Subst) -> bool {
+        head.iter().all(|v| {
+            let node = match v {
+                Atom::Concept { t, .. } | Atom::Exists { t, .. } => g.find(subst.lookup(*t)),
+                Atom::Role { s, .. } => g.find(subst.lookup(*s)),
+                Atom::Eq { .. } => return false,
+            };
+            self.node_blocked(g, node)
+        })
+    }
+
+    /// The primary node a disjunction acts on (the target of its first concept /
+    /// existential head atom), used to key the within-search unsat-label cache.
+    fn disj_node(&self, g: &Graph, head: &[Atom], subst: &Subst) -> Option<Node> {
+        head.iter().find_map(|v| match v {
+            Atom::Concept { t, .. } | Atom::Exists { t, .. } => Some(g.find(subst.lookup(*t))),
+            _ => None,
+        })
     }
 
     fn head_atom_present(&self, g: &Graph, v: &Atom, subst: &Subst) -> bool {
@@ -1569,6 +1612,15 @@ impl Tableau {
             return Outcome::Conflict(c);
         }
         if let Some((head, subst, bdep)) = self.find_disjunctive(g) {
+            // UNSATCACHE query: if the disjunction's node already carries a label
+            // proven intrinsically unsatisfiable, clash now without branching.
+            if self.unsatcache {
+                if let Some(node) = self.disj_node(g, &head, &subst) {
+                    if let Some(d) = st.unsat_hit(&g.concepts[node], &g.cdep[node]) {
+                        return Outcome::Conflict(d);
+                    }
+                }
+            }
             let level = dl + 1;
             let mut accum = DepSet::new();
             for v in &head {
@@ -1640,7 +1692,17 @@ impl Tableau {
             // Every disjunct failed at this level: the disjunction itself cannot
             // be satisfied given the earlier decisions in `accum` and the reasons
             // this disjunction fired (`bdep`).
+            // UNSATCACHE populate: if the clash depended on NO other decision
+            // (`accum` empty before folding in the body deps) and the disjunction
+            // fired context-free (`bdep` empty), then this node's label is
+            // intrinsically unsatisfiable — cache it for superset reuse.
+            let intrinsic = self.unsatcache && accum.v.is_empty() && bdep.v.is_empty();
             accum.union_with(&bdep);
+            if intrinsic {
+                if let Some(node) = self.disj_node(g, &head, &subst) {
+                    st.cache_unsat(&g.concepts[node]);
+                }
+            }
             // Learn the no-good: the decisions (at the levels in `accum`) that
             // together force this clash. Reused to prune sibling/cousin branches.
             if st.on {
@@ -1681,6 +1743,12 @@ struct SearchState {
     n_skip: u64,
     n_try: u64,
     stats: bool,
+    /// KM_HT_UNSATCACHE: node concept-labels proven *intrinsically* unsatisfiable
+    /// (sorted, deduped). Inverse-free ⇒ a node's label alone decides its
+    /// satisfiability, so any later node whose label is a superset clashes at once.
+    unsat_on: bool,
+    unsat_labels: Vec<Vec<CLit>>,
+    n_unsat_hit: u64,
 }
 
 impl SearchState {
@@ -1704,7 +1772,54 @@ impl SearchState {
             n_skip: 0,
             n_try: 0,
             stats: std::env::var_os("KM_TAB_STATS").is_some(),
+            unsat_on: std::env::var_os("KM_HT_UNSATCACHE").is_some(),
+            unsat_labels: Vec::new(),
+            n_unsat_hit: 0,
         }
+    }
+
+    /// Cache a node label proven intrinsically unsatisfiable (UNSATCACHE). Skips
+    /// labels that already have a cached subset (which fires earlier and harder).
+    fn cache_unsat(&mut self, concepts: &HashSet<CLit>) {
+        if !self.unsat_on || self.unsat_labels.len() >= self.cap {
+            return;
+        }
+        let mut label: Vec<CLit> = concepts.iter().copied().collect();
+        label.sort_unstable();
+        if self
+            .unsat_labels
+            .iter()
+            .any(|u| u.iter().all(|x| label.binary_search(x).is_ok()))
+        {
+            return;
+        }
+        self.unsat_labels.push(label);
+    }
+
+    /// If the node's label is a superset of a cached unsat label, return the
+    /// conflict — the union of the dependency sets of the literals that form that
+    /// label on this node (so backjumping targets the decisions responsible).
+    fn unsat_hit(
+        &mut self,
+        concepts: &HashSet<CLit>,
+        cdep: &HashMap<CLit, DepSet>,
+    ) -> Option<DepSet> {
+        if !self.unsat_on || self.unsat_labels.is_empty() {
+            return None;
+        }
+        for u in &self.unsat_labels {
+            if u.iter().all(|l| concepts.contains(l)) {
+                let mut d = DepSet::new();
+                for l in u {
+                    if let Some(cd) = cdep.get(l) {
+                        d.union_with(cd);
+                    }
+                }
+                self.n_unsat_hit += 1;
+                return Some(d);
+            }
+        }
+        None
     }
 
     fn push(&mut self, level: u32, d: Option<(Node, CLit)>) {
