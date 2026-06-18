@@ -640,6 +640,10 @@ pub struct Tableau {
     /// over a fixed signature). The completeness fix for the live-disjunction
     /// family (it recovers e.g. 5303's CHSubstructure⊑Hydrocarbon).
     eqblock: bool,
+    /// KM_HT_LAZY — lazy unfolding: branch guarded disjunctions (non-empty body)
+    /// before unguarded ⊤-level ones, deferring the excluded-middle / covering
+    /// tautologies until nothing guarded is pending. Sound selection-order change.
+    lazy: bool,
 }
 
 impl Tableau {
@@ -704,6 +708,7 @@ impl Tableau {
             blockskip: std::env::var_os("KM_HT_BLOCKSKIP").is_some(),
             unsatcache: std::env::var_os("KM_HT_UNSATCACHE").is_some(),
             eqblock: std::env::var_os("KM_HT_EQBLOCK").is_some(),
+            lazy: std::env::var_os("KM_HT_LAZY").is_some(),
         }
     }
 
@@ -1149,12 +1154,39 @@ impl Tableau {
         // every target node is blocked need not be branched — the blocker resolves
         // it and the unravelling copies that resolution. Sound only there.
         let blockskip = self.blockskip && !self.careful();
+        // LAZY unfolding (KM_HT_LAZY): pick a *guarded* disjunction (non-empty
+        // body — a node-specific constraint) before any *unguarded* ⊤-level one
+        // (the excluded-middle/covering tautologies). Deferring the ⊤-disjunctions
+        // until nothing guarded is pending lets the deterministic and guarded
+        // structure resolve first, so far fewer ⊤-branches are ever opened. Pure
+        // selection-order change ⇒ sound and complete.
+        if self.lazy && !self.careful() {
+            if let Some(r) = self.find_disjunctive_pass(g, blockskip, Some(true)) {
+                return Some(r);
+            }
+            return self.find_disjunctive_pass(g, blockskip, Some(false));
+        }
+        self.find_disjunctive_pass(g, blockskip, None)
+    }
+
+    /// One scan for a usable disjunction. `guarded`: `Some(true)` = only clauses
+    /// with a non-empty body, `Some(false)` = only empty-body (⊤-level) clauses,
+    /// `None` = any (original behaviour).
+    fn find_disjunctive_pass(
+        &self,
+        g: &Graph,
+        blockskip: bool,
+        guarded: Option<bool>,
+    ) -> Option<(Vec<Atom>, Subst, DepSet)> {
         for info in &self.clauses {
             if !info.disjunctive || !self.matchable(info, g) {
                 continue;
             }
-            // Only the first usable match is needed, so visit with early exit
-            // instead of materialising every solution.
+            if let Some(want) = guarded {
+                if info.cl.body.is_empty() == want {
+                    continue;
+                }
+            }
             let mut found: Option<Subst> = None;
             self.match_visit(&info.cl, g, &mut |subst| {
                 if info.cl.head.iter().all(|v| !self.head_atom_present(g, v, subst)) {
