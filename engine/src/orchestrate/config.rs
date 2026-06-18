@@ -87,14 +87,19 @@ impl Config {
             central_time_cap: env_f64("KM_CENTRAL_TIME_CAP", 190.0),
             no_retry: std::env::var_os("KM_NO_RETRY").is_some(),
             no_central: std::env::var_os("KM_NO_CENTRAL").is_some(),
-            elc_portfolio: std::env::var_os("KM_ELC_PORTFOLIO").is_some(),
+            // Default ON (the validated router): the certified-elc portfolio is
+            // sound+complete and, with the giant-exclusion guard in classify(),
+            // never regresses. Opt out with KM_NO_ELC_PORTFOLIO.
+            elc_portfolio: std::env::var_os("KM_NO_ELC_PORTFOLIO").is_none(),
             elc_force: std::env::var_os("KM_ELC_FORCE").is_some(),
             elc_force_budget_s: env_f64("KM_ELC_FORCE_BUDGET_S", 100.0),
             // Python: float(KM_ELC_FORCE_MEM_GB or KM_PAR_MEM_GB or "14") — the
             // raw KM_PAR_MEM_GB env, falling back to 14 (NOT the 18 par_mem_gb).
             elc_force_mem_gb: env_f64("KM_ELC_FORCE_MEM_GB", env_f64("KM_PAR_MEM_GB", 14.0)),
             elc_port_mem_gb: env_f64("KM_ELC_PORT_MEM_GB", 8.0),
-            ht_race: std::env::var_os("KM_HT_RACE").is_some(),
+            // Default ON: in fallback mode (the default ht_mode) HT answers only
+            // on CB/elc failure, so it is monotone-safe. Opt out with KM_NO_HT_RACE.
+            ht_race: std::env::var_os("KM_NO_HT_RACE").is_none(),
             ht_mode: std::env::var("KM_HT_MODE").unwrap_or_else(|_| "fallback".to_string()),
             ht_budget_s: env_f64("KM_HT_BUDGET_S", 225.0),
             ht_nice: std::env::var("KM_HT_NICE").unwrap_or_else(|_| "1".to_string()),

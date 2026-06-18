@@ -619,8 +619,11 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     queries.sort();
     queries.dedup();
 
-    // ---- KM_HT_EMELIM ----
-    if std::env::var_os("KM_HT_EMELIM").is_some() {
+    // ---- complementary-definer elimination (default ON) ----
+    // Sound+complete since the completeness guard in elim_complements (never folds
+    // a consequence-bearing pair that is not independently derivable). Opt out with
+    // KM_NO_HT_EMELIM.
+    if std::env::var_os("KM_NO_HT_EMELIM").is_none() {
         let (out, n_elim) = elim_complements(ht, &ids.con_names);
         ht = out;
         if std::env::var_os("KM_HT_STATS").is_some() {
