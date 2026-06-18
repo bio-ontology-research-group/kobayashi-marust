@@ -632,6 +632,14 @@ pub struct Tableau {
     /// satisfiability, so any later node whose label is a superset clashes at
     /// once. The "within-search" ~1000x lever; sound on the non-careful path.
     unsatcache: bool,
+    /// KM_HT_EQBLOCK — use *equality* blocking (L(s)=L(t)) instead of *subset*
+    /// blocking on the inverse-free path. Subset blocking can declare a node
+    /// satisfiable that an equal-label expansion would refute, so it is
+    /// *incomplete* for ALC(H)+⊔ classification (it misses subsumptions). Equality
+    /// blocking is complete and still terminates (finitely many distinct labels
+    /// over a fixed signature). The completeness fix for the live-disjunction
+    /// family (it recovers e.g. 5303's CHSubstructure⊑Hydrocarbon).
+    eqblock: bool,
 }
 
 impl Tableau {
@@ -695,6 +703,7 @@ impl Tableau {
             nominals: Vec::new(),
             blockskip: std::env::var_os("KM_HT_BLOCKSKIP").is_some(),
             unsatcache: std::env::var_os("KM_HT_UNSATCACHE").is_some(),
+            eqblock: std::env::var_os("KM_HT_EQBLOCK").is_some(),
         }
     }
 
@@ -750,6 +759,14 @@ impl Tableau {
                 .any(|t| g.blockable[t] && g.concepts[s] == g.concepts[t]);
         }
         if !self.pairwise {
+            // Equality blocking (KM_HT_EQBLOCK) is complete for ALC(H)+⊔ where
+            // subset blocking is not; it still terminates (finite label universe).
+            if self.eqblock {
+                return g
+                    .ancestors(s)
+                    .into_iter()
+                    .any(|t| g.blockable[t] && g.concepts[s] == g.concepts[t]);
+            }
             return g
                 .ancestors(s)
                 .into_iter()
@@ -2058,6 +2075,14 @@ impl Tableau {
         // P2: full named-concept root label of one model of A (used by the
         // pseudo-model refutation below). Only populated under KM_HT_PMMERGE.
         let p2 = std::env::var_os("KM_HT_PMMERGE").is_some();
+        // KM_HT_ALLCAND — completeness fix: the single-model candidate pruning
+        // (consider only the named B in one model M_A's root) is *incomplete* for
+        // ALC+⊔ — a real subsumer B can be absent from one particular model when
+        // it is forced only across a disjunction split. Testing ALL named
+        // candidates (paired with complete equality blocking) restores
+        // completeness, at an O(n²)-test cost. Use on the small disjunction-family
+        // ontologies where soundness+completeness matters more than test count.
+        let allcand = std::env::var_os("KM_HT_ALLCAND").is_some();
         let mut lab: HashMap<C, HashSet<C>> = HashMap::new();
         let prog = std::env::var_os("KM_TAB_STATS").is_some();
         for (ai, &a) in named.iter().enumerate() {
@@ -2078,6 +2103,7 @@ impl Tableau {
                     cache.insert(key, true);
                     let mut uncertain = Vec::new();
                     let mut labset = HashSet::new();
+                    let mut def_set = HashSet::new();
                     for l in g.concepts[0].iter() {
                         if l.neg || !named_set.contains(&l.c) {
                             continue;
@@ -2091,12 +2117,21 @@ impl Tableau {
                         let definite = matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
                         if definite {
                             subs.push((a, l.c));
+                            def_set.insert(l.c);
                         } else {
                             uncertain.push(l.c);
                         }
                     }
                     if p2 {
                         lab.insert(a, labset);
+                    }
+                    if allcand {
+                        // Test every named concept not already a definite super of A.
+                        uncertain = named
+                            .iter()
+                            .copied()
+                            .filter(|&b| b != a && !def_set.contains(&b))
+                            .collect();
                     }
                     uncertain.sort_unstable();
                     cand.push((a, uncertain));
