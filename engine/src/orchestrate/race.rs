@@ -14,7 +14,7 @@ use std::io::{BufReader, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -192,9 +192,18 @@ where
 // ---------------------------------------------------------------------------
 // absorption portfolio (sequential): plain probe, then absorbed
 // ---------------------------------------------------------------------------
-pub fn race_absorbed_plain(cfg: &Config, ont: &Path, absorbed_path: &Path) -> Result<EngineOut, OrchestrateError> {
+/// `engine_threads` is the effective `KM_THREADS` for the engine runs (the
+/// ambient `cfg.threads`, or a reduced count when a racer reserved a core); the
+/// plain probe and the absorbed adaptive run both honour it, matching Python
+/// where both inherit the (possibly reduced) global `os.environ["KM_THREADS"]`.
+pub fn race_absorbed_plain(
+    cfg: &Config,
+    ont: &Path,
+    absorbed_path: &Path,
+    engine_threads: Option<usize>,
+) -> Result<EngineOut, OrchestrateError> {
     if let Some(plain) = frontend_run::run_ofn_plain(cfg, ont, false) {
-        let threads = cfg.threads.map(|t| t.to_string());
+        let threads = engine_threads.map(|t| t.to_string());
         let res = engine_run::run_engine(
             &cfg.engine_bin(),
             plain.path(),
@@ -209,9 +218,368 @@ pub fn race_absorbed_plain(cfg: &Config, ont: &Path, absorbed_path: &Path) -> Re
         }
     }
     // plain absent or did not finish fast: run the absorbed set with full budget
-    let res = engine_run::run_engine_adaptive(cfg, absorbed_path, None)?;
+    let res = engine_run::run_engine_adaptive(cfg, absorbed_path, None, engine_threads)?;
     if res.code != 0 {
         return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
     }
     parse_out(&res)
+}
+
+// ---------------------------------------------------------------------------
+// certified-elc portfolio (KM_ELC_PORTFOLIO): race adaptive CB vs certified elc
+// ---------------------------------------------------------------------------
+/// Available logical CPUs (the cpuset on Linux). Used only when `KM_THREADS` is
+/// unset; the benchmark harness always sets it, so the racer reservations below
+/// resolve to `cfg.threads` in practice.
+fn avail_cpus() -> usize {
+    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2)
+}
+
+/// Spawn the certified-elc racer (`KM_ELC_CERT`, default 2). Its (possibly
+/// hundreds-of-MB) output goes straight to a temp file, never an undrained pipe.
+/// Not registered in the LIVE engine set — it is killed directly, mirroring
+/// `owl_classify` where `elc_race` is never added to `_LIVE_ENGINES`.
+fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+    let out_path = super::tmpfile::TempPath::new(".elcrace.json");
+    let cert = std::env::var("KM_ELC_CERT").unwrap_or_else(|_| "2".to_string());
+    let mut cmd = Command::new(cfg.elc_bin());
+    cmd.stdin(File::open(clauses_path).ok()?)
+        .stdout(File::create(out_path.path()).ok()?)
+        .stderr(Stdio::null())
+        .env("KM_ELC_CERT", &cert);
+    let child = cmd.spawn().ok()?;
+    Some((child, out_path))
+}
+
+/// Race `run_engine_adaptive` (a scoped thread) against an already-started
+/// certified-elc process. Both sides only ever produce sound AND complete
+/// answers (a failing certificate exits 3), so the first finisher wins and the
+/// loser is killed. A PARTIAL certificate (elc exit 4) spawns a THIRD racer — a
+/// query-restricted engine run under the elc RSS cap — so the partial progress
+/// is not forfeited. Port of `_race_adaptive_vs_elc`.
+pub fn race_adaptive_vs_elc(
+    cfg: &Config,
+    clauses_path: &Path,
+    engine_threads: Option<usize>,
+) -> Result<EngineOut, OrchestrateError> {
+    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
+        Some(x) => x,
+        // elc could not start: the engine answers alone.
+        None => {
+            let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
+            if res.code != 0 {
+                return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+            }
+            return parse_out(&res);
+        }
+    };
+    let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
+
+    let read_tout = |p: &Path| -> Option<EngineOut> {
+        let f = File::open(p).ok()?;
+        serde_json::from_reader::<_, EngineOut>(BufReader::new(f)).ok()
+    };
+
+    let cb_done = Arc::new(AtomicBool::new(false));
+    let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
+        let cd = cb_done.clone();
+        let cb = s.spawn(move || {
+            let r = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads);
+            cd.store(true, Ordering::SeqCst);
+            r
+        });
+
+        // the lazily-spawned residue racer (elc exit 4): run_engine with KM_QUERIES
+        let mut tgt: Option<thread::ScopedJoinHandle<Result<engine_run::EngineResult, OrchestrateError>>> = None;
+        let mut partial: Option<EngineOut> = None;
+        let mut elc_lost = false;
+        let mut winner: Option<EngineOut> = None;
+
+        loop {
+            // --- poll the certified-elc process ---
+            if !elc_lost {
+                if let Ok(Some(st)) = elc.try_wait() {
+                    let rc = st.code().unwrap_or(-1);
+                    if rc == 0 {
+                        winner = read_tout(elc_out.path());
+                        elc_lost = true;
+                        if winner.is_some() {
+                            // certified full answer wins: kill the CB engine.
+                            engine_run::cancel_and_kill_engines();
+                            break;
+                        }
+                        // unparseable (never happens on a real exit-0): let CB answer.
+                    } else if rc == 4 && partial.is_none() {
+                        if let Some(mut p) = read_tout(elc_out.path()) {
+                            let names = std::mem::take(&mut p.unresolved);
+                            partial = Some(p);
+                            if names.is_empty() {
+                                engine_run::cancel_and_kill_engines();
+                                winner = partial.take();
+                                break;
+                            }
+                            let q = names.join(",");
+                            tgt = Some(s.spawn(move || {
+                                // Python inherits the (possibly reserved) global
+                                // KM_THREADS; we pass it explicitly for the same effect.
+                                let ts = engine_threads.map(|t| t.to_string());
+                                engine_run::run_engine(
+                                    &cfg.engine_bin(),
+                                    clauses_path,
+                                    ts.as_deref(),
+                                    Some(cfg.elc_port_mem_gb),
+                                    None,
+                                    &[("KM_QUERIES", q.as_str())],
+                                    false,
+                                )
+                            }));
+                        }
+                        elc_lost = true; // elc itself is done; the racers continue
+                    } else if rc != 4 {
+                        elc_lost = true; // exit 3 / crash: the engine must answer
+                    }
+                }
+            }
+
+            // --- the residue racer finished? ---
+            if let Some(h) = tgt.as_ref() {
+                if h.is_finished() {
+                    // take() drops the handle from `tgt`; on any failure the loop
+                    // simply continues and the full CB engine remains (Python sets
+                    // `tgt_thread = None`).
+                    let handle = tgt.take().unwrap();
+                    if let Ok(res) = handle.join().expect("residue racer panicked") {
+                        if res.code == 0 {
+                            engine_run::cancel_and_kill_engines();
+                            let eng = parse_out(&res)?;
+                            let mut p = partial.take().unwrap_or_default();
+                            for (k, v) in eng.subsumptions {
+                                p.subsumptions.insert(k, v); // dict.update: eng overwrites
+                            }
+                            p.inconsistent = p.inconsistent || eng.inconsistent;
+                            winner = Some(p);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // --- the full CB engine finished? ---
+            if cb_done.load(Ordering::SeqCst) {
+                break;
+            }
+
+            // --- watchdog the still-running certified-elc RSS ---
+            if !elc_lost {
+                if let Some(rss) = engine_run::read_rss(elc.id()) {
+                    if rss > cap_bytes {
+                        let _ = elc.kill();
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        // a racer (elc/residue) won: kill the elc process + reap; engines already
+        // cancelled. The scope auto-joins the CB (and any residue) thread, whose
+        // children were SIGKILLed by `cancel_and_kill_engines`.
+        if let Some(w) = winner {
+            let _ = elc.kill();
+            let _ = elc.wait();
+            let _ = cb.join();
+            return Ok(w);
+        }
+
+        // the full engine answered: stop the certified elc + any residue racer.
+        let _ = elc.kill();
+        let _ = elc.wait();
+        engine_run::cancel_and_kill_engines();
+        let res = cb.join().expect("engine thread panicked")?;
+        if res.code != 0 {
+            return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+        }
+        parse_out(&res)
+    });
+    result
+}
+
+/// Effective engine thread count for the elc portfolio: reserve a core ONLY when
+/// `KM_THREADS` is unset (the harness always sets it, so in practice the engine
+/// keeps `cfg.threads`). Mirrors `classify`'s `if "KM_THREADS" not in os.environ`.
+pub fn elc_portfolio_threads(cfg: &Config) -> Option<usize> {
+    cfg.threads.or_else(|| Some(avail_cpus().saturating_sub(1).max(1)))
+}
+
+// ---------------------------------------------------------------------------
+// KM_HT hypertableau race (KM_HT_RACE)
+// ---------------------------------------------------------------------------
+/// HT is SOUND on this fragment; route iff the cb_to_ht encoding is faithful
+/// (nothing fenced/dropped) and there are no inverse roles and no nominals.
+/// Number restrictions (ALCQ) ARE allowed. Port of `_ht_routable`.
+fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
+    if !tin.fenced.is_empty() || tin.dropped != 0 {
+        return false;
+    }
+    if !tin.nominals.is_empty() || tin.inverse {
+        return false;
+    }
+    true
+}
+
+/// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
+/// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
+fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+    let tab_bin = cfg.tab_bin()?;
+    let cl: Vec<JClause> = {
+        let f = File::open(clauses_path).ok()?;
+        let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
+        v.clauses
+    };
+    let named = std::collections::HashSet::new();
+    let tin = cb_to_ht::convert(&cl, None, &named);
+    if !ht_routable(&tin) {
+        return None;
+    }
+    let out_path = super::tmpfile::TempPath::new(".htrace.json");
+    // a light nice keeps HT from preempting CB on the onts CB finishes quickly.
+    let mut cmd = if cfg.ht_nice != "0" && !cfg.ht_nice.is_empty() {
+        let mut c = Command::new("nice");
+        c.arg("-n").arg(&cfg.ht_nice).arg(&tab_bin);
+        c
+    } else {
+        Command::new(&tab_bin)
+    };
+    cmd.stdin(Stdio::piped())
+        .stdout(File::create(out_path.path()).ok()?)
+        .stderr(Stdio::null())
+        .env("KM_HT", "1");
+    let mut child = cmd.spawn().ok()?;
+    let stdin = child.stdin.take()?;
+    let bytes = serde_json::to_vec(&tin).ok()?;
+    thread::spawn(move || {
+        let mut w = stdin;
+        let _ = w.write_all(&bytes);
+    });
+    Some((child, out_path))
+}
+
+/// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
+/// it is set and > 1, else `avail-1` when unset, else leave unchanged. Reserves
+/// one core for the single-threaded HT racer. Port of `_race_cb_vs_ht`'s
+/// core-reservation arithmetic. Only applied when HT actually spawned.
+fn ht_reserved_threads(cfg: &Config) -> Option<usize> {
+    match cfg.threads {
+        Some(n) if n > 1 => Some(n - 1),
+        Some(n) => Some(n), // n <= 1: unchanged (1 stays 1)
+        None => Some(avail_cpus().saturating_sub(1).max(1)),
+    }
+}
+
+/// Race the CB engine stack against the KM_HT hypertableau. CB is the certified
+/// sound+complete engine; HT is sound but incomplete on the live-disjunction
+/// fragment, so the win rule is correctness-aware:
+///   - "fallback" (default, monotone-safe): CB is preferred whenever it
+///     finishes; HT's answer is taken ONLY when CB errors or runs past
+///     `KM_HT_BUDGET_S`.
+///   - "race" (speed): the first VALID finisher wins.
+/// On a non-routable ontology HT never spawns and CB runs alone (no reservation).
+/// `engine_run(threads)` runs the CB stack with the given thread count. Port of
+/// `_race_cb_vs_ht`.
+pub fn race_cb_vs_ht<F>(
+    cfg: &Config,
+    clauses_path: &Path,
+    mode: &str,
+    engine_run: F,
+) -> Result<EngineOut, OrchestrateError>
+where
+    F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
+{
+    let (mut ht, ht_out) = match spawn_ht(cfg, clauses_path) {
+        Some(x) => x,
+        None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
+    };
+    let reserved = ht_reserved_threads(cfg);
+
+    let read_tout = |p: &Path| -> Option<EngineOut> {
+        let f = File::open(p).ok()?;
+        serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok().map(tableau_to_out)
+    };
+
+    // the CB result, written by the CB thread when it finishes — the analogue of
+    // Python's `done` dict (Ok = `done["out"]`, Err = `done["exc"]`). Inspecting
+    // it each iteration lets the loop distinguish "CB succeeded" (always prefer)
+    // from "CB errored" (wait for HT) without consuming the join handle.
+    let cb_slot: Arc<Mutex<Option<Result<EngineOut, OrchestrateError>>>> = Arc::new(Mutex::new(None));
+    let race_mode = mode.to_string();
+    let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
+        let slot = cb_slot.clone();
+        s.spawn(move || {
+            let r = engine_run(reserved);
+            *slot.lock().unwrap() = Some(r);
+        });
+
+        let mut ht_res: Option<EngineOut> = None;
+        let mut ht_polled = false;
+        let t0 = Instant::now();
+
+        loop {
+            // poll HT once it finishes (capture its valid answer)
+            if !ht_polled {
+                if let Ok(Some(st)) = ht.try_wait() {
+                    ht_polled = true;
+                    if st.success() {
+                        ht_res = read_tout(ht_out.path());
+                    }
+                }
+            }
+
+            // inspect the CB result slot (without removing it unless we commit).
+            let mut take_cb = false;
+            let mut cb_errored = false;
+            match cb_slot.lock().unwrap().as_ref() {
+                Some(Ok(_)) => take_cb = true,    // CB succeeded: always prefer CB
+                Some(Err(_)) => cb_errored = true, // CB errored: HT is the only hope
+                None => {}
+            }
+            if take_cb {
+                let cb = cb_slot.lock().unwrap().take().unwrap();
+                let _ = ht.kill();
+                let _ = ht.wait();
+                return cb; // the scope joins the (finished) CB thread
+            }
+
+            if race_mode == "race" {
+                if let Some(w) = ht_res.take() {
+                    // HT finished first (and valid): kill CB and win.
+                    engine_run::cancel_and_kill_engines();
+                    let _ = ht.wait();
+                    return Ok(w);
+                }
+                if cb_errored && ht_polled {
+                    // CB failed and HT produced no valid answer: surface CB's error.
+                    return cb_slot.lock().unwrap().take().unwrap();
+                }
+            } else {
+                // fallback mode
+                if cb_errored {
+                    if let Some(w) = ht_res.take() {
+                        let _ = ht.wait();
+                        return Ok(w);
+                    }
+                    if ht_polled {
+                        return cb_slot.lock().unwrap().take().unwrap();
+                    }
+                } else if t0.elapsed().as_secs_f64() > cfg.ht_budget_s {
+                    if let Some(w) = ht_res.take() {
+                        // CB over budget: HT fills the gap.
+                        engine_run::cancel_and_kill_engines();
+                        let _ = ht.wait();
+                        return Ok(w);
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    });
+    result
 }

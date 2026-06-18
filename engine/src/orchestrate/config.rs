@@ -39,6 +39,25 @@ pub struct Config {
     pub no_retry: bool,
     /// KM_NO_CENTRAL: start from the legacy per-`f` strategy
     pub no_central: bool,
+    // --- certified-elc portfolio (KM_ELC_PORTFOLIO) ---
+    pub elc_portfolio: bool,
+    /// KM_ELC_FORCE: attempt elc on a non-EL-safe RBox (certificate gate)
+    pub elc_force: bool,
+    /// KM_ELC_FORCE_BUDGET_S wall budget for the forced attempt (default 100)
+    pub elc_force_budget_s: f64,
+    /// KM_ELC_FORCE_MEM_GB RSS cap for the forced attempt
+    /// (default KM_PAR_MEM_GB raw, else 14 — NOT the 18 par_mem_gb default)
+    pub elc_force_mem_gb: f64,
+    /// KM_ELC_PORT_MEM_GB RSS cap for the certified-elc racer (default 8)
+    pub elc_port_mem_gb: f64,
+    // --- HT race (KM_HT_RACE) ---
+    pub ht_race: bool,
+    /// KM_HT_MODE: "fallback" (monotone-safe, default) | "race" (speed)
+    pub ht_mode: String,
+    /// KM_HT_BUDGET_S: in fallback mode, HT answers only when CB runs past this
+    pub ht_budget_s: f64,
+    /// KM_HT_NICE: scheduling niceness for the HT racer ("0" disables nice)
+    pub ht_nice: String,
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -68,6 +87,17 @@ impl Config {
             central_time_cap: env_f64("KM_CENTRAL_TIME_CAP", 190.0),
             no_retry: std::env::var_os("KM_NO_RETRY").is_some(),
             no_central: std::env::var_os("KM_NO_CENTRAL").is_some(),
+            elc_portfolio: std::env::var_os("KM_ELC_PORTFOLIO").is_some(),
+            elc_force: std::env::var_os("KM_ELC_FORCE").is_some(),
+            elc_force_budget_s: env_f64("KM_ELC_FORCE_BUDGET_S", 100.0),
+            // Python: float(KM_ELC_FORCE_MEM_GB or KM_PAR_MEM_GB or "14") — the
+            // raw KM_PAR_MEM_GB env, falling back to 14 (NOT the 18 par_mem_gb).
+            elc_force_mem_gb: env_f64("KM_ELC_FORCE_MEM_GB", env_f64("KM_PAR_MEM_GB", 14.0)),
+            elc_port_mem_gb: env_f64("KM_ELC_PORT_MEM_GB", 8.0),
+            ht_race: std::env::var_os("KM_HT_RACE").is_some(),
+            ht_mode: std::env::var("KM_HT_MODE").unwrap_or_else(|_| "fallback".to_string()),
+            ht_budget_s: env_f64("KM_HT_BUDGET_S", 225.0),
+            ht_nice: std::env::var("KM_HT_NICE").unwrap_or_else(|_| "1".to_string()),
         }
     }
 

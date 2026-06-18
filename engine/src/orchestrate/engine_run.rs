@@ -64,7 +64,7 @@ pub struct EngineResult {
 /// Resident set size of `pid` in bytes, from `/proc/<pid>/statm` field 2 (pages)
 /// × 4096. The page size is hardcoded to 4096 to match `owl_classify` exactly
 /// (the kill decision must be bit-for-bit reproducible).
-fn read_rss(pid: u32) -> Option<u64> {
+pub(crate) fn read_rss(pid: u32) -> Option<u64> {
     let s = std::fs::read_to_string(format!("/proc/{}/statm", pid)).ok()?;
     let resident: u64 = s.split_whitespace().nth(1)?.parse().ok()?;
     Some(resident * 4096)
@@ -166,25 +166,35 @@ pub fn run_engine(
 /// Parallel attempt under the RSS+time watchdog; on overflow/timeout/failure,
 /// fall back to a single-threaded legacy (per-`f`) run. Port of
 /// `_run_engine_adaptive`. `queries`, when set, is passed as `KM_QUERIES`
-/// (residue resolution) — never by mutating the global environment.
+/// (residue resolution) — never by mutating the global environment. `threads`
+/// overrides the first-attempt thread count (the racers' core reservation);
+/// `None` inherits the ambient `KM_THREADS` (`cfg.threads`), exactly like
+/// Python's `first = str(threads) if threads is not None else env[KM_THREADS]`.
 pub fn run_engine_adaptive(
     cfg: &Config,
     clauses_path: &Path,
     queries: Option<&str>,
+    threads: Option<usize>,
 ) -> Result<EngineResult, OrchestrateError> {
     let engine = cfg.engine_bin();
     let central_on = !cfg.no_central;
+
+    // first-attempt thread count: explicit override, else the ambient KM_THREADS.
+    let first: Option<String> = match threads {
+        Some(t) => Some(t.to_string()),
+        None => cfg.threads.map(|t| t.to_string()),
+    };
 
     let mut env1: Vec<(&str, &str)> = Vec::new();
     if let Some(q) = queries {
         env1.push(("KM_QUERIES", q));
     }
-    // First attempt: inherit the ambient KM_THREADS (so threads=None), RSS cap,
-    // and a wall cap only when the central strategy is active.
+    // First attempt: the resolved thread count, RSS cap, and a wall cap only
+    // when the central strategy is active.
     let mut proc = run_engine(
         &engine,
         clauses_path,
-        None,
+        first.as_deref(),
         Some(cfg.par_mem_gb),
         if central_on { Some(cfg.central_time_cap) } else { None },
         &env1,
@@ -201,7 +211,7 @@ pub fn run_engine_adaptive(
                 env2.push(("KM_QUERIES", q));
             }
             proc = run_engine(&engine, clauses_path, Some("1"), None, None, &env2, false)?;
-        } else if cfg.threads != Some(1) {
+        } else if first.as_deref() != Some("1") {
             // explicit legacy run: single-threaded retry
             proc = run_engine(&engine, clauses_path, Some("1"), None, None, &env1, false)?;
         }

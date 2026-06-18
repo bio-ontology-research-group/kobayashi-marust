@@ -104,25 +104,57 @@ pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, Orc
 /// `cb_stack` closure: absorption portfolio (KM_ABSORB_PORTFOLIO + KM_ABSORB) is
 /// raced against the tableau when KM_TAB_RACE, the tableau alone races the plain
 /// adaptive engine when only KM_TAB_RACE, else the bare adaptive engine.
-fn cb_stack(cfg: &Config, ont: &std::path::Path, clauses_path: &std::path::Path) -> Result<EngineOut, OrchestrateError> {
+///
+/// `engine_threads` is the effective `KM_THREADS` for every engine run in the
+/// stack — `cfg.threads` normally, or a reduced count when the HT racer reserved
+/// a core (Python achieves this by mutating the global `os.environ`; the Rust
+/// port threads it explicitly).
+fn cb_stack(
+    cfg: &Config,
+    ont: &std::path::Path,
+    clauses_path: &std::path::Path,
+    engine_threads: Option<usize>,
+) -> Result<EngineOut, OrchestrateError> {
     if cfg.absorb_portfolio && cfg.absorb_on {
         if cfg.tab_race {
-            return race::race_cb_vs_tableau(cfg, clauses_path, || race::race_absorbed_plain(cfg, ont, clauses_path));
+            return race::race_cb_vs_tableau(cfg, clauses_path, || {
+                race::race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
+            });
         }
-        return race::race_absorbed_plain(cfg, ont, clauses_path);
+        return race::race_absorbed_plain(cfg, ont, clauses_path, engine_threads);
     }
     if cfg.tab_race {
-        return race::race_cb_vs_tableau(cfg, clauses_path, || run_adaptive(cfg, clauses_path));
+        return race::race_cb_vs_tableau(cfg, clauses_path, || run_adaptive(cfg, clauses_path, engine_threads));
     }
-    run_adaptive(cfg, clauses_path)
+    run_adaptive(cfg, clauses_path, engine_threads)
 }
 
-fn run_adaptive(cfg: &Config, clauses_path: &std::path::Path) -> Result<EngineOut, OrchestrateError> {
-    let res = engine_run::run_engine_adaptive(cfg, clauses_path, None)?;
+fn run_adaptive(
+    cfg: &Config,
+    clauses_path: &std::path::Path,
+    engine_threads: Option<usize>,
+) -> Result<EngineOut, OrchestrateError> {
+    let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
     if res.code != 0 {
         return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
     }
     parse_out(&res)
+}
+
+/// Map an `elc` worker exit code to an `out` (port of the `if proc is not None`
+/// block in `owl_classify.classify`): exit 3 → `None` (fall through to CB), exit
+/// 4 → resolve the certificate residue, exit 0 → use it, anything else → error.
+fn handle_elc_result(
+    cfg: &Config,
+    res: engine_run::EngineResult,
+    clauses_path: &Path,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    match res.code {
+        3 => Ok(None),
+        4 => Ok(Some(resolve_residue(cfg, parse_out(&res)?, clauses_path)?)),
+        0 => Ok(Some(parse_out(&res)?)),
+        c => Err(OrchestrateError::Worker { bin: "elc".into(), code: c, stderr: res.stderr }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -157,35 +189,52 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
             || (n.contains(':') && !is_bottom(n))
     };
 
-    // EL fast path (elc) when the RBox is EL-safe, else the CB engine.
+    // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
+    // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
+    // forced attempt — it races a certified elc against the engine below.
     let out: EngineOut = {
+        let portfolio_on = cfg.elc_portfolio;
         let mut out: Option<EngineOut> = None;
-        if meta.el_rbox_safe {
+        if meta.el_rbox_safe && !portfolio_on {
+            // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
+            let res = engine_run::run_engine(&cfg.elc_bin(), clauses_path.path(), None, None, None, &[], false)?;
+            out = handle_elc_result(cfg, res, clauses_path.path())?;
+        } else if !meta.el_rbox_safe && !portfolio_on && cfg.elc_force {
+            // KM_ELC_FORCE: attempt elc on a non-EL-safe RBox; only a passing
+            // completeness certificate lets it answer, and a failing attempt can
+            // be arbitrarily expensive, so bound it by wall clock + RSS. Hitting
+            // either bound falls through to the CB engine exactly like exit 3.
             let res = engine_run::run_engine(
                 &cfg.elc_bin(),
                 clauses_path.path(),
                 None,
-                None,
-                None,
+                Some(cfg.elc_force_mem_gb),
+                Some(cfg.elc_force_budget_s),
                 &[],
                 false,
             )?;
-            match res.code {
-                3 => {} // not EL: fall through to the CB engine
-                4 => out = Some(resolve_residue(cfg, parse_out(&res)?, clauses_path.path())?),
-                0 => out = Some(parse_out(&res)?),
-                c => {
-                    return Err(OrchestrateError::Worker {
-                        bin: "elc".into(),
-                        code: c,
-                        stderr: res.stderr,
-                    })
-                }
+            if !(res.oom || res.timed_out) {
+                out = handle_elc_result(cfg, res, clauses_path.path())?;
             }
         }
         match out {
             Some(o) => o,
-            None => cb_stack(cfg, ont, clauses_path.path())?,
+            None => {
+                if portfolio_on {
+                    // race the certified EL path against the context engine; both
+                    // are sound+complete so the first finisher wins. Reserve a core
+                    // (only when KM_THREADS is unset) for the certificate racer.
+                    let th = race::elc_portfolio_threads(cfg);
+                    race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)?
+                } else if cfg.ht_race {
+                    // race the whole CB stack against the KM_HT hypertableau.
+                    race::race_cb_vs_ht(cfg, clauses_path.path(), &cfg.ht_mode, |th| {
+                        cb_stack(cfg, ont, clauses_path.path(), th)
+                    })?
+                } else {
+                    cb_stack(cfg, ont, clauses_path.path(), cfg.threads)?
+                }
+            }
         }
     };
 
@@ -241,7 +290,10 @@ fn resolve_residue(
         return Ok(partial);
     }
     let q = names.join(",");
-    let res = engine_run::run_engine_adaptive(cfg, clauses_path, Some(&q))?;
+    // mirror `_RACE_WON.clear()`: a prior race may have set the cancel flag; clear
+    // it so the residue engine run is allowed to spawn.
+    engine_run::reset_cancel();
+    let res = engine_run::run_engine_adaptive(cfg, clauses_path, Some(&q), None)?;
     if res.code != 0 {
         return Err(OrchestrateError::Worker {
             bin: "engine".into(),
