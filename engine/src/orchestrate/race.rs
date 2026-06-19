@@ -445,7 +445,11 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     };
     let named = std::collections::HashSet::new();
     let tin = cb_to_ht::convert(&cl, None, &named);
-    if !ht_routable(&tin) {
+    // KM_HT_FORCE: bypass the soundness routing guard to test the HT algorithm on
+    // out-of-fragment onts (inverse / nominals / fenced role-chains). The cb_to_ht
+    // encoding may be an approximation there, so results are NOT guaranteed
+    // gold-clean — this is for algorithm/scaling measurement only, not production.
+    if !ht_routable(&tin) && std::env::var_os("KM_HT_FORCE").is_none() {
         return None;
     }
     let out_path = super::tmpfile::TempPath::new(".htrace.json");

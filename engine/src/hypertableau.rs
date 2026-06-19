@@ -1173,13 +1173,21 @@ fn mk_recs(clauses: &[Clause]) -> Vec<ClauseRec> {
 /// every model node — the structural lever `docs/konclude-trace-5303.md`
 /// identifies for the live ∀+⊔ family.
 ///
-/// The definite-consequence sets come from one non-branching QoSat saturation
-/// (disjunctions parked, common consequences harvested to fixpoint) — its
-/// `label_pos[i]` is exactly the forced closure of concept `concepts[i]`. We do
-/// NOT use QoSat's residue test (the part that regressed); only its sound
-/// saturation. A disjunct whose own seed clashes (`node_unsat`) is globally
-/// impossible and is dropped from the intersection (sound: an individual must
-/// satisfy a *live* disjunct). Returns the new `⊤ ⊑ x` clauses.
+/// KNOWN-UNSOUND (validated 2026-06-19, IBEX job 47650509 + isolation): this
+/// uses QoSat `label_pos`, which is a SHARED-MODEL over-approximation — all
+/// concept seeds coexist in one graph, so `definite(di)` is contaminated by other
+/// concepts' facts (via shared ∃-fillers / ∀-backprop / globals). That is fine
+/// for subsumer PRUNING (its original purpose) but UNSOUND for deriving `⊤ ⊑ x`:
+/// it injects non-entailed facts (broke ore_ont_9024: 12 spurious + 458 lost
+/// subsumptions). It happened to be clean+recover ore_ont_4205, but that is
+/// coincidental. A sound version needs ISOLATED per-disjunct saturation (a fresh
+/// single-seed QoSat per di), not the shared-model labels. Gated OFF; do NOT
+/// enable until reimplemented with isolated saturation.
+///
+/// The definite-consequence sets are read from one non-branching QoSat saturation
+/// (disjunctions parked, common consequences harvested to fixpoint). A disjunct
+/// whose own seed clashes (`node_unsat`) is dropped from the intersection.
+/// Returns the candidate `⊤ ⊑ x` clauses.
 fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
     // Seed QoSat with every named concept that occurs in the clause set.
     let mut concept_set: HashSet<C> = HashSet::new();
