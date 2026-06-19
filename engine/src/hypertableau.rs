@@ -1173,45 +1173,24 @@ fn mk_recs(clauses: &[Clause]) -> Vec<ClauseRec> {
 /// every model node — the structural lever `docs/konclude-trace-5303.md`
 /// identifies for the live ∀+⊔ family.
 ///
-/// KNOWN-UNSOUND (validated 2026-06-19, IBEX job 47650509 + isolation): this
-/// uses QoSat `label_pos`, which is a SHARED-MODEL over-approximation — all
-/// concept seeds coexist in one graph, so `definite(di)` is contaminated by other
-/// concepts' facts (via shared ∃-fillers / ∀-backprop / globals). That is fine
-/// for subsumer PRUNING (its original purpose) but UNSOUND for deriving `⊤ ⊑ x`:
-/// it injects non-entailed facts (broke ore_ont_9024: 12 spurious + 458 lost
-/// subsumptions). It happened to be clean+recover ore_ont_4205, but that is
-/// coincidental. A sound version needs ISOLATED per-disjunct saturation (a fresh
-/// single-seed QoSat per di), not the shared-model labels. Gated OFF; do NOT
-/// enable until reimplemented with isolated saturation.
-///
-/// The definite-consequence sets are read from one non-branching QoSat saturation
-/// (disjunctions parked, common consequences harvested to fixpoint). A disjunct
-/// whose own seed clashes (`node_unsat`) is dropped from the intersection.
-/// Returns the candidate `⊤ ⊑ x` clauses.
+/// Soundness (fixed 2026-06-19 after the shared-model bug): `definite(c)` is
+/// computed from an ISOLATED single-seed QoSat per disjunct concept, so no other
+/// named seed shares the graph and the label is exactly c's forced closure (no
+/// cross-concept contamination). The earlier shared-model version (one
+/// saturation seeding ALL concepts) was UNSOUND — it injected non-entailed ⊤
+/// facts (broke ore_ont_9024: 12 spurious + 458 lost subsumptions) because
+/// `definite(di)` picked up facts that held only because OTHER seeds were in the
+/// same graph. With isolated saturation each `definite(c)` is choice-free and the
+/// ⋂ over live disjuncts is genuinely ⊤-entailed. A disjunct whose isolated seed
+/// clashes (`node_unsat` at node 0) is dropped (sound: it can't be chosen).
+/// Validate gold-clean before trusting. Returns the candidate `⊤ ⊑ x` clauses.
 fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
-    // Seed QoSat with every named concept that occurs in the clause set.
-    let mut concept_set: HashSet<C> = HashSet::new();
-    for (c, _, _) in recs {
-        for a in c.body.iter().chain(c.head.iter()) {
-            if let Atom::Concept { lit, .. } = a {
-                concept_set.insert(lit.c);
-            }
-        }
-    }
-    let concepts: Vec<C> = concept_set.into_iter().collect();
-    let idx: HashMap<C, usize> = concepts.iter().enumerate().map(|(i, &c)| (c, i)).collect();
-    let mut qs = QoSat::new(recs);
-    let g = qs.saturate_global(&concepts);
-    if g.unsupported {
-        return Vec::new();
-    }
-    let mut emitted: HashSet<C> = HashSet::new();
-    let mut extra: Vec<Clause> = Vec::new();
+    // Collect the global (⊤-headed, empty-body) all-positive disjunctions.
+    let mut disjs: Vec<Vec<C>> = Vec::new();
     for (c, sb, _) in recs {
         if !sb.is_empty() {
-            continue; // not a global (⊤-headed) clause
+            continue;
         }
-        // All head atoms must be positive Concept literals (a live ∀+⊔ ⊤-disjunction).
         let mut disj: Vec<C> = Vec::new();
         let mut ok = true;
         for a in &c.head {
@@ -1223,27 +1202,57 @@ fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
                 }
             }
         }
-        if !ok || disj.len() < 2 {
-            continue;
+        if ok && disj.len() >= 2 {
+            disjs.push(disj);
         }
-        // Intersect the definite labels of the LIVE disjuncts.
+    }
+    if disjs.is_empty() {
+        return Vec::new();
+    }
+    // definite(c): the forced consequences of an individual satisfying ONLY c,
+    // from an ISOLATED single-seed saturation (no other named seed shares the
+    // graph, so no cross-concept contamination — the soundness fix). Cached per
+    // distinct disjunct concept. None ⇒ QoSat bailed (out of fragment) for that
+    // seed, in which case we skip any disjunction mentioning it (conservative).
+    let mut needed: HashSet<C> = HashSet::new();
+    for d in &disjs {
+        for &c in d {
+            needed.insert(c);
+        }
+    }
+    let mut definite: HashMap<C, Option<(HashSet<C>, bool)>> = HashMap::new();
+    for &c in &needed {
+        let mut qs = QoSat::new(recs);
+        let g = qs.saturate_global(&[c]);
+        if g.unsupported || g.label_pos.is_empty() {
+            definite.insert(c, None);
+        } else {
+            // node 0 is the lone seed c; label_pos[0] is its forced closure.
+            let dead = g.node_unsat.contains(&0);
+            definite.insert(c, Some((g.label_pos[0].clone(), dead)));
+        }
+    }
+    let mut emitted: HashSet<C> = HashSet::new();
+    let mut extra: Vec<Clause> = Vec::new();
+    for disj in &disjs {
+        // Intersect the definite labels of the LIVE (satisfiable) disjuncts.
         let mut common: Option<HashSet<C>> = None;
         let mut bail = false;
-        for &d in &disj {
-            let node = match idx.get(&d) {
-                Some(&i) => i,
-                None => {
-                    bail = true;
+        for &d in disj {
+            match definite.get(&d) {
+                Some(Some((lab, dead))) => {
+                    if *dead {
+                        continue; // dead disjunct: cannot be chosen
+                    }
+                    match &mut common {
+                        None => common = Some(lab.clone()),
+                        Some(cc) => cc.retain(|x| lab.contains(x)),
+                    }
+                }
+                _ => {
+                    bail = true; // unsupported seed ⇒ don't harvest this disjunction
                     break;
                 }
-            };
-            if g.node_unsat.contains(&node) {
-                continue; // dead disjunct: cannot be chosen, contributes nothing
-            }
-            let lab = &g.label_pos[node];
-            match &mut common {
-                None => common = Some(lab.clone()),
-                Some(cc) => cc.retain(|x| lab.contains(x)),
             }
             if common.as_ref().map_or(false, |c| c.is_empty()) {
                 break;
