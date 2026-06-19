@@ -1151,6 +1151,113 @@ fn trigger_absorb(clauses: &mut [Clause]) -> usize {
     count
 }
 
+/// Build the clause records (sorted body + var count) for the Ht index.
+fn mk_recs(clauses: &[Clause]) -> Vec<ClauseRec> {
+    clauses
+        .iter()
+        .map(|c| {
+            let sb = sorted_body(&c.body);
+            let nv = nvars_of(c);
+            (c.clone(), sb, nv)
+        })
+        .collect()
+}
+
+/// Common-disjunct harvest at the global (⊤) level (KM_HT_HARVEST). Konclude's
+/// `initializeExtractDisjunctCommonConcept`: for a global disjunction
+/// `⊤ ⊑ d1 ⊔ … ⊔ dk` (empty body, all-positive Concept disjuncts), any concept
+/// `x` that is a *definite* (choice-free) consequence of EVERY live disjunct is a
+/// consequence of the disjunction itself — so `⊤ ⊑ x` holds. Emitting those as
+/// unconditional Horn facts lets the tableau derive them deterministically (and
+/// fire clash clauses) instead of re-discovering them inside every branch on
+/// every model node — the structural lever `docs/konclude-trace-5303.md`
+/// identifies for the live ∀+⊔ family.
+///
+/// The definite-consequence sets come from one non-branching QoSat saturation
+/// (disjunctions parked, common consequences harvested to fixpoint) — its
+/// `label_pos[i]` is exactly the forced closure of concept `concepts[i]`. We do
+/// NOT use QoSat's residue test (the part that regressed); only its sound
+/// saturation. A disjunct whose own seed clashes (`node_unsat`) is globally
+/// impossible and is dropped from the intersection (sound: an individual must
+/// satisfy a *live* disjunct). Returns the new `⊤ ⊑ x` clauses.
+fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
+    // Seed QoSat with every named concept that occurs in the clause set.
+    let mut concept_set: HashSet<C> = HashSet::new();
+    for (c, _, _) in recs {
+        for a in c.body.iter().chain(c.head.iter()) {
+            if let Atom::Concept { lit, .. } = a {
+                concept_set.insert(lit.c);
+            }
+        }
+    }
+    let concepts: Vec<C> = concept_set.into_iter().collect();
+    let idx: HashMap<C, usize> = concepts.iter().enumerate().map(|(i, &c)| (c, i)).collect();
+    let mut qs = QoSat::new(recs);
+    let g = qs.saturate_global(&concepts);
+    if g.unsupported {
+        return Vec::new();
+    }
+    let mut emitted: HashSet<C> = HashSet::new();
+    let mut extra: Vec<Clause> = Vec::new();
+    for (c, sb, _) in recs {
+        if !sb.is_empty() {
+            continue; // not a global (⊤-headed) clause
+        }
+        // All head atoms must be positive Concept literals (a live ∀+⊔ ⊤-disjunction).
+        let mut disj: Vec<C> = Vec::new();
+        let mut ok = true;
+        for a in &c.head {
+            match a {
+                Atom::Concept { lit, .. } if !lit.neg => disj.push(lit.c),
+                _ => {
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if !ok || disj.len() < 2 {
+            continue;
+        }
+        // Intersect the definite labels of the LIVE disjuncts.
+        let mut common: Option<HashSet<C>> = None;
+        let mut bail = false;
+        for &d in &disj {
+            let node = match idx.get(&d) {
+                Some(&i) => i,
+                None => {
+                    bail = true;
+                    break;
+                }
+            };
+            if g.node_unsat.contains(&node) {
+                continue; // dead disjunct: cannot be chosen, contributes nothing
+            }
+            let lab = &g.label_pos[node];
+            match &mut common {
+                None => common = Some(lab.clone()),
+                Some(cc) => cc.retain(|x| lab.contains(x)),
+            }
+            if common.as_ref().map_or(false, |c| c.is_empty()) {
+                break;
+            }
+        }
+        if bail {
+            continue;
+        }
+        if let Some(cc) = common {
+            for x in cc {
+                if emitted.insert(x) {
+                    extra.push(Clause {
+                        body: Vec::new(),
+                        head: vec![Atom::Concept { lit: CLit::pos(x), t: X }],
+                    });
+                }
+            }
+        }
+    }
+    extra
+}
+
 // ====================== QuasiOrder shared-node saturation ====================
 //
 // Konclude/HermiT's non-branching saturation keeps ONE shared node per concept
@@ -2105,14 +2212,21 @@ impl Ht {
             }
             clauses.extend(extra);
         }
-        let recs: Vec<ClauseRec> = clauses
-            .into_iter()
-            .map(|c| {
-                let sb = sorted_body(&c.body);
-                let nv = nvars_of(&c);
-                (c, sb, nv)
-            })
-            .collect();
+        let mut recs: Vec<ClauseRec> = mk_recs(&clauses);
+        // KM_HT_HARVEST: inject global common-disjunct consequences as ⊤-facts so
+        // the tableau derives them deterministically instead of re-branching them
+        // on every node (the live ∀+⊔ family lever). Reuses only QoSat's sound
+        // saturation, not its residue test.
+        if std::env::var_os("KM_HT_HARVEST").is_some() {
+            let extra = harvest_global(&recs);
+            if std::env::var_os("KM_HT_STATS").is_some() {
+                eprintln!("KM_HT_STATS harvest global_facts={}", extra.len());
+            }
+            if !extra.is_empty() {
+                clauses.extend(extra);
+                recs = mk_recs(&clauses);
+            }
+        }
         let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
         let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
         let mut global_clauses = Vec::new();
@@ -2345,6 +2459,54 @@ impl Ht {
                 sig.sort_unstable();
                 if !seen.insert(sig) {
                     // an earlier unblocked node already carries this signature
+                    blocked[n] = true;
+                }
+            }
+        } else if mode == 3 {
+            // PAIRWISE (mode 3): HermiT anywhere pairwise blocking. Block n by the
+            // FIRST earlier unblocked node with an identical triple
+            // (core-label(n), core-label(pred n), roles on the pred→n edge).
+            // Unlike full-equality (mode 2) this matches on the CORE plus the
+            // parent context, so it folds the disjunction-family models like
+            // subset does, while the parent+edge match keeps it complete under
+            // transitive roles (the case subset drops) — sound+complete for SH
+            // without inverse (guaranteed by ht_routable). Hashed O(n).
+            const SEP: u64 = u64::MAX;
+            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
+            for n in 0..nn {
+                if !self.ext.blockable[n] {
+                    continue;
+                }
+                let p = match self.ext.pred[n] {
+                    Some(p) => p,
+                    None => continue, // root has no parent edge; never blocked
+                };
+                let mut sig: Vec<u64> = Vec::new();
+                let mut a: Vec<u64> = self.ext.concepts[n]
+                    .keys()
+                    .filter(|k| !k.neg)
+                    .map(|k| (k.c as u64) << 1)
+                    .collect();
+                a.sort_unstable();
+                sig.extend(a);
+                sig.push(SEP);
+                let mut b: Vec<u64> = self.ext.concepts[p]
+                    .keys()
+                    .filter(|k| !k.neg)
+                    .map(|k| (k.c as u64) << 1)
+                    .collect();
+                b.sort_unstable();
+                sig.extend(b);
+                sig.push(SEP);
+                let mut e: Vec<u64> = self.ext.in_edges[n]
+                    .iter()
+                    .filter(|(_, s)| *s == p)
+                    .map(|(r, _)| *r as u64)
+                    .collect();
+                e.sort_unstable();
+                e.dedup();
+                sig.extend(e);
+                if !seen.insert(sig) {
                     blocked[n] = true;
                 }
             }
