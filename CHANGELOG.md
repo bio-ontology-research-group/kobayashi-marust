@@ -4,6 +4,44 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### QuasiOrderClassification (KM_HT_QO): validated as a dead-end for the disjunction family, gated OFF
+
+The QO driver (`hypertableau.rs::quasi_order_classify` + `QoSat`, ~1265 lines)
+ports the Konclude/HermiT architecture both trace docs identify as the reason
+Konclude solves the live ∀+⊔ family in <0.2 s: ONE non-branching global
+shared-node saturation (disjunctions parked, never case-split; common-disjunct
+consequences harvested deterministically), then sat/unsat + possible-subsumers
+read off that single model, with a real residue SAT test ONLY for the
+"insufficient" concepts that still anchor open parked disjunctions. The premise
+is that ~95% of concepts are decided for free.
+
+**That premise is false for this family — proven, not assumed.** Added the
+`KM_HT_QO_TALLY` diagnostic (counts dead/sufficient/insufficient per ont without
+bailing on the first residue test). On the target onts (IBEX job 47644078):
+
+- **5303**: global model builds, but `queries=94 dead=3 suff=0 insuff=91`,
+  median 17 / max 18 open disjunctions per insufficient concept. EVERY concept
+  needs a full branching residue SAT test — zero QO leverage. The 22 global
+  ⊤-disjunctions saturate every node, so no concept is ever "sufficient".
+- **10702 / 1603 / 12653 / 541**: the non-branching global park-saturation
+  itself does not terminate in budget (the ∃-chain / transitive blow-up).
+
+**Validation sweep (job 47644343, 587 onts × 2 arms over `km classify`):** arm
+`qo` (default-on) vs arm `noqo` (`KM_NO_HT_QO`) differ on exactly 2 onts — 9024
+and 12141 both go gold-clean → incomplete-by-623-subsumptions under QO. QO
+recovers 0, regresses 2, introduces 0 new unsoundness, no timeout change. So
+default-on QO is a strict −2.
+
+**Decision: gated OFF.** `orchestrate/config.rs` `ht_qo` is now opt-IN
+(`KM_HT_QO` env), was opt-out (`KM_NO_HT_QO`); the HT racer reverts to the
+validated `Ht::classify` (the 565 gold-clean baseline). All QO code stays behind
+the flag, inert by default, kept for the record. Build green, 111 lib tests pass.
+Confirms the structural diagnosis (`project_km_5303_diagnosis`,
+`project_km_family_diagnosis`): this family needs HermiT-grade absorption +
+model-based classification, not the QO harvest. The naive `qo_branch_dfs`
+residue search (chronological backtracking, depth-64 guard) is itself strictly
+weaker than the `Ht::classify` it falls back to.
+
 ### Live-disjunction family (5303): decision-on-demand + contrapositive enrichment (in progress, all gated default-off)
 
 Attack on the live ∀+⊔ family (5303/10702/1603/9540). Two mechanisms added, both

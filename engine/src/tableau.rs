@@ -4490,7 +4490,17 @@ pub fn run_json(input: &str) -> Result<String, String> {
             .stack_size(1usize << 30)
             .spawn(move || {
                 let mut ht = hypertableau::Ht::new(ht_clauses);
-                ht.classify(&q)
+                if std::env::var_os("KM_HT_QO").is_some() {
+                    match ht.quasi_order_classify(&q) {
+                        Some(r) => Some(r),
+                        // QO bailed (out-of-fragment construct in the shared
+                        // saturator): fall back to Ht's branching classify, NOT
+                        // the legacy Tableau, so QO can only add recoveries.
+                        None => ht.classify(&q),
+                    }
+                } else {
+                    ht.classify(&q)
+                }
             })
             .map_err(|e| e.to_string())?
             .join()

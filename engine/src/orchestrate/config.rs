@@ -58,6 +58,16 @@ pub struct Config {
     pub ht_budget_s: f64,
     /// KM_HT_NICE: scheduling niceness for the HT racer ("0" disables nice)
     pub ht_nice: String,
+    /// KM_HT_QO: use the QuasiOrderClassification driver (non-branching
+    /// saturation + residual SAT tests) instead of per-concept branching in the
+    /// HT racer. Default OFF (opt-in). The validation sweep (job 47644343,
+    /// 2026-06-19, qo vs noqo over `km classify`) found it a strict regression:
+    /// -2 onts (9024, 12141 lose 623 subsumptions each → incomplete), 0
+    /// recoveries. The qo-tally diagnostic proved it gives no leverage on the
+    /// disjunction family it targeted (5303 = 0/94 concepts sufficient;
+    /// 10702/1603/12653/541 the global model does not even build in budget).
+    /// Kept behind this flag for the record; see project_km_qo_deadend.
+    pub ht_qo: bool,
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -103,6 +113,7 @@ impl Config {
             ht_mode: std::env::var("KM_HT_MODE").unwrap_or_else(|_| "fallback".to_string()),
             ht_budget_s: env_f64("KM_HT_BUDGET_S", 225.0),
             ht_nice: std::env::var("KM_HT_NICE").unwrap_or_else(|_| "1".to_string()),
+            ht_qo: std::env::var_os("KM_HT_QO").is_some(),
         }
     }
 

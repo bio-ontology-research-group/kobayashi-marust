@@ -460,9 +460,22 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         c
     };
     cmd.stdin(Stdio::piped())
-        .stdout(File::create(out_path.path()).ok()?)
-        .stderr(Stdio::null())
-        .env("KM_HT", "1");
+        .stdout(File::create(out_path.path()).ok()?);
+    // stderr: inherit when stats/trace requested (diagnostic), else null.
+    if std::env::var_os("KM_HT_STATS").is_some() || std::env::var_os("KM_HT_TRACE").is_some() {
+        cmd.stderr(Stdio::inherit());
+    } else {
+        cmd.stderr(Stdio::null());
+    }
+    cmd.env("KM_HT", "1");
+    if cfg.ht_qo {
+        // QuasiOrderClassification: non-branching park-saturation + residual SAT
+        // tests. Contrapositives of clash clauses (A∧B=>⊥ ⇒ A=>¬B) feed unit
+        // propagation inside the park fixpoint. Default OFF (opt-in via
+        // KM_HT_QO): validation found it a strict -2 regression with no
+        // recoveries (see config.rs / project_km_qo_deadend). Kept for the record.
+        cmd.env("KM_HT_QO", "1").env("KM_HT_CONTRA", "1");
+    }
     let mut child = cmd.spawn().ok()?;
     let stdin = child.stdin.take()?;
     let bytes = serde_json::to_vec(&tin).ok()?;

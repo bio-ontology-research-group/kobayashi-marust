@@ -1081,6 +1081,938 @@ fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
     extra
 }
 
+// ====================== QuasiOrder shared-node saturation ====================
+//
+// Konclude/HermiT's non-branching saturation keeps ONE shared node per concept
+// (existential successors reuse the filler concept's dedicated node), so the
+// completion graph is bounded by #concepts — not model size. This is the
+// structural lever `docs/konclude-trace-5303.md` identifies: KM's fresh-
+// successor `park_fixpoint` still blows up on ∃-chain / transitive onts,
+// whereas the shared-node model stays tiny and yields the possible-subsumer
+// set + a sufficiency gate in O(#concepts) per query.
+//
+// `QoSat` is a self-contained worklist saturator over that shared-node model:
+// Horn clauses propagate, ∃ heads route to the filler's shared node, role
+// clauses (transitivity / chains) fire over the bounded edge set, and ≥2-live
+// disjunctions are PARKED (never branched). A clash here means the parked
+// over-approximation is inconsistent for the anchor node (NOT necessarily a
+// KB-inconsistency verdict) — the caller falls back to the certified branching
+// `consistent()` for the real sat/unsat decision. Sufficient (no open parked
+// disjunction anchored at a node) ⇒ a genuine complete model of that node's
+// seed concept exists ⇒ sat, no tableau test needed.
+//
+// The disjunct-common-concept harvest rule: a parked disjunction `D1 ⊔ ... ⊔ Dk`
+// (all ≥2 live) anchored at `n` derives every literal common to the dedicated
+// nodes `node(D1), ..., node(Dk)` into `n` (Konclude's
+// `initializeExtractDisjunctCommonConcept`). Because `n` is the shared node of
+// a concept `A`, the disjuncts `Di` are themselves named concepts with their own
+// shared nodes carrying the `Di`-subsumer set; the intersection of those
+// shared labels is exactly the set of `A`'s subsumers that hold *regardless* of
+// which `Di` is true — the deterministic consequence. Re-running this as
+// labels grow is a monotone fixpoint that closes the parked disjunctions'
+// worth of consequences without a single branch. This is the structural
+// mechanism the trace doc identifies as the reason Konclude opens ZERO
+// branches on the live `∀ + ⊔` disjunction family: it harvests the common
+// consequences through the parked disjunctions deterministically and never
+// needs to case-split. A clash (a literal and its complement both in `n`)
+// means this node cannot satisfy the KB — but, in the global model, a *clashed
+// node* is NOT the same as a *clashed model*: a node is dead if and only if its
+// own seed is inconsistent, and its clashes are local to it; other nodes keep
+// their labels and verdicts. `node_unsat` tracks this.
+
+struct QoSat<'a> {
+    clauses: &'a [ClauseRec],
+    label: Vec<HashSet<CLit>>,
+    out_edges: Vec<Vec<(R, Node)>>,
+    /// shared node for a concept literal (pos and neg both keyed).
+    concept_node: HashMap<CLit, Node>,
+    /// parked disjunctions: (node, clause_id); re-evaluated as labels grow.
+    pending: Vec<(Node, usize)>,
+    /// nodes whose own seed is unsatisfiable (local clash, not KB clash).
+    node_unsat: HashSet<Node>,
+    lit_work: Vec<(Node, CLit)>,
+    edge_work: Vec<(Node, R, Node)>,
+    node_work: Vec<Node>,
+    concept_trig: HashMap<CLit, Vec<usize>>,
+    role_clauses: Vec<usize>,
+    global: Vec<usize>,
+    unsupported: bool,
+    open_disj: usize,
+    /// trail for the residue-test DFS (branching over the shared model). Each
+    /// entry records a mutation to undo on backtrack.
+    trail: Vec<QoUndo>,
+    tracing: bool,
+}
+
+/// undoable mutation for the residue-test DFS.
+enum QoUndo {
+    Lit(Node, CLit),
+    Edge(Node, R, Node),
+    NodeNew,
+    Unsat(Node),
+    Pending(usize), // pending grew to this len
+    ConceptNode(CLit),
+}
+
+pub struct QoResult {
+    pub unsupported: bool,
+    pub clashed: bool,
+    pub sufficient: bool,
+    pub root_label: HashSet<C>,
+}
+
+/// Per-node model data after a global saturation: for each query concept `A`
+/// the model supplies (a) a sat/unsat/clash verdict from `A`'s shared node,
+/// (b) `A`'s possible-subsumer set = the positive concept ids in that node's
+/// label, (c) a sufficiency flag (no open parked disjunction anchored there).
+pub struct QoGlobalResult {
+    pub unsupported: bool,
+    pub node_unsat: HashSet<Node>,
+    pub sufficient: Vec<bool>,
+    pub open_disj_per_node: Vec<usize>,
+    pub label_pos: Vec<HashSet<C>>,
+}
+
+const QO_NODE_CAP: usize = 8000;
+
+impl<'a> QoSat<'a> {
+    fn new(clauses: &'a [ClauseRec]) -> QoSat<'a> {
+        let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut role_clauses = Vec::new();
+        let mut global = Vec::new();
+        for (cid, rec) in clauses.iter().enumerate() {
+            let body = &rec.1;
+            if body.is_empty() {
+                global.push(cid);
+                continue;
+            }
+            let has_role = body.iter().any(|a| matches!(a, Atom::Role { .. }));
+            if has_role {
+                role_clauses.push(cid);
+            } else {
+                for a in body {
+                    if let Atom::Concept { lit, .. } = a {
+                        concept_trig.entry(*lit).or_default().push(cid);
+                    }
+                }
+            }
+        }
+        QoSat {
+            clauses,
+            label: Vec::new(),
+            out_edges: Vec::new(),
+            concept_node: HashMap::new(),
+            pending: Vec::new(),
+            node_unsat: HashSet::new(),
+            lit_work: Vec::new(),
+            edge_work: Vec::new(),
+            node_work: Vec::new(),
+            concept_trig,
+            role_clauses,
+            global,
+            unsupported: false,
+            open_disj: 0,
+            trail: Vec::new(),
+            tracing: false,
+        }
+    }
+
+    fn new_node(&mut self) -> Node {
+        let id = self.label.len();
+        self.label.push(HashSet::new());
+        self.out_edges.push(Vec::new());
+        self.node_work.push(id);
+        if self.tracing {
+            self.trail.push(QoUndo::NodeNew);
+        }
+        id
+    }
+
+    /// The dedicated shared node for a concept literal: one node per `CLit`,
+    /// reused on every reference. Created on first use and seeded with `lit`.
+    fn concept_node_of(&mut self, lit: CLit) -> Node {
+        if let Some(&n) = self.concept_node.get(&lit) {
+            return n;
+        }
+        let n = self.new_node();
+        self.concept_node.insert(lit, n);
+        if self.tracing {
+            self.trail.push(QoUndo::ConceptNode(lit));
+        }
+        // seed: the dedicated node of `A` (or `¬A`) carries `A` (resp. `¬A`).
+        self.add_lit(n, lit);
+        n
+    }
+
+    /// Assert `lit` at `n`. Returns false if a clash is raised at `n` (local —
+    /// `n` is recorded unsat; the model keeps running for other nodes). No-ops
+    /// if present. Routes through `node_alive` so a dead node stays inert.
+    fn add_lit(&mut self, n: Node, lit: CLit) -> bool {
+        if self.node_unsat.contains(&n) {
+            return false;
+        }
+        let comp = CLit { neg: !lit.neg, c: lit.c };
+        if self.label[n].contains(&comp) {
+            self.kill_node(n);
+            return false;
+        }
+        if self.label[n].insert(lit) {
+            if self.tracing {
+                self.trail.push(QoUndo::Lit(n, lit));
+            }
+            self.lit_work.push((n, lit));
+        }
+        true
+    }
+
+    /// Mark `n` unsat (local clash). Prune its parked disjunctions from the
+    /// global `open_disj` count so sufficiency of *other* nodes is unaffected.
+    fn kill_node(&mut self, n: Node) {
+        if self.node_unsat.insert(n) {
+            if self.tracing {
+                self.trail.push(QoUndo::Unsat(n));
+                return;
+            }
+            let mut i = 0;
+            while i < self.pending.len() {
+                if self.pending[i].0 == n {
+                    self.pending.swap_remove(i);
+                    self.open_disj = self.open_disj.saturating_sub(1);
+                } else {
+                    i += 1;
+                }
+            }
+        }
+    }
+
+    fn ensure_filler(&mut self, lit: CLit) -> Node {
+        self.concept_node_of(lit)
+    }
+
+    fn add_edge(&mut self, s: Node, r: R, t: Node) {
+        if self.out_edges[s].iter().any(|(rr, tt)| *rr == r && *tt == t) {
+            return;
+        }
+        self.out_edges[s].push((r, t));
+        self.edge_work.push((s, r, t));
+        if self.tracing {
+            self.trail.push(QoUndo::Edge(s, r, t));
+        }
+    }
+
+    /// Run the non-branching saturation fixpoint from a seeded root (node 0).
+    /// Used only for the global-consistency probe (no per-concept nodes seeded).
+    fn saturate(&mut self, seed: &[CLit]) -> QoResult {
+        if self.label.is_empty() {
+            self.new_node(); // root = node 0
+        }
+        let root = 0usize;
+        for &lit in seed {
+            if !self.add_lit(root, lit) {
+                return self.finish(root);
+            }
+            self.concept_node.entry(lit).or_insert(root);
+        }
+        let mut guard = 0u64;
+        loop {
+            guard += 1;
+            if guard > 50_000_000 || self.label.len() > QO_NODE_CAP {
+                self.unsupported = true;
+                return self.finish(root);
+            }
+            self.drain_work();
+            if self.unsupported {
+                return self.finish(root);
+            }
+            if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty() {
+                self.harvest_all();
+                if self.unsupported {
+                    return self.finish(root);
+                }
+                self.eval_all_parked();
+                if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty()
+                {
+                    break;
+                }
+            }
+        }
+        self.finish(root)
+    }
+
+    /// Global saturation: seed one shared node per named concept (positive
+    /// polarity), run the deterministic fixpoint with the harvest rule, return
+    /// per-node model data. This is Konclude's single non-branching pass.
+    fn saturate_global(&mut self, named_concepts: &[C]) -> QoGlobalResult {
+        for &c in named_concepts {
+            self.concept_node_of(CLit::pos(c));
+        }
+        let mut guard = 0u64;
+        loop {
+            guard += 1;
+            if guard > 50_000_000 || self.label.len() > QO_NODE_CAP {
+                self.unsupported = true;
+                return self.finish_global();
+            }
+            self.drain_work();
+            if self.unsupported {
+                return self.finish_global();
+            }
+            if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty() {
+                self.harvest_all();
+                if self.unsupported {
+                    return self.finish_global();
+                }
+                self.eval_all_parked();
+                if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty()
+                {
+                    break;
+                }
+            }
+        }
+        self.finish_global()
+    }
+
+    /// Drain all worklists once: literal-triggered clauses, new-node globals,
+    /// edge-triggered role clauses, and harvest obligations.
+    fn drain_work(&mut self) {
+        while let Some((n, lit)) = self.lit_work.pop() {
+            if self.node_unsat.contains(&n) {
+                continue;
+            }
+            if let Some(trigs) = self.concept_trig.get(&lit).cloned() {
+                for cid in trigs {
+                    self.fire_concept_clause(cid, n);
+                    if self.unsupported {
+                        return;
+                    }
+                }
+            }
+            if !self.tracing {
+                self.eval_parked_at(n);
+            }
+        }
+        while let Some(n) = self.node_work.pop() {
+            if self.node_unsat.contains(&n) {
+                continue;
+            }
+            for cid in self.global.clone() {
+                self.fire_concept_clause(cid, n);
+                if self.unsupported {
+                    return;
+                }
+            }
+        }
+        while let Some((s, r, t)) = self.edge_work.pop() {
+            let rcs = self.role_clauses.clone();
+            for cid in rcs {
+                self.fire_role_clause(cid, s, r, t);
+                if self.unsupported {
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Harvest disjunct-common-concept consequences for ALL parked disjunctions
+    /// (run at the fixpoint, when disjunct nodes are fully saturated, so the
+    /// intersection is the true common-consequence set — never an
+    /// over-approximation). The rule: a parked ≥2-live disjunction `D1..Dk` at
+    /// `n` derives every literal common to `node(D1)..node(Dk)` into `n`.
+    fn harvest_all(&mut self) {
+        let parked: Vec<(Node, usize)> = self.pending.clone();
+        for (n, cid) in parked {
+            if self.node_unsat.contains(&n) {
+                continue;
+            }
+            self.harvest_disj(n, cid);
+            if self.unsupported {
+                return;
+            }
+        }
+    }
+
+    /// For parked disjunction `cid` at `n`: intersect the positive labels of
+    /// the dedicated nodes of all live disjuncts and add the intersection to
+    /// `n`. The negative labels are intersected too (common negated
+    /// consequences). Sound because the disjunction is still parked: whatever
+    /// disjunct is eventually chosen, all of them carry the common label.
+    fn harvest_disj(&mut self, n: Node, cid: usize) {
+        let head = &self.clauses[cid].0.head;
+        // collect live disjuncts (Concept only; Exists/Role park at apply_head
+        // is satisfied-by-routing, so a parked disj is all Concept).
+        let mut disj_nodes: Vec<(Node, CLit)> = Vec::new();
+        for h in head {
+            if let Atom::Concept { lit, t: _ } = h {
+                if self.label[n].contains(lit) {
+                    return; // satisfied — no longer parked
+                }
+                let comp = CLit { neg: !lit.neg, c: lit.c };
+                if self.label[n].contains(&comp) {
+                    continue; // dead disjunct
+                }
+                // live: its shared node carries the common-consequence set.
+                disj_nodes.push((self.concept_node_of(*lit), *lit));
+            }
+        }
+        if disj_nodes.len() < 2 {
+            return; // 0 or 1 live — unit propagation handles it, not harvest.
+        }
+        // intersection of positive labels across all disjunct shared nodes.
+        let mut common: Option<HashSet<CLit>> = None;
+        for (dn, _) in &disj_nodes {
+            if self.node_unsat.contains(dn) {
+                return; // a dead disjunct node contributes nothing sound.
+            }
+            let lab = &self.label[*dn];
+            match &mut common {
+                None => common = Some(lab.iter().copied().collect()),
+                Some(c) => c.retain(|x| lab.contains(x)),
+            }
+        }
+        let common = match common {
+            Some(c) if !c.is_empty() => c,
+            _ => return,
+        };
+        for lit in common {
+            if !self.label[n].contains(&lit)
+                && !self.label[n].contains(&CLit { neg: !lit.neg, c: lit.c })
+            {
+                self.add_lit(n, lit);
+            }
+        }
+    }
+
+    /// Re-evaluate ALL parked disjunctions (global pass at fixpoint).
+    fn eval_all_parked(&mut self) {
+        let pend = self.pending.clone();
+        for (n, _cid) in pend {
+            self.eval_parked_at(n);
+        }
+    }
+
+    fn finish(&self, root: Node) -> QoResult {
+        let root_label: HashSet<C> = self
+            .label
+            .get(root)
+            .map(|s| s.iter().filter(|k| !k.neg).map(|k| k.c).collect())
+            .unwrap_or_default();
+        QoResult {
+            unsupported: self.unsupported,
+            clashed: self.node_unsat.contains(&root),
+            sufficient: !self.node_unsat.contains(&root) && self.open_disj == 0,
+            root_label,
+        }
+    }
+
+    fn finish_global(&self) -> QoGlobalResult {
+        let nn = self.label.len();
+        let mut sufficient = vec![false; nn];
+        let mut open_disj_per_node = vec![0usize; nn];
+        for &(n, _cid) in &self.pending {
+            open_disj_per_node[n] = open_disj_per_node[n].saturating_add(1);
+        }
+        for n in 0..nn {
+            sufficient[n] = !self.node_unsat.contains(&n) && open_disj_per_node[n] == 0;
+        }
+        let label_pos: Vec<HashSet<C>> = self
+            .label
+            .iter()
+            .map(|s| s.iter().filter(|k| !k.neg).map(|k| k.c).collect())
+            .collect();
+        QoGlobalResult {
+            unsupported: self.unsupported,
+            node_unsat: self.node_unsat.clone(),
+            sufficient,
+            open_disj_per_node,
+            label_pos,
+        }
+    }
+
+    // ===================== residue SAT test (branching DFS) ====================
+    //
+    // After the global non-branching saturation, an insufficient anchor node
+    // (open parked disjunctions) needs a real SAT verdict. Konclude runs that
+    // test IN PLACE over the shared-node model: it branches ONLY the open
+    // disjunctions in the anchor's reachable subtree, propagating through the
+    // already-saturated shared nodes, with checkpoint/rollback per branch. This
+    // is exponentially cheaper than rebuilding a fresh model-sized completion
+    // graph (the legacy `consistent()` path), because the shared graph is
+    // bounded by #concepts and only the ~15-20 open disjunctions branch.
+    //
+    // Soundness: the shared node for concept C represents "some individual
+    // satisfying C"; its label is the complete consequence set of C (the global
+    // saturation is a fixpoint). Branching an open disjunction D1⊔..⊔Dk at the
+    // anchor asserts one disjunct Di — constructing a witness where the
+    // anchor-individual satisfies Di (and inherits Di's saturated consequences).
+    // A clash-free completion across all open disjunctions is a genuine model
+    // (one witness per ∃ / per disjunction suffices for the SAT question); all
+    // branches clashing ⇒ no model ⇒ unsat. This is the standard tableau SAT
+    // test restricted to the shared abstraction, which is complete precisely
+    // because the shared labels are the saturated consequence sets.
+
+    fn checkpoint(&self) -> usize {
+        self.trail.len()
+    }
+
+    fn rollback(&mut self, mark: usize) {
+        while self.trail.len() > mark {
+            match self.trail.pop().unwrap() {
+                QoUndo::Lit(n, lit) => {
+                    self.label[n].remove(&lit);
+                }
+                QoUndo::Edge(s, r, t) => {
+                    if let Some(out) = self.out_edges.get_mut(s) {
+                        out.retain(|(rr, tt)| !(*rr == r && *tt == t));
+                    }
+                }
+                QoUndo::NodeNew => {
+                    self.label.pop();
+                    self.out_edges.pop();
+                }
+                QoUndo::Unsat(n) => {
+                    self.node_unsat.remove(&n);
+                }
+                QoUndo::Pending(len) => {
+                    self.pending.truncate(len);
+                }
+                QoUndo::ConceptNode(lit) => {
+                    self.concept_node.remove(&lit);
+                }
+            }
+        }
+        // clear residual worklists (they reference undone state).
+        self.lit_work.clear();
+        self.node_work.clear();
+        self.edge_work.clear();
+    }
+
+    /// BFS subtree from `root` over `out_edges` (root included).
+    fn qo_subtree(&self, root: Node) -> HashSet<Node> {
+        let mut seen = HashSet::new();
+        let mut stack = vec![root];
+        seen.insert(root);
+        while let Some(n) = stack.pop() {
+            for &(_, t) in &self.out_edges[n] {
+                if seen.insert(t) {
+                    stack.push(t);
+                }
+            }
+        }
+        seen
+    }
+
+    /// Branching fixpoint: drain + harvest + unit-prop until stable. Does NOT
+    /// mutate `pending` (open disjunctions stay parked; the DFS resolves them).
+    fn qo_fixpoint(&mut self) {
+        let mut guard = 0u64;
+        loop {
+            guard += 1;
+            if guard > 5_000_000 {
+                self.unsupported = true;
+                return;
+            }
+            self.drain_work();
+            if self.unsupported {
+                return;
+            }
+            if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty() {
+                self.harvest_all();
+                if self.unsupported {
+                    return;
+                }
+                let made_unit = self.qo_unit_scan();
+                if !made_unit
+                    && self.lit_work.is_empty()
+                    && self.node_work.is_empty()
+                    && self.edge_work.is_empty()
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Scan parked disjunctions for unit-forced ones (exactly one live disjunct
+    /// at its node) and assert that disjunct. Returns true if any was asserted.
+    /// Leaves `pending` intact (the DFS will skip satisfied/open ones by re-scan).
+    fn qo_unit_scan(&mut self) -> bool {
+        let snap = self.pending.clone();
+        let mut progress = false;
+        for (n, cid) in snap {
+            if self.node_unsat.contains(&n) {
+                continue;
+            }
+            let head = &self.clauses[cid].0.head;
+            let mut live: Vec<CLit> = Vec::new();
+            let mut satisfied = false;
+            for h in head {
+                if let Atom::Concept { lit, t: _ } = h {
+                    if self.label[n].contains(lit) {
+                        satisfied = true;
+                        break;
+                    }
+                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    if self.label[n].contains(&comp) {
+                        continue;
+                    }
+                    live.push(*lit);
+                }
+            }
+            if satisfied || live.len() != 1 {
+                continue;
+            }
+            self.add_lit(n, live[0]);
+            progress = true;
+        }
+        progress
+    }
+
+    /// The open parked disjunctions anchored in `sub` (≥2 live, not satisfied).
+    fn qo_open_in(&self, sub: &HashSet<Node>) -> Vec<(Node, usize)> {
+        let mut out = Vec::new();
+        for &(n, cid) in &self.pending {
+            if !sub.contains(&n) || self.node_unsat.contains(&n) {
+                continue;
+            }
+            let head = &self.clauses[cid].0.head;
+            let mut live = 0usize;
+            let mut satisfied = false;
+            for h in head {
+                if let Atom::Concept { lit, t: _ } = h {
+                    if self.label[n].contains(lit) {
+                        satisfied = true;
+                        break;
+                    }
+                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    if !self.label[n].contains(&comp) {
+                        live += 1;
+                    }
+                }
+            }
+            if !satisfied && live >= 2 {
+                out.push((n, cid));
+            }
+        }
+        out
+    }
+
+    /// DFS: return true iff the anchor's subtree admits a clash-free completion.
+    fn qo_branch_dfs(&mut self, sub: &HashSet<Node>, depth: u32, dl: Option<Instant>) -> bool {
+        if depth > 64 {
+            self.unsupported = true;
+            return false;
+        }
+        if let Some(t) = dl {
+            if Instant::now().duration_since(t).as_millis() > 4000 {
+                self.unsupported = true;
+                return false;
+            }
+        }
+        self.qo_fixpoint();
+        if self.unsupported {
+            return false;
+        }
+        // anchor (any node in sub) clashing ⇒ this branch dead.
+        for &n in sub {
+            if self.node_unsat.contains(&n) {
+                return false;
+            }
+        }
+        let open = self.qo_open_in(sub);
+        if open.is_empty() {
+            return true; // clash-free complete model of the anchor
+        }
+        // branch the first open disjunction (fewest live would be better; keep
+        // it simple for now — the harvest has already closed most).
+        let (n, cid) = open[0];
+        let head = &self.clauses[cid].0.head;
+        let live: Vec<CLit> = head
+            .iter()
+            .filter_map(|h| {
+                if let Atom::Concept { lit, t: _ } = h {
+                    if self.label[n].contains(lit) {
+                        return None;
+                    }
+                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    if self.label[n].contains(&comp) {
+                        return None;
+                    }
+                    return Some(*lit);
+                }
+                None
+            })
+            .collect();
+        for lit in live {
+            let mark = self.checkpoint();
+            self.add_lit(n, lit);
+            if self.qo_branch_dfs(sub, depth + 1, dl) {
+                return true;
+            }
+            self.rollback(mark);
+            if self.unsupported {
+                return false;
+            }
+        }
+        false
+    }
+
+    /// Residue SAT test over the shared model. `anchor` is the shared node of
+    /// the concept under test; `extra` are additional literals to assert there
+    /// (e.g. ¬B for the A⊑B test). Returns Some(true)=sat, Some(false)=unsat,
+    /// None=unsupported/out-of-fragment/depth-bounded.
+    fn qo_residue_test(&mut self, anchor: Node, extra: &[CLit]) -> Option<bool> {
+        self.tracing = true;
+        let dl = Some(Instant::now());
+        let mark = self.checkpoint();
+        for &lit in extra {
+            if !self.add_lit(anchor, lit) {
+                // immediate clash at anchor ⇒ unsat (the extra literals are
+                // inconsistent with the anchor's saturated label).
+                self.rollback(mark);
+                self.tracing = false;
+                return Some(false);
+            }
+        }
+        let sub = self.qo_subtree(anchor);
+        let r = self.qo_branch_dfs(&sub, 0, dl);
+        let unsup = self.unsupported;
+        self.rollback(mark);
+        self.tracing = false;
+        self.unsupported = false; // reset the branch-local flag
+        if std::env::var_os("KM_HT_QOTRACE").is_some() {
+            let dur = dl.unwrap().elapsed().as_millis();
+            eprintln!("KM_HT [qo-residue] anchor={} extra={:?} -> r={} unsup={} {}ms", anchor, extra, r, unsup, dur);
+        }
+        if unsup {
+            return None;
+        }
+        Some(r)
+    }
+
+    /// Fire an all-Concept-body clause at node `n` (body var X = n).
+    fn fire_concept_clause(&mut self, cid: usize, n: Node) {
+        let body = &self.clauses[cid].1;
+        for a in body {
+            if let Atom::Concept { lit, .. } = a {
+                if !self.label[n].contains(lit) {
+                    return;
+                }
+            } else {
+                return;
+            }
+        }
+        let mut sigma = vec![None; self.clauses[cid].2];
+        sigma[X as usize] = Some(n);
+        self.apply_head(cid, &sigma);
+    }
+
+    /// Fire a role-body clause, anchored at a freshly added edge (es, r, et).
+    fn fire_role_clause(&mut self, cid: usize, es: Node, r: R, et: Node) {
+        let body = &self.clauses[cid].1;
+        let nv = self.clauses[cid].2;
+        for (i, a) in body.iter().enumerate() {
+            if let Atom::Role { r: ar, s, t } = a {
+                if *ar != r {
+                    continue;
+                }
+                let mut sigma = vec![None; nv];
+                let mut done = vec![false; body.len()];
+                if (sigma[*s as usize].is_none() || sigma[*s as usize] == Some(es))
+                    && (sigma[*t as usize].is_none() || sigma[*t as usize] == Some(et))
+                {
+                    sigma[*s as usize] = Some(es);
+                    sigma[*t as usize] = Some(et);
+                    done[i] = true;
+                    let mut out: Vec<Vec<Option<Node>>> = Vec::new();
+                    self.match_body(body, &mut done, &mut sigma, &mut out);
+                    for sgm in &out {
+                        self.apply_head(cid, sgm);
+                        if self.unsupported {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Recursive body matcher over the QoSat model (Concept + Role atoms).
+    fn match_body(
+        &self,
+        body: &[Atom],
+        done: &mut [bool],
+        sigma: &mut Vec<Option<Node>>,
+        out: &mut Vec<Vec<Option<Node>>>,
+    ) {
+        let k = match (0..body.len()).find(|&i| !done[i]) {
+            Some(k) => k,
+            None => {
+                out.push(sigma.clone());
+                return;
+            }
+        };
+        done[k] = true;
+        match &body[k] {
+            Atom::Concept { lit, t } => {
+                if let Some(n) = sigma[*t as usize] {
+                    if !self.node_unsat.contains(&n) && self.label[n].contains(lit) {
+                        self.match_body(body, done, sigma, out);
+                    }
+                }
+            }
+            Atom::Role { r, s, t } => match (sigma[*s as usize], sigma[*t as usize]) {
+                (Some(sn), Some(tn)) => {
+                    if self.out_edges[sn].iter().any(|(rr, tt)| *rr == *r && *tt == tn) {
+                        self.match_body(body, done, sigma, out);
+                    }
+                }
+                (Some(sn), None) => {
+                    for &(rr, tt) in &self.out_edges[sn] {
+                        if rr == *r {
+                            sigma[*t as usize] = Some(tt);
+                            self.match_body(body, done, sigma, out);
+                            sigma[*t as usize] = None;
+                        }
+                    }
+                }
+                (None, Some(tn)) => {
+                    for sn in 0..self.label.len() {
+                        if self.out_edges[sn].iter().any(|(rr, tt)| *rr == *r && *tt == tn) {
+                            sigma[*s as usize] = Some(sn);
+                            self.match_body(body, done, sigma, out);
+                            sigma[*s as usize] = None;
+                        }
+                    }
+                }
+                (None, None) => {}
+            },
+            _ => {}
+        }
+        done[k] = false;
+    }
+
+    /// Apply a clause's head under substitution `sigma`.
+    fn apply_head(&mut self, cid: usize, sigma: &[Option<Node>]) {
+        let head = &self.clauses[cid].0.head;
+        if head.is_empty() {
+            // empty head: clash at the anchor node.
+            let n = sigma[X as usize].expect("X bound");
+            self.kill_node(n);
+            return;
+        }
+        let mut satisfied = false;
+        let mut live: Vec<(Node, CLit)> = Vec::new();
+        for h in head {
+            match *h {
+                Atom::Concept { lit, t } => {
+                    let n = sigma[t as usize].expect("head var bound");
+                    if self.node_unsat.contains(&n) {
+                        continue;
+                    }
+                    if self.label[n].contains(&lit) {
+                        satisfied = true;
+                        break;
+                    }
+                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    if self.label[n].contains(&comp) {
+                        // dead disjunct
+                    } else {
+                        live.push((n, lit));
+                    }
+                }
+                Atom::Exists { r, fil, t } => {
+                    let n = sigma[t as usize].expect("head var bound");
+                    if self.node_unsat.contains(&n) {
+                        return;
+                    }
+                    let f = self.ensure_filler(fil);
+                    if !self.out_edges[n].iter().any(|(rr, tt)| *rr == r && *tt == f) {
+                        self.add_edge(n, r, f);
+                    }
+                    satisfied = true;
+                    break;
+                }
+                Atom::Role { r, s, t } => {
+                    let sn = sigma[s as usize].expect("head role src bound");
+                    let tn = sigma[t as usize].expect("head role dst bound");
+                    if !self.node_unsat.contains(&sn) {
+                        self.add_edge(sn, r, tn);
+                    }
+                    satisfied = true;
+                    break;
+                }
+                Atom::Eq { .. } => {
+                    self.unsupported = true;
+                    return;
+                }
+            }
+        }
+        if satisfied || self.unsupported {
+            return;
+        }
+        let anchor = sigma[X as usize].expect("X bound");
+        if live.is_empty() {
+            self.kill_node(anchor);
+            return;
+        }
+        if live.len() == 1 {
+            self.add_lit(live[0].0, live[0].1);
+            return;
+        }
+        // ≥2 live: park. Record and count as open.
+        if self.tracing {
+            self.trail.push(QoUndo::Pending(self.pending.len()));
+        }
+        self.pending.push((anchor, cid));
+        self.open_disj += 1;
+    }
+
+    /// Re-evaluate parked disjunctions at `n`: a label change may have satisfied,
+    /// unit-resolved, or all-refuted one. Maintains `open_disj`.
+    fn eval_parked_at(&mut self, n: Node) {
+        let mut i = 0;
+        while i < self.pending.len() {
+            if self.pending[i].0 != n || self.node_unsat.contains(&n) {
+                i += 1;
+                continue;
+            }
+            let cid = self.pending[i].1;
+            let head = &self.clauses[cid].0.head;
+            let mut satisfied = false;
+            let mut live: Vec<CLit> = Vec::new();
+            for h in head {
+                if let Atom::Concept { lit, t: _ } = h {
+                    if self.label[n].contains(lit) {
+                        satisfied = true;
+                        break;
+                    }
+                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    if self.label[n].contains(&comp) {
+                        continue;
+                    }
+                    live.push(*lit);
+                }
+            }
+            if satisfied {
+                self.pending.swap_remove(i);
+                self.open_disj = self.open_disj.saturating_sub(1);
+                continue;
+            }
+            if live.is_empty() {
+                self.kill_node(n);
+                return;
+            }
+            if live.len() == 1 {
+                self.pending.swap_remove(i);
+                self.open_disj = self.open_disj.saturating_sub(1);
+                self.add_lit(n, live[0]);
+                continue;
+            }
+            i += 1;
+        }
+    }
+}
+
 impl Ht {
     pub fn new(clauses: Vec<Clause>) -> Ht {
         let mut clauses = clauses;
@@ -1939,11 +2871,68 @@ impl Ht {
     }
 
     fn root_pos_label(&self) -> Vec<C> {
+        self.node_pos_label(0)
+    }
+
+    /// Positive named concepts true at `n` in the current model.
+    fn node_pos_label(&self, n: Node) -> Vec<C> {
         self.ext
             .concepts
-            .first()
+            .get(n)
             .map(|m| m.keys().filter(|k| !k.neg).map(|k| k.c).collect())
             .unwrap_or_default()
+    }
+
+    /// All nodes reachable from `root` via role edges (BFS), `root` included.
+    fn subtree_nodes(&self, root: Node) -> HashSet<Node> {
+        let mut seen = HashSet::new();
+        let mut stack = vec![root];
+        seen.insert(root);
+        while let Some(n) = stack.pop() {
+            if let Some(out) = self.ext.out_edges.get(n) {
+                for &(_, t, _) in out {
+                    if seen.insert(t) {
+                        stack.push(t);
+                    }
+                }
+            }
+        }
+        seen
+    }
+
+    /// A pending disjunction is "open" iff it is not satisfied and has >=2 live
+    /// disjuncts (i.e. it was parked during non-branching saturation). `root` is
+    /// sufficient iff no open disjunction has a disjunct-node inside its subtree:
+    /// then the parked model is already a complete clash-free model of `root`'s
+    /// seed concept and no real tableau SAT test is needed (Konclude's
+    /// "sufficient" node — the ~95% case).
+    fn subtree_sufficient(&self, root: Node) -> bool {
+        let sub = self.subtree_nodes(root);
+        for pd in &self.ext.pending {
+            let mut satisfied = false;
+            let mut live = 0usize;
+            let mut in_sub = false;
+            for &(n, lit) in &pd.disjuncts {
+                if sub.contains(&n) {
+                    in_sub = true;
+                }
+                if self.ext.has_concept(n, lit) {
+                    satisfied = true;
+                    break;
+                }
+                let comp = CLit { neg: !lit.neg, c: lit.c };
+                if self.ext.dep_of(n, comp).is_none() {
+                    live += 1;
+                }
+            }
+            if satisfied {
+                continue;
+            }
+            if in_sub && live >= 2 {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
@@ -2123,6 +3112,308 @@ impl Ht {
             eprintln!("TR classify-return (full) sat={} unsat={} subs={}", sat_q.len(), unsat.len(), subs.len());
         }
         Some((true, unsat, subs))
+    }
+
+    /// KM_HT_QO: Konclude/HermiT `QuasiOrderClassification`. ONE non-branching
+    /// global saturation (disjunctions parked, never case-split; common-concept
+    /// consequences harvested through parked disjunctions deterministically)
+    /// builds the shared-node model for the whole KB at once. From that single
+    /// model we read off, for every query concept A: (a) sat/unsat (A's shared
+    /// node is dead ⇒ unsat; sufficient ⇒ sat; otherwise the certified
+    /// `consistent(&[A])` test decides), (b) the possible-subsumer set (the
+    /// positive label of A's shared node — an over-approximation, so no
+    /// subsumption is missed). Only the residual unknown subsumption pairs get
+    /// real tableau SAT tests. This is the architecture both trace docs
+    /// (`docs/konclude-trace-5303.md`, `docs/hermit-gap.md`) identify as the
+    /// structural reason Konclude solves the live `∀ + ⊔` disjunction family in
+    /// <0.2s with ZERO branches where KM's branching per-concept model build
+    /// times out.
+    ///
+    /// Sound + complete on the ALC(H) fragment (the same fragment `Ht` covers):
+    /// the parked global model under-approximates, but every sat/unsat and
+    /// subsumption verdict is confirmed by either (a) a deterministic local
+    /// clash at A's shared node (sound for unsat), (b) sufficiency (a genuine
+    /// complete model of A, sound+complete), or (c) a real `consistent` tableau
+    /// test (the certified branching path). `None` ⇒ an out-of-fragment
+    /// construct was seen; the caller falls back.
+    pub fn quasi_order_classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        let qset: HashSet<C> = queries.iter().copied().collect();
+
+        // --- Collect the named concepts (positive-polarity shared nodes). ---
+        let named_concepts: Vec<C> = queries.to_vec();
+
+        // --- ONE global shared-node saturation with the harvest rule. We keep
+        // `qs` alive across both phases: the residue SAT test (Phase 1 sat +
+        // Phase 2 subsumption) branches the open disjunctions IN PLACE over
+        // this saturated shared model, with trail rollback — the Konclude
+        // architecture. No `self.consistent()` (the 671-node fresh rebuild) is
+        // needed; `None` from a residue test ⇒ bail to the caller's fallback. ---
+        let mut qs = QoSat::new(&self.clauses);
+        let g = qs.saturate_global(&named_concepts);
+        if g.unsupported {
+            return None;
+        }
+        // The first `queries.len()` shared nodes are the seeded query concepts,
+        // in order (saturate_global seeds them before any drain-induced node).
+        let node_of: HashMap<C, Node> = queries
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| (c, i as Node))
+            .collect();
+
+        // --- Global consistency: if every query concept's shared node is dead
+        // in the parked over-approximation, the KB is inconsistent (a clash in
+        // the over-approximation is sound for unsat — no real model exists). ---
+        let all_dead = !queries.is_empty()
+            && queries.iter().all(|&a| qs.node_unsat.contains(&node_of[&a]));
+        if all_dead {
+            return Some((false, queries.to_vec(), Vec::new()));
+        }
+        if std::env::var_os("KM_HT_GLOBAL").is_some() {
+            return Some((true, Vec::new(), Vec::new()));
+        }
+
+        // --- Told subsumers (Mechanism 1, free syntactic seeding). ---
+        let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
+        let mut told: HashMap<C, Vec<C>> = HashMap::new();
+        if use_told {
+            for (c, _, _) in &self.clauses {
+                if c.body.len() == 1 && c.head.len() == 1 {
+                    if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
+                        (&c.body[0], &c.head[0])
+                    {
+                        if !lb.neg && !lh.neg && tb == th && lb.c != lh.c {
+                            told.entry(lb.c).or_default().push(lh.c);
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- Phase 1: read sat/unsat + possible off the global model; for
+        // insufficient concepts run the residue SAT test over the shared model. ---
+        let mut unsat: Vec<C> = Vec::new();
+        let mut sat_q: Vec<C> = Vec::new();
+        // possible[A] = candidate subsumers (over-approximation; true subsumers
+        // are a subset, so no subsumption is missed).
+        let mut possible: HashMap<C, HashSet<C>> = HashMap::new();
+        // KM_HT_QO_TALLY: diagnostic — count dead/suff/insuff across ALL query
+        // concepts WITHOUT running any residue test (so it never bails on the
+        // first insufficient concept). Reveals how many concepts genuinely need
+        // the expensive residue SAT test for this ont.
+        let tally = std::env::var_os("KM_HT_QO_TALLY").is_some();
+        if tally {
+            let (mut nd, mut ns, mut ni) = (0u64, 0u64, 0u64);
+            let mut open_hist: Vec<usize> = Vec::new();
+            for &a in queries {
+                let n = node_of[&a];
+                if qs.node_unsat.contains(&n) {
+                    nd += 1;
+                } else if g.sufficient[n] {
+                    ns += 1;
+                } else {
+                    ni += 1;
+                    open_hist.push(g.open_disj_per_node[n]);
+                }
+            }
+            open_hist.sort_unstable();
+            let max_open = open_hist.last().copied().unwrap_or(0);
+            let med_open = open_hist.get(open_hist.len() / 2).copied().unwrap_or(0);
+            eprintln!(
+                "KM_HT [qo-tally] queries={} dead={} suff={} insuff={} (insuff open: med={} max={})",
+                queries.len(), nd, ns, ni, med_open, max_open
+            );
+            return Some((true, Vec::new(), Vec::new()));
+        }
+        for (qi, &a) in queries.iter().enumerate() {
+            let n = node_of[&a];
+            let dead = qs.node_unsat.contains(&n);
+            let suff = g.sufficient[n];
+            let open = g.open_disj_per_node[n];
+            let lab = g.label_pos[n].clone();
+            if self.stats {
+                eprintln!("KM_HT [qo-p1] qi={}/{} a={} node={} dead={} suff={} open={} lab_sz={}",
+                    qi, queries.len(), a, n, dead, suff, open, lab.len());
+            }
+            if dead {
+                // parked-model clash ⇒ sound for unsat.
+                unsat.push(a);
+                continue;
+            }
+            if suff {
+                // sufficient ⇒ a complete clash-free model of A exists ⇒ A sat.
+                possible.insert(a, lab);
+                sat_q.push(a);
+                continue;
+            }
+            // insufficient (open>0): residue SAT test over the shared model.
+            match qs.qo_residue_test(n, &[]) {
+                None => return None,
+                Some(false) => unsat.push(a),
+                Some(true) => {
+                    possible.insert(a, lab);
+                    sat_q.push(a);
+                }
+            }
+        }
+
+        // --- Phase 2: residual subsumption tests, top-down with told-closure.
+        // Each test is a residue SAT `A ⊓ ¬B` over A's shared node. ---
+        let satset: HashSet<C> = sat_q.iter().copied().collect();
+        let mut subs: Vec<(C, C)> = Vec::new();
+        let mut tests: u64 = 0;
+        for &a in &sat_q {
+            let mut known: HashSet<C> = HashSet::new();
+            let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
+            while let Some(x) = stack.pop() {
+                if known.insert(x) {
+                    if let Some(v) = told.get(&x) {
+                        stack.extend(v.iter().copied());
+                    }
+                }
+            }
+            // known subsumers that are query concepts ⇒ recorded without a test.
+            for b in known.iter().copied().filter(|b| *b != a && qset.contains(b) && satset.contains(b)) {
+                subs.push((a, b));
+            }
+            // candidates = possible(a) minus known, restricted to query concepts.
+            let mut cand: Vec<C> = possible
+                .get(&a)
+                .map(|s| {
+                    s.iter()
+                        .copied()
+                        .filter(|b| *b != a && qset.contains(b) && satset.contains(b) && !known.contains(b))
+                        .collect()
+                })
+                .unwrap_or_default();
+            cand.sort_unstable();
+            cand.dedup();
+            let n_a = node_of[&a];
+            for b in cand {
+                if known.contains(&b) {
+                    continue;
+                }
+                tests += 1;
+                match qs.qo_residue_test(n_a, &[CLit::neg(b)]) {
+                    None => return None,
+                    Some(true) => {
+                        // A ⊓ ¬B sat ⇒ A ⋢ B.
+                    }
+                    Some(false) => {
+                        // A ⊓ ¬B unsat ⇒ A ⊑ B. Record + fold told-closure.
+                        subs.push((a, b));
+                        known.insert(b);
+                        let mut st: Vec<C> = told.get(&b).cloned().unwrap_or_default();
+                        while let Some(x) = st.pop() {
+                            if known.insert(x) {
+                                if x != a && qset.contains(&x) && satset.contains(&x) {
+                                    subs.push((a, x));
+                                }
+                                if let Some(v) = told.get(&x) {
+                                    st.extend(v.iter().copied());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if self.stats {
+            eprintln!("KM_HT [qo-p2] sat_q={} phase2_tests={}", sat_q.len(), tests);
+        }
+        Some((true, unsat, subs))
+    }
+
+    /// Non-branching saturation fixpoint: propagate Horn clauses, expand
+    /// existential obligations (under blocking), and unit-propagate forced
+    /// disjuncts — but NEVER case-split a >=2-live disjunction (it is parked).
+    /// Returns false if an out-of-ALC(H) construct sets `unsupported` (caller
+    /// bails to the legacy path); true otherwise (the model may or may not have
+    /// clashed — check `ext.has_clash()`).
+    fn park_fixpoint(&mut self) -> bool {
+        loop {
+            self.propagate();
+            if self.ext.unsupported {
+                return false;
+            }
+            if self.ext.has_clash() {
+                return true;
+            }
+            let made_oblig = self.process_obligations();
+            if self.ext.unsupported {
+                return false;
+            }
+            if self.ext.has_clash() {
+                return true;
+            }
+            let made_unit = self.park_drain_units();
+            if self.ext.unsupported {
+                return false;
+            }
+            if !made_oblig && !made_unit {
+                self.propagate();
+                return !self.ext.unsupported;
+            }
+        }
+    }
+
+    /// Scan every recorded ground disjunction and assert the single live
+    /// disjunct of any unit-forced one (cascading within `pending` until no new
+    /// unit fires). >=2-live disjunctions are left in place (parked). Returns
+    /// true if any unit was asserted (progress).
+    fn park_drain_units(&mut self) -> bool {
+        let mut progress = false;
+        loop {
+            let mut found_unit = false;
+            let np = self.ext.pending.len();
+            for i in 0..np {
+                if self.ext.has_clash() {
+                    return progress;
+                }
+                let (bdep, ndisj) = {
+                    let pd = &self.ext.pending[i];
+                    (pd.bdep.clone(), pd.disjuncts.len())
+                };
+                let mut satisfied = false;
+                let mut dead_dep = dep_empty();
+                let mut live: Vec<(Node, CLit)> = Vec::with_capacity(ndisj);
+                for j in 0..ndisj {
+                    let (n, lit) = self.ext.pending[i].disjuncts[j];
+                    if self.ext.has_concept(n, lit) {
+                        satisfied = true;
+                        break;
+                    }
+                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    if let Some(d) = self.ext.dep_of(n, comp) {
+                        dead_dep = dep_union(&dead_dep, d);
+                    } else {
+                        live.push((n, lit));
+                    }
+                }
+                if satisfied {
+                    continue;
+                }
+                if live.is_empty() {
+                    self.ext.raise_clash(dep_union(&bdep, &dead_dep));
+                    return progress;
+                }
+                if live.len() == 1 {
+                    let d = dep_union(&bdep, &dead_dep);
+                    if self.ext.add_concept(live[0].0, live[0].1, &d) {
+                        found_unit = true;
+                        progress = true;
+                        if self.ext.has_clash() {
+                            return progress;
+                        }
+                    }
+                }
+                // >=2 live: park (skip — do not branch).
+            }
+            if !found_unit {
+                break;
+            }
+        }
+        progress
     }
 
     pub fn steps(&self) -> u64 {
