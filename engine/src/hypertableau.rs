@@ -1081,6 +1081,76 @@ fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
     extra
 }
 
+/// Trigger-keyed (binary/n-ary) absorption (KM_HT_TRIGABS). A global GCI clause
+/// `⊤ ⊑ ¬C1 ⊔ … ⊔ ¬Ck ⊔ P1 ⊔ … ⊔ Pm` (empty body, head all-Concept on one
+/// variable, k ≥ 1) is logically equivalent to the triggered implication
+/// `C1 ⊓ … ⊓ Ck ⊑ P1 ⊔ … ⊔ Pm`. Moving the negated disjuncts into the body makes
+/// the clause DORMANT until every Ci labels a node, instead of firing the
+/// disjunction on EVERY node (Konclude `CTriggeredImplicationBinaryAbsorber` /
+/// HermiT absorption — the documented anti-⊔-blowup device). This is the lever
+/// for the live ∀+⊔ family, where ⊤-disjunctions otherwise re-branch on every
+/// model node.
+///
+/// Sound + complete: a node missing some Ci already satisfies the `¬Ci` disjunct,
+/// so the original clause is vacuous there and the dormant form loses nothing. A
+/// purely positive disjunction `⊤ ⊑ P1 ⊔ … ⊔ Pm` (no negative disjunct) has no
+/// such free disjunct and is left untouched (it genuinely must branch). Heads
+/// containing non-Concept atoms (existential / role disjuncts) are also left
+/// untouched (conservative). All-negative heads `⊤ ⊑ ¬C1 ⊔ … ⊔ ¬Ck` correctly
+/// become the clash clause `C1 ⊓ … ⊓ Ck ⊑ ⊥`. Rewrites in place; returns count.
+fn trigger_absorb(clauses: &mut [Clause]) -> usize {
+    let mut count = 0usize;
+    for cl in clauses.iter_mut() {
+        if !cl.body.is_empty() || cl.head.is_empty() {
+            continue;
+        }
+        // Head must be all-Concept atoms on a single variable, with ≥1 negative.
+        let mut var: Option<Var> = None;
+        let mut all_concept_one_var = true;
+        let mut has_neg = false;
+        for a in &cl.head {
+            match a {
+                Atom::Concept { lit, t } => {
+                    match var {
+                        None => var = Some(*t),
+                        Some(v) if v == *t => {}
+                        _ => {
+                            all_concept_one_var = false;
+                            break;
+                        }
+                    }
+                    if lit.neg {
+                        has_neg = true;
+                    }
+                }
+                _ => {
+                    all_concept_one_var = false;
+                    break;
+                }
+            }
+        }
+        if !all_concept_one_var || !has_neg {
+            continue;
+        }
+        // Move every negative concept disjunct ¬Ci into the body as +Ci.
+        let mut new_body: Vec<Atom> = Vec::new();
+        let mut new_head: Vec<Atom> = Vec::new();
+        for a in &cl.head {
+            if let Atom::Concept { lit, t } = a {
+                if lit.neg {
+                    new_body.push(Atom::Concept { lit: CLit { neg: false, c: lit.c }, t: *t });
+                    continue;
+                }
+            }
+            new_head.push(a.clone());
+        }
+        cl.body = new_body;
+        cl.head = new_head;
+        count += 1;
+    }
+    count
+}
+
 // ====================== QuasiOrder shared-node saturation ====================
 //
 // Konclude/HermiT's non-branching saturation keeps ONE shared node per concept
@@ -2016,6 +2086,16 @@ impl<'a> QoSat<'a> {
 impl Ht {
     pub fn new(clauses: Vec<Clause>) -> Ht {
         let mut clauses = clauses;
+        // KM_HT_TRIGABS: trigger-keyed binary absorption — rewrite global
+        // ⊤-disjunctions with negated disjuncts into dormant triggered clauses so
+        // they no longer fire on every node. Run BEFORE contrapositives so the
+        // clash clauses freshly produced by all-negative heads get enriched too.
+        if std::env::var_os("KM_HT_TRIGABS").is_some() {
+            let absorbed = trigger_absorb(&mut clauses);
+            if std::env::var_os("KM_HT_STATS").is_some() {
+                eprintln!("KM_HT_STATS trigger_absorb absorbed={}", absorbed);
+            }
+        }
         // KM_HT_CONTRA: enrich clash clauses with their contrapositives so negative
         // literals propagate, feeding Ht's existing unit-propagation (eval_disj).
         if std::env::var_os("KM_HT_CONTRA").is_some() {
