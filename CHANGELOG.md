@@ -4,6 +4,37 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT speed: incremental subset blocking (KM_HT_INCRBLOCK2) — 5303 25s seq / ~10s par
+
+Profiling the solved-but-slow 5303 (KM_HT_STATS) located the residual cost
+exactly: **blocking recompute was 65% of the per-test wall**, and the models are
+only ~313 nodes, 92% blocked — **tighter than HermiT's 690-node models**. So KM
+was never over-expanding (it folds more than HermiT); the gap was that
+`compute_blocked` rescanned every node on every saturation pass (O(n²) per build).
+A battery (all under the EAGER+NEGTRIED+ORD=1 combo) confirmed the only viable
+lever: the O(n)-hashed blocking modes (core / pairwise) explode the model
+(24684 / 14631 nodes, timeout) — **only subset blocking folds 5303** — and
+`KM_HT_WITREUSE` is both incomplete (236 ≠ 238) and slower. So subset blocking had
+to be made cheap, not swapped out.
+
+`KM_HT_INCRBLOCK2` does exactly that. Blocking is strictly by an EARLIER node
+(`m < n`), so `blocked[n]` depends only on nodes `<= n`. Tracking `i2_lo` = the
+smallest node id whose label changed since the last compute (a fresh
+`add_concept`, a new node, or a backtrack → 0) means a recompute re-evaluates only
+the suffix `i2_lo..nn` in id order — a forward pass equal to a full pass because
+every node `< lo` is unchanged. In tableau the frontier (label growth + new nodes)
+sits at high ids, so the suffix is usually tiny. The posting lists hold only
+**unblocked** candidate blockers (the prior `KM_HT_INCRBLOCK` kept all nodes and
+was slower on heavily-blocked models).
+
+**Result-identical** to the full scan: `KM_HT_INCRBLOCK2_CHECK` asserts equality
+on every pass — 0 mismatches across all 94 5303 builds, output set byte-identical
+(238/238 gold-clean), 111 tests pass. Blocking dropped 65% → 23% of wall;
+standalone 5303 **54 s → 25 s single-threaded, 24 s → 10 s on 8 threads, 9 s on
+16**. Wired ON in `orchestrate/race.rs` `spawn_ht` alongside the search combo
+(respecting env overrides). HermiT is ~0.94 s, so KM is now ~10x off (from
+~25-50x); the remaining cost is propagation + expansion (the next frontier).
+
 ### ore_ont_5303 SOLVED: sound + complete via HT search discipline + fast blocking
 
 `ore_ont_5303` (the canonical ALC(H) member of the live ∀+⊔ disjunction family,
