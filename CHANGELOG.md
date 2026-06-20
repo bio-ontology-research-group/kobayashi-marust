@@ -4,6 +4,29 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT speed: incremental ∃-obligations (KM_HT_INCROBLIG) — 5303 10s seq / 5s par
+
+With blocking fixed, profiling (`KM_HT_STATS` now splits the per-test wall into
+block / prop / expand) put **72% of the wall in the obligation loop** of
+`process_obligations`: it re-scanned EVERY accumulated ∃-obligation on every
+saturation pass — 240M iterations on 5303 (~933 per pass), each re-running
+`has_rsucc` (an out-edge scan). 92% of obligations sit on blocked nodes (skipped
+every pass) and most of the rest were already discharged — pure rescan.
+
+Two parallel structures make the loop incremental:
+- `node_obligs[n]` indexes a node's obligation positions, so a pass gathers only
+  the obligations of currently-UNBLOCKED nodes (the few that can expand), processed
+  in index order so the expansion sequence — and the result — matches the flat scan.
+- `oblig_sat[i]` marks an obligation discharged (a successor exists), so even among
+  unblocked nodes a satisfied obligation is skipped without an edge rescan. Both are
+  pruned/cleared on backtrack (a removed edge can un-satisfy one → re-verify).
+
+Together the obligation loop drops from **240,853,407 to 3,155,424 iterations
+(76x)** and from 25.8s to 2.3s (11x). Standalone 5303: **25s → 10s single-threaded,
+~5s on 8/16 threads**; RESULT-IDENTICAL (subs 238/238, set byte-identical to the
+flat scan), 111 tests pass. From the original 207s timeout this is ~40x; HermiT
+(~0.94s) is now ~5x off. Wired ON in `orchestrate/race.rs` `spawn_ht`.
+
 ### HT speed: incremental subset blocking (KM_HT_INCRBLOCK2) — 5303 25s seq / ~10s par
 
 Profiling the solved-but-slow 5303 (KM_HT_STATS) located the residual cost
