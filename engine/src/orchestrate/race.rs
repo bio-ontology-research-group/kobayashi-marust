@@ -498,7 +498,16 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // ~20s single-threaded (the inverted-index subset blocking is already the
     // default). Each is set only when not already specified in the environment,
     // so explicit overrides (e.g. for A/B testing) still win.
-    for (k, v) in [("KM_HT_EAGER", "1"), ("KM_HT_NEGTRIED", "1"), ("KM_HT_ORD", "1")] {
+    // INCRBLOCK2: incremental subset blocking — re-evaluate only the changed node
+    // suffix per saturation pass instead of rescanning every node. Result-identical
+    // to the default full subset scan (validated byte-for-byte on the family); it
+    // cut blocking from ~65% to ~23% of the per-test wall (5303 standalone 54s→25s).
+    for (k, v) in [
+        ("KM_HT_EAGER", "1"),
+        ("KM_HT_NEGTRIED", "1"),
+        ("KM_HT_ORD", "1"),
+        ("KM_HT_INCRBLOCK2", "1"),
+    ] {
         if std::env::var_os(k).is_none() {
             cmd.env(k, v);
         }

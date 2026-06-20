@@ -238,6 +238,35 @@ pub struct Ext {
     /// (KM_HT_LBLCACHE: lets the learner key the no-good on the clashing node's
     /// signature). `None` until a direct clash fires.
     clash_node: Option<Node>,
+
+    /// KM_HT_INCRBLOCK: maintain a persistent inverted index for subset blocking
+    /// (encoded-literal `(c<<1)|neg` → nodes carrying it), so `compute_blocked`
+    /// QUERIES instead of rebuilding the index every call (the rebuild was ~73%
+    /// of the per-test wall). Append on a fresh `add_concept`, pop on its
+    /// trail-undo (LIFO-correct per literal). The index holds ALL nodes (blocked
+    /// or not): a node is blocked iff some earlier node is a label-superset — if
+    /// the only supersets are themselves blocked, their blocker is transitively a
+    /// superset too, so the result is identical to the unblocked-only relation.
+    incr_block: bool,
+    block_index: Vec<Vec<Node>>,
+
+    /// KM_HT_INCRBLOCK2: incremental subset blocking that is RESULT-IDENTICAL to
+    /// the full per-pass scan but recomputes only the affected suffix. Blocking is
+    /// strictly by an EARLIER node (`m < n`), so `blocked[n]` depends only on the
+    /// labels of nodes `<= n`. Tracking `i2_lo` = the smallest node id whose label
+    /// changed (a fresh `add_concept`, a new node, or a backtrack) since the last
+    /// compute means a recompute only re-evaluates `i2_lo..nn` in id order — a
+    /// forward pass over the suffix, equal to a full pass because every node `< lo`
+    /// is unchanged (and so is its blocked status and list membership). In tableau
+    /// the frontier (label growth + new nodes) sits at high ids, so the suffix is
+    /// usually tiny; the full O(n) per-pass scan (~65% of the per-test wall on the
+    /// disjunction family) collapses to O(changed). `i2_lists` holds only UNBLOCKED
+    /// nodes per encoded literal (the candidate blockers), `i2_touched` the slots
+    /// that ever received an entry (so a recompute clears `>= lo` cheaply).
+    incr2: bool,
+    i2_blocked: Vec<bool>,
+    i2_lists: Vec<Vec<Node>>,
+    i2_lo: usize,
 }
 
 impl Ext {
@@ -266,7 +295,102 @@ impl Ext {
             uid: Vec::new(),
             uid_next: 1,
             clash_node: None,
+            incr_block: std::env::var_os("KM_HT_INCRBLOCK").is_some(),
+            block_index: Vec::new(),
+            incr2: std::env::var_os("KM_HT_INCRBLOCK2").is_some(),
+            i2_blocked: Vec::new(),
+            i2_lists: Vec::new(),
+            i2_lo: 0,
         }
+    }
+
+    /// Note that node `n`'s label changed (or `n` is new): widen the dirty suffix
+    /// so the next `i2_recompute` re-evaluates from here on. Cheap; the actual
+    /// blocking work is deferred to the compute called once per saturation pass.
+    #[inline]
+    fn i2_note(&mut self, n: Node) {
+        if self.incr2 && n < self.i2_lo {
+            self.i2_lo = n;
+        }
+    }
+
+    /// Is blockable node `n` blocked by an EARLIER unblocked node (subset blocking)?
+    /// Candidates come from n's rarest concept's posting list (a superset must
+    /// carry every concept of n); `i2_lists` holds only earlier unblocked nodes, so
+    /// any `m < n` found is a valid blocker. Identical to the full-scan predicate.
+    fn i2_blocked_by_earlier(&self, n: Node) -> bool {
+        let ln = &self.concepts[n];
+        if ln.is_empty() {
+            return false;
+        }
+        let lnlen = ln.len();
+        let mut best: &[Node] = &[];
+        let mut best_len = usize::MAX;
+        for k in ln.keys() {
+            let e = Ext::enc_lit(*k);
+            let l = self.i2_lists.get(e).map_or(0, |v| v.len());
+            if l < best_len {
+                best_len = l;
+                best = self.i2_lists.get(e).map_or(&[], |v| v.as_slice());
+            }
+        }
+        for &m in best {
+            if m >= n {
+                continue;
+            }
+            let lm = &self.concepts[m];
+            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Recompute the subset-blocking snapshot incrementally and return it. Only the
+    /// suffix `i2_lo..nn` is re-evaluated (see the `incr2` field doc): drop stale
+    /// `>= lo` entries from the posting lists, reset `blocked[lo..]`, then a single
+    /// forward pass classifies `lo..nn`, appending each unblocked node's concepts.
+    fn i2_recompute(&mut self) -> Vec<bool> {
+        let nn = self.num_nodes();
+        let lo = self.i2_lo.min(nn);
+        // Drop stale entries for re-evaluated nodes (id >= lo) from the lists. The
+        // slot count is ~2x|concepts|; retain on an empty list is O(1), so this is
+        // negligible next to the suffix classification below.
+        if lo == 0 {
+            for v in self.i2_lists.iter_mut() {
+                v.clear();
+            }
+        } else {
+            for v in self.i2_lists.iter_mut() {
+                v.retain(|&x| x < lo);
+            }
+        }
+        // Keep blocked[0..lo]; reset and recompute [lo..nn].
+        self.i2_blocked.truncate(lo);
+        self.i2_blocked.resize(nn, false);
+        for n in lo..nn {
+            let blk = self.blockable[n] && self.i2_blocked_by_earlier(n);
+            self.i2_blocked[n] = blk;
+            if !blk {
+                // unblocked node: register it as a candidate blocker for later nodes.
+                let keys: Vec<CLit> = self.concepts[n].keys().copied().collect();
+                for k in keys {
+                    let e = Ext::enc_lit(k);
+                    if e >= self.i2_lists.len() {
+                        self.i2_lists.resize_with(e + 1, Vec::new);
+                    }
+                    self.i2_lists[e].push(n);
+                }
+            }
+        }
+        self.i2_lo = usize::MAX;
+        self.i2_blocked.clone()
+    }
+
+    /// Encode a literal as a flat index for `block_index`.
+    #[inline]
+    fn enc_lit(lit: CLit) -> usize {
+        ((lit.c as usize) << 1) | (lit.neg as usize)
     }
 
     #[inline]
@@ -339,6 +463,7 @@ impl Ext {
         } else {
             self.uid.push(u);
         }
+        self.i2_note(id);
         id
     }
 
@@ -372,6 +497,14 @@ impl Ext {
             None => {
                 self.concepts[node].insert(lit, dep.clone());
                 self.trail.push(Trail::Concept(node, lit));
+                if self.incr_block {
+                    let e = Ext::enc_lit(lit);
+                    if e >= self.block_index.len() {
+                        self.block_index.resize_with(e + 1, Vec::new);
+                    }
+                    self.block_index[e].push(node);
+                }
+                self.i2_note(node);
                 self.queue.push(Event::Concept(node, lit));
                 self.mark_disj_dirty(node, lit);
                 true
@@ -408,10 +541,25 @@ impl Ext {
     }
 
     pub fn backtrack_to(&mut self, mark: usize) {
+        // Labels shrink and node ids are removed on backtrack; the cheapest sound
+        // resync of the incremental blocking snapshot is a full rebuild next pass.
+        // Backtracks are rare next to forward saturation passes, so this is fine.
+        if self.incr2 {
+            self.i2_lo = 0;
+        }
         while self.trail.len() > mark {
             match self.trail.pop().unwrap() {
                 Trail::Concept(node, lit) => {
                     self.concepts[node].remove(&lit);
+                    if self.incr_block {
+                        // LIFO: the most recent fresh add for this literal was this
+                        // node, so it is the last element of its posting list.
+                        let e = Ext::enc_lit(lit);
+                        if let Some(v) = self.block_index.get_mut(e) {
+                            debug_assert_eq!(v.last().copied(), Some(node));
+                            v.pop();
+                        }
+                    }
                     // a retracted fact can revive disjunctions it had satisfied
                     // or killed: re-dirty them.
                     self.mark_disj_dirty(node, lit);
@@ -1057,6 +1205,9 @@ pub struct Ht {
     /// trying the next, so the remaining disjuncts unit-propagate against the
     /// known-false ones instead of re-expanding sibling subtrees (KM_HT_NEGTRIED).
     negtried: bool,
+    /// KM_HT_INCRBLOCK2_CHECK: validate each incremental blocking snapshot against
+    /// the full per-pass scan (panics on any divergence). Diagnostic only.
+    i2_check: bool,
     /// decision literal asserted at each branch level (index = level); used to
     /// turn a clash dep-set into a learned no-good. Reset per dfs(0) run.
     decisions: Vec<(Node, u64, CLit)>,
@@ -2421,6 +2572,7 @@ impl Ht {
             learn: std::env::var_os("KM_HT_LEARN").is_some(),
             learn_nostale: std::env::var_os("KM_HT_LEARN_NOSTALE").is_some(),
             negtried: std::env::var_os("KM_HT_NEGTRIED").is_some(),
+            i2_check: std::env::var_os("KM_HT_INCRBLOCK2_CHECK").is_some(),
             decisions: Vec::new(),
             learned: Vec::new(),
             lwatch: HashMap::new(),
@@ -2690,6 +2842,45 @@ impl Ht {
                 sig.extend(e);
                 if !seen.insert(sig) {
                     blocked[n] = true;
+                }
+            }
+        } else if self.ext.incr_block {
+            // mode 1 (subset), INCREMENTAL: query the persistent inverted index
+            // (maintained in add_concept / backtrack_to) — no per-call rebuild.
+            // A blockable node n is blocked iff some earlier node m<n is a
+            // label-superset; candidates come from n's rarest concept's posting
+            // list (m must carry every concept of n). Result-identical to the
+            // O(n²) scan (the all-nodes index is sound: see Ext::block_index).
+            let idx = &self.ext.block_index;
+            for n in 0..nn {
+                if !self.ext.blockable[n] {
+                    continue;
+                }
+                let ln = &self.ext.concepts[n];
+                if ln.is_empty() {
+                    continue;
+                }
+                let lnlen = ln.len();
+                // rarest concept of n ⇒ shortest candidate posting list.
+                let mut best_len = usize::MAX;
+                let mut best: &[Node] = &[];
+                for k in ln.keys() {
+                    let e = Ext::enc_lit(*k);
+                    let l = idx.get(e).map_or(0, |v| v.len());
+                    if l < best_len {
+                        best_len = l;
+                        best = idx.get(e).map_or(&[], |v| v.as_slice());
+                    }
+                }
+                for &m in best {
+                    if m >= n {
+                        continue;
+                    }
+                    let lm = &self.ext.concepts[m];
+                    if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                        blocked[n] = true;
+                        break;
+                    }
                 }
             }
         } else if std::env::var_os("KM_HT_BLOCK_SLOW").is_some() {
@@ -2970,7 +3161,32 @@ impl Ht {
         // Batch-compute blocking once per pass (cheap once the model is folded;
         // anywhere-subset for the default ALC(H) route, ancestor-only otherwise).
         let _bt0 = Instant::now();
-        let blocked = if self.anywhere { Some(self.compute_blocked()) } else { None };
+        let blocked = if self.anywhere {
+            // KM_HT_INCRBLOCK2: incremental subset-blocking (mode 1) — re-evaluate
+            // only the changed suffix instead of all nodes every pass. Identical
+            // result to the full scan; KM_HT_INCRBLOCK2_CHECK asserts it per pass.
+            Some(if self.ext.incr2 && self.block_mode == 1 {
+                let b = self.ext.i2_recompute();
+                if self.i2_check {
+                    let full = self.compute_blocked();
+                    if full != b {
+                        let fd = (0..b.len()).find(|&k| full[k] != b[k]);
+                        panic!(
+                            "i2 blocking mismatch: nn={} full_blk={} i2_blk={} first_diff={:?}",
+                            b.len(),
+                            full.iter().filter(|x| **x).count(),
+                            b.iter().filter(|x| **x).count(),
+                            fd
+                        );
+                    }
+                }
+                b
+            } else {
+                self.compute_blocked()
+            })
+        } else {
+            None
+        };
         self.block_us += _bt0.elapsed().as_micros();
         // EAGER (KM_HT_EAGER): fire the deferred global ⊤-disjunctions, but only on
         // nodes that are NOT blocked. A blocked node's ⊤-disjunctions are covered
