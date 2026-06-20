@@ -4,6 +4,53 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### ore_ont_5303 SOLVED: sound + complete via HT search discipline + fast blocking
+
+`ore_ont_5303` (the canonical ALC(H) member of the live ∀+⊔ disjunction family,
+KM's longest-standing timeout) now classifies **sound + complete** — 238/238
+subsumptions byte-equal to Konclude gold, unsound=0 incomplete=0 — for the first
+time. Standalone HT: **207 s → 23 s single-threaded → ~10 s on 8 threads.** The
++1 completeness gap (CarbonHydrogenSubstructure ⊑ Hydrocarbon) vanished under the
+new search; no frontend / transitivity fix was needed.
+
+The gap was never algorithmic — HermiT classifies all of 5303 in ~0.94 s (traced:
+134 SAT tests, ~129 backtracks/test). It was **search discipline that KM had but
+left OFF by default**, plus a per-step blocking cost:
+
+- **Search combo (the lever).** `KM_HT_EAGER` (fire ⊤-disjunctions only on
+  unblocked nodes) + `KM_HT_NEGTRIED` (HermiT startNextChoice: assert ¬D_di after
+  a disjunct clashes so siblings unit-propagate) + `KM_HT_ORD=1` (least-failing-
+  first disjunct order). Each is inert alone; together they cut the hard concept
+  from 6779 backtracks to **41** (fewer than HermiT). Wired ON for the HT racer in
+  `orchestrate/race.rs` (respecting explicit env overrides). Sound + complete:
+  these reorder / unit-propagate a complete search, never changing SAT/UNSAT.
+  Model-shaping levers (pairwise blocking, trigger absorption, harvest) and
+  contrapositive determinism were measured and do NOT crack 5303 — search
+  ordering does. Conflict learning / QO / SATFOLD remain dead-ends
+  (`docs/5303-ATTEMPTS.md`).
+
+- **Inverted-index subset blocking (per-step cost).** `compute_blocked` mode 1
+  (subset, the only mode that folds the family enough) was an O(n²) pairwise scan
+  recomputed every propagation pass — ~73 % of the per-test wall. Replaced with a
+  posting-list intersection over a **reused, concept-id-indexed flat buffer**
+  (`BlockBuf`, no per-call HashMap alloc/hashing): a node is blocked iff it
+  appears in the posting list of every concept of an earlier unblocked node, so
+  only the rarest concept's list is scanned. **Result-identical** to the O(n²)
+  scan (canonical set-equal confirmed; old scan kept under `KM_HT_BLOCK_SLOW`).
+  114 s → 23 s on 5303; speeds every HT-routed ont.
+
+- **Parallel classify (`KM_HT_PAR=N`).** `Ht::classify`'s 94 per-concept SAT
+  tests + Phase-2 confirmations now run across N worker threads via dynamic
+  work-stealing (shared atomic index; each worker builds its own `Ht`, 512 MB
+  stack for the deep ORD=1 recursion). Set-identical to sequential (a true
+  subsumer is in every model's root label; Phase 2 confirms), no Lean re-cert
+  (a scheduling change over the same search). The HT racer defaults `KM_HT_PAR`
+  to the core count; `nice` keeps it yielding to CB on CB-winning onts.
+
+No soundness regressions: the emelim canaries (9024/12141/541/11460/15491/4604/
+9635) and sampled normals stay gold-clean. Lean re-certification deferred (HT and
+`cb_to_ht` are not the certified CB calculus).
+
 ### QuasiOrderClassification (KM_HT_QO): validated as a dead-end for the disjunction family, gated OFF
 
 The QO driver (`hypertableau.rs::quasi_order_classify` + `QoSat`, ~1265 lines)

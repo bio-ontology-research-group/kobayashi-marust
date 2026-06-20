@@ -2961,10 +2961,21 @@ impl Tableau {
                     prog.uni.len(), prog.domain.len(), prog.node_clash.len()
                 );
             }
-            let consistent = run.sat_seed(&CKey::canon(Vec::new(), Vec::new())).0;
-            if run.stats {
-                eprintln!("KM_TAB_STATS cache: consistent([])={} seeds={} branches={}", consistent, run.n_seed, run.n_branch);
-            }
+            // KM_TAB_ASSUME_CONSISTENT (diagnostic): skip the global consistent([])
+            // sat_seed and assume the KB is consistent. Used to measure whether the
+            // per-concept witness searches are tractable on the cache CDCL engine
+            // when NOT bogged on the (separately-decidable) global model build. NOT
+            // for production — global consistency must be proven elsewhere (Ht does).
+            let consistent = if std::env::var_os("KM_TAB_ASSUME_CONSISTENT").is_some() {
+                if run.stats { eprintln!("KM_TAB_STATS cache: consistent([]) ASSUMED true (skipped)"); }
+                true
+            } else {
+                let c = run.sat_seed(&CKey::canon(Vec::new(), Vec::new())).0;
+                if run.stats {
+                    eprintln!("KM_TAB_STATS cache: consistent([])={} seeds={} branches={}", c, run.n_seed, run.n_branch);
+                }
+                c
+            };
             if !consistent {
                 return (false, named.to_vec(), Vec::new());
             }

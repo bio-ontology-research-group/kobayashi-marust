@@ -445,6 +445,25 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     };
     let named = std::collections::HashSet::new();
     let tin = cb_to_ht::convert(&cl, None, &named);
+    // KM_DUMP_TIN=<path>: write the cb_to_ht TInput JSON (so the tableau worker can
+    // be run standalone on it with any flags + visible stderr) and print the
+    // routing-guard-relevant fields, then carry on. Diagnostic only.
+    if let Some(p) = std::env::var_os("KM_DUMP_TIN") {
+        if let Ok(bytes) = serde_json::to_vec(&tin) {
+            let _ = std::fs::write(&p, &bytes);
+        }
+        eprintln!(
+            "KM_DUMP_TIN clauses={} dropped={} fenced={} nominals={} inverse={} number={} queries={} -> {:?}",
+            cl.len(),
+            tin.dropped,
+            tin.fenced.len(),
+            tin.nominals.len(),
+            tin.inverse,
+            tin.number,
+            tin.queries.len(),
+            p,
+        );
+    }
     // KM_HT_FORCE: bypass the soundness routing guard to test the HT algorithm on
     // out-of-fragment onts (inverse / nominals / fenced role-chains). The cb_to_ht
     // encoding may be an approximation there, so results are NOT guaranteed
@@ -472,6 +491,27 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         cmd.stderr(Stdio::null());
     }
     cmd.env("KM_HT", "1");
+    // Production HT search discipline (validated on the live ∀+⊔ disjunction
+    // family, ore_ont_5303): EAGER model folding + NEGTRIED (HermiT
+    // startNextChoice) + ORD=1 (least-failing-first disjunct order). Together
+    // these turn 5303 from a timeout into a sound+complete classification in
+    // ~20s single-threaded (the inverted-index subset blocking is already the
+    // default). Each is set only when not already specified in the environment,
+    // so explicit overrides (e.g. for A/B testing) still win.
+    for (k, v) in [("KM_HT_EAGER", "1"), ("KM_HT_NEGTRIED", "1"), ("KM_HT_ORD", "1")] {
+        if std::env::var_os(k).is_none() {
+            cmd.env(k, v);
+        }
+    }
+    // Parallelise the HT racer's per-concept SAT tests (KM_HT_PAR). The racer is
+    // `nice`'d, so on ontologies CB wins these threads simply fill idle cores and
+    // yield to CB; on the disjunction-family / central-blowup onts where CB never
+    // finishes, the parallelism is what brings HT in under budget (5303: ~23s
+    // single-threaded → ~10s). Default to the available core count; explicit
+    // KM_HT_PAR wins.
+    if std::env::var_os("KM_HT_PAR").is_none() {
+        cmd.env("KM_HT_PAR", avail_cpus().max(1).to_string());
+    }
     if cfg.ht_qo {
         // QuasiOrderClassification: non-branching park-saturation + residual SAT
         // tests. Contrapositives of clash clauses (A∧B=>⊥ ⇒ A=>¬B) feed unit

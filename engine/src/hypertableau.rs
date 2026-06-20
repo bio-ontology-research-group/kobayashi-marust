@@ -40,6 +40,7 @@
 
 #![allow(dead_code)]
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -118,6 +119,17 @@ pub fn dep_union(a: &DepSet, b: &DepSet) -> DepSet {
             }
         }
     }
+}
+/// Number of decision levels in a dep set (its cardinality). Diagnostic use:
+/// compares the true conflict size to the search depth (KM_HT_DEPSTATS).
+pub fn dep_card(d: &DepSet) -> usize {
+    let mut n = 0;
+    let mut cur = d;
+    while let Some(node) = cur {
+        n += 1;
+        cur = &node.rest;
+    }
+    n
 }
 pub fn dep_remove(d: &DepSet, level: Level) -> DepSet {
     match d {
@@ -222,6 +234,10 @@ pub struct Ext {
     /// high-water mark of created ids, never shrunk.
     uid: Vec<u64>,
     uid_next: u64,
+    /// the node at which the most recent direct `c ∧ ¬c` clash was detected
+    /// (KM_HT_LBLCACHE: lets the learner key the no-good on the clashing node's
+    /// signature). `None` until a direct clash fires.
+    clash_node: Option<Node>,
 }
 
 impl Ext {
@@ -249,6 +265,7 @@ impl Ext {
             open_in: Vec::new(),
             uid: Vec::new(),
             uid_next: 1,
+            clash_node: None,
         }
     }
 
@@ -348,6 +365,7 @@ impl Ext {
         let comp = CLit { neg: !lit.neg, c: lit.c };
         if let Some(other) = self.concepts[node].get(&comp) {
             let cd = dep_union(dep, other);
+            self.clash_node = Some(node);
             self.raise_clash(cd);
         }
         match self.concepts[node].get(&lit) {
@@ -954,6 +972,17 @@ fn luby(i: u64) -> u64 {
     }
 }
 
+/// Reusable scratch for the subset-blocking inverted index (concept-indexed
+/// posting lists). Kept across `compute_blocked` calls to avoid re-allocating /
+/// re-hashing a fresh map every call (blocking is the dominant per-test cost).
+#[derive(Default)]
+struct BlockBuf {
+    /// encoded-literal `((c<<1)|neg)` → unblocked nodes carrying it, this call.
+    lists: Vec<Vec<Node>>,
+    /// encoded indices touched this call (so only those are cleared next call).
+    touched: Vec<usize>,
+}
+
 pub struct Ht {
     clauses: Vec<ClauseRec>,
     /// body Concept atoms by literal: clauses triggered when that literal appears.
@@ -989,6 +1018,11 @@ pub struct Ht {
     /// the number of disjunct branches actually attempted (≡ model-search nodes).
     branch_pushes: u64,
     disjunct_tries: u64,
+    /// KM_HT_PROF: total microseconds spent in `compute_blocked` (the per-step
+    /// blocking recompute), to confirm whether it dominates the per-test wall.
+    block_us: u128,
+    /// reusable inverted-index scratch for subset blocking (see `BlockBuf`).
+    block_buf: RefCell<BlockBuf>,
     stats: bool,
     hb: u64,
     tick: u64,
@@ -1012,6 +1046,12 @@ pub struct Ht {
     watch: bool,
     /// CDCL-style conflict-clause learning (KM_HT_LEARN).
     learn: bool,
+    /// KM_HT_LEARN_NOSTALE (diagnostic, UNSOUND): ignore the node-uid staleness
+    /// check in learned-clause BCP, so no-goods fire whenever the node IDs are in
+    /// range (regardless of uid). Measures whether cross-recreation no-good
+    /// transfer would cut backtracks — NOT for production (fires on wrong
+    /// individuals).
+    learn_nostale: bool,
     /// HermiT startNextChoice: on a disjunct clash, assert the complement of the
     /// tried disjunct (carrying the clash dep minus this branch level) before
     /// trying the next, so the remaining disjuncts unit-propagate against the
@@ -1024,6 +1064,62 @@ pub struct Ht {
     learned: Vec<LClause>,
     /// decision literal (node, lit) ⇒ learned clauses with that literal watched.
     lwatch: HashMap<(Node, CLit), Vec<usize>>,
+    /// KM_HT_SATCACHE: persistent pool of node core-signatures that appeared in a
+    /// COMPLETED clash-free model of some prior `consistent()` call. For the
+    /// ALC(H) no-inverse/number/nominal fragment a node's satisfiability depends
+    /// only on its (core) label, so a signature proven SAT once is SAT wherever it
+    /// recurs — across every per-concept query rebuild. `compute_blocked` blocks a
+    /// non-root node whose signature is pooled (it reuses that earlier model
+    /// fragment), folding the 94 per-query model rebuilds against the consistency
+    /// model. Sound on the same fragment Ht's core blocking already assumes.
+    satcache: bool,
+    sat_sigs: HashSet<Vec<u64>>,
+    /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
+    /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
+    /// concept was last-true first, so each per-query witness rebuild warm-starts
+    /// from the consistency model's disjunct choices (Q6 vs DNA …) instead of
+    /// re-searching from scratch — the model-find collapses toward a near-solution
+    /// start. Persists across `consistent()` calls. Sound (only reorders a complete
+    /// search; never changes SAT/UNSAT). Default off.
+    phase_save: bool,
+    phase: HashMap<C, bool>,
+    /// KM_HT_LBLCACHE: signature-keyed conflict learning. Node-uid-keyed no-goods
+    /// never refire on 5303 because the culprit nodes are recreated as different
+    /// individuals; but the search re-derives the SAME tiny conflicts (card≈5.5)
+    /// thousands of times. Re-keying each conflict literal on the deciding node's
+    /// CORE-LABEL SIGNATURE (positive concepts) instead of its id makes the no-good
+    /// recur across structurally-identical nodes. A learned no-good is a set of
+    /// (sig, concept) choices; it fires (clash, no recursion) when all its choices
+    /// are simultaneously active in the current branch assignment.
+    lblng: bool,
+    /// (sig, decision-concept) -> the branch level at which that choice is active.
+    cur_choices: HashMap<(u64, CLit), Level>,
+    /// core-signature of the deciding node, indexed by branch level.
+    dec_sig: Vec<u64>,
+    /// the (sig, concept) inserted into `cur_choices` at each branch level (for
+    /// exact removal on backtrack); None if no choice recorded at that level.
+    dec_choice: Vec<Option<(u64, CLit)>>,
+    /// learned no-goods: sorted sets of (sig, concept) that jointly clash.
+    lng: Vec<Vec<(u64, CLit)>>,
+    /// (sig, concept) -> learned no-good ids containing it (watch index).
+    lng_watch: HashMap<(u64, CLit), Vec<usize>>,
+    lng_fires: u64,
+    /// KM_HT_SATFOLD: model folding by SAT-superset completion. The disjunction
+    /// blowup on 5303 is ~85 frontier nodes that share an 18-concept core and
+    /// differ only by their exclusive-disjunct tag; each branches its ~17 global
+    /// disjunctions. But a node's (un)satisfiability is label-determined for the
+    /// ALC(H) no-inverse fragment, so if a node's label is a SUBSET of a label
+    /// that already appeared in a completed clash-free model, the node can be
+    /// COMPLETED to that label deterministically (assert the missing concepts) —
+    /// its disjunctions become satisfied with NO branching, and the completion is
+    /// independent of context (no inverse) so it never needs backtracking. This
+    /// collapses the per-witness branch search toward HermiT's tiny model.
+    satfold: bool,
+    /// full (pos+neg) labels of nodes seen in completed clash-free models, sorted.
+    sat_labels: Vec<Vec<CLit>>,
+    /// smallest-literal watch index into `sat_labels` for the superset check.
+    satfold_watch: HashMap<CLit, Vec<usize>>,
+    satfold_hits: u64,
 }
 
 /// Contrapositive Horn clauses for clash clauses (KM_HT_CONTRA). A clash clause
@@ -2299,6 +2395,8 @@ impl Ht {
             negfired: 0,
             branch_pushes: 0,
             disjunct_tries: 0,
+            block_us: 0,
+            block_buf: RefCell::new(BlockBuf::default()),
             stats: std::env::var_os("KM_HT_STATS").is_some(),
             hb: std::env::var("KM_HT_HB").ok().and_then(|s| s.parse().ok()).unwrap_or(200_000),
             tick: 0,
@@ -2321,10 +2419,26 @@ impl Ht {
             watch: std::env::var_os("KM_HT_NO_WATCH").is_none()
                 && std::env::var_os("KM_HT_BLOCKSKIP").is_none(),
             learn: std::env::var_os("KM_HT_LEARN").is_some(),
+            learn_nostale: std::env::var_os("KM_HT_LEARN_NOSTALE").is_some(),
             negtried: std::env::var_os("KM_HT_NEGTRIED").is_some(),
             decisions: Vec::new(),
             learned: Vec::new(),
             lwatch: HashMap::new(),
+            satcache: std::env::var_os("KM_HT_SATCACHE").is_some(),
+            sat_sigs: HashSet::new(),
+            phase_save: std::env::var_os("KM_HT_PHASE").is_some(),
+            phase: HashMap::new(),
+            lblng: std::env::var_os("KM_HT_LBLCACHE").is_some(),
+            cur_choices: HashMap::new(),
+            dec_sig: Vec::new(),
+            dec_choice: Vec::new(),
+            lng: Vec::new(),
+            lng_watch: HashMap::new(),
+            lng_fires: 0,
+            satfold: std::env::var_os("KM_HT_SATFOLD").is_some(),
+            sat_labels: Vec::new(),
+            satfold_watch: HashMap::new(),
+            satfold_hits: 0,
         };
         if ht.trace {
             let (mut hrole, mut heq, mut hexists, mut hdisj, mut hdisj_ex) = (0, 0, 0, 0, 0);
@@ -2359,6 +2473,19 @@ impl Ht {
             2 => ds.sort_by_key(|d| std::cmp::Reverse(self.act_of(d.lit.c))), // most-failing first
             _ => {}
         }
+        // KM_HT_PHASE: stable phase-saving pass — a disjunct whose concept was true
+        // in the last model is tried first (warm-start toward a known model). Stable
+        // so it only promotes phase-true disjuncts, preserving ord_mode's order
+        // among ties. A positive literal whose concept was last-true is preferred;
+        // a negative literal is preferred when its concept was last-FALSE.
+        if self.phase_save {
+            ds.sort_by_key(|d| {
+                let last = self.phase.get(&d.lit.c).copied().unwrap_or(false);
+                // preferred (key 0) when the literal agrees with the saved phase.
+                let agrees = if d.lit.neg { !last } else { last };
+                !agrees as u8
+            });
+        }
     }
 
     pub fn set_anywhere(&mut self, v: bool) {
@@ -2369,22 +2496,52 @@ impl Ht {
     fn heartbeat(&mut self, where_: &str) {
         self.tick += 1;
         if self.stats && self.tick % self.hb == 0 {
+            // In-flight label-distinctness probe (KM_HT_LABELPROBE): how many of the
+            // live nodes share an identical positive-concept label. distinct ≪ nodes
+            // ⇒ heavy subtree redundancy that model/label caching would collapse;
+            // distinct ≈ nodes ⇒ genuinely independent constraints (caching won't
+            // help). Computed only at the heartbeat cadence, so the O(n·label) cost
+            // is amortised.
+            let (distinct, dup_max) = if std::env::var_os("KM_HT_LABELPROBE").is_some() {
+                let nn = self.ext.num_nodes();
+                let mut counts: HashMap<Vec<C>, u32> = HashMap::new();
+                for n in 0..nn {
+                    let mut s: Vec<C> = self.ext.concepts[n]
+                        .keys()
+                        .filter(|k| !k.neg)
+                        .map(|k| k.c)
+                        .collect();
+                    s.sort_unstable();
+                    *counts.entry(s).or_insert(0) += 1;
+                }
+                (counts.len(), counts.values().copied().max().unwrap_or(0))
+            } else {
+                (0, 0)
+            };
             eprintln!(
-                "KM_HT [{}] t_ms={} tick={} steps={} backtracks={} conflicts={} restarts={} nodes={} depth={} pending={} oblig={} mtot={} mmax={}",
+                "KM_HT [{}] t_ms={} tick={} steps={} backtracks={} backjumps={} conflicts={} restarts={} nodes={} distinct_lbl={} dup_max={} depth={} pending={} oblig={} lng={} lng_fires={} mtot={} mmax={}",
                 where_,
                 self.start.elapsed().as_millis(),
                 self.tick,
                 self.steps,
                 self.backtracks,
+                self.backjumps,
                 self.conflicts,
                 self.restarts,
                 self.ext.num_nodes(),
+                distinct,
+                dup_max,
                 self.cur_depth,
                 self.ext.pending.len(),
                 self.ext.obligations.len(),
+                self.lng.len(),
+                self.lng_fires,
                 MATCH_TOT.load(Ordering::Relaxed),
                 MATCH_MAX.load(Ordering::Relaxed),
             );
+            if self.satfold {
+                eprintln!("KM_HT [satfold] labels={} hits={}", self.sat_labels.len(), self.satfold_hits);
+            }
         }
     }
 
@@ -2474,6 +2631,14 @@ impl Ht {
                     .map(|k| ((k.c as u64) << 1) | (k.neg as u64))
                     .collect();
                 sig.sort_unstable();
+                // KM_HT_SATCACHE: a signature proven SAT in a prior completed model
+                // blocks this node (it reuses that model fragment). Checked before
+                // the within-model dedup so cross-test reuse fires even for the
+                // first node carrying the signature in this build.
+                if self.satcache && self.sat_sigs.contains(&sig) {
+                    blocked[n] = true;
+                    continue;
+                }
                 if !seen.insert(sig) {
                     // an earlier unblocked node already carries this signature
                     blocked[n] = true;
@@ -2527,8 +2692,9 @@ impl Ht {
                     blocked[n] = true;
                 }
             }
-        } else {
-            // mode 1 (subset): superset match has no hash, keep the O(n²) scan.
+        } else if std::env::var_os("KM_HT_BLOCK_SLOW").is_some() {
+            // mode 1 (subset), reference O(n²) scan — kept for result-identity
+            // validation against the inverted-index fast path below.
             for n in 0..nn {
                 if !self.ext.blockable[n] {
                     continue;
@@ -2543,6 +2709,65 @@ impl Ht {
                     if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
                         blocked[n] = true;
                         break;
+                    }
+                }
+            }
+        } else {
+            // mode 1 (subset), inverted-index fast path. A blockable node `n` is
+            // blocked by an earlier UNBLOCKED node `m` whose label is a SUPERSET
+            // of n's. `m ⊇ label(n)` iff `m` appears in the posting list of EVERY
+            // concept of `n`, so the candidate set is the intersection of those
+            // lists — and it cannot be larger than the SHORTEST one. We scan only
+            // that rarest-concept list and verify the full superset. Posting lists
+            // hold only earlier UNBLOCKED nodes, in id order (a blocked node never
+            // blocks; m < n by construction). RESULT-IDENTICAL to the O(n²) scan.
+            //
+            // The index is a REUSED, concept-id-indexed flat vector (not a fresh
+            // per-call HashMap): blocking is recomputed once per propagation pass
+            // and was ~73% of the per-test wall, dominated by the per-call map
+            // alloc + CLit hashing. The buffer is cleared by touched-slot only.
+            let enc = |k: &CLit| -> usize { ((k.c as usize) << 1) | (k.neg as usize) };
+            let mut bb = self.block_buf.borrow_mut();
+            let BlockBuf { lists, touched } = &mut *bb;
+            for &t in touched.iter() {
+                lists[t].clear();
+            }
+            touched.clear();
+            for n in 0..nn {
+                let ln = &self.ext.concepts[n];
+                if self.ext.blockable[n] && !ln.is_empty() {
+                    let lnlen = ln.len();
+                    // rarest concept of n ⇒ shortest candidate posting list.
+                    let mut best: usize = usize::MAX;
+                    let mut best_len = usize::MAX;
+                    for k in ln.keys() {
+                        let e = enc(k);
+                        let l = lists.get(e).map_or(0, |v| v.len());
+                        if l < best_len {
+                            best_len = l;
+                            best = e;
+                        }
+                    }
+                    if let Some(cands) = lists.get(best) {
+                        for &m in cands {
+                            let lm = &self.ext.concepts[m];
+                            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                                blocked[n] = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !blocked[n] {
+                    for k in self.ext.concepts[n].keys() {
+                        let e = enc(k);
+                        if e >= lists.len() {
+                            lists.resize_with(e + 1, Vec::new);
+                        }
+                        if lists[e].is_empty() {
+                            touched.push(e);
+                        }
+                        lists[e].push(n);
                     }
                 }
             }
@@ -2744,7 +2969,9 @@ impl Ht {
         let mut made = false;
         // Batch-compute blocking once per pass (cheap once the model is folded;
         // anywhere-subset for the default ALC(H) route, ancestor-only otherwise).
+        let _bt0 = Instant::now();
         let blocked = if self.anywhere { Some(self.compute_blocked()) } else { None };
+        self.block_us += _bt0.elapsed().as_micros();
         // EAGER (KM_HT_EAGER): fire the deferred global ⊤-disjunctions, but only on
         // nodes that are NOT blocked. A blocked node's ⊤-disjunctions are covered
         // by its blocker (anywhere blocking, ALC(H) no-inverse), so they never
@@ -2804,13 +3031,127 @@ impl Ht {
     #[inline]
     fn conflict_out(&mut self, cd: DepSet) -> Out {
         self.conflicts += 1;
+        // KM_HT_DEPSTATS: sample the conflict-set size vs the search depth. If
+        // card(cd) ≪ cur_depth, the path holds many levels irrelevant to this
+        // clash ⇒ precise dependency-directed backjumping could skip them (big
+        // win). If dep_max(cd) ≈ cur_depth and card(cd) is large, the deps are
+        // already tight and the search is genuinely deep (precision won't help).
+        if self.stats && std::env::var_os("KM_HT_DEPSTATS").is_some() && self.conflicts % 2000 == 0 {
+            // dump the conflict's decision levels + their nodes: are the ~6 culprit
+            // decisions at low/stable nodes (node-keyed learning suffices once
+            // staleness is fixed) or scattered across recreated deep nodes
+            // (label-keyed learning required)? Also the level spread vs depth.
+            let mut lv: Vec<(Level, Node)> = Vec::new();
+            let mut cur = &cd;
+            while let Some(n) = cur {
+                let l = n.level as usize;
+                let nd = if l < self.decisions.len() { self.decisions[l].0 } else { usize::MAX };
+                lv.push((n.level, nd));
+                cur = &n.rest;
+            }
+            eprintln!(
+                "KM_HT [depstats] conflicts={} cur_depth={} dep_max={} dep_card={} levels_nodes={:?}",
+                self.conflicts, self.cur_depth, dep_max(&cd), dep_card(&cd), lv
+            );
+        }
         if self.learn {
             self.learn_clause(&cd);
+        }
+        if self.lblng {
+            self.lng_learn(&cd);
         }
         if self.do_restart && self.conflicts >= self.restart_limit {
             return Out::Restart;
         }
         Out::Conflict(cd)
+    }
+
+    /// Core-label signature of `n`: a hash of its sorted POSITIVE concepts. Two
+    /// structurally-identical nodes (same expansion-driving core) share a sig even
+    /// when their node ids differ, so a conflict learned against one recurs against
+    /// the other (KM_HT_LBLCACHE).
+    fn core_sig(&self, n: Node) -> u64 {
+        let mut v: Vec<C> = self
+            .ext
+            .concepts
+            .get(n)
+            .map(|m| m.keys().filter(|k| !k.neg).map(|k| k.c).collect())
+            .unwrap_or_default();
+        v.sort_unstable();
+        let mut h: u64 = 0xcbf29ce484222325; // FNV-1a
+        for c in v {
+            for b in (c as u64).to_le_bytes() {
+                h ^= b as u64;
+                h = h.wrapping_mul(0x100000001b3);
+            }
+        }
+        h
+    }
+
+    /// Remove the choice recorded at `level` from the active assignment.
+    fn unrecord_choice(&mut self, level: Level) {
+        let l = level as usize;
+        if l < self.dec_choice.len() {
+            if let Some(key) = self.dec_choice[l].take() {
+                if self.cur_choices.get(&key) == Some(&level) {
+                    self.cur_choices.remove(&key);
+                }
+            }
+        }
+    }
+
+    /// After asserting the choice (sig, lit) at `level`, check whether any learned
+    /// no-good is now fully active. Returns the conflict dep (the levels of the
+    /// matched choices) if so — the branch is doomed without recursing.
+    fn lng_fired(&mut self, sig: u64, lit: CLit) -> Option<DepSet> {
+        let ids = self.lng_watch.get(&(sig, lit))?.clone();
+        for cid in ids {
+            let ng = &self.lng[cid];
+            if ng.iter().all(|k| self.cur_choices.contains_key(k)) {
+                let mut dep = dep_empty();
+                for k in ng {
+                    if let Some(&lv) = self.cur_choices.get(k) {
+                        dep = dep_add(&dep, lv);
+                    }
+                }
+                self.lng_fires += 1;
+                return Some(dep);
+            }
+        }
+        None
+    }
+
+    /// Learn a signature-keyed no-good from a clash dep: the set of (sig, concept)
+    /// choices at the responsible decision levels. Recorded + watched by each
+    /// element so it can fire when the same choices recur at structurally-identical
+    /// nodes (different ids).
+    fn lng_learn(&mut self, cd: &DepSet) {
+        let mut ng: Vec<(u64, CLit)> = Vec::new();
+        let mut cur = cd;
+        while let Some(node) = cur {
+            let l = node.level as usize;
+            if l < self.dec_sig.len() && l < self.decisions.len() {
+                let sig = self.dec_sig[l];
+                let lit = self.decisions[l].2;
+                if sig != 0 || self.decisions[l].1 != 0 {
+                    ng.push((sig, lit));
+                }
+            }
+            cur = &node.rest;
+        }
+        ng.sort_unstable_by_key(|&(s, l)| (s, l.c, l.neg as u8));
+        ng.dedup();
+        if ng.len() < 2 || ng.len() > 24 {
+            return;
+        }
+        if self.lng.len() >= 300_000 {
+            return;
+        }
+        let cid = self.lng.len();
+        for &k in &ng {
+            self.lng_watch.entry(k).or_default().push(cid);
+        }
+        self.lng.push(ng);
     }
 
     #[inline]
@@ -2820,6 +3161,20 @@ impl Ht {
             self.decisions.resize(l + 1, (0, 0, CLit { neg: false, c: 0 }));
         }
         self.decisions[l] = (n, self.ext.node_uid(n), lit);
+        if self.lblng {
+            if self.dec_sig.len() <= l {
+                self.dec_sig.resize(l + 1, 0);
+                self.dec_choice.resize(l + 1, None);
+            }
+            // drop any stale choice previously recorded at this level (sibling
+            // disjunct retried) before installing the new one.
+            self.unrecord_choice(level);
+            let sig = self.core_sig(n);
+            self.dec_sig[l] = sig;
+            let key = (sig, lit);
+            self.dec_choice[l] = Some(key);
+            self.cur_choices.insert(key, level);
+        }
     }
 
     /// Turn a clash dep-set (the set of decision levels responsible) into a
@@ -2889,9 +3244,18 @@ impl Ht {
         };
         let nlits = self.learned[cid].lits.len();
         // dormant: any literal on a stale node ⇒ clause can never fire validly.
+        // KM_HT_LEARN_NOSTALE (diagnostic, UNSOUND): relax to a range check only
+        // (ignore uid), so a no-good fires when the node IDs are reused even by a
+        // different individual — measures the would-be backtrack saving of
+        // cross-recreation no-good transfer.
         for i in 0..nlits {
             let (ln, lu, _) = self.learned[cid].lits[i];
-            if !self.ext.node_valid(ln, lu) {
+            let ok = if self.learn_nostale {
+                ln < self.ext.concepts.len()
+            } else {
+                self.ext.node_valid(ln, lu)
+            };
+            if !ok {
                 return;
             }
         }
@@ -2986,6 +3350,27 @@ impl Ht {
                     return Out::Sat;
                 }
                 Scan::Branch(mut gd) => {
+                    // KM_HT_SATFOLD: before branching, try to complete the live
+                    // disjuncts' nodes from a cached clash-free model label. A
+                    // completed node has all its disjunctions satisfied, so the
+                    // branch is avoided — re-propagate and re-scan.
+                    if self.satfold {
+                        let mut nodes: Vec<Node> = gd.disjuncts.iter().map(|d| d.node).collect();
+                        nodes.sort_unstable();
+                        nodes.dedup();
+                        let mut folded = false;
+                        for nd in nodes {
+                            if self.try_satfold(nd) {
+                                folded = true;
+                                if self.ext.has_clash() {
+                                    break;
+                                }
+                            }
+                        }
+                        if folded {
+                            continue;
+                        }
+                    }
                     let level = depth + 1;
                     if self.trace {
                         eprintln!("TR branch depth={} level={} ndisj={}", depth, level, gd.disjuncts.len());
@@ -3000,14 +3385,28 @@ impl Ht {
                         if self.trace {
                             eprintln!("TR try di={} node={} c={} neg={} mark={}", di, d.node, d.lit.c, d.lit.neg, mark);
                         }
-                        if self.learn {
+                        if self.learn || self.lblng {
                             self.record_decision(level, d.node, d.lit);
                         }
                         self.ext.add_concept(d.node, d.lit, &dep);
-                        match self.dfs(level) {
+                        // KM_HT_LBLCACHE: if this choice completes a learned
+                        // signature-keyed no-good, the branch is doomed — treat it
+                        // as an immediate conflict (with the no-good's level dep)
+                        // instead of recursing into the same dead subtree.
+                        let sub = if self.lblng && !self.ext.has_clash() {
+                            let key = self.dec_choice.get(level as usize).and_then(|x| *x);
+                            match key.and_then(|(s, l)| self.lng_fired(s, l)) {
+                                Some(ngdep) => Out::Conflict(ngdep),
+                                None => self.dfs(level),
+                            }
+                        } else {
+                            self.dfs(level)
+                        };
+                        match sub {
                             Out::Sat => return Out::Sat,
                             Out::Restart => {
                                 self.ext.backtrack_to(mark);
+                                if self.lblng { self.unrecord_choice(level); }
                                 return Out::Restart;
                             }
                             Out::Conflict(cd) => {
@@ -3022,6 +3421,7 @@ impl Ht {
                                 self.ext.backtrack_to(mark);
                                 if !dep_contains(&cd, level) {
                                     self.backjumps += 1;
+                                    if self.lblng { self.unrecord_choice(level); }
                                     return Out::Conflict(cd);
                                 }
                                 fail = dep_union(&fail, &cd);
@@ -3043,6 +3443,7 @@ impl Ht {
                                         // unsat under the current outer choices.
                                         let cd2 = self.ext.clash_dep();
                                         self.ext.backtrack_to(mark);
+                                        if self.lblng { self.unrecord_choice(level); }
                                         if !dep_contains(&cd2, level) {
                                             return Out::Conflict(cd2);
                                         }
@@ -3053,6 +3454,7 @@ impl Ht {
                         }
                     }
                     if self.trace { eprintln!("TR branch-exhausted depth={}", depth); }
+                    if self.lblng { self.unrecord_choice(level); }
                     return Out::Conflict(dep_remove(&fail, level));
                 }
             }
@@ -3068,6 +3470,14 @@ impl Ht {
         } else {
             u64::MAX
         };
+        // KM_HT_LBLCACHE: signature-keyed no-goods are independent of node ids /
+        // Ext lifetime, so they accumulate across restarts within this query (CDCL).
+        // Reset per query for soundness simplicity (a conflict is re-learnable).
+        if self.lblng {
+            self.lng.clear();
+            self.lng_watch.clear();
+            self.lng_fires = 0;
+        }
         loop {
             self.ext = Ext::new();
             self.ext.watch = self.watch;
@@ -3076,6 +3486,11 @@ impl Ht {
             self.decisions.clear();
             self.learned.clear();
             self.lwatch.clear();
+            // sig-keyed assignment state references this run's levels; reset it,
+            // but keep `lng` (the learned no-goods) across restarts.
+            self.cur_choices.clear();
+            self.dec_sig.clear();
+            self.dec_choice.clear();
             let root = self.ext.new_root();
             for &lit in seed {
                 self.ext.add_concept(root, lit, &dep_empty());
@@ -3091,10 +3506,142 @@ impl Ht {
                     if self.ext.unsupported {
                         return None;
                     }
-                    return Some(matches!(other, Out::Sat));
+                    let sat = matches!(other, Out::Sat);
+                    // KM_HT_SATCACHE: pool the (core) signatures of this completed
+                    // clash-free model's foldable nodes. Their satisfiability is
+                    // label-determined (ALC(H) no-inverse), so they prune matching
+                    // nodes in every later per-query rebuild. Only `blockable`
+                    // nodes (the ∃-successors that blocking consults) are pooled;
+                    // the root carries the query-specific seed and is never blocked.
+                    if sat && self.satcache {
+                        let full = self.block_mode == 2;
+                        let nn = self.ext.num_nodes();
+                        for n in 0..nn {
+                            if !self.ext.blockable[n] {
+                                continue;
+                            }
+                            let mut sig: Vec<u64> = self.ext.concepts[n]
+                                .keys()
+                                .filter(|k| full || !k.neg)
+                                .map(|k| ((k.c as u64) << 1) | (k.neg as u64))
+                                .collect();
+                            sig.sort_unstable();
+                            self.sat_sigs.insert(sig);
+                        }
+                    }
+                    // KM_HT_PHASE: save the disjunct polarities of this model — every
+                    // positive concept present was a satisfiable choice, so prefer it
+                    // (true) next time; concepts seen nowhere stay default false.
+                    if sat && self.phase_save {
+                        let nn = self.ext.num_nodes();
+                        for n in 0..nn {
+                            for k in self.ext.concepts[n].keys() {
+                                if !k.neg {
+                                    self.phase.insert(k.c, true);
+                                }
+                            }
+                        }
+                    }
+                    // KM_HT_SATFOLD: record the POSITIVE cores of this clash-free
+                    // model's UNBLOCKED (fully-saturated, genuine-individual) nodes.
+                    // Positive concepts are ENTAILED (query-independent), so a core
+                    // is reusable across tests; negative literals (query ¬B,
+                    // disjunction complements) are query-specific and excluded.
+                    // `try_satfold` completes a node to such a core only when the
+                    // core respects the node's own negatives, so injecting it is a
+                    // sound model extension.
+                    if sat && self.satfold {
+                        let nn = self.ext.num_nodes();
+                        let blocked = if self.anywhere { self.compute_blocked() } else { vec![false; nn] };
+                        for n in 0..nn {
+                            if blocked[n] {
+                                continue;
+                            }
+                            let mut lab: Vec<CLit> = self.ext.concepts[n]
+                                .keys()
+                                .filter(|k| !k.neg)
+                                .copied()
+                                .collect();
+                            if lab.len() < 2 || lab.len() > 80 {
+                                continue;
+                            }
+                            lab.sort_unstable();
+                            if self.sat_labels.len() >= 200_000 {
+                                break;
+                            }
+                            let cid = self.sat_labels.len();
+                            for &l in &lab {
+                                self.satfold_watch.entry(l).or_default().push(cid);
+                            }
+                            self.sat_labels.push(lab);
+                        }
+                    }
+                    return Some(sat);
                 }
             }
         }
+    }
+
+    /// KM_HT_SATFOLD: if node `n`'s current label is a STRICT subset of a memoed
+    /// clash-free model label `L`, complete `n` to `L` (assert the missing
+    /// concepts) so its disjunctions are satisfied without branching. Sound for
+    /// ALC(H) no-inverse: `n`'s satisfiability is label-determined and `L` is a
+    /// clash-free completion whose successors are witnessed by the model `L` came
+    /// from, so the completion never fails. Returns true if it completed `n`.
+    fn try_satfold(&mut self, n: Node) -> bool {
+        // positive core of n + the set of concepts n forbids (its negatives).
+        let mut s: Vec<CLit> = Vec::new();
+        let mut neg: HashSet<C> = HashSet::new();
+        let mut dep = dep_empty();
+        for (k, d) in &self.ext.concepts[n] {
+            if k.neg {
+                neg.insert(k.c);
+            } else {
+                s.push(*k);
+                dep = dep_union(&dep, d);
+            }
+        }
+        if s.is_empty() {
+            return false;
+        }
+        s.sort_unstable();
+        let key = s[0];
+        let ids = match self.satfold_watch.get(&key) {
+            Some(v) => v.clone(),
+            None => return false,
+        };
+        for cid in ids {
+            let l = &self.sat_labels[cid];
+            if l.len() <= s.len() {
+                continue;
+            }
+            // s ⊆ l (both sorted positive cores; merge-style subset check)
+            let mut it = l.iter();
+            let subset = s.iter().all(|x| it.by_ref().any(|y| y == x));
+            if !subset {
+                continue;
+            }
+            // the cached core must RESPECT n's negatives: no concept it would add
+            // may be one n forbids (else the completion contradicts a ¬c at n and
+            // the clash would be spurious — unsound). Skip such labels.
+            if self.sat_labels[cid].iter().any(|x| neg.contains(&x.c)) {
+                continue;
+            }
+            let missing: Vec<CLit> = self.sat_labels[cid]
+                .iter()
+                .copied()
+                .filter(|x| !self.ext.concepts[n].contains_key(x))
+                .collect();
+            for lit in missing {
+                self.ext.add_concept(n, lit, &dep);
+                if self.ext.has_clash() {
+                    return true; // genuine clash from saturating the core; dfs handles it
+                }
+            }
+            self.satfold_hits += 1;
+            return true;
+        }
+        false
     }
 
     /// Positive named concepts true at the root individual of the model left in
@@ -3121,11 +3668,30 @@ impl Ht {
             nn, distinct.len(), nblk,
             sizes.first().copied().unwrap_or(0), med, sizes.last().copied().unwrap_or(0)
         );
-        // smallest 10 labels (raw concept ids) to eyeball what differs.
-        let mut by_size: Vec<&Vec<C>> = sigs.iter().collect();
+        // UNBLOCKED nodes drive branching: how many DISTINCT labels among them,
+        // and are they pairwise-incomparable (no subset relation ⇒ subset blocking
+        // cannot fold them; the diversity comes from exclusive-disjunct choices)?
+        let mut ublabels: Vec<&Vec<C>> = (0..nn).filter(|&n| !blocked[n]).map(|n| &sigs[n]).collect();
+        ublabels.sort();
+        ublabels.dedup();
+        let ub_distinct = ublabels.len();
+        let mut incomp = 0usize;
+        let mut comp = 0usize;
+        for i in 0..ublabels.len().min(60) {
+            for j in (i + 1)..ublabels.len().min(60) {
+                let (a, b) = (ublabels[i], ublabels[j]);
+                let sub_ab = a.iter().all(|x| b.contains(x));
+                let sub_ba = b.iter().all(|x| a.contains(x));
+                if sub_ab || sub_ba { comp += 1; } else { incomp += 1; }
+            }
+        }
+        eprintln!("KM_HT [dumplabels] unblocked_distinct={} pairs(comparable/incomparable)={}/{}",
+            ub_distinct, comp, incomp);
+        // smallest 8 unblocked labels (raw concept ids) to eyeball what differs.
+        let mut by_size: Vec<&Vec<C>> = ublabels.clone();
         by_size.sort_by_key(|s| s.len());
-        for s in by_size.iter().take(10) {
-            eprintln!("KM_HT [dumplabels]   |{}| {:?}", s.len(), s);
+        for s in by_size.iter().take(8) {
+            eprintln!("KM_HT [dumplabels]   ub|{}| {:?}", s.len(), s);
         }
     }
 
@@ -3203,6 +3769,21 @@ impl Ht {
             if self.trace { eprintln!("TR classify-return (global, consistent)"); }
             return Some((true, Vec::new(), Vec::new()));
         }
+        // KM_HT_PAR=N (N>1): run the 94 per-concept SAT tests (Phase 1) and the
+        // per-concept subsumption confirmations (Phase 2) across N OS threads. The
+        // tests are independent (each `consistent` call builds its own `Ext`), and
+        // the result is set-identical to the sequential run: a true subsumer of A
+        // is in EVERY A-model's root label (so no candidate is lost regardless of
+        // which model a worker finds), and Phase 2 only commits confirmed pairs.
+        // No Lean re-cert: this is a scheduling change over the same exhaustive
+        // per-test search (fixpoint-preserving). The default path (N=1) is
+        // untouched. The cross-query heuristic caches (witreuse/satcache/satfold/
+        // phase/lblcache) are per-worker, so they are inert under parallelism;
+        // they are experimental and off in production.
+        let par = std::env::var("KM_HT_PAR").ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+        if par > 1 && !self.naive {
+            return self.classify_parallel(queries, par);
+        }
         let qset: HashSet<C> = queries.iter().copied().collect();
         let naive = self.naive;
 
@@ -3213,7 +3794,32 @@ impl Ht {
         let mut unsat = Vec::new();
         let mut sat_q = Vec::new();
         let mut labels: Vec<(C, Vec<C>)> = Vec::new();
+        // KM_HT_WITREUSE: pseudo-model witness reuse across the per-concept queries.
+        // In a COMPLETE clash-free model, any node carrying concept C already
+        // carries every subsumer of C (C ⊑ B ⇒ every C-individual is a B-individual
+        // ⇒ B holds at that node). So a node label containing C is a valid A-model
+        // root label for A=C: it witnesses C SAT and over-approximates C's subsumers
+        // (Phase-2 confirms, so soundness is unchanged). Recording the positive
+        // labels of every node of each SAT model lets later query concepts that
+        // already appear in some prior model skip their (often identical) witness
+        // rebuild — the redundant hard witnesses (5303: many concepts give
+        // byte-identical 8.8 s searches) collapse to one. Sound + result-identical;
+        // only the number of Phase-1 sat-tests changes. Gated (default off).
+        let witreuse = std::env::var_os("KM_HT_WITREUSE").is_some();
+        let mut wit: HashMap<C, Vec<C>> = HashMap::new();
+        let mut wit_hits = 0u64;
         for (qi, &a) in queries.iter().enumerate() {
+            if witreuse {
+                if let Some(lab) = wit.get(&a) {
+                    // already witnessed SAT by a prior model that carries `a`.
+                    sat_q.push(a);
+                    if !naive {
+                        labels.push((a, lab.clone()));
+                    }
+                    wit_hits += 1;
+                    continue;
+                }
+            }
             let q0 = self.start.elapsed().as_millis();
             let bt0 = self.backtracks;
             let bj0 = self.backjumps;
@@ -3221,12 +3827,13 @@ impl Ht {
             let bp0 = self.branch_pushes;
             let dt0 = self.disjunct_tries;
             let st0 = self.steps;
+            let bu0 = self.block_us;
             let sat = self.consistent(&[CLit::pos(a)])?;
             if self.stats {
                 let dt = self.start.elapsed().as_millis() - q0;
                 if dt > 200 || qi % 100 == 0 {
-                    eprintln!("KM_HT [classify-p1] qi={}/{} concept={} sat={} dt_ms={} nodes_last={} branch_pushes={} disjunct_tries={} backtracks={} backjumps={} negfired={} steps={}",
-                        qi, queries.len(), a, sat, dt, self.ext.num_nodes(),
+                    eprintln!("KM_HT [classify-p1] qi={}/{} concept={} sat={} dt_ms={} block_ms={} nodes_last={} branch_pushes={} disjunct_tries={} backtracks={} backjumps={} negfired={} steps={}",
+                        qi, queries.len(), a, sat, dt, (self.block_us - bu0) / 1000, self.ext.num_nodes(),
                         self.branch_pushes - bp0, self.disjunct_tries - dt0,
                         self.backtracks - bt0, self.backjumps - bj0, self.negfired - nf0,
                         self.steps - st0);
@@ -3239,13 +3846,36 @@ impl Ht {
                 if !naive {
                     labels.push((a, self.root_pos_label()));
                 }
+                if witreuse {
+                    // record this clash-free model's node labels so later query
+                    // concepts present in it skip their rebuild. Only the FIRST
+                    // model to carry a concept is kept (cheap, and any model's
+                    // node label is a sound candidate set for that concept).
+                    let nn = self.ext.num_nodes();
+                    for n in 0..nn {
+                        let lab = self.node_pos_label(n);
+                        if lab.is_empty() {
+                            continue;
+                        }
+                        for &c in &lab {
+                            if qset.contains(&c) {
+                                wit.entry(c).or_insert_with(|| lab.clone());
+                            }
+                        }
+                    }
+                }
             }
             // KM_HT_DUMPLABELS: one-shot dump of the first concept's model — node
             // count, distinct positive labels, size distribution, smallest labels.
             // Diagnostic for the HermiT model-fold gap (compare to HermitNodeLabels).
-            if qi == 0 && std::env::var_os("KM_HT_DUMPLABELS").is_some() {
+            if (qi == 0 || self.backtracks - bt0 > 5000) && std::env::var_os("KM_HT_DUMPLABELS").is_some() {
+                eprintln!("KM_HT [dumplabels] FOR concept={} qi={} backtracks_here={}", a, qi, self.backtracks - bt0);
                 self.dump_labels();
             }
+        }
+        if self.stats && witreuse {
+            eprintln!("KM_HT [witreuse] queries={} reused={} built={}",
+                queries.len(), wit_hits, queries.len() as u64 - wit_hits);
         }
 
         // Told subsumers (Mechanism 1, from the HermiT trace): structural
@@ -3369,6 +3999,195 @@ impl Ht {
         }
         if self.trace {
             eprintln!("TR classify-return (full) sat={} unsat={} subs={}", sat_q.len(), unsat.len(), subs.len());
+        }
+        Some((true, unsat, subs))
+    }
+
+    /// Multi-threaded sibling of `classify` (KM_HT_PAR>1). The global consistency
+    /// check has already run in `classify`; here we parallelise the two
+    /// per-concept loops. Each worker builds its own `Ht` (from a clone of the
+    /// read-only clause set) so no mutable state is shared across threads — only
+    /// `Vec<Clause>` (Send, no `Rc`) crosses a thread boundary; the `Rc`-backed
+    /// `Ext` is created and dropped inside one thread. Result set-identical to the
+    /// sequential path (see `classify`). Always non-naive, model-based pruning;
+    /// the sequential modelprune/witreuse/etc. paths are not mirrored (off in
+    /// production and either inert or order-dependent under parallelism).
+    fn classify_parallel(&self, queries: &[C], par: usize) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let qset: HashSet<C> = queries.iter().copied().collect();
+        let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        let anywhere = self.anywhere;
+        let stats = self.stats;
+        let nq = queries.len();
+        let nthreads = par.min(nq).max(1);
+        // Workers need a large stack: `dfs` recurses one frame per branch level,
+        // and the disjunction search can dive ~thousands of levels deep (esp.
+        // under ORD=1, which backtracks little but descends far). The main thread
+        // has an 8 MB stack; spawned threads default to 2 MB and would overflow
+        // (SIGABRT), so request a generous stack explicitly.
+        const HT_WORKER_STACK: usize = 512 * 1024 * 1024;
+
+        // ---- Phase 1: per-concept SAT + one model's root label. ----
+        // Dynamic work-stealing: each worker builds ONE `Ht` and pulls the next
+        // concept index from a shared atomic counter. This balances load across
+        // wildly uneven per-concept costs (a couple of concepts dominate), which
+        // static contiguous chunks do not — and reusing one `Ht` amortises setup
+        // and preserves the per-worker activity/phase warm-start the sequential
+        // path relies on. The result is set-identical (see `classify`).
+        let next1 = AtomicUsize::new(0);
+        let p1: Vec<Option<Vec<(C, bool, Vec<C>)>>> = std::thread::scope(|s| {
+            let next1 = &next1;
+            let handles: Vec<_> = (0..nthreads)
+                .map(|_| {
+                    let tmpl = template.clone();
+                    std::thread::Builder::new()
+                        .stack_size(HT_WORKER_STACK)
+                        .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
+                            let mut w = Ht::new(tmpl);
+                            w.set_anywhere(anywhere);
+                            let mut out = Vec::new();
+                            loop {
+                                let i = next1.fetch_add(1, Ordering::Relaxed);
+                                if i >= nq {
+                                    break;
+                                }
+                                let a = queries[i];
+                                let sat = w.consistent(&[CLit::pos(a)])?;
+                                let lab = if sat { w.root_pos_label() } else { Vec::new() };
+                                out.push((a, sat, lab));
+                            }
+                            Some(out)
+                        })
+                        .expect("spawn HT phase-1 worker")
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mut unsat = Vec::new();
+        let mut sat_q = Vec::new();
+        let mut labels: Vec<(C, Vec<C>)> = Vec::new();
+        for part in p1 {
+            for (a, sat, lab) in part? {
+                if sat {
+                    sat_q.push(a);
+                    labels.push((a, lab));
+                } else {
+                    unsat.push(a);
+                }
+            }
+        }
+
+        // told subsumers (read-only; same construction as `classify`).
+        let use_told = std::env::var_os("KM_HT_NO_TOLD").is_none();
+        let mut told: HashMap<C, Vec<C>> = HashMap::new();
+        if use_told {
+            for (c, _, _) in &self.clauses {
+                if c.body.len() == 1 && c.head.len() == 1 {
+                    if let (Atom::Concept { lit: lb, t: tb }, Atom::Concept { lit: lh, t: th }) =
+                        (&c.body[0], &c.head[0])
+                    {
+                        if !lb.neg && !lh.neg && tb == th && lb.c != lh.c {
+                            told.entry(lb.c).or_default().push(lh.c);
+                        }
+                    }
+                }
+            }
+        }
+        let satset: HashSet<C> = sat_q.iter().copied().collect();
+
+        // ---- Phase 2: confirm A ⊑ B, dynamic work-stealing over the labels. ----
+        let nl = labels.len();
+        let next2 = AtomicUsize::new(0);
+        let p2: Vec<Option<Vec<(C, C)>>> = std::thread::scope(|s| {
+            let (told, qset, satset, labels, next2) =
+                (&told, &qset, &satset, &labels, &next2);
+            let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
+                .map(|_| {
+                    let tmpl = template.clone();
+                    std::thread::Builder::new()
+                        .stack_size(HT_WORKER_STACK)
+                        .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
+                            let mut w = Ht::new(tmpl);
+                            w.set_anywhere(anywhere);
+                            let mut subs = Vec::new();
+                            loop {
+                                let li = next2.fetch_add(1, Ordering::Relaxed);
+                                if li >= nl {
+                                    break;
+                                }
+                                let (a, lab) = &labels[li];
+                                let a = *a;
+                                let mut known: HashSet<C> = HashSet::new();
+                                let mut stack: Vec<C> =
+                                    told.get(&a).cloned().unwrap_or_default();
+                                while let Some(x) = stack.pop() {
+                                    if known.insert(x) {
+                                        if let Some(v) = told.get(&x) {
+                                            stack.extend(v.iter().copied());
+                                        }
+                                    }
+                                }
+                                let mut local: Vec<C> = known
+                                    .iter()
+                                    .copied()
+                                    .filter(|b| *b != a && qset.contains(b) && satset.contains(b))
+                                    .collect();
+                                let mut cand: Vec<C> = lab
+                                    .iter()
+                                    .copied()
+                                    .filter(|b| {
+                                        *b != a
+                                            && qset.contains(b)
+                                            && satset.contains(b)
+                                            && !known.contains(b)
+                                    })
+                                    .collect();
+                                cand.sort_unstable();
+                                cand.dedup();
+                                for b in cand {
+                                    if known.contains(&b) {
+                                        continue;
+                                    }
+                                    if !w.consistent(&[CLit::pos(a), CLit::neg(b)])? {
+                                        local.push(b);
+                                        known.insert(b);
+                                        let mut st: Vec<C> =
+                                            told.get(&b).cloned().unwrap_or_default();
+                                        while let Some(x) = st.pop() {
+                                            if known.insert(x) {
+                                                if x != a
+                                                    && qset.contains(&x)
+                                                    && satset.contains(&x)
+                                                {
+                                                    local.push(x);
+                                                }
+                                                if let Some(v) = told.get(&x) {
+                                                    st.extend(v.iter().copied());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                for b in local {
+                                    subs.push((a, b));
+                                }
+                            }
+                            Some(subs)
+                        })
+                        .expect("spawn HT phase-2 worker")
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mut subs = Vec::new();
+        for part in p2 {
+            subs.extend(part?);
+        }
+        if stats {
+            eprintln!(
+                "KM_HT [classify-par] threads={} queries={} sat_q={} subs={}",
+                nthreads, nq, sat_q.len(), subs.len()
+            );
         }
         Some((true, unsat, subs))
     }
