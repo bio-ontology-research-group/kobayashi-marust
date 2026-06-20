@@ -267,6 +267,22 @@ pub struct Ext {
     i2_blocked: Vec<bool>,
     i2_lists: Vec<Vec<Node>>,
     i2_lo: usize,
+
+    /// KM_HT_INCROBLIG: incremental ∃-obligation processing. The flat obligation
+    /// loop in `process_obligations` re-scanned EVERY accumulated obligation on
+    /// every saturation pass (240M iterations on 5303 = 72% of the wall once
+    /// blocking was fixed). 92% of obligations sit on BLOCKED nodes and are merely
+    /// skipped each pass — pure waste. `node_obligs[n]` indexes a node's obligation
+    /// positions, so a pass iterates only the obligations of currently-UNBLOCKED
+    /// nodes (the few that can actually expand). Indices into the flat `obligations`
+    /// vec; pruned on backtrack to keep them valid under index reuse. Result is
+    /// processed in index order (sorted), so it is identical to the flat scan.
+    incroblig: bool,
+    node_obligs: Vec<Vec<usize>>,
+    /// Parallel to `obligations`: marks one as discharged (a successor exists), so
+    /// even among unblocked nodes a satisfied obligation is skipped without an edge
+    /// rescan. Cleared on backtrack (a removed edge can un-satisfy one → re-verify).
+    oblig_sat: Vec<bool>,
 }
 
 impl Ext {
@@ -301,6 +317,9 @@ impl Ext {
             i2_blocked: Vec::new(),
             i2_lists: Vec::new(),
             i2_lo: 0,
+            incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
+            node_obligs: Vec::new(),
+            oblig_sat: Vec::new(),
         }
     }
 
@@ -453,6 +472,9 @@ impl Ext {
         self.pred.push(parent);
         self.blockable.push(blockable);
         self.globals_fired.push(false);
+        if self.incroblig {
+            self.node_obligs.push(Vec::new());
+        }
         self.trail.push(Trail::NewNode);
         self.queue.push(Event::NodeNew(id));
         // assign a fresh unique stamp to this (possibly reused) node id.
@@ -583,6 +605,9 @@ impl Ext {
                     self.pred.pop();
                     self.blockable.pop();
                     self.globals_fired.pop();
+                    if self.incroblig {
+                        self.node_obligs.pop();
+                    }
                 }
                 Trail::GlobalsFired(node) => {
                     if node < self.globals_fired.len() {
@@ -623,6 +648,19 @@ impl Ext {
             }
         }
         self.obligations.retain(|e| e.at <= mark);
+        if self.incroblig {
+            // Obligations beyond the new length were dropped (and their indices may
+            // be reused by later pushes), so drop dangling references to them.
+            let nl = self.obligations.len();
+            for v in self.node_obligs.iter_mut() {
+                v.retain(|&i| i < nl);
+            }
+            // A removed edge can un-satisfy a surviving obligation; re-verify all.
+            self.oblig_sat.truncate(nl);
+            for b in self.oblig_sat.iter_mut() {
+                *b = false;
+            }
+        }
     }
 }
 
@@ -897,7 +935,12 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
             }
             HeadItem::Exists(n, r, fil) => {
                 let at = ext.mark();
+                let idx = ext.obligations.len();
                 ext.obligations.push(Oblig { n, r, fil, dep: bdep.clone(), at });
+                if ext.incroblig {
+                    ext.node_obligs[n].push(idx);
+                    ext.oblig_sat.push(false);
+                }
             }
             HeadItem::Edge(r, s, t) => {
                 // forced role edge (role inclusion / chain / transitivity).
@@ -1169,6 +1212,13 @@ pub struct Ht {
     /// KM_HT_PROF: total microseconds spent in `compute_blocked` (the per-step
     /// blocking recompute), to confirm whether it dominates the per-test wall.
     block_us: u128,
+    /// KM_HT_PROF: cumulative microseconds in propagate() and in process_obligations
+    /// (the latter inclusive of block_us), to split the per-test wall.
+    prop_us: u128,
+    oblig_us: u128,
+    eager_us: u128,
+    obligloop_us: u128,
+    obl_iters: u64,
     /// reusable inverted-index scratch for subset blocking (see `BlockBuf`).
     block_buf: RefCell<BlockBuf>,
     stats: bool,
@@ -1208,6 +1258,9 @@ pub struct Ht {
     /// KM_HT_INCRBLOCK2_CHECK: validate each incremental blocking snapshot against
     /// the full per-pass scan (panics on any divergence). Diagnostic only.
     i2_check: bool,
+    /// KM_HT_INCROBLIG: reused buffer for the unblocked-node obligation indices
+    /// gathered each pass (sorted to index order for flat-scan-identical expansion).
+    oblig_cand: Vec<usize>,
     /// decision literal asserted at each branch level (index = level); used to
     /// turn a clash dep-set into a learned no-good. Reset per dfs(0) run.
     decisions: Vec<(Node, u64, CLit)>,
@@ -2547,6 +2600,11 @@ impl Ht {
             branch_pushes: 0,
             disjunct_tries: 0,
             block_us: 0,
+            prop_us: 0,
+            oblig_us: 0,
+            eager_us: 0,
+            obligloop_us: 0,
+            obl_iters: 0,
             block_buf: RefCell::new(BlockBuf::default()),
             stats: std::env::var_os("KM_HT_STATS").is_some(),
             hb: std::env::var("KM_HT_HB").ok().and_then(|s| s.parse().ok()).unwrap_or(200_000),
@@ -2573,6 +2631,7 @@ impl Ht {
             learn_nostale: std::env::var_os("KM_HT_LEARN_NOSTALE").is_some(),
             negtried: std::env::var_os("KM_HT_NEGTRIED").is_some(),
             i2_check: std::env::var_os("KM_HT_INCRBLOCK2_CHECK").is_some(),
+            oblig_cand: Vec::new(),
             decisions: Vec::new(),
             learned: Vec::new(),
             lwatch: HashMap::new(),
@@ -3194,6 +3253,7 @@ impl Ht {
         // need their own branch points — this is what keeps HermiT's model (and
         // its branch count) tiny. Because disjunct choices are not yet in the
         // label at this point, blocking compares Horn-only labels and folds more.
+        let _et0 = Instant::now();
         if self.eager && !self.global_disj.is_empty() {
             let nn = self.ext.num_nodes();
             for n in 0..nn {
@@ -3219,25 +3279,87 @@ impl Ht {
                 }
             }
         }
+        self.eager_us += _et0.elapsed().as_micros();
+        let _lt0 = Instant::now();
         let no = self.ext.obligations.len();
-        for i in 0..no {
-            let (n, r, fil, dep) = {
-                let o = &self.ext.obligations[i];
-                (o.n, o.r, o.fil, o.dep.clone())
-            };
-            let is_blk = match &blocked {
-                Some(b) => b[n],
-                None => ancestor_blocked(&self.ext, n),
-            };
-            if is_blk || has_rsucc(&self.ext, n, r, fil) {
-                continue;
+        if self.ext.incroblig {
+            if let Some(b) = &blocked {
+                // Gather obligations of currently-UNBLOCKED nodes only (blocked ones
+                // are covered by their blocker), then process in INDEX order so the
+                // expansion sequence — and the result — matches the flat scan.
+                let mut cand = std::mem::take(&mut self.oblig_cand);
+                cand.clear();
+                for (n, blk) in b.iter().enumerate() {
+                    if !*blk {
+                        cand.extend_from_slice(&self.ext.node_obligs[n]);
+                    }
+                }
+                cand.sort_unstable();
+                for &i in &cand {
+                    if self.ext.oblig_sat[i] {
+                        continue; // already discharged — no edge rescan
+                    }
+                    self.obl_iters += 1;
+                    let (n, r, fil) = {
+                        let o = &self.ext.obligations[i];
+                        (o.n, o.r, o.fil)
+                    };
+                    if has_rsucc(&self.ext, n, r, fil) {
+                        self.ext.oblig_sat[i] = true;
+                        continue;
+                    }
+                    let dep = self.ext.obligations[i].dep.clone();
+                    self.heartbeat("exp");
+                    let t = self.ext.new_node(Some(n));
+                    self.ext.add_edge(r, n, t, &dep);
+                    self.ext.add_concept(t, fil, &dep);
+                    self.ext.oblig_sat[i] = true;
+                    made = true;
+                }
+                self.oblig_cand = cand;
+            } else {
+                // ancestor blocking (non-anywhere) — no per-node blocked snapshot,
+                // fall back to the flat scan.
+                for i in 0..no {
+                    self.obl_iters += 1;
+                    let (n, r, fil) = {
+                        let o = &self.ext.obligations[i];
+                        (o.n, o.r, o.fil)
+                    };
+                    if ancestor_blocked(&self.ext, n) || has_rsucc(&self.ext, n, r, fil) {
+                        continue;
+                    }
+                    let dep = self.ext.obligations[i].dep.clone();
+                    self.heartbeat("exp");
+                    let t = self.ext.new_node(Some(n));
+                    self.ext.add_edge(r, n, t, &dep);
+                    self.ext.add_concept(t, fil, &dep);
+                    made = true;
+                }
             }
-            self.heartbeat("exp");
-            let t = self.ext.new_node(Some(n));
-            self.ext.add_edge(r, n, t, &dep);
-            self.ext.add_concept(t, fil, &dep);
-            made = true;
+        } else {
+            for i in 0..no {
+                self.obl_iters += 1;
+                let (n, r, fil) = {
+                    let o = &self.ext.obligations[i];
+                    (o.n, o.r, o.fil)
+                };
+                let is_blk = match &blocked {
+                    Some(b) => b[n],
+                    None => ancestor_blocked(&self.ext, n),
+                };
+                if is_blk || has_rsucc(&self.ext, n, r, fil) {
+                    continue;
+                }
+                let dep = self.ext.obligations[i].dep.clone();
+                self.heartbeat("exp");
+                let t = self.ext.new_node(Some(n));
+                self.ext.add_edge(r, n, t, &dep);
+                self.ext.add_concept(t, fil, &dep);
+                made = true;
+            }
         }
+        self.obligloop_us += _lt0.elapsed().as_micros();
         made
     }
 
@@ -3538,12 +3660,17 @@ impl Ht {
             if self.trace {
                 eprintln!("TR dfs depth={} step={} pending={}", depth, self.steps, self.ext.pending.len());
             }
+            let _pt0 = Instant::now();
             self.propagate();
+            self.prop_us += _pt0.elapsed().as_micros();
             if self.ext.has_clash() {
                 if self.trace { eprintln!("TR prop-clash depth={}", depth); }
                 return self.conflict_out(self.ext.clash_dep());
             }
-            if self.process_obligations() {
+            let _ot0 = Instant::now();
+            let _made = self.process_obligations();
+            self.oblig_us += _ot0.elapsed().as_micros();
+            if _made {
                 if self.trace { eprintln!("TR oblig-made depth={}", depth); }
                 continue;
             }
@@ -4044,12 +4171,17 @@ impl Ht {
             let dt0 = self.disjunct_tries;
             let st0 = self.steps;
             let bu0 = self.block_us;
+            let pu0 = self.prop_us;
+            let ou0 = self.oblig_us;
             let sat = self.consistent(&[CLit::pos(a)])?;
             if self.stats {
                 let dt = self.start.elapsed().as_millis() - q0;
                 if dt > 200 || qi % 100 == 0 {
-                    eprintln!("KM_HT [classify-p1] qi={}/{} concept={} sat={} dt_ms={} block_ms={} nodes_last={} branch_pushes={} disjunct_tries={} backtracks={} backjumps={} negfired={} steps={}",
-                        qi, queries.len(), a, sat, dt, (self.block_us - bu0) / 1000, self.ext.num_nodes(),
+                    eprintln!("KM_HT [classify-p1] qi={}/{} concept={} sat={} dt_ms={} block_ms={} prop_ms={} expand_ms={} nodes_last={} branch_pushes={} disjunct_tries={} backtracks={} backjumps={} negfired={} steps={}",
+                        qi, queries.len(), a, sat, dt, (self.block_us - bu0) / 1000,
+                        (self.prop_us - pu0) / 1000,
+                        (self.oblig_us - ou0 - (self.block_us - bu0)) / 1000,
+                        self.ext.num_nodes(),
                         self.branch_pushes - bp0, self.disjunct_tries - dt0,
                         self.backtracks - bt0, self.backjumps - bj0, self.negfired - nf0,
                         self.steps - st0);
@@ -4212,6 +4344,20 @@ impl Ht {
                 eprintln!("KM_HT [classify-p2] modelprune={} sat_q={} phase2_tests={}",
                     modelprune, sat_q.len(), tests);
             }
+        }
+        if self.stats {
+            let block_ms = self.block_us / 1000;
+            let prop_ms = self.prop_us / 1000;
+            let expand_ms = self.oblig_us.saturating_sub(self.block_us) / 1000;
+            let tot = (block_ms + prop_ms + expand_ms).max(1);
+            eprintln!(
+                "KM_HT [classify-prof] steps={} block_ms={}({}%) prop_ms={}({}%) expand_ms={}({}%) eager_ms={} obligloop_ms={} obl_iters={}",
+                self.steps,
+                block_ms, 100 * block_ms / tot,
+                prop_ms, 100 * prop_ms / tot,
+                expand_ms, 100 * expand_ms / tot,
+                self.eager_us / 1000, self.obligloop_us / 1000, self.obl_iters,
+            );
         }
         if self.trace {
             eprintln!("TR classify-return (full) sat={} unsat={} subs={}", sat_q.len(), unsat.len(), subs.len());

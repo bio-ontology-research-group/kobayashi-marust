@@ -502,11 +502,16 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // suffix per saturation pass instead of rescanning every node. Result-identical
     // to the default full subset scan (validated byte-for-byte on the family); it
     // cut blocking from ~65% to ~23% of the per-test wall (5303 standalone 54s→25s).
+    // INCROBLIG: incremental ∃-obligation processing — a pass scans only the
+    // obligations of currently-unblocked, not-yet-discharged nodes instead of every
+    // accumulated obligation. Result-identical to the flat scan; on 5303 it cut the
+    // obligation loop 11x (240M→3M iterations), standalone 25s→10s single-threaded.
     for (k, v) in [
         ("KM_HT_EAGER", "1"),
         ("KM_HT_NEGTRIED", "1"),
         ("KM_HT_ORD", "1"),
         ("KM_HT_INCRBLOCK2", "1"),
+        ("KM_HT_INCROBLIG", "1"),
     ] {
         if std::env::var_os(k).is_none() {
             cmd.env(k, v);
