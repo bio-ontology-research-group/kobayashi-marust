@@ -83,8 +83,16 @@ impl Config {
             elc_bin_override: std::env::var_os("KM_ELC_BIN").map(PathBuf::from),
             engine_bin_override: std::env::var_os("KM_ENGINE").map(PathBuf::from),
             tab_bin_override: std::env::var_os("KM_TAB_BIN").map(PathBuf::from),
-            absorb_portfolio: std::env::var_os("KM_ABSORB_PORTFOLIO").is_some(),
-            absorb_on: std::env::var("KM_ABSORB").map(|v| v != "0").unwrap_or(false),
+            // Default ON: the sequential plain-then-absorbed CB portfolio. The
+            // 2026-06-21 full-corpus ablation (results/benchmarks/2026-06-21-ablation)
+            // found it the strictly dominant single lever: +4 ORE onts
+            // (6212/10908/15491/16444) over the bare-default 565, with 0 unsound,
+            // 0 incomplete, 0 regressions, and it captures every recovery any
+            // single flag (or combination of flags) achieves. It is a sequential
+            // probe (no memory doubling). Opt out with KM_NO_ABSORB_PORTFOLIO
+            // (or KM_ABSORB=0 for just the absorbed clausification gate).
+            absorb_portfolio: std::env::var_os("KM_NO_ABSORB_PORTFOLIO").is_none(),
+            absorb_on: std::env::var("KM_ABSORB").map(|v| v != "0").unwrap_or(true),
             absorb_probe_s: env_f64("KM_ABSORB_PROBE_S", 8.0),
             tab_race: std::env::var_os("KM_TAB_RACE").is_some(),
             tab_feat: std::env::var_os("KM_TAB_FEAT").is_some(),
