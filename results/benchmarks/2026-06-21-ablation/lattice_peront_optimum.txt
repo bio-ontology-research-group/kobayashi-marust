@@ -1,0 +1,26 @@
+lattice: 14 configs, 558 onts clean under full16
+
+=== corpus-level router potential (over 558 onts) ===
+median peak_mb:  108 (ref) -> 23 (per-ont best)  [4.7x]
+median wall_s :  0.46 (ref) -> 0.27 (per-ont best)
+total GB-s of peak (ref) 486 -> (best) 248
+
+best-MEM config frequency: {'noelc16': 117, 'lean_t1': 81, 'noelc_t1': 71, 'noabsorb_lean_t1': 59, 'lean16': 58, 'min_t1': 38, 'leanmax_t1': 36, 'lowmem_t1': 31, 'noht16': 19, 't1': 18, 't4': 11, 'full16': 10, 'noabsorb16': 6, 'nocentral_t1': 3}
+best-WALL config frequency: {'min_t1': 93, 'noabsorb_lean_t1': 78, 'leanmax_t1': 68, 'lean16': 64, 'lean_t1': 63, 'noelc16': 50, 'noelc_t1': 50, 'lowmem_t1': 38, 'noht16': 30, 'noabsorb16': 7, 't4': 7, 'full16': 4, 't1': 3, 'nocentral_t1': 3}
+
+=== generalize: feature medians by best-MEM config ===
+best_mem_cfg           n    med_ax  med_szMB  d_nonEL  union    inv   card
+noelc16              117      2983       0.7      0.0      0      0      0
+lean_t1               81      3058       1.1      0.0      0      0      0
+noelc_t1              71      2317       0.4      0.0      0      0      0
+noabsorb_lean_t1      59      4605       1.8      0.0      0      0      0
+lean16                58    4852.0       1.0      0.0    0.0    0.0    0.0
+min_t1                38   12367.5       3.1      0.0    0.0    0.0    0.0
+leanmax_t1            36    8645.0       1.5      0.0    0.0    0.0    0.0
+lowmem_t1             31     19198       3.8      0.0      0      0      0
+noht16                19       216       0.1      0.0      0      0      0
+t1                    18     587.5       0.8    0.039    0.0    2.0    0.0
+t4                    11      5048      18.9    0.001      0      2      0
+full16                10     219.0       0.5    0.167    0.5    3.5    0.0
+noabsorb16             6     689.5      15.9    0.222    2.0    0.0    0.0
+nocentral_t1           3    173998      36.5      0.0     26      0      0
