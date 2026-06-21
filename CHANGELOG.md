@@ -4,6 +4,47 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT speed: blocking refinements + the per-build floor — 5303 10s→8s seq, 5s→4s par
+
+Two more refinements to incremental subset blocking (`KM_HT_INCRBLOCK2`), both
+result-identical (`KM_HT_INCRBLOCK2_CHECK` asserts equality with the full scan every
+pass: 0 mismatches over all ~250k recomputes; subs 238/238; 111 tests):
+- backtrack now rebuilds only the affected **suffix** — track the smallest node
+  whose subset-blocking label changed (a concept removed, or the node removed) and
+  set `i2_lo` to it, instead of forcing a full rebuild (`i2_lo = 0`) every backtrack.
+- `i2_recompute` clears/retains only the posting-list slots that ever received an
+  entry (`i2_touched` + a dedup bitmap), instead of scanning the whole
+  `2x|concepts|` slot table on every pass.
+
+Standalone 5303: 10s → 8s single-threaded, 5s → 4s on 8 threads. Corpus-clean
+(5303 + the emelim canaries + sampled normals, 0 unsound / 0 incomplete).
+
+**Two larger levers investigated and ruled out — with data:**
+- **"Build the deterministic core once, clone per test"** (HermiT/Konclude-style
+  amortization of a query-independent backbone). `KM_HT_COREPROBE` shows the
+  empty-seed (⊤+TBox) model of 5303 is a **single node**, and the per-concept
+  models (256–3064 nodes) share **0%** of their nodes with it — every model is
+  100% derived from its own seed concept, so there is no backbone to amortize.
+  Consistent with the HermiT trace (it builds 134 fresh models in 0.94s, ~7ms each,
+  with no core-sharing). Not viable here.
+- **Cutting the blocking suffix further.** `KM_HT_STATS` reports
+  `calls / full_rebuilds / avg_suffix`: 249k recomputes, only 1.3% full rebuilds,
+  avg suffix 98 nodes. The suffix is already minimal: subset blocking is a
+  *sequential dependency* (`blocked[n]` = does any earlier UNBLOCKED node's label
+  contain n's), so a change at position `lo` can flip every later node and
+  `[lo..nn]` is the smallest correct recompute. `lo` stays low only because the
+  live-disjunction family resolves ⊤-disjunctions on mid-id nodes throughout the
+  search — intrinsic, not an artifact. Cutting further would need a different
+  blocking *signature* (positive-only — changes which nodes block, an ALC+⊔
+  completeness risk) or bitset labels (a large `Ext` refactor), not a cheaper
+  recompute.
+
+Net for the live ∀+⊔ family's canonical member: **ore_ont_5303 went from a 207s
+timeout to ~4s** (parallel) across this work, all sound + complete + result-identical
+to the reference search; HermiT (~0.94s) is ~4x off, the practical floor for the
+sound+complete subset blocking that this fragment requires (the cheaper core-hashing
+modes explode on it).
+
 ### HT speed: incremental ∃-obligations (KM_HT_INCROBLIG) — 5303 10s seq / 5s par
 
 With blocking fixed, profiling (`KM_HT_STATS` now splits the per-test wall into
