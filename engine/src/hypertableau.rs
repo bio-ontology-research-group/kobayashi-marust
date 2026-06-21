@@ -272,6 +272,7 @@ pub struct Ext {
     i2_touched: Vec<usize>,
     i2_in_touched: Vec<bool>,
     i2_lo: usize,
+    i2_last_lo: usize,
 
     /// KM_HT_INCROBLIG: incremental ∃-obligation processing. The flat obligation
     /// loop in `process_obligations` re-scanned EVERY accumulated obligation on
@@ -324,6 +325,7 @@ impl Ext {
             i2_touched: Vec::new(),
             i2_in_touched: Vec::new(),
             i2_lo: 0,
+            i2_last_lo: 0,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
             oblig_sat: Vec::new(),
@@ -379,6 +381,7 @@ impl Ext {
     fn i2_recompute(&mut self) -> Vec<bool> {
         let nn = self.num_nodes();
         let lo = self.i2_lo.min(nn);
+        self.i2_last_lo = lo; // diagnostic: suffix size = nn - lo
         // Drop stale entries for re-evaluated nodes (id >= lo), touching only the
         // non-empty slots (scanning the whole table each pass was the dominant
         // blocking cost). Empty-but-touched slots are cheap (retain over 0 elems).
@@ -1244,6 +1247,9 @@ pub struct Ht {
     eager_us: u128,
     obligloop_us: u128,
     obl_iters: u64,
+    i2_suf_sum: u128,
+    i2_calls: u64,
+    i2_full: u64,
     /// reusable inverted-index scratch for subset blocking (see `BlockBuf`).
     block_buf: RefCell<BlockBuf>,
     stats: bool,
@@ -2630,6 +2636,9 @@ impl Ht {
             eager_us: 0,
             obligloop_us: 0,
             obl_iters: 0,
+            i2_suf_sum: 0,
+            i2_calls: 0,
+            i2_full: 0,
             block_buf: RefCell::new(BlockBuf::default()),
             stats: std::env::var_os("KM_HT_STATS").is_some(),
             hb: std::env::var("KM_HT_HB").ok().and_then(|s| s.parse().ok()).unwrap_or(200_000),
@@ -3251,6 +3260,13 @@ impl Ht {
             // result to the full scan; KM_HT_INCRBLOCK2_CHECK asserts it per pass.
             Some(if self.ext.incr2 && self.block_mode == 1 {
                 let b = self.ext.i2_recompute();
+                if self.stats {
+                    self.i2_suf_sum += (b.len() - self.ext.i2_last_lo) as u128;
+                    self.i2_calls += 1;
+                    if self.ext.i2_last_lo == 0 {
+                        self.i2_full += 1;
+                    }
+                }
                 if self.i2_check {
                     let full = self.compute_blocked();
                     if full != b {
@@ -4426,6 +4442,12 @@ impl Ht {
                 prop_ms, 100 * prop_ms / tot,
                 expand_ms, 100 * expand_ms / tot,
                 self.eager_us / 1000, self.obligloop_us / 1000, self.obl_iters,
+            );
+            eprintln!(
+                "KM_HT [classify-i2] calls={} full_rebuilds={} avg_suffix={} (vs ~node count)",
+                self.i2_calls,
+                self.i2_full,
+                if self.i2_calls > 0 { self.i2_suf_sum / self.i2_calls as u128 } else { 0 },
             );
         }
         if self.trace {
