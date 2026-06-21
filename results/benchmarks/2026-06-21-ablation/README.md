@@ -69,4 +69,93 @@ and `nochaindom` are the only arms that introduce **unsound** — both stay off.
 - memory / throughput bombs: 9663, 9724, 7581, 7914, 7499, ...
 - These need algorithmic work (ordered resolution / memory reduction), not flags.
 
-→ Round 2 (job 47699271): combine absorbpf with targeted deltas; see round2.
+→ Round 2 (job 47699271): combine absorbpf with targeted deltas; see below.
+
+## Round 2 — 12 absorbpf-based combination arms (IBEX job 47699271)
+
+New base = `absorbpf` (`KM_ABSORB_PORTFOLIO`+`KM_ABSORB`). Each arm = absorbpf +
+one combination delta. Panel: `round2_panel.txt`.
+
+| arm | clean | Δ vs a_base | note |
+|---|---|---|---|
+| a_base (absorbpf) | 569 | — | |
+| a_httrig / a_tabrace / a_elc_tab | 569 | 0 | coverage-neutral, no regress, no recovery |
+| a_htrace_stack | 569 ok | +4 incomplete | HT speed-race still makes 12009/15098/6817/7216 incomplete |
+| a_elcforce / a_seqorder / a_kitchsink | 568 | −1 | lose 15491 |
+| a_corecap8 / a_nocentral | 564/565 | −5 | |
+| a_nohtrace | 564 | −5 | fastest (median 0.37s) but loses the 4 HT-dependent onts (5303,9024,12141,9635) |
+| a_split | 561 | −9 | |
+
+**No combination beats absorbpf alone.** Merged portfolio across all 44 arms
+(round1 ∪ round2, `merged_portfolio.json`) = **569/587**. Recovered over the
+true 565 base = exactly the 4 absorbpf onts. The flag-space ceiling is 569.
+
+### Best config per ontology (the deliverable)
+
+For coverage, the per-ont oracle collapses to one config: **absorbpf everywhere**
+gives 569, the maximum, and is within noise of optimal on time/mem. The 4
+recovered onts each *require* the absorb portfolio (`6212`,`10908` only absorbpf;
+`16444` also via nocentral/nohtrace; `15491` via many). The speed-optimal arm
+`a_nohtrace` cannot be used globally because the 4 HT-dependent onts
+(5303/9024/12141/9635) need the HT fallback racer that it disables. So there is
+no useful per-ont split beyond "absorbpf, HT racer on" — a single config.
+
+## Verdict + action
+
+1. **Promote `KM_ABSORB_PORTFOLIO` to default-ON** (it was opt-in in the
+   `km classify` orchestrator). Done in `config.rs` (default on; opt out with
+   `KM_NO_ABSORB_PORTFOLIO`). Strictly dominant: 565 → 569, 0 unsound, 0
+   incomplete, 0 regressions, sequential probe (no memory doubling).
+2. **Flag ceiling = 569/587.** The 18 unreachable onts need real work, not
+   flags:
+   - disjunction family (CB-only): 10702, 1603, 12653, 9540, 15672, 6934 —
+     ordered-resolution / case-splitting in root contexts.
+   - memory/throughput bombs: 9663, 9724, 7581, 7914, 7499, 10621, 14817,
+     15803, 3215, 541 — interning / arena memory reduction.
+   - contested gold (unreachable by design, HermiT-proven gold bugs): 2669,
+     15516.
+3. Levers to keep OFF/routed (confirmed harmful when forced global): orderedall,
+   nominals, htblock3 (pairwise), htqo, htracemode, split, corecap, nocentral.
+
+## Round 3 — greedy combinations + the time/mem Pareto (IBEX job 47700083)
+
+9 combination arms anchored on absorbpf, in one batch (so avg/median time/mem
+are directly comparable). Panel `round3_panel.txt`; per-ont best config
+`round3_peront_bestconfig.txt`.
+
+| config | clean | wall avg | wall med | mem avg | mem med |
+|---|---|---|---|---|---|
+| absorb (default) | 568 | 3.06 | 0.43 | 769 | 100 |
+| htspeed | 569 | 2.92 | 0.44 | 765 | 90 |
+| noelc | 562 | ~3 | 0.30 | ~400 | ~30 |
+| nohtrace | 564 | ~2.5 | 0.37 | ~360 | 58 |
+| lean (no HT, no elc) | 561 | 3.12 | 0.29 | 395 | 25 |
+| lowmem (no elc, no central) | 560 | 3.92 | 0.30 | 292 | 22 |
+| leanmax (no HT, no elc, no central) | 553 | 3.82 | 0.30 | 286 | 22 |
+
+### The big time/mem finding (structurally predictable)
+
+**The default over-provisions parallel racers.** Median memory drops ~4-5x
+(100 -> 22 MB) and median wall ~30% (0.43 -> 0.29 s) under lean, same answers.
+Per ontology the effect is far larger: **230 onts have a memory saving > 80 MB
+AND > 25%**, several multi-GB (`5519` 6.1 GB->886 MB, `9498` 6.4->1.2 GB,
+`3560` 6.4 GB->892 MB). **Almost all 230 are pure EL** (`d_nonEL = 0`,
+no union/all/inverse/nominal/card) -- medium-large EL onts where the parallel
+`elc`-portfolio + central CB + HT racer balloon peak RSS, when plain `elc`/lean
+CB answers in 20-500 MB.
+
+The dominant memory levers are **`elc`-portfolio and `central`**, NOT the HT
+racer (nice'd + bounded; wins memory on only 7 onts, time on 5).
+
+Blanket-lean loses coverage (561/553), so the win is a **router**:
+
+| structural signature | route | effect |
+|---|---|---|
+| `d_nonEL ~ 0`, not huge | lean (no elc-pf, no HT racer) | 4-10x mem, ~30% time, same result |
+| `d_nonEL ~ 0`, huge (>~150k ax) | certified-`elc` | the 11460/2397/4604/7246 case |
+| `d_union>0` & no inverse/nominal | HT racer on, drop central | HT solves; central CB attempt is doomed (5303: 18 GB->156 MB) |
+| inverse/nominal/card present | full CB (central on) | the heavy path; central needed for 1016/11623/11745/6682/7127/7956/9944 |
+
+One feature (`d_nonEL`) drives almost all of it; `central` is needed for a
+small enumerable set. Net: ~569 coverage AND median memory cut ~4-5x.
+

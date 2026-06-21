@@ -1,0 +1,31 @@
+# ablation: 9 arms, 587 onts, 553 clean-in-all (common timing set)
+
+arm              ok clean unsnd incmp both | cwall_avg cwall_med cmem_avg cmem_med | owall_med omem_med
+-------------------------------------------------------------------------------------------------------
+r3_absorb       568   568     0     0    0 |      3.06      0.43      769      100 |      0.45      106
+r3_covneutral   569   569     0     0    0 |      3.65      0.45      770      106 |      0.48      113
+r3_covsafe      568   568     0     0    0 |      4.61      0.52      770      108 |      0.54      114
+r3_htspeed      569   569     0     0    0 |      2.92      0.44      765       90 |      0.46      106
+r3_lean         561   561     0     0    0 |      3.12      0.29      395       25 |      0.29       26
+r3_leanmax      553   553     0     0    0 |      3.82      0.30      286       22 |      0.30       22
+r3_lowmem       562   560     0     2    0 |      3.92      0.30      292       22 |      0.30       23
+r3_noelc        567   567     0     0    0 |      3.12      0.28      405       24 |      0.29       27
+r3_nohtrace     564   564     0     0    0 |      2.95      0.37      557       87 |      0.37       90
+
+# deltas vs 'r3_absorb' (clean-set changes)
+  r3_covneutral  +1 RECOVER ['15491']
+  r3_htspeed     +1 RECOVER ['15491']
+  r3_lean        -7 REGRESS ['11460', '12141', '4604', '5303', '7246', '9024', '9635']
+  r3_leanmax     -15 REGRESS ['1016', '11460', '11623', '11745', '12141', '16444', '4604', '5303', '6682', '7127', '7246', '7956', '9024', '9635', '9944']
+  r3_lowmem      +1 RECOVER ['15491'] | -9 REGRESS ['1016', '11623', '11745', '16444', '6682', '7127', '7246', '7956', '9944']
+  r3_noelc       +1 RECOVER ['15491'] | -2 REGRESS ['11460', '7246']
+  r3_nohtrace    -4 REGRESS ['12141', '5303', '9024', '9635']
+
+# per-ont oracle (best clean arm: min wall, then min mem)
+  portfolio coverage (clean by SOME arm): 569/587
+  base clean: 568/587
+  recovered by portfolio over base (1): ['15491']
+  clean by NO arm (18): ['10621', '10702', '12653', '14817', '15516', '15672', '15803', '1603', '2669', '3215', '541', '6934', '7499', '7581', '7914', '9540', '9663', '9724']
+
+# routing table for portfolio-only onts
+  15491      best=r3_lowmem    (212.4s) by: ['r3_covneutral', 'r3_htspeed', 'r3_lowmem', 'r3_noelc']

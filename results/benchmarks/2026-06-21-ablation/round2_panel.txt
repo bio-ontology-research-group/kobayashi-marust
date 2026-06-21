@@ -1,0 +1,32 @@
+# ablation: 12 arms, 587 onts, 547 clean-in-all (common timing set)
+
+arm              ok clean unsnd incmp both | cwall_avg cwall_med cmem_avg cmem_med | owall_med omem_med
+-------------------------------------------------------------------------------------------------------
+a_base          569   569     0     0    0 |      2.62      0.42      760       93 |      0.45      105
+a_corecap8      564   564     0     0    0 |      3.04      0.45      765      105 |      0.46      109
+a_elc_tab       569   569     0     0    0 |      2.54      0.43      759      103 |      0.44      106
+a_elcforce      568   568     0     0    0 |      2.72      0.44      760       99 |      0.46      104
+a_htrace_stack  569   565     0     4    0 |      2.49      0.42      728       90 |      0.43      108
+a_httrig        569   569     0     0    0 |      2.63      0.42      761       98 |      0.44      107
+a_kitchsink     568   568     0     0    0 |      2.71      0.44      763      100 |      0.45      106
+a_nocentral     565   564     0     1    0 |      2.59      0.45      620       70 |      0.46       73
+a_nohtrace      564   564     0     0    0 |      2.48      0.37      518       90 |      0.37       92
+a_seqorder      568   568     0     0    0 |      2.59      0.41      755       94 |      0.43      107
+a_split         561   560     0     1    0 |      3.78      0.51      624       55 |      0.51       56
+a_tabrace       569   569     0     0    0 |      3.06      0.44      757       96 |      0.46      105
+
+# deltas vs 'a_base' (clean-set changes)
+  a_corecap8     -5 REGRESS ['1016', '10908', '11311', '11623', '9944']
+  a_elcforce     -1 REGRESS ['15491']
+  a_htrace_stack -4 REGRESS ['12009', '15098', '6817', '7216']
+  a_kitchsink    -1 REGRESS ['15491']
+  a_nocentral    -5 REGRESS ['1016', '11623', '11745', '7127', '7956']
+  a_nohtrace     -5 REGRESS ['12141', '15491', '5303', '9024', '9635']
+  a_seqorder     -1 REGRESS ['15491']
+  a_split        -9 REGRESS ['10908', '11745', '12698', '15846', '16462', '2632', '7127', '7409', '7956']
+
+# per-ont oracle (best clean arm: min wall, then min mem)
+  portfolio coverage (clean by SOME arm): 569/587
+  base clean: 569/587
+  recovered by portfolio over base (0): []
+  clean by NO arm (18): ['10621', '10702', '12653', '14817', '15516', '15672', '15803', '1603', '2669', '3215', '541', '6934', '7499', '7581', '7914', '9540', '9663', '9724']
