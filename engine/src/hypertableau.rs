@@ -266,6 +266,11 @@ pub struct Ext {
     incr2: bool,
     i2_blocked: Vec<bool>,
     i2_lists: Vec<Vec<Node>>,
+    /// Encoded-literal slots that ever received a posting (deduped via
+    /// `i2_in_touched`), so a recompute clears/retains only non-empty slots instead
+    /// of scanning the whole `i2_lists` table each of the ~250k passes.
+    i2_touched: Vec<usize>,
+    i2_in_touched: Vec<bool>,
     i2_lo: usize,
 
     /// KM_HT_INCROBLIG: incremental ∃-obligation processing. The flat obligation
@@ -316,6 +321,8 @@ impl Ext {
             incr2: std::env::var_os("KM_HT_INCRBLOCK2").is_some(),
             i2_blocked: Vec::new(),
             i2_lists: Vec::new(),
+            i2_touched: Vec::new(),
+            i2_in_touched: Vec::new(),
             i2_lo: 0,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
@@ -372,16 +379,18 @@ impl Ext {
     fn i2_recompute(&mut self) -> Vec<bool> {
         let nn = self.num_nodes();
         let lo = self.i2_lo.min(nn);
-        // Drop stale entries for re-evaluated nodes (id >= lo) from the lists. The
-        // slot count is ~2x|concepts|; retain on an empty list is O(1), so this is
-        // negligible next to the suffix classification below.
+        // Drop stale entries for re-evaluated nodes (id >= lo), touching only the
+        // non-empty slots (scanning the whole table each pass was the dominant
+        // blocking cost). Empty-but-touched slots are cheap (retain over 0 elems).
         if lo == 0 {
-            for v in self.i2_lists.iter_mut() {
-                v.clear();
+            for &e in &self.i2_touched {
+                self.i2_lists[e].clear();
+                self.i2_in_touched[e] = false;
             }
+            self.i2_touched.clear();
         } else {
-            for v in self.i2_lists.iter_mut() {
-                v.retain(|&x| x < lo);
+            for &e in &self.i2_touched {
+                self.i2_lists[e].retain(|&x| x < lo);
             }
         }
         // Keep blocked[0..lo]; reset and recompute [lo..nn].
@@ -397,6 +406,13 @@ impl Ext {
                     let e = Ext::enc_lit(k);
                     if e >= self.i2_lists.len() {
                         self.i2_lists.resize_with(e + 1, Vec::new);
+                    }
+                    if e >= self.i2_in_touched.len() {
+                        self.i2_in_touched.resize(e + 1, false);
+                    }
+                    if !self.i2_in_touched[e] {
+                        self.i2_in_touched[e] = true;
+                        self.i2_touched.push(e);
                     }
                     self.i2_lists[e].push(n);
                 }
@@ -563,15 +579,17 @@ impl Ext {
     }
 
     pub fn backtrack_to(&mut self, mark: usize) {
-        // Labels shrink and node ids are removed on backtrack; the cheapest sound
-        // resync of the incremental blocking snapshot is a full rebuild next pass.
-        // Backtracks are rare next to forward saturation passes, so this is fine.
-        if self.incr2 {
-            self.i2_lo = 0;
-        }
+        // Track the smallest node whose subset-blocking label changed (a concept
+        // removed, or the node itself removed) so the incremental snapshot rebuilds
+        // only the affected suffix [min_aff..nn] next pass — not the whole model.
+        // Subset blocking is label-only, so edge/globals-fired undos don't matter.
+        let mut min_aff = usize::MAX;
         while self.trail.len() > mark {
             match self.trail.pop().unwrap() {
                 Trail::Concept(node, lit) => {
+                    if node < min_aff {
+                        min_aff = node;
+                    }
                     self.concepts[node].remove(&lit);
                     if self.incr_block {
                         // LIFO: the most recent fresh add for this literal was this
@@ -599,6 +617,10 @@ impl Ext {
                     }
                 }
                 Trail::NewNode => {
+                    let id = self.concepts.len() - 1;
+                    if id < min_aff {
+                        min_aff = id;
+                    }
                     self.concepts.pop();
                     self.out_edges.pop();
                     self.in_edges.pop();
@@ -615,6 +637,9 @@ impl Ext {
                     }
                 }
             }
+        }
+        if self.incr2 {
+            self.i2_lo = self.i2_lo.min(min_aff);
         }
         self.clash = None;
         // Pending events reference facts that may now be undone: drop them. The
@@ -3291,7 +3316,11 @@ impl Ht {
                 cand.clear();
                 for (n, blk) in b.iter().enumerate() {
                     if !*blk {
-                        cand.extend_from_slice(&self.ext.node_obligs[n]);
+                        for &i in &self.ext.node_obligs[n] {
+                            if !self.ext.oblig_sat[i] {
+                                cand.push(i);
+                            }
+                        }
                     }
                 }
                 cand.sort_unstable();
@@ -4108,6 +4137,28 @@ impl Ht {
         if !global {
             return Some((false, queries.to_vec(), Vec::new()));
         }
+        // KM_HT_COREPROBE: feasibility probe for "build the deterministic core once".
+        // Record the empty-seed (⊤+TBox) model's node label-signatures, then report
+        // how much of each per-concept model is the SAME backbone (sharable). High
+        // overlap ⇒ core-cloning saves; low overlap ⇒ each test's model is mostly
+        // query-specific and cloning a core buys little.
+        let core_sigs: Option<HashSet<Vec<C>>> = if std::env::var_os("KM_HT_COREPROBE").is_some() {
+            let mut s: HashSet<Vec<C>> = HashSet::new();
+            for n in 0..self.ext.num_nodes() {
+                let mut v: Vec<C> =
+                    self.ext.concepts[n].keys().filter(|k| !k.neg).map(|k| k.c).collect();
+                v.sort_unstable();
+                s.insert(v);
+            }
+            eprintln!(
+                "KM_HT [coreprobe] empty_seed_nodes={} distinct_sigs={}",
+                self.ext.num_nodes(),
+                s.len()
+            );
+            Some(s)
+        } else {
+            None
+        };
         if std::env::var_os("KM_HT_GLOBAL").is_some() {
             if self.trace { eprintln!("TR classify-return (global, consistent)"); }
             return Some((true, Vec::new(), Vec::new()));
@@ -4185,6 +4236,24 @@ impl Ht {
                         self.branch_pushes - bp0, self.disjunct_tries - dt0,
                         self.backtracks - bt0, self.backjumps - bj0, self.negfired - nf0,
                         self.steps - st0);
+                }
+            }
+            if let Some(core) = &core_sigs {
+                if sat && qi < 8 {
+                    let nn = self.ext.num_nodes();
+                    let mut shared = 0usize;
+                    for n in 0..nn {
+                        let mut v: Vec<C> =
+                            self.ext.concepts[n].keys().filter(|k| !k.neg).map(|k| k.c).collect();
+                        v.sort_unstable();
+                        if core.contains(&v) {
+                            shared += 1;
+                        }
+                    }
+                    eprintln!(
+                        "KM_HT [coreprobe] concept={} nodes={} shared_with_core={} ({}%)",
+                        a, nn, shared, if nn > 0 { 100 * shared / nn } else { 0 }
+                    );
                 }
             }
             if !sat {
