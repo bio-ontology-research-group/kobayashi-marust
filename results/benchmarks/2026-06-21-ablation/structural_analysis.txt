@@ -1,0 +1,57 @@
+median by group:
+feat              BULK       HT5      ELC4     UNS18
+size         1293513.5    13925139067850.0 1415610.0
+axioms          3704.5       747  198130.0    6218.0
+union              0.0        19      13.0      14.5
+d_union            0.0     0.066       0.0     0.032
+all                0.0        25       0.0       1.0
+d_all              0.0     0.034       0.0       0.0
+compl              0.0         5       0.0       1.0
+inverse            0.0         0       0.0      14.0
+nominal            0.0         0       0.0       0.0
+card               0.0         0       0.0      14.0
+trans              0.0         4       3.0       4.5
+chain              0.0         0       0.0       0.0
+swrl               0.0         0       0.0       0.0
+nonEL              0.0        49      15.0      95.5
+d_nonEL            0.0     0.117       0.0     0.222
+
+=== HT5 (need HT fallback) ===
+  5303    sz=    41889 ax=   224 union=   19 d_union=0.0848 all=   25 inv=   0 nom=   0 card=   0 trans=  4 chain=  0 swrl=  0 d_nonEL=0.2188
+  9024    sz=   139251 ax=   747 union=   50 d_union=0.0669 all=   25 inv=   0 nom=   0 card=   0 trans= 10 chain=  0 swrl=  0 d_nonEL=0.1165
+  12141   sz=   139854 ax=   755 union=   50 d_union=0.0662 all=   25 inv=   0 nom=   0 card=   0 trans= 10 chain=  0 swrl=  0 d_nonEL=0.1152
+  9635    sz=    31711 ax=   111 union=    5 d_union= 0.045 all=   13 inv=   0 nom=   0 card=  18 trans=  0 chain=  0 swrl=  0 d_nonEL=0.3243
+  15491   sz=  3342045 ax= 16484 union=   10 d_union=0.0006 all=    0 inv=   0 nom=   0 card=   0 trans=  4 chain=  0 swrl=  0 d_nonEL=0.0006
+
+=== ELC4 (need certified-elc) ===
+  11460   sz= 41676585 ax=222262 union=   28 d_union=0.0001 all=    0 inv=   0 nom=   0 card=   0 trans=  6 chain=  0 swrl=  0 d_nonEL=0.0001
+  2397    sz=  4995778 ax= 24678 union=    0 d_union=   0.0 all=    0 inv=   0 nom=   0 card=   0 trans=  0 chain=  0 swrl=  0 d_nonEL=0.0002
+  4604    sz= 36459115 ax=173998 union=   26 d_union=0.0001 all=    0 inv=   0 nom=   0 card=   0 trans=  6 chain=  0 swrl=  0 d_nonEL=0.0001
+  7246    sz= 87473279 ax=397133 union=    0 d_union=   0.0 all=    0 inv=   0 nom=   0 card=   0 trans=  0 chain=  0 swrl=  0 d_nonEL=0.0
+
+=== UNSOLVED 18 ===
+  541     sz=    57818 ax=   200 union=   34 d_union=  0.17 all=   92 inv=  18 nom=   0 card=   0 trans=  6 chain=  1 swrl=  0 d_nonEL=0.77
+  1603    sz=   443258 ax=   981 union=   77 d_union=0.0785 all=  406 inv= 101 nom=   0 card=  21 trans=  6 chain=  0 swrl=  0 d_nonEL=0.6208
+  2669    sz=   214560 ax=   125 union=   10 d_union=  0.08 all=    0 inv=   6 nom=   1 card=  18 trans=  2 chain=  0 swrl=  8 d_nonEL=0.632
+  3215    sz= 20131064 ax= 54973 union=18323 d_union=0.3333 all=    0 inv=   0 nom=   0 card=   0 trans=  1 chain=  0 swrl=  0 d_nonEL=0.3333
+  6934    sz=   758659 ax=   529 union=   16 d_union=0.0302 all=   51 inv=  21 nom=   1 card=  17 trans=  8 chain=  0 swrl=  0 d_nonEL=0.2117
+  7499    sz=  2072561 ax= 11455 union=  381 d_union=0.0333 all=    2 inv=  27 nom=   0 card=   1 trans= 29 chain=  6 swrl=  0 d_nonEL=0.036
+  7581    sz= 36833627 ax=179698 union=    0 d_union=   0.0 all=    0 inv=   2 nom=   0 card=   0 trans=  3 chain=  3 swrl=  0 d_nonEL=0.0
+  7914    sz= 15370511 ax= 35397 union=   14 d_union=0.0004 all=    0 inv=  21 nom=   0 card=  27 trans= 38 chain= 33 swrl=  0 d_nonEL=0.0018
+  9540    sz=   728884 ax=    98 union=    9 d_union=0.0918 all=    6 inv=  19 nom=  25 card=  11 trans=  2 chain=  0 swrl=  0 d_nonEL=0.7245
+  9663    sz= 21672555 ax=130282 union=   18 d_union=0.0001 all=    0 inv=  13 nom=   0 card=  18 trans= 20 chain= 30 swrl=  0 d_nonEL=0.0004
+  9724    sz= 10532295 ax= 35531 union=    0 d_union=   0.0 all=    0 inv= 475 nom=   0 card=   0 trans= 58 chain=  0 swrl=  0 d_nonEL=0.0134
+  10621   sz= 28758860 ax=122695 union= 5199 d_union=0.0424 all= 6347 inv=  28 nom=6480 card=   0 trans=  0 chain=  0 swrl=  0 d_nonEL=0.1471
+  10702   sz=   203217 ax=   355 union=    2 d_union=0.0056 all=  117 inv=   2 nom= 207 card=  34 trans=  1 chain=  0 swrl=  0 d_nonEL=1.0225
+  12653   sz=    46250 ax=    62 union=   15 d_union=0.2419 all=    2 inv=   8 nom=   0 card=  17 trans=  0 chain=  2 swrl=  0 d_nonEL=0.6935
+  14817   sz= 25102486 ax=155577 union=   84 d_union=0.0005 all=    0 inv=  10 nom=   0 card=  74 trans= 24 chain= 30 swrl=  0 d_nonEL=0.0011
+  15516   sz=   200879 ax=   113 union=    5 d_union=0.0442 all=    0 inv=   6 nom=   1 card=  18 trans=  2 chain=  0 swrl=  2 d_nonEL=0.6549
+  15672   sz=    70141 ax=   194 union=    2 d_union=0.0103 all=   18 inv=  15 nom=   3 card=   4 trans=  7 chain=  0 swrl=  0 d_nonEL=0.232
+  15803   sz=132287537 ax=411596 union=    0 d_union=   0.0 all=    0 inv=   0 nom=   0 card=   0 trans=  0 chain=  0 swrl=  0 d_nonEL=0.0
+
+=== separability probes ===
+BULK union: median=0.0 p90=1 max=99
+BULK with union>0: 62/560
+onts with union>=50 (9): ['1603', '3215', '6682', '7499', '9024', '10621', '12141', '12698', '14817']
+HT5+UNS with inverse or nominal: ['541', '1603', '2669', '6934', '7499', '7581', '7914', '9540', '9663', '9724', '10621', '10702', '12653', '14817', '15516', '15672']
+onts with SWRL/DLSafeRule (2): ['2669', '15516']
