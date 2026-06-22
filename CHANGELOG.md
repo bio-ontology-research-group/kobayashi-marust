@@ -83,8 +83,26 @@ the full scans), so it is purely a speed change; gated paths (`KM_HT_QO`,
 
 New test `qosat_edge_index_role_chain` drives both paths through a transitive
 `r`-chain (`A ⊑ ∃r.B, B ⊑ ∃r.G, r∘r ⊑ r, r(x,z) ⊓ G(z) ⊑ H`) and asserts the
-closure is unchanged (`H` derived at `node(A)`). This is the saturation core
-Phase 5's lazy per-concept gate needs to be Konclude-fast at corpus scale.
+closure is unchanged (`H` derived at `node(A)`). Also removed the per-node
+`self.global.clone()` in the node-drain loop (an `O(#nodes × |global|)`
+allocation), result-identical.
+
+**Measurement (IBEX, 7581, `KM_HT_FORCE`+`KM_HT_QO`, CB isolated).** This
+re-targets the prior diagnosis. With the indexes in, 7581 QoSat saturation still
+does **not** converge in 420 s (≈1 GB, CPU-bound). Split drain-loop counters
+(`QODRAIN`/`QONODE`/`QOEDGE`) show the run never leaves the **literal**
+(concept-clause) propagation phase: one `QODRAIN` tick (2M lit-pops), **zero**
+node-loop or edge-loop pops. So the role/edge phase the indexes optimise is not
+even reached within budget — 7581's wall is the `O(#seeded-nodes × concept-clause
+fires)` volume of saturating one shared node for each of its 72 989 concepts
+against 455 583 clauses, upstream of the indexed edge phase. The edge index is
+correct and necessary (and a clean win on transitive/role-chain onts that *do*
+reach the edge phase), but it is not by itself the 7581 lever. The genuine next
+lever is architectural, not more saturation indexing: don't seed + saturate 73k
+independent nodes — either extend `elc` to SRIF and route such onts to its
+told-subsumer single pass, or make the gate per-concept (saturate only the
+concept under test). This is the saturation core Phase 5's lazy per-concept gate
+needs; the indexing is a prerequisite, the node-count is the remaining work.
 
 ### Routing: EL-safe giants retry the repair certificate before CB — recovers 15803 + 6212 (565 → 567)
 

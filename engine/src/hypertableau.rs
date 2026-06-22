@@ -57,8 +57,12 @@ static MATCH_MAX: AtomicU64 = AtomicU64::new(0);
 // run to `unsupported` (a sound fallback to CB — never a wrong answer). Production
 // (number off) is untouched: the counter is not even incremented.
 const RMF_STEP_CAP: u64 = 8_000_000;
-// QoSat drain-loop step counter (KM_HT_TRACE diagnostic for inverse divergence).
+// QoSat drain-loop step counters (KM_HT_TRACE diagnostics): lit-pops, node-pops
+// (global ⊤-clause refiring), and edge-pops (role-clause firing). Split so a
+// trace pinpoints which of the three loops dominates at the 73k-node scale.
 static QO_DRAIN: AtomicU64 = AtomicU64::new(0);
+static QO_NODE: AtomicU64 = AtomicU64::new(0);
+static QO_EDGE: AtomicU64 = AtomicU64::new(0);
 thread_local! {
     static RMF_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
@@ -2114,10 +2118,22 @@ impl<'a> QoSat<'a> {
             }
         }
         while let Some(n) = self.node_work.pop() {
+            let e = QO_NODE.fetch_add(1, Ordering::Relaxed);
+            if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "QONODE pops={} global_per_node={} edge_work={} node_work={}",
+                    e, self.global.len(), self.edge_work.len(), self.node_work.len()
+                );
+            }
             if self.node_unsat.contains(&n) {
                 continue;
             }
-            for cid in self.global.clone() {
+            // Fire every global ⊤-clause on the new node. Index loop, not
+            // `self.global.clone()`: cloning the global list once per node was an
+            // O(#nodes × |global|) allocation cost at the 73k-node scale.
+            let glen = self.global.len();
+            for gi in 0..glen {
+                let cid = self.global[gi];
                 self.fire_concept_clause(cid, n);
                 if self.unsupported {
                     return;
@@ -2125,6 +2141,14 @@ impl<'a> QoSat<'a> {
             }
         }
         while let Some((s, r, t)) = self.edge_work.pop() {
+            let e = QO_EDGE.fetch_add(1, Ordering::Relaxed);
+            if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "QOEDGE pops={} edge_work={} lit_work={} node_work={} nodes={}",
+                    e, self.edge_work.len(), self.lit_work.len(),
+                    self.node_work.len(), self.label.len()
+                );
+            }
             // Fire only the role-body clauses that mention this edge's exact
             // role `r`; a clause without `r` in its body is a guaranteed no-op
             // (no body role atom would anchor), so the role index drops only
