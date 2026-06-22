@@ -170,7 +170,7 @@ pub fn run_elc() {
         eprintln!("KM_ELC_TIMING parse={:.2}s ({} clauses)", t1.elapsed().as_secs_f64(), input.clauses.len());
     }
     let t2 = Instant::now();
-    match elcomplete::classify(&input.clauses) {
+    match elcomplete::classify(input.clauses) {
         Some(res) => {
             if timing {
                 eprintln!("KM_ELC_TIMING classify={:.2}s ({} subjects)", t2.elapsed().as_secs_f64(), res.subsumptions.len());

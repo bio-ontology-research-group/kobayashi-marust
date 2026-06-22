@@ -4,6 +4,43 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### `elc` ELK backward-link propagation + parse-tree discard — 8737 classify 63s → 22s, peak 9.7GB → 5.5GB
+
+Ported ELK's core EL++ saturation optimisation (the *backward-link propagation*
+join, "The Incredible ELK" §5) into `elc`, after mapping the ELK Java source
+(`ContextImpl`, `SubsumerBackwardLinkRule`, `SubsumerPropagationRule`,
+`PropagationFromExistentialFillerRule`). Both changes are **result-identical**
+(113 tests pass; 8737 and 16744 both gold-clean, 0 unsound / 0 incomplete).
+
+**Backward-link propagation (time).** After the filler-label indexing, the
+Edge-NF4 rule still rescanned `role_supers(r) × nf4_label[d]` per edge — 4.33B
+hashmap *probes* on 8737 (`KM_ELC_PROFILE`), most of them missing. ELK instead
+keeps, per context, a *propagation* store keyed by role. `elc` now maintains
+`prop[(d, r)] = {E : ∃r.X⊑E, X∈label[d]}` keyed by the **exact** edge role
+(role-subsumption is already handled by the pre-existing edge-lift, which
+materialises every super-role edge as its own worklist item). A new edge `(c,r,d)`
+fires `prop[(d,r)]` with a single hashmap lookup; a new filler-subsumer at `c`
+registers its conclusions into `prop[(c,·)]` and fires the exact-role backward
+links already at `c`. Each (backward link, propagation) pair fires exactly once,
+whichever is created second — the same join ELK's two rules perform. Edge-rule
+hashmap lookups collapse from **4.33B to 23M** (one `prop.get` per edge); the old
+`(role,filler)->[sup]` index is removed. **8737 classify 63s → 22.4s.**
+A propagation-Set dedup (ELK's `propagatedSubsumers_` is a Set) was implemented
+and measured: bucket-duplication on 8737 is <0.5%, so it only added a `contains`
+cost — reverted.
+
+**Parse-tree discard (memory).** ELK drops the OWL parse tree once axioms are
+indexed; `elc` was holding the full input — millions of `JClause`, each owning
+`String` IRIs — alive through saturation (the `&[JClause]` borrow kept it pinned
+in `run_elc`). `to_nf` already interns the EL part into `nfs` (u32-keyed) and
+clones the non-EL part into the residual, so the original clause set is dead from
+there. `classify` now takes the clauses **by value** and drops them right after
+`to_nf`, before saturation, so the parse tree never coexists with the peak
+saturation state. **8737 peak RSS 9.7GB → 5.5GB (−43%)**, 16744 likewise; the
+explicit dealloc adds a few seconds of allocator work on the giants (the OS would
+otherwise reclaim it at process exit) but the giants sit far under the 240s
+timeout, and the headroom matters under the parallel memcap.
+
 ### `elc` NF4 saturation: filler-label indexing — 8737 classify 84s → 63s
 
 Profiling `elc` on the EL giant 8737 (the slowest EL-routed ORE ont) showed the

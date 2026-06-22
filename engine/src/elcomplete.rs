@@ -597,8 +597,11 @@ struct Idx {
     nf1_by_sub: HashMap<u32, Vec<u32>>,        // sub -> [sup]
     nf2_by_sub: HashMap<u32, Vec<(u32, u32)>>, // key -> [(other, sup)]
     nf3_by_sub: HashMap<u32, Vec<(u32, u32)>>, // sub -> [(role, filler)]
-    nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>>, // (role,filler) -> [sup]
-    nf4_by_filler: HashMap<u32, Vec<(u32, u32)>>,      // filler -> [(role, sup)]
+    // NF4 (∃R.D⊑E) indexed by FILLER only: `filler D -> [(role R, sup E)]`. Both
+    // the propagation-registration (Sub rule) and the join (Edge rule, via the
+    // `prop` store) need only this view; the old `(role,filler)->[sup]` index is
+    // gone with the per-edge label rescan it served.
+    nf4_by_filler: HashMap<u32, Vec<(u32, u32)>>, // filler -> [(role, sup)]
     nf5_subs: HashSet<u32>,
     nf7_by_pair: HashMap<(u32, u32), Vec<u32>>, // (r1,r2) -> [sup]
     role_sub: Vec<HashSet<u32>>,                // role -> {super roles} (computed once)
@@ -627,14 +630,18 @@ struct State {
     // rule iterate predecessors with a clone-free index loop (add_sub never
     // mutates in_edges), instead of `.collect()`-ing the set on every Sub item.
     in_edges: Vec<Vec<(u32, u32)>>,
-    // NF4-relevance index of the subsumer label: `nf4_label[c]` is the subset of
-    // `sub_super[c]` whose members are NF4 fillers (∃R.D⊑E for some R,E). The Edge
-    // rule scans this instead of the full label, since only filler subsumers can
-    // fire NF4 -- on transitive ORE giants most label entries are NOT fillers, so
-    // this is the dominant cost cut. `is_filler[d]` (set once at init) gates the
-    // append in `add_sub`.
-    nf4_label: Vec<Vec<u32>>,
-    is_filler: Vec<bool>,
+    // ELK-style backward-link PROPAGATION store. `prop[(d, r)]` holds the NF4
+    // conclusions `E` such that some filler `X ∈ label[d]` has an axiom
+    // `∃r.X ⊑ E` with `r` the EXACT edge role. Role-subsumption is handled by the
+    // edge-lift (every super-role edge is materialised as its own worklist item),
+    // so an exact-role key suffices. An R-edge `(c,r,d)` then fires `prop[(d,r)]`
+    // into `c` with a single hashmap lookup, replacing the per-edge rescan of the
+    // whole filler label crossed with the role closure (`role_supers(r) ×
+    // nf4_label[d]`). This is the ELK join: each (backward link, propagation)
+    // pair fires exactly once -- whichever of the two is created second triggers
+    // it. Keyed globally (one map, sparse) rather than a Vec-per-context so a
+    // 400k-node giant pays only for the contexts that actually carry fillers.
+    prop: HashMap<(u32, u32), Vec<u32>>,
     worklist: VecDeque<Item>,
 }
 
@@ -642,9 +649,6 @@ impl State {
     #[inline]
     fn add_sub(&mut self, c: u32, d: u32) {
         if self.sub_super[c as usize].insert(d) {
-            if self.is_filler[d as usize] {
-                self.nf4_label[c as usize].push(d);
-            }
             self.worklist.push_back(Item::Sub(c, d));
         }
     }
@@ -665,8 +669,7 @@ impl State {
             sub_super: self.sub_super.clone(),
             edges: self.edges.clone(),
             in_edges: self.in_edges.clone(),
-            nf4_label: self.nf4_label.clone(),
-            is_filler: self.is_filler.clone(),
+            prop: self.prop.clone(),
             worklist: VecDeque::new(),
         }
     }
@@ -689,14 +692,11 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
     for a in &nfs.nf3 {
         nf3_by_sub.entry(a.sub).or_default().push((a.role, a.filler));
     }
-    // NF4 (∃R.D⊑E) indexed two ways so each rule iterates the small static axiom
-    // set rather than the large growing subsumer label / predecessor list:
-    //   by_role[R]    -> [(filler D, sup E)]  (Edge rule: scan axioms, test D∈label)
-    //   by_filler[D]  -> [(role R,   sup E)]  (Sub  rule: only when D is a filler)
-    let mut nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    // NF4 (∃R.D⊑E) indexed by filler D -> [(role R, sup E)]. The Sub rule reads
+    // it to register propagations; the Edge rule consults the `prop` store the
+    // Sub rule fills, so no `(role,filler)` index is needed.
     let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf4 {
-        nf4_by_role_filler.entry((a.role, a.filler)).or_default().push(a.sup);
         nf4_by_filler.entry(a.filler).or_default().push((a.role, a.sup));
     }
     let nf5_subs: HashSet<u32> = nfs.nf5.iter().copied().collect();
@@ -746,7 +746,6 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         nf1_by_sub,
         nf2_by_sub,
         nf3_by_sub,
-        nf4_by_role_filler,
         nf4_by_filler,
         nf5_subs,
         nf7_by_pair,
@@ -757,16 +756,11 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 
 /// Fresh state seeded with the Init rule R₀: C ⊑ C and C ⊑ ⊤ for every concept.
 fn init_state(nfs: &Nfs, n: usize) -> State {
-    let mut is_filler = vec![false; n];
-    for a in &nfs.nf4 {
-        is_filler[a.filler as usize] = true;
-    }
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
         in_edges: vec![Vec::new(); n],
-        nf4_label: vec![Vec::new(); n],
-        is_filler,
+        prop: HashMap::default(),
         worklist: VecDeque::new(),
     };
     for &c in &nfs.concept_names {
@@ -852,21 +846,32 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
                         k += 1;
                     }
                 }
-                // R∃⁻ (NF4): edge (X,S,C) with ∃S'.D ⊑ E, S ⊑ S' ⟹ X ⊑ E. Here D
-                // is the new subsumer `d` of the edge target C, so the rule can
-                // fire only when `d` is an NF4 filler -- gate the predecessor scan
-                // on that (it is rare), instead of scanning in_edges for every
-                // Sub item. `add_sub` never mutates `in_edges`, so the index loop
-                // stays clone-free.
+                // R∃⁻ (NF4) + ELK propagation registration. `d` is a new subsumer
+                // of `c`; if it is an NF4 filler, each axiom `∃R.d ⊑ E` is a new
+                // propagation in context `c`: (a) record it in `prop[(c,R)]` so any
+                // FUTURE edge into `c` with exact role R fires it (edge-side), and
+                // (b) fire it now against the backward links already at `c` -- the
+                // edges into `c` whose EXACT role is R (super-role edges exist by
+                // the lift, so an `==` test suffices; no role-closure scan).
+                // `add_sub` never mutates `in_edges`, so the index loop is
+                // clone-free.
                 if let Some(axs) = idx.nf4_by_filler.get(&d) {
+                    for &(s, e) in axs {
+                        // No dedup: each (c,s,e) propagation is pushed ~once in EL
+                        // (measured bucket-duplication on the 8737 giant is <0.5%),
+                        // so ELK's `propagatedSubsumers_` Set buys nothing here and
+                        // a `contains` guard only adds cost. The residual `add_sub`
+                        // re-fires are confluence (the same `c⊑E` reached via many
+                        // edges), which ELK's join pays identically.
+                        st.prop.entry((c, s)).or_default().push(e);
+                    }
                     let mut k = 0;
                     while k < st.in_edges[c as usize].len() {
                         let (parent, role) = st.in_edges[c as usize][k];
-                        let supers = idx.role_supers(role);
                         prof.nf4_sub_scan += axs.len() as u64;
-                        for &(nf4_role, sup) in axs {
-                            if supers.contains(&nf4_role) {
-                                st.add_sub(parent, sup);
+                        for &(s, e) in axs {
+                            if role == s {
+                                st.add_sub(parent, e);
                             }
                         }
                         k += 1;
@@ -875,32 +880,25 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
             }
             Item::Edge(c, r, d) => {
                 prof.edge_items += 1;
-                // R∃⁻ (NF4): fire the new edge against everything above d.
-                // Collect the matching conclusions during the read-only scan of
-                // sub_super[d] (and idx), then apply them: this replaces the
-                // per-Edge-item clone of the FULL super-set with a `conclusions`
-                // buffer holding only the (usually few, often zero) NF4 hits.
-                // Snapshot semantics are unchanged -- conclusions enabled by the
-                // adds themselves arrive as fresh Sub worklist items. Skipped
-                // entirely when there are no NF4 axioms.
-                // Scan only the NF4-filler subset of the target's label (most
-                // label entries are not fillers and can never fire NF4), instead
-                // of the full `sub_super[d]`. Collect into nf4_buf first so the
-                // label read precedes any add (snapshot-safe even for a self-edge
-                // c==d). nf4_label[d] ⊆ sub_super[d], so this is never worse.
-                if !idx.nf4_by_role_filler.is_empty() {
-                    prof.nf4_edge_scan +=
-                        idx.role_supers(r).len() as u64 * st.nf4_label[d as usize].len() as u64;
-                    nf4_buf.clear();
-                    for &super_role in idx.role_supers(r) {
-                        for &filler in &st.nf4_label[d as usize] {
-                            if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, filler)) {
-                                nf4_buf.extend_from_slice(sups);
-                            }
+                // R∃⁻ (NF4), ELK backward-link join: this new edge `(c,r,d)` is a
+                // backward link arriving at context `d` with EXACT role `r`. Fire
+                // it against the propagations already stored at `d` for that exact
+                // role -- a single hashmap lookup yielding the conclusions `E`
+                // (`∃r.X⊑E`, X∈label[d]), instead of rescanning the whole filler
+                // label crossed with the role closure. Super-role matches are
+                // covered because the lift below materialises a separate edge
+                // (c,super_role,d), which fires `prop[(d,super_role)]` in turn.
+                // Collect into nf4_buf first so the read of `prop` (part of `st`)
+                // ends before any `add_sub` (also `st`); snapshot-safe for a
+                // self-edge c==d. Skipped entirely when there are no NF4 axioms.
+                if !idx.nf4_by_filler.is_empty() {
+                    if let Some(es) = st.prop.get(&(d, r)) {
+                        prof.nf4_edge_scan += es.len() as u64;
+                        nf4_buf.clear();
+                        nf4_buf.extend_from_slice(es);
+                        for &sup in nf4_buf.iter() {
+                            st.add_sub(c, sup);
                         }
-                    }
-                    for &sup in nf4_buf.iter() {
-                        st.add_sub(c, sup);
                     }
                 }
                 // R⊥-edge: edge to a known-unsat target propagates.
@@ -2071,7 +2069,7 @@ pub enum CertMode {
     Repair,
 }
 
-pub fn classify(clauses: &[JClause]) -> Option<ElResult> {
+pub fn classify(clauses: Vec<JClause>) -> Option<ElResult> {
     // Default OFF: on the ORE 2015 corpus every non-EL residual is a live
     // covering disjunction / non-inert inverse bridge / multi-successor
     // functionality, none of which the canonical EL model satisfies, so the
@@ -2274,10 +2272,18 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 /// Core of [`classify`] with the certificate mode explicit (the env read is in
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
-fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<ElResult> {
+fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
     let mut unresolved: Vec<String> = Vec::new();
     let mut it = Interner::new();
-    let (mut nfs, residual, skolem_filler) = to_nf(clauses, &mut it)?;
+    let (mut nfs, residual, skolem_filler) = to_nf(&clauses, &mut it)?;
+    // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
+    // interned the EL part into `nfs` (u32-keyed) and cloned the non-EL part into
+    // `residual`; the original `clauses` (millions of `JClause`, each owning
+    // `String` IRIs -- a multi-GB block on the giants) is dead from here on.
+    // Drop it BEFORE saturation so the parse tree never coexists with the peak
+    // saturation state. On a pure-EL ont (`residual` empty) this is the whole
+    // input freed; the saturation then peaks on the interned state alone.
+    drop(clauses);
     let rcs = if residual.is_empty() {
         Vec::new()
     } else {
@@ -2463,7 +2469,7 @@ mod tests {
         let nf4 = cl(&[r("R", "x", "y"), c("B", "y")], &[c("C", "x")]);
         let refl = cl(&[], &[r("R", "x", "x")]);
         let cs = clauses(&format!("[{},{},{}]", ab, nf4, refl));
-        let res = classify_inner(&cs, CertMode::Off, false).expect("pure EL + reflexive role");
+        let res = classify_inner(cs, CertMode::Off, false).expect("pure EL + reflexive role");
         assert!(
             subs_of(&res, "A").contains(&"C".to_string()),
             "A⊑C via reflexive R: got {:?}",
@@ -2471,7 +2477,7 @@ mod tests {
         );
         // Sanity: drop the reflexive fact and A⊑C must disappear.
         let cs_no = clauses(&format!("[{},{}]", ab, nf4));
-        let res_no = classify_inner(&cs_no, CertMode::Off, false).expect("pure EL");
+        let res_no = classify_inner(cs_no, CertMode::Off, false).expect("pure EL");
         assert!(!subs_of(&res_no, "A").contains(&"C".to_string()));
     }
 
@@ -2490,7 +2496,7 @@ mod tests {
             "[{},{},{},{},{}]",
             refl, chain, ex_role, ex_fill, nf4_t
         ));
-        let res = classify_inner(&cs, CertMode::Off, false).expect("pure EL + reflexive + chain");
+        let res = classify_inner(cs, CertMode::Off, false).expect("pure EL + reflexive + chain");
         assert!(
             subs_of(&res, "A").contains(&"D".to_string()),
             "A⊑D via reflexive R composing R∘S⊑T: got {:?}",
@@ -2507,7 +2513,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("A", "x")], &[c("B", "x"), c("D", "x")]),
         ));
-        let res = classify_inner(&cs, CertMode::Check, false).expect("certificate should pass");
+        let res = classify_inner(cs, CertMode::Check, false).expect("certificate should pass");
         assert!(subs_of(&res, "A").contains(&"B".to_string()));
         assert!(!res.inconsistent);
     }
@@ -2521,7 +2527,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("A", "x")], &[c("D", "x"), c("E", "x")]),
         ));
-        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
+        assert!(classify_inner(cs, CertMode::Check, false).is_none());
     }
 
     #[test]
@@ -2563,14 +2569,14 @@ mod tests {
         );
         let range = cl(&[r("R", "x", "y")], &[c("C", "y")]);
         let cs_fail = clauses(&format!("[{},{}]", base, range));
-        assert!(classify_inner(&cs_fail, CertMode::Check, false).is_none());
+        assert!(classify_inner(cs_fail, CertMode::Check, false).is_none());
         let cs_pass = clauses(&format!(
             "[{},{},{}]",
             base,
             range,
             cl(&[c("B", "x")], &[c("C", "x")]),
         ));
-        let res = classify_inner(&cs_pass, CertMode::Check, false).expect("range satisfied by B ⊑ C");
+        let res = classify_inner(cs_pass, CertMode::Check, false).expect("range satisfied by B ⊑ C");
         assert!(subs_of(&res, "B").contains(&"C".to_string()));
     }
 
@@ -2592,7 +2598,7 @@ mod tests {
                 v("z")
             ),
         ));
-        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
+        assert!(classify_inner(cs, CertMode::Check, false).is_none());
         // With a single successor the functionality constraint holds.
         let cs1 = clauses(&format!(
             "[{},{},{}]",
@@ -2606,7 +2612,7 @@ mod tests {
                 v("z")
             ),
         ));
-        let res = classify_inner(&cs1, CertMode::Check, false).expect("functional with one successor");
+        let res = classify_inner(cs1, CertMode::Check, false).expect("functional with one successor");
         assert!(subs_of(&res, "A").is_empty() || !res.inconsistent);
     }
 
@@ -2617,7 +2623,7 @@ mod tests {
             "[{\"body\":[],\"head\":[{\"kind\":\"concept\",\"concept\":\"A\",\
               \"term\":{\"kind\":\"ind\",\"name\":\"a\"}}]}]",
         );
-        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
+        assert!(classify_inner(cs, CertMode::Check, false).is_none());
     }
 
     #[test]
@@ -2628,7 +2634,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("B", "x")], &[c("C", "x")]),
         ));
-        let res = classify_inner(&cs, CertMode::Check, false).expect("plain EL");
+        let res = classify_inner(cs, CertMode::Check, false).expect("plain EL");
         let a = subs_of(&res, "A");
         assert!(a.contains(&"B".to_string()) && a.contains(&"C".to_string()));
     }
@@ -2648,7 +2654,7 @@ mod tests {
             r("R", "x", "y"),
             c("D", "y")
         );
-        let res = classify_inner(&clauses(&format!("[{},{}]", base, constraint)), CertMode::Check, false)
+        let res = classify_inner(clauses(&format!("[{},{}]", base, constraint)), CertMode::Check, false)
             .expect("constraint body unsatisfied: certificate passes");
         assert!(!res.inconsistent);
         // Now make the successor a D: the constraint is violated in the model.
@@ -2658,7 +2664,7 @@ mod tests {
             constraint,
             cl(&[c("B", "x")], &[c("D", "x")]),
         ));
-        assert!(classify_inner(&cs_fail, CertMode::Check, false).is_none());
+        assert!(classify_inner(cs_fail, CertMode::Check, false).is_none());
     }
 
     // ----- repair-mode certificate -----
@@ -2674,8 +2680,8 @@ mod tests {
             cl(&[], &[c("A", "x"), c("B", "x")]),
             cl(&[c("C", "x")], &[c("D", "x")]),
         ));
-        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
-        let res = classify_inner(&cs, CertMode::Repair, false).expect("repair certifies");
+        assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
+        let res = classify_inner(cs, CertMode::Repair, false).expect("repair certifies");
         assert!(subs_of(&res, "C").contains(&"D".to_string()));
         // The choices must not leak into the answer.
         assert!(!subs_of(&res, "C").contains(&"A".to_string()));
@@ -2697,7 +2703,7 @@ mod tests {
             cl(&[c("B", "x")], &[c("D", "x")]),
             cl(&[c("C", "x")], &[c("C", "x")]),
         ));
-        match classify_inner(&cs, CertMode::Repair, false) {
+        match classify_inner(cs, CertMode::Repair, false) {
             None => {}
             Some(res) => {
                 assert!(
@@ -2727,7 +2733,7 @@ mod tests {
             cl(&[c("B", "x")], &[]),
             cl(&[c("C", "x")], &[c("C", "x")]),
         ));
-        match classify_inner(&cs, CertMode::Repair, false) {
+        match classify_inner(cs, CertMode::Repair, false) {
             None => {}
             Some(res) => {
                 assert!(
@@ -2755,8 +2761,8 @@ mod tests {
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
             cl(&[c("C", "x")], &[c("D", "x")]),
         ));
-        assert!(classify_inner(&cs, CertMode::Check, false).is_none());
-        let res = classify_inner(&cs, CertMode::Repair, false).expect("edge repair certifies");
+        assert!(classify_inner(cs.clone(), CertMode::Check, false).is_none());
+        let res = classify_inner(cs, CertMode::Repair, false).expect("edge repair certifies");
         assert!(subs_of(&res, "C").contains(&"D".to_string()));
         assert!(!res.inconsistent);
     }
@@ -2770,7 +2776,7 @@ mod tests {
             cl(&[c("A", "x")], &[c("B", "x")]),
             cl(&[c("A", "x")], &[c("B", "x"), c("D", "x")]),
         ));
-        let res = classify_inner(&cs, CertMode::Repair, false).expect("base model complete");
+        let res = classify_inner(cs, CertMode::Repair, false).expect("base model complete");
         assert!(subs_of(&res, "A").contains(&"B".to_string()));
     }
 }
