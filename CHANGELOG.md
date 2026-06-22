@@ -104,6 +104,43 @@ told-subsumer single pass, or make the gate per-concept (saturate only the
 concept under test). This is the saturation core Phase 5's lazy per-concept gate
 needs; the indexing is a prerequisite, the node-count is the remaining work.
 
+### Two attempts at a Konclude-fast 7581 saturation: per-concept QoSat gate (sound, too slow) + elc inverse edges (fast, UNSOUND, reverted)
+
+Following the edge-index measurement (the all-nodes saturation never reaches the
+edge phase on 7581), both architectural options the prior entry named were built
+behind flags and measured head-to-head on 7581 (IBEX, CB isolated, gold compare).
+
+**Per-concept QoSat gate (`KM_HT_QO_PC`) — sound, kept, too slow.** Instead of one
+global saturation seeding all 72 989 concepts, classify by running one fresh
+single-seed QoSat saturation per query concept and reading its subsumers off
+(`QoSat::reset` reuses the clause indexes; `complete_roles` re-fires role clauses
+for guard-after-edge completeness; `node_cap` raised). Clash ⇒ unsat; sufficient ⇒
+exact subsumers; insufficient / `Eq`-head ⇒ defer to fallback (sound). Five unit
+tests. **Result: timeout** at 280 s (1.78 GB) — the trace never logs even a
+5000-concept progress tick in 200 s (< 25 concepts/s), because per-concept
+saturation with no told-subsumer sharing re-walks shared sub-closures (≈ O(N²) on
+deep hierarchies). Sound but not the lever; kept gated for the per-concept residue
+path it still enables.
+
+**elc inverse-role edges (`KM_ELC_SRIF`) — fast but UNSOUND, reverted.** Recognised
+inverse bridges `R(x,y)→S(y,x)` as an inverse map and materialised the reversed
+edge `(d,S,c)` for each `(c,R,d)` so the existing backward-link / chain / hierarchy
+rules fire on inverse edges. **Result: 66 s but wrong** — the EL saturation derives
+`⊤⊑⊥` (declares 7581 inconsistent; gold is consistent, 565 k subsumptions). Root
+cause: the EL completion rules (R⊥-edge, NF4, NF7) assume an edge `(c,R,d)` came
+from an existential `c ⊑ ∃R.d`; a materialised inverse edge breaks that invariant,
+so a `⊥` filler propagates back unsoundly. Naive edge reversal is not a sound
+encoding of inverse roles in the shared-context model. **Reverted** (`80001cc`);
+sound ELI needs a separate backward-concept propagation channel (Kazakov's
+consequence-based Horn-SHIQ calculus) — a larger effort.
+
+**Verdict for 7581: neither wins as built** — the per-concept gate is sound but
+too slow, the elc inverse extension is fast but unsound. Both were flag-gated and
+off by default, so neither changed corpus behaviour (the per-concept gate stays in,
+gated; the elc inverse path is reverted). The real lever remains a sound, shared
+(told-subsumer) ELI saturation — efficiency of elc with the soundness of the CB
+engine — not a quick variant of either.
+
 ### Routing: EL-safe giants retry the repair certificate before CB — recovers 15803 + 6212 (565 → 567)
 
 A head-to-head against ELK and Konclude on our 22 remaining failures (their
