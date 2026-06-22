@@ -65,9 +65,49 @@ path, not `elc`.)
   where FxHashSet wins; the NF4 sub-side is already cheap) or N/A to `elc`'s
   edge-based design, and high-risk on the central `sub_super` structure. Skipped.
 
-## Open: memory vs ELK/Konclude
+## Follow-up — routing fix + ELK/Konclude head-to-head (same day, commits 314bec5 / 1e97904)
 
-`elc` peak on 8737 is now 5.5 GB; ELK classifies the EL giants in far less. Next
-step is a head-to-head ELK/Konclude memory comparison to find the remaining gap
-(candidate: the FxHashSet-per-context subsumer store, and the `String`-keyed
-frontend clause encoding that forces the parse-tree allocation in the first place).
+**ELK/Konclude memory comparison** (mined from `km-incr/bigsweep/results.jsonl`).
+The "ELK uses less memory" premise is false on the big EL onts — on 8737 ELK uses
+**16.4 GB** (JVM) and Konclude 7.1 GB, vs KM's new **5.5 GB**. KM is now the
+lightest of the three on the genuine EL giants.
+
+Of our 22 timeout/memout onts, ELK emits a sig for all 22, but ELK is EL-only —
+for non-EL onts it drops the non-EL axioms and returns an incomplete approximation.
+Split by ELK-vs-gold match: only **8 are ELK-correct**; the other 14 ELK only
+approximates (disagrees with gold), so they are not EL-recoverable. Of the 8, two
+(15803, 6212) are EL-safe >100 MB giants KM mis-routed to CB.
+
+**Routing fix** (`orchestrate/mod.rs`): an EL-safe giant whose bare-`elc` attempt
+returns "not EL" now retries `elc` with the repair certificate (bounded by the
+`elc_force` 100 s / 14 GB budgets) before falling to CB.
+
+Re-sweep (IBEX `47711943`, base arm, full corpus, default config):
+
+| measure | BLP-only (47711101) | + routing (47711943) |
+|---|---|---|
+| ok | 565 | **568** |
+| timeout / memout | 20 / 2 | 17 / 2 |
+| gold_match | 565 | **568** |
+| unsound / incomplete | 0 / 0 | **0 / 0** |
+| wall avg / median | 4.67 / 0.41 | 5.01 / 0.47 |
+| peak avg / median (MB) | 938.6 / 112.1 | 933.2 / 112.0 |
+
+Recovered: **15803** (240 s/18 GB timeout → 20.8 s/1.25 GB, gold-clean) and
+**6212** (→ 76.9 s/1.22 GB, gold-clean) from the routing change; **15491** (a prior
+memout) recovered too but it is `el_rbox_safe=False` (CB-bound, untouched by this
+change) — an IBEX-load contention victim that passed on a clean node, so the
+durable gain is **+2 (567)** with 15491 a load-dependent bonus. **Zero new
+failures.**
+
+The remaining 6 ELK-correct failures (1603, 12653, 6934, 10908, 16444, 7581) are
+`el_rbox_safe=False` with nominal/inverse residuals the certificate cannot check —
+they stay CB/HT work. The other 14 are ELK approximations. So the achievable EL
+slice of "pass what ELK passes" is now passed; the rest is CB-engine memory/search,
+not `elc`.
+
+**CI fix** (`1e97904`): CI had been red on *every* commit (pre-existing) because
+`Cargo.lock` omitted the `libc` dependency edge (`libc` was added to `Cargo.toml`
+without refreshing the lock), so `cargo build --locked` refused to proceed. ws
+builds without `--locked` and silently auto-fixed its own lock, hiding the issue.
+Added the one-line edge; CI is now green.
