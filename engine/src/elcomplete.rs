@@ -598,6 +598,7 @@ struct Idx {
     nf2_by_sub: HashMap<u32, Vec<(u32, u32)>>, // key -> [(other, sup)]
     nf3_by_sub: HashMap<u32, Vec<(u32, u32)>>, // sub -> [(role, filler)]
     nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>>, // (role,filler) -> [sup]
+    nf4_by_filler: HashMap<u32, Vec<(u32, u32)>>,      // filler -> [(role, sup)]
     nf5_subs: HashSet<u32>,
     nf7_by_pair: HashMap<(u32, u32), Vec<u32>>, // (r1,r2) -> [sup]
     role_sub: Vec<HashSet<u32>>,                // role -> {super roles} (computed once)
@@ -626,6 +627,14 @@ struct State {
     // rule iterate predecessors with a clone-free index loop (add_sub never
     // mutates in_edges), instead of `.collect()`-ing the set on every Sub item.
     in_edges: Vec<Vec<(u32, u32)>>,
+    // NF4-relevance index of the subsumer label: `nf4_label[c]` is the subset of
+    // `sub_super[c]` whose members are NF4 fillers (∃R.D⊑E for some R,E). The Edge
+    // rule scans this instead of the full label, since only filler subsumers can
+    // fire NF4 -- on transitive ORE giants most label entries are NOT fillers, so
+    // this is the dominant cost cut. `is_filler[d]` (set once at init) gates the
+    // append in `add_sub`.
+    nf4_label: Vec<Vec<u32>>,
+    is_filler: Vec<bool>,
     worklist: VecDeque<Item>,
 }
 
@@ -633,6 +642,9 @@ impl State {
     #[inline]
     fn add_sub(&mut self, c: u32, d: u32) {
         if self.sub_super[c as usize].insert(d) {
+            if self.is_filler[d as usize] {
+                self.nf4_label[c as usize].push(d);
+            }
             self.worklist.push_back(Item::Sub(c, d));
         }
     }
@@ -653,6 +665,8 @@ impl State {
             sub_super: self.sub_super.clone(),
             edges: self.edges.clone(),
             in_edges: self.in_edges.clone(),
+            nf4_label: self.nf4_label.clone(),
+            is_filler: self.is_filler.clone(),
             worklist: VecDeque::new(),
         }
     }
@@ -675,12 +689,15 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
     for a in &nfs.nf3 {
         nf3_by_sub.entry(a.sub).or_default().push((a.role, a.filler));
     }
+    // NF4 (∃R.D⊑E) indexed two ways so each rule iterates the small static axiom
+    // set rather than the large growing subsumer label / predecessor list:
+    //   by_role[R]    -> [(filler D, sup E)]  (Edge rule: scan axioms, test D∈label)
+    //   by_filler[D]  -> [(role R,   sup E)]  (Sub  rule: only when D is a filler)
     let mut nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf4 {
-        nf4_by_role_filler
-            .entry((a.role, a.filler))
-            .or_default()
-            .push(a.sup);
+        nf4_by_role_filler.entry((a.role, a.filler)).or_default().push(a.sup);
+        nf4_by_filler.entry(a.filler).or_default().push((a.role, a.sup));
     }
     let nf5_subs: HashSet<u32> = nfs.nf5.iter().copied().collect();
     let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
@@ -730,6 +747,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         nf2_by_sub,
         nf3_by_sub,
         nf4_by_role_filler,
+        nf4_by_filler,
         nf5_subs,
         nf7_by_pair,
         role_sub,
@@ -739,10 +757,16 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
 
 /// Fresh state seeded with the Init rule R₀: C ⊑ C and C ⊑ ⊤ for every concept.
 fn init_state(nfs: &Nfs, n: usize) -> State {
+    let mut is_filler = vec![false; n];
+    for a in &nfs.nf4 {
+        is_filler[a.filler as usize] = true;
+    }
     let mut st = State {
         sub_super: vec![HashSet::default(); n],
         edges: vec![HashSet::default(); n],
         in_edges: vec![Vec::new(); n],
+        nf4_label: vec![Vec::new(); n],
+        is_filler,
         worklist: VecDeque::new(),
     };
     for &c in &nfs.concept_names {
@@ -755,11 +779,26 @@ fn init_state(nfs: &Nfs, n: usize) -> State {
     st
 }
 
+/// Per-rule scan counters (KM_ELC_PROFILE). Plain u64s, single-threaded, so the
+/// increments are negligible vs the work they measure.
+#[derive(Default)]
+struct Prof {
+    sub_items: u64,
+    edge_items: u64,
+    nf1_scan: u64,
+    nf2_scan: u64,
+    nf3_scan: u64,
+    nf4_sub_scan: u64,  // (in_edge, super_role) lookups in the Sub-NF4 rule
+    nf4_edge_scan: u64, // (super_role, d_super) lookups in the Edge-NF4 rule
+    nf7_scan: u64,      // out-edges scanned in the NF7 rule
+    botback: u64,
+}
+
 /// Run the completion rules to fixpoint over whatever is on `st`'s worklist.
 /// Re-entrant: the certificate repair re-enters with extra seeded facts and the
 /// SAME `idx` (the rule set never changes), so a repaired structure is again
 /// closed under every EL rule — i.e. it stays a model of the EL clause set.
-fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
+fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
     // Empty fallback so an unindexed role still yields the empty super-set
     // without a per-lookup allocation (it never occurs for edge roles in
     // practice, but keeps the borrow simple).
@@ -773,14 +812,17 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
     while let Some(item) = st.worklist.pop_front() {
         match item {
             Item::Sub(c, d) => {
+                prof.sub_items += 1;
                 // R⊑ : C ⊑ D, D ⊑ E ⟹ C ⊑ E  (NF1)
                 if let Some(sups) = idx.nf1_by_sub.get(&d) {
+                    prof.nf1_scan += sups.len() as u64;
                     for &sup in sups {
                         st.add_sub(c, sup);
                     }
                 }
                 // R⊓ : C ⊑ D, C ⊑ D', D ⊓ D' ⊑ E ⟹ C ⊑ E  (NF2)
                 if let Some(cand) = idx.nf2_by_sub.get(&d) {
+                    prof.nf2_scan += cand.len() as u64;
                     for &(other, sup) in cand {
                         if st.sub_super[c as usize].contains(&other) {
                             st.add_sub(c, sup);
@@ -793,6 +835,7 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
                 }
                 // R∃ : C ⊑ D, D ⊑ ∃R.E ⟹ edge (C,R,E)  (NF3)
                 if let Some(edges) = idx.nf3_by_sub.get(&d) {
+                    prof.nf3_scan += edges.len() as u64;
                     for &(role, filler) in edges {
                         st.add_edge(c, role, filler);
                     }
@@ -803,25 +846,27 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
                 if d == BOTTOM {
                     let mut k = 0;
                     while k < st.in_edges[c as usize].len() {
+                        prof.botback += 1;
                         let parent = st.in_edges[c as usize][k].0;
                         st.add_sub(parent, BOTTOM);
                         k += 1;
                     }
                 }
-                // R∃⁻ (NF4): edge (X,S,C) with ∃S'.D ⊑ E, S ⊑ S' ⟹ X ⊑ E.
-                // Hot on transitive/qualified ontologies (the ORE giants encode
-                // transitivity as NF4). `add_sub` never mutates `in_edges`, so a
-                // clone-free index loop replaces the per-Sub-item `.collect()`
-                // of the full predecessor list; skipped entirely with no NF4.
-                if !idx.nf4_by_role_filler.is_empty() {
+                // R∃⁻ (NF4): edge (X,S,C) with ∃S'.D ⊑ E, S ⊑ S' ⟹ X ⊑ E. Here D
+                // is the new subsumer `d` of the edge target C, so the rule can
+                // fire only when `d` is an NF4 filler -- gate the predecessor scan
+                // on that (it is rare), instead of scanning in_edges for every
+                // Sub item. `add_sub` never mutates `in_edges`, so the index loop
+                // stays clone-free.
+                if let Some(axs) = idx.nf4_by_filler.get(&d) {
                     let mut k = 0;
                     while k < st.in_edges[c as usize].len() {
                         let (parent, role) = st.in_edges[c as usize][k];
-                        for &super_role in idx.role_supers(role) {
-                            if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d)) {
-                                for &sup in sups {
-                                    st.add_sub(parent, sup);
-                                }
+                        let supers = idx.role_supers(role);
+                        prof.nf4_sub_scan += axs.len() as u64;
+                        for &(nf4_role, sup) in axs {
+                            if supers.contains(&nf4_role) {
+                                st.add_sub(parent, sup);
                             }
                         }
                         k += 1;
@@ -829,6 +874,7 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
                 }
             }
             Item::Edge(c, r, d) => {
+                prof.edge_items += 1;
                 // R∃⁻ (NF4): fire the new edge against everything above d.
                 // Collect the matching conclusions during the read-only scan of
                 // sub_super[d] (and idx), then apply them: this replaces the
@@ -837,11 +883,18 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
                 // Snapshot semantics are unchanged -- conclusions enabled by the
                 // adds themselves arrive as fresh Sub worklist items. Skipped
                 // entirely when there are no NF4 axioms.
+                // Scan only the NF4-filler subset of the target's label (most
+                // label entries are not fillers and can never fire NF4), instead
+                // of the full `sub_super[d]`. Collect into nf4_buf first so the
+                // label read precedes any add (snapshot-safe even for a self-edge
+                // c==d). nf4_label[d] ⊆ sub_super[d], so this is never worse.
                 if !idx.nf4_by_role_filler.is_empty() {
+                    prof.nf4_edge_scan +=
+                        idx.role_supers(r).len() as u64 * st.nf4_label[d as usize].len() as u64;
                     nf4_buf.clear();
                     for &super_role in idx.role_supers(r) {
-                        for &d_super in &st.sub_super[d as usize] {
-                            if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, d_super)) {
+                        for &filler in &st.nf4_label[d as usize] {
+                            if let Some(sups) = idx.nf4_by_role_filler.get(&(super_role, filler)) {
                                 nf4_buf.extend_from_slice(sups);
                             }
                         }
@@ -857,6 +910,7 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>) {
                 // R∘ (NF7): compose with edges leaving d. Skipped with no chains.
                 if !idx.nf7_by_pair.is_empty() {
                     let out: Vec<(u32, u32)> = st.edges[d as usize].iter().copied().collect();
+                    prof.nf7_scan += out.len() as u64;
                     for (r2, e) in out {
                         if let Some(sups) = idx.nf7_by_pair.get(&(r, r2)) {
                             for &nfsup in sups {
@@ -1732,7 +1786,7 @@ fn repair_certify(
             }
             // Re-close under the EL rules: the repaired structure must again
             // be a model of the EL clause set before the next recheck.
-            run(idx, &mut st, &mut nf4_buf);
+            run(idx, &mut st, &mut nf4_buf, &mut Prof::default());
             // Re-sync merged ids as mirrors of their (closed) representative,
             // so every concept's canonical witness remains in the domain with
             // exactly the representative's labels and edges.
@@ -2264,7 +2318,16 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
         }
     }
     let mut nf4_buf: Vec<u32> = Vec::new();
-    run(&idx, &mut st, &mut nf4_buf);
+    let mut prof = Prof::default();
+    run(&idx, &mut st, &mut nf4_buf, &mut prof);
+    if std::env::var_os("KM_ELC_PROFILE").is_some() {
+        eprintln!(
+            "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
+             nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} botback={}",
+            prof.sub_items, prof.edge_items, prof.nf1_scan, prof.nf2_scan, prof.nf3_scan,
+            prof.nf4_sub_scan, prof.nf4_edge_scan, prof.nf7_scan, prof.botback
+        );
+    }
     let mut res = st;
     // KM_ELC_RESIDUE_STATS: measurement-only. After EL saturation (+ a local
     // common-disjunct hoist), report how many concepts the deterministic

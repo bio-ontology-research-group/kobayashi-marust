@@ -4,6 +4,31 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### `elc` NF4 saturation: filler-label indexing — 8737 classify 84s → 63s
+
+Profiling `elc` on the EL giant 8737 (the slowest EL-routed ORE ont) showed the
+saturation is entirely NF4 (`∃R.D⊑E`): the Edge rule scanned **8.6 billion**
+`(super_role, d_super)` probes (the whole subsumer label `sub_super[d]` per edge)
+and the Sub rule another **1.68 billion** (`KM_ELC_PROFILE` counters; `perf` is
+unavailable on the cluster). NF2/NF7 were zero.
+
+ELK only ever propagates over *existential fillers*, so the label entries that can
+fire NF4 are exactly the ones that are NF4 fillers. Two changes, both
+**byte-identical** (113 tests, same 409836 subjects on 8737):
+- **Edge rule** scans `nf4_label[d]` — the maintained subset of `sub_super[d]`
+  whose members are NF4 fillers (`is_filler` set once at init; the subset is
+  appended in `add_sub`) — instead of the full label. 8.64B → 4.33B probes (about
+  half of 8737's label entries are not fillers).
+- **Sub rule** is gated on the new subsumer `d` actually being an NF4 filler
+  (`nf4_by_filler`), so the predecessor scan runs only when it can fire, not on
+  every Sub item. 1.68B → 505M.
+
+8737 classify **84.3 s → 63.3 s (−25%)**, no result change. (An earlier attempt
+that iterated the NF4 axioms per edge instead was *slower* — 8737 has many NF4
+axioms per role — and was discarded; the filler-label subset is `⊆ sub_super[d]`,
+so it is never worse than the original.) A gated `KM_ELC_PROFILE` prints the
+per-rule scan counters.
+
 ### EL++ reflexive roles in the EL completion (`elc`) — ELK-guided
 
 Native support for `ReflexiveObjectProperty` in the EL fast path, so ontologies
