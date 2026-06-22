@@ -159,9 +159,19 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 let r = plain_role(reg, args[0]).unwrap_or_else(|| format!("{:?}", args[0]));
                 out.push(RboxRecord::Fenced("symmetric-role".to_string(), r));
             }
-            "ReflexiveObjectProperty" | "IrreflexiveObjectProperty" => {
+            "ReflexiveObjectProperty" => {
+                // Reflexive roles are EL++ and handled natively by the EL
+                // completion (self-edge seeding), so this record is EL-safe (see
+                // `el_rbox_safe`). The frontend still emits the `[] -> R(x,x)`
+                // fact that carries the semantics.
                 let r = plain_role(reg, args[0]).unwrap_or_else(|| format!("{:?}", args[0]));
                 out.push(RboxRecord::Fenced("reflexivity".to_string(), r));
+            }
+            "IrreflexiveObjectProperty" => {
+                // Irreflexivity is the negative constraint `R(x,x) -> ⊥`, which EL
+                // completion cannot express; keep it fenced to the CB engine.
+                let r = plain_role(reg, args[0]).unwrap_or_else(|| format!("{:?}", args[0]));
+                out.push(RboxRecord::Fenced("irreflexivity".to_string(), r));
             }
             "FunctionalObjectProperty" => {
                 // in-fragment for SHQ, not fenced
@@ -190,7 +200,7 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
 pub fn el_rbox_safe(records: &[RboxRecord]) -> bool {
     records.iter().all(|r| match r {
         RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
-        RboxRecord::Fenced(reason, _) => reason == "role-chain",
+        RboxRecord::Fenced(reason, _) => reason == "role-chain" || reason == "reflexivity",
         RboxRecord::Inverse(..) => false,
     })
 }
@@ -208,6 +218,7 @@ pub fn el_rbox_safe_relaxed(records: &[RboxRecord], relevant: &HashSet<String>) 
         RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
         RboxRecord::Fenced(reason, role) => {
             reason == "role-chain"
+                || reason == "reflexivity"
                 || (reason == "symmetric-role" && !relevant.contains(role))
         }
         RboxRecord::Inverse(r, s) => !relevant.contains(r) && !relevant.contains(s),

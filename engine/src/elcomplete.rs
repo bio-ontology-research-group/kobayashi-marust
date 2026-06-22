@@ -163,6 +163,10 @@ struct Nfs {
     nf5: Vec<u32>, // A ⊑ ⊥, by sub
     nf6: Vec<Nf6>,
     nf7: Vec<Nf7>,
+    // EL++ reflexive roles (ReflexiveObjectProperty), parsed from the frontend
+    // fact `[] -> R(x,x)`. Closed up the role hierarchy in `build_idx` and
+    // materialised as self-edges in `classify_inner`.
+    reflexive_roles: HashSet<u32>,
     concept_names: HashSet<u32>,
     role_names: HashSet<u32>,
 }
@@ -226,6 +230,7 @@ fn to_nf(
     let mut nf5 = Vec::new();
     let mut nf6 = Vec::new();
     let mut nf7 = Vec::new();
+    let mut reflexive_roles: HashSet<u32> = HashSet::default();
     let mut concept_names: HashSet<u32> = HashSet::default();
     let mut role_names: HashSet<u32> = HashSet::default();
 
@@ -404,6 +409,21 @@ fn to_nf(
             if let JAtom::Role { role, source, target } = hr[0] {
                 let st = tk(target);
                 let sxs = tk(source);
+                // reflexive role: `[] -> R(x,x)` (empty body, R relating one
+                // variable to itself). The frontend emits this for
+                // ReflexiveObjectProperty. Handled natively by seeding self-edges,
+                // so it stays out of the residual. (IrreflexiveObjectProperty is
+                // `R(x,x) -> ⊥`: non-empty body, empty head -- it never reaches
+                // here and still goes to the residual certificate.)
+                if b.is_empty() && h.len() == 1 {
+                    if let (Tk::Var(sv), Tk::Var(tv)) = (&sxs, &st) {
+                        if sv == tv {
+                            let r = addr!(role);
+                            reflexive_roles.insert(r);
+                            continue;
+                        }
+                    }
+                }
                 // existential role: A(x) -> R(x, f(x))
                 if let Tk::Fun(fname) = st {
                     if matches!(sxs, Tk::Var(_))
@@ -552,6 +572,7 @@ fn to_nf(
             nf5,
             nf6,
             nf7,
+            reflexive_roles,
             concept_names,
             role_names,
         },
@@ -580,6 +601,9 @@ struct Idx {
     nf5_subs: HashSet<u32>,
     nf7_by_pair: HashMap<(u32, u32), Vec<u32>>, // (r1,r2) -> [sup]
     role_sub: Vec<HashSet<u32>>,                // role -> {super roles} (computed once)
+    // Reflexive roles closed up the hierarchy: every super-role of a declared
+    // reflexive role is also reflexive (R(x,x) ∧ R⊑S ⟹ S(x,x)).
+    reflexive_closed: HashSet<u32>,
 }
 
 impl Idx {
@@ -693,6 +717,14 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         }
     }
 
+    // Reflexive-role closure: a reflexive role's super-roles are reflexive too.
+    let mut reflexive_closed: HashSet<u32> = HashSet::default();
+    for &r in &nfs.reflexive_roles {
+        for &sup in &role_sub[r as usize] {
+            reflexive_closed.insert(sup);
+        }
+    }
+
     Idx {
         nf1_by_sub,
         nf2_by_sub,
@@ -701,6 +733,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         nf5_subs,
         nf7_by_pair,
         role_sub,
+        reflexive_closed,
     }
 }
 
@@ -2213,6 +2246,23 @@ fn classify_inner(clauses: &[JClause], cert: CertMode, debug: bool) -> Option<El
     let n = it.len();
     let idx = build_idx(&nfs, n);
     let mut st = init_state(&nfs, n);
+    // EL++ reflexive roles: seed a self-edge (C,R,C) at every satisfiable concept
+    // node for each reflexive role (closed up the role hierarchy). The existing
+    // NF4 (∃R.D⊑E), NF7 (R∘S⊑T, both chain positions), ⊥-edge, and role-lift
+    // rules then fire over these edges through the normal fixpoint -- no new rule
+    // logic. This mirrors ELK's `⊤⊑∃R.Self` + ObjectHasSelf decomposition, and
+    // because a self-edge feeds NF7 in both directions it also closes the
+    // reflexive-role-plus-chain corner ELK marks only partially supported.
+    if !idx.reflexive_closed.is_empty() {
+        for &c in &nfs.concept_names {
+            if c == BOTTOM {
+                continue;
+            }
+            for &r in &idx.reflexive_closed {
+                st.add_edge(c, r, c);
+            }
+        }
+    }
     let mut nf4_buf: Vec<u32> = Vec::new();
     run(&idx, &mut st, &mut nf4_buf);
     let mut res = st;
@@ -2339,6 +2389,50 @@ mod tests {
 
     fn subs_of(res: &ElResult, sub: &str) -> Vec<String> {
         res.subsumptions.get(sub).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn reflexive_role_fires_nf4_elimination() {
+        // A ⊑ B, ∃R.B ⊑ C, Reflexive(R) ⟹ A ⊑ C (the reflexive self-edge at A,
+        // whose target A is ⊑ B, satisfies ∃R.B at A). Without reflexivity there
+        // is no edge and A ⋢ C.
+        let ab = cl(&[c("A", "x")], &[c("B", "x")]);
+        let nf4 = cl(&[r("R", "x", "y"), c("B", "y")], &[c("C", "x")]);
+        let refl = cl(&[], &[r("R", "x", "x")]);
+        let cs = clauses(&format!("[{},{},{}]", ab, nf4, refl));
+        let res = classify_inner(&cs, CertMode::Off, false).expect("pure EL + reflexive role");
+        assert!(
+            subs_of(&res, "A").contains(&"C".to_string()),
+            "A⊑C via reflexive R: got {:?}",
+            subs_of(&res, "A")
+        );
+        // Sanity: drop the reflexive fact and A⊑C must disappear.
+        let cs_no = clauses(&format!("[{},{}]", ab, nf4));
+        let res_no = classify_inner(&cs_no, CertMode::Off, false).expect("pure EL");
+        assert!(!subs_of(&res_no, "A").contains(&"C".to_string()));
+    }
+
+    #[test]
+    fn reflexive_role_composes_with_chain() {
+        // Reflexive(R), R∘S ⊑ T, A ⊑ ∃S.B, ∃T.B ⊑ D ⟹ A ⊑ D.
+        // The self-edge (A,R,A) composes with the S-edge (A,S,B) via R∘S⊑T to a
+        // T-edge (A,T,B), which fires the NF4 ∃T.B⊑D. This is the reflexive-role-
+        // plus-chain case ELK marks only partially supported.
+        let refl = cl(&[], &[r("R", "x", "x")]);
+        let chain = cl(&[r("R", "x", "y"), r("S", "y", "z")], &[r("T", "x", "z")]);
+        let ex_role = cl(&[c("A", "x")], &[rf("S", "x", "f")]);
+        let ex_fill = cl(&[c("A", "x")], &[cf("B", "f", "x")]);
+        let nf4_t = cl(&[r("T", "x", "y"), c("B", "y")], &[c("D", "x")]);
+        let cs = clauses(&format!(
+            "[{},{},{},{},{}]",
+            refl, chain, ex_role, ex_fill, nf4_t
+        ));
+        let res = classify_inner(&cs, CertMode::Off, false).expect("pure EL + reflexive + chain");
+        assert!(
+            subs_of(&res, "A").contains(&"D".to_string()),
+            "A⊑D via reflexive R composing R∘S⊑T: got {:?}",
+            subs_of(&res, "A")
+        );
     }
 
     #[test]

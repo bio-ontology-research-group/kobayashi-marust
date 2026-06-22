@@ -4,6 +4,38 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### EL++ reflexive roles in the EL completion (`elc`) — ELK-guided
+
+Native support for `ReflexiveObjectProperty` in the EL fast path, so ontologies
+whose only non-EL RBox feature is reflexivity route to `elc` instead of the CB
+engine. Studied ELK's source first (`liveontologies/elk-reasoner`): it normalizes
+`Reflexive(R)` to `⊤ ⊑ ∃R.Self` and decomposes that into a self-loop link at every
+context (`IndexedObjectHasSelfDecomposition`), letting the ordinary composition /
+range rules fire over it.
+
+The port mirrors that semantics by **seeding self-edges**: `to_nf` parses the
+frontend's reflexive fact `[] → R(x,x)` into a `reflexive_roles` set (instead of
+dumping it to the residual), `build_idx` closes it up the role hierarchy
+(`R(x,x) ∧ R⊑S ⟹ S(x,x)`), and `classify_inner` adds a self-edge `(C,R,C)` at
+every satisfiable concept node. Every existing rule (NF4 `∃R.D⊑E`, NF7 `R∘S⊑T` in
+**both** chain positions, ⊥-edge, role-lift) then fires through the normal
+fixpoint — no new rule logic. Because a materialized self-edge feeds NF7 in both
+directions, this also covers the reflexive-role-plus-chain case ELK marks only
+partially supported.
+
+Routing: `rbox.rs` splits the old shared `"reflexivity"` fence into
+`ReflexiveObjectProperty` (now EL-safe, admitted by `el_rbox_safe` /
+`el_rbox_safe_relaxed`) and `IrreflexiveObjectProperty` (the `R(x,x)→⊥` constraint,
+still fenced to CB).
+
+Validation: 2 new `elc` unit tests (NF4 elimination + reflexive∘chain), full suite
+113/113. On the ORE corpus the change is confined to the 13 reflexive ontologies —
+4 newly route to `elc` (10326, 13078, 8298, 869). The 2 *scored* ones are
+gold-clean **byte-identical** (8298 12200/12200 subs, 869 12224/12224; 0 unsound /
+0 incomplete) and now finish in ~0.25 s / 42–65 MB on `elc`. Full-corpus
+regression sweep: 0 unsound / 0 incomplete (the 9 remaining reflexive onts keep
+their CB routing unchanged).
+
 ### HT speed: blocking refinements + the per-build floor — 5303 10s→8s seq, 5s→4s par
 
 Two more refinements to incremental subset blocking (`KM_HT_INCRBLOCK2`), both
