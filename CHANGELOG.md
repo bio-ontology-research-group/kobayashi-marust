@@ -4,6 +4,61 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Hypertableau toward SHIQ: sound inverse + functional-merge primitive, two routing-gate fixes, and the Konclude saturation diagnosis (foundations, gated)
+
+Groundwork for solving the disjunction / SROIQ family (`ore_ont_1603, 12653,
+16444, 7581, 6934, 9540, 10702, 10908, 15672`) by extending the `Ht`
+hypertableau from ALC(H) toward SHIQ, following HermiT's calculus and Konclude's
+saturation architecture. Everything here is **gated** (`KM_HT_NUMBER`,
+`KM_HT_FORCE`), **zero production impact**, and validated by unit tests; no
+ORE coverage change yet — this lands the validated base plus the diagnosis that
+re-targets the remaining work.
+
+**Inverse roles in `Ht` — sound, unit-tested.** The `cb_to_ht` inverse bridging
+clauses (`r(x,y) → r⁻(y,x)`) already propagate through the existing
+`role_triggers → fire_anchor_edge → HeadItem::Edge` path; the prior "inverse is
+inert" assumption was wrong about the mechanism. Two tests
+(`inverse_role_propagates_universal_back`, `inverse_role_consistent_without_clash`)
+confirm `∀r⁻` propagates back along the materialised inverse edge with no
+over-propagation. `in_edges` now carries a `DepSet` (the shared structural change
+for inverse soundness and node merging).
+
+**Qualified-number node merge (≤n / functional).** Replaced the `apply_head`
+`Eq`-head soundness bail with a node-merge primitive (`Ext::merge_into` +
+`resolve` + `Trail::Merge`, modelled on HermiT's `MergingManager`): the victim's
+concept label and incident edges are copied onto the lower-id survivor under the
+union dependency, trail-recorded so backtracking undoes the whole merge; merged
+victims are excluded from obligation expansion and blocking. A single `Eq` head
+(functionality / ≤1) is a unit merge; multi-`Eq` (≤n, n≥2) still bails soundly.
+Three tests (`functional_merge_forces_clash`, `functional_merge_consistent_when_compatible`,
+`merge_inverse_existential_terminates`). A gated `RMF_STEP_CAP` bounds the body
+matcher so an explosive join falls back soundly to CB instead of hanging.
+
+**Two routing-gate fixes (the reason nothing reached `Ht` before).**
+- `tableau.rs` `run_json` had a second in-fragment gate
+  (`!inp.number && !inp.inverse && nominals.is_empty()`) independent of the
+  `race.rs` routing guard, so every inverse/number ont fell through to the legacy
+  tableau (which hangs on real ORE onts) and never reached `Ht`/QoSat. It now
+  honours `KM_HT_FORCE`, so the engine actually runs on inverse/number onts for
+  measurement.
+- `QoSat` (the non-branching saturator) capped at `QO_NODE_CAP = 8000` nodes,
+  tuned for the tiny 5303-family. Since QoSat seeds one shared node per concept,
+  this bailed instantly on a real ontology (7581 has 72 989 concepts) → fell back
+  to the per-concept branching classify, which hangs. The cap now scales with the
+  concept count.
+
+**Diagnosis (Konclude trace of 7581).** Konclude classifies 7581 in 5.6 s with
+expressiveness `SRIF` (inverse + functional + chains + transitivity; no qualified
+cardinality, no nominals): "*ontology has been sufficiently saturated, extracting
+data for classification*" + 525 ms classification, i.e. essentially **zero**
+tableau tests — the non-branching saturation is sufficient. With the two gates
+fixed, KM's QoSat now runs on 7581 and is **bounded** (~73k nodes, no divergence)
+but **too slow** (naive worklist + an `O(nodes)` match scan for unbound-source
+role atoms; ~860k pending edges). It is a scale/efficiency problem, not soundness
+or termination. The next lever is to make QoSat's saturation edge-indexed — the
+same ELK backward-link-propagation optimisation already in `elc` — or to extend
+`elc` to SRIF and route such onts there.
+
 ### Routing: EL-safe giants retry the repair certificate before CB — recovers 15803 + 6212 (565 → 567)
 
 A head-to-head against ELK and Konclude on our 22 remaining failures (their

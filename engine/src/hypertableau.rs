@@ -50,6 +50,19 @@ use std::time::Instant;
 static MATCH_TOT: AtomicU64 = AtomicU64::new(0);
 static MATCH_MAX: AtomicU64 = AtomicU64::new(0);
 
+// KM_HT_NUMBER safety: a single clause body match (`rec_match_flex`) can blow up
+// into an enormous join over a dense merged graph (the SHIQ ≤n / inverse path),
+// which would hang. Under number-mode only, bound the recursion-step count per
+// anchored fire; on overflow the matcher stops and the caller bails the whole HT
+// run to `unsupported` (a sound fallback to CB — never a wrong answer). Production
+// (number off) is untouched: the counter is not even incremented.
+const RMF_STEP_CAP: u64 = 8_000_000;
+// QoSat drain-loop step counter (KM_HT_TRACE diagnostic for inverse divergence).
+static QO_DRAIN: AtomicU64 = AtomicU64::new(0);
+thread_local! {
+    static RMF_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 use super::{Atom, CLit, Clause, Node, C, R, Var, X};
 
 pub type Level = u32;
@@ -157,6 +170,10 @@ enum Trail {
     /// backtrack the firing (and its pending disjunctions) is undone, so clear
     /// the flag to let it re-fire if the node becomes live again.
     GlobalsFired(Node),
+    /// KM_HT_NUMBER: node `v` was folded into a survivor by a ≤n merge; on
+    /// backtrack revive it (`merged[v] = None`). The copied concepts/edges are
+    /// undone by their own (later) trail entries, so this restores the redirect.
+    Merge(Node),
 }
 
 /// A pending propagation event: a freshly added fact / node whose triggered
@@ -189,7 +206,7 @@ struct Oblig {
 pub struct Ext {
     concepts: Vec<HashMap<CLit, DepSet>>,
     out_edges: Vec<Vec<(R, Node, DepSet)>>,
-    in_edges: Vec<Vec<(R, Node)>>,
+    in_edges: Vec<Vec<(R, Node, DepSet)>>,
     pred: Vec<Option<Node>>,
     blockable: Vec<bool>,
     /// eager mode: per-node flag — its deferred global ⊤-disjunctions have fired.
@@ -211,6 +228,12 @@ pub struct Ext {
     obligations: Vec<Oblig>,
     /// an out-of-ALC(H) head construct was seen ⇒ result is unsound, bail.
     unsupported: bool,
+    /// KM_HT_NUMBER: equality-head (≤n / functional) clauses merge nodes instead
+    /// of bailing. `merged[v] = Some(u)` ⇒ node `v` was folded into survivor `u`
+    /// (a ≤n merge); `resolve` follows the chain. Trail-recorded (`Trail::Merge`).
+    number: bool,
+    merged: Vec<Option<Node>>,
+    merges: u64,
 
     // ---- incremental ("watch") disjunction bookkeeping (KM_HT_WATCH) ----
     /// active ⇒ maintain the indices below so disjunction unit-prop / branch
@@ -308,6 +331,9 @@ impl Ext {
             pending: Vec::new(),
             obligations: Vec::new(),
             unsupported: false,
+            number: std::env::var_os("KM_HT_NUMBER").is_some(),
+            merged: Vec::new(),
+            merges: 0,
             watch: false,
             lit_disj: HashMap::new(),
             dirty: Vec::new(),
@@ -491,6 +517,7 @@ impl Ext {
         self.pred.push(parent);
         self.blockable.push(blockable);
         self.globals_fired.push(false);
+        self.merged.push(None);
         if self.incroblig {
             self.node_obligs.push(Vec::new());
         }
@@ -564,9 +591,70 @@ impl Ext {
             return;
         }
         self.out_edges[s].push((r, t, dep.clone()));
-        self.in_edges[t].push((r, s));
+        self.in_edges[t].push((r, s, dep.clone()));
         self.trail.push(Trail::Edge(r, s, t));
         self.queue.push(Event::Edge(r, s, t));
+    }
+
+    /// Follow the ≤n merge chain to the surviving node (KM_HT_NUMBER). Identity
+    /// when nothing is merged, so callers can resolve unconditionally.
+    #[inline]
+    pub fn resolve(&self, n: Node) -> Node {
+        let mut x = n;
+        while let Some(p) = self.merged[x] {
+            x = p;
+        }
+        x
+    }
+
+    /// KM_HT_NUMBER: fold nodes `a` and `b` together (a ≤n / functional merge).
+    /// The lower-id node survives (keeps the model closer to the root); the
+    /// victim's concept label and incident edges are copied onto the survivor
+    /// under the union of each fact's dep and the merge dependency `mdep`, then
+    /// the victim is redirected (`merged[victim] = survivor`). All copies are
+    /// ordinary trail-recorded `add_concept`/`add_edge`, so a `backtrack_to`
+    /// undoes the whole merge. The merge dep `mdep` flows into every copied fact
+    /// so a resulting clash backjumps past the cardinality clause that forced it.
+    pub fn merge_into(&mut self, a: Node, b: Node, mdep: &DepSet) {
+        let a = self.resolve(a);
+        let b = self.resolve(b);
+        if a == b {
+            return;
+        }
+        let (survivor, victim) = if a <= b { (a, b) } else { (b, a) };
+        self.merges += 1;
+        if std::env::var_os("KM_HT_TRACE").is_some() && self.merges % 100_000 == 0 {
+            eprintln!("MERGE count={} nodes={} trail={}", self.merges, self.concepts.len(), self.trail.len());
+        }
+        self.trail.push(Trail::Merge(victim));
+        self.merged[victim] = Some(survivor);
+        let cs: Vec<(CLit, DepSet)> =
+            self.concepts[victim].iter().map(|(k, v)| (*k, v.clone())).collect();
+        for (lit, d) in cs {
+            let nd = dep_union(&d, mdep);
+            self.add_concept(survivor, lit, &nd);
+            if self.clash.is_some() {
+                return;
+            }
+        }
+        let oes: Vec<(R, Node, DepSet)> = self.out_edges[victim].clone();
+        for (r, t, d) in oes {
+            let t2 = self.resolve(t);
+            let nd = dep_union(&d, mdep);
+            self.add_edge(r, survivor, t2, &nd);
+            if self.clash.is_some() {
+                return;
+            }
+        }
+        let ies: Vec<(R, Node, DepSet)> = self.in_edges[victim].clone();
+        for (r, s, d) in ies {
+            let s2 = self.resolve(s);
+            let nd = dep_union(&d, mdep);
+            self.add_edge(r, s2, survivor, &nd);
+            if self.clash.is_some() {
+                return;
+            }
+        }
     }
 
     pub fn raise_clash(&mut self, dep: DepSet) {
@@ -614,7 +702,7 @@ impl Ext {
                         self.out_edges[s].swap_remove(pos);
                     }
                     if let Some(pos) =
-                        self.in_edges[t].iter().position(|&(rr, ss)| rr == r && ss == s)
+                        self.in_edges[t].iter().position(|&(rr, ss, _)| rr == r && ss == s)
                     {
                         self.in_edges[t].swap_remove(pos);
                     }
@@ -630,6 +718,7 @@ impl Ext {
                     self.pred.pop();
                     self.blockable.pop();
                     self.globals_fired.pop();
+                    self.merged.pop();
                     if self.incroblig {
                         self.node_obligs.pop();
                     }
@@ -637,6 +726,11 @@ impl Ext {
                 Trail::GlobalsFired(node) => {
                     if node < self.globals_fired.len() {
                         self.globals_fired[node] = false;
+                    }
+                }
+                Trail::Merge(v) => {
+                    if v < self.merged.len() {
+                        self.merged[v] = None;
                     }
                 }
             }
@@ -813,6 +907,18 @@ fn rec_match_flex(
     dep: &DepSet,
     out: &mut Vec<(Subst, DepSet)>,
 ) {
+    // KM_HT_NUMBER: bound the join to avoid a hang on an explosive match (see
+    // RMF_STEP_CAP). On overflow stop enumerating; the caller detects it and bails.
+    if ext.number {
+        let over = RMF_STEPS.with(|c| {
+            let v = c.get() + 1;
+            c.set(v);
+            v > RMF_STEP_CAP
+        });
+        if over {
+            return;
+        }
+    }
     // pick the first processable, not-done atom
     let mut pick = None;
     for (k, a) in atoms.iter().enumerate() {
@@ -870,7 +976,7 @@ fn rec_match_flex(
                 }
                 (None, Some(tn)) => {
                     for k2 in 0..ext.in_edges[tn].len() {
-                        let (rr, ss) = ext.in_edges[tn][k2];
+                        let (rr, ss) = { let e = &ext.in_edges[tn][k2]; (e.0, e.1) };
                         if rr == r {
                             if let Some(ed) = edge_dep(ext, r, ss, tn) {
                                 let nd = dep_union(dep, &ed);
@@ -898,6 +1004,21 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
     let head = &clauses[cid].0.head;
     if head.is_empty() {
         ext.raise_clash(bdep.clone());
+        return;
+    }
+    // KM_HT_NUMBER: equality-head clauses (≤n / functionality). A single Eq head
+    // is a forced (unit) merge of the two role successors. Multiple Eq disjuncts
+    // (≤n, n≥2) need a merge branch not yet implemented, so bail soundly there.
+    if ext.number && head.iter().any(|h| matches!(h, Atom::Eq { .. })) {
+        if head.len() == 1 {
+            if let Atom::Eq { s, t } = head[0] {
+                let sn = sigma[s as usize].expect("eq head src bound by body");
+                let tn = sigma[t as usize].expect("eq head dst bound by body");
+                ext.merge_into(sn, tn, bdep);
+                return;
+            }
+        }
+        ext.unsupported = true;
         return;
     }
     let mut satisfied = false;
@@ -1009,7 +1130,17 @@ fn fire_anchor_concept(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: us
     let mut done = vec![false; body.len()];
     done[pos] = true;
     let mut matches: Vec<(Subst, DepSet)> = Vec::new();
+    if ext.number {
+        RMF_STEPS.with(|c| c.set(0));
+    }
     rec_match_flex(ext, body, &mut done, &mut sigma, &dep0, &mut matches);
+    if ext.number && RMF_STEPS.with(|c| c.get()) > RMF_STEP_CAP {
+        if std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("HUGEMATCH cid={} body_len={} join overflow -> bail unsupported", cid, body.len());
+        }
+        ext.unsupported = true;
+        return;
+    }
     let ml = matches.len() as u64;
     MATCH_TOT.fetch_add(ml, Ordering::Relaxed);
     MATCH_MAX.fetch_max(ml, Ordering::Relaxed);
@@ -1040,7 +1171,17 @@ fn fire_anchor_edge(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: usize
     let mut done = vec![false; body.len()];
     done[pos] = true;
     let mut matches: Vec<(Subst, DepSet)> = Vec::new();
+    if ext.number {
+        RMF_STEPS.with(|c| c.set(0));
+    }
     rec_match_flex(ext, body, &mut done, &mut sigma, &dep0, &mut matches);
+    if ext.number && RMF_STEPS.with(|c| c.get()) > RMF_STEP_CAP {
+        if std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("HUGEMATCH cid={} body_len={} join overflow -> bail unsupported", cid, body.len());
+        }
+        ext.unsupported = true;
+        return;
+    }
     let ml = matches.len() as u64;
     MATCH_TOT.fetch_add(ml, Ordering::Relaxed);
     MATCH_MAX.fetch_max(ml, Ordering::Relaxed);
@@ -1871,10 +2012,35 @@ impl<'a> QoSat<'a> {
         for &c in named_concepts {
             self.concept_node_of(CLit::pos(c));
         }
+        // The shared-node model has one node per (named or anonymous) concept, so
+        // the legitimate node count scales with the ontology, not a small constant.
+        // QO_NODE_CAP (tuned for the tiny disjunction family) would bail instantly on
+        // a real 70k-concept ontology. Scale the cap to the seeded concept count plus
+        // generous headroom for ∃-filler / definer nodes.
+        let cap = named_concepts.len().saturating_add(500_000).max(QO_NODE_CAP);
+        let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        if trace {
+            eprintln!(
+                "QOSAT seeded named={} nodes_after_seed={} cap={}",
+                named_concepts.len(),
+                self.label.len(),
+                cap
+            );
+        }
         let mut guard = 0u64;
         loop {
             guard += 1;
-            if guard > 50_000_000 || self.label.len() > QO_NODE_CAP {
+            if trace && guard % 100 == 0 {
+                eprintln!(
+                    "QOSAT guard={} nodes={} lit_work={} edge_work={} node_work={} pending={} open_disj={}",
+                    guard, self.label.len(), self.lit_work.len(), self.edge_work.len(),
+                    self.node_work.len(), self.pending.len(), self.open_disj
+                );
+            }
+            if guard > 50_000_000 || self.label.len() > cap {
+                if trace {
+                    eprintln!("QOSAT BAIL unsupported guard={} nodes={}", guard, self.label.len());
+                }
                 self.unsupported = true;
                 return self.finish_global();
             }
@@ -1901,6 +2067,14 @@ impl<'a> QoSat<'a> {
     /// edge-triggered role clauses, and harvest obligations.
     fn drain_work(&mut self) {
         while let Some((n, lit)) = self.lit_work.pop() {
+            let d = QO_DRAIN.fetch_add(1, Ordering::Relaxed);
+            if d > 0 && d % 2_000_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "QODRAIN steps={} nodes={} lit_work={} edge_work={} node_work={} pending={}",
+                    d, self.label.len(), self.lit_work.len(), self.edge_work.len(),
+                    self.node_work.len(), self.pending.len()
+                );
+            }
             if self.node_unsat.contains(&n) {
                 continue;
             }
@@ -2927,8 +3101,8 @@ impl Ht {
                 sig.push(SEP);
                 let mut e: Vec<u64> = self.ext.in_edges[n]
                     .iter()
-                    .filter(|(_, s)| *s == p)
-                    .map(|(r, _)| *r as u64)
+                    .filter(|(_, s, _)| *s == p)
+                    .map(|(r, _, _)| *r as u64)
                     .collect();
                 e.sort_unstable();
                 e.dedup();
@@ -3053,6 +3227,15 @@ impl Ht {
                         }
                         lists[e].push(n);
                     }
+                }
+            }
+        }
+        // KM_HT_NUMBER: a ≤n-merged victim is dead — exclude it (mark blocked so
+        // it is neither expanded nor branched, and "a blocked node never blocks").
+        if self.ext.number {
+            for n in 0..nn {
+                if self.ext.merged[n].is_some() {
+                    blocked[n] = true;
                 }
             }
         }
@@ -3349,6 +3532,11 @@ impl Ht {
                         let o = &self.ext.obligations[i];
                         (o.n, o.r, o.fil)
                     };
+                    if self.ext.merged[n].is_some() {
+                        // victim of a ≤n merge: its ∃ was copied to the survivor.
+                        self.ext.oblig_sat[i] = true;
+                        continue;
+                    }
                     if has_rsucc(&self.ext, n, r, fil) {
                         self.ext.oblig_sat[i] = true;
                         continue;
@@ -3371,6 +3559,9 @@ impl Ht {
                         let o = &self.ext.obligations[i];
                         (o.n, o.r, o.fil)
                     };
+                    if self.ext.merged[n].is_some() {
+                        continue;
+                    }
                     if ancestor_blocked(&self.ext, n) || has_rsucc(&self.ext, n, r, fil) {
                         continue;
                     }
@@ -3389,6 +3580,9 @@ impl Ht {
                     let o = &self.ext.obligations[i];
                     (o.n, o.r, o.fil)
                 };
+                if self.ext.merged[n].is_some() {
+                    continue;
+                }
                 let is_blk = match &blocked {
                     Some(b) => b[n],
                     None => ancestor_blocked(&self.ext, n),
@@ -4679,7 +4873,13 @@ impl Ht {
         // this saturated shared model, with trail rollback — the Konclude
         // architecture. No `self.consistent()` (the 671-node fresh rebuild) is
         // needed; `None` from a residue test ⇒ bail to the caller's fallback. ---
+        if std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("QOC entry queries={} clauses={}", queries.len(), self.clauses.len());
+        }
         let mut qs = QoSat::new(&self.clauses);
+        if std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("QOC QoSat::new done, calling saturate_global");
+        }
         let g = qs.saturate_global(&named_concepts);
         if g.unsupported {
             return None;
@@ -5080,6 +5280,96 @@ mod tests {
     #[test]
     fn infinite_chain_blocks_and_terminates() {
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)])];
+        assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
+    }
+    #[test]
+    fn inverse_role_propagates_universal_back() {
+        // r and s = r⁻ with the cb_to_ht bridging clauses. A ⊑ ∃r.B and
+        // B ⊑ ∀r⁻.¬A: the r-successor's back r⁻-edge to the root forces ¬A at
+        // the root, which carries A ⇒ {A} is unsat. Verifies that an inverse
+        // edge is materialised (bridging clause fires on the ∃-created edge) and
+        // that a ∀ over the inverse role propagates back along it.
+        const S: R = 1; // r⁻
+        let cls = vec![
+            // A ⊑ ∃r.B
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            // bridging: r(x,y) → r⁻(y,x)
+            Clause::new(vec![role(R0, X, 1)], vec![role(S, 1, X)]),
+            // bridging: r⁻(x,y) → r(y,x)
+            Clause::new(vec![role(S, X, 1)], vec![role(R0, 1, X)]),
+            // B ⊑ ∀r⁻.¬A  ==  B(x) ∧ r⁻(x,y) → ¬A(y)
+            Clause::new(vec![con(false, B, X), role(S, X, 1)], vec![con(true, A, 1)]),
+        ];
+        assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn inverse_role_consistent_without_clash() {
+        // Same shape, but the back-propagated universal is ∀r⁻.¬D and D never
+        // holds at the root, so no clash ⇒ {A} is consistent. Guards against a
+        // spurious inverse clash (over-propagation).
+        const S: R = 1; // r⁻
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, 1)], vec![role(S, 1, X)]),
+            Clause::new(vec![role(S, X, 1)], vec![role(R0, 1, X)]),
+            Clause::new(vec![con(false, B, X), role(S, X, 1)], vec![con(true, D, 1)]),
+        ];
+        assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
+    }
+    #[test]
+    fn functional_merge_forces_clash() {
+        // KM_HT_NUMBER: r functional (≤1 r): r(x,y1) ∧ r(x,y2) → y1 = y2.
+        // A ⊑ ∃r.B, A ⊑ ∃r.C, B ⊓ C ⊑ ⊥. The two distinct r-successors are
+        // merged by the functional clause; the survivor then carries both B and
+        // C, which clash ⇒ {A} unsat. Verifies the Eq-head node-merge primitive
+        // (copies the victim's label onto the survivor, with the merge dep).
+        const C2: C = 2; // C, disjoint from B
+        // Harmless to leave set for the test binary: only Eq-head clauses consult
+        // `number`, and no other test uses Eq heads.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
+            // functional r: r(x,y1) ∧ r(x,y2) → y1 = y2
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            // B ⊓ C ⊑ ⊥
+            Clause::new(vec![con(false, B, X), con(false, C2, X)], vec![]),
+        ];
+        assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn merge_inverse_existential_terminates() {
+        // Functional r merges A's two r-successors; the merged node carries B,
+        // which fires ∃ over the inverse role s=r⁻, and the bridging clauses
+        // re-materialise edges. Exercises merge × inverse × ∃-over-inverse
+        // together — must terminate (the back-edge to the root satisfies ∃s.A).
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const S: R = 1; // r⁻
+        const C2: C = 2;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
+            // r functional
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            // inverse bridging r <-> s
+            Clause::new(vec![role(R0, X, 1)], vec![role(S, 1, X)]),
+            Clause::new(vec![role(S, X, 1)], vec![role(R0, 1, X)]),
+            // B ⊑ ∃s.A : the merged node spawns an r-predecessor labelled A
+            Clause::new(vec![con(false, B, X)], vec![exists(S, false, A, X)]),
+        ];
+        let _ = ht(cls).consistent(&[CLit::pos(A)]);
+    }
+    #[test]
+    fn functional_merge_consistent_when_compatible() {
+        // Same functional r, but the two successors carry B and D which are NOT
+        // disjoint, so the merge yields a consistent survivor ⇒ {A} sat. Guards
+        // against a spurious merge clash.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+        ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
     }
     #[test]

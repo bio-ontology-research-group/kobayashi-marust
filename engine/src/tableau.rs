@@ -4490,10 +4490,13 @@ pub fn run_json(input: &str) -> Result<String, String> {
     // recurses once per active branching point. Falls back to the legacy
     // tableau if the KB is out of the ALC(H) fragment or the engine reports an
     // out-of-fragment construct (returns None).
+    // KM_HT_FORCE bypasses the in-fragment gate so the Ht engine (incl. the
+    // experimental SHIQ inverse/number merge path + KM_HT_QO) actually runs on
+    // inverse/number onts for measurement — otherwise such onts fall through to
+    // the legacy tableau here, never reaching Ht.
+    let ht_force = std::env::var_os("KM_HT_FORCE").is_some();
     if std::env::var_os("KM_HT").is_some()
-        && !inp.number
-        && !inp.inverse
-        && inp.nominals.is_empty()
+        && (ht_force || (!inp.number && !inp.inverse && inp.nominals.is_empty()))
     {
         let ht_clauses = clauses.clone();
         let q = queries.clone();
