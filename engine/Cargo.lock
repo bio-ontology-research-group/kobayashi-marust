@@ -108,6 +108,7 @@ name = "kobayashi-marust"
 version = "0.1.0"
 dependencies = [
  "dhat",
+ "libc",
  "rayon",
  "serde",
  "serde_json",
