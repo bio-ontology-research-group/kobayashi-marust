@@ -4,6 +4,41 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Routing: EL-safe giants retry the repair certificate before CB — recovers 15803 + 6212 (565 → 567)
+
+A head-to-head against ELK and Konclude on our 22 remaining failures (their
+recorded `peak_mb`/`wall_s` in the bigsweep) showed that **8** of them ELK
+classifies *correctly* (gold-match) in seconds at <3 GB while KM times out — and
+two, **15803** and **6212**, are EL-safe **>100 MB giants**. For giants the
+`elc`-portfolio is suppressed (racing CB and `elc` concurrently OOMs on a
+>100 MB ont), so an EL-safe giant with a non-EL TBox residual (a covering
+disjunction here) fell to *bare* `elc` with the certificate **off**, bailed
+before saturating, and went to the CB engine — which blows up to 18 GB and times
+out at 240 s.
+
+Fix (`orchestrate/mod.rs`): when the bare-`elc` attempt on an EL-safe giant
+returns "not EL", **retry `elc` with the repair certificate** (`KM_ELC_CERT=2`),
+bounded by the existing `elc_force` wall (100 s) and RSS (14 GB) budgets, before
+falling through to CB. When the canonical EL model certifies the residual — an
+inert / covering disjunction whose EL answer is already complete, exactly what
+ELK computes by dropping the non-EL axioms — `elc` answers soundly in EL time and
+memory. The retry runs `elc` alone (sequential), so it does not reintroduce the
+concurrent-race OOM the giant suppression avoids; the pure-EL giants (8737,
+16744, no residual) solve on the first attempt and are untouched.
+
+Result (full `km classify`, default config, gold = Konclude):
+- 15803: 240 s timeout / 18 GB → **20.7 s / 1.26 GB, gold-clean** (2 432 194 subs)
+- 6212: 240 s timeout / 18 GB → **76.8 s / 1.24 GB, gold-clean** (243 963 subs)
+- 8737 / 16744: unchanged, gold-clean.
+
+The other 6 ELK-correct failures (1603, 12653, 6934, 10908, 16444, 7581) are
+`el_rbox_safe=False`: their residual is an uncheckable shape (nominals / inverse)
+on which the certificate bails, or it saturates then fails — they remain CB/HT
+work. The other 14 of the 22 are cases where ELK only *approximates* (drops the
+non-EL axioms and disagrees with gold), so they are not EL-recoverable. Note: on
+the genuine EL giants KM now uses **less** memory than ELK (8737: ELK 16.4 GB JVM
+vs KM 5.5 GB).
+
 ### `elc` ELK backward-link propagation + parse-tree discard — 8737 classify 63s → 22s, peak 9.7GB → 5.5GB
 
 Ported ELK's core EL++ saturation optimisation (the *backward-link propagation*

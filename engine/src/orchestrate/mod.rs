@@ -205,6 +205,34 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
             // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
             let res = engine_run::run_engine(&elc_prog, &elc_pre, clauses_path.path(), None, None, None, &[], false)?;
             out = handle_elc_result(cfg, res, clauses_path.path())?;
+            if out.is_none() {
+                // EL-safe RBox but a non-EL TBox residual (covering disjunction /
+                // nominal / cardinality), so cert-off elc bailed before saturating.
+                // This branch is reached only when the portfolio is suppressed —
+                // i.e. for the >100MB giants, where racing CB and elc concurrently
+                // would OOM. Retry elc alone with the repair certificate: when the
+                // canonical EL model certifies the residual (an inert/covering
+                // disjunction whose EL answer is already complete — exactly what
+                // ELK computes by dropping the non-EL axioms), elc answers soundly
+                // in EL time and memory instead of the CB engine blowing up.
+                // Bounded by wall+RSS so a failing certificate still falls through
+                // to CB. Recovers EL-safe giants 15803, 6212 (240s/18GB timeout →
+                // ~25s/82s at 1.2GB, gold-clean) while leaving the pure-EL giants
+                // (no residual, solved on the first attempt) untouched.
+                let res = engine_run::run_engine(
+                    &elc_prog,
+                    &elc_pre,
+                    clauses_path.path(),
+                    None,
+                    Some(cfg.elc_force_mem_gb),
+                    Some(cfg.elc_force_budget_s),
+                    &[("KM_ELC_CERT", "2")],
+                    false,
+                )?;
+                if !(res.oom || res.timed_out) {
+                    out = handle_elc_result(cfg, res, clauses_path.path())?;
+                }
+            }
         } else if !meta.el_rbox_safe && !portfolio_on && cfg.elc_force {
             // KM_ELC_FORCE: attempt elc on a non-EL-safe RBox; only a passing
             // completeness certificate lets it answer, and a failing attempt can
