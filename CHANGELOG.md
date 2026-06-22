@@ -59,6 +59,33 @@ or termination. The next lever is to make QoSat's saturation edge-indexed — th
 same ELK backward-link-propagation optimisation already in `elc` — or to extend
 `elc` to SRIF and route such onts there.
 
+### QoSat saturation made edge-indexed (the elc backward-link optimisation, ported)
+
+Removes the two `O(nodes)`/`O(#role-clauses)` scans that made QoSat diverge at
+the 73k-node scale the 7581 diagnosis identified, porting the exact two index
+structures `elc` already uses for ELK backward-link propagation. **Result-identical
+by construction** (same clauses fire, same matches found — only located without
+the full scans), so it is purely a speed change; gated paths (`KM_HT_QO`,
+`KM_HT_HARVEST`) keep their semantics.
+
+- **Incoming-edge index (`QoSat::in_edges`).** `match_body`'s unbound-source role
+  case (`r(x, tn)` with `tn` bound, `x` free) scanned all nodes
+  (`for sn in 0..label.len()`) to find predecessors of `tn` — `O(#nodes)` per
+  match, the dominant cost on transitive / role-chain onts. It now reads
+  `in_edges[tn]` (the `(role, source)` list maintained alongside `out_edges`),
+  so predecessor enumeration is `O(in-degree)`. The index is trail-recorded and
+  rolled back with its out-edge (residue-test DFS stays consistent).
+- **Role-keyed clause firing (`QoSat::role_clause_trig`).** The edge worklist
+  cloned the entire `role_clauses` list and fired every one on each new edge.
+  Role clauses are now indexed by the exact role(s) in their body, so an `r`-edge
+  fires only clauses mentioning `r` (a clause without `r` cannot anchor — a
+  guaranteed no-op), and clones a tiny per-role bucket instead of the whole list.
+
+New test `qosat_edge_index_role_chain` drives both paths through a transitive
+`r`-chain (`A ⊑ ∃r.B, B ⊑ ∃r.G, r∘r ⊑ r, r(x,z) ⊓ G(z) ⊑ H`) and asserts the
+closure is unchanged (`H` derived at `node(A)`). This is the saturation core
+Phase 5's lazy per-concept gate needs to be Konclude-fast at corpus scale.
+
 ### Routing: EL-safe giants retry the repair certificate before CB — recovers 15803 + 6212 (565 → 567)
 
 A head-to-head against ELK and Konclude on our 22 remaining failures (their

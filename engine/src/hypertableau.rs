@@ -1790,6 +1790,12 @@ struct QoSat<'a> {
     clauses: &'a [ClauseRec],
     label: Vec<HashSet<CLit>>,
     out_edges: Vec<Vec<(R, Node)>>,
+    /// Incoming-edge index per node: `in_edges[t]` holds `(role, source)` for
+    /// every edge `(source, role, t)`. The elc-style backward-link index — lets
+    /// the role-body matcher find a node's predecessors in O(in-degree) instead
+    /// of scanning all nodes, the O(#nodes) cost that made QoSat diverge at the
+    /// 73k-node scale (the `(None, Some(tn))` case in `match_body`).
+    in_edges: Vec<Vec<(R, Node)>>,
     /// shared node for a concept literal (pos and neg both keyed).
     concept_node: HashMap<CLit, Node>,
     /// parked disjunctions: (node, clause_id); re-evaluated as labels grow.
@@ -1800,7 +1806,11 @@ struct QoSat<'a> {
     edge_work: Vec<(Node, R, Node)>,
     node_work: Vec<Node>,
     concept_trig: HashMap<CLit, Vec<usize>>,
-    role_clauses: Vec<usize>,
+    /// Role-body clauses indexed by the EXACT role(s) appearing in their body —
+    /// the elc exact-role keying. A freshly added `r`-edge fires only the
+    /// clauses whose body mentions `r`, instead of re-scanning every role
+    /// clause per edge (the other O(#role-clauses)-per-edge cost at scale).
+    role_clause_trig: HashMap<R, Vec<usize>>,
     global: Vec<usize>,
     unsupported: bool,
     open_disj: usize,
@@ -1844,7 +1854,7 @@ const QO_NODE_CAP: usize = 8000;
 impl<'a> QoSat<'a> {
     fn new(clauses: &'a [ClauseRec]) -> QoSat<'a> {
         let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
-        let mut role_clauses = Vec::new();
+        let mut role_clause_trig: HashMap<R, Vec<usize>> = HashMap::new();
         let mut global = Vec::new();
         for (cid, rec) in clauses.iter().enumerate() {
             let body = &rec.1;
@@ -1854,7 +1864,17 @@ impl<'a> QoSat<'a> {
             }
             let has_role = body.iter().any(|a| matches!(a, Atom::Role { .. }));
             if has_role {
-                role_clauses.push(cid);
+                // Index by each DISTINCT role in the body, deduped so a clause
+                // with two atoms of the same role is registered once for it.
+                let mut roles_seen: Vec<R> = Vec::new();
+                for a in body {
+                    if let Atom::Role { r, .. } = a {
+                        if !roles_seen.contains(r) {
+                            roles_seen.push(*r);
+                            role_clause_trig.entry(*r).or_default().push(cid);
+                        }
+                    }
+                }
             } else {
                 for a in body {
                     if let Atom::Concept { lit, .. } = a {
@@ -1867,6 +1887,7 @@ impl<'a> QoSat<'a> {
             clauses,
             label: Vec::new(),
             out_edges: Vec::new(),
+            in_edges: Vec::new(),
             concept_node: HashMap::new(),
             pending: Vec::new(),
             node_unsat: HashSet::new(),
@@ -1874,7 +1895,7 @@ impl<'a> QoSat<'a> {
             edge_work: Vec::new(),
             node_work: Vec::new(),
             concept_trig,
-            role_clauses,
+            role_clause_trig,
             global,
             unsupported: false,
             open_disj: 0,
@@ -1887,6 +1908,7 @@ impl<'a> QoSat<'a> {
         let id = self.label.len();
         self.label.push(HashSet::new());
         self.out_edges.push(Vec::new());
+        self.in_edges.push(Vec::new());
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
@@ -1960,6 +1982,7 @@ impl<'a> QoSat<'a> {
             return;
         }
         self.out_edges[s].push((r, t));
+        self.in_edges[t].push((r, s));
         self.edge_work.push((s, r, t));
         if self.tracing {
             self.trail.push(QoUndo::Edge(s, r, t));
@@ -2102,11 +2125,17 @@ impl<'a> QoSat<'a> {
             }
         }
         while let Some((s, r, t)) = self.edge_work.pop() {
-            let rcs = self.role_clauses.clone();
-            for cid in rcs {
-                self.fire_role_clause(cid, s, r, t);
-                if self.unsupported {
-                    return;
+            // Fire only the role-body clauses that mention this edge's exact
+            // role `r`; a clause without `r` in its body is a guaranteed no-op
+            // (no body role atom would anchor), so the role index drops only
+            // no-ops — result-identical, and clones a tiny per-role bucket
+            // instead of the whole role-clause list on every edge.
+            if let Some(cids) = self.role_clause_trig.get(&r).cloned() {
+                for cid in cids {
+                    self.fire_role_clause(cid, s, r, t);
+                    if self.unsupported {
+                        return;
+                    }
                 }
             }
         }
@@ -2263,10 +2292,14 @@ impl<'a> QoSat<'a> {
                     if let Some(out) = self.out_edges.get_mut(s) {
                         out.retain(|(rr, tt)| !(*rr == r && *tt == t));
                     }
+                    if let Some(inc) = self.in_edges.get_mut(t) {
+                        inc.retain(|(rr, ss)| !(*rr == r && *ss == s));
+                    }
                 }
                 QoUndo::NodeNew => {
                     self.label.pop();
                     self.out_edges.pop();
+                    self.in_edges.pop();
                 }
                 QoUndo::Unsat(n) => {
                     self.node_unsat.remove(&n);
@@ -2575,8 +2608,12 @@ impl<'a> QoSat<'a> {
                     }
                 }
                 (None, Some(tn)) => {
-                    for sn in 0..self.label.len() {
-                        if self.out_edges[sn].iter().any(|(rr, tt)| *rr == *r && *tt == tn) {
+                    // Predecessors of `tn` over role `r`, via the incoming-edge
+                    // index — O(in-degree of tn), not O(#nodes). `in_edges[tn]`
+                    // holds `(role, source)` for every edge into `tn`, so this
+                    // enumerates exactly the same `sn` the full scan did.
+                    for &(rr, sn) in &self.in_edges[tn] {
+                        if rr == *r {
                             sigma[*s as usize] = Some(sn);
                             self.match_body(body, done, sigma, out);
                             sigma[*s as usize] = None;
@@ -5553,5 +5590,40 @@ mod tests {
         assert_eq!(mb, nv);
         assert!(mb.contains(&(A, B)) && mb.contains(&(A, D)) && mb.contains(&(B, D)));
         assert!(!mb.contains(&(B, A)) && !mb.contains(&(D, A)));
+    }
+
+    #[test]
+    fn qosat_edge_index_role_chain() {
+        // Drives BOTH elc-style edge indexes in QoSat saturation:
+        //  - role_clause_trig: a fresh r-edge fires only role clauses mentioning
+        //    r (transitivity + the join clause below), not every role clause.
+        //  - in_edges: the (None, Some) predecessor branch of match_body, hit
+        //    when transitivity anchors its SECOND atom r(y,z) on a new edge and
+        //    must find the predecessor x with r(x,y) via the incoming index.
+        // A ⊑ ∃r.B, B ⊑ ∃r.G, r∘r ⊑ r, r(x,z) ⊓ G(z) ⊑ H.  Seeding A builds the
+        // shared chain  node(A) --r--> node(B) --r--> node(G);  transitivity
+        // derives node(A) --r--> node(G) (this is the in_edges-driven step), and
+        // the join clause then puts H on node(A). The result is exact (Horn, no
+        // parked disjunction), so it is a faithful check that the indexed
+        // saturation derives the same closure the full scan would.
+        const G: C = 4;
+        const H: C = 5;
+        let y: Var = 1;
+        let z: Var = 2;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, G, X)]),
+            Clause::new(vec![role(R0, X, y), role(R0, y, z)], vec![role(R0, X, z)]),
+            Clause::new(vec![role(R0, X, z), con(false, G, z)], vec![con(false, H, X)]),
+        ];
+        let recs = mk_recs(&cls);
+        let mut qs = QoSat::new(&recs);
+        let g = qs.saturate_global(&[A]);
+        assert!(!g.unsupported, "saturation must converge in-fragment");
+        let na = qs.concept_node[&CLit::pos(A)];
+        assert!(
+            g.label_pos[na].contains(&H),
+            "H must be derived at node(A) via the transitive r-chain"
+        );
     }
 }
