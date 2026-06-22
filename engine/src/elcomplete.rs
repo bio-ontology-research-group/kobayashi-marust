@@ -167,6 +167,8 @@ struct Nfs {
     // fact `[] -> R(x,x)`. Closed up the role hierarchy in `build_idx` and
     // materialised as self-edges in `classify_inner`.
     reflexive_roles: HashSet<u32>,
+    // SRIF inverse bridges (KM_ELC_SRIF): `(R, S)` for each `R(x,y) → S(y,x)`.
+    inv: Vec<(u32, u32)>,
     concept_names: HashSet<u32>,
     role_names: HashSet<u32>,
 }
@@ -222,6 +224,7 @@ fn concept_of(a: &JAtom) -> Option<(&str, &JTerm)> {
 fn to_nf(
     clauses: &[JClause],
     it: &mut Interner,
+    srif: bool,
 ) -> Option<(Nfs, Vec<JClause>, HashMap<u32, u32>)> {
     let mut nf1 = Vec::new();
     let mut nf2 = Vec::new();
@@ -231,6 +234,7 @@ fn to_nf(
     let mut nf6 = Vec::new();
     let mut nf7 = Vec::new();
     let mut reflexive_roles: HashSet<u32> = HashSet::default();
+    let mut inv: Vec<(u32, u32)> = Vec::new();
     let mut concept_names: HashSet<u32> = HashSet::default();
     let mut role_names: HashSet<u32> = HashSet::default();
 
@@ -450,16 +454,28 @@ fn to_nf(
                         target: bt,
                     } = br[0]
                     {
-                        let fwd = match (
+                        let (fwd, swapped) = match (
                             vname(&tk(bs)),
                             vname(&tk(bt)),
                             vname(&sxs),
                             vname(&st),
                         ) {
-                            (Some(a), Some(b), Some(c), Some(d)) => a == c && b == d,
-                            _ => false,
+                            (Some(a), Some(b), Some(c), Some(d)) => {
+                                (a == c && b == d, a == d && b == c)
+                            }
+                            _ => (false, false),
                         };
                         if !fwd {
+                            // Swapped wiring `R(x,y) → S(y,x)` is an inverse-role
+                            // bridge. In SRIF mode record it for inverse-edge
+                            // materialisation; otherwise (EL++) keep the old
+                            // behaviour and defer it to the residual certificate.
+                            if srif && swapped {
+                                let r = addr!(br0);
+                                let s = addr!(role);
+                                inv.push((r, s));
+                                continue;
+                            }
                             residual.push(c.clone());
                             continue;
                         }
@@ -573,6 +589,7 @@ fn to_nf(
             nf6,
             nf7,
             reflexive_roles,
+            inv,
             concept_names,
             role_names,
         },
@@ -608,6 +625,13 @@ struct Idx {
     // Reflexive roles closed up the hierarchy: every super-role of a declared
     // reflexive role is also reflexive (R(x,x) ∧ R⊑S ⟹ S(x,x)).
     reflexive_closed: HashSet<u32>,
+    // SRIF inverse roles (KM_ELC_SRIF): `inv_by_role[R] = [S]` for every inverse
+    // bridge `R(x,y) → S(y,x)` (InverseObjectProperties / ObjectInverseOf). The
+    // Edge rule materialises the reversed edge `(d,S,c)` for each new `(c,R,d)`,
+    // so the existing backward-link (NF4) / chain (NF7) / hierarchy rules fire on
+    // inverse edges with no separate calculus. Empty unless SRIF mode recognised
+    // bridges, so default EL++ behaviour is untouched.
+    inv_by_role: HashMap<u32, Vec<u32>>,
 }
 
 impl Idx {
@@ -742,6 +766,15 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         }
     }
 
+    // SRIF inverse bridges: `R(x,y) → S(y,x)` ⇒ a new R-edge implies the reversed
+    // S-edge. Keyed by the EXACT source role R; role-hierarchy interaction is
+    // covered by the existing super-role lift (an R-edge first lifts to its
+    // super-roles, each of which fires its own bridge if any).
+    let mut inv_by_role: HashMap<u32, Vec<u32>> = HashMap::default();
+    for &(r, s) in &nfs.inv {
+        inv_by_role.entry(r).or_default().push(s);
+    }
+
     Idx {
         nf1_by_sub,
         nf2_by_sub,
@@ -751,6 +784,7 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
         nf7_by_pair,
         role_sub,
         reflexive_closed,
+        inv_by_role,
     }
 }
 
@@ -934,6 +968,17 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
                 for &super_role in idx.role_supers(r) {
                     if super_role != r {
                         st.add_edge(c, super_role, d);
+                    }
+                }
+                // SRIF inverse: `R(x,y) → S(y,x)` ⇒ this R-edge (c,r,d) implies
+                // the reversed S-edge (d,S,c). Materialising it lets the
+                // backward-link / chain / hierarchy rules fire on inverse edges
+                // with no separate calculus. Empty map ⇒ no-op in EL++ mode.
+                if !idx.inv_by_role.is_empty() {
+                    if let Some(invs) = idx.inv_by_role.get(&r) {
+                        for &s in invs {
+                            st.add_edge(d, s, c);
+                        }
                     }
                 }
             }
@@ -2085,7 +2130,10 @@ pub fn classify(clauses: Vec<JClause>) -> Option<ElResult> {
         _ => CertMode::Off,
     };
     let debug = std::env::var("KM_ELC_DEBUG").is_ok();
-    classify_inner(clauses, cert, debug)
+    // KM_ELC_SRIF: recognise inverse-role bridges as inverse edges (toward SRIF)
+    // instead of dumping them to the residual.
+    let srif = std::env::var_os("KM_ELC_SRIF").is_some();
+    classify_inner_srif(clauses, cert, srif, debug)
 }
 
 /// KM_ELC_HOIST (P1) — *semantic* common-disjunct extraction, the EL-side
@@ -2273,9 +2321,21 @@ fn residue_stats(residual: &[JClause], it: &Interner, sub_super: &mut [HashSet<u
 /// `classify`; tests drive this directly to avoid racy `set_var` across
 /// parallel test threads).
 fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<ElResult> {
+    classify_inner_srif(clauses, cert, false, debug)
+}
+
+/// As [`classify_inner`], with the SRIF flag explicit (inverse-bridge
+/// recognition). The 3-arg `classify_inner` keeps `srif = false` for the EL++
+/// tests; the public `classify` reads `KM_ELC_SRIF` and calls this directly.
+fn classify_inner_srif(
+    clauses: Vec<JClause>,
+    cert: CertMode,
+    srif: bool,
+    debug: bool,
+) -> Option<ElResult> {
     let mut unresolved: Vec<String> = Vec::new();
     let mut it = Interner::new();
-    let (mut nfs, residual, skolem_filler) = to_nf(&clauses, &mut it)?;
+    let (mut nfs, residual, skolem_filler) = to_nf(&clauses, &mut it, srif)?;
     // ELK discards the OWL parse tree once axioms are indexed. `to_nf` has
     // interned the EL part into `nfs` (u32-keyed) and cloned the non-EL part into
     // `residual`; the original `clauses` (millions of `JClause`, each owning
@@ -2502,6 +2562,31 @@ mod tests {
             "A⊑D via reflexive R composing R∘S⊑T: got {:?}",
             subs_of(&res, "A")
         );
+    }
+
+    #[test]
+    fn srif_inverse_backward_link() {
+        // InverseObjectProperties(R,S): R(x,y)→S(y,x) and S(x,y)→R(y,x).
+        // A ⊑ ∃R.B and ∃S.A ⊑ C ⟹ B ⊑ C — derivable ONLY via the materialised
+        // inverse edge (B,S,A): A's R-successor B gets a reversed S-edge back to
+        // A, which fires ∃S.A ⊑ C at B. No forward EL rule reaches it.
+        let ex_role = cl(&[c("A", "x")], &[rf("R", "x", "f")]);
+        let ex_fill = cl(&[c("A", "x")], &[cf("B", "f", "x")]);
+        let nf4_s = cl(&[r("S", "x", "y"), c("A", "y")], &[c("C", "x")]);
+        let inv1 = cl(&[r("R", "x", "y")], &[r("S", "y", "x")]);
+        let inv2 = cl(&[r("S", "x", "y")], &[r("R", "y", "x")]);
+        let all = format!("[{},{},{},{},{}]", ex_role, ex_fill, nf4_s, inv1, inv2);
+        // SRIF on: inverse bridges become inverse edges; B ⊑ C is derived.
+        let res = classify_inner_srif(clauses(&all), CertMode::Off, true, false)
+            .expect("SRIF inverse classifies (no residual)");
+        assert!(
+            subs_of(&res, "B").contains(&"C".to_string()),
+            "B⊑C via inverse edge: got {:?}",
+            subs_of(&res, "B")
+        );
+        // SRIF off: the swapped bridges fall to the residual; with the
+        // certificate off, a non-EL residual routes out (None).
+        assert!(classify_inner_srif(clauses(&all), CertMode::Off, false, false).is_none());
     }
 
     #[test]
