@@ -1822,6 +1822,19 @@ struct QoSat<'a> {
     /// entry records a mutation to undo on backtrack.
     trail: Vec<QoUndo>,
     tracing: bool,
+    /// When set, asserting a literal at `n` re-queues `n`'s incident edges so
+    /// role-body clauses re-fire against the updated label. Without it a role
+    /// clause (e.g. `∀r.C` = `Forall(x) ∧ r(x,y) → C(y)`) only fires when the
+    /// EDGE is added, missing the case where the guard concept arrives at the
+    /// node AFTER the edge — a completeness gap that does not matter for the
+    /// over-approximating global probe (`saturate_global`, harvest) but is
+    /// required for the per-concept gate to be a COMPLETE Horn-SRIF saturator.
+    /// Off by default so `saturate_global` / M3 harvest behaviour is unchanged.
+    complete_roles: bool,
+    /// Node cap for `saturate` (single-seed). Default `QO_NODE_CAP` (tuned for
+    /// the tiny 5303-family residue tests); the per-concept gate raises it since
+    /// one concept's closure can legitimately span a large slice of the ontology.
+    node_cap: usize,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -1905,7 +1918,29 @@ impl<'a> QoSat<'a> {
             open_disj: 0,
             trail: Vec::new(),
             tracing: false,
+            complete_roles: false,
+            node_cap: QO_NODE_CAP,
         }
+    }
+
+    /// Clear the per-saturation model state (labels, edges, worklists, parked
+    /// disjunctions, clashes, trail) while KEEPING the immutable clause indexes
+    /// (`concept_trig`, `role_clause_trig`, `global`) and config flags. Lets the
+    /// per-concept gate run one fresh single-seed saturation per query concept
+    /// without rebuilding the O(#clauses) indexes 73k times.
+    fn reset(&mut self) {
+        self.label.clear();
+        self.out_edges.clear();
+        self.in_edges.clear();
+        self.concept_node.clear();
+        self.pending.clear();
+        self.node_unsat.clear();
+        self.lit_work.clear();
+        self.edge_work.clear();
+        self.node_work.clear();
+        self.trail.clear();
+        self.unsupported = false;
+        self.open_disj = 0;
     }
 
     fn new_node(&mut self) -> Node {
@@ -1953,6 +1988,23 @@ impl<'a> QoSat<'a> {
                 self.trail.push(QoUndo::Lit(n, lit));
             }
             self.lit_work.push((n, lit));
+            // Completeness re-queue: a role-body clause guarded by a concept on
+            // `n` (∀-style, or an NF4 filler concept) must re-fire now that `n`'s
+            // label grew. Re-push `n`'s incident edges so the edge loop re-runs
+            // those clauses with the updated label. Bounded: only fires on a
+            // genuine label insert, so finitely often per node.
+            if self.complete_roles {
+                let no = self.out_edges[n].len();
+                for i in 0..no {
+                    let (r, t) = self.out_edges[n][i];
+                    self.edge_work.push((n, r, t));
+                }
+                let ni = self.in_edges[n].len();
+                for i in 0..ni {
+                    let (r, s) = self.in_edges[n][i];
+                    self.edge_work.push((s, r, n));
+                }
+            }
         }
         true
     }
@@ -2009,7 +2061,7 @@ impl<'a> QoSat<'a> {
         let mut guard = 0u64;
         loop {
             guard += 1;
-            if guard > 50_000_000 || self.label.len() > QO_NODE_CAP {
+            if guard > 50_000_000 || self.label.len() > self.node_cap {
                 self.unsupported = true;
                 return self.finish(root);
             }
@@ -4922,7 +4974,77 @@ impl Ht {
     /// complete model of A, sound+complete), or (c) a real `consistent` tableau
     /// test (the certified branching path). `None` ⇒ an out-of-fragment
     /// construct was seen; the caller falls back.
+    /// KM_HT_QO_PC: per-concept saturation gate. For each query concept `A`, run
+    /// a FRESH single-seed QoSat saturation (only `A` seeded), reusing the shared
+    /// clause indexes via `reset()`. Read `A`'s verdict off that one model:
+    ///   - clash at `A`'s node ⇒ `A ⊑ ⊥` (unsatisfiable);
+    ///   - sufficient (no open parked disjunction) ⇒ `A`'s positive label is its
+    ///     EXACT subsumer set (sound + complete on the Horn fragment, with
+    ///     `complete_roles` re-firing role clauses for guard-after-edge);
+    ///   - insufficient / unsupported (`Eq`-head, out-of-fragment, node cap) ⇒
+    ///     return `None`, deferring to the caller's fallback (SOUND — never wrong,
+    ///     just declines). On a Horn SRIF ont every concept is sufficient.
+    /// Peak memory is one concept's closure (not the union of all 73k); total
+    /// work is the sum of the per-concept closures, not the global node×clause
+    /// cross-product that times `saturate_global` out.
+    fn qo_classify_perconcept(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        let qset: HashSet<C> = queries.iter().copied().collect();
+        let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        if trace {
+            eprintln!("QOPC entry queries={} clauses={}", queries.len(), self.clauses.len());
+        }
+        let mut qs = QoSat::new(&self.clauses);
+        qs.complete_roles = true;
+        // One concept's closure can span a large slice of the ontology; give the
+        // single-seed saturation generous headroom (bounded by ~2×#concepts of
+        // distinct concept-lit nodes + fillers).
+        qs.node_cap = queries.len().saturating_mul(4).saturating_add(500_000);
+        let mut unsat: Vec<C> = Vec::new();
+        let mut subs: Vec<(C, C)> = Vec::new();
+        for (i, &a) in queries.iter().enumerate() {
+            qs.reset();
+            let r = qs.saturate(&[CLit::pos(a)]);
+            if r.unsupported {
+                if trace {
+                    eprintln!("QOPC bail at {}/{} (unsupported on concept {})", i, queries.len(), a);
+                }
+                return None; // Eq-head / out-of-fragment / cap → defer to fallback
+            }
+            if r.clashed {
+                unsat.push(a);
+                continue;
+            }
+            if !r.sufficient {
+                if trace {
+                    eprintln!("QOPC bail at {}/{} (insufficient on concept {})", i, queries.len(), a);
+                }
+                return None; // open parked disjunction → defer (sound)
+            }
+            for &b in &r.root_label {
+                if b != a && qset.contains(&b) {
+                    subs.push((a, b));
+                }
+            }
+            if trace && i > 0 && i % 5000 == 0 {
+                eprintln!("QOPC {}/{} subs={} unsat={}", i, queries.len(), subs.len(), unsat.len());
+            }
+        }
+        // KB inconsistent iff every queried concept is unsatisfiable.
+        let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
+        if trace {
+            eprintln!("QOPC done subs={} unsat={} consistent={}", subs.len(), unsat.len(), consistent);
+        }
+        Some((consistent, unsat, subs))
+    }
+
     pub fn quasi_order_classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        // KM_HT_QO_PC: the per-concept gate — instead of one global saturation
+        // seeding all 73k concepts (whose node×clause cross-product is the wall
+        // on big SRIF onts), run one fresh single-seed saturation per query and
+        // read its subsumers off. See `qo_classify_perconcept`.
+        if std::env::var_os("KM_HT_QO_PC").is_some() {
+            return self.qo_classify_perconcept(queries);
+        }
         let qset: HashSet<C> = queries.iter().copied().collect();
 
         // --- Collect the named concepts (positive-polarity shared nodes). ---
@@ -5649,5 +5771,90 @@ mod tests {
             g.label_pos[na].contains(&H),
             "H must be derived at node(A) via the transitive r-chain"
         );
+    }
+
+    // ---- Per-concept QoSat gate (KM_HT_QO_PC) ----
+
+    #[test]
+    fn qopc_subsumption_chain() {
+        // A ⊑ B ⊑ D: per-concept gate yields {A⊑B, A⊑D, B⊑D}, nothing reversed.
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
+        ];
+        let mut ht = ht(cls);
+        let (cons, unsat, mut subs) = ht.qo_classify_perconcept(&[A, B, D]).unwrap();
+        subs.sort();
+        assert!(cons && unsat.is_empty());
+        assert_eq!(subs, vec![(A, B), (A, D), (B, D)]);
+    }
+
+    #[test]
+    fn qopc_role_guard_after_edge_complete() {
+        // Completeness under guard-after-edge: A ⊑ ∃r.B, A ⊑ Guard,
+        // Guard(x) ⊓ r(x,y) ⊑ E. The role clause must fire whichever of the
+        // edge / the guard concept lands at A first ⇒ A ⊑ E and A ⊑ Guard.
+        const GUARD: C = 6;
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, GUARD, X)]),
+            Clause::new(vec![con(false, GUARD, X), role(R0, X, y)], vec![con(false, E, X)]),
+        ];
+        let mut ht = ht(cls);
+        let (_, _, subs) = ht.qo_classify_perconcept(&[A, B, GUARD, E]).unwrap();
+        assert!(subs.contains(&(A, E)), "A ⊑ E must be derived (guard-after-edge)");
+        assert!(subs.contains(&(A, GUARD)));
+    }
+
+    #[test]
+    fn qopc_transitive_chain() {
+        // Same closure as qosat_edge_index_role_chain, via the per-concept path:
+        // A ⊑ ∃r.B, B ⊑ ∃r.G, r∘r ⊑ r, r(x,z) ⊓ G(z) ⊑ H ⇒ A ⊑ H.
+        const G: C = 4;
+        const H: C = 5;
+        let y: Var = 1;
+        let z: Var = 2;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, G, X)]),
+            Clause::new(vec![role(R0, X, y), role(R0, y, z)], vec![role(R0, X, z)]),
+            Clause::new(vec![role(R0, X, z), con(false, G, z)], vec![con(false, H, X)]),
+        ];
+        let mut ht = ht(cls);
+        let (_, _, subs) = ht.qo_classify_perconcept(&[A, H]).unwrap();
+        assert!(subs.contains(&(A, H)), "A ⊑ H via transitive r-chain (per-concept)");
+    }
+
+    #[test]
+    fn qopc_unsat_concept() {
+        // A ⊑ B and A ⊑ ¬B ⇒ A unsatisfiable; B stays satisfiable; KB consistent.
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
+        ];
+        let mut ht = ht(cls);
+        let (cons, unsat, _) = ht.qo_classify_perconcept(&[A, B]).unwrap();
+        assert!(cons);
+        assert_eq!(unsat, vec![A]);
+    }
+
+    #[test]
+    fn qopc_functional_eq_bails() {
+        // Functional r with two distinct r-successors forces an Eq head, which
+        // QoSat has no merge for ⇒ the per-concept gate bails to fallback (None),
+        // soundly (it declines rather than answers wrong).
+        const C1: C = 8;
+        const C2: C = 9;
+        let y: Var = 1;
+        let z: Var = 2;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C1, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
+            Clause::new(vec![role(R0, X, y), role(R0, X, z)], vec![Atom::Eq { s: y, t: z }]),
+        ];
+        let mut ht = ht(cls);
+        assert_eq!(ht.qo_classify_perconcept(&[A, C1, C2]), None);
     }
 }
