@@ -4,6 +4,44 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: 2b Phase A — Konclude G2/G3 inverse-criticality containment check (`KM_HT_QO_KPSET`)
+
+Port of Konclude's saturation criticality
+(`isCriticalALLConceptDescriptorInsufficient`,
+`CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp:3451) into
+`QoSat`. Gated, default off; zero baseline risk (129 cargo tests pass, incl. two
+new KPSet tests; the forward-only and verify paths are untouched).
+
+The mechanism (Konclude G2 "from a successor propagate status, never labels" / G3
+"insufficient → tableau"): KM now KEEPS the inverse-bridge clauses (materialises
+the back-edges, recorded in `inv_edges`), but every concept-head write whose
+firing matched an inverse back-edge becomes a **containment check** rather than a
+write — `kp_check_head` / `kp_write`, deferred to the saturation fixpoint
+(`kp_finalize`, Konclude's `checkCriticalIndividuals` post-pass). The would-be
+operand is never added to the shared model; if the target already carries it (the
+forward closure forced it) the check passes, otherwise `kp_insufficient` is raised.
+Because nothing is written across a reversed edge, the cross-concept shared-filler
+conflation (the 6.5M spurious facts on 7581) cannot form.
+
+**Result (ore_ont_7581, ws):** the inverse-AWARE pass no longer blows up — whole
+`km classify` runs at forward-only cost (**37s / 1.0 GB**, vs the old
+inverse-augmented **111s / 6.5M-fact** pollution), and it is SOUND (never
+over-derives; unit tests + gold-exact fallback, 565317 = gold, 0 unsound / 0
+incomplete).
+
+**It does not yet CERTIFY 7581.** `kp_miss = 929558` over `inv_edges = 898356`:
+KM's cb_to_ht encodes inverse roles as materialised reversed edges, and the 129k
+`∃r2.D ⊑ E` clauses fire across them at SHARED fillers, producing ~930k
+predecessor-dependent consequences that are not forward-present (all spurious,
+since NOINV = gold). The containment check correctly refuses to write them, but the
+single global `kp_insufficient` bool is too coarse — one miss at any shared filler
+defers the whole classification — so KPSet defers and the pipeline falls back to the
+gold-exact forward-only result. Reaching Konclude's insufficient ≈ 0 needs the other
+half of the port (study doc P2): **per-node insufficiency** (certify the CLEAN
+concepts) + **per-concept possible-subsumer tracking with pseudo-model-merge
+refutation** (`isPseudoModelSubsumerPossible`) to prune the spurious possibles
+before any tableau test. See `docs/KPSET-PLAN.md`.
+
 ### HT/QoSat: verify funnel 2a — structural suspect selection + parallelism (511s → 244s)
 
 Two speedups to the `KM_HT_QO_VERIFY` certification funnel, both sound, both gated:

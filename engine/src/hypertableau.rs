@@ -1924,6 +1924,49 @@ struct QoSat<'a> {
     /// such seeds for sound re-verification; on a pure-range ont (7581) the
     /// role-keyed fillers absorb every range write, so this never fires.
     qo_insufficient: bool,
+    /// KPSet (Konclude G2/G3 port, `KM_HT_QO_KPSET`). When set, inverse-bridge
+    /// clauses are KEPT (their back-edges are created and recorded in
+    /// `inv_edges`), but every concept-head write whose firing matched an
+    /// inverse back-edge becomes a CONTAINMENT CHECK instead of a write — the
+    /// port of Konclude's `isCriticalALLConceptDescriptorInsufficient`
+    /// (CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp:3451):
+    /// the would-be operand is never added to the (shared) target node; if the
+    /// target already carries it (the forward closure forced it anyway) the
+    /// check passes silently, otherwise `kp_insufficient` is raised and the
+    /// concept is routed to the complete tableau. Because nothing is written
+    /// across an inverse edge, the cross-concept shared-filler conflation (the
+    /// 6.5M spurious facts on 7581) cannot form and the saturation stays
+    /// forward-only fast — yet it is certified COMPLETE whenever no check missed
+    /// (`!kp_insufficient`), which on 7581 is every concept (forward = gold).
+    kpset: bool,
+    /// Edges created by an inverse/symmetric bridge clause (`R(x,y) → S(y,x)`):
+    /// the model-specific reversed back-edges. A rule firing anchored on such an
+    /// edge has its concept-head writes turned into containment checks under
+    /// `kpset`. Empty (and unused) when `kpset` is off.
+    inv_edges: HashSet<(Node, R, Node)>,
+    /// Clause ids of the inverse/symmetric bridge clauses (single role head with
+    /// args swapped versus a body role atom). Populated in `new_opts`; used to
+    /// tag the back-edges they create as `inv_edges`.
+    inv_bridge_cid: HashSet<usize>,
+    /// Raised (under `kpset`) when an inverse-anchored containment check missed:
+    /// the inverse contribution would add a concept the forward closure did not
+    /// derive, so this seed/concept is INSUFFICIENT and needs the complete
+    /// tableau. Stays false on inverse-inert onts (7581) → forward label is the
+    /// certified-complete answer.
+    kp_insufficient: bool,
+    /// Diagnostic count of inverse-anchored containment checks that missed
+    /// (KM_HT_TRACE). Zero ⇒ inverse is non-load-bearing for this saturation.
+    kp_miss: u64,
+    /// Deferred single-target containment checks `(node, lit)` collected during
+    /// the saturation. Konclude runs the criticality test only AFTER the
+    /// deterministic saturation reaches fixpoint (`checkCriticalIndividuals`), so
+    /// a forward fact derived later still counts as present; checking eagerly
+    /// would miss it spuriously. `kp_finalize` re-checks these against the final
+    /// labels. Deduped (a `HashSet`) so the inverse firings don't blow it up.
+    kp_check1: HashSet<(Node, CLit)>,
+    /// Deferred multi-disjunct checks (an inverse-anchored disjunctive head):
+    /// satisfied at fixpoint iff at least one `(node, lit)` is present.
+    kp_checkn: Vec<Vec<(Node, CLit)>>,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -2073,6 +2116,7 @@ impl<'a> QoSat<'a> {
             range_class.insert(r, id);
         }
         let mut global = Vec::new();
+        let mut inv_bridge_cid: HashSet<usize> = HashSet::new();
         for (cid, rec) in clauses.iter().enumerate() {
             let body = &rec.1;
             let head = &rec.0.head;
@@ -2082,6 +2126,20 @@ impl<'a> QoSat<'a> {
             }
             let has_role = body.iter().any(|a| matches!(a, Atom::Role { .. }));
             if has_role {
+                // Record inverse/symmetric bridge clauses (single role head whose
+                // args are SWAPPED vs a body role atom) regardless of `no_inv`,
+                // so the KPSet path can tag the back-edges they create as
+                // `inv_edges` (containment-check, never write).
+                if head.len() == 1 {
+                    if let Atom::Role { s: hs, t: ht, .. } = head[0] {
+                        if body
+                            .iter()
+                            .any(|a| matches!(a, Atom::Role { s, t, .. } if *s == ht && *t == hs))
+                        {
+                            inv_bridge_cid.insert(cid);
+                        }
+                    }
+                }
                 // KM_HT_QO_NOINV (diagnostic): skip inverse/symmetric bridging
                 // clauses — a single role head whose args are SWAPPED relative to
                 // a body role atom (`R(s,t) → R'(t,s)`). These create model-
@@ -2089,15 +2147,8 @@ impl<'a> QoSat<'a> {
                 // then read those shared labels across the back-edge, which is the
                 // suspected source of the 7581 spurious subsumptions. Excluding
                 // them from every role index makes them inert.
-                if no_inv && head.len() == 1 {
-                    if let Atom::Role { s: hs, t: ht, .. } = head[0] {
-                        let swapped = body.iter().any(
-                            |a| matches!(a, Atom::Role { s, t, .. } if *s == ht && *t == hs),
-                        );
-                        if swapped {
-                            continue;
-                        }
-                    }
+                if no_inv && inv_bridge_cid.contains(&cid) {
+                    continue;
                 }
                 // elc backward-link capture: pure Horn NF4 `R(sv,tv) ⊓ D(tv) → E(sv)`
                 // (body = exactly the role atom + one target-side concept guard,
@@ -2226,6 +2277,13 @@ impl<'a> QoSat<'a> {
             filler_node: HashMap::new(),
             node_range: Vec::new(),
             qo_insufficient: false,
+            kpset: false,
+            inv_edges: HashSet::new(),
+            inv_bridge_cid,
+            kp_insufficient: false,
+            kp_miss: 0,
+            kp_check1: HashSet::new(),
+            kp_checkn: Vec::new(),
         }
     }
 
@@ -2251,6 +2309,11 @@ impl<'a> QoSat<'a> {
         self.filler_node.clear();
         self.node_range.clear();
         self.qo_insufficient = false;
+        self.inv_edges.clear();
+        self.kp_insufficient = false;
+        self.kp_miss = 0;
+        self.kp_check1.clear();
+        self.kp_checkn.clear();
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -2413,6 +2476,9 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
+        if self.kpset {
+            self.kp_finalize();
+        }
         self.finish(root)
     }
 
@@ -2470,6 +2536,9 @@ impl<'a> QoSat<'a> {
                     break;
                 }
             }
+        }
+        if self.kpset {
+            self.kp_finalize();
         }
         self.finish_global()
     }
@@ -2529,7 +2598,10 @@ impl<'a> QoSat<'a> {
                         .map(|(_, s)| *s)
                         .collect();
                     for x in preds {
-                        self.add_lit(x, e);
+                        // KPSet: an NF4 backward link across an inverse back-edge
+                        // (x --r--> n) is a containment check, never a write.
+                        let via_inv = self.kpset && self.inv_edges.contains(&(x, r, n));
+                        self.kp_write(x, e, via_inv);
                         if self.unsupported {
                             self.prop_rule.insert(lit, rules);
                             return;
@@ -2585,8 +2657,11 @@ impl<'a> QoSat<'a> {
             // `prop_rule` push in the lit loop.)
             if let Some(es) = self.prop.get(&(r, t)) {
                 let es: Vec<CLit> = es.clone();
+                // KPSet: if this fresh edge is an inverse back-edge, the inherited
+                // backward links are containment checks at `s`, never writes.
+                let via_inv = self.kpset && self.inv_edges.contains(&(s, r, t));
                 for e in es {
-                    self.add_lit(s, e);
+                    self.kp_write(s, e, via_inv);
                     if self.unsupported {
                         return;
                     }
@@ -3058,11 +3133,16 @@ impl<'a> QoSat<'a> {
         }
         let mut sigma = vec![None; self.clauses[cid].2];
         sigma[X as usize] = Some(n);
-        self.apply_head(cid, &sigma);
+        // concept-body clauses have no role anchor ⇒ never an inverse edge.
+        self.apply_head(cid, &sigma, false);
     }
 
     /// Fire a role-body clause, anchored at a freshly added edge (es, r, et).
     fn fire_role_clause(&mut self, cid: usize, es: Node, r: R, et: Node) {
+        // KPSet (G2/G3): if the anchoring edge is an inverse-bridge back-edge,
+        // this firing reads a successor's label across a model-specific reversed
+        // edge — its head writes become containment checks (never written).
+        let via_inv = self.kpset && self.inv_edges.contains(&(es, r, et));
         let body = &self.clauses[cid].1;
         let nv = self.clauses[cid].2;
         for (i, a) in body.iter().enumerate() {
@@ -3081,7 +3161,7 @@ impl<'a> QoSat<'a> {
                     let mut out: Vec<Vec<Option<Node>>> = Vec::new();
                     self.match_body(body, &mut done, &mut sigma, &mut out);
                     for sgm in &out {
-                        self.apply_head(cid, sgm);
+                        self.apply_head(cid, sgm, via_inv);
                         if self.unsupported {
                             return;
                         }
@@ -3150,9 +3230,20 @@ impl<'a> QoSat<'a> {
         done[k] = false;
     }
 
-    /// Apply a clause's head under substitution `sigma`.
-    fn apply_head(&mut self, cid: usize, sigma: &[Option<Node>]) {
+    /// Apply a clause's head under substitution `sigma`. `via_inv` is set
+    /// (under `kpset`) when the firing was anchored on an inverse-bridge
+    /// back-edge: the head is then a CONTAINMENT CHECK (Konclude's
+    /// `isCriticalALLConceptDescriptorInsufficient`), never a write — see
+    /// `kp_check_head`.
+    fn apply_head(&mut self, cid: usize, sigma: &[Option<Node>], via_inv: bool) {
         let head = &self.clauses[cid].0.head;
+        // KPSet G2/G3: an inverse-anchored firing must never write a consequence
+        // into the (shared) model — it can only CHECK whether the consequence is
+        // already forward-present; a miss marks the concept insufficient.
+        if via_inv {
+            self.kp_check_head(cid, sigma);
+            return;
+        }
         if head.is_empty() {
             // empty head: clash at the anchor node.
             let n = sigma[X as usize].expect("X bound");
@@ -3217,6 +3308,12 @@ impl<'a> QoSat<'a> {
                     let tn = sigma[t as usize].expect("head role dst bound");
                     if !self.node_unsat.contains(&sn) {
                         self.add_edge(sn, r, tn);
+                        // KPSet: tag the back-edge an inverse/symmetric bridge
+                        // clause just created, so downstream rules firing across
+                        // it become containment checks (never writes).
+                        if self.kpset && self.inv_bridge_cid.contains(&cid) {
+                            self.inv_edges.insert((sn, r, tn));
+                        }
                     }
                     satisfied = true;
                     break;
@@ -3245,6 +3342,102 @@ impl<'a> QoSat<'a> {
         }
         self.pending.push((anchor, cid));
         self.open_disj += 1;
+    }
+
+    /// KPSet containment check (port of Konclude's
+    /// `isCriticalALLConceptDescriptorInsufficient`): the firing is anchored on
+    /// an inverse-bridge back-edge, so its head must NEVER be written into the
+    /// shared model. Instead, verify the head is already satisfied by the
+    /// forward closure:
+    ///   - all-Concept head ⇒ satisfied iff at least one head literal is already
+    ///     present at its target node (the disjunction holds without a write);
+    ///   - empty head (clash) / any ∃ or role head ⇒ cannot be containment-
+    ///     checked, conservatively INSUFFICIENT.
+    /// A miss raises `kp_insufficient` (the concept needs the complete tableau)
+    /// and increments `kp_miss`; nothing is added, parked, or killed — so the
+    /// inverse contribution can neither over-derive (sound) nor be silently
+    /// dropped (complete via the insufficiency route). On an inverse-inert ont
+    /// (7581) every head literal is already forward-present, so no check ever
+    /// misses and the saturation stays forward-only fast + certified complete.
+    fn kp_check_head(&mut self, cid: usize, sigma: &[Option<Node>]) {
+        let head = &self.clauses[cid].0.head;
+        if head.is_empty() {
+            // an inverse-anchored clash cannot be trusted in the shared model.
+            self.kp_insufficient = true;
+            self.kp_miss += 1;
+            return;
+        }
+        let mut disj: Vec<(Node, CLit)> = Vec::new();
+        for h in head {
+            match *h {
+                Atom::Concept { lit, t } => {
+                    let n = sigma[t as usize].expect("head var bound");
+                    if !self.node_unsat.contains(&n) && self.label[n].contains(&lit) {
+                        return; // already satisfied — no obligation
+                    }
+                    disj.push((n, lit));
+                }
+                // an ∃/role/eq head reached across an inverse edge would build new
+                // structure the shared model cannot represent soundly ⇒ insufficient.
+                _ => {
+                    self.kp_insufficient = true;
+                    self.kp_miss += 1;
+                    return;
+                }
+            }
+        }
+        // not yet satisfied: defer to the fixpoint criticality pass.
+        match disj.len() {
+            0 => {
+                self.kp_insufficient = true;
+                self.kp_miss += 1;
+            }
+            1 => {
+                self.kp_check1.insert(disj[0]);
+            }
+            _ => self.kp_checkn.push(disj),
+        }
+    }
+
+    /// Either assert `lit` at `n` (normal) or, under KPSet when the write would
+    /// cross an inverse back-edge (`via_inv`), defer a containment check instead:
+    /// never write across the reversed edge. `kp_finalize` decides at fixpoint.
+    /// Returns false only on a genuine clash from a real (non-inverse) write.
+    fn kp_write(&mut self, n: Node, lit: CLit, via_inv: bool) -> bool {
+        if self.kpset && via_inv {
+            if !self.node_unsat.contains(&n) && !self.label[n].contains(&lit) {
+                self.kp_check1.insert((n, lit));
+            }
+            return true;
+        }
+        self.add_lit(n, lit)
+    }
+
+    /// Fixpoint criticality pass (Konclude `checkCriticalIndividuals`): after the
+    /// deterministic saturation has closed, re-check every deferred inverse-
+    /// anchored containment obligation against the FINAL labels. A still-missing
+    /// obligation means the inverse contribution would add something the forward
+    /// closure never derived → `kp_insufficient` (route the concept to the
+    /// complete tableau). On an inverse-inert ont every obligation is now present
+    /// (the forward closure caught up), so nothing is flagged.
+    fn kp_finalize(&mut self) {
+        let c1 = std::mem::take(&mut self.kp_check1);
+        for (n, lit) in c1 {
+            if !self.node_unsat.contains(&n) && !self.label[n].contains(&lit) {
+                self.kp_insufficient = true;
+                self.kp_miss += 1;
+            }
+        }
+        let cn = std::mem::take(&mut self.kp_checkn);
+        for disj in cn {
+            let sat = disj
+                .iter()
+                .any(|(n, lit)| !self.node_unsat.contains(n) && self.label[*n].contains(lit));
+            if !sat {
+                self.kp_insufficient = true;
+                self.kp_miss += 1;
+            }
+        }
     }
 
     /// Re-evaluate parked disjunctions at `n`: a label change may have satisfied,
@@ -5858,7 +6051,76 @@ impl Ht {
         Some((consistent, unsat, subs))
     }
 
+    /// KPSet global gate (Konclude G2/G3 port, `KM_HT_QO_KPSET`). ONE
+    /// inverse-AWARE global saturation in which every concept write that would
+    /// cross an inverse-bridge back-edge is a CONTAINMENT CHECK, never a write
+    /// (port of `isCriticalALLConceptDescriptorInsufficient`). When no check
+    /// missed at the fixpoint (`!kp_insufficient`) and the pass is otherwise
+    /// clean, each concept's self-node label is:
+    ///   - SOUND — nothing was written across a model-specific reversed edge, so
+    ///     no cross-concept shared-filler conflation (the 7581 6.5M pollution);
+    ///   - COMPLETE — every inverse contribution was already forward-present (the
+    ///     containment checks all passed), so dropping the inverse writes loses
+    ///     nothing.
+    /// = the certified sound+complete answer at forward-only speed (no per-
+    /// candidate tableau verify). Otherwise (an inverse contribution was genuinely
+    /// load-bearing, or a disjunction parked, or out of fragment) return `None`
+    /// and fall through to the verify funnel — a sound fallback.
+    fn qo_classify_kpset(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        let qset: HashSet<C> = queries.iter().copied().collect();
+        let mut qk = QoSat::new_opts(&self.clauses, false); // KEEP inverse bridges
+        qk.kpset = true;
+        qk.complete_roles = true;
+        let g = qk.saturate_global(queries);
+        if g.unsupported || qk.kp_insufficient || qk.qo_insufficient || !qk.pending.is_empty() {
+            if trace {
+                eprintln!(
+                    "QOKP defer: unsupported={} kp_insufficient={} kp_miss={} qo_insufficient={} pending={} inv_edges={}",
+                    g.unsupported, qk.kp_insufficient, qk.kp_miss, qk.qo_insufficient,
+                    qk.pending.len(), qk.inv_edges.len()
+                );
+            }
+            return None;
+        }
+        if trace {
+            eprintln!(
+                "QOKP certified sound+complete (kp_miss=0): inv_edges={} nodes={}",
+                qk.inv_edges.len(),
+                g.label_pos.len()
+            );
+        }
+        let node_of: HashMap<C, Node> =
+            queries.iter().enumerate().map(|(i, &c)| (c, i as Node)).collect();
+        let mut unsat: Vec<C> = Vec::new();
+        let mut subs: Vec<(C, C)> = Vec::new();
+        for &a in queries {
+            let n = node_of[&a];
+            if g.node_unsat.contains(&n) {
+                unsat.push(a);
+                continue;
+            }
+            for &b in &g.label_pos[n] {
+                if b != a && qset.contains(&b) {
+                    subs.push((a, b));
+                }
+            }
+        }
+        let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
+        Some((consistent, unsat, subs))
+    }
+
     pub fn quasi_order_classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        // KM_HT_QO_KPSET: Konclude G2/G3 inverse-aware single pass — sound+complete
+        // and forward-only-fast when no inverse contribution is load-bearing
+        // (7581). Tried first; falls through to the gates below when it cannot
+        // cleanly certify (a genuinely load-bearing inverse, parked disjunction,
+        // or out-of-fragment construct).
+        if std::env::var_os("KM_HT_QO_KPSET").is_some() {
+            if let Some(r) = self.qo_classify_kpset(queries) {
+                return Some(r);
+            }
+        }
         // KM_HT_QO_PC: the per-concept gate — instead of one global saturation
         // seeding all 73k concepts (whose node×clause cross-product is the wall
         // on big SRIF onts), run one fresh single-seed saturation per query and
@@ -6901,5 +7163,64 @@ mod tests {
         ];
         let mut ht = ht(cls);
         assert_eq!(ht.qo_classify_perconcept(&[A, C1, C2]), None);
+    }
+
+    // ---- KPSet inverse-aware gate (KM_HT_QO_KPSET, Konclude G2/G3 port) ----
+
+    #[test]
+    fn kpset_inert_inverse_certifies() {
+        // The 7581 shape with a NON-load-bearing inverse:
+        //   A ⊑ ∃r1.B,  r1(x,y) → r2(y,x)  (back-edge node(B) --r2--> A),
+        //   A ⊑ D,  ∃r2.D ⊑ E              (would WRITE E onto the shared node(B)),
+        //   B ⊑ E                          (E is ALREADY forward-present at node(B)).
+        // The inverse-anchored write of E to node(B) is a containment check that
+        // PASSES (E already there) ⇒ kp_miss = 0 ⇒ the gate CERTIFIES (returns
+        // Some) with the real subsumers and no spurious A⊑E pollution.
+        const R1: R = 1;
+        const R2: R = 2;
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R1, false, B, X)]),
+            Clause::new(vec![role(R1, X, y)], vec![role(R2, y, X)]), // inverse bridge
+            Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
+            Clause::new(vec![role(R2, X, y), con(false, D, y)], vec![con(false, E, X)]), // ∃r2.D ⊑ E
+            Clause::new(vec![con(false, B, X)], vec![con(false, E, X)]), // B ⊑ E (forward)
+        ];
+        let mut ht = ht(cls);
+        let (cons, _unsat, subs) = ht
+            .qo_classify_kpset(&[A, B, D, E])
+            .expect("inert inverse must certify (Some)");
+        assert!(cons);
+        assert!(subs.contains(&(B, E)), "B ⊑ E is real (forward) and must be kept");
+        assert!(subs.contains(&(A, D)), "A ⊑ D (forward) must be kept");
+        assert!(
+            !subs.contains(&(A, E)),
+            "A ⊑ E is not entailed and must NOT be derived"
+        );
+    }
+
+    #[test]
+    fn kpset_loadbearing_inverse_defers_not_oversderive() {
+        // Same shape WITHOUT the forward B ⊑ E: the inverse-anchored write of E
+        // onto the shared node(B) is NOT forward-present, so the containment
+        // check MISSES ⇒ kp_insufficient ⇒ the gate DECLINES (None) rather than
+        // deriving the spurious B ⊑ E. This is the 7581 pollution caught soundly:
+        // never written, routed to the complete tableau instead.
+        const R1: R = 1;
+        const R2: R = 2;
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R1, false, B, X)]),
+            Clause::new(vec![role(R1, X, y)], vec![role(R2, y, X)]), // inverse bridge
+            Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
+            Clause::new(vec![role(R2, X, y), con(false, D, y)], vec![con(false, E, X)]), // ∃r2.D ⊑ E
+        ];
+        let mut ht = ht(cls);
+        assert!(
+            ht.qo_classify_kpset(&[A, B, D, E]).is_none(),
+            "load-bearing/spurious inverse must defer (None), never over-derive B⊑E"
+        );
     }
 }

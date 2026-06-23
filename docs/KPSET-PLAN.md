@@ -45,6 +45,48 @@ contributes through the tableau's **tree** expansion (bounded by blocking) for t
 residue, never through dense back-edge label propagation in the saturation — so the
 saturation stays forward-only-fast.
 
+## STATUS 2026-06-23: Phase A (containment check) IMPLEMENTED + measured
+
+`KM_HT_QO_KPSET` (gated, default off; 129 cargo tests incl. two new KPSet tests).
+The port of Konclude's `isCriticalALLConceptDescriptorInsufficient`
+(CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp:3451): KM now
+KEEPS the inverse-bridge clauses (creates the back-edges, recorded in
+`inv_edges`), but every concept-head write whose firing matched an inverse
+back-edge becomes a **containment check** instead of a write (`kp_check_head` /
+`kp_write`), re-evaluated at the saturation fixpoint (`kp_finalize`, Konclude's
+post-pass `checkCriticalIndividuals`). A miss raises `kp_insufficient`; nothing is
+written across a reversed edge, so the cross-concept shared-filler conflation
+cannot form.
+
+**Measured on ore_ont_7581 (ws):** the inverse-AWARE KPSet pass no longer blows
+up — it runs at forward-only cost (whole `km classify` 37s / 1.0 GB, vs the old
+inverse-augmented 111s / 6.5M-fact pollution). SOUNDNESS confirmed: it never
+over-derives (unit tests + it falls back to the gold-exact forward-only result,
+565317 = gold, 0 unsound / 0 incomplete).
+
+**But it does NOT yet certify 7581.** `kp_miss = 929558` over `inv_edges =
+898356`: KM's cb_to_ht encodes each inverse role as a materialised reversed edge
+(`r1(x,y) → r2(y,x)`), and the 129k NF4 existential-subsumption clauses
+(`∃r2.D ⊑ E`) then fire across those back-edges at the SHARED filler nodes,
+producing ~930k predecessor-dependent consequences that are not forward-present
+(all spurious, since NOINV = gold). The containment check correctly refuses to
+write them (sound) — but the single global `kp_insufficient` bool is too coarse:
+one missed check at any shared filler defers the WHOLE classification. So KPSet
+defers and the pipeline falls back to forward-only (gold-exact, fast).
+
+Konclude reaches insufficient ≈ 0 here because it does NOT materialise reversed
+edges that trigger forward existential-subsumption at shared fillers; its inverse
+is a backward-∀ annotation over forward links, and the residual possible-subsumers
+are pruned by the **KPSet 3-valued possible set + pseudo-model merge**
+(`isPseudoModelSubsumerPossible`, study doc P2) BEFORE any tableau test — not by a
+global flag. So the remaining work to certify 7581 fast is:
+  1. **Per-node insufficiency** (`HashSet<Node>`, not a global bool) so CLEAN
+     query concepts certify while only genuinely-affected ones defer; and
+  2. **Per-concept possible-subsumer tracking + pseudo-model-merge refutation**
+     (study doc P2) to prune the ~930k spurious possible-subsumers cheaply, so the
+     tableau residue is the few genuinely load-bearing pairs (≈ 0 for 7581).
+Both are Konclude ports, not new research.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**
