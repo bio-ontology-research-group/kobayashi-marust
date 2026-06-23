@@ -5559,20 +5559,110 @@ impl Ht {
                 g.label_pos.len()
             );
         }
-        // NOTE on completeness certification (measured, KM_HT_QO_VERIFY): forming
-        // the inverse-only candidate set from a *global* inverse-augmented pass is
-        // infeasible — on 7581 the inverse global saturation over-derives 6.5M
-        // spurious candidates (cross-concept shared-filler pollution), so verifying
-        // them with the complete tableau cannot finish. A per-concept inverse pass
-        // bounds the candidates (~177 on 7581) but costs one saturation per concept
-        // (~109s) plus a tableau test per candidate (~3s each), i.e. ~600s — not
-        // competitive. And a cheap *structural* certificate ("the reversed roles
-        // are never read by a rule body") fails here: 7581's inverse roles are
-        // consumed 100k+ times yet contribute nothing semantically (NOINV = gold).
-        // So forward-only is shipped as the sound (and, for the inverse-inert
-        // fragment that includes 7581, complete) answer; certified completeness for
-        // the load-bearing-inverse case stays the open problem and is NOT attempted
-        // via the global pass. See project_km_7581_qosat.
+        // KM_HT_QO_VERIFY: certify completeness, cheaply. Forward-only `L` is sound
+        // but may miss inverse-entailed subsumptions. We cannot form the candidate
+        // set from a single *global* inverse pass (it over-derives 6.5M spurious
+        // pairs across 10635 concepts on 7581 — cross-concept shared-filler
+        // pollution), nor afford a full 73k per-concept inverse pass. Instead, a
+        // two-stage SOUND funnel:
+        //   (1) one global inverse pass SELECTS the suspect concepts (those whose
+        //       inverse-augmented closure exceeds their forward closure). This is a
+        //       sound superset of the concepts whose true classification differs
+        //       from forward-only — if `A ⊑ B` holds but `B ∉ L_A`, the
+        //       all-clauses global pass derives `B` at `A`, so `A` is a suspect.
+        //   (2) a per-concept (single-seed) inverse saturation runs ONLY on the
+        //       suspects and de-conflates each to its TIGHT candidate set — a single
+        //       seed cannot suffer the cross-concept filler conflation that bloated
+        //       the global set, so most suspects yield zero candidates.
+        // The caller then confirms each tight candidate `(A,B)` with the complete
+        // tableau `consistent(A ⊓ ¬B)` (cheap: ~0.02–0.26s each). Result =
+        // `L ∪ confirmed` = sound + complete. `KM_HT_QO_VERIFY_CAP` bounds the tight
+        // candidate count (default 50000); overflow ⇒ defer (return None) rather
+        // than run an unbounded verify.
+        if std::env::var_os("KM_HT_QO_VERIFY").is_some() {
+            let t_vp = std::time::Instant::now();
+            // (1) global inverse pass → suspects + inverse-only unsat suspects.
+            let (suspects, mut unsat_cands): (Vec<C>, Vec<C>) = {
+                let mut qg = QoSat::new_opts(&self.clauses, false);
+                qg.complete_roles = true;
+                let gg = qg.saturate_global(queries);
+                if gg.unsupported {
+                    return None; // cannot certify ⇒ defer to the per-concept gate
+                }
+                let mut s: Vec<C> = Vec::new();
+                let mut su: Vec<C> = Vec::new();
+                for &a in queries {
+                    let n = node_of[&a];
+                    if g.node_unsat.contains(&n) {
+                        continue; // already a sound forward-only unsat
+                    }
+                    if gg.node_unsat.contains(&n) {
+                        su.push(a); // inverse-only unsat ⇒ confirm with the tableau
+                        continue;
+                    }
+                    let fwd = &g.label_pos[n];
+                    if gg.label_pos[n].iter().any(|b| *b != a && qset.contains(b) && !fwd.contains(b)) {
+                        s.push(a);
+                    }
+                }
+                (s, su)
+            };
+            if trace {
+                eprintln!(
+                    "QOGF verify: {} suspect concepts, {} inverse-only unsat suspects [global-inverse {:.2}s]",
+                    suspects.len(),
+                    unsat_cands.len(),
+                    t_vp.elapsed().as_secs_f64()
+                );
+            }
+            let t_pc = std::time::Instant::now();
+            // (2) per-concept inverse saturation on the suspects → tight candidates.
+            let cap: usize = std::env::var("KM_HT_QO_VERIFY_CAP")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(50_000);
+            let node_cap = queries.len().saturating_mul(4).saturating_add(500_000);
+            let mut cands: Vec<(C, C)> = Vec::new();
+            {
+                let mut qpc = QoSat::new_opts(&self.clauses, false);
+                qpc.complete_roles = true;
+                qpc.node_cap = node_cap;
+                for &a in &suspects {
+                    qpc.reset();
+                    let r = qpc.saturate(&[CLit::pos(a)]);
+                    if r.unsupported {
+                        return None; // cannot bound this suspect ⇒ defer
+                    }
+                    if r.clashed {
+                        unsat_cands.push(a); // single-seed inverse clash ⇒ confirm
+                        continue;
+                    }
+                    let n = node_of[&a];
+                    let fwd = &g.label_pos[n];
+                    for &b in &r.root_label {
+                        if b != a && qset.contains(&b) && !fwd.contains(&b) {
+                            cands.push((a, b));
+                        }
+                    }
+                    if cands.len() > cap {
+                        if trace {
+                            eprintln!("QOGF verify: candidate set exceeded cap {} ⇒ defer", cap);
+                        }
+                        return None; // unbounded verify ⇒ defer rather than stall
+                    }
+                }
+            }
+            if trace {
+                eprintln!(
+                    "QOGF verify: {} tight candidates after per-concept de-conflation, {} unsat candidates [per-concept-inverse {:.2}s]",
+                    cands.len(),
+                    unsat_cands.len(),
+                    t_pc.elapsed().as_secs_f64()
+                );
+            }
+            self.pc_candidates = cands;
+            self.pc_unsat_candidates = unsat_cands;
+        }
         Some((consistent, unsat, subs))
     }
 

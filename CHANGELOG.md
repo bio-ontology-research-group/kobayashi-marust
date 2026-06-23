@@ -4,6 +4,40 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: sound+complete verify funnel (correct, but bounded by inverse-saturation cost)
+
+Adds a sound+complete certification path behind `KM_HT_QO_VERIFY` on top of the
+forward-only global gate, plus the measurements that show why certified-complete is
+*not* fast on 7581. The funnel (`qo_classify_global_fwd` verify-prep):
+
+1. forward-only global pass → sound subsumer lower bound `L` (10s, gold-exact);
+2. one inverse-augmented global pass SELECTS suspect concepts (those whose
+   inverse-augmented closure exceeds `L`) — a sound superset of the concepts whose
+   true classification could differ from forward-only;
+3. a per-concept (single-seed) inverse saturation runs ONLY on the suspects and
+   de-conflates each to its TIGHT candidate set (single-seed avoids the
+   cross-concept filler conflation that bloats the global set);
+4. the caller confirms each tight candidate with the complete tableau
+   `consistent(A ⊓ ¬B)`. Result = `L ∪ confirmed` = sound + complete.
+
+On 7581 the funnel is correct — it collapses the **6.5M** global candidate pairs
+(across 10635 suspects) down to **177** tight candidates, all of which verify as
+non-subsumptions (forward-only is complete here). Verification itself is cheap
+(measured ~0.02–0.26s per candidate; the 560s in the prior per-concept VERIFY was
+the saturations, not the verifies).
+
+**But the certified path is >280s on 7581, and the cause is fundamental.** The
+inverse-augmented saturation pollutes catastrophically: the global inverse pass
+alone takes **111s** (vs 10s forward-only) building a 6.5M-fact model, and the
+per-concept inverse saturations *thrash* (16M edge-ops for a single 71-node
+concept). KM's inverse handling reads a shared filler's runtime *label* across
+back-edges (an EL backward-link read), so inverse back-edges blow up propagation.
+Forward-only (which drops those edges) is the only fast saturation. **The necessary
+lever for fast+certified on inverse onts is a sound, efficient inverse saturation
+(Konclude's KPSet G2: from a successor propagate only status flags, never labels) —
+a substantial algorithm extension, not a routing tweak.** Gated off
+(`KM_HT_QO_VERIFY`), zero impact on the 568 baseline. See project_km_7581_qosat.
+
 ### HT/QoSat: single-pass forward-only QO gate — 7581 saturation matches Konclude
 
 The per-concept forward-only gate (below) decided 7581 by running one single-seed
