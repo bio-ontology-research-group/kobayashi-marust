@@ -1745,6 +1745,26 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
     out
 }
 
+/// Count clauses that are inverse/symmetric BRIDGES (single role head whose two
+/// args are swapped relative to a body role atom: `R(s,t) → R'(t,s)`). The
+/// forward-only QO pass (`skip_inverse = true`) DROPS such clauses, so a residual
+/// bridge means the forward closure loses a real inverse contribution and a
+/// "clean global pass" can no longer be trusted as COMPLETE. After
+/// `compose_inverse` this should be 0 on a fully-composable ont (every inverse
+/// consumer turned into a forward clause), which is the precondition for the
+/// INVCOMPOSE + write-mode global pass to certify soundly.
+fn count_inverse_bridges(clauses: &[ClauseRec]) -> usize {
+    clauses
+        .iter()
+        .filter(|(c, _, _)| {
+            !c.body.is_empty()
+                && c.head.len() == 1
+                && matches!(&c.head[0], Atom::Role { s: hs, t: ht, .. }
+                    if c.body.iter().any(|a| matches!(a, Atom::Role { s, t, .. } if *s == *ht && *t == *hs)))
+        })
+        .count()
+}
+
 /// Build the clause records (sorted body + var count) for the Ht index.
 fn mk_recs(clauses: &[Clause]) -> Vec<ClauseRec> {
     clauses
@@ -6187,6 +6207,31 @@ impl Ht {
                 }
             }
             return None;
+        }
+        // INVCOMPOSE write-mode soundness guard. When the composed inverse clauses
+        // are WRITTEN (fprop, not fcheck) into separate per-creation-role filler
+        // nodes (sat_mode), the clean forward pass already INCLUDES the inverse
+        // contribution, so it can certify complete WITHOUT the funnel — but ONLY if
+        // composition was total. The forward-only pass drops every inverse BRIDGE
+        // (`skip_inverse = true`); if any bridge survived `compose_inverse`
+        // (a non-composable / one-directional inverse role), that contribution is
+        // silently lost and a "clean" pass is NOT necessarily complete. So when
+        // writing composed clauses, require zero residual inverse bridges; else
+        // defer to the (sound) funnel.
+        if qf.fprop_on && !qf.fcheck {
+            let residual = count_inverse_bridges(&self.clauses);
+            if residual > 0 {
+                if trace {
+                    eprintln!(
+                        "QOGF defer: INVCOMPOSE write-mode but {} residual inverse bridges (composition not total) — cannot certify, funnel",
+                        residual
+                    );
+                }
+                return None;
+            }
+            if trace {
+                eprintln!("QOGF INVCOMPOSE write-mode: 0 residual inverse bridges ⇒ certify safe");
+            }
         }
         // `saturate_global` seeds the query concepts first, in order, so query
         // `queries[i]` is shared node `i` (same mapping the legacy global path uses).

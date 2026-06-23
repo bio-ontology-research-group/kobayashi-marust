@@ -318,6 +318,56 @@ certification mechanism and this exhaustive refutation are committed; the
 certified 126 s pseudo-model-merge path and the gold-exact `fcheck`+funnel path
 (133 s, 1.0 GB) both stand as working sound+complete-under-budget results.
 
+## STATUS 2026-06-23 (BREAKTHROUGH): hybrid certifies 7581 sound+complete in 31s
+
+The encoding-level refutation above was missing one combination. The 1.34 GB
+write-mode over-derivation came from writing the composed inverse head to a
+SHARED filler. Under **`sat_mode`** (separate per-(concept,role) filler nodes,
+Konclude G1) the composed writes land on filler nodes that are NEVER read as a
+named subsumer — so writing them is SOUND. The full sound+complete fast path is:
+
+**INVCOMPOSE + FPROP + SAT + KPSET** (`KM_HT_QO_INVCOMPOSE` + `KM_HT_QO_FPROP` +
+`KM_HT_QO_SAT` + `KM_HT_QO_KPSET`, via the kpset gate):
+1. **INVCOMPOSE** resolves every *composable* inverse pair into forward clauses
+   and drops their bridges (110k of 7581's ~110k single-role consumers).
+2. **FPROP** broadcasts the composed head-on-target clauses at `prop` speed
+   (fixes the divergence).
+3. **SAT** puts the composed writes on separate filler nodes, so named self-node
+   subsumer sets stay inverse-clean (G1) — the writes become SOUND (no
+   shared-filler conflation; the 1.34 GB collapses to the gold closure).
+4. **KPSET** containment-checks any *residual* (non-composable / one-directional)
+   inverse bridges that INVCOMPOSE could not eliminate; a miss raises
+   `kp_insufficient` and defers to the funnel.
+
+Certified sound+complete iff `kp_miss = 0` (no residual contribution lost) and no
+`qo_insufficient` / parked disjunction.
+
+**MEASURED on ore_ont_7581 (ws):** `QOKP certified sound+complete (kp_miss=0,
+inv_edges=0)`, **31.3 s / 1.0 GB**, km = 565317 = gold, **0 unsound / 0
+incomplete**. (7581's 2 residual bridges are vacuous — they create 0 reversed
+edges — so kpset's check passes and the global pass certifies.) This is **4x
+faster than the 126 s pseudo-model-merge path** and within ~3x of Konclude's
+~10 s, at the lowest memory of any path.
+
+**Soundness (principled, not coincidental).** `sat_mode` guarantees a named
+concept `A`'s self-node is never an ∃-filler, so it picks up `E` only from
+clauses anchored AT it (forward EL via `prop` over its own `∃`-successors) — never
+from a composed inverse write (those land on fillers and propagate back only
+sound forward consequences). The composed clauses are resolvents (sound by
+construction). The residual bridges are the only uncomposed inverse contribution,
+and kpset never lets one through silently — `kp_miss = 0` is a sound completeness
+certificate for them. A **residual-bridge guard** (`count_inverse_bridges`) was
+added so the bare write-mode path (FPROP+SAT without KPSET) DEFERS when any bridge
+survived composition, rather than silently dropping it (that is exactly what made
+the unguarded 30 s run gold-exact-by-luck; the guard makes it sound).
+
+REMAINING toward Konclude ~10 s: the 31 s is the single global saturation over the
+composed clause set (566k clauses, 116k nodes incl. ~43k separate fillers). The
+gap is constant-factor (saturation throughput + the extra filler nodes), not a
+missing mechanism. Next: validate no corpus regression (unimatrix sweep), then
+fold composition of the residual multi-role consumers (so kpset is not even
+needed) and trim `sat_mode`'s filler overhead.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**
