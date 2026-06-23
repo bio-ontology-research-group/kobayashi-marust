@@ -4,6 +4,54 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: forward-only per-concept gate makes 7581 sound + complete (gold-exact)
+
+`ore_ont_7581` (73k-concept Horn-ALCHQ giant, a CB-engine timeout) now classifies
+through the per-concept QoSat gate **sound and complete, byte-exact to Konclude
+gold**: `km = 565317, gold = 565317, unsound = 0, incomplete = 0` (validated
+end-to-end via `oracle/ore/ore_canon.py`). The gate was previously complete but
+produced 106 spurious subsumptions. Behind `KM_HT_QO_PC` (opt-in, not in the
+default config), so zero impact on the 568 baseline. 127 cargo tests pass.
+
+**Root cause (pinned, supersedes the earlier range / cardinality / canon-artifact
+theories).** The tableau input carries 4 inverse-bridge clauses (a single role
+head with arguments swapped versus a body role, `r1(x,y) → r2(y,x)`, encoding the
+declared inverse pairs). These create model-specific reversed back-edges
+(`filler → r2 → root`); the 129286 NF4-backward clauses then read the shared
+concept-node's runtime label across those back-edges, deriving seed-specific
+consequences as global subsumers (`b ⊑ ∃r2.D` holds only because `root → r1 → b`
+in that one model). This is the shared-filler-in-cycle pollution, attributed to
+inverse — there are only 4 range clauses, so range was never the cause. Proof:
+dropping the inverse-bridge clauses yields gold exactly, so 7581's inverse is
+declared but non-load-bearing (removing it loses zero real subsumptions).
+
+**Fix.** `QoSat::new_opts(clauses, skip_inverse)`: `skip_inverse` drops the
+inverse / symmetric bridging clauses. The shared-node saturation may read a
+successor's runtime label only across genuine forward `∃`-edges, never across an
+inverse back-edge, so forward-only is sound (monotone: dropping clauses never
+over-derives) and complete whenever inverse is non-load-bearing.
+`qo_classify_perconcept` returns the forward-only result by default. With
+`KM_HT_QO_VERIFY` it also runs the inverse-augmented saturation (a complete
+superset) and confirms each inverse-only candidate `(A,B)` with the complete
+tableau `consistent(A ⊓ ¬B)` — sound + complete + general — but the per-candidate
+full tableau is too slow on a 73k giant, so verify stays opt-in. Also ports
+Konclude's per-creation-role range folding (`range_class` / `filler_node` /
+`node_range`, fillers keyed by `(concept, range-class)`; test
+`qopc_range_no_cross_role_pollution`); sound and reduces to the old behaviour when
+no range clauses exist, though inert on 7581.
+
+This matches Konclude's saturation (verified against its source):
+`getRoleSuccessorALLConceptExtensionData(creationRole)` is per-creation-role
+range folding, `isCriticalALLConceptDescriptorInsufficient` is the insufficiency
+residue, and KM's defect was the G2 violation (reading a successor's label,
+model-specific across inverse back-edges).
+
+Open: 7581 runs ~283 s on `ws` (saturation ~109 s; the rest is frontend parse of
+the 37 MB OWL), over the 240 s budget there; the benchmark-host timing is not yet
+confirmed. Forward-only is sound everywhere but silently incomplete if inverse is
+load-bearing on some other `KM_HT_QO_PC`-routed ont, so a cheap sound completeness
+check (the full-tableau verify is too slow) is the remaining work.
+
 ### Hypertableau toward SHIQ: sound inverse + functional-merge primitive, two routing-gate fixes, and the Konclude saturation diagnosis (foundations, gated)
 
 Groundwork for solving the disjunction / SROIQ family (`ore_ont_1603, 12653,
