@@ -1965,6 +1965,43 @@ struct QoSat<'a> {
     /// `prop_rule`). A fresh edge `(X, R, T)` just unions `prop[(R,T)]` into `X` —
     /// O(consequences), no per-edge clause matching.
     prop: HashMap<(R, Node), Vec<CLit>>,
+    /// FORWARD-broadcast analog of `prop_rule` (KM_HT_QO_FPROP). Captures the
+    /// MIRROR Horn NF4 shape `R(sv,tv) ⊓ D(sv) → E(tv)`: a single role atom, one
+    /// concept guard on the role's SOURCE var `sv`, one concept head on the
+    /// role's TARGET var `tv`. This is exactly the shape `compose_inverse`
+    /// produces when it resolves a bidirectional inverse bridge into a forward
+    /// clause (`∃r.D⊑E` over an inverse role `r` becomes `s(v,u) ⊓ D(v) → E(u)`
+    /// over the forward partner `s`, head on the s-target). Such a clause's
+    /// consequence `E` for a successor depends only on `(R, label[source])`, NOT
+    /// on which successor we reach — so it is broadcast forward ONCE per
+    /// (source, role) instead of re-matched on every outgoing edge (the per-edge
+    /// re-fire is exactly why bare KM_HT_QO_INVCOMPOSE diverged). Keyed by the
+    /// source guard `D`; captured clauses are EXCLUDED from the other role
+    /// indexes (handled solely by the forward-link machinery).
+    fprop_rule: HashMap<CLit, Vec<(R, CLit)>>,
+    /// Materialised forward links: `fprop[(R, S)]` is the set of literals every
+    /// R-SUCCESSOR of node `S` must carry (accumulated as `S`'s label grows via
+    /// `fprop_rule`). A fresh edge `(S, R, T)` just unions `fprop[(R,S)]` into
+    /// `T` — O(consequences), no per-edge clause matching. The forward mirror of
+    /// `prop`.
+    fprop: HashMap<(R, Node), Vec<CLit>>,
+    /// KM_HT_QO_FPROP: enable the forward-broadcast capture above. Default off
+    /// (the standard backward-only `prop` path is unchanged when off).
+    fprop_on: bool,
+    /// KM_HT_QO_FCHECK: run the captured head-on-target (inverse-composed)
+    /// clauses in CONTAINMENT-CHECK mode (Konclude G1/G3) instead of writing.
+    /// MEASURED 2026-06-23: writing the composed head `E` to the shared
+    /// successor node over-derives grossly (the forward mirror of the reversed-
+    /// edge conflation — 7581 blows to 1.34 GB). Konclude never writes such an
+    /// operand as a subsumer; it reads subsumers from self-nodes (G1) and uses
+    /// the operand only to decide criticality (G3). So under `fcheck` the
+    /// captured broadcast does NOT add `E` to the successor — it records a
+    /// deferred obligation (`kp_check1`) that `kp_finalize` verifies against the
+    /// forward closure. A still-missing obligation marks that node insufficient
+    /// (`kp_insuff_nodes`). When NO obligation misses, the (sound) forward
+    /// closure is certified COMPLETE — the inverse contributed nothing — and is
+    /// returned directly. Implies `fprop_on` (it reuses the same capture).
+    fcheck: bool,
     /// Role-body clauses indexed by each concept LITERAL guarding them — the
     /// `complete_roles` trigger index. When `lit` is asserted at a node, the
     /// clauses in `role_guard_trig[lit]` are the only role clauses whose
@@ -2115,6 +2152,7 @@ enum QoUndo {
     Pending(usize), // pending grew to this len
     ConceptNode(CLit),
     Prop(R, Node, usize), // prop[(R,Node)] grew to this len
+    Fprop(R, Node, usize), // fprop[(R,Node)] grew to this len
     Filler(CLit, u32),    // filler_node[(CLit, class)] was created
 }
 
@@ -2141,7 +2179,11 @@ const QO_NODE_CAP: usize = 8000;
 
 impl<'a> QoSat<'a> {
     fn new(clauses: &'a [ClauseRec]) -> QoSat<'a> {
-        QoSat::new_opts(clauses, std::env::var_os("KM_HT_QO_NOINV").is_some())
+        QoSat::new_opts(
+            clauses,
+            std::env::var_os("KM_HT_QO_NOINV").is_some(),
+            std::env::var_os("KM_HT_QO_FPROP").is_some(),
+        )
     }
 
     /// `skip_inverse`: drop inverse/symmetric bridging clauses (a single role
@@ -2151,7 +2193,11 @@ impl<'a> QoSat<'a> {
     /// (`skip_inverse = true`) is SOUND but may miss inverse-entailed
     /// subsumptions, so the per-concept gate runs both and verifies the
     /// difference with the complete tableau.
-    fn new_opts(clauses: &'a [ClauseRec], skip_inverse: bool) -> QoSat<'a> {
+    fn new_opts(clauses: &'a [ClauseRec], skip_inverse: bool, fprop_on: bool) -> QoSat<'a> {
+        // `fcheck` reuses the forward-broadcast capture but in containment-check
+        // mode, so it implies `fprop_on`.
+        let fcheck = std::env::var_os("KM_HT_QO_FCHECK").is_some();
+        let fprop_on = fprop_on || fcheck;
         let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
         let mut role_tgt_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
         let mut role_src_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
@@ -2162,6 +2208,7 @@ impl<'a> QoSat<'a> {
         // of the backward-link `prop` store, to isolate whether `prop` is a source
         // of over-approximation. Read once (not per clause).
         let no_prop = std::env::var_os("KM_HT_QO_NOPROP").is_some();
+        let mut fprop_rule: HashMap<CLit, Vec<(R, CLit)>> = HashMap::new();
         let no_inv = skip_inverse;
         // Body-guard concepts: any concept id occurring in a clause BODY (either
         // polarity). An inverse/∀ operand that is NOT a body guard can trigger
@@ -2325,6 +2372,34 @@ impl<'a> QoSat<'a> {
                         }
                     }
                 }
+                // FORWARD-broadcast capture (KM_HT_QO_FPROP), the mirror of the
+                // `prop_rule` block above: pure Horn NF4 `R(sv,tv) ⊓ D(sv) → E(tv)`
+                // — the role atom + ONE concept guard on the role's SOURCE var +
+                // ONE concept head on the role's TARGET var. Its consequence `E`
+                // for a successor depends only on `(R, D)`, so it is handled by the
+                // `fprop` forward broadcast, not per-edge matching, and EXCLUDED
+                // from the other role indexes. This is the shape `compose_inverse`
+                // emits for resolved inverse bridges.
+                if fprop_on && body.len() == 2 && head.len() == 1 {
+                    let role_atom = body.iter().find_map(|a| match a {
+                        Atom::Role { r, s, t } => Some((*r, *s, *t)),
+                        _ => None,
+                    });
+                    if let Some((r, sv, tv)) = role_atom {
+                        let guard = body.iter().find_map(|a| match a {
+                            Atom::Concept { lit, t } if *t == sv => Some(*lit),
+                            _ => None,
+                        });
+                        let hd = match head[0] {
+                            Atom::Concept { lit, t } if t == tv => Some(lit),
+                            _ => None,
+                        };
+                        if let (Some(g), Some(e)) = (guard, hd) {
+                            fprop_rule.entry(g).or_default().push((r, e));
+                            continue;
+                        }
+                    }
+                }
                 // Index this role clause by each DISTINCT concept guard in its
                 // body, for `complete_roles` trigger-keyed re-firing (the
                 // guard-arrives-after-edge half of completeness). Deduped per
@@ -2411,6 +2486,10 @@ impl<'a> QoSat<'a> {
             role_guard_trig,
             prop_rule,
             prop: HashMap::new(),
+            fprop_rule,
+            fprop: HashMap::new(),
+            fprop_on,
+            fcheck,
             forall_nodes: HashSet::new(),
             track_forall: false,
             global,
@@ -2459,6 +2538,7 @@ impl<'a> QoSat<'a> {
         self.node_work.clear();
         self.guard_refire.clear();
         self.prop.clear();
+        self.fprop.clear();
         self.forall_nodes.clear();
         self.filler_node.clear();
         self.node_range.clear();
@@ -2647,7 +2727,7 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
-        if self.kpset {
+        if self.kpset || self.fcheck {
             self.kp_finalize();
         }
         self.finish(root)
@@ -2708,7 +2788,7 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
-        if self.kpset {
+        if self.kpset || self.fcheck {
             self.kp_finalize();
         }
         self.finish_global()
@@ -2781,6 +2861,41 @@ impl<'a> QoSat<'a> {
                 }
                 self.prop_rule.insert(lit, rules);
             }
+            // Forward mirror of the backward-link broadcast above: `lit` arriving
+            // at `n` makes `n` a SOURCE whose R-successors inherit the NF4 head `e`
+            // (from `R(sv,tv) ⊓ lit(sv) → e(tv)`). Record the link in `fprop[(r,n)]`
+            // (so edges added later inherit it) and push `e` to all current
+            // R-successors. Computed once per (source-concept, role).
+            if self.fprop_on {
+                if let Some(rules) = self.fprop_rule.remove(&lit) {
+                    for &(r, e) in &rules {
+                        let old_len = {
+                            let entry = self.fprop.entry((r, n)).or_default();
+                            let ol = entry.len();
+                            if !entry.contains(&e) {
+                                entry.push(e);
+                            }
+                            ol
+                        };
+                        if self.tracing && self.fprop[&(r, n)].len() != old_len {
+                            self.trail.push(QoUndo::Fprop(r, n, old_len));
+                        }
+                        let succs: Vec<Node> = self.out_edges[n]
+                            .iter()
+                            .filter(|(rr, _)| *rr == r)
+                            .map(|(_, t)| *t)
+                            .collect();
+                        for t in succs {
+                            self.fprop_emit(t, e);
+                            if self.unsupported {
+                                self.fprop_rule.insert(lit, rules);
+                                return;
+                            }
+                        }
+                    }
+                    self.fprop_rule.insert(lit, rules);
+                }
+            }
             if !self.tracing {
                 self.eval_parked_at(n);
             }
@@ -2835,6 +2950,22 @@ impl<'a> QoSat<'a> {
                     self.kp_write(s, e, via_inv);
                     if self.unsupported {
                         return;
+                    }
+                }
+            }
+            // Forward mirror: the fresh `r`-edge `(s,t)` inherits everything `s`'s
+            // label has already broadcast forward for role `r` — the head-on-target
+            // NF4 consequences land on the new successor `t`. O(consequences), no
+            // clause matching. (The guard-arrives-after-edge direction is the
+            // `fprop_rule` push in the lit loop.)
+            if self.fprop_on {
+                if let Some(es) = self.fprop.get(&(r, s)) {
+                    let es: Vec<CLit> = es.clone();
+                    for e in es {
+                        self.fprop_emit(t, e);
+                        if self.unsupported {
+                            return;
+                        }
                     }
                 }
             }
@@ -3072,6 +3203,11 @@ impl<'a> QoSat<'a> {
                 }
                 QoUndo::Prop(r, n, len) => {
                     if let Some(v) = self.prop.get_mut(&(r, n)) {
+                        v.truncate(len);
+                    }
+                }
+                QoUndo::Fprop(r, n, len) => {
+                    if let Some(v) = self.fprop.get_mut(&(r, n)) {
                         v.truncate(len);
                     }
                 }
@@ -3578,6 +3714,23 @@ impl<'a> QoSat<'a> {
                 self.kp_check1.insert(disj[0]);
             }
             _ => self.kp_checkn.push(disj),
+        }
+    }
+
+    /// Forward-broadcast emit for a captured head-on-target clause. In write
+    /// mode (`fprop_on`, not `fcheck`) it asserts `e` at the successor `t`. In
+    /// containment-check mode (`fcheck`, Konclude G1/G3) it NEVER writes — it
+    /// records a deferred obligation that `kp_finalize` verifies against the
+    /// forward closure, so the inverse contribution can never pollute a node's
+    /// (read-for-classification) label. A still-missing obligation marks the
+    /// concept insufficient (routed to the complete tableau).
+    fn fprop_emit(&mut self, t: Node, e: CLit) {
+        if self.fcheck {
+            if !self.node_unsat.contains(&t) && !self.label[t].contains(&e) {
+                self.kp_check1.insert((t, e));
+            }
+        } else {
+            self.add_lit(t, e);
         }
     }
 
@@ -5954,7 +6107,11 @@ impl Ht {
     fn qo_classify_global_fwd(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         let qset: HashSet<C> = queries.iter().copied().collect();
-        let mut qf = QoSat::new_opts(&self.clauses, true); // forward-only ⇒ sound
+        let mut qf = QoSat::new_opts(
+            &self.clauses,
+            true,
+            std::env::var_os("KM_HT_QO_FPROP").is_some(),
+        ); // forward-only ⇒ sound
         qf.complete_roles = true;
         let g = qf.saturate_global(queries);
         // Defer to the per-concept gate unless the single pass is fully clean:
@@ -5965,14 +6122,56 @@ impl Ht {
         //    is not the whole story (a live ⊔), so a subsumer could be missed.
         // (For a Horn SRIF ont — 7581 — none of these fire, so the fast path is
         // taken and the per-concept gate is never reached.)
-        if g.unsupported || qf.qo_insufficient || !qf.pending.is_empty() {
+        if g.unsupported || qf.qo_insufficient || !qf.pending.is_empty() || qf.kp_insufficient {
             if trace {
                 eprintln!(
-                    "QOGF defer: unsupported={} insufficient={} pending={}",
+                    "QOGF defer: unsupported={} insufficient={} pending={} kp_insufficient={} kp_miss={} insuff_nodes={}",
                     g.unsupported,
                     qf.qo_insufficient,
-                    qf.pending.len()
+                    qf.pending.len(),
+                    qf.kp_insufficient,
+                    qf.kp_miss,
+                    qf.kp_insuff_nodes.len()
                 );
+                // FCHECK per-node reachability probe: a query concept can still
+                // certify from the forward closure iff its self-node cannot be
+                // affected by any missed obligation. A missed `E(u)`, were it
+                // present, would propagate from `u` BOTH backward (prop, to
+                // predecessors via in_edges) AND forward (fprop, to successors via
+                // out_edges); so the conservatively-affected set is the
+                // bidirectional reachability closure of the insufficient nodes.
+                // Count query concepts (nodes 0..|queries|) outside it.
+                if qf.kp_insufficient && !qf.qo_insufficient && qf.pending.is_empty() {
+                    let nn = qf.label.len();
+                    let mut affected = vec![false; nn];
+                    let mut stack: Vec<Node> = Vec::new();
+                    for &n in &qf.kp_insuff_nodes {
+                        if n < nn && !affected[n] {
+                            affected[n] = true;
+                            stack.push(n);
+                        }
+                    }
+                    while let Some(n) = stack.pop() {
+                        for &(_, p) in &qf.in_edges[n] {
+                            if !affected[p] {
+                                affected[p] = true;
+                                stack.push(p);
+                            }
+                        }
+                        for &(_, t) in &qf.out_edges[n] {
+                            if !affected[t] {
+                                affected[t] = true;
+                                stack.push(t);
+                            }
+                        }
+                    }
+                    let clean = (0..queries.len().min(nn)).filter(|&i| !affected[i]).count();
+                    eprintln!(
+                        "QOGF fcheck per-node probe: {} / {} query concepts CLEAN (self-node not in the bidirectional closure of any insufficient node)",
+                        clean,
+                        queries.len()
+                    );
+                }
             }
             return None;
         }
@@ -6004,6 +6203,18 @@ impl Ht {
                 g.label_pos.len()
             );
         }
+        // FCHECK (Konclude G1/G3 certification): the inverse-composed clauses ran
+        // in containment-check mode and NO obligation missed (we passed the defer
+        // gate, so `kp_insufficient` is false). That certifies the sound
+        // forward-only closure is ALSO complete — the inverse contributed nothing
+        // beyond what the forward closure already carries — so return it directly,
+        // without the per-concept verify funnel.
+        if qf.fcheck {
+            if trace {
+                eprintln!("QOGF fcheck CERTIFIED complete (kp_miss=0)");
+            }
+            return Some((consistent, unsat, subs));
+        }
         // KM_HT_QO_VERIFY: certify completeness, cheaply. Forward-only `L` is sound
         // but may miss inverse-entailed subsumptions. A two-stage SOUND funnel:
         //   (1) STRUCTURAL suspect selection (no inverse saturation): a concept is a
@@ -6028,7 +6239,11 @@ impl Ht {
             // (1) structural suspects from the forward model `qf` (still in scope).
             let suspects: Vec<C> = if std::env::var_os("KM_HT_QO_GLOBALSEL").is_some() {
                 // legacy: inverse-augmented global pass selects suspects (slow).
-                let mut qg = QoSat::new_opts(&self.clauses, false);
+                let mut qg = QoSat::new_opts(
+                    &self.clauses,
+                    false,
+                    std::env::var_os("KM_HT_QO_FPROP").is_some(),
+                );
                 qg.complete_roles = true;
                 let gg = qg.saturate_global(queries);
                 if gg.unsupported {
@@ -6141,7 +6356,11 @@ impl Ht {
                         std::thread::Builder::new()
                             .stack_size(QO_WORKER_STACK)
                             .spawn_scoped(s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
-                                let mut qpc = QoSat::new_opts(clauses_ref, false);
+                                let mut qpc = QoSat::new_opts(
+                                    clauses_ref,
+                                    false,
+                                    std::env::var_os("KM_HT_QO_FPROP").is_some(),
+                                );
                                 qpc.complete_roles = true;
                                 qpc.node_cap = node_cap;
                                 let mut c: Vec<(C, C)> = Vec::new();
@@ -6230,10 +6449,18 @@ impl Ht {
         // saturation cost and its extra subsumptions are worthless without the
         // complete-tableau confirmation that the verify pass performs.
         let want_cands = std::env::var_os("KM_HT_QO_VERIFY").is_some();
-        let mut qf = QoSat::new_opts(&self.clauses, true);
+        let mut qf = QoSat::new_opts(
+            &self.clauses,
+            true,
+            std::env::var_os("KM_HT_QO_FPROP").is_some(),
+        );
         qf.complete_roles = true;
         qf.node_cap = cap;
-        let mut qu = QoSat::new_opts(&self.clauses, false);
+        let mut qu = QoSat::new_opts(
+            &self.clauses,
+            false,
+            std::env::var_os("KM_HT_QO_FPROP").is_some(),
+        );
         qu.complete_roles = true;
         qu.node_cap = cap;
         let mut unsat: Vec<C> = Vec::new();
@@ -6321,7 +6548,11 @@ impl Ht {
     fn qo_classify_kpset(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         let qset: HashSet<C> = queries.iter().copied().collect();
-        let mut qk = QoSat::new_opts(&self.clauses, false); // KEEP inverse bridges
+        let mut qk = QoSat::new_opts(
+            &self.clauses,
+            false,
+            std::env::var_os("KM_HT_QO_FPROP").is_some(),
+        ); // KEEP inverse bridges
         qk.kpset = true;
         qk.complete_roles = true;
         let g = qk.saturate_global(queries);
@@ -7442,6 +7673,37 @@ mod tests {
         assert!(g.label_pos[na].contains(&E), "A1 must get E via prop broadcast");
         assert!(g.label_pos[na2].contains(&E), "A2 must get E via prop broadcast");
         assert!(!g.label_pos[nb].contains(&E));
+    }
+
+    #[test]
+    fn qosat_fprop_forward_broadcast() {
+        // Forward-broadcast mirror of `qosat_prop_broadcast_shared`. The
+        // head-on-TARGET Horn NF4 `R(sv,tv) ⊓ D(sv) → E(tv)` (the shape
+        // `compose_inverse` emits) must land `E` on the role-SUCCESSOR, broadcast
+        // once per (source, role), and reach a successor whether the guard `D`
+        // arrives before or after the edge. Setup: A ⊑ ∃r.B, A ⊑ D, and the
+        // head-on-target clause. E must appear at node(B) (A's r-successor), NOT
+        // at node(A). With fprop OFF the same clause would instead set
+        // qo_insufficient (a head on a non-anchor var), so this also confirms the
+        // capture routes it away from the per-edge `apply_head` path.
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
+            // R(X,y) ⊓ D(X) → E(y): guard D on the role SOURCE, head E on TARGET.
+            Clause::new(vec![con(false, D, X), role(R0, X, y)], vec![con(false, E, y)]),
+        ];
+        let recs = mk_recs(&cls);
+        let mut qs = QoSat::new_opts(&recs, false, true); // fprop_on = true
+        qs.complete_roles = true;
+        let g = qs.saturate_global(&[A, B, D, E]);
+        assert!(!g.unsupported);
+        assert!(!qs.qo_insufficient, "fprop capture must route the head-on-target clause away from apply_head");
+        let na = qs.concept_node[&CLit::pos(A)];
+        let nb = qs.concept_node[&CLit::pos(B)];
+        assert!(g.label_pos[nb].contains(&E), "B (A's r-successor) must get E via fprop forward broadcast");
+        assert!(!g.label_pos[na].contains(&E), "A (the source) must NOT get E");
     }
 
     #[test]

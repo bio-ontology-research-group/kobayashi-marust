@@ -226,6 +226,59 @@ criticality), not a flag. Both attempts are committed gated (default off, sound 
 the forward-only fallback, gold-exact). The certified **126s pseudo-model-merge
 result remains the working sound+complete-under-budget path.**
 
+## STATUS 2026-06-23 (re-architecture step 1): `fprop` + `fcheck` — sound inverse certification, 36495→1581 insufficient
+
+Committing to the saturation re-architecture, the first landed piece (gated, default
+off, 131 tests). Two new mechanisms in `QoSat`:
+
+- **`fprop` (KM_HT_QO_FPROP)** — the forward-broadcast mirror of `prop`. `prop`
+  optimises head-on-SOURCE Horn NF4 (`R(s,t) ⊓ D(t) → E(s)`, backward links);
+  `fprop` optimises head-on-TARGET (`R(s,t) ⊓ D(s) → E(t)`), which is EXACTLY the
+  shape `compose_inverse` emits. This **fixes the `KM_HT_QO_INVCOMPOSE` divergence**:
+  bare INVCOMPOSE re-fired the composed clauses per edge (edge_work climbing
+  3M→5M, never converging); with `fprop` the composed pass CONVERGES at
+  forward-only cost (7581: edge_work drains to 0, nodes stable at 72990, 151s).
+- **`fcheck` (KM_HT_QO_FCHECK)** — the captured composed clauses run in
+  CONTAINMENT-CHECK mode (Konclude G1/G3) instead of writing. MEASURED: writing
+  the composed head `E` to the shared successor over-derives grossly (the forward
+  MIRROR of the reversed-edge conflation — 7581 blows to 1.34 GB raw). So under
+  `fcheck` the broadcast records a deferred obligation (`kp_check1`) verified at
+  fixpoint; a miss marks the node insufficient. When no obligation misses, the
+  sound forward closure is certified COMPLETE and returned directly (no funnel).
+
+**MEASURED on ore_ont_7581 (ws), INVCOMPOSE + FCHECK:**
+- SOUND + gold-exact: km = 565317 = gold, **0 unsound / 0 incomplete**.
+- Lowest memory of any path: **1.0 GB** (vs 2.5 GB for the certified pseudo-model
+  merge, 3.7 GB for fprop write-mode).
+- Insufficiency cut from KPSet's 36495 nodes to **1581 nodes / 31202 missed
+  obligations** — the composed-forward + source-guard check is far tighter than
+  the reversed-edge check.
+- But still `kp_insufficient` ⇒ `global_fwd` DEFERS to the verify funnel (which
+  delivers the gold-exact result in ~133 s). It does NOT certify on the global
+  pass yet.
+
+**Why the 1581 still block, and why routing them is DEAD.** The missed
+obligations are genuine inverse-entailed facts at SHARED ∃-filler nodes (a
+`has_part` filler `u` is shared across all wholes `v` with `v has_part u`; an
+obligation `E(u)` from one whole `v1 ∈ D` is checked against the shared `u`, which
+other non-`D` wholes also reach). They do NOT change the named subsumption set
+(forward already = gold) — they are false alarms FOR CLASSIFICATION. The decisive
+filter probe (bidirectional reachability closure of the 1581 insufficient nodes):
+**0 / 72989 query concepts CLEAN** — the dense part_of/has_part graph links every
+named concept to an insufficient filler. So routing only the genuinely-affected
+concepts to the funnel (the cheap option) recovers nothing, exactly as the KPSet
+per-node probe found. The only path to certification-on-the-global-pass is to
+stop the filler insufficiency from mattering at all — Konclude's G1/G2: a filler
+label is NEVER read as a named subsumer (G1) and only STATUS, never concept
+labels, propagates from a filler to its predecessors (G2). KM violates G2 via
+`prop` (it reads a filler's label and propagates a CONCEPT to predecessors). The
+remaining re-architecture is therefore to make the inverse-affected filler
+propagation status-only — separate per-creation-role successor nodes whose
+concept labels are consulted only for criticality, never broadcast as named
+subsumers. That is the multi-day core change below; this increment lands the
+sound, lower-memory certification mechanism and the measurement that pins the
+remaining work precisely.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**
