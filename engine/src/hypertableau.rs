@@ -1353,6 +1353,15 @@ pub struct Ht {
     /// (in-degree ≥ 2 non-root node) and so may carry over-approximated subsumers.
     /// Set by `qo_classify_perconcept`, consumed by the verification pass.
     pc_tainted: Vec<C>,
+    /// Candidate subsumptions `(A, B)` derived ONLY by the inverse-augmented
+    /// (complete-but-unsound) per-concept saturation and NOT by the forward-only
+    /// (sound) one. Each must be confirmed by the complete tableau before it is
+    /// kept (sound) or dropped (the inverse over-derivation). Set by
+    /// `qo_classify_perconcept`, consumed by the verification pass.
+    pc_candidates: Vec<(C, C)>,
+    /// Candidate unsatisfiable concepts seen only by the inverse-augmented run —
+    /// confirmed with a complete consistency test before being trusted.
+    pc_unsat_candidates: Vec<C>,
     /// body Concept atoms by literal: clauses triggered when that literal appears.
     concept_triggers: HashMap<CLit, Vec<(usize, usize)>>,
     /// body Role atoms by role.
@@ -1885,6 +1894,36 @@ struct QoSat<'a> {
     /// the tiny 5303-family residue tests); the per-concept gate raises it since
     /// one concept's closure can legitimately span a large slice of the ontology.
     node_cap: usize,
+    /// Konclude-style role-keyed range folding. A range/∀ write `R(x,y)→C(y)`
+    /// must fold per the successor's CREATION ROLE, never onto a concept-only
+    /// shared filler — the port of Konclude's
+    /// `getRoleSuccessorALLConceptExtensionData(creationRole)`
+    /// (CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp:960).
+    /// `range_class[r]` is `r`'s effective-range class id (0 = no range; roles
+    /// with identical effective range share an id, so range-free ∃ still share
+    /// ONE filler node — the old behaviour). A filler for `∃r.B` is keyed by
+    /// `(B, range_class[r])`, so an `r`-range write lands only on `r`-class
+    /// fillers. This kills the cross-role filler pollution that produced the 106
+    /// spurious subsumptions on 7581 (two roles' ranges landing on one shared
+    /// `node(B)` and being misread for the wrong role).
+    range_class: HashMap<R, u32>,
+    /// Concept set per range class (index = class id; 0 = empty). A non-anchor
+    /// concept write is SOUND iff the written literal is already in the target
+    /// node's class set (so it was going to be forced there anyway); otherwise it
+    /// is Konclude's "critical ALL" case and trips `qo_insufficient`.
+    class_set: Vec<HashSet<CLit>>,
+    /// Role-keyed filler nodes: `(filler-concept, range-class) → node`. Only used
+    /// for classes ≠ 0; class-0 fillers share the concept self-node (unchanged).
+    filler_node: HashMap<(CLit, u32), Node>,
+    /// Per-node creation range-class (parallel to `label`); 0 for self/root nodes.
+    node_range: Vec<u32>,
+    /// Set when a role-conditional concept write (a ∀/range head on a non-anchor
+    /// var) lands on a node whose creation class does not already cover it — the
+    /// residue Konclude routes to the complete tableau
+    /// (`isCriticalALLConceptDescriptorInsufficient`). The per-concept gate flags
+    /// such seeds for sound re-verification; on a pure-range ont (7581) the
+    /// role-keyed fillers absorb every range write, so this never fires.
+    qo_insufficient: bool,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -1896,6 +1935,7 @@ enum QoUndo {
     Pending(usize), // pending grew to this len
     ConceptNode(CLit),
     Prop(R, Node, usize), // prop[(R,Node)] grew to this len
+    Filler(CLit, u32),    // filler_node[(CLit, class)] was created
 }
 
 pub struct QoResult {
@@ -1921,6 +1961,17 @@ const QO_NODE_CAP: usize = 8000;
 
 impl<'a> QoSat<'a> {
     fn new(clauses: &'a [ClauseRec]) -> QoSat<'a> {
+        QoSat::new_opts(clauses, std::env::var_os("KM_HT_QO_NOINV").is_some())
+    }
+
+    /// `skip_inverse`: drop inverse/symmetric bridging clauses (a single role
+    /// head with args SWAPPED relative to a body role atom). The shared-node
+    /// saturation reads a successor's runtime label across such back-edges, which
+    /// is a model-specific (unsound) read; a forward-only saturation
+    /// (`skip_inverse = true`) is SOUND but may miss inverse-entailed
+    /// subsumptions, so the per-concept gate runs both and verifies the
+    /// difference with the complete tableau.
+    fn new_opts(clauses: &'a [ClauseRec], skip_inverse: bool) -> QoSat<'a> {
         let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
         let mut role_tgt_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
         let mut role_src_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
@@ -1931,6 +1982,96 @@ impl<'a> QoSat<'a> {
         // of the backward-link `prop` store, to isolate whether `prop` is a source
         // of over-approximation. Read once (not per clause).
         let no_prop = std::env::var_os("KM_HT_QO_NOPROP").is_some();
+        let no_inv = skip_inverse;
+        // --- Konclude role-keyed range folding setup. ------------------------
+        // direct_range[r] = concepts a range/∀ clause `R(x,y)→C(y)` forces on any
+        // r-successor when there is NO source-side guard (target guards are
+        // filler-local, so the write is still purely role-conditional and folds
+        // the same way). superrole[r] = direct super-roles from hierarchy clauses
+        // `R(x,y)→S(x,y)`. The effective range of r folds in all super-role
+        // ranges (a hierarchy S-edge fires range(S) at runtime, so the filler key
+        // must account for it: same key ⇒ same forced label ⇒ sound sharing).
+        let mut direct_range: HashMap<R, Vec<CLit>> = HashMap::new();
+        let mut superrole: HashMap<R, Vec<R>> = HashMap::new();
+        for rec in clauses.iter() {
+            let body = &rec.1;
+            let head = &rec.0.head;
+            let roles: Vec<(R, Var, Var)> = body
+                .iter()
+                .filter_map(|a| match a {
+                    Atom::Role { r, s, t } => Some((*r, *s, *t)),
+                    _ => None,
+                })
+                .collect();
+            if roles.len() != 1 || head.len() != 1 {
+                continue;
+            }
+            let (r, sv, tv) = roles[0];
+            match head[0] {
+                Atom::Role { r: hr, s: hs, t: ht } if hs == sv && ht == tv => {
+                    superrole.entry(r).or_default().push(hr);
+                }
+                Atom::Concept { lit, t } if t == tv => {
+                    // range/∀ fold candidate: a concept head on the role TARGET
+                    // var. Source-guarded (`D(sv) ⊓ R → C(tv)`) writes are
+                    // predecessor-dependent — NOT role-foldable — so exclude them;
+                    // they trip `qo_insufficient` at fire time (sound fallback).
+                    let src_guard = body
+                        .iter()
+                        .any(|a| matches!(a, Atom::Concept { t, .. } if *t == sv));
+                    if !src_guard {
+                        direct_range.entry(r).or_default().push(lit);
+                    }
+                }
+                _ => {}
+            }
+        }
+        // effective range per role = direct ∪ transitive super-role direct.
+        let mut all_roles: Vec<R> = direct_range.keys().copied().collect();
+        for (r, sup) in &superrole {
+            all_roles.push(*r);
+            all_roles.extend(sup.iter().copied());
+        }
+        all_roles.sort_unstable();
+        all_roles.dedup();
+        // intern effective-range sets → class ids (0 = empty), so roles with the
+        // same effective range share one filler-node class.
+        let mut class_of_set: HashMap<Vec<CLit>, u32> = HashMap::new();
+        let mut range_class: HashMap<R, u32> = HashMap::new();
+        let mut class_set: Vec<HashSet<CLit>> = vec![HashSet::new()];
+        let mut next_class: u32 = 1;
+        for &r in &all_roles {
+            let mut seen: Vec<R> = vec![r];
+            let mut stack = vec![r];
+            while let Some(x) = stack.pop() {
+                if let Some(sup) = superrole.get(&x) {
+                    for &s in sup {
+                        if !seen.contains(&s) {
+                            seen.push(s);
+                            stack.push(s);
+                        }
+                    }
+                }
+            }
+            let mut er: Vec<CLit> = Vec::new();
+            for s in seen {
+                if let Some(d) = direct_range.get(&s) {
+                    er.extend(d.iter().copied());
+                }
+            }
+            er.sort_unstable_by_key(|l| (l.c, l.neg));
+            er.dedup();
+            if er.is_empty() {
+                continue;
+            }
+            let id = *class_of_set.entry(er.clone()).or_insert_with(|| {
+                let c = next_class;
+                next_class += 1;
+                class_set.push(er.iter().copied().collect());
+                c
+            });
+            range_class.insert(r, id);
+        }
         let mut global = Vec::new();
         for (cid, rec) in clauses.iter().enumerate() {
             let body = &rec.1;
@@ -1941,6 +2082,23 @@ impl<'a> QoSat<'a> {
             }
             let has_role = body.iter().any(|a| matches!(a, Atom::Role { .. }));
             if has_role {
+                // KM_HT_QO_NOINV (diagnostic): skip inverse/symmetric bridging
+                // clauses — a single role head whose args are SWAPPED relative to
+                // a body role atom (`R(s,t) → R'(t,s)`). These create model-
+                // specific back-edges into shared concept nodes; the NF4 rules
+                // then read those shared labels across the back-edge, which is the
+                // suspected source of the 7581 spurious subsumptions. Excluding
+                // them from every role index makes them inert.
+                if no_inv && head.len() == 1 {
+                    if let Atom::Role { s: hs, t: ht, .. } = head[0] {
+                        let swapped = body.iter().any(
+                            |a| matches!(a, Atom::Role { s, t, .. } if *s == ht && *t == hs),
+                        );
+                        if swapped {
+                            continue;
+                        }
+                    }
+                }
                 // elc backward-link capture: pure Horn NF4 `R(sv,tv) ⊓ D(tv) → E(sv)`
                 // (body = exactly the role atom + one target-side concept guard,
                 // head = exactly one concept on the role's SOURCE var). Its
@@ -2063,6 +2221,11 @@ impl<'a> QoSat<'a> {
             tracing: false,
             complete_roles: false,
             node_cap: QO_NODE_CAP,
+            range_class,
+            class_set,
+            filler_node: HashMap::new(),
+            node_range: Vec::new(),
+            qo_insufficient: false,
         }
     }
 
@@ -2085,6 +2248,9 @@ impl<'a> QoSat<'a> {
         self.guard_refire.clear();
         self.prop.clear();
         self.forall_nodes.clear();
+        self.filler_node.clear();
+        self.node_range.clear();
+        self.qo_insufficient = false;
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -2095,6 +2261,7 @@ impl<'a> QoSat<'a> {
         self.label.push(HashSet::new());
         self.out_edges.push(Vec::new());
         self.in_edges.push(Vec::new());
+        self.node_range.push(0);
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
@@ -2174,8 +2341,28 @@ impl<'a> QoSat<'a> {
         }
     }
 
-    fn ensure_filler(&mut self, lit: CLit) -> Node {
-        self.concept_node_of(lit)
+    /// The successor node for `∃r.fil`. For a range-free role (`range_class[r]
+    /// == 0`) this is the concept self-node — the old behaviour, so range-free
+    /// ontologies are byte-identical. For a role with a range it is a node keyed
+    /// by `(fil, range_class[r])`, so `r`'s range writes fold onto an `r`-class
+    /// filler and never pollute a different role's successor (Konclude's
+    /// per-creation-role ALL-concept extension).
+    fn ensure_filler(&mut self, r: R, fil: CLit) -> Node {
+        let cls = self.range_class.get(&r).copied().unwrap_or(0);
+        if cls == 0 {
+            return self.concept_node_of(fil);
+        }
+        if let Some(&n) = self.filler_node.get(&(fil, cls)) {
+            return n;
+        }
+        let n = self.new_node();
+        self.node_range[n] = cls;
+        self.filler_node.insert((fil, cls), n);
+        if self.tracing {
+            self.trail.push(QoUndo::Filler(fil, cls));
+        }
+        self.add_lit(n, fil);
+        n
     }
 
     fn add_edge(&mut self, s: Node, r: R, t: Node) {
@@ -2626,6 +2813,7 @@ impl<'a> QoSat<'a> {
                     self.label.pop();
                     self.out_edges.pop();
                     self.in_edges.pop();
+                    self.node_range.pop();
                 }
                 QoUndo::Unsat(n) => {
                     self.node_unsat.remove(&n);
@@ -2640,6 +2828,9 @@ impl<'a> QoSat<'a> {
                     if let Some(v) = self.prop.get_mut(&(r, n)) {
                         v.truncate(len);
                     }
+                }
+                QoUndo::Filler(fil, cls) => {
+                    self.filler_node.remove(&(fil, cls));
                 }
             }
         }
@@ -2975,13 +3166,25 @@ impl<'a> QoSat<'a> {
                 Atom::Concept { lit, t } => {
                     let n = sigma[t as usize].expect("head var bound");
                     // ∀-style write: a concept head on a NON-anchor var lands on a
-                    // filler, not the clause's anchor. Record it; if that filler is
-                    // later shared across contexts (in-degree ≥ 2) the per-concept
-                    // result for this seed may be over-approximated and needs sound
-                    // re-verification. (Anchor-var heads — NF4 backward links — are
-                    // predecessor-independent and never pollute.)
-                    if t != X && self.track_forall {
-                        self.forall_nodes.insert(n);
+                    // successor, not the clause's anchor. With role-keyed fillers
+                    // such a write is SOUND iff `lit` is already in the target
+                    // node's range class (i.e. its creation role's range forces it
+                    // anyway). If not, this is Konclude's "critical ALL" case
+                    // (`isCriticalALLConceptDescriptorInsufficient`): the write
+                    // depends on how the node was reached, the shared model cannot
+                    // represent it soundly, so flag the seed insufficient and let
+                    // the caller re-verify it with the complete tableau. (Anchor
+                    // heads — NF4 backward links, domain — are predecessor-keyed
+                    // and never pollute.)
+                    if t != X {
+                        let cls = self.node_range[n] as usize;
+                        let clean = cls != 0 && self.class_set[cls].contains(&lit);
+                        if !clean {
+                            self.qo_insufficient = true;
+                        }
+                        if self.track_forall {
+                            self.forall_nodes.insert(n);
+                        }
                     }
                     if self.node_unsat.contains(&n) {
                         continue;
@@ -3002,7 +3205,7 @@ impl<'a> QoSat<'a> {
                     if self.node_unsat.contains(&n) {
                         return;
                     }
-                    let f = self.ensure_filler(fil);
+                    let f = self.ensure_filler(r, fil);
                     if !self.out_edges[n].iter().any(|(rr, tt)| *rr == r && *tt == f) {
                         self.add_edge(n, r, f);
                     }
@@ -3156,6 +3359,8 @@ impl Ht {
         let ht = Ht {
             clauses: recs,
             pc_tainted: Vec::new(),
+            pc_candidates: Vec::new(),
+            pc_unsat_candidates: Vec::new(),
             concept_triggers,
             role_triggers,
             global_disj_set: global_disj.iter().copied().collect(),
@@ -4777,6 +4982,15 @@ impl Ht {
         let mut unsat = Vec::new();
         let mut sat_q = Vec::new();
         let mut labels: Vec<(C, Vec<C>)> = Vec::new();
+        // KM_HT_HORNFAST: a per-concept model that completed with ZERO branching is
+        // the unique (deterministic) model of A, so its root label is A's EXACT
+        // subsumer set — no Phase-2 confirmation needed (B subsumes A iff B holds in
+        // every A-model; with one model that is just membership in its root label).
+        // Concepts whose build branched still go through the sound Phase-2 confirm.
+        // This is the sound, no-shared-filler route to classifying Horn/near-Horn
+        // giants (e.g. ore_ont_7581) that the QoSat shared-node gate over-approximates.
+        let hornfast = std::env::var_os("KM_HT_HORNFAST").is_some();
+        let mut exact: HashSet<C> = HashSet::new();
         // KM_HT_WITREUSE: pseudo-model witness reuse across the per-concept queries.
         // In a COMPLETE clash-free model, any node carrying concept C already
         // carries every subsumer of C (C ⊑ B ⇒ every C-individual is a B-individual
@@ -4851,6 +5065,10 @@ impl Ht {
                 sat_q.push(a);
                 if !naive {
                     labels.push((a, self.root_pos_label()));
+                    // branch-free build ⇒ this concept's root label is exact.
+                    if hornfast && self.branch_pushes == bp0 {
+                        exact.insert(a);
+                    }
                 }
                 if witreuse {
                     // record this clash-free model's node labels so later query
@@ -4934,6 +5152,16 @@ impl Ht {
             let mut tests: u64 = 0;
             for (a0, lab) in &labels {
                 let a = *a0;
+                // HORNFAST: branch-free build ⇒ unique model ⇒ root label is the
+                // exact subsumer set; emit it without any Phase-2 SAT test.
+                if hornfast && exact.contains(&a) {
+                    for &b in lab {
+                        if b != a && qset.contains(&b) && satset.contains(&b) {
+                            subs.push((a, b));
+                        }
+                    }
+                    continue;
+                }
                 // known = transitive closure of A's told subsumers (no test).
                 let mut known: HashSet<C> = HashSet::new();
                 let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
@@ -5259,62 +5487,94 @@ impl Ht {
         if trace {
             eprintln!("QOPC entry queries={} clauses={}", queries.len(), self.clauses.len());
         }
-        let mut qs = QoSat::new(&self.clauses);
-        qs.complete_roles = true;
-        // One concept's closure can span a large slice of the ontology; give the
-        // single-seed saturation generous headroom (bounded by ~2×#concepts of
-        // distinct concept-lit nodes + fillers).
-        qs.node_cap = queries.len().saturating_mul(4).saturating_add(500_000);
-        // only track ∀-write/shared-filler taint when the verify pass will use it.
-        qs.track_forall = std::env::var_os("KM_HT_QO_VERIFY").is_some();
+        let cap = queries.len().saturating_mul(4).saturating_add(500_000);
+        // Two single-seed saturations per concept:
+        //  - `qf` forward-only (inverse-bridge clauses dropped): SOUND. Reading a
+        //    successor's runtime label is only justified across genuine forward
+        //    ∃-edges, never across an inverse-induced back-edge, so this never
+        //    over-derives — but it may MISS inverse-entailed subsumptions.
+        //  - `qu` inverse-augmented: a COMPLETE superset (the old behaviour;
+        //    sound only modulo the inverse over-derivation).
+        // The truth is `qf ∪ verify(qu \ qf)`: the forward-only subsumers are
+        // kept directly; the extra inverse-only ones are candidates the caller
+        // confirms with the complete tableau. Sound + complete + general (no
+        // ontology-specific assumption about whether inverse is load-bearing).
+        // The forward-only saturation is the sound result and is returned by
+        // default. The inverse-augmented superset is built + saturated ONLY when
+        // the verify pass is enabled (`KM_HT_QO_VERIFY`), because it doubles the
+        // saturation cost and its extra subsumptions are worthless without the
+        // complete-tableau confirmation that the verify pass performs.
+        let want_cands = std::env::var_os("KM_HT_QO_VERIFY").is_some();
+        let mut qf = QoSat::new_opts(&self.clauses, true);
+        qf.complete_roles = true;
+        qf.node_cap = cap;
+        let mut qu = QoSat::new_opts(&self.clauses, false);
+        qu.complete_roles = true;
+        qu.node_cap = cap;
         let mut unsat: Vec<C> = Vec::new();
         let mut subs: Vec<(C, C)> = Vec::new();
-        // Taint set: a per-concept saturation is EXACT only if no filler is shared
-        // by two distinct predecessor contexts. A non-root node with in-degree ≥ 2
-        // is such a shared filler — a ∀/role-chain write into it can leak one
-        // context's consequence to another (the source of the ~106 spurious
-        // subsumptions on 7581). Concepts whose saturation has such a node are
-        // flagged for sound re-verification by the caller; the rest are exact.
-        let mut tainted: Vec<C> = Vec::new();
+        let mut cands: Vec<(C, C)> = Vec::new();
+        let mut unsat_cands: Vec<C> = Vec::new();
         for (i, &a) in queries.iter().enumerate() {
-            qs.reset();
-            let r = qs.saturate(&[CLit::pos(a)]);
-            if r.unsupported {
+            qf.reset();
+            let rf = qf.saturate(&[CLit::pos(a)]);
+            if rf.unsupported {
                 if trace {
-                    eprintln!("QOPC bail at {}/{} (unsupported on concept {})", i, queries.len(), a);
+                    eprintln!("QOPC bail (fwd) at {}/{} concept {}", i, queries.len(), a);
                 }
-                return None; // Eq-head / out-of-fragment / cap → defer to fallback
+                return None; // Eq-head / out-of-fragment / cap → defer
             }
-            if r.clashed {
+            // A forward-only clash is a SOUND unsat (it never over-derives).
+            // (Check clash before sufficiency: a clashed root may report
+            // insufficient, but it is decided, not deferred.)
+            if rf.clashed {
                 unsat.push(a);
                 continue;
             }
-            if !r.sufficient {
+            if !rf.sufficient {
                 if trace {
-                    eprintln!("QOPC bail at {}/{} (insufficient on concept {})", i, queries.len(), a);
+                    eprintln!("QOPC bail (insufficient) at {}/{} concept {}", i, queries.len(), a);
                 }
                 return None; // open parked disjunction → defer (sound)
             }
-            for &b in &r.root_label {
+            let lset: HashSet<C> = rf.root_label.iter().copied().collect();
+            for &b in &lset {
                 if b != a && qset.contains(&b) {
-                    subs.push((a, b));
+                    subs.push((a, b)); // sound
                 }
             }
-            // taint = a ∀-written filler that is ALSO shared (in-degree ≥ 2): the
-            // exact precondition for cross-context leakage. Pure ∃-sharing is sound.
-            if qs.forall_nodes.iter().any(|&n| qs.in_edges[n].len() >= 2) {
-                tainted.push(a);
+            if want_cands {
+                qu.reset();
+                let ru = qu.saturate(&[CLit::pos(a)]);
+                if ru.unsupported {
+                    if trace {
+                        eprintln!("QOPC bail (full) at {}/{} concept {}", i, queries.len(), a);
+                    }
+                    return None;
+                }
+                if ru.clashed && !rf.clashed {
+                    unsat_cands.push(a); // inverse-only unsat → confirm with tableau
+                } else if ru.sufficient {
+                    for &b in &ru.root_label {
+                        if b != a && qset.contains(&b) && !lset.contains(&b) {
+                            cands.push((a, b)); // inverse-only subsumption → verify
+                        }
+                    }
+                }
             }
             if trace && i > 0 && i % 5000 == 0 {
-                eprintln!("QOPC {}/{} subs={} unsat={} tainted={}", i, queries.len(), subs.len(), unsat.len(), tainted.len());
+                eprintln!("QOPC {}/{} subs={} cands={} unsat={} ucands={}",
+                    i, queries.len(), subs.len(), cands.len(), unsat.len(), unsat_cands.len());
             }
         }
-        // KB inconsistent iff every queried concept is unsatisfiable.
         let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
         if trace {
-            eprintln!("QOPC done subs={} unsat={} tainted={} consistent={}", subs.len(), unsat.len(), tainted.len(), consistent);
+            eprintln!("QOPC done subs={} cands={} unsat={} ucands={} consistent={}",
+                subs.len(), cands.len(), unsat.len(), unsat_cands.len(), consistent);
         }
-        self.pc_tainted = tainted;
+        self.pc_candidates = cands;
+        self.pc_unsat_candidates = unsat_cands;
+        self.pc_tainted = Vec::new();
         Some((consistent, unsat, subs))
     }
 
@@ -5325,46 +5585,49 @@ impl Ht {
         // read its subsumers off. See `qo_classify_perconcept`.
         if std::env::var_os("KM_HT_QO_PC").is_some() {
             let res = self.qo_classify_perconcept(queries);
-            // KM_HT_QO_VERIFY: the per-concept shared-filler saturation is COMPLETE
-            // but over-approximates subsumers for concepts whose saturation shared a
-            // filler across contexts (`pc_tainted`). Re-verify each candidate
-            // subsumption `A ⊑ B` of a tainted A with the sound fresh-filler tableau
-            // (`consistent(A ⊓ ¬B)`): satisfiable ⇒ drop the false positive. This
-            // makes the result SOUND while paying the slow tableau only on the few
-            // tainted concepts. A `None` (out-of-fragment) verdict can neither
-            // confirm nor refute, so the candidate is kept (stays complete; may
-            // leave residual unsoundness — measured, not assumed).
+            // KM_HT_QO_VERIFY: confirm the inverse-only candidates with the
+            // complete tableau. `qo_classify_perconcept` returns the SOUND
+            // forward-only subsumers in `subs`; `pc_candidates` are the extra
+            // subsumptions only the inverse-augmented run derived (a complete
+            // superset). Each is real iff `A ⊓ ¬B` is unsatisfiable, so test it
+            // with `consistent`: keep when entailed, drop the inverse
+            // over-derivation otherwise. Likewise `pc_unsat_candidates` are
+            // inverse-only unsat verdicts, confirmed with `consistent(A)`. Result
+            // = forward-only ∪ confirmed candidates = SOUND + COMPLETE.
             if std::env::var_os("KM_HT_QO_VERIFY").is_some() {
-                if let Some((cons, unsat, subs)) = res {
-                    let tainted: HashSet<C> = self.pc_tainted.iter().copied().collect();
-                    if tainted.is_empty() {
-                        return Some((cons, unsat, subs));
-                    }
+                if let Some((_cons, mut unsat, mut subs)) = res {
+                    let cands = std::mem::take(&mut self.pc_candidates);
+                    let ucands = std::mem::take(&mut self.pc_unsat_candidates);
                     let trace = std::env::var_os("KM_HT_TRACE").is_some();
-                    let (mut nchecked, mut ndropped, mut nnone) = (0u64, 0u64, 0u64);
-                    let mut kept: Vec<(C, C)> = Vec::with_capacity(subs.len());
-                    for (a, b) in subs {
-                        if tainted.contains(&a) {
-                            nchecked += 1;
-                            match self.consistent(&[CLit::pos(a), CLit::neg(b)]) {
-                                Some(false) => kept.push((a, b)), // A ⊓ ¬B unsat ⇒ A ⊑ B holds
-                                Some(true) => ndropped += 1,       // satisfiable ⇒ A ⋢ B, drop
-                                None => {
-                                    nnone += 1;
-                                    kept.push((a, b)); // undecidable here ⇒ keep (conservative)
-                                }
+                    let (mut nkept, mut ndropped, mut nnone) = (0u64, 0u64, 0u64);
+                    for (a, b) in cands {
+                        match self.consistent(&[CLit::pos(a), CLit::neg(b)]) {
+                            Some(false) => {
+                                subs.push((a, b));
+                                nkept += 1;
                             }
-                        } else {
-                            kept.push((a, b));
+                            Some(true) => ndropped += 1, // satisfiable ⇒ A ⋢ B, drop
+                            None => {
+                                nnone += 1;
+                                subs.push((a, b)); // undecidable ⇒ keep (stay complete)
+                            }
                         }
                     }
+                    for a in ucands {
+                        match self.consistent(&[CLit::pos(a)]) {
+                            Some(false) => unsat.push(a), // confirmed unsatisfiable
+                            Some(true) => {}              // satisfiable ⇒ inverse over-derivation
+                            None => unsat.push(a),        // undecidable ⇒ keep (stay complete)
+                        }
+                    }
+                    let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
                     if trace {
                         eprintln!(
-                            "QOPC verify: tainted={} checked={} dropped={} none={} kept={}",
-                            tainted.len(), nchecked, ndropped, nnone, kept.len()
+                            "QOPC verify: cand_kept={} cand_dropped={} none={} unsat={}",
+                            nkept, ndropped, nnone, unsat.len()
                         );
                     }
-                    return Some((cons, unsat, kept));
+                    return Some((consistent, unsat, subs));
                 }
             }
             return res;
@@ -6166,6 +6429,47 @@ mod tests {
         assert!(g.label_pos[na].contains(&E), "A1 must get E via prop broadcast");
         assert!(g.label_pos[na2].contains(&E), "A2 must get E via prop broadcast");
         assert!(!g.label_pos[nb].contains(&E));
+    }
+
+    #[test]
+    fn qopc_range_no_cross_role_pollution() {
+        // The 7581 soundness bug, minimised. Two roles each with a range write to
+        // the SAME filler concept B:
+        //   A  ⊑ ∃R0.B,  A2 ⊑ ∃R1.B,  range(R0)=Cr,  range(R1)=Cs,
+        //   ∃R0.Cs ⊑ Spur   (spurious if B's R0-successor wrongly carries Cs),
+        //   ∃R0.Cr ⊑ Good   (legitimate: B's R0-successor genuinely carries Cr).
+        // Concept-keyed fillers share one node(B) that accumulates BOTH Cr and Cs,
+        // so `∃R0.Cs ⊑ Spur` fires for A — UNSOUND. Role-keyed fillers give A an
+        // R0-class filler (Cr only) and A2 an R1-class filler (Cs only), so Spur
+        // never fires while Good still does.
+        const A2: C = 10;
+        const CR: C = 4;
+        const CS: C = 5;
+        const SPUR: C = 6;
+        const GOOD: C = 7;
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A2, X)], vec![exists(R1, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![con(false, CR, y)]),
+            Clause::new(vec![role(R1, X, y)], vec![con(false, CS, y)]),
+            Clause::new(vec![role(R0, X, y), con(false, CS, y)], vec![con(false, SPUR, X)]),
+            Clause::new(vec![role(R0, X, y), con(false, CR, y)], vec![con(false, GOOD, X)]),
+        ];
+        let mut ht = ht(cls);
+        let (cons, _unsat, subs) = ht
+            .qo_classify_perconcept(&[A, A2, B, CR, CS, SPUR, GOOD])
+            .unwrap();
+        assert!(cons);
+        assert!(
+            subs.contains(&(A, GOOD)),
+            "A ⊑ Good must hold (R0-range Cr reaches B's R0-filler)"
+        );
+        assert!(
+            !subs.contains(&(A, SPUR)),
+            "A ⊑ Spur is the cross-role range pollution — must NOT be derived"
+        );
     }
 
     // ---- Per-concept QoSat gate (KM_HT_QO_PC) ----
