@@ -4,6 +4,31 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: 2b levers 1 & 2 toward Konclude ~10s — both quick forms REFUTED (findings)
+
+Two attempts to close the 126s → ~10s gap (the 90-104s is building 63 real
+`consistent(A)` pseudo-model tableaux; per-A timing shows a few are intrinsically
+slow, 45-64s, large DETERMINISTIC inverse expansions).
+
+- **Lever 2 — inverse re-encoding (`KM_HT_QO_INVCOMPOSE`, `compose_inverse`).**
+  Resolves each bidirectional inverse bridge into its single-role consumers as
+  forward clauses, drops the bridges (sound: resolvents; real ∃-edges untouched;
+  130 tests pass). 7581's part_of/has_part inverse is bidirectionally load-bearing
+  and all ~110k consumers are single-role NF4, so it applies cleanly. **Net-negative:
+  the gate saturation DIVERGES** — the reversed-edge NF4 (`∃r.D⊑E`, head-on-source)
+  is `prop`-optimised (computed once per (filler,role), broadcast), but the composed
+  forward-∀ clause (head-on-target) re-fires per edge. So avoiding reversed edges is
+  strictly slower; the reversed-edge + `prop` encoding is the efficient one and the
+  shared-filler write is intrinsic to the inverse regardless of encoding. Kept gated
+  (default off) as a documented negative result.
+- **Lever 1 — faster models.** `KM_HT_PAR=48` ≈ `PAR=16` (103s vs 104s) — not
+  thread-bound (allocator/memory contention; RSS 2.5→6.7 GB). The candidates provably
+  require the exact tableau (the inverse-augmented saturation over-approximates so it
+  can't refute a candidate; forward under-approximates so it can't confirm). The only
+  real lever is a satisfiable-expander cache made sound under inverse (KM's
+  `KM_HT_SATCACHE`/`SATFOLD` are the no-inverse versions) — the substantial remaining
+  port. The certified 126s under-budget result stands.
+
 ### HT/QoSat: 2b P2 — pseudo-model merge certifies 7581 sound+complete UNDER budget (`KM_HT_QO_PMMERGE`)
 
 Port of the concept part of Konclude's pseudo-model refutation

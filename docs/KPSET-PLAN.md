@@ -133,6 +133,40 @@ pseudo-model becomes free). Both are larger structural changes; the certified
 (`KM_HT_QO_PC`+`KM_HT_QO_VERIFY`+`KM_HT_QO_PMMERGE`), NOT the KPSet global gate
 (which defers on 7581, see below).
 
+## STATUS 2026-06-23 (levers 1 & 2 for ~10s): both quick forms REFUTED empirically
+
+Goal was to close 126s → Konclude ~10s. The 90-104s is building 63 real per-concept
+`consistent(A)` models; per-A timing shows a few are intrinsically slow (45-64s) —
+large DETERMINISTIC (7581 is Horn) inverse expansions, bound by per-model cost.
+
+- **Lever 2 — inverse re-encoding (`KM_HT_QO_INVCOMPOSE`, `compose_inverse`).**
+  IMPLEMENTED + benchmarked. Resolves each bidirectional inverse bridge into its
+  single-role consumers as forward clauses and drops the bridges (sound: composed
+  clauses are resolvents; real ∃-edges untouched; 130 tests pass). 7581's inverse
+  is part_of/has_part — BIDIRECTIONALLY load-bearing (both create ∃-edges), and all
+  ~110k inverse-role consumers are single-role NF4, so composition applies cleanly.
+  **RESULT: net-NEGATIVE — the gate saturation DIVERGES** (edge_work 3M→5M climbing,
+  22M+ drain steps, no convergence). Reason: the reversed-edge NF4 (`∃r.D⊑E`,
+  head-on-source) is handled by the `prop` backward-link store (computed once per
+  (filler,role), broadcast — O(consequences)); the composed forward-∀ clause
+  (head-on-target) cannot use `prop` and re-fires per edge → blowup. **So avoiding
+  reversed edges is STRICTLY SLOWER here: the reversed-edge + `prop` encoding is the
+  efficient one, and the shared-filler write (the source of insufficiency) is
+  intrinsic to the inverse semantics regardless of encoding.** Kept gated (default
+  off) as a documented negative result; may help onts whose inverse consumers are
+  not `prop`-optimisable.
+- **Lever 1 — faster per-concept models.** Threading does NOT help: `KM_HT_PAR=48`
+  ≈ `PAR=16` (103s vs 104s; RSS 2.5→6.7 GB) — not thread-bound, bound by per-model
+  cost under allocator/memory contention. Proven that the candidates REQUIRE the
+  exact tableau model (the inverse-augmented saturation over-approximates, so a
+  candidate `B` is IN it and cannot be refuted by absence; forward under-approximates
+  and cannot confirm — the gap is exactly the candidate set). So the only real lever
+  is Konclude's **satisfiable-expander cache made sound under inverse** (reuse
+  satisfiable filler subtrees across the 63 model builds). KM's `KM_HT_SATCACHE` /
+  `KM_HT_SATFOLD` are the no-inverse versions; the inverse-sound port (a node's sat
+  can depend on inverse-predecessor context, so the cache key must capture it) is the
+  substantial remaining work. The certified 126s under-budget result stands.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**

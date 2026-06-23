@@ -1645,6 +1645,106 @@ fn trigger_absorb(clauses: &mut [Clause]) -> usize {
     count
 }
 
+/// KM_HT_QO_INVCOMPOSE (lever 2): eliminate materialised reversed inverse edges by
+/// RESOLVING each inverse-bridge clause into its consumers. For an inverse-
+/// EQUIVALENT pair `(r,s)` — both `s(x,y)→r(y,x)` and `r(x,y)→s(y,x)` present —
+/// every reversed `r`-edge is produced from a forward `s`-edge, so an NF4 consumer
+/// `r(u,v) ⊓ D(v) → E(u)` is equivalent, over those reversed edges, to the forward
+/// clause obtained by replacing `r(u,v)` with `s(v,u)`. We KEEP the original
+/// consumer (it still fires over REAL `r`-edges from `∃r` heads), ADD the composed
+/// forward variant (covering the reversed-edge contribution over real `s`-edges),
+/// and DROP the two bridges — so the saturation never creates a reversed edge and
+/// the inverse contribution becomes a forward ∀/range write the shared-node model
+/// can fold per creation role. Applied only to pairs whose inverse-role body
+/// occurrences are ALL single-role (no chain); any other pair keeps its bridges
+/// unchanged. Sound: each composed clause is a resolvent of a bridge and a
+/// consumer; dropping a bridge loses nothing because every reversed-edge consumer
+/// has its forward composed counterpart and real (∃-created) edges are untouched.
+fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
+    // bridge `s(a,b) → r(b,a)` ⇒ r ⟸ s (a reversed r-edge comes from an s-edge).
+    let mut bridge_src: HashMap<R, Vec<R>> = HashMap::new();
+    let bridge_of = |c: &Clause| -> Option<(R, R)> {
+        if c.body.len() == 1 && c.head.len() == 1 {
+            if let (Atom::Role { r: sr, s: ba, t: bb }, Atom::Role { r: rr, s: hs, t: ht }) =
+                (&c.body[0], &c.head[0])
+            {
+                if *hs == *bb && *ht == *ba && *sr != *rr {
+                    return Some((*rr, *sr)); // r ⟸ s
+                }
+            }
+        }
+        None
+    };
+    for (c, _, _) in clauses {
+        if let Some((r, s)) = bridge_of(c) {
+            bridge_src.entry(r).or_default().push(s);
+        }
+    }
+    // inverse-equivalent pairs: r⟸s AND s⟸r.
+    let mut inv_of: HashMap<R, R> = HashMap::new();
+    for (&r, ss) in &bridge_src {
+        for &s in ss {
+            if bridge_src.get(&s).map_or(false, |v| v.contains(&r)) {
+                inv_of.insert(r, s);
+            }
+        }
+    }
+    // a pair is composable iff EVERY clause with r-or-s in its body is single-role.
+    let mut bad: HashSet<R> = HashSet::new();
+    for (c, _, _) in clauses {
+        let roles: Vec<R> = c
+            .body
+            .iter()
+            .filter_map(|a| if let Atom::Role { r, .. } = a { Some(*r) } else { None })
+            .collect();
+        if roles.len() > 1 {
+            for r in roles {
+                if inv_of.contains_key(&r) {
+                    bad.insert(r);
+                    if let Some(&s) = inv_of.get(&r) {
+                        bad.insert(s);
+                    }
+                }
+            }
+        }
+    }
+    let composable = |r: R| inv_of.contains_key(&r) && !bad.contains(&r);
+    let mut out: Vec<Clause> = Vec::with_capacity(clauses.len() + clauses.len() / 4);
+    for (c, _, _) in clauses {
+        // drop a bridge whose pair we are composing (both directions).
+        if let Some((r, s)) = bridge_of(c) {
+            if composable(r) && composable(s) && inv_of.get(&r) == Some(&s) {
+                continue;
+            }
+        }
+        out.push(c.clone());
+        // add the composed forward variant for a single composable body role atom.
+        let body_roles: Vec<(usize, R, Var, Var)> = c
+            .body
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| {
+                if let Atom::Role { r, s, t } = a {
+                    Some((i, *r, *s, *t))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if body_roles.len() == 1 {
+            let (idx, r, u, v) = body_roles[0];
+            if composable(r) {
+                let s = inv_of[&r];
+                let mut nb = c.body.clone();
+                // r(u,v) ⟸ s(v,u): fire the same consequence over the forward s-edge.
+                nb[idx] = Atom::Role { r: s, s: v, t: u };
+                out.push(Clause { body: nb, head: c.head.clone() });
+            }
+        }
+    }
+    out
+}
+
 /// Build the clause records (sorted body + var count) for the Ht index.
 fn mk_recs(clauses: &[Clause]) -> Vec<ClauseRec> {
     clauses
@@ -5175,7 +5275,8 @@ impl Ht {
     /// way. This is the cheap gate that replaces a blowing-up `consistent(a ⊓ ¬b)`
     /// with a single (much easier) `consistent(a)` per concept.
     fn model_root_pos(&mut self, a: C) -> Option<HashSet<C>> {
-        match self.consistent(&[CLit::pos(a)]) {
+        let _t0 = std::time::Instant::now();
+        let r: Option<HashSet<C>> = match self.consistent(&[CLit::pos(a)]) {
             Some(true) => {
                 // root = node 0; its label is `a`'s model assignment. Absent
                 // positive concept ⇒ false at the root ⇒ a genuine countermodel.
@@ -5183,7 +5284,16 @@ impl Ht {
             }
             // unsat (a ⊑ ⊥ ⊑ b, keep) or unsupported (defer) ⇒ no refutation.
             _ => None,
+        };
+        if std::env::var_os("KM_HT_QO_PMTIME").is_some() {
+            eprintln!(
+                "PMMODEL a={} {:.3}s rootlen={}",
+                a,
+                _t0.elapsed().as_secs_f64(),
+                r.as_ref().map(|s| s.len()).unwrap_or(0)
+            );
         }
+        r
     }
 
     pub fn classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
@@ -6211,6 +6321,23 @@ impl Ht {
     }
 
     pub fn quasi_order_classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        // KM_HT_QO_INVCOMPOSE (lever 2): resolve bidirectional inverse bridges into
+        // their consumers and drop the bridges, so NO reversed edge is ever created
+        // — the inverse contribution becomes a forward ∀/range write. Applied to
+        // the WHOLE clause set so both the QO gate AND `consistent()` (the
+        // pseudo-model builders) avoid reversed-edge expansion + blocking. Sound
+        // (the composed clauses are resolvents; real `∃`-created edges untouched).
+        if std::env::var_os("KM_HT_QO_INVCOMPOSE").is_some() {
+            let composed = compose_inverse(&self.clauses);
+            if std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "INVCOMPOSE: {} -> {} clauses",
+                    self.clauses.len(),
+                    composed.len()
+                );
+            }
+            self.clauses = mk_recs(&composed);
+        }
         // KM_HT_QO_KPSET: Konclude G2/G3 inverse-aware single pass — sound+complete
         // and forward-only-fast when no inverse contribution is load-bearing
         // (7581). Tried first; falls through to the gates below when it cannot
