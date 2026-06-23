@@ -5560,20 +5560,19 @@ impl Ht {
             );
         }
         // KM_HT_QO_VERIFY: certify completeness, cheaply. Forward-only `L` is sound
-        // but may miss inverse-entailed subsumptions. We cannot form the candidate
-        // set from a single *global* inverse pass (it over-derives 6.5M spurious
-        // pairs across 10635 concepts on 7581 — cross-concept shared-filler
-        // pollution), nor afford a full 73k per-concept inverse pass. Instead, a
-        // two-stage SOUND funnel:
-        //   (1) one global inverse pass SELECTS the suspect concepts (those whose
-        //       inverse-augmented closure exceeds their forward closure). This is a
-        //       sound superset of the concepts whose true classification differs
-        //       from forward-only — if `A ⊑ B` holds but `B ∉ L_A`, the
-        //       all-clauses global pass derives `B` at `A`, so `A` is a suspect.
+        // but may miss inverse-entailed subsumptions. A two-stage SOUND funnel:
+        //   (1) STRUCTURAL suspect selection (no inverse saturation): a concept is a
+        //       suspect iff its forward closure can REACH an edge on an
+        //       inverse-having role. That is the only way inverse can affect its
+        //       classification — the inverse back-edge `r⁻` is created from a forward
+        //       `r`-edge, so any inverse-affected concept reaches an `r`-edge in the
+        //       forward model. Sound over-approximation, O(nodes+edges); avoids the
+        //       111s inverse-augmented global pass (measured) entirely. (Set
+        //       `KM_HT_QO_GLOBALSEL` to use the older inverse-global selection.)
         //   (2) a per-concept (single-seed) inverse saturation runs ONLY on the
         //       suspects and de-conflates each to its TIGHT candidate set — a single
         //       seed cannot suffer the cross-concept filler conflation that bloated
-        //       the global set, so most suspects yield zero candidates.
+        //       the global set (6.5M → 177 on 7581), so most suspects yield zero.
         // The caller then confirms each tight candidate `(A,B)` with the complete
         // tableau `consistent(A ⊓ ¬B)` (cheap: ~0.02–0.26s each). Result =
         // `L ∪ confirmed` = sound + complete. `KM_HT_QO_VERIFY_CAP` bounds the tight
@@ -5581,37 +5580,85 @@ impl Ht {
         // than run an unbounded verify.
         if std::env::var_os("KM_HT_QO_VERIFY").is_some() {
             let t_vp = std::time::Instant::now();
-            // (1) global inverse pass → suspects + inverse-only unsat suspects.
-            let (suspects, mut unsat_cands): (Vec<C>, Vec<C>) = {
+            // (1) structural suspects from the forward model `qf` (still in scope).
+            let suspects: Vec<C> = if std::env::var_os("KM_HT_QO_GLOBALSEL").is_some() {
+                // legacy: inverse-augmented global pass selects suspects (slow).
                 let mut qg = QoSat::new_opts(&self.clauses, false);
                 qg.complete_roles = true;
                 let gg = qg.saturate_global(queries);
                 if gg.unsupported {
-                    return None; // cannot certify ⇒ defer to the per-concept gate
+                    return None;
                 }
-                let mut s: Vec<C> = Vec::new();
-                let mut su: Vec<C> = Vec::new();
-                for &a in queries {
-                    let n = node_of[&a];
-                    if g.node_unsat.contains(&n) {
-                        continue; // already a sound forward-only unsat
-                    }
-                    if gg.node_unsat.contains(&n) {
-                        su.push(a); // inverse-only unsat ⇒ confirm with the tableau
-                        continue;
-                    }
-                    let fwd = &g.label_pos[n];
-                    if gg.label_pos[n].iter().any(|b| *b != a && qset.contains(b) && !fwd.contains(b)) {
-                        s.push(a);
+                queries
+                    .iter()
+                    .copied()
+                    .filter(|a| {
+                        let n = node_of[a];
+                        if g.node_unsat.contains(&n) {
+                            return false;
+                        }
+                        let fwd = &g.label_pos[n];
+                        gg.node_unsat.contains(&n)
+                            || gg.label_pos[n].iter().any(|b| *b != *a && qset.contains(b) && !fwd.contains(b))
+                    })
+                    .collect()
+            } else {
+                // inverse-having roles: any role in an inverse-bridge clause (a single
+                // role head whose args are swapped versus a body role atom).
+                let mut inv_roles: HashSet<R> = HashSet::new();
+                for rec in self.clauses.iter() {
+                    let head = &rec.0.head;
+                    if head.len() == 1 {
+                        if let Atom::Role { r: hr, s: hs, t: ht } = &head[0] {
+                            for a in &rec.1 {
+                                if let Atom::Role { r, s, t } = a {
+                                    if *s == *ht && *t == *hs {
+                                        inv_roles.insert(*hr);
+                                        inv_roles.insert(*r);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                (s, su)
+                // mark nodes incident to an inverse-role edge, then reverse-reach via
+                // predecessors (`in_edges`) to mark every forward-ancestor.
+                let nn = qf.label.len();
+                let mut marked = vec![false; nn];
+                let mut stack: Vec<Node> = Vec::new();
+                for n in 0..nn {
+                    let incident = qf.out_edges[n].iter().any(|(r, _)| inv_roles.contains(r))
+                        || qf.in_edges[n].iter().any(|(r, _)| inv_roles.contains(r));
+                    if incident {
+                        marked[n] = true;
+                        stack.push(n);
+                    }
+                }
+                while let Some(n) = stack.pop() {
+                    for &(_, p) in &qf.in_edges[n] {
+                        if !marked[p] {
+                            marked[p] = true;
+                            stack.push(p);
+                        }
+                    }
+                }
+                queries
+                    .iter()
+                    .copied()
+                    .filter(|a| {
+                        let n = node_of[a];
+                        !g.node_unsat.contains(&n) && marked[n]
+                    })
+                    .collect()
             };
+            // inverse-induced unsat concepts are themselves structural suspects (their
+            // model uses an inverse edge), so the per-concept clash check below catches
+            // them — no separate inverse-global-unsat pass needed.
+            let mut unsat_cands: Vec<C> = Vec::new();
             if trace {
                 eprintln!(
-                    "QOGF verify: {} suspect concepts, {} inverse-only unsat suspects [global-inverse {:.2}s]",
+                    "QOGF verify: {} suspect concepts [structural selection {:.2}s]",
                     suspects.len(),
-                    unsat_cands.len(),
                     t_vp.elapsed().as_secs_f64()
                 );
             }
@@ -5622,35 +5669,83 @@ impl Ht {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(50_000);
             let node_cap = queries.len().saturating_mul(4).saturating_add(500_000);
+            // Parallel work-stealing per-concept inverse de-conflation: each worker
+            // builds its own forward+inverse QoSat (borrowing the shared clause set)
+            // and pulls the next suspect from an atomic counter. Single-seed
+            // saturations are independent, so this scales near-linearly — the ~330s
+            // sequential loop on 7581 (10635 suspects × ~31ms) drops to ~330/cores.
+            // A worker returning `None` means a suspect's saturation went
+            // out-of-fragment ⇒ the whole verify defers (sound: falls back).
+            let par = std::env::var("KM_HT_PAR")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(1)
+                .max(1);
+            let nthreads = par.min(suspects.len().max(1)).max(1);
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            const QO_WORKER_STACK: usize = 256 * 1024 * 1024;
+            let clauses_ref: &[ClauseRec] = &self.clauses;
+            let suspects_ref = &suspects;
+            let g_ref = &g;
+            let node_of_ref = &node_of;
+            let qset_ref = &qset;
+            let parts: Vec<Option<(Vec<(C, C)>, Vec<C>)>> = std::thread::scope(|s| {
+                let next = &next;
+                let handles: Vec<_> = (0..nthreads)
+                    .map(|_| {
+                        std::thread::Builder::new()
+                            .stack_size(QO_WORKER_STACK)
+                            .spawn_scoped(s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
+                                let mut qpc = QoSat::new_opts(clauses_ref, false);
+                                qpc.complete_roles = true;
+                                qpc.node_cap = node_cap;
+                                let mut c: Vec<(C, C)> = Vec::new();
+                                let mut u: Vec<C> = Vec::new();
+                                loop {
+                                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    if i >= suspects_ref.len() {
+                                        break;
+                                    }
+                                    let a = suspects_ref[i];
+                                    qpc.reset();
+                                    let r = qpc.saturate(&[CLit::pos(a)]);
+                                    if r.unsupported {
+                                        return None;
+                                    }
+                                    if r.clashed {
+                                        u.push(a);
+                                        continue;
+                                    }
+                                    let n = node_of_ref[&a];
+                                    let fwd = &g_ref.label_pos[n];
+                                    for &b in &r.root_label {
+                                        if b != a && qset_ref.contains(&b) && !fwd.contains(&b) {
+                                            c.push((a, b));
+                                        }
+                                    }
+                                }
+                                Some((c, u))
+                            })
+                            .expect("spawn per-concept inverse worker")
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
             let mut cands: Vec<(C, C)> = Vec::new();
-            {
-                let mut qpc = QoSat::new_opts(&self.clauses, false);
-                qpc.complete_roles = true;
-                qpc.node_cap = node_cap;
-                for &a in &suspects {
-                    qpc.reset();
-                    let r = qpc.saturate(&[CLit::pos(a)]);
-                    if r.unsupported {
-                        return None; // cannot bound this suspect ⇒ defer
+            for part in parts {
+                match part {
+                    Some((c, u)) => {
+                        cands.extend(c);
+                        unsat_cands.extend(u);
                     }
-                    if r.clashed {
-                        unsat_cands.push(a); // single-seed inverse clash ⇒ confirm
-                        continue;
-                    }
-                    let n = node_of[&a];
-                    let fwd = &g.label_pos[n];
-                    for &b in &r.root_label {
-                        if b != a && qset.contains(&b) && !fwd.contains(&b) {
-                            cands.push((a, b));
-                        }
-                    }
-                    if cands.len() > cap {
-                        if trace {
-                            eprintln!("QOGF verify: candidate set exceeded cap {} ⇒ defer", cap);
-                        }
-                        return None; // unbounded verify ⇒ defer rather than stall
-                    }
+                    None => return None, // a suspect went out-of-fragment ⇒ defer
                 }
+            }
+            if cands.len() > cap {
+                if trace {
+                    eprintln!("QOGF verify: candidate set exceeded cap {} ⇒ defer", cap);
+                }
+                return None; // unbounded verify ⇒ defer rather than stall
             }
             if trace {
                 eprintln!(
@@ -5801,20 +5896,69 @@ impl Ht {
                     let cands = std::mem::take(&mut self.pc_candidates);
                     let ucands = std::mem::take(&mut self.pc_unsat_candidates);
                     let trace = std::env::var_os("KM_HT_TRACE").is_some();
+                    let t_v = std::time::Instant::now();
+                    // Parallel candidate verification: the tight candidates are the
+                    // HARD inverse-dependent pairs (each `consistent(A ⊓ ¬B)` ~1-2s on
+                    // 7581, not the 0.02s median), so they dominate. Work-steal across
+                    // per-thread `Ht` clones (the `classify_parallel` pattern):
+                    // `consistent` mutates the Ht, so each worker owns one.
+                    let par = std::env::var("KM_HT_PAR")
+                        .ok()
+                        .and_then(|s| s.parse::<usize>().ok())
+                        .unwrap_or(1)
+                        .max(1);
+                    let nthreads = par.min(cands.len().max(1)).max(1);
+                    let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                    let anywhere = self.anywhere;
+                    let next = std::sync::atomic::AtomicUsize::new(0);
+                    const VWORKER_STACK: usize = 512 * 1024 * 1024;
+                    let cands_ref = &cands;
+                    // per worker: (kept pairs, nkept, ndropped, nnone)
+                    let parts: Vec<(Vec<(C, C)>, u64, u64, u64)> = std::thread::scope(|s| {
+                        let next = &next;
+                        let handles: Vec<_> = (0..nthreads)
+                            .map(|_| {
+                                let tmpl = template.clone();
+                                std::thread::Builder::new()
+                                    .stack_size(VWORKER_STACK)
+                                    .spawn_scoped(s, move || -> (Vec<(C, C)>, u64, u64, u64) {
+                                        let mut w = Ht::new(tmpl);
+                                        w.set_anywhere(anywhere);
+                                        let mut kept: Vec<(C, C)> = Vec::new();
+                                        let (mut nk, mut nd, mut nn) = (0u64, 0u64, 0u64);
+                                        loop {
+                                            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                            if i >= cands_ref.len() {
+                                                break;
+                                            }
+                                            let (a, b) = cands_ref[i];
+                                            match w.consistent(&[CLit::pos(a), CLit::neg(b)]) {
+                                                Some(false) => {
+                                                    kept.push((a, b)); // A ⊓ ¬B unsat ⇒ A ⊑ B
+                                                    nk += 1;
+                                                }
+                                                Some(true) => nd += 1, // satisfiable ⇒ A ⋢ B, drop
+                                                None => {
+                                                    kept.push((a, b)); // undecidable ⇒ keep (stay complete)
+                                                    nn += 1;
+                                                }
+                                            }
+                                        }
+                                        (kept, nk, nd, nn)
+                                    })
+                                    .expect("spawn candidate-verify worker")
+                            })
+                            .collect();
+                        handles.into_iter().map(|h| h.join().unwrap()).collect()
+                    });
                     let (mut nkept, mut ndropped, mut nnone) = (0u64, 0u64, 0u64);
-                    for (a, b) in cands {
-                        match self.consistent(&[CLit::pos(a), CLit::neg(b)]) {
-                            Some(false) => {
-                                subs.push((a, b));
-                                nkept += 1;
-                            }
-                            Some(true) => ndropped += 1, // satisfiable ⇒ A ⋢ B, drop
-                            None => {
-                                nnone += 1;
-                                subs.push((a, b)); // undecidable ⇒ keep (stay complete)
-                            }
-                        }
+                    for (kept, nk, nd, nn) in parts {
+                        subs.extend(kept);
+                        nkept += nk;
+                        ndropped += nd;
+                        nnone += nn;
                     }
+                    // inverse-only unsat candidates (usually empty) — sequential.
                     for a in ucands {
                         match self.consistent(&[CLit::pos(a)]) {
                             Some(false) => unsat.push(a), // confirmed unsatisfiable
@@ -5825,8 +5969,8 @@ impl Ht {
                     let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
                     if trace {
                         eprintln!(
-                            "QOPC verify: cand_kept={} cand_dropped={} none={} unsat={}",
-                            nkept, ndropped, nnone, unsat.len()
+                            "QOPC verify: cand_kept={} cand_dropped={} none={} unsat={} [verify {:.2}s, {} threads]",
+                            nkept, ndropped, nnone, unsat.len(), t_v.elapsed().as_secs_f64(), nthreads
                         );
                     }
                     return Some((consistent, unsat, subs));

@@ -4,6 +4,34 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: verify funnel 2a — structural suspect selection + parallelism (511s → 244s)
+
+Two speedups to the `KM_HT_QO_VERIFY` certification funnel, both sound, both gated:
+
+1. **Structural suspect selection** replaces the inverse-augmented global pass that
+   selected suspect concepts (measured **111s** on 7581) with an O(nodes+edges) scan
+   of the forward model: a concept is a suspect iff its forward closure can reach an
+   edge on an inverse-having role — the only way inverse can affect its
+   classification (the `r⁻` back-edge is created from a forward `r`-edge). Sound
+   over-approximation; **111s → 0.03s** (flags all 72,989 concepts on 7581, which is
+   fine — they funnel to the cheap per-concept stage). `KM_HT_QO_GLOBALSEL` restores
+   the old inverse-global selection.
+2. **Parallel work-stealing** (per-thread `QoSat` / `Ht`, the `classify_parallel`
+   pattern, `KM_HT_PAR`) for the per-concept inverse de-conflation (**~330s → 7.7s**)
+   and the candidate verification.
+
+Net on 7581: **511s → 244s**, sound+complete (gold-exact: all 177 tight candidates
+verify as non-subsumptions, result = forward `L` = gold).
+
+**Remaining wall (the lever for 2b).** Candidate verification is still ~226s even on
+16 threads — only ~1.5× from parallelism — because the 177 tight candidates are the
+HARD inverse-dependent pairs and a few of their `consistent(A ⊓ ¬B)` complete-tableau
+tests blow up (~hundreds of seconds each), the same complexity as the original 7581
+problem; parallelism cannot shrink a single slow test. Deciding those in a sound
+*saturation* instead of the blowing-up tableau is exactly Konclude's KPSet (G1/G2/G3)
+— see `docs/KPSET-PLAN.md`. So 2a brings the certified path to the budget edge and
+confirms the KPSet extension (2b) is necessary, not optional, for fast+certified.
+
 ### HT/QoSat: sound+complete verify funnel (correct, but bounded by inverse-saturation cost)
 
 Adds a sound+complete certification path behind `KM_HT_QO_VERIFY` on top of the
