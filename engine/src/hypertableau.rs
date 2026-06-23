@@ -1349,6 +1349,10 @@ struct BlockBuf {
 
 pub struct Ht {
     clauses: Vec<ClauseRec>,
+    /// Concepts whose last per-concept QoSat saturation had a shared filler
+    /// (in-degree ≥ 2 non-root node) and so may carry over-approximated subsumers.
+    /// Set by `qo_classify_perconcept`, consumed by the verification pass.
+    pc_tainted: Vec<C>,
     /// body Concept atoms by literal: clauses triggered when that literal appears.
     concept_triggers: HashMap<CLit, Vec<(usize, usize)>>,
     /// body Role atoms by role.
@@ -1809,15 +1813,61 @@ struct QoSat<'a> {
     lit_work: Vec<(Node, CLit)>,
     edge_work: Vec<(Node, R, Node)>,
     node_work: Vec<Node>,
+    /// Trigger-keyed role-clause re-fire worklist (the `complete_roles` engine).
+    /// Entry `(cid, n)` means "role clause `cid` is guarded by a concept that
+    /// just arrived at `n`, so re-anchor it on `n`'s incident edges." Replaces
+    /// the blunt re-queue-all-incident-edges scheme: instead of re-firing EVERY
+    /// role clause on every incident edge per literal insert, re-fire only the
+    /// clauses whose body actually mentions the newly-inserted concept (elc's
+    /// backward-link keying). This is what makes `complete_roles` affordable on
+    /// 73k-node SRIF onts, so the global saturation can be a SOUND ELI saturator.
+    guard_refire: Vec<(usize, Node)>,
     concept_trig: HashMap<CLit, Vec<usize>>,
-    /// Role-body clauses indexed by the EXACT role(s) appearing in their body —
-    /// the elc exact-role keying. A freshly added `r`-edge fires only the
-    /// clauses whose body mentions `r`, instead of re-scanning every role
-    /// clause per edge (the other O(#role-clauses)-per-edge cost at scale).
-    role_clause_trig: HashMap<R, Vec<usize>>,
+    /// Role-body clauses with a single role atom `R(s,t)` whose ONLY adjacent
+    /// concept guard sits on the TARGET var, keyed by `(R, that-guard)` — the elc
+    /// NF4 `(role, filler-concept)` index. A fresh `R`-edge `(s,t)` fires only the
+    /// clauses keyed by `(R, L)` for the concepts `L` actually in `label[t]`,
+    /// instead of every clause that merely mentions `R` (the catastrophic
+    /// O(#R-clauses)-per-edge cost: on 7581, role 1 has 109k body clauses, so the
+    /// old per-edge clone+fire was billions of wasted matches).
+    role_tgt_trig: HashMap<(R, CLit), Vec<usize>>,
+    /// Same, for the role atom's SOURCE var (a guard on the predecessor).
+    role_src_trig: HashMap<(R, CLit), Vec<usize>>,
+    /// Role-body clauses with NO concept guard adjacent to their role atom (role
+    /// hierarchy `R⊑S`, domain `R(x,y)→C(x)`, or multi-role chains): these depend
+    /// only on the edge, so a fresh `R`-edge fires all of `role_noguard[R]`.
+    role_noguard: HashMap<R, Vec<usize>>,
+    /// elc backward-link rule for pure Horn NF4 `R(x,y) ⊓ D(y) → E(x)`: keyed by
+    /// the filler concept `D`, gives `(role R, head E)`. Such a clause's
+    /// consequence `E` depends only on `(R, label[filler])`, NOT on which
+    /// predecessor `x` we are at — so instead of re-matching it on every one of
+    /// the (millions of) incoming edges, we compute `E` ONCE when `D` reaches a
+    /// filler node and broadcast it to that node's R-predecessors via `prop`.
+    /// Clauses captured here are EXCLUDED from `role_tgt_trig`/`role_guard_trig`
+    /// (they are handled solely by the backward-link machinery).
+    prop_rule: HashMap<CLit, Vec<(R, CLit)>>,
+    /// Materialised backward links: `prop[(R, T)]` is the set of literals every
+    /// R-predecessor of node `T` must carry (accumulated as `T`'s label grows via
+    /// `prop_rule`). A fresh edge `(X, R, T)` just unions `prop[(R,T)]` into `X` —
+    /// O(consequences), no per-edge clause matching.
+    prop: HashMap<(R, Node), Vec<CLit>>,
+    /// Role-body clauses indexed by each concept LITERAL guarding them — the
+    /// `complete_roles` trigger index. When `lit` is asserted at a node, the
+    /// clauses in `role_guard_trig[lit]` are the only role clauses whose
+    /// firability could have changed, so only they are re-anchored on the node's
+    /// incident edges (e.g. `D ⊓ R(x,y) → E(x)` from `D ⊑ ∀R⁻.E` is keyed by `D`,
+    /// and re-fires when `D` reaches a node that already has an incoming `R`-edge).
+    role_guard_trig: HashMap<CLit, Vec<usize>>,
     global: Vec<usize>,
     unsupported: bool,
     open_disj: usize,
+    /// Nodes that received a ∀-style (non-anchor-var) concept head this
+    /// saturation. Combined with in-degree ≥ 2 (shared filler) this is the
+    /// precondition for cross-context pollution → taint the seed for re-verify.
+    /// Only populated when `track_forall` is set (the verify path), so the fast
+    /// path pays nothing.
+    forall_nodes: HashSet<Node>,
+    track_forall: bool,
     /// trail for the residue-test DFS (branching over the shared model). Each
     /// entry records a mutation to undo on backtrack.
     trail: Vec<QoUndo>,
@@ -1845,6 +1895,7 @@ enum QoUndo {
     Unsat(Node),
     Pending(usize), // pending grew to this len
     ConceptNode(CLit),
+    Prop(R, Node, usize), // prop[(R,Node)] grew to this len
 }
 
 pub struct QoResult {
@@ -1871,24 +1922,108 @@ const QO_NODE_CAP: usize = 8000;
 impl<'a> QoSat<'a> {
     fn new(clauses: &'a [ClauseRec]) -> QoSat<'a> {
         let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
-        let mut role_clause_trig: HashMap<R, Vec<usize>> = HashMap::new();
+        let mut role_tgt_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
+        let mut role_src_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
+        let mut role_noguard: HashMap<R, Vec<usize>> = HashMap::new();
+        let mut role_guard_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let mut prop_rule: HashMap<CLit, Vec<(R, CLit)>> = HashMap::new();
+        // KM_HT_QO_NOPROP (diagnostic): route NF4 through the per-edge path instead
+        // of the backward-link `prop` store, to isolate whether `prop` is a source
+        // of over-approximation. Read once (not per clause).
+        let no_prop = std::env::var_os("KM_HT_QO_NOPROP").is_some();
         let mut global = Vec::new();
         for (cid, rec) in clauses.iter().enumerate() {
             let body = &rec.1;
+            let head = &rec.0.head;
             if body.is_empty() {
                 global.push(cid);
                 continue;
             }
             let has_role = body.iter().any(|a| matches!(a, Atom::Role { .. }));
             if has_role {
-                // Index by each DISTINCT role in the body, deduped so a clause
-                // with two atoms of the same role is registered once for it.
-                let mut roles_seen: Vec<R> = Vec::new();
+                // elc backward-link capture: pure Horn NF4 `R(sv,tv) ⊓ D(tv) → E(sv)`
+                // (body = exactly the role atom + one target-side concept guard,
+                // head = exactly one concept on the role's SOURCE var). Its
+                // consequence `E` for a predecessor depends only on `(R, D)`, so it
+                // is handled by the `prop` broadcast, not per-edge matching. Such a
+                // clause is EXCLUDED from the other role indexes (handled solely
+                // here) to avoid double-firing.
+                if !no_prop && body.len() == 2 && head.len() == 1 {
+                    let role_atom = body.iter().find_map(|a| match a {
+                        Atom::Role { r, s, t } => Some((*r, *s, *t)),
+                        _ => None,
+                    });
+                    if let Some((r, sv, tv)) = role_atom {
+                        let guard = body.iter().find_map(|a| match a {
+                            Atom::Concept { lit, t } if *t == tv => Some(*lit),
+                            _ => None,
+                        });
+                        let hd = match head[0] {
+                            Atom::Concept { lit, t } if t == sv => Some(lit),
+                            _ => None,
+                        };
+                        if let (Some(g), Some(e)) = (guard, hd) {
+                            prop_rule.entry(g).or_default().push((r, e));
+                            continue;
+                        }
+                    }
+                }
+                // Index this role clause by each DISTINCT concept guard in its
+                // body, for `complete_roles` trigger-keyed re-firing (the
+                // guard-arrives-after-edge half of completeness). Deduped per
+                // (lit, cid).
+                let mut lits_seen: Vec<CLit> = Vec::new();
                 for a in body {
-                    if let Atom::Role { r, .. } = a {
+                    if let Atom::Concept { lit, .. } = a {
+                        if !lits_seen.contains(lit) {
+                            lits_seen.push(*lit);
+                            role_guard_trig.entry(*lit).or_default().push(cid);
+                        }
+                    }
+                }
+                // Edge-add firing index (the elc NF4 keying): a single-role-atom
+                // clause is anchored by ONE adjacent concept guard — preferring a
+                // guard on the role atom's TARGET (the ∃-filler concept, the most
+                // selective key), else the SOURCE; with no adjacent guard it goes
+                // to `role_noguard` (fires on every edge of its role). A guard on
+                // the OTHER side is re-checked by `match_body` when the clause
+                // fires, so keying by one guard is sound (it can only fire when
+                // that guard holds). Multi-role clauses (chains) go to
+                // `role_noguard` for each distinct role — rare here, so the
+                // unfiltered fire is acceptable.
+                let role_atoms: Vec<(R, Var, Var)> = body
+                    .iter()
+                    .filter_map(|a| match a {
+                        Atom::Role { r, s, t } => Some((*r, *s, *t)),
+                        _ => None,
+                    })
+                    .collect();
+                if role_atoms.len() == 1 {
+                    let (r, sv, tv) = role_atoms[0];
+                    let mut tgt_guard: Option<CLit> = None;
+                    let mut src_guard: Option<CLit> = None;
+                    for a in body {
+                        if let Atom::Concept { lit, t } = a {
+                            if *t == tv && tgt_guard.is_none() {
+                                tgt_guard = Some(*lit);
+                            } else if *t == sv && src_guard.is_none() {
+                                src_guard = Some(*lit);
+                            }
+                        }
+                    }
+                    if let Some(l) = tgt_guard {
+                        role_tgt_trig.entry((r, l)).or_default().push(cid);
+                    } else if let Some(l) = src_guard {
+                        role_src_trig.entry((r, l)).or_default().push(cid);
+                    } else {
+                        role_noguard.entry(r).or_default().push(cid);
+                    }
+                } else {
+                    let mut roles_seen: Vec<R> = Vec::new();
+                    for (r, _, _) in &role_atoms {
                         if !roles_seen.contains(r) {
                             roles_seen.push(*r);
-                            role_clause_trig.entry(*r).or_default().push(cid);
+                            role_noguard.entry(*r).or_default().push(cid);
                         }
                     }
                 }
@@ -1911,8 +2046,16 @@ impl<'a> QoSat<'a> {
             lit_work: Vec::new(),
             edge_work: Vec::new(),
             node_work: Vec::new(),
+            guard_refire: Vec::new(),
             concept_trig,
-            role_clause_trig,
+            role_tgt_trig,
+            role_src_trig,
+            role_noguard,
+            role_guard_trig,
+            prop_rule,
+            prop: HashMap::new(),
+            forall_nodes: HashSet::new(),
+            track_forall: false,
             global,
             unsupported: false,
             open_disj: 0,
@@ -1925,7 +2068,8 @@ impl<'a> QoSat<'a> {
 
     /// Clear the per-saturation model state (labels, edges, worklists, parked
     /// disjunctions, clashes, trail) while KEEPING the immutable clause indexes
-    /// (`concept_trig`, `role_clause_trig`, `global`) and config flags. Lets the
+    /// (`concept_trig`, the role_*_trig edge indexes, `global`) and config flags.
+    /// Lets the
     /// per-concept gate run one fresh single-seed saturation per query concept
     /// without rebuilding the O(#clauses) indexes 73k times.
     fn reset(&mut self) {
@@ -1938,6 +2082,9 @@ impl<'a> QoSat<'a> {
         self.lit_work.clear();
         self.edge_work.clear();
         self.node_work.clear();
+        self.guard_refire.clear();
+        self.prop.clear();
+        self.forall_nodes.clear();
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -1988,21 +2135,19 @@ impl<'a> QoSat<'a> {
                 self.trail.push(QoUndo::Lit(n, lit));
             }
             self.lit_work.push((n, lit));
-            // Completeness re-queue: a role-body clause guarded by a concept on
-            // `n` (∀-style, or an NF4 filler concept) must re-fire now that `n`'s
-            // label grew. Re-push `n`'s incident edges so the edge loop re-runs
-            // those clauses with the updated label. Bounded: only fires on a
-            // genuine label insert, so finitely often per node.
+            // Completeness re-fire: a role-body clause guarded by `lit` on `n`
+            // (a ∀-style guard, or an NF4 filler concept, or a `D ⊓ R(x,y) → E(x)`
+            // from `D ⊑ ∀R⁻.E`) must re-fire now that `n` carries `lit`. Enqueue
+            // only the clauses actually keyed by `lit` (trigger-keyed), to be
+            // re-anchored on `n`'s incident edges when the worklist drains — not
+            // every role clause on every incident edge. Bounded: only on a genuine
+            // label insert, so finitely often per node. This is the elc
+            // backward-link keying that makes `complete_roles` affordable at scale.
             if self.complete_roles {
-                let no = self.out_edges[n].len();
-                for i in 0..no {
-                    let (r, t) = self.out_edges[n][i];
-                    self.edge_work.push((n, r, t));
-                }
-                let ni = self.in_edges[n].len();
-                for i in 0..ni {
-                    let (r, s) = self.in_edges[n][i];
-                    self.edge_work.push((s, r, n));
+                if let Some(cids) = self.role_guard_trig.get(&lit) {
+                    for &cid in cids {
+                        self.guard_refire.push((cid, n));
+                    }
                 }
             }
         }
@@ -2157,13 +2302,54 @@ impl<'a> QoSat<'a> {
             if self.node_unsat.contains(&n) {
                 continue;
             }
-            if let Some(trigs) = self.concept_trig.get(&lit).cloned() {
-                for cid in trigs {
+            // Fire the concept clauses triggered by `lit`. The trigger lists are
+            // immutable after `new()`, but a per-pop `.clone()` of a hot lit's
+            // list (some concepts trigger tens of thousands of clauses) was a
+            // multi-GB allocation churn at the 2M-pop scale. Take the list out of
+            // the map (O(1) move, no element copy), iterate, then restore it —
+            // `fire_concept_clause` never touches `concept_trig`, so this is safe.
+            if let Some(trigs) = self.concept_trig.remove(&lit) {
+                for &cid in &trigs {
                     self.fire_concept_clause(cid, n);
                     if self.unsupported {
+                        self.concept_trig.insert(lit, trigs);
                         return;
                     }
                 }
+                self.concept_trig.insert(lit, trigs);
+            }
+            // elc backward-link broadcast: `lit` arriving at `n` makes `n` a filler
+            // whose R-predecessors inherit the NF4 head `e`. Record the link in
+            // `prop[(r,n)]` (so edges added later inherit it) and push `e` to all
+            // current R-predecessors. Computed once per (filler-concept, role),
+            // never re-matched per incoming edge — the whole point of `prop`.
+            if let Some(rules) = self.prop_rule.remove(&lit) {
+                for &(r, e) in &rules {
+                    let old_len = {
+                        let entry = self.prop.entry((r, n)).or_default();
+                        let ol = entry.len();
+                        if !entry.contains(&e) {
+                            entry.push(e);
+                        }
+                        ol
+                    };
+                    if self.tracing && self.prop[&(r, n)].len() != old_len {
+                        self.trail.push(QoUndo::Prop(r, n, old_len));
+                    }
+                    let preds: Vec<Node> = self.in_edges[n]
+                        .iter()
+                        .filter(|(rr, _)| *rr == r)
+                        .map(|(_, s)| *s)
+                        .collect();
+                    for x in preds {
+                        self.add_lit(x, e);
+                        if self.unsupported {
+                            self.prop_rule.insert(lit, rules);
+                            return;
+                        }
+                    }
+                }
+                self.prop_rule.insert(lit, rules);
             }
             if !self.tracing {
                 self.eval_parked_at(n);
@@ -2206,12 +2392,76 @@ impl<'a> QoSat<'a> {
             // (no body role atom would anchor), so the role index drops only
             // no-ops — result-identical, and clones a tiny per-role bucket
             // instead of the whole role-clause list on every edge.
-            if let Some(cids) = self.role_clause_trig.get(&r).cloned() {
-                for cid in cids {
-                    self.fire_role_clause(cid, s, r, t);
+            // elc backward link: the fresh `r`-edge `(s,t)` inherits everything
+            // `t`'s label has already broadcast for role `r` — O(consequences),
+            // no clause matching. (The guard-arrives-after-edge direction is the
+            // `prop_rule` push in the lit loop.)
+            if let Some(es) = self.prop.get(&(r, t)) {
+                let es: Vec<CLit> = es.clone();
+                for e in es {
+                    self.add_lit(s, e);
                     if self.unsupported {
                         return;
                     }
+                }
+            }
+            // Guard-filtered firing (elc NF4 keying): a fresh `r`-edge `(s,t)`
+            // fires only (a) the guardless `r`-clauses, (b) source-guarded
+            // clauses whose guard is present at `s`, (c) target-guarded clauses
+            // whose guard is present at `t` — NOT every clause mentioning `r`.
+            // (Pure Horn NF4 is handled by `prop` above, not here.) Gather first
+            // (immutable borrows of the indexes + labels), then fire (mutable).
+            // `match_body` re-verifies any non-keyed guard, so this is sound. The
+            // guard-arrives-after-edge case is covered by `guard_refire`.
+            let mut to_fire: Vec<usize> = Vec::new();
+            if let Some(cids) = self.role_noguard.get(&r) {
+                to_fire.extend_from_slice(cids);
+            }
+            if !self.role_src_trig.is_empty() {
+                for &lit in &self.label[s] {
+                    if let Some(cids) = self.role_src_trig.get(&(r, lit)) {
+                        to_fire.extend_from_slice(cids);
+                    }
+                }
+            }
+            if !self.role_tgt_trig.is_empty() {
+                for &lit in &self.label[t] {
+                    if let Some(cids) = self.role_tgt_trig.get(&(r, lit)) {
+                        to_fire.extend_from_slice(cids);
+                    }
+                }
+            }
+            for cid in to_fire {
+                self.fire_role_clause(cid, s, r, t);
+                if self.unsupported {
+                    return;
+                }
+            }
+        }
+        // Trigger-keyed `complete_roles` re-firing: a guard concept arrived at a
+        // node that may already have incident edges; re-anchor the keyed role
+        // clause on every incident edge (both directions). `fire_role_clause`
+        // re-checks the role + the concept guards, so this only derives genuinely
+        // new consequences. This is the half of inverse/∀-role completeness that
+        // edge-time firing misses (guard concept added AFTER the edge).
+        while let Some((cid, n)) = self.guard_refire.pop() {
+            if self.node_unsat.contains(&n) {
+                continue;
+            }
+            let no = self.out_edges[n].len();
+            for i in 0..no {
+                let (r, t) = self.out_edges[n][i];
+                self.fire_role_clause(cid, n, r, t);
+                if self.unsupported {
+                    return;
+                }
+            }
+            let ni = self.in_edges[n].len();
+            for i in 0..ni {
+                let (r, s) = self.in_edges[n][i];
+                self.fire_role_clause(cid, s, r, n);
+                if self.unsupported {
+                    return;
                 }
             }
         }
@@ -2386,12 +2636,18 @@ impl<'a> QoSat<'a> {
                 QoUndo::ConceptNode(lit) => {
                     self.concept_node.remove(&lit);
                 }
+                QoUndo::Prop(r, n, len) => {
+                    if let Some(v) = self.prop.get_mut(&(r, n)) {
+                        v.truncate(len);
+                    }
+                }
             }
         }
         // clear residual worklists (they reference undone state).
         self.lit_work.clear();
         self.node_work.clear();
         self.edge_work.clear();
+        self.guard_refire.clear();
     }
 
     /// BFS subtree from `root` over `out_edges` (root included).
@@ -2718,6 +2974,15 @@ impl<'a> QoSat<'a> {
             match *h {
                 Atom::Concept { lit, t } => {
                     let n = sigma[t as usize].expect("head var bound");
+                    // ∀-style write: a concept head on a NON-anchor var lands on a
+                    // filler, not the clause's anchor. Record it; if that filler is
+                    // later shared across contexts (in-degree ≥ 2) the per-concept
+                    // result for this seed may be over-approximated and needs sound
+                    // re-verification. (Anchor-var heads — NF4 backward links — are
+                    // predecessor-independent and never pollute.)
+                    if t != X && self.track_forall {
+                        self.forall_nodes.insert(n);
+                    }
                     if self.node_unsat.contains(&n) {
                         continue;
                     }
@@ -2890,6 +3155,7 @@ impl Ht {
         }
         let ht = Ht {
             clauses: recs,
+            pc_tainted: Vec::new(),
             concept_triggers,
             role_triggers,
             global_disj_set: global_disj.iter().copied().collect(),
@@ -4999,8 +5265,17 @@ impl Ht {
         // single-seed saturation generous headroom (bounded by ~2×#concepts of
         // distinct concept-lit nodes + fillers).
         qs.node_cap = queries.len().saturating_mul(4).saturating_add(500_000);
+        // only track ∀-write/shared-filler taint when the verify pass will use it.
+        qs.track_forall = std::env::var_os("KM_HT_QO_VERIFY").is_some();
         let mut unsat: Vec<C> = Vec::new();
         let mut subs: Vec<(C, C)> = Vec::new();
+        // Taint set: a per-concept saturation is EXACT only if no filler is shared
+        // by two distinct predecessor contexts. A non-root node with in-degree ≥ 2
+        // is such a shared filler — a ∀/role-chain write into it can leak one
+        // context's consequence to another (the source of the ~106 spurious
+        // subsumptions on 7581). Concepts whose saturation has such a node are
+        // flagged for sound re-verification by the caller; the rest are exact.
+        let mut tainted: Vec<C> = Vec::new();
         for (i, &a) in queries.iter().enumerate() {
             qs.reset();
             let r = qs.saturate(&[CLit::pos(a)]);
@@ -5025,15 +5300,21 @@ impl Ht {
                     subs.push((a, b));
                 }
             }
+            // taint = a ∀-written filler that is ALSO shared (in-degree ≥ 2): the
+            // exact precondition for cross-context leakage. Pure ∃-sharing is sound.
+            if qs.forall_nodes.iter().any(|&n| qs.in_edges[n].len() >= 2) {
+                tainted.push(a);
+            }
             if trace && i > 0 && i % 5000 == 0 {
-                eprintln!("QOPC {}/{} subs={} unsat={}", i, queries.len(), subs.len(), unsat.len());
+                eprintln!("QOPC {}/{} subs={} unsat={} tainted={}", i, queries.len(), subs.len(), unsat.len(), tainted.len());
             }
         }
         // KB inconsistent iff every queried concept is unsatisfiable.
         let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
         if trace {
-            eprintln!("QOPC done subs={} unsat={} consistent={}", subs.len(), unsat.len(), consistent);
+            eprintln!("QOPC done subs={} unsat={} tainted={} consistent={}", subs.len(), unsat.len(), tainted.len(), consistent);
         }
+        self.pc_tainted = tainted;
         Some((consistent, unsat, subs))
     }
 
@@ -5043,7 +5324,50 @@ impl Ht {
         // on big SRIF onts), run one fresh single-seed saturation per query and
         // read its subsumers off. See `qo_classify_perconcept`.
         if std::env::var_os("KM_HT_QO_PC").is_some() {
-            return self.qo_classify_perconcept(queries);
+            let res = self.qo_classify_perconcept(queries);
+            // KM_HT_QO_VERIFY: the per-concept shared-filler saturation is COMPLETE
+            // but over-approximates subsumers for concepts whose saturation shared a
+            // filler across contexts (`pc_tainted`). Re-verify each candidate
+            // subsumption `A ⊑ B` of a tainted A with the sound fresh-filler tableau
+            // (`consistent(A ⊓ ¬B)`): satisfiable ⇒ drop the false positive. This
+            // makes the result SOUND while paying the slow tableau only on the few
+            // tainted concepts. A `None` (out-of-fragment) verdict can neither
+            // confirm nor refute, so the candidate is kept (stays complete; may
+            // leave residual unsoundness — measured, not assumed).
+            if std::env::var_os("KM_HT_QO_VERIFY").is_some() {
+                if let Some((cons, unsat, subs)) = res {
+                    let tainted: HashSet<C> = self.pc_tainted.iter().copied().collect();
+                    if tainted.is_empty() {
+                        return Some((cons, unsat, subs));
+                    }
+                    let trace = std::env::var_os("KM_HT_TRACE").is_some();
+                    let (mut nchecked, mut ndropped, mut nnone) = (0u64, 0u64, 0u64);
+                    let mut kept: Vec<(C, C)> = Vec::with_capacity(subs.len());
+                    for (a, b) in subs {
+                        if tainted.contains(&a) {
+                            nchecked += 1;
+                            match self.consistent(&[CLit::pos(a), CLit::neg(b)]) {
+                                Some(false) => kept.push((a, b)), // A ⊓ ¬B unsat ⇒ A ⊑ B holds
+                                Some(true) => ndropped += 1,       // satisfiable ⇒ A ⋢ B, drop
+                                None => {
+                                    nnone += 1;
+                                    kept.push((a, b)); // undecidable here ⇒ keep (conservative)
+                                }
+                            }
+                        } else {
+                            kept.push((a, b));
+                        }
+                    }
+                    if trace {
+                        eprintln!(
+                            "QOPC verify: tainted={} checked={} dropped={} none={} kept={}",
+                            tainted.len(), nchecked, ndropped, nnone, kept.len()
+                        );
+                    }
+                    return Some((cons, unsat, kept));
+                }
+            }
+            return res;
         }
         let qset: HashSet<C> = queries.iter().copied().collect();
 
@@ -5060,6 +5384,13 @@ impl Ht {
             eprintln!("QOC entry queries={} clauses={}", queries.len(), self.clauses.len());
         }
         let mut qs = QoSat::new(&self.clauses);
+        // Sound ELI saturation: re-fire role/∀ clauses when their guard concept
+        // arrives at a node that already has the relevant edge. Without this the
+        // global pass misses inverse (∀R⁻) and ∀-role consequences whenever the
+        // guard is derived after the edge — an incompleteness on SRIF onts. Made
+        // affordable by the trigger-keyed `role_guard_trig` re-fire (see add_lit);
+        // KM_HT_QO_NOCOMPLETE restores the old edge-time-only firing for A/B.
+        qs.complete_roles = std::env::var_os("KM_HT_QO_NOCOMPLETE").is_none();
         if std::env::var_os("KM_HT_TRACE").is_some() {
             eprintln!("QOC QoSat::new done, calling saturate_global");
         }
@@ -5741,8 +6072,9 @@ mod tests {
     #[test]
     fn qosat_edge_index_role_chain() {
         // Drives BOTH elc-style edge indexes in QoSat saturation:
-        //  - role_clause_trig: a fresh r-edge fires only role clauses mentioning
-        //    r (transitivity + the join clause below), not every role clause.
+        //  - the role_*_trig edge indexes: a fresh r-edge fires only the guardless
+        //    r-clauses (transitivity) plus the target-guarded join clause keyed by
+        //    G, not every role clause.
         //  - in_edges: the (None, Some) predecessor branch of match_body, hit
         //    when transitivity anchors its SECOND atom r(y,z) on a new edge and
         //    must find the predecessor x with r(x,y) via the incoming index.
@@ -5771,6 +6103,69 @@ mod tests {
             g.label_pos[na].contains(&H),
             "H must be derived at node(A) via the transitive r-chain"
         );
+    }
+
+    #[test]
+    fn qosat_global_inverse_complete() {
+        // GLOBAL saturation as a SOUND ELI saturator (the 7581 path).
+        // A ⊑ ∃r.B, B ⊑ D, and D ⊑ ∀r⁻.E encoded as  D(y) ⊓ r(x,y) → E(x).
+        // Seeding all concepts builds the shared edge node(A) --r--> node(B);
+        // D reaches node(B) via B ⊑ D, i.e. AFTER the edge exists, so E only
+        // reaches node(A) (the r-predecessor) if the D-guarded backward clause
+        // re-fires on the incoming edge — exactly the trigger-keyed
+        // `complete_roles` mechanism. Horn, so the closure is exact.
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
+            Clause::new(vec![con(false, D, y), role(R0, X, y)], vec![con(false, E, X)]),
+        ];
+        let recs = mk_recs(&cls);
+        // WITH complete_roles: the inverse consequence E reaches node(A).
+        let mut qs = QoSat::new(&recs);
+        qs.complete_roles = true;
+        let g = qs.saturate_global(&[A, B, D, E]);
+        assert!(!g.unsupported, "in-fragment SRIF saturation must converge");
+        let na = qs.concept_node[&CLit::pos(A)];
+        assert!(
+            g.label_pos[na].contains(&E),
+            "E (D ⊑ ∀r⁻.E, backward over the A→B edge) must reach node(A)"
+        );
+        // node(B) itself is not an r-predecessor of a D-node here, so it has D
+        // but not E — guards must propagate only along real edges, not spuriously.
+        let nb = qs.concept_node[&CLit::pos(B)];
+        assert!(g.label_pos[nb].contains(&D));
+        assert!(!g.label_pos[nb].contains(&E), "E must not appear without an r-edge");
+    }
+
+    #[test]
+    fn qosat_prop_broadcast_shared() {
+        // Backward-link broadcast to MULTIPLE shared predecessors. A1 ⊑ ∃r.B,
+        // A2 ⊑ ∃r.B, B ⊑ D, and R(x,y) ⊓ D(y) → E(x). The consequence E is
+        // computed ONCE at node(B) (the filler) and broadcast to both A1 and A2;
+        // node(B) itself never gets E. This is the elc per-(role,filler) sharing
+        // that replaces re-matching the NF4 clause on every incoming edge.
+        const A2: C = 10;
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A2, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
+            Clause::new(vec![con(false, D, y), role(R0, X, y)], vec![con(false, E, X)]),
+        ];
+        let recs = mk_recs(&cls);
+        let mut qs = QoSat::new(&recs);
+        qs.complete_roles = true;
+        let g = qs.saturate_global(&[A, A2, B, D, E]);
+        assert!(!g.unsupported);
+        let na = qs.concept_node[&CLit::pos(A)];
+        let na2 = qs.concept_node[&CLit::pos(A2)];
+        let nb = qs.concept_node[&CLit::pos(B)];
+        assert!(g.label_pos[na].contains(&E), "A1 must get E via prop broadcast");
+        assert!(g.label_pos[na2].contains(&E), "A2 must get E via prop broadcast");
+        assert!(!g.label_pos[nb].contains(&E));
     }
 
     // ---- Per-concept QoSat gate (KM_HT_QO_PC) ----
