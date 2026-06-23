@@ -6408,8 +6408,21 @@ impl Ht {
                             .unwrap_or(1)
                             .max(1);
                         let nthreads = par.min(distinct.len().max(1)).max(1);
+                        // KM_HT_QO_PMCOMPOSE (lever 1×2): build the per-concept
+                        // pseudo-model tableaux over the INVERSE-COMPOSED clause set
+                        // (no reversed edges) so `consistent(A)` can use cheap subset
+                        // blocking instead of inverse-aware pairwise blocking — the
+                        // suspected cost of the slow (45-64s) deterministic model
+                        // builds. Sound (composition is semantics-preserving), and
+                        // scoped to the model builders only (the gate keeps the
+                        // `prop`-optimised original clauses, since composition
+                        // diverges the global gate saturation).
                         let template: Vec<Clause> =
-                            self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                            if std::env::var_os("KM_HT_QO_PMCOMPOSE").is_some() {
+                                compose_inverse(&self.clauses)
+                            } else {
+                                self.clauses.iter().map(|(c, _, _)| c.clone()).collect()
+                            };
                         let anywhere = self.anywhere;
                         let next = std::sync::atomic::AtomicUsize::new(0);
                         const PMWORKER_STACK: usize = 512 * 1024 * 1024;

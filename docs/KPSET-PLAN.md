@@ -160,7 +160,12 @@ large DETERMINISTIC (7581 is Horn) inverse expansions, bound by per-model cost.
   cost under allocator/memory contention. Proven that the candidates REQUIRE the
   exact tableau model (the inverse-augmented saturation over-approximates, so a
   candidate `B` is IN it and cannot be refuted by absence; forward under-approximates
-  and cannot confirm — the gap is exactly the candidate set). So the only real lever
+  and cannot confirm — the gap is exactly the candidate set). Also tried `KM_HT_QO_PMCOMPOSE` (build the per-concept tableaux over the
+  inverse-composed, reversed-edge-free clause set, so `consistent(A)` could use cheap
+  subset blocking instead of inverse pairwise blocking): only MARGINAL (slowest
+  models 63→53s, 64→56s; total 100s vs 104s, ~3%). So the slow models are NOT
+  inverse-blocking-bound either — it is raw deterministic expansion volume per model.
+  So the only real lever
   is Konclude's **satisfiable-expander cache made sound under inverse** (reuse
   satisfiable filler subtrees across the 63 model builds). KM's `KM_HT_SATCACHE` /
   `KM_HT_SATFOLD` are the no-inverse versions; the inverse-sound port (a node's sat
