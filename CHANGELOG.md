@@ -25,10 +25,18 @@ that wrecked 2a are never reached (verify stage 0.37s). This is the first time K
 certifies 7581's completeness within budget rather than trusting the forward-only
 result.
 
-Remaining gap to Konclude (~10s): the pseudo-model pre-filter spent **97s** building
-63 full `consistent(A)` models (single-concept satisfiability is still nontrivial
-under inverse). Building the pseudo-models from the saturation (cheap) instead of a
-full tableau is the next constant-factor lever.
+Remaining gap to Konclude (~10s): the pseudo-model pre-filter spends ~90s building
+63 full `consistent(A)` models. Baking the result-identical incremental
+blocking/obligation speedups into the model-builder workers (`set_fast_tableau`)
+shaves only ~7s — the cost is intrinsic model size. Building the pseudo-model from
+the (forward) saturation instead would be **unsound** (the forward label
+under-approximates inverse-entailed subsumers; "B absent ⇒ A⋢B" would refute real
+subsumptions on load-bearing-inverse onts). Konclude itself builds pseudo-models
+from per-concept SAT completions and fast-paths them with a cached ⊤-saturation;
+KM's `KM_HT_SATCACHE` is sound only for ALC(H) no-inverse, so it cannot fast-path
+7581. The genuine levers to ~10s are a sound inverse-aware fast-sat cache, or a
+cb_to_ht inverse encoding that avoids materialised reversed edges. See
+`docs/KPSET-PLAN.md`.
 
 ### HT/QoSat: 2b Phase A — Konclude G2/G3 inverse-criticality containment check (`KM_HT_QO_KPSET`)
 

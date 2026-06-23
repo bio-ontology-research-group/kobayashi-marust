@@ -112,8 +112,24 @@ that model's root — sound (`B` false in a real model of `A`). **7581: all 177
 candidates refuted → 0 survivors → 0 `consistent(A ⊓ ¬B)` tests; gold-exact (565317 =
 gold, 0/0); 129s / 2.5 GB, UNDER the 240s budget** (2a was 244s over). The hard
 inverse-pair tableau blowups are never reached. Remaining toward Konclude ~10s: the
-pre-filter spent 97s building 63 full `consistent(A)` models — build pseudo-models
-from the saturation instead. NB this uses the 2a verify funnel
+pre-filter spends ~90s building 63 full `consistent(A)` models. **Building the
+pseudo-model from the (forward) saturation instead is UNSOUND in general** — the
+forward label under-approximates inverse-entailed subsumers, so "B absent from the
+forward model ⇒ A⋢B" would refute real subsumptions on load-bearing-inverse onts.
+A sound saturation pseudo-model needs the complete deterministic subsumer set
+(forward + inverse), which is exactly the classification being computed. Konclude
+itself builds pseudo-models from per-concept SAT completions (not the raw
+saturation: `getAssociatedSaturationCacheEntry`, classifier cpp:1530) — KM already
+mirrors that. Konclude's speed there comes from a FAST sat test that reuses a cached
+⊤-saturation; KM's equivalent (`KM_HT_SATCACHE`) is sound only for ALC(H)
+no-inverse, so it cannot fast-path 7581's per-concept models. The result-identical
+incremental blocking/obligation speedups (`set_fast_tableau`, baked into the
+model-builder workers) shave only ~7s — the cost is intrinsic model size, not
+blocking. So the real levers to ~10s are EITHER a sound inverse-aware fast-sat
+cache (a further port) OR a cb_to_ht inverse encoding that does not materialise
+reversed edges (so the forward saturation becomes inverse-complete and the
+pseudo-model becomes free). Both are larger structural changes; the certified
+122-126s under-budget result stands meanwhile. NB this uses the 2a verify funnel
 (`KM_HT_QO_PC`+`KM_HT_QO_VERIFY`+`KM_HT_QO_PMMERGE`), NOT the KPSet global gate
 (which defers on 7581, see below).
 

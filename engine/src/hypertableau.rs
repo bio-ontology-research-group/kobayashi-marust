@@ -1508,6 +1508,11 @@ pub struct Ht {
     /// independent of context (no inverse) so it never needs backtracking. This
     /// collapses the per-witness branch search toward HermiT's tiny model.
     satfold: bool,
+    /// `set_fast_tableau`: force the result-identical incremental blocking /
+    /// obligation speedups on (re-applied after each per-run `Ext::new`), so
+    /// model-builder workers run fast without the `KM_HT_INCRBLOCK2/INCROBLIG`
+    /// env flags. Never changes results.
+    force_fast: bool,
     /// full (pos+neg) labels of nodes seen in completed clash-free models, sorted.
     sat_labels: Vec<Vec<CLit>>,
     /// smallest-literal watch index into `sat_labels` for the superset check.
@@ -3653,6 +3658,7 @@ impl Ht {
             lng_watch: HashMap::new(),
             lng_fires: 0,
             satfold: std::env::var_os("KM_HT_SATFOLD").is_some(),
+            force_fast: false,
             sat_labels: Vec::new(),
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
@@ -3707,6 +3713,15 @@ impl Ht {
 
     pub fn set_anywhere(&mut self, v: bool) {
         self.anywhere = v;
+    }
+
+    /// Turn on the RESULT-IDENTICAL tableau speedups (incremental suffix-only
+    /// subset blocking + incremental ∃-obligation processing). These never change
+    /// the answer — only how fast a `consistent` test runs — so it is always safe
+    /// to enable them on a worker (e.g. the pseudo-model model-builders), without
+    /// requiring `KM_HT_INCRBLOCK2` / `KM_HT_INCROBLIG` in the environment.
+    pub fn set_fast_tableau(&mut self) {
+        self.force_fast = true;
     }
 
     #[inline]
@@ -4861,6 +4876,13 @@ impl Ht {
         loop {
             self.ext = Ext::new();
             self.ext.watch = self.watch;
+            // `set_fast_tableau` override: force the result-identical incremental
+            // blocking / obligation paths on even without the env flags (Ext::new
+            // reads them from the environment, so re-apply after each rebuild).
+            if self.force_fast {
+                self.ext.incr2 = true;
+                self.ext.incroblig = true;
+            }
             self.cache.clear();
             // learned no-goods reference this run's node uids; reset per run.
             self.decisions.clear();
@@ -6275,6 +6297,7 @@ impl Ht {
                                         .spawn_scoped(s, move || -> Vec<(C, Option<HashSet<C>>)> {
                                             let mut w = Ht::new(tmpl);
                                             w.set_anywhere(anywhere);
+                                            w.set_fast_tableau(); // result-identical speedups
                                             let mut out = Vec::new();
                                             loop {
                                                 let i = next.fetch_add(
@@ -6352,6 +6375,7 @@ impl Ht {
                                     .spawn_scoped(s, move || -> (Vec<(C, C)>, u64, u64, u64) {
                                         let mut w = Ht::new(tmpl);
                                         w.set_anywhere(anywhere);
+                                        w.set_fast_tableau(); // result-identical speedups
                                         let mut kept: Vec<(C, C)> = Vec::new();
                                         let (mut nk, mut nd, mut nn) = (0u64, 0u64, 0u64);
                                         loop {
