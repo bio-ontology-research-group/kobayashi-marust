@@ -2062,6 +2062,32 @@ struct QoSat<'a> {
     /// Diagnostic count of inverse-anchored containment checks that missed
     /// (KM_HT_TRACE). Zero ⇒ inverse is non-load-bearing for this saturation.
     kp_miss: u64,
+    /// Concepts that appear as a BODY GUARD in some clause (positive concept atom
+    /// in a body). Konclude's saturation marks a node insufficient for an
+    /// inverse/∀-propagated operand only when that operand can still TRIGGER
+    /// something; an operand that never guards any clause body is inert (it can
+    /// neither fire a forward rule nor — since subsumers are read from self-nodes,
+    /// G1 — contribute a named subsumer), so a containment miss on it is NOT a
+    /// completeness threat. `KM_HT_QO_KPGUARD` restricts `kp_insufficient` to
+    /// guard-concept misses (sound: a non-guard operand dropped at a node loses
+    /// nothing derivable). Built once in `new_opts`.
+    kp_guard: std::rc::Rc<HashSet<C>>,
+    kp_guard_only: bool,
+    /// KM_HT_QO_SAT: Konclude-style separate role-keyed successor nodes. When set,
+    /// `ensure_filler` ALWAYS allocates a fresh node keyed by `(filler-concept,
+    /// role)` (never the concept's classification self-node, as it does when
+    /// `range_class == 0`). Inverse/∀ writes then land on these successor nodes,
+    /// never on a concept's self-node, so the self-node subsumer set (read for
+    /// classification, G1) is never inverse-polluted — the structural precondition
+    /// that lets the guard-criticality above be a sound completeness certificate.
+    sat_mode: bool,
+    /// Parallel to `label`: true for separate ∃-successor (filler) nodes created
+    /// under `sat_mode`, false for concept self-nodes / root. An inverse write to a
+    /// non-filler (self-node) is always insufficient; to a filler it follows the
+    /// guard rule.
+    is_filler: Vec<bool>,
+    /// `sat_mode` role-keyed filler nodes: `(filler-concept, role) → node`.
+    sat_filler: HashMap<(CLit, R), Node>,
     /// Deferred single-target containment checks `(node, lit)` collected during
     /// the saturation. Konclude runs the criticality test only AFTER the
     /// deterministic saturation reaches fixpoint (`checkCriticalIndividuals`), so
@@ -2137,6 +2163,17 @@ impl<'a> QoSat<'a> {
         // of over-approximation. Read once (not per clause).
         let no_prop = std::env::var_os("KM_HT_QO_NOPROP").is_some();
         let no_inv = skip_inverse;
+        // Body-guard concepts: any concept id occurring in a clause BODY (either
+        // polarity). An inverse/∀ operand that is NOT a body guard can trigger
+        // nothing further, so a containment miss on it is inert (see `kp_guard`).
+        let mut kp_guard_set: HashSet<C> = HashSet::new();
+        for rec in clauses.iter() {
+            for a in &rec.1 {
+                if let Atom::Concept { lit, .. } = a {
+                    kp_guard_set.insert(lit.c);
+                }
+            }
+        }
         // --- Konclude role-keyed range folding setup. ------------------------
         // direct_range[r] = concepts a range/∀ clause `R(x,y)→C(y)` forces on any
         // r-successor when there is NO source-side guard (target guards are
@@ -2396,6 +2433,11 @@ impl<'a> QoSat<'a> {
             kp_check1: HashSet::new(),
             kp_checkn: Vec::new(),
             kp_insuff_nodes: HashSet::new(),
+            kp_guard: std::rc::Rc::new(kp_guard_set),
+            kp_guard_only: std::env::var_os("KM_HT_QO_KPGUARD").is_some(),
+            sat_mode: std::env::var_os("KM_HT_QO_SAT").is_some(),
+            is_filler: Vec::new(),
+            sat_filler: HashMap::new(),
         }
     }
 
@@ -2427,6 +2469,8 @@ impl<'a> QoSat<'a> {
         self.kp_check1.clear();
         self.kp_checkn.clear();
         self.kp_insuff_nodes.clear();
+        self.is_filler.clear();
+        self.sat_filler.clear();
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -2438,6 +2482,7 @@ impl<'a> QoSat<'a> {
         self.out_edges.push(Vec::new());
         self.in_edges.push(Vec::new());
         self.node_range.push(0);
+        self.is_filler.push(false);
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
@@ -2524,6 +2569,19 @@ impl<'a> QoSat<'a> {
     /// filler and never pollute a different role's successor (Konclude's
     /// per-creation-role ALL-concept extension).
     fn ensure_filler(&mut self, r: R, fil: CLit) -> Node {
+        // KM_HT_QO_SAT (Konclude separate successor): always a fresh node keyed by
+        // (filler-concept, role), distinct from the concept's classification
+        // self-node, so inverse/∀ writes never pollute the self-node subsumers.
+        if self.sat_mode {
+            if let Some(&n) = self.sat_filler.get(&(fil, r)) {
+                return n;
+            }
+            let n = self.new_node();
+            self.is_filler[n] = true;
+            self.sat_filler.insert((fil, r), n);
+            self.add_lit(n, fil);
+            return n;
+        }
         let cls = self.range_class.get(&r).copied().unwrap_or(0);
         if cls == 0 {
             return self.concept_node_of(fil);
@@ -3492,7 +3550,13 @@ impl<'a> QoSat<'a> {
                     if !self.node_unsat.contains(&n) && self.label[n].contains(&lit) {
                         return; // already satisfied — no obligation
                     }
-                    disj.push((n, lit));
+                    // guard/self-node criticality: an absent operand matters for
+                    // completeness only on a self-node, or (on a filler) if it is a
+                    // body guard that could still trigger something.
+                    let on_self = !(self.sat_mode && self.is_filler[n]);
+                    if on_self || !self.kp_guard_only || self.kp_guard.contains(&lit.c) {
+                        disj.push((n, lit));
+                    }
                 }
                 // an ∃/role/eq head reached across an inverse edge would build new
                 // structure the shared model cannot represent soundly ⇒ insufficient.
@@ -3508,10 +3572,8 @@ impl<'a> QoSat<'a> {
         }
         // not yet satisfied: defer to the fixpoint criticality pass.
         match disj.len() {
-            0 => {
-                self.kp_insufficient = true;
-                self.kp_miss += 1;
-            }
+            // all absent operands are inert (non-guard fillers) ⇒ safe, no insufficiency.
+            0 => {}
             1 => {
                 self.kp_check1.insert(disj[0]);
             }
@@ -3526,7 +3588,20 @@ impl<'a> QoSat<'a> {
     fn kp_write(&mut self, n: Node, lit: CLit, via_inv: bool) -> bool {
         if self.kpset && via_inv {
             if !self.node_unsat.contains(&n) && !self.label[n].contains(&lit) {
-                self.kp_check1.insert((n, lit));
+                // Konclude criticality refinement: a containment miss matters for
+                // COMPLETENESS only if the missed operand can still do something.
+                //  - on a concept SELF-NODE (`!is_filler`): the operand could be a
+                //    named subsumer read directly (G1), so always defer/insufficient.
+                //  - on a separate ∃-filler (`sat_mode`): the operand affects named
+                //    subsumers only by triggering a forward rule, i.e. only if it is
+                //    a BODY GUARD. A non-guard operand at a filler is inert ⇒ safe to
+                //    drop with no insufficiency.
+                let on_self = !(self.sat_mode && self.is_filler[n]);
+                let critical =
+                    on_self || !self.kp_guard_only || self.kp_guard.contains(&lit.c);
+                if critical {
+                    self.kp_check1.insert((n, lit));
+                }
             }
             return true;
         }

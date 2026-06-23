@@ -172,6 +172,60 @@ large DETERMINISTIC (7581 is Horn) inverse expansions, bound by per-model cost.
   can depend on inverse-predecessor context, so the cache key must capture it) is the
   substantial remaining work. The certified 126s under-budget result stands.
 
+## DEFINITIVE TRACE of Konclude on 7581 (2026-06-23, deployed binary, stats logging)
+
+Ran the deployed Konclude (`Binaries/Konclude classification -v`) on ore_ont_7581:
+```
+parsed 1432ms; preprocessing 3097ms; precomputing(saturation) 3448ms;
+"has been sufficiently saturated, extracting data for classification";
+class classification 903ms; total 9657ms.
+```
+The "Used N satisfiable tests / pseudo-model merged / calculated subsumption tests"
+line did NOT print. So Konclude does **ZERO tableau tests and ZERO pseudo-model
+merges on 7581** — it classifies entirely from the saturation. The selector is
+`CConfigDependedSubsumptionClassifierFactory::isClassificationBySaturationCalculation
+Sufficient`: if `!getProcessingDataBox()->isInsufficientNodeOccured()` (and no
+problematic EQ candidates), use `COptimizedClassExtractedSaturationSubsumptionClassifier`
+— extract subsumers straight off the saturation. **Konclude's saturation marks ZERO
+insufficient nodes on 7581.**
+
+Mechanism (`applyALLRule`, cpp:6143): a `∀role.C` does (a) BACKWARD propagation —
+write C's operands to the predecessors recorded on `role`'s backward-prop links
+(`addConceptFilteredToIndividual`, non-critical); (b) if it propagates "into the
+creation direction", queue a per-creation-role ALL-concept EXTENSION on the
+successor and mark it CRITICAL (deferred to `isCriticalALLConceptDescriptor
+Insufficient`, which sets insufficient only if a successor lacks the operands).
+Konclude WRITES operands (to extensions / backward to predecessors) and reaches a
+clean fixpoint; 7581 trips no criticality.
+
+## Why KM cannot cheaply replicate "sufficient" (MEASURED 2026-06-23)
+
+KM's KPSet check-and-defers on every inverse-edge write → 36495 insufficient nodes /
+930k misses. Two sound, gated replication attempts FAILED to make the saturation
+sufficient:
+- `KM_HT_QO_KPGUARD` (criticality only for body-guard operands — an operand that
+  guards no clause body is inert, so a miss on it is not a completeness threat):
+  sound, but **the 7581 inverse operands ARE body-guards** (they are subsumer
+  concepts that occur in bodies), so it does not reduce insufficiency.
+- `KM_HT_QO_SAT` (separate role-keyed `(concept, role)` successor nodes, Konclude-
+  style, so inverse writes never hit a concept self-node): added ~43k nodes / 1.2M
+  inverse edges, kp_miss=1.24M, still insufficient. Worse, actually PROPAGATING the
+  operands (writing, then letting forward NF4 fire) re-introduces shared-filler
+  pollution **across predecessors** — a `(concept, role)` filler is still shared by
+  all predecessors with that ∃, so a forward NF4 reading an inverse operand at it
+  writes a predecessor-specific consequence to the wrong predecessors.
+
+Root cause of the gap: Konclude's per-creation-role ALL-concept *extension* is a
+SEPARATE structure consulted for consistency/criticality, with subsumers read from
+self-nodes (G1) and genuine inverse subsumers added by the BACKWARD propagation to
+predecessors — the three pieces together keep the shared-successor model sound across
+multiple predecessors. KM's reversed-edge + `prop` model has none of that
+separation. Faithfully porting it is a substantial re-architecture of QoSat's node
+model (shared successors + per-role extension + backward-prop links + narrow
+criticality), not a flag. Both attempts are committed gated (default off, sound via
+the forward-only fallback, gold-exact). The certified **126s pseudo-model-merge
+result remains the working sound+complete-under-budget path.**
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**
