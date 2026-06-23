@@ -5140,6 +5140,30 @@ impl Ht {
         true
     }
 
+    /// Pseudo-model refutation support — the concept part of Konclude's
+    /// `isPseudoModelSubsumerPossible` (COptimizedKPSetClassSubsumptionClassifier
+    /// Thread.cpp:1626). Build ONE satisfiability model of `a` via
+    /// `consistent(&[a])` and return the positive concepts true at its root: a
+    /// genuine, INVERSE-AWARE model of `a`. A candidate subsumption `a ⊑ b` is
+    /// then SOUNDLY refuted (`a ⋢ b`) iff `b` is absent from this set — `b` is
+    /// false in a real model of `a`, so not every model of `a` satisfies `b`.
+    /// Returns `None` when no usable model exists (out-of-fragment ⇒ defer, or
+    /// `a` itself unsatisfiable ⇒ `a ⊑ b` holds trivially) — the caller keeps the
+    /// candidate for the full tableau test, so completeness is preserved either
+    /// way. This is the cheap gate that replaces a blowing-up `consistent(a ⊓ ¬b)`
+    /// with a single (much easier) `consistent(a)` per concept.
+    fn model_root_pos(&mut self, a: C) -> Option<HashSet<C>> {
+        match self.consistent(&[CLit::pos(a)]) {
+            Some(true) => {
+                // root = node 0; its label is `a`'s model assignment. Absent
+                // positive concept ⇒ false at the root ⇒ a genuine countermodel.
+                Some(self.ext.concepts[0].keys().filter(|k| !k.neg).map(|k| k.c).collect())
+            }
+            // unsat (a ⊑ ⊥ ⊑ b, keep) or unsupported (defer) ⇒ no refutation.
+            _ => None,
+        }
+    }
+
     pub fn classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         let global = self.consistent(&[])?;
         if !global {
@@ -6212,6 +6236,94 @@ impl Ht {
                     let cands = std::mem::take(&mut self.pc_candidates);
                     let ucands = std::mem::take(&mut self.pc_unsat_candidates);
                     let trace = std::env::var_os("KM_HT_TRACE").is_some();
+                    // KM_HT_QO_PMMERGE: Konclude pseudo-model refutation pre-filter
+                    // (study P2). Each tight candidate `(A,B)` is an inverse-only
+                    // possible subsumer; most are NOT real (on 7581 all 177 are
+                    // spurious). Refute them WITHOUT the blowing-up `consistent(A ⊓
+                    // ¬B)`: build ONE model per distinct `A` (`consistent(A)`, far
+                    // easier than `A ⊓ ¬B`) and drop `(A,B)` when `B` is false in
+                    // that model — a sound refutation (`B` false in a real model of
+                    // `A` ⇒ `A ⋢ B`). Survivors (`B` present, so undecided) fall
+                    // through to the full tableau verify below; for 7581 that set
+                    // is ≈ 0, so the hard `A ⊓ ¬B` blowups are never reached.
+                    let cands: Vec<(C, C)> = if std::env::var_os("KM_HT_QO_PMMERGE").is_some()
+                        && !cands.is_empty()
+                    {
+                        let t_pm = std::time::Instant::now();
+                        let mut distinct: Vec<C> = cands.iter().map(|(a, _)| *a).collect();
+                        distinct.sort_unstable();
+                        distinct.dedup();
+                        let par = std::env::var("KM_HT_PAR")
+                            .ok()
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(1)
+                            .max(1);
+                        let nthreads = par.min(distinct.len().max(1)).max(1);
+                        let template: Vec<Clause> =
+                            self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                        let anywhere = self.anywhere;
+                        let next = std::sync::atomic::AtomicUsize::new(0);
+                        const PMWORKER_STACK: usize = 512 * 1024 * 1024;
+                        let distinct_ref = &distinct;
+                        let parts: Vec<Vec<(C, Option<HashSet<C>>)>> = std::thread::scope(|s| {
+                            let next = &next;
+                            let handles: Vec<_> = (0..nthreads)
+                                .map(|_| {
+                                    let tmpl = template.clone();
+                                    std::thread::Builder::new()
+                                        .stack_size(PMWORKER_STACK)
+                                        .spawn_scoped(s, move || -> Vec<(C, Option<HashSet<C>>)> {
+                                            let mut w = Ht::new(tmpl);
+                                            w.set_anywhere(anywhere);
+                                            let mut out = Vec::new();
+                                            loop {
+                                                let i = next.fetch_add(
+                                                    1,
+                                                    std::sync::atomic::Ordering::Relaxed,
+                                                );
+                                                if i >= distinct_ref.len() {
+                                                    break;
+                                                }
+                                                let a = distinct_ref[i];
+                                                out.push((a, w.model_root_pos(a)));
+                                            }
+                                            out
+                                        })
+                                        .expect("spawn pmmerge worker")
+                                })
+                                .collect();
+                            handles.into_iter().map(|h| h.join().unwrap()).collect()
+                        });
+                        let mut model: HashMap<C, Option<HashSet<C>>> = HashMap::new();
+                        for part in parts {
+                            for (a, m) in part {
+                                model.insert(a, m);
+                            }
+                        }
+                        let before = cands.len();
+                        let filtered: Vec<(C, C)> = cands
+                            .into_iter()
+                            .filter(|(a, b)| match model.get(a) {
+                                // A's model lacks B ⇒ B false in a model of A ⇒ refuted.
+                                Some(Some(set)) => set.contains(b),
+                                // no usable model (A unsat / out-of-fragment) ⇒ keep.
+                                _ => true,
+                            })
+                            .collect();
+                        if trace {
+                            eprintln!(
+                                "QOPC pmmerge: {} candidates -> {} survivors [{} A-models, {:.2}s, {} threads]",
+                                before,
+                                filtered.len(),
+                                distinct.len(),
+                                t_pm.elapsed().as_secs_f64(),
+                                nthreads
+                            );
+                        }
+                        filtered
+                    } else {
+                        cands
+                    };
                     let t_v = std::time::Instant::now();
                     // Parallel candidate verification: the tight candidates are the
                     // HARD inverse-dependent pairs (each `consistent(A ⊓ ¬B)` ~1-2s on
@@ -7276,5 +7388,19 @@ mod tests {
             ht.qo_classify_kpset(&[A, B, D, E]).is_none(),
             "load-bearing/spurious inverse must defer (None), never over-derive B⊑E"
         );
+    }
+
+    #[test]
+    fn pmmerge_model_root_refutes_nonsubsumer() {
+        // Konclude pseudo-model refutation (concept part). A ⊑ B; CC unrelated.
+        // consistent(&[A])'s root model FORCES B (A⊑B) but not CC, so the model
+        // refutes the candidate A⊑CC (CC absent ⇒ A ⋢ CC) and cannot refute A⊑B
+        // (B present ⇒ falls through to the full tableau, which confirms it).
+        const CC: C = 7;
+        let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, B, X)])];
+        let mut ht = ht(cls);
+        let m = ht.model_root_pos(A).expect("A is satisfiable");
+        assert!(m.contains(&B), "B forced in A's model (A⊑B) ⇒ NOT refutable");
+        assert!(!m.contains(&CC), "CC absent in A's model ⇒ refutes A⊑CC");
     }
 }

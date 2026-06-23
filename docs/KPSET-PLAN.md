@@ -102,6 +102,21 @@ NOT use subtree reachability, precisely because reachability is this conservativ
 The ~930k possibles become possible-subsumers that the merge prunes cheaply; for
 7581 (forward = gold) every one is refuted ⇒ residue 0 ⇒ certified fast.
 
+## STATUS 2026-06-23 (P2): pseudo-model merge CERTIFIES 7581 under budget
+
+`KM_HT_QO_PMMERGE` (gated, default off; 130 tests). Port of the concept part of
+`isPseudoModelSubsumerPossible` (KPSet classifier cpp:1626): each tight inverse-only
+candidate `(A,B)` from the verify funnel is refuted by building ONE model of `A`
+(`model_root_pos` = `consistent(&[A])`) and dropping `A ⊑ B` when `B` is absent from
+that model's root — sound (`B` false in a real model of `A`). **7581: all 177
+candidates refuted → 0 survivors → 0 `consistent(A ⊓ ¬B)` tests; gold-exact (565317 =
+gold, 0/0); 129s / 2.5 GB, UNDER the 240s budget** (2a was 244s over). The hard
+inverse-pair tableau blowups are never reached. Remaining toward Konclude ~10s: the
+pre-filter spent 97s building 63 full `consistent(A)` models — build pseudo-models
+from the saturation instead. NB this uses the 2a verify funnel
+(`KM_HT_QO_PC`+`KM_HT_QO_VERIFY`+`KM_HT_QO_PMMERGE`), NOT the KPSet global gate
+(which defers on 7581, see below).
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**

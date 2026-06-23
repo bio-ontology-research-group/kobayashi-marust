@@ -4,6 +4,32 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: 2b P2 — pseudo-model merge certifies 7581 sound+complete UNDER budget (`KM_HT_QO_PMMERGE`)
+
+Port of the concept part of Konclude's pseudo-model refutation
+(`isPseudoModelSubsumerPossible`,
+`COptimizedKPSetClassSubsumptionClassifierThread.cpp:1626`). For each tight
+inverse-only candidate `(A,B)` from the verify funnel, instead of the blowing-up
+`consistent(A ⊓ ¬B)`, build ONE satisfiability model of `A` (`model_root_pos` =
+`consistent(&[A])`, far easier than `A ⊓ ¬B`) and **refute `A ⊑ B` iff `B` is
+absent from that model's root label** — sound (`B` false in a real, inverse-aware
+model of `A` ⇒ `A ⋢ B`). Survivors (B present, undecided) fall through to the full
+tableau; refuted candidates are dropped with no tableau test. Gated, default off;
+130 cargo tests pass (new: `pmmerge_model_root_refutes_nonsubsumer`).
+
+**Result on ore_ont_7581 (ws): SOUND + COMPLETE + CERTIFIED, UNDER the 240s
+budget.** `565317 = gold, 0 unsound / 0 incomplete`, **129s / 2.5 GB** (vs 2a's
+**244s**, over budget). The pseudo-model merge refuted **all 177** tight candidates
+→ **0 survivors → 0 `consistent(A ⊓ ¬B)` tableau tests** — the hard inverse blowups
+that wrecked 2a are never reached (verify stage 0.37s). This is the first time KM
+certifies 7581's completeness within budget rather than trusting the forward-only
+result.
+
+Remaining gap to Konclude (~10s): the pseudo-model pre-filter spent **97s** building
+63 full `consistent(A)` models (single-concept satisfiability is still nontrivial
+under inverse). Building the pseudo-models from the saturation (cheap) instead of a
+full tableau is the next constant-factor lever.
+
 ### HT/QoSat: 2b Phase A — Konclude G2/G3 inverse-criticality containment check (`KM_HT_QO_KPSET`)
 
 Port of Konclude's saturation criticality
