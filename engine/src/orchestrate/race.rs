@@ -444,7 +444,11 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         v.clauses
     };
     let named = std::collections::HashSet::new();
+    let _tconv = Instant::now();
     let tin = cb_to_ht::convert(&cl, None, &named);
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s", cl.len(), _tconv.elapsed().as_secs_f64());
+    }
     // KM_DUMP_TIN=<path>: write the cb_to_ht TInput JSON (so the tableau worker can
     // be run standalone on it with any flags + visible stderr) and print the
     // routing-guard-relevant fields, then carry on. Diagnostic only.
@@ -602,15 +606,29 @@ where
         let mut ht_res: Option<EngineOut> = None;
         let mut ht_polled = false;
         let t0 = Instant::now();
+        let timing = std::env::var_os("KM_TIMING").is_some();
+        let mut cb_logged = false;
 
         loop {
             // poll HT once it finishes (capture its valid answer)
             if !ht_polled {
                 if let Ok(Some(st)) = ht.try_wait() {
                     ht_polled = true;
+                    if timing {
+                        eprintln!("KM_TIMING race: HT worker exited @ {:.2}s (success={})", t0.elapsed().as_secs_f64(), st.success());
+                    }
                     if st.success() {
                         ht_res = read_tout(ht_out.path());
+                        if timing {
+                            eprintln!("KM_TIMING race: read_tout done @ {:.2}s", t0.elapsed().as_secs_f64());
+                        }
                     }
+                }
+            }
+            if timing && !cb_logged {
+                if let Some(r) = cb_slot.lock().unwrap().as_ref() {
+                    eprintln!("KM_TIMING race: CB slot filled @ {:.2}s (ok={})", t0.elapsed().as_secs_f64(), r.is_ok());
+                    cb_logged = true;
                 }
             }
 

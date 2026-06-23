@@ -162,7 +162,12 @@ fn handle_elc_result(
 // the conductor
 // ---------------------------------------------------------------------------
 pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateError> {
+    let t_start = std::time::Instant::now();
+    let timing = std::env::var_os("KM_TIMING").is_some();
     let (clauses_path, meta) = frontend_run::run_ofn_split(cfg, ont)?;
+    if timing {
+        eprintln!("KM_TIMING frontend done @ {:.2}s", t_start.elapsed().as_secs_f64());
+    }
 
     // The frontend proved the ABox forces an individual into disjoint named
     // classes: inconsistent. The CB engine drops the ABox, so short-circuit.
@@ -282,6 +287,9 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         }
     };
 
+    if timing {
+        eprintln!("KM_TIMING engine block done @ {:.2}s (subs_keys={})", t_start.elapsed().as_secs_f64(), out.subsumptions.len());
+    }
     // Output mapping: emit FULL IRIs (the harness canonicalises once); filter
     // generated names; drop self-subsumptions; collect ⊥-subsumptions as unsat.
     let full_iri = |n: &str| -> String { meta.iri_map.get(n).cloned().unwrap_or_else(|| n.to_string()) };

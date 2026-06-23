@@ -5481,6 +5481,101 @@ impl Ht {
     /// Peak memory is one concept's closure (not the union of all 73k); total
     /// work is the sum of the per-concept closures, not the global node×clause
     /// cross-product that times `saturate_global` out.
+    /// Konclude's single non-branching pass: ONE forward-only global saturation
+    /// that seeds every query concept as its own self-node (with shared
+    /// ∃-fillers), then reads each concept's sound subsumers directly off its
+    /// self-node label — no per-concept re-saturation, no residue test. This is
+    /// the 73k-saturations → 1 speedup that matches Konclude's architecture
+    /// (`CCalculationTableauApproximationSaturationTaskHandleAlgorithm` =
+    /// one approximation saturation, subsumers read per concept from its own
+    /// node, `CPrecomputedSaturationSubsumerExtractor`).
+    ///
+    /// SOUND: forward-only (`skip_inverse = true`) drops the inverse-bridge
+    /// back-edges, so the saturation never reads a successor's runtime label
+    /// across a model-specific reversed edge — it never over-derives.
+    ///
+    /// COMPLETE *exactly when* the global pass is clean, i.e. it equals the
+    /// per-concept forward-only gate. The only ways a shared filler node's label
+    /// can pick up a seed-specific (cross-concept) literal are (a) an inverse
+    /// back-edge — excluded by forward-only — and (b) a ∀/range concept head
+    /// written onto a shared filler whose creation-role class does not already
+    /// force it — which trips `qo_insufficient` (Konclude's
+    /// `isCriticalALLConceptDescriptorInsufficient`). So when no node tripped
+    /// `qo_insufficient`, no disjunction is parked (fully deterministic forward
+    /// closure), and the pass did not bail (`unsupported`), every concept's
+    /// self-node label is identical to its solo per-concept closure → reading it
+    /// is sound *and* complete. Otherwise return `None` and let the caller fall
+    /// back to the per-concept gate (which decides sufficiency per concept).
+    fn qo_classify_global_fwd(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        let qset: HashSet<C> = queries.iter().copied().collect();
+        let mut qf = QoSat::new_opts(&self.clauses, true); // forward-only ⇒ sound
+        qf.complete_roles = true;
+        let g = qf.saturate_global(queries);
+        // Defer to the per-concept gate unless the single pass is fully clean:
+        //  - `unsupported`: out-of-fragment / node-cap bail.
+        //  - `qo_insufficient`: a ∀/range write polluted a shared filler, so a
+        //    self-node label may carry a cross-concept literal — not safe to read.
+        //  - any parked disjunction (`!pending.is_empty()`): the forward closure
+        //    is not the whole story (a live ⊔), so a subsumer could be missed.
+        // (For a Horn SRIF ont — 7581 — none of these fire, so the fast path is
+        // taken and the per-concept gate is never reached.)
+        if g.unsupported || qf.qo_insufficient || !qf.pending.is_empty() {
+            if trace {
+                eprintln!(
+                    "QOGF defer: unsupported={} insufficient={} pending={}",
+                    g.unsupported,
+                    qf.qo_insufficient,
+                    qf.pending.len()
+                );
+            }
+            return None;
+        }
+        // `saturate_global` seeds the query concepts first, in order, so query
+        // `queries[i]` is shared node `i` (same mapping the legacy global path uses).
+        let node_of: HashMap<C, Node> =
+            queries.iter().enumerate().map(|(i, &c)| (c, i as Node)).collect();
+        let mut unsat: Vec<C> = Vec::new();
+        let mut subs: Vec<(C, C)> = Vec::new();
+        for &a in queries {
+            let n = node_of[&a];
+            if g.node_unsat.contains(&n) {
+                unsat.push(a); // forward-only clash ⇒ sound unsat
+                continue;
+            }
+            for &b in &g.label_pos[n] {
+                if b != a && qset.contains(&b) {
+                    subs.push((a, b)); // sound (forward-only never over-derives)
+                }
+            }
+        }
+        let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
+        if trace {
+            eprintln!(
+                "QOGF done subs={} unsat={} consistent={} nodes={}",
+                subs.len(),
+                unsat.len(),
+                consistent,
+                g.label_pos.len()
+            );
+        }
+        // NOTE on completeness certification (measured, KM_HT_QO_VERIFY): forming
+        // the inverse-only candidate set from a *global* inverse-augmented pass is
+        // infeasible — on 7581 the inverse global saturation over-derives 6.5M
+        // spurious candidates (cross-concept shared-filler pollution), so verifying
+        // them with the complete tableau cannot finish. A per-concept inverse pass
+        // bounds the candidates (~177 on 7581) but costs one saturation per concept
+        // (~109s) plus a tableau test per candidate (~3s each), i.e. ~600s — not
+        // competitive. And a cheap *structural* certificate ("the reversed roles
+        // are never read by a rule body") fails here: 7581's inverse roles are
+        // consumed 100k+ times yet contribute nothing semantically (NOINV = gold).
+        // So forward-only is shipped as the sound (and, for the inverse-inert
+        // fragment that includes 7581, complete) answer; certified completeness for
+        // the load-bearing-inverse case stays the open problem and is NOT attempted
+        // via the global pass. See project_km_7581_qosat.
+        Some((consistent, unsat, subs))
+    }
+
     fn qo_classify_perconcept(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         let qset: HashSet<C> = queries.iter().copied().collect();
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
@@ -5584,7 +5679,24 @@ impl Ht {
         // on big SRIF onts), run one fresh single-seed saturation per query and
         // read its subsumers off. See `qo_classify_perconcept`.
         if std::env::var_os("KM_HT_QO_PC").is_some() {
-            let res = self.qo_classify_perconcept(queries);
+            // Konclude single-pass first: ONE forward-only global saturation,
+            // subsumers read per concept off its own self-node. Returns `None`
+            // (falls through to the per-concept gate) only when the global pass
+            // can't cleanly decide — a parked disjunction, ∀/range filler
+            // pollution, or an out-of-fragment bail. On a Horn SRIF ont (7581)
+            // it always succeeds, replacing 73k saturations with one.
+            // KM_HT_QO_NOGLOBAL forces the per-concept gate (diagnostic / A-B).
+            let res = if std::env::var_os("KM_HT_QO_NOGLOBAL").is_none() {
+                match self.qo_classify_global_fwd(queries) {
+                    // global pass decided (and, under VERIFY, populated
+                    // pc_candidates); fall through to the shared verify block.
+                    Some(r) => Some(r),
+                    // global pass could not cleanly decide ⇒ per-concept gate.
+                    None => self.qo_classify_perconcept(queries),
+                }
+            } else {
+                self.qo_classify_perconcept(queries)
+            };
             // KM_HT_QO_VERIFY: confirm the inverse-only candidates with the
             // complete tableau. `qo_classify_perconcept` returns the SOUND
             // forward-only subsumers in `subs`; `pc_candidates` are the extra

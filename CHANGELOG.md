@@ -4,6 +4,52 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: single-pass forward-only QO gate — 7581 saturation matches Konclude
+
+The per-concept forward-only gate (below) decided 7581 by running one single-seed
+saturation **per concept** — 73k saturations, ~109s. `qo_classify_global_fwd`
+replaces that with **one** forward-only global saturation seeding every concept as
+its own self-node (shared `∃`-fillers), then reads each concept's subsumers off its
+own self-node label. This is Konclude's architecture
+(`CCalculationTableauApproximationSaturationTaskHandleAlgorithm` = one
+approximation saturation; `CPrecomputedSaturationSubsumerExtractor` = subsumers
+from a concept's own node). Tried first under `KM_HT_QO_PC`; falls through to the
+per-concept gate only when the global pass cannot cleanly decide (a parked
+disjunction, `∀`/range filler pollution `qo_insufficient`, or an out-of-fragment
+bail). Same soundness/completeness profile as the per-concept gate (sound always;
+complete when inverse is non-load-bearing — true for 7581).
+
+Measured on `ws` (same hardware as Konclude):
+
+| | wall | peak RSS | vs gold |
+|---|---|---|---|
+| Konclude v0.7 | 9.7s | 2.5 GB | — |
+| KM QO saturation core (`km tableau` on the TInput) | **10.3s** | 0.69 GB | gold-exact |
+| KM end-to-end `km classify` (CB disabled) | **24s** | 1.0 GB | 565317=565317, 0/0 |
+
+So the QO saturation core **matches Konclude** (10s vs 9.7s) at *lower* memory;
+end-to-end is 24s (8.6s frontend + 10s saturation + ~5s I/O of the 174 MB output)
+versus Konclude's 9.7s. 127 cargo tests pass; 7581 byte-exact to gold.
+
+**Why not a certified-complete verify pass (measured, not done).** Forming the
+inverse-only candidate set from a *global* inverse-augmented pass is infeasible: on
+7581 the inverse global saturation over-derives **6.5M** spurious candidates
+(cross-concept shared-filler pollution), so the complete-tableau verify cannot
+finish. A per-concept inverse pass bounds the candidates (~177) but costs one
+saturation per concept (~109s) plus a tableau test per candidate (~3s) ≈ 600s — not
+Konclude-competitive. A cheap *structural* certificate ("the reversed roles are
+never read by a rule body") also fails: 7581's reversed roles are consumed 100k+
+times yet contribute nothing (NOINV = gold). So certified completeness under
+load-bearing inverse stays the open problem; forward-only is shipped as sound (and
+complete on the inverse-inert fragment that includes 7581).
+
+**Harness note.** The Rust orchestrator reads `KM_ENGINE` for the engine-binary
+override, not `KM_ENGINE_BIN` (config.rs:84). Scripts/docs that set
+`KM_ENGINE_BIN=/bin/false` to disable CB were silently running the real CB engine,
+which (on 7581, a CB timeout) starved the niced HT racer and made fallback wait out
+`ht_budget_s` (225s) before taking HT's ready answer — the apparent ~238s. With the
+correct `KM_ENGINE=/bin/false`, CB errors in 0.25s and the QO answer flows at 24s.
+
 ### HT/QoSat: forward-only per-concept gate makes 7581 sound + complete (gold-exact)
 
 `ore_ont_7581` (73k-concept Horn-ALCHQ giant, a CB-engine timeout) now classifies
