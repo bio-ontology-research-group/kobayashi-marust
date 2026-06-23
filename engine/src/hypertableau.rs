@@ -1967,6 +1967,12 @@ struct QoSat<'a> {
     /// Deferred multi-disjunct checks (an inverse-anchored disjunctive head):
     /// satisfied at fixpoint iff at least one `(node, lit)` is present.
     kp_checkn: Vec<Vec<(Node, CLit)>>,
+    /// Nodes at which a containment check MISSED (per-node insufficiency, the
+    /// Konclude granularity — a global bool defers the whole classification even
+    /// when only shared-filler nodes are insufficient). A query concept whose
+    /// self-node is not reverse-reachable from any of these is unaffected by the
+    /// inverse and can be certified from the forward closure alone.
+    kp_insuff_nodes: HashSet<Node>,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -2284,6 +2290,7 @@ impl<'a> QoSat<'a> {
             kp_miss: 0,
             kp_check1: HashSet::new(),
             kp_checkn: Vec::new(),
+            kp_insuff_nodes: HashSet::new(),
         }
     }
 
@@ -2314,6 +2321,7 @@ impl<'a> QoSat<'a> {
         self.kp_miss = 0;
         self.kp_check1.clear();
         self.kp_checkn.clear();
+        self.kp_insuff_nodes.clear();
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -3361,10 +3369,14 @@ impl<'a> QoSat<'a> {
     /// misses and the saturation stays forward-only fast + certified complete.
     fn kp_check_head(&mut self, cid: usize, sigma: &[Option<Node>]) {
         let head = &self.clauses[cid].0.head;
+        let anchor = sigma[X as usize];
         if head.is_empty() {
             // an inverse-anchored clash cannot be trusted in the shared model.
             self.kp_insufficient = true;
             self.kp_miss += 1;
+            if let Some(a) = anchor {
+                self.kp_insuff_nodes.insert(a);
+            }
             return;
         }
         let mut disj: Vec<(Node, CLit)> = Vec::new();
@@ -3382,6 +3394,9 @@ impl<'a> QoSat<'a> {
                 _ => {
                     self.kp_insufficient = true;
                     self.kp_miss += 1;
+                    if let Some(a) = anchor {
+                        self.kp_insuff_nodes.insert(a);
+                    }
                     return;
                 }
             }
@@ -3426,6 +3441,7 @@ impl<'a> QoSat<'a> {
             if !self.node_unsat.contains(&n) && !self.label[n].contains(&lit) {
                 self.kp_insufficient = true;
                 self.kp_miss += 1;
+                self.kp_insuff_nodes.insert(n);
             }
         }
         let cn = std::mem::take(&mut self.kp_checkn);
@@ -3436,6 +3452,11 @@ impl<'a> QoSat<'a> {
             if !sat {
                 self.kp_insufficient = true;
                 self.kp_miss += 1;
+                // the obligation belongs to all its disjunct nodes (any could
+                // have carried the operand); mark them affected.
+                for (n, _) in &disj {
+                    self.kp_insuff_nodes.insert(*n);
+                }
             }
         }
     }
@@ -6076,10 +6097,43 @@ impl Ht {
         if g.unsupported || qk.kp_insufficient || qk.qo_insufficient || !qk.pending.is_empty() {
             if trace {
                 eprintln!(
-                    "QOKP defer: unsupported={} kp_insufficient={} kp_miss={} qo_insufficient={} pending={} inv_edges={}",
+                    "QOKP defer: unsupported={} kp_insufficient={} kp_miss={} qo_insufficient={} pending={} inv_edges={} insuff_nodes={}",
                     g.unsupported, qk.kp_insufficient, qk.kp_miss, qk.qo_insufficient,
-                    qk.pending.len(), qk.inv_edges.len()
+                    qk.pending.len(), qk.inv_edges.len(), qk.kp_insuff_nodes.len()
                 );
+                // Per-node granularity probe: a query concept is AFFECTED by the
+                // inverse iff its self-node forward-reaches an insufficient node
+                // (NF4 propagates filler→predecessor, i.e. up the forward
+                // out-edges). Reverse-reach from the insufficient nodes over
+                // `in_edges` marks every forward-ancestor; the unmarked query
+                // concepts are certifiable from the forward closure alone. This
+                // quantifies how much the per-node split (vs the global bool)
+                // would recover before the pseudo-model-merge port (study P2).
+                if !qk.qo_insufficient && qk.pending.is_empty() && !g.unsupported {
+                    let nn = qk.label.len();
+                    let mut affected = vec![false; nn];
+                    let mut stack: Vec<Node> = Vec::new();
+                    for &n in &qk.kp_insuff_nodes {
+                        if n < nn && !affected[n] {
+                            affected[n] = true;
+                            stack.push(n);
+                        }
+                    }
+                    while let Some(n) = stack.pop() {
+                        for &(_, p) in &qk.in_edges[n] {
+                            if !affected[p] {
+                                affected[p] = true;
+                                stack.push(p);
+                            }
+                        }
+                    }
+                    let clean = (0..queries.len().min(nn)).filter(|&i| !affected[i]).count();
+                    eprintln!(
+                        "QOKP per-node probe: {} / {} query concepts CLEAN (self-node not reverse-reachable from any insufficient node)",
+                        clean,
+                        queries.len()
+                    );
+                }
             }
             return None;
         }

@@ -87,6 +87,21 @@ global flag. So the remaining work to certify 7581 fast is:
      tableau residue is the few genuinely load-bearing pairs (≈ 0 for 7581).
 Both are Konclude ports, not new research.
 
+**Per-node granularity MEASURED INSUFFICIENT (2026-06-23).** Added per-node
+insufficiency (`kp_insuff_nodes`) + a probe: a query concept is unaffected iff its
+self-node does not forward-reach any insufficient node (NF4 propagates
+filler→predecessor, so reverse-reach over `in_edges` marks every affected
+ancestor). Result on 7581: **0 / 72989 concepts CLEAN** (`insuff_nodes = 36495`,
+half the model; every query concept reaches one). So per-node + subtree-reachability
+recovers nothing — the conservatism is total. This rules out item (1) as a
+standalone lever and confirms item (2), the **pseudo-model-merge refutation of
+per-concept possible-subsumers**, is the actual remaining port. Konclude refutes
+`A ⊑ B` by a linear sorted-map merge (a deterministic concept of B's model absent
+in A's ⇒ not subsumed; a role-cardinality-interval clash ⇒ not subsumed) — it does
+NOT use subtree reachability, precisely because reachability is this conservative.
+The ~930k possibles become possible-subsumers that the merge prunes cheaply; for
+7581 (forward = gold) every one is refuted ⇒ residue 0 ⇒ certified fast.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**
