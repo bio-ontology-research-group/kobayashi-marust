@@ -4,6 +4,35 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: hybrid certifies 7581 sound+complete in 31s (4x) — `fprop` + `fcheck` + `sat` + `kpset`
+
+Closed most of the 126s → Konclude-~10s gap. The key was Konclude's G1 (a filler
+label is never read as a named subsumer) realised via `sat_mode` separate
+per-(concept,role) filler nodes, plus a forward-broadcast store for the composed
+inverse clauses.
+
+- **`fprop` (`KM_HT_QO_FPROP`)** — forward-broadcast mirror of `prop` for
+  head-on-TARGET Horn NF4 (the shape `compose_inverse` emits). FIXES the
+  `KM_HT_QO_INVCOMPOSE` divergence: the composed clauses re-fired per edge; now
+  they broadcast once per (source, role) and converge at forward-only cost.
+- **`fcheck` (`KM_HT_QO_FCHECK`)** — composed clauses in containment-CHECK mode.
+  Established that WRITING the composed head to a SHARED filler over-derives
+  (1.34 GB), so the inverse head must not be written as a subsumer (Konclude G1/G3).
+  Sound but, at filler granularity, defers (1581 false insufficiencies on shared
+  fillers); reachability routing recovers nothing (0/72989, dense graph).
+- **Hybrid `INVCOMPOSE + FPROP + SAT + KPSET`** — the sound+complete fast path.
+  Composable inverse consumers (110k of ~110k on 7581) become forward clauses
+  written to SEPARATE filler nodes (sound — named self-nodes stay inverse-clean,
+  G1); residual non-composable bridges are kpset containment-checked; certify iff
+  `kp_miss = 0`. A `count_inverse_bridges` guard makes the bare write path defer
+  (not silently drop) on any residual bridge.
+- **Measured ore_ont_7581 (ws):** `QOKP certified sound+complete (kp_miss=0)`,
+  **31.3 s / 1.0 GB, km = 565317 = gold, 0 unsound / 0 incomplete.** 4x faster
+  than the 126 s pseudo-model-merge path, within ~3x of Konclude's ~10 s, lowest
+  memory of any path. All gated (default off), 131 tests pass. Remaining gap is
+  constant-factor (saturation throughput + ~43k extra filler nodes), not a missing
+  mechanism. Next: corpus regression (unimatrix) before default-on routing.
+
 ### HT/QoSat: 2b levers 1 & 2 toward Konclude ~10s — both quick forms REFUTED (findings)
 
 Two attempts to close the 126s → ~10s gap (the 90-104s is building 63 real
