@@ -279,6 +279,45 @@ subsumers. That is the multi-day core change below; this increment lands the
 sound, lower-memory certification mechanism and the measurement that pins the
 remaining work precisely.
 
+## STATUS 2026-06-23 (re-arch step 2): G1 criticality in fcheck — every encoding-level lever now REFUTED
+
+Added the `kp_write` G1 criticality refinement to `fprop_emit` (a missed
+obligation at a separate ∃-filler under `sat_mode` is non-critical unless the
+missed concept is a body guard) and tested the full stack
+**INVCOMPOSE + FCHECK + SAT + KPGUARD** on 7581:
+- still gold-exact (565317 = gold, 0/0), still 1.0 GB;
+- **insufficiency UNCHANGED: kp_miss = 31202 / 1599 nodes.** The criticality
+  filter removed nothing because the composed heads `E'` are THEMSELVES body
+  guards (`kp_guard` contains them), so every obligation is critical, and the
+  reachability closure is total (0/72989).
+
+This refutes the last encoding-level lever. The chain of dead ends is now
+complete: writing inverse consequences to shared successors is unsound
+(over-derives); checking them (fcheck) is sound but flags 1581 filler-level
+obligations that don't change the answer; per-node routing recovers nothing
+(total reachability); guard/self-node criticality recovers nothing (the heads
+are guards); separate fillers (sat_mode) don't change it. **Every one of these
+works at the level of KM's NF4 + `prop` clause encoding with HEAD-containment
+checks.** Konclude reaches 0 insufficient on 7581 with a structurally different
+test: `isCriticalALLConceptDescriptorInsufficient` checks, for each ∀-restriction
+PRESENT at a node, whether that ∀'s OPERANDS are present at the node's REAL
+successors (cpp:3514) — an operand-at-successor check on genuine ∀-restrictions
+over separate per-creation-role successor nodes, not a head-containment check on
+NF4 implications over shared fillers. On 7581 the forward closure already forces
+every such operand at every successor, so nothing is critical.
+
+**Conclusion of the encoding-level work:** matching Konclude's ~10s on 7581 is
+not reachable by augmenting KM's NF4+`prop`/reversed-edge encoding (every lever
+tried is sound but non-certifying). It requires reimplementing Konclude's
+approximation-saturation CALCULUS in `QoSat`: ∀-restriction concepts as
+first-class operators with operand-at-successor criticality, separate
+per-creation-role successor nodes, and G1/G2 (self-node subsumers + status-only
+propagation). That is the multi-day core rewrite in the plan below — a new
+calculus path, not a flag on the existing one. The sound, lower-memory `fcheck`
+certification mechanism and this exhaustive refutation are committed; the
+certified 126 s pseudo-model-merge path and the gold-exact `fcheck`+funnel path
+(133 s, 1.0 GB) both stand as working sound+complete-under-budget results.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**

@@ -3727,7 +3727,20 @@ impl<'a> QoSat<'a> {
     fn fprop_emit(&mut self, t: Node, e: CLit) {
         if self.fcheck {
             if !self.node_unsat.contains(&t) && !self.label[t].contains(&e) {
-                self.kp_check1.insert((t, e));
+                // Konclude G1 criticality (same refinement as `kp_write`): the
+                // composed-clause head `e` lands on the role TARGET, which under
+                // `sat_mode` is a separate ∃-filler node. A filler label is never
+                // read as a named subsumer (G1), so a missing obligation there is
+                // NOT a completeness threat UNLESS `e` is a body guard that could
+                // still trigger a forward rule reaching a self-node. On a
+                // self-node (`!is_filler`) the operand could be a named subsumer
+                // read directly ⇒ always critical.
+                let on_self = !(self.sat_mode && self.is_filler[t]);
+                let critical =
+                    on_self || !self.kp_guard_only || self.kp_guard.contains(&e.c);
+                if critical {
+                    self.kp_check1.insert((t, e));
+                }
             }
         } else {
             self.add_lit(t, e);
