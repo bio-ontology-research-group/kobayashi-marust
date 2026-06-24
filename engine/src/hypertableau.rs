@@ -2161,6 +2161,13 @@ struct QoSat<'a> {
     /// self-node is not reverse-reachable from any of these is unaffected by the
     /// inverse and can be certified from the forward closure alone.
     kp_insuff_nodes: HashSet<Node>,
+    /// KM_HT_QO_CARD: at-most / functional cardinality produces Eq-heads (a forced
+    /// successor merge the shared-node saturation cannot represent). Instead of
+    /// bailing the whole pass `unsupported` (legacy), mark the anchor node
+    /// INSUFFICIENT and continue — Konclude's deferral — so the pass completes for
+    /// every cardinality-unaffected concept and the per-node CLEAN split certifies
+    /// them from the forward closure (the SHIF throughput onts: 9724 etc.).
+    card_defer: bool,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -2537,6 +2544,7 @@ impl<'a> QoSat<'a> {
             sat_mode: std::env::var_os("KM_HT_QO_SAT").is_some(),
             is_filler: Vec::new(),
             sat_filler: HashMap::new(),
+            card_defer: std::env::var_os("KM_HT_QO_CARD").is_some(),
         }
     }
 
@@ -3599,6 +3607,14 @@ impl<'a> QoSat<'a> {
                         let clean = cls != 0 && self.class_set[cls].contains(&lit);
                         if !clean {
                             self.qo_insufficient = true;
+                            // KM_HT_QO_CARD per-node split: the write into successor
+                            // `n` is model-specific (critical-ALL). Record `n` as
+                            // insufficient so the affected-set reverse-reachability
+                            // marks every concept whose model reaches `n`; CLEAN
+                            // concepts (not reaching `n`) keep a sound label.
+                            if self.card_defer {
+                                self.kp_insuff_nodes.insert(n);
+                            }
                         }
                         if self.track_forall {
                             self.forall_nodes.insert(n);
@@ -3646,6 +3662,22 @@ impl<'a> QoSat<'a> {
                     break;
                 }
                 Atom::Eq { .. } => {
+                    // at-most / functional cardinality forces a successor merge the
+                    // shared-node saturation cannot represent soundly. KM_HT_QO_CARD:
+                    // mark the anchor node INSUFFICIENT (Konclude's deferral) and
+                    // treat the head as satisfied (no write), so the pass completes
+                    // for every other concept; the per-node split routes only the
+                    // cardinality-affected concepts to the complete verify. Default
+                    // (flag off): bail the whole pass `unsupported` (legacy — no
+                    // regression on the non-SHIF onts).
+                    if self.card_defer {
+                        let anchor = sigma[X as usize].expect("X bound");
+                        self.kp_insuff_nodes.insert(anchor);
+                        self.qo_insufficient = true;
+                        self.kp_insufficient = true;
+                        satisfied = true;
+                        break;
+                    }
                     self.unsupported = true;
                     return;
                 }
@@ -6246,6 +6278,71 @@ impl Ht {
                     );
                 }
             }
+            // KM_HT_QO_CARD per-node split on the FORWARD-ONLY pass (no inverse
+            // back-edges are materialised, so the only insufficiencies are
+            // cardinality Eq-heads and critical-∀ writes). A concept is AFFECTED iff
+            // its self-node is in the BIDIRECTIONAL closure of any insufficient node
+            // (a forced merge / ∀ pollutes both predecessors and successors). CLEAN
+            // concepts keep the sound forward-only label, which — having reached no
+            // insufficient node — is also complete. Emit them; defer only the rest.
+            if qf.card_defer && !g.unsupported && qf.pending.is_empty() {
+                let nn = qf.label.len();
+                let mut affected = vec![false; nn];
+                let mut stack: Vec<Node> = Vec::new();
+                for &n in &qf.kp_insuff_nodes {
+                    if n < nn && !affected[n] {
+                        affected[n] = true;
+                        stack.push(n);
+                    }
+                }
+                while let Some(n) = stack.pop() {
+                    for &(_, p) in &qf.in_edges[n] {
+                        if !affected[p] {
+                            affected[p] = true;
+                            stack.push(p);
+                        }
+                    }
+                    for &(_, t) in &qf.out_edges[n] {
+                        if !affected[t] {
+                            affected[t] = true;
+                            stack.push(t);
+                        }
+                    }
+                }
+                let mut cs: Vec<(C, C)> = Vec::new();
+                let mut cu: Vec<C> = Vec::new();
+                let mut res = 0usize;
+                for (i, &a) in queries.iter().enumerate() {
+                    if i >= nn || affected[i] {
+                        res += 1;
+                        continue;
+                    }
+                    if g.node_unsat.contains(&i) {
+                        cu.push(a);
+                        continue;
+                    }
+                    for &b in &g.label_pos[i] {
+                        if b != a && qset.contains(&b) {
+                            cs.push((a, b));
+                        }
+                    }
+                }
+                if trace {
+                    eprintln!(
+                        "QOGF card-split: clean={} affected={} of {} clean_subs={} clean_unsat={} insuff_nodes={}",
+                        queries.len() - res,
+                        res,
+                        queries.len(),
+                        cs.len(),
+                        cu.len(),
+                        qf.kp_insuff_nodes.len()
+                    );
+                }
+                if res == 0 {
+                    let consistent = !(!queries.is_empty() && cu.len() == queries.len());
+                    return Some((consistent, cu, cs));
+                }
+            }
             return None;
         }
         // INVCOMPOSE write-mode soundness guard. When the composed inverse clauses
@@ -6655,45 +6752,80 @@ impl Ht {
         qk.complete_roles = true;
         let g = qk.saturate_global(queries);
         if g.unsupported || qk.kp_insufficient || qk.qo_insufficient || !qk.pending.is_empty() {
+            // KM_HT_QO_CARD per-node split (study P2). When the ONLY obstacles are
+            // insufficient nodes (cardinality Eq-heads / critical-ALL deferrals) —
+            // not node-cap exhaustion (`unsupported`) nor a parked disjunction
+            // (`pending`) — most concepts are still CLEAN: their self-node does not
+            // forward-reach any insufficient node, so dropping the deferred writes
+            // loses nothing for them and their saturated label is the exact,
+            // complete subsumer set. Emit those directly; only the AFFECTED concepts
+            // (whose model reaches an insufficient node) need the complete verify.
+            // A concept is AFFECTED iff its self-node reverse-reaches an insufficient
+            // node over `in_edges` (NF4/∀ propagate filler→predecessor up the forward
+            // out-edges, so an insufficiency at `n` can only have polluted forward
+            // ancestors of `n`).
+            if qk.card_defer && !g.unsupported && qk.pending.is_empty() {
+                let nn = qk.label.len();
+                let mut affected = vec![false; nn];
+                let mut stack: Vec<Node> = Vec::new();
+                for &n in &qk.kp_insuff_nodes {
+                    if n < nn && !affected[n] {
+                        affected[n] = true;
+                        stack.push(n);
+                    }
+                }
+                while let Some(n) = stack.pop() {
+                    for &(_, p) in &qk.in_edges[n] {
+                        if !affected[p] {
+                            affected[p] = true;
+                            stack.push(p);
+                        }
+                    }
+                }
+                let mut clean_subs: Vec<(C, C)> = Vec::new();
+                let mut clean_unsat: Vec<C> = Vec::new();
+                let mut residue: Vec<C> = Vec::new();
+                for (i, &a) in queries.iter().enumerate() {
+                    if i >= nn || affected[i] {
+                        residue.push(a);
+                        continue;
+                    }
+                    if g.node_unsat.contains(&i) {
+                        clean_unsat.push(a); // forward clash is a sound unsat
+                        continue;
+                    }
+                    for &b in &g.label_pos[i] {
+                        if b != a && qset.contains(&b) {
+                            clean_subs.push((a, b));
+                        }
+                    }
+                }
+                if trace {
+                    eprintln!(
+                        "QOKP card-split: clean={} affected(residue)={} of {} | clean_subs={} clean_unsat={} insuff_nodes={}",
+                        queries.len() - residue.len(),
+                        residue.len(),
+                        queries.len(),
+                        clean_subs.len(),
+                        clean_unsat.len(),
+                        qk.kp_insuff_nodes.len()
+                    );
+                }
+                if residue.is_empty() {
+                    // every query concept CLEAN ⇒ sound+complete from the single pass.
+                    let consistent =
+                        !(!queries.is_empty() && clean_unsat.len() == queries.len());
+                    return Some((consistent, clean_unsat, clean_subs));
+                }
+                // (residue non-empty: defer for now — the residue-verify funnel is
+                // wired in once the affected count is measured.)
+            }
             if trace {
                 eprintln!(
                     "QOKP defer: unsupported={} kp_insufficient={} kp_miss={} qo_insufficient={} pending={} inv_edges={} insuff_nodes={}",
                     g.unsupported, qk.kp_insufficient, qk.kp_miss, qk.qo_insufficient,
                     qk.pending.len(), qk.inv_edges.len(), qk.kp_insuff_nodes.len()
                 );
-                // Per-node granularity probe: a query concept is AFFECTED by the
-                // inverse iff its self-node forward-reaches an insufficient node
-                // (NF4 propagates filler→predecessor, i.e. up the forward
-                // out-edges). Reverse-reach from the insufficient nodes over
-                // `in_edges` marks every forward-ancestor; the unmarked query
-                // concepts are certifiable from the forward closure alone. This
-                // quantifies how much the per-node split (vs the global bool)
-                // would recover before the pseudo-model-merge port (study P2).
-                if !qk.qo_insufficient && qk.pending.is_empty() && !g.unsupported {
-                    let nn = qk.label.len();
-                    let mut affected = vec![false; nn];
-                    let mut stack: Vec<Node> = Vec::new();
-                    for &n in &qk.kp_insuff_nodes {
-                        if n < nn && !affected[n] {
-                            affected[n] = true;
-                            stack.push(n);
-                        }
-                    }
-                    while let Some(n) = stack.pop() {
-                        for &(_, p) in &qk.in_edges[n] {
-                            if !affected[p] {
-                                affected[p] = true;
-                                stack.push(p);
-                            }
-                        }
-                    }
-                    let clean = (0..queries.len().min(nn)).filter(|&i| !affected[i]).count();
-                    eprintln!(
-                        "QOKP per-node probe: {} / {} query concepts CLEAN (self-node not reverse-reachable from any insufficient node)",
-                        clean,
-                        queries.len()
-                    );
-                }
             }
             return None;
         }
