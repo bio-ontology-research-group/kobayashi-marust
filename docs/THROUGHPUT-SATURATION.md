@@ -83,8 +83,15 @@ the residue needs a cardinality+inverse+disjunction-complete method on the
 residue (the gap below), or the residue must first be shrunk by handling inverse
 and cardinality IN the saturation. Complete-HT + full search discipline
 (`KM_HT_FORCE`+`KM_HT_NUMBER`+`INCRBLOCK2`+`INCROBLIG`+`EAGER`+`SATFOLD`) on the
-smallest member 7499 also TIMES OUT (600 s, 18.5 GB). No existing flag or
-combination classifies any of the 9 in budget.
+smallest member 7499 also TIMES OUT (600 s, 18.5 GB). The bare QO branching
+classifier (Phase 1 residue-SAT + Phase 2 bounded subsumption via
+`qo_residue_test`, reached by `KM_HT_QO` without `_PC`/`_KPSET`) on 7914 TIMES OUT
+(600 s, 18.8 GB) — its 7171 insufficient concepts each trigger a branching residue
+test. **Every classification path KM has — CB, complete HT (+search), QoSat
+per-concept, QoSat kpset+card-split, QoSat branching — fails on the most tractable
+member within 600 s. No existing flag or combination classifies any of the 9.**
+The bottleneck is structural (the deferred core is not a tail), so only the
+in-pass re-architecture below can close this family.
 
 ## Plan (the real fix — a global-saturation re-architecture, like the 7581 QoSat work)
 
