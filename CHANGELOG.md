@@ -4,6 +4,26 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: QO hybrid router (`KM_HT_QO_ROUTER`) — sound certify-or-defer race arm
+
+Wires the validated hybrid certify path into production as a structurally-routed,
+sound certify-OR-DEFER race arm behind one flag (default off):
+- `quasi_order_classify` gains a certify-only mode: a structural pre-gate defers
+  when the clause set has no inverse bridge, and after the kpset attempt it defers
+  (no funnel) when it cannot certify — emitting an answer ONLY when kpset certifies
+  (sound+complete by construction).
+- The tableau worker, in certify-only mode, returns no answer on a deferral (no
+  fallback to branching/legacy tableau) so the orchestrator's CB engine decides.
+- `spawn_ht` detects inverse BRIDGE clauses (cb_to_ht reports `inverse=false` for
+  that encoding) and routes only faithful, nominal-free, inverse-bridge onts to the
+  hybrid+certify-only arm; non-inverse HT-routable onts keep their normal branching
+  path. The CB-vs-HT race runs in "race" mode so the fast certify beats a CB that
+  would time out.
+- Validated (real pipeline, only `KM_HT_QO_ROUTER=1`): 7581 recovered
+  (565317=gold, 0/0, 89.6 s — hybrid wins the race); 5404 km=1291=gold 0/0 (defers
+  → CB, eliminating the +7/-1 the forced-QO funnel produced); 10127 512=gold 0/0.
+  131 tests pass.
+
 ### HT/QoSat: corpus validation of the hybrid (0 regressions) + INVCOMPOSE trigger-rebuild fix
 
 Full ORE-2015 sweep (unimatrix job 7322) comparing the HYBRID
