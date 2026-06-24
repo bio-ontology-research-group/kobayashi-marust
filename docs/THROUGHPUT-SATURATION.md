@@ -145,3 +145,36 @@ unless the flag is set; measured 12 % CLEAN on 9724 (residue too large to recove
 without P1/P2). The corpus sweep (job 47760983, 587 onts × 12 configs, 600 s)
 confirms the only lever that recovers throughput onts today is `KM_HT_QO_ROUTER`
 (+2: 7581, 16444 — both gold-exact); no flag cracks the SRIQ family.
+
+## Session 2 (2026-06-24, cont.) — the precise blocker is residue completion, not the saturation
+
+Experiment discipline: cap at 150 s (Konclude does these in <30 s; a correct path
+is fast, a 590 s finish is a blowup). Findings:
+
+- The GLOBAL saturation completes fast on 7914/9724 (it printed pending/insuff
+  counts). The blowup is the RESIDUE COMPLETION: both the per-concept verify funnel
+  and the bare QO branching classifier (`qo_residue_test`) RE-SATURATE per residue
+  concept → 19 GB / timeout on 7914's 7171 residue. Konclude instead builds the
+  model ONCE and branches only the small open core in place (study P4: satisfiable-
+  expander + completion-graph reuse). **That model-reuse is the port needed** — KM's
+  residue path is per-concept, not model-reuse.
+- Inverse-consumer breakdown (INVCOMPOSE-DIAG): 7499 bad=0/27 bridges/485 single
+  consumers (blocked by 7606 disjunctions); 7914 bad=0/14 bridges/12 pairs (2 are
+  one-directional)/9465 single consumers, 0 multi — fully prop-shape; 9724 630 bad
+  roles in 674 multi-role/chain consumers → 2.5 M reversed edges.
+- LANDED: `KM_HT_QO_INVONEWAY` (gated, default off) — one-directional bridge
+  composition (a consequent role produced only by its bridge and only single-role-
+  consumed fires its consumers over the forward source edge swapped; bridge dropped,
+  no reversed edge). Sound (resolvents). Covers 7914's 2 one-way bridges. Does NOT
+  by itself solve 7914 (its 19 GB is residue completion, not its ~24 k inv_edges).
+
+The two concrete ports remaining (both in `hypertableau.rs`, no Lean until the end):
+1. **Residue model-reuse** — classify residue concepts by branching the open
+   disjunctions on the ALREADY-BUILT global shared model + reading subsumers, instead
+   of re-saturating per concept (`qo_classify_*` + `qo_fixpoint`/`qo_branch_dfs`).
+   Closes the few-disjunction members (7914: 67; 9663: 18; 14817: 97).
+2. **In-pass inverse for chain consumers** — compose the inverse into the 674
+   multi-role consumers (9724) so its 2.5 M reversed edges vanish; 9724 is pure Horn
+   (0 disjunctions) so after that it is a clean deterministic saturation.
+The disjunction-heavy members (7499: 7606, 3215: 18 323, 15672/10908 nominal+disj)
+are the disjunction-family search-convergence problem, tracked separately.

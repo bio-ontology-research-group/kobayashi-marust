@@ -1709,12 +1709,88 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
         }
     }
     let composable = |r: R| inv_of.contains_key(&r) && !bad.contains(&r);
+    if std::env::var_os("KM_HT_TRACE").is_some() {
+        let n_bridges: usize = clauses.iter().filter(|(c, _, _)| bridge_of(c).is_some()).count();
+        let n_inv = inv_of.len();
+        let n_bad = bad.len();
+        // single-role-body consumers of an inverse role (prop-shape ∀; composable)
+        // vs multi-role-body consumers (chains; need the reversed edge).
+        let mut single_cons = 0usize;
+        let mut multi_cons = 0usize;
+        for (c, _, _) in clauses {
+            if bridge_of(c).is_some() {
+                continue;
+            }
+            let rb: Vec<R> = c.body.iter().filter_map(|a| if let Atom::Role { r, .. } = a { Some(*r) } else { None }).collect();
+            let touches_inv = rb.iter().any(|r| inv_of.contains_key(r));
+            if touches_inv {
+                if rb.len() == 1 {
+                    single_cons += 1;
+                } else {
+                    multi_cons += 1;
+                }
+            }
+        }
+        eprintln!(
+            "INVCOMPOSE-DIAG bridges={} inv_pairs={} bad_roles={} single_role_consumers={} multi_role_consumers={}",
+            n_bridges, n_inv, n_bad, single_cons, multi_cons
+        );
+    }
+    // One-directional bridge composition (covers e.g. 7914's 2 one-way bridges the
+    // bidirectional `inv_of` misses). A consequent role `r` of a bridge `s(a,b)→r(b,a)`
+    // whose edges come ONLY from that bridge (not otherwise produced) and that is only
+    // single-role-consumed (never in a multi-role/chain body) can be composed away:
+    // its single-role consumers fire over the forward `s`-edge swapped, and the bridge
+    // is dropped — no reversed `r`-edge is ever created. Sound: `r`-edges are EXACTLY
+    // the reversed `s`-edges when the bridge is `r`'s only producer.
+    let mut multi_bodied: HashSet<R> = HashSet::new();
+    let mut otherwise_produced: HashSet<R> = HashSet::new();
+    for (c, _, _) in clauses {
+        let is_bridge = bridge_of(c).is_some();
+        let rb: Vec<R> = c.body.iter().filter_map(|a| if let Atom::Role { r, .. } = a { Some(*r) } else { None }).collect();
+        if rb.len() > 1 {
+            for r in rb {
+                multi_bodied.insert(r);
+            }
+        }
+        if !is_bridge {
+            for h in &c.head {
+                match h {
+                    Atom::Role { r, .. } => { otherwise_produced.insert(*r); }
+                    Atom::Exists { r, .. } => { otherwise_produced.insert(*r); }
+                    _ => {}
+                }
+            }
+        }
+    }
+    let mut oneway: HashMap<R, R> = HashMap::new();
+    // Gated behind KM_HT_QO_INVONEWAY so it cannot change the established INVCOMPOSE
+    // (router) behaviour unless explicitly enabled.
+    if std::env::var_os("KM_HT_QO_INVONEWAY").is_some() {
+        for (&r, ss) in &bridge_src {
+            if inv_of.contains_key(&r) {
+                continue; // bidirectional pair handled by `composable` below
+            }
+            if multi_bodied.contains(&r) || otherwise_produced.contains(&r) {
+                continue; // r is consumed in a chain, or produced elsewhere ⇒ keep bridge
+            }
+            if ss.len() == 1 {
+                oneway.insert(r, ss[0]); // r-edges come solely from this one s-bridge
+            }
+        }
+    }
+    if std::env::var_os("KM_HT_TRACE").is_some() {
+        eprintln!("INVCOMPOSE-ONEWAY composing {} one-directional bridge roles", oneway.len());
+    }
     let mut out: Vec<Clause> = Vec::with_capacity(clauses.len() + clauses.len() / 4);
     for (c, _, _) in clauses {
         // drop a bridge whose pair we are composing (both directions).
         if let Some((r, s)) = bridge_of(c) {
             if composable(r) && composable(s) && inv_of.get(&r) == Some(&s) {
                 continue;
+            }
+            if oneway.contains_key(&r) {
+                continue; // one-directional: bridge dropped, consumers composed below
             }
         }
         out.push(c.clone());
@@ -1737,6 +1813,13 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
                 let s = inv_of[&r];
                 let mut nb = c.body.clone();
                 // r(u,v) ⟸ s(v,u): fire the same consequence over the forward s-edge.
+                nb[idx] = Atom::Role { r: s, s: v, t: u };
+                out.push(Clause { body: nb, head: c.head.clone() });
+            } else if let Some(&s) = oneway.get(&r) {
+                // one-directional: the original consumer fires over r-edges that no
+                // longer exist (bridge dropped); the composed variant fires over the
+                // forward s-edge swapped, deriving the identical consequence.
+                let mut nb = c.body.clone();
                 nb[idx] = Atom::Role { r: s, s: v, t: u };
                 out.push(Clause { body: nb, head: c.head.clone() });
             }
