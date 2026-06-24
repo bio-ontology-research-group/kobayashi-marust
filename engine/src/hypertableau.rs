@@ -1764,23 +1764,45 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
         }
     }
     let mut oneway: HashMap<R, R> = HashMap::new();
-    // Gated behind KM_HT_QO_INVONEWAY so it cannot change the established INVCOMPOSE
-    // (router) behaviour unless explicitly enabled.
-    if std::env::var_os("KM_HT_QO_INVONEWAY").is_some() {
+    // KM_HT_QO_INVCHAIN (port #2, in-pass inverse for CHAIN consumers): relax the
+    // single-role-body restriction. A consequent role `r` of a bridge `s(a,b)→r(b,a)`
+    // whose r-edges come SOLELY from that one bridge (single source) and that is NOT
+    // otherwise produced (no real `∃ r` / head `r` — so every r-edge is exactly a
+    // reversed s-edge) can be composed away EVEN WHEN consumed in a multi-role/chain
+    // body: replacing `r(u,v)` with `s(v,u)` in any body is sound (identical edge
+    // set, the other body atoms unchanged), and the bridge is dropped so NO reversed
+    // r-edge is ever materialised. This is exactly what 9724 needs — its 674
+    // multi-role consumers were the only thing forcing 2.5M reversed edges. Without
+    // INVCHAIN we keep the conservative single-role-only behaviour.
+    let invchain = std::env::var_os("KM_HT_QO_INVCHAIN").is_some();
+    // Gated behind KM_HT_QO_INVONEWAY / KM_HT_QO_INVCHAIN so neither can change the
+    // established INVCOMPOSE (router) behaviour unless explicitly enabled.
+    if std::env::var_os("KM_HT_QO_INVONEWAY").is_some() || invchain {
         for (&r, ss) in &bridge_src {
-            if inv_of.contains_key(&r) {
+            if inv_of.contains_key(&r) && !invchain {
                 continue; // bidirectional pair handled by `composable` below
             }
-            if multi_bodied.contains(&r) || otherwise_produced.contains(&r) {
-                continue; // r is consumed in a chain, or produced elsewhere ⇒ keep bridge
+            // INVCHAIN relaxes the multi-role exclusion (the whole point of port #2);
+            // INVONEWAY keeps it. `otherwise_produced` is a SOUNDNESS gate for both:
+            // a real `∃ r` edge would be missed by the swap.
+            if (!invchain && multi_bodied.contains(&r)) || otherwise_produced.contains(&r) {
+                continue;
             }
-            if ss.len() == 1 {
-                oneway.insert(r, ss[0]); // r-edges come solely from this one s-bridge
+            // single source: r-edges come solely from this one s-bridge.
+            let mut uniq: Vec<R> = ss.clone();
+            uniq.sort_unstable();
+            uniq.dedup();
+            if uniq.len() == 1 {
+                oneway.insert(r, uniq[0]);
             }
         }
     }
     if std::env::var_os("KM_HT_TRACE").is_some() {
-        eprintln!("INVCOMPOSE-ONEWAY composing {} one-directional bridge roles", oneway.len());
+        eprintln!(
+            "INVCOMPOSE-ONEWAY composing {} bridge roles (invchain={})",
+            oneway.len(),
+            invchain
+        );
     }
     let mut out: Vec<Clause> = Vec::with_capacity(clauses.len() + clauses.len() / 4);
     for (c, _, _) in clauses {
@@ -1807,19 +1829,31 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
                 }
             })
             .collect();
+        // General oneway/chain composition: if the body contains ANY oneway role
+        // atom (single- or multi-role body), add a variant with EVERY oneway atom
+        // swapped to its forward source edge `s(t,s)`. Sound because each such r is
+        // purely virtual (single-source, not otherwise produced ⇒ all r-edges are
+        // reversed s-edges); the original clause is kept but is dead (no real
+        // r-edge survives the dropped bridge). This subsumes the old single-role
+        // oneway branch and adds the multi-role/chain case (port #2).
+        let has_oneway = body_roles.iter().any(|(_, r, _, _)| oneway.contains_key(r));
+        if has_oneway {
+            let mut nb = c.body.clone();
+            for a in nb.iter_mut() {
+                if let Atom::Role { r, s, t } = *a {
+                    if let Some(&sv) = oneway.get(&r) {
+                        *a = Atom::Role { r: sv, s: t, t: s };
+                    }
+                }
+            }
+            out.push(Clause { body: nb, head: c.head.clone() });
+        }
         if body_roles.len() == 1 {
             let (idx, r, u, v) = body_roles[0];
             if composable(r) {
                 let s = inv_of[&r];
                 let mut nb = c.body.clone();
                 // r(u,v) ⟸ s(v,u): fire the same consequence over the forward s-edge.
-                nb[idx] = Atom::Role { r: s, s: v, t: u };
-                out.push(Clause { body: nb, head: c.head.clone() });
-            } else if let Some(&s) = oneway.get(&r) {
-                // one-directional: the original consumer fires over r-edges that no
-                // longer exist (bridge dropped); the composed variant fires over the
-                // forward s-edge swapped, deriving the identical consequence.
-                let mut nb = c.body.clone();
                 nb[idx] = Atom::Role { r: s, s: v, t: u };
                 out.push(Clause { body: nb, head: c.head.clone() });
             }
@@ -3535,6 +3569,108 @@ impl<'a> QoSat<'a> {
             return None;
         }
         Some(r)
+    }
+
+    /// Port #1 — RESIDUE MODEL-REUSE. Complete the AFFECTED (residue) concepts on
+    /// the ALREADY-BUILT shared model instead of re-saturating per concept or
+    /// re-running a second global pass. Konclude builds ONE completion graph and
+    /// branches only the open core; this mirrors that:
+    ///
+    ///   Phase 1 (model-reuse): branch the parked disjunctions ONCE to a single
+    ///   clash-free completion of the whole model, and harvest, per affected
+    ///   concept A, the CANDIDATE extra subsumers = query concepts in A's completed
+    ///   label that the clean (pre-branching, deterministic) label did not already
+    ///   carry. A real subsumer must appear in every completion, so it must appear
+    ///   in this one — the single completion is a sound candidate FILTER.
+    ///
+    ///   Phase 2 (verify): for each candidate B, A ⊑ B iff A ⊓ ¬B is unsatisfiable;
+    ///   test it with `qo_residue_test`, which branches only A's subtree on the
+    ///   shared parked model (checkpoint/rollback, no rebuild). Also detect an
+    ///   unsatisfiable A (inconsistent in every completion).
+    ///
+    /// SOUNDNESS GATE: the caller must only invoke this when the residue obstacle is
+    /// PURE DISJUNCTION (no cardinality Eq-head deferrals, no ∀ shared-filler
+    /// pollution) — then branching + label reads are sound. On any in-completion
+    /// `unsupported` (depth/deadline/out-of-fragment) we return None ⇒ the caller
+    /// defers to CB, so a partial residue never yields an unsound answer.
+    fn qo_residue_classify(
+        &mut self,
+        affected: &[(C, Node)],
+        g_label_pos: &[HashSet<C>],
+        qset: &HashSet<C>,
+    ) -> Option<(Vec<C>, Vec<(C, C)>)> {
+        let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        let nn = self.label.len();
+        self.tracing = true;
+        // Phase 1: one global completion, shared across all affected reads.
+        let all: HashSet<Node> = (0..nn).collect();
+        let mark0 = self.checkpoint();
+        let dl = Some(Instant::now());
+        let sat = self.qo_branch_dfs(&all, 0, dl);
+        if self.unsupported {
+            self.rollback(mark0);
+            self.tracing = false;
+            self.unsupported = false;
+            if trace {
+                eprintln!("QORES phase1: global completion unsupported ⇒ defer");
+            }
+            return None;
+        }
+        let mut cand: Vec<(C, Node, Vec<C>)> = Vec::new();
+        let mut tot_cand = 0usize;
+        if sat {
+            for &(a, na) in affected {
+                let nai = na as usize;
+                if nai >= nn {
+                    continue;
+                }
+                let empty = HashSet::new();
+                let clean = g_label_pos.get(nai).unwrap_or(&empty);
+                let mut cs: Vec<C> = Vec::new();
+                for &lit in &self.label[nai] {
+                    if !lit.neg && lit.c != a && qset.contains(&lit.c) && !clean.contains(&lit.c) {
+                        cs.push(lit.c);
+                    }
+                }
+                tot_cand += cs.len();
+                cand.push((a, na, cs));
+            }
+        }
+        self.rollback(mark0);
+        self.tracing = false;
+        if trace {
+            eprintln!(
+                "QORES phase1: sat={} affected={} candidate_subs={}",
+                sat,
+                affected.len(),
+                tot_cand
+            );
+        }
+        // Phase 2: verify each candidate (and unsat) by branching A's subtree.
+        let mut subs: Vec<(C, C)> = Vec::new();
+        let mut unsat: Vec<C> = Vec::new();
+        for (a, na, cs) in cand {
+            match self.qo_residue_test(na, &[]) {
+                Some(true) => {}
+                Some(false) => {
+                    unsat.push(a);
+                    continue;
+                }
+                None => return None,
+            }
+            for b in cs {
+                let negb = CLit { neg: true, c: b };
+                match self.qo_residue_test(na, &[negb]) {
+                    Some(false) => subs.push((a, b)), // A ⊓ ¬B unsat ⇒ A ⊑ B
+                    Some(true) => {}
+                    None => return None,
+                }
+            }
+        }
+        if trace {
+            eprintln!("QORES phase2: verified residue_subs={} residue_unsat={}", subs.len(), unsat.len());
+        }
+        Some((unsat, subs))
     }
 
     /// Fire an all-Concept-body clause at node `n` (body var X = n).
@@ -6882,9 +7018,13 @@ impl Ht {
                 let mut clean_subs: Vec<(C, C)> = Vec::new();
                 let mut clean_unsat: Vec<C> = Vec::new();
                 let mut residue: Vec<C> = Vec::new();
+                let mut residue_nodes: Vec<(C, Node)> = Vec::new();
                 for (i, &a) in queries.iter().enumerate() {
                     if i >= nn || affected[i] {
                         residue.push(a);
+                        if i < nn {
+                            residue_nodes.push((a, i as Node));
+                        }
                         continue;
                     }
                     if g.node_unsat.contains(&i) {
@@ -6914,8 +7054,37 @@ impl Ht {
                         !(!queries.is_empty() && clean_unsat.len() == queries.len());
                     return Some((consistent, clean_unsat, clean_subs));
                 }
-                // (residue non-empty: defer for now — the residue-verify funnel is
-                // wired in once the affected count is measured.)
+                // Port #1 — RESIDUE MODEL-REUSE. Complete the affected concepts on
+                // the shared model (one completion + per-subtree verify) instead of
+                // deferring to a second global saturation / CB. SOUND only when the
+                // residue obstacle is PURE DISJUNCTION: no cardinality Eq-head
+                // deferrals (`kp_insuff_nodes` empty) and no ∀ shared-filler
+                // pollution (`!qo_insufficient`). Otherwise the shared-model labels
+                // and subtree branching are not trustworthy ⇒ keep deferring.
+                if std::env::var_os("KM_HT_QO_RESIDUE").is_some()
+                    && qk.kp_insuff_nodes.is_empty()
+                    && !qk.qo_insufficient
+                {
+                    if let Some((res_unsat, res_subs)) =
+                        qk.qo_residue_classify(&residue_nodes, &g.label_pos, &qset)
+                    {
+                        clean_subs.extend(res_subs);
+                        clean_unsat.extend(res_unsat);
+                        let consistent =
+                            !(!queries.is_empty() && clean_unsat.len() == queries.len());
+                        if trace {
+                            eprintln!(
+                                "QOKP residue model-reuse certified: total_subs={} total_unsat={}",
+                                clean_subs.len(),
+                                clean_unsat.len()
+                            );
+                        }
+                        return Some((consistent, clean_unsat, clean_subs));
+                    }
+                    if trace {
+                        eprintln!("QOKP residue model-reuse could not complete ⇒ defer");
+                    }
+                }
             }
             if trace {
                 eprintln!(
