@@ -317,6 +317,19 @@ pub struct Ext {
     i2_lo: usize,
     i2_last_lo: usize,
 
+    /// Incremental PAIRWISE (mode-3) blocking — the equality-signature analogue of
+    /// the i2_* subset path, for the inverse-safe route (SHIQ). A node is blocked
+    /// by the FIRST earlier node sharing its triple signature
+    /// `(core(n), core(pred n), pred→n edge roles)`; `i3_sig` maps that signature
+    /// to its owning (unblocked) node, `i3_node_sig` records each node's registered
+    /// signature so a recompute can un-register the changed suffix. Shares `i2_lo`/
+    /// `i2_last_lo`/`i2_blocked` with the subset path (one block mode is live per
+    /// run). `block3` makes `add_edge` widen the dirty suffix, since unlike subset
+    /// blocking a mode-3 signature also depends on the parent edge.
+    i3_sig: HashMap<Vec<u64>, Node>,
+    i3_node_sig: Vec<Option<Vec<u64>>>,
+    block3: bool,
+
     /// KM_HT_INCROBLIG: incremental ∃-obligation processing. The flat obligation
     /// loop in `process_obligations` re-scanned EVERY accumulated obligation on
     /// every saturation pass (240M iterations on 5303 = 72% of the wall once
@@ -374,6 +387,9 @@ impl Ext {
             i2_in_touched: Vec::new(),
             i2_lo: 0,
             i2_last_lo: 0,
+            i3_sig: HashMap::new(),
+            i3_node_sig: Vec::new(),
+            block3: false,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
             oblig_sat: Vec::new(),
@@ -466,6 +482,83 @@ impl Ext {
                         self.i2_touched.push(e);
                     }
                     self.i2_lists[e].push(n);
+                }
+            }
+        }
+        self.i2_lo = usize::MAX;
+        self.i2_blocked.clone()
+    }
+
+    /// The mode-3 pairwise blocking signature of node `n` with parent `p`:
+    /// `core(n) · SEP · core(p) · SEP · sorted-deduped roles on the p→n edge`,
+    /// where `core` is the positive concepts encoded `(c<<1)`. Shared by the
+    /// full-scan `compute_blocked` and the incremental `i3_recompute` so the two
+    /// are identical by construction.
+    fn i3_signature(&self, n: Node, p: Node) -> Vec<u64> {
+        const SEP: u64 = u64::MAX;
+        let mut sig: Vec<u64> = Vec::new();
+        let mut a: Vec<u64> =
+            self.concepts[n].keys().filter(|k| !k.neg).map(|k| (k.c as u64) << 1).collect();
+        a.sort_unstable();
+        sig.extend(a);
+        sig.push(SEP);
+        let mut b: Vec<u64> =
+            self.concepts[p].keys().filter(|k| !k.neg).map(|k| (k.c as u64) << 1).collect();
+        b.sort_unstable();
+        sig.extend(b);
+        sig.push(SEP);
+        let mut e: Vec<u64> =
+            self.in_edges[n].iter().filter(|(_, s, _)| *s == p).map(|(r, _, _)| *r as u64).collect();
+        e.sort_unstable();
+        e.dedup();
+        sig.extend(e);
+        sig
+    }
+
+    /// Incremental pairwise (mode-3) blocking: re-evaluate only the changed suffix
+    /// `i2_lo..nn`, identical in result to the full mode-3 scan in `compute_blocked`
+    /// (KM_HT_INCRBLOCK2_CHECK asserts it per pass). A signature depends only on
+    /// nodes `<= n` (the node, its parent `< n`, the parent edge), so the same
+    /// suffix invariant as the subset path holds: keep `i3_sig` registrations for
+    /// nodes `< lo`, un-register the changed/removed suffix, re-classify `lo..nn`
+    /// in id order. A node is blocked by the FIRST earlier node owning its
+    /// signature.
+    fn i3_recompute(&mut self) -> Vec<bool> {
+        let nn = self.num_nodes();
+        let lo = self.i2_lo.min(nn);
+        self.i2_last_lo = lo;
+        // Un-register the signatures of nodes `>= lo` (their labels/edges may have
+        // changed; ids beyond `nn` are leftovers from a backtrack). Only the owner
+        // of a signature holds the map slot, so removing owners `>= lo` is safe —
+        // any same-signature node `< lo` would be the owner instead.
+        let old = self.i3_node_sig.len();
+        for n in lo..old {
+            if let Some(s) = self.i3_node_sig[n].take() {
+                if self.i3_sig.get(&s) == Some(&n) {
+                    self.i3_sig.remove(&s);
+                }
+            }
+        }
+        self.i2_blocked.truncate(lo);
+        self.i2_blocked.resize(nn, false);
+        self.i3_node_sig.resize(nn, None);
+        for n in lo..nn {
+            self.i3_node_sig[n] = None;
+            let p = match (self.blockable[n], self.pred[n]) {
+                (true, Some(p)) => p,
+                _ => {
+                    // root / non-blockable node never blocked, never a blocker.
+                    self.i2_blocked[n] = false;
+                    continue;
+                }
+            };
+            let sig = self.i3_signature(n, p);
+            match self.i3_sig.get(&sig) {
+                Some(&m) if m < n => self.i2_blocked[n] = true,
+                _ => {
+                    self.i2_blocked[n] = false;
+                    self.i3_sig.entry(sig.clone()).or_insert(n);
+                    self.i3_node_sig[n] = Some(sig);
                 }
             }
         }
@@ -623,6 +716,11 @@ impl Ext {
         self.in_edges[t].push((r, s, dep.clone()));
         self.trail.push(Trail::Edge(r, s, t));
         self.queue.push(Event::Edge(r, s, t));
+        // A mode-3 (pairwise) signature depends on the parent→node edge roles, so a
+        // new edge into `t` can change `t`'s blocking signature: widen the suffix.
+        if self.block3 {
+            self.i2_note(t);
+        }
     }
 
     /// Follow the ≤n merge chain to the surviving node (KM_HT_NUMBER). Identity
@@ -4727,7 +4825,6 @@ impl Ht {
             // subset does, while the parent+edge match keeps it complete under
             // transitive roles (the case subset drops) — sound+complete for SH
             // without inverse (guaranteed by ht_routable). Hashed O(n).
-            const SEP: u64 = u64::MAX;
             let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
             for n in 0..nn {
                 if !self.ext.blockable[n] {
@@ -4737,31 +4834,8 @@ impl Ht {
                     Some(p) => p,
                     None => continue, // root has no parent edge; never blocked
                 };
-                let mut sig: Vec<u64> = Vec::new();
-                let mut a: Vec<u64> = self.ext.concepts[n]
-                    .keys()
-                    .filter(|k| !k.neg)
-                    .map(|k| (k.c as u64) << 1)
-                    .collect();
-                a.sort_unstable();
-                sig.extend(a);
-                sig.push(SEP);
-                let mut b: Vec<u64> = self.ext.concepts[p]
-                    .keys()
-                    .filter(|k| !k.neg)
-                    .map(|k| (k.c as u64) << 1)
-                    .collect();
-                b.sort_unstable();
-                sig.extend(b);
-                sig.push(SEP);
-                let mut e: Vec<u64> = self.ext.in_edges[n]
-                    .iter()
-                    .filter(|(_, s, _)| *s == p)
-                    .map(|(r, _, _)| *r as u64)
-                    .collect();
-                e.sort_unstable();
-                e.dedup();
-                sig.extend(e);
+                // shared with the incremental i3_recompute, so the two are identical.
+                let sig = self.ext.i3_signature(n, p);
                 if !seen.insert(sig) {
                     blocked[n] = true;
                 }
@@ -5096,8 +5170,14 @@ impl Ht {
             // KM_HT_INCRBLOCK2: incremental subset-blocking (mode 1) — re-evaluate
             // only the changed suffix instead of all nodes every pass. Identical
             // result to the full scan; KM_HT_INCRBLOCK2_CHECK asserts it per pass.
-            Some(if self.ext.incr2 && self.block_mode == 1 {
-                let b = self.ext.i2_recompute();
+            Some(if self.ext.incr2 && (self.block_mode == 1 || self.block_mode == 3) {
+                // mode 1 = subset (i2_*), mode 3 = pairwise (i3_*); both re-evaluate
+                // only the changed suffix, identical to the full scan.
+                let b = if self.block_mode == 3 {
+                    self.ext.i3_recompute()
+                } else {
+                    self.ext.i2_recompute()
+                };
                 if self.stats {
                     self.i2_suf_sum += (b.len() - self.ext.i2_last_lo) as u128;
                     self.i2_calls += 1;
@@ -5110,7 +5190,8 @@ impl Ht {
                     if full != b {
                         let fd = (0..b.len()).find(|&k| full[k] != b[k]);
                         panic!(
-                            "i2 blocking mismatch: nn={} full_blk={} i2_blk={} first_diff={:?}",
+                            "i{} blocking mismatch: nn={} full_blk={} inc_blk={} first_diff={:?}",
+                            self.block_mode,
                             b.len(),
                             full.iter().filter(|x| **x).count(),
                             b.iter().filter(|x| **x).count(),
@@ -5800,6 +5881,10 @@ impl Ht {
             if self.force_qmerge {
                 self.ext.qmerge = true;
             }
+            // tell Ext whether mode-3 (pairwise) blocking is live, so add_edge
+            // widens the incremental suffix on edge changes (the signature uses
+            // the parent edge). Subset blocking (mode 1) is label-only.
+            self.ext.block3 = self.block_mode == 3;
             self.cache.clear();
             // learned no-goods reference this run's node uids; reset per run.
             self.decisions.clear();
