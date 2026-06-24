@@ -68,6 +68,16 @@ pub struct Config {
     /// 10702/1603/12653/541 the global model does not even build in budget).
     /// Kept behind this flag for the record; see project_km_qo_deadend.
     pub ht_qo: bool,
+    /// KM_HT_QO_ROUTER: route Horn-INVERSE ontologies to the validated QoSat
+    /// hybrid certify path (INVCOMPOSE+FPROP+SAT+KPSET) as a RACE arm against CB.
+    /// The hybrid is a sound certify-OR-DEFER specialist (KM_HT_QO_CERTIFY_ONLY):
+    /// it emits an answer only when kpset certifies (sound+complete by
+    /// construction), else defers so CB decides. The router gate is structural —
+    /// only onts whose cb_to_ht TInput is faithful, nominal-free, and HAS inverse
+    /// roles get the hybrid arm — so the INVCOMPOSE/sat_mode overhead never
+    /// touches the CB-territory onts it would slow (corpus-validated: recovers
+    /// 7581 in ~31s, 0 regressions). Default off.
+    pub qo_router: bool,
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -122,6 +132,7 @@ impl Config {
             ht_budget_s: env_f64("KM_HT_BUDGET_S", 225.0),
             ht_nice: std::env::var("KM_HT_NICE").unwrap_or_else(|_| "1".to_string()),
             ht_qo: std::env::var_os("KM_HT_QO").is_some(),
+            qo_router: std::env::var_os("KM_HT_QO_ROUTER").is_some(),
         }
     }
 

@@ -198,6 +198,12 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
     // forced attempt — it races a certified elc against the engine below.
+    // Under the QO router the HT arm is a sound certify-or-defer specialist, so
+    // race it (first valid finisher wins) rather than fallback — this is what lets
+    // the fast hybrid certify (e.g. 7581 in ~31s) beat a CB engine that would
+    // otherwise time out. For non-candidate onts spawn_ht returns None so CB runs
+    // alone regardless of mode; normal HT-routable onts stay sound under race.
+    let ht_mode: &str = if cfg.qo_router { "race" } else { cfg.ht_mode.as_str() };
     let out: EngineOut = {
         // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
         // and elc side by side); keep them on the safe single-arm paths (bare elc
@@ -266,7 +272,7 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                     // wins; in fallback mode HT answers only when the CB/elc arm
                     // fails or runs past budget (monotone-safe). This reaches the
                     // union of the HT and elc-portfolio recoveries in one pass.
-                    race::race_cb_vs_ht(cfg, clauses_path.path(), &cfg.ht_mode, |th| {
+                    race::race_cb_vs_ht(cfg, clauses_path.path(), ht_mode, |th| {
                         race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)
                     })?
                 } else if portfolio_on {
@@ -277,7 +283,7 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                     race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)?
                 } else if cfg.ht_race {
                     // race the whole CB stack against the KM_HT hypertableau.
-                    race::race_cb_vs_ht(cfg, clauses_path.path(), &cfg.ht_mode, |th| {
+                    race::race_cb_vs_ht(cfg, clauses_path.path(), ht_mode, |th| {
                         cb_stack(cfg, ont, clauses_path.path(), th)
                     })?
                 } else {

@@ -434,6 +434,38 @@ fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
     true
 }
 
+/// Does the clause set contain an inverse/symmetric BRIDGE clause
+/// (`R(a,b) → R'(b,a)`: a single role head whose args are swapped relative to a
+/// body role atom)? This is the structural signal the QO hybrid targets; it is
+/// independent of cb_to_ht's `inverse` flag (which only fires for the
+/// pairwise-inverse encoding, not bridge clauses).
+fn has_inverse_bridge(cl: &[crate::json_io::JClause]) -> bool {
+    use crate::json_io::{JAtom, JTerm};
+    let var = |t: &JTerm| -> Option<String> {
+        if let JTerm::Var { name } = t { Some(name.clone()) } else { None }
+    };
+    cl.iter().any(|c| {
+        if c.head.len() != 1 {
+            return false;
+        }
+        if let JAtom::Role { source: hs, target: ht, .. } = &c.head[0] {
+            let (hs, ht) = match (var(hs), var(ht)) {
+                (Some(a), Some(b)) => (a, b),
+                _ => return false,
+            };
+            c.body.iter().any(|a| match a {
+                JAtom::Role { source, target, .. } => {
+                    var(source).as_deref() == Some(ht.as_str())
+                        && var(target).as_deref() == Some(hs.as_str())
+                }
+                _ => false,
+            })
+        } else {
+            false
+        }
+    })
+}
+
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
@@ -472,7 +504,23 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // out-of-fragment onts (inverse / nominals / fenced role-chains). The cb_to_ht
     // encoding may be an approximation there, so results are NOT guaranteed
     // gold-clean — this is for algorithm/scaling measurement only, not production.
-    if !ht_routable(&tin) && std::env::var_os("KM_HT_FORCE").is_none() {
+    // KM_HT_QO_ROUTER candidate: a faithful, nominal-free TInput that HAS inverse
+    // roles. `ht_routable` rejects inverse (the plain HT is unsound there), but the
+    // hybrid QO certify path handles exactly this fragment soundly (certify or
+    // defer), so such onts get the HT arm under the router even though
+    // `ht_routable` is false.
+    // cb_to_ht reports `tin.inverse=false` for 7581-style onts because their
+    // inverse is encoded as BRIDGE CLAUSES (`R(a,b) → R'(b,a)`), not the
+    // pairwise-inverse flag. The hybrid's target signal is exactly those bridges
+    // (what `compose_inverse` resolves), so detect them in the clause set — and
+    // gate ONLY on bridges so non-inverse HT-routable onts (e.g. 5303) keep their
+    // normal branching HT path rather than the certify-only hybrid.
+    let qo_candidate = cfg.qo_router
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && tin.nominals.is_empty()
+        && has_inverse_bridge(&cl);
+    if !ht_routable(&tin) && !qo_candidate && std::env::var_os("KM_HT_FORCE").is_none() {
         return None;
     }
     let out_path = super::tmpfile::TempPath::new(".htrace.json");
@@ -495,6 +543,26 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         cmd.stderr(Stdio::null());
     }
     cmd.env("KM_HT", "1");
+    if qo_candidate {
+        // Route this Horn-inverse ont to the validated hybrid certify path, run as
+        // a sound certify-OR-DEFER arm: KM_HT_QO_CERTIFY_ONLY makes it emit a
+        // (sound+complete-by-construction) answer only when kpset certifies, and
+        // produce NO answer otherwise — so the CB engine wins the race on anything
+        // the hybrid cannot certify. KM_HT_FORCE lets the inverse ont reach the Ht
+        // QO path (the in-fragment gate otherwise routes inverse onts away).
+        for (k, v) in [
+            ("KM_HT_FORCE", "1"),
+            ("KM_HT_QO", "1"),
+            ("KM_HT_QO_PC", "1"),
+            ("KM_HT_QO_INVCOMPOSE", "1"),
+            ("KM_HT_QO_FPROP", "1"),
+            ("KM_HT_QO_SAT", "1"),
+            ("KM_HT_QO_KPSET", "1"),
+            ("KM_HT_QO_CERTIFY_ONLY", "1"),
+        ] {
+            cmd.env(k, v);
+        }
+    }
     // Production HT search discipline (validated on the live ∀+⊔ disjunction
     // family, ore_ont_5303): EAGER model folding + NEGTRIED (HermiT
     // startNextChoice) + ORD=1 (least-failing-first disjunct order). Together

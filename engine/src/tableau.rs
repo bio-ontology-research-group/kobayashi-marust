@@ -4507,10 +4507,20 @@ pub fn run_json(input: &str) -> Result<String, String> {
                 if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
                         Some(r) => Some(r),
-                        // QO bailed (out-of-fragment construct in the shared
-                        // saturator): fall back to Ht's branching classify, NOT
-                        // the legacy Tableau, so QO can only add recoveries.
-                        None => ht.classify(&q),
+                        // QO bailed. In router mode (KM_HT_QO_CERTIFY_ONLY) this is
+                        // a DEFER: do NOT fall back to the branching classify (whose
+                        // soundness on this inverse fragment is not certified) —
+                        // return None so the worker emits no answer and the
+                        // orchestrator's CB engine (sound+complete) decides.
+                        // Otherwise (non-router) keep the historical behaviour:
+                        // fall back to Ht's branching classify so QO only adds.
+                        None => {
+                            if std::env::var_os("KM_HT_QO_CERTIFY_ONLY").is_some() {
+                                None
+                            } else {
+                                ht.classify(&q)
+                            }
+                        }
                     }
                 } else {
                     ht.classify(&q)
@@ -4532,7 +4542,13 @@ pub fn run_json(input: &str) -> Result<String, String> {
             };
             return serde_json::to_string(&out).map_err(|e| e.to_string());
         }
-        // None ⇒ out-of-fragment; fall through to the legacy tableau.
+        // None ⇒ out-of-fragment. In router mode this is a DEFER: do NOT fall to
+        // the legacy Tableau (unsound/may hang on this inverse fragment) — signal
+        // no-answer so the orchestrator races to CB.
+        if std::env::var_os("KM_HT_QO_CERTIFY_ONLY").is_some() {
+            return Err("QO router defer (not certified)".to_string());
+        }
+        // otherwise fall through to the legacy tableau.
     }
 
     let mut t = Tableau::new(clauses);

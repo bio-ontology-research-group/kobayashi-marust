@@ -6725,6 +6725,25 @@ impl Ht {
     }
 
     pub fn quasi_order_classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
+        // KM_HT_QO_CERTIFY_ONLY (router mode): act as a sound certify-OR-DEFER
+        // specialist. The hybrid (INVCOMPOSE+FPROP+SAT+KPSET) certifies the
+        // Horn-inverse fragment fast (7581: 31s) but the funnel fallback inherits
+        // pre-existing QO limitations (unsat under-detection etc.) — so in router
+        // mode we NEVER run the funnel: kpset either certifies (return the sound
+        // answer) or we DEFER (return None) and let the orchestrator's CB engine
+        // decide. STRUCTURAL pre-gate: the hybrid only pays off when there is an
+        // inverse contribution to compose, so defer immediately on a clause set
+        // with no inverse bridge (a non-inverse ont gains nothing and would only
+        // pay the INVCOMPOSE/sat_mode overhead — the corpus-validation cost cases
+        // 11395/3905/3377 were exactly large non-certifying onts). Sound by
+        // construction: a deferral yields no answer, so CB (sound+complete) is used.
+        let certify_only = std::env::var_os("KM_HT_QO_CERTIFY_ONLY").is_some();
+        if certify_only && count_inverse_bridges(&self.clauses) == 0 {
+            if std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!("QO router: no inverse bridge ⇒ defer (not a hybrid candidate)");
+            }
+            return None;
+        }
         // KM_HT_QO_INVCOMPOSE (lever 2): resolve bidirectional inverse bridges into
         // their consumers and drop the bridges, so NO reversed edge is ever created
         // — the inverse contribution becomes a forward ∀/range write. Applied to
@@ -6757,6 +6776,15 @@ impl Ht {
             if let Some(r) = self.qo_classify_kpset(queries) {
                 return Some(r);
             }
+        }
+        // Router mode: kpset did not certify (load-bearing residual inverse,
+        // parked disjunction, or out-of-fragment) ⇒ DEFER rather than run the
+        // (pre-existing-limitations) funnel. CB takes it from here.
+        if certify_only {
+            if std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!("QO router: kpset did not certify ⇒ defer to CB");
+            }
+            return None;
         }
         // KM_HT_QO_PC: the per-concept gate — instead of one global saturation
         // seeding all 73k concepts (whose node×clause cross-product is the wall
