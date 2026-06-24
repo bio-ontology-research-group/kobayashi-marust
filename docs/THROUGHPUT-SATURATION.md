@@ -93,6 +93,25 @@ member within 600 s. No existing flag or combination classifies any of the 9.**
 The bottleneck is structural (the deferred core is not a tail), so only the
 in-pass re-architecture below can close this family.
 
+
+## Single-thread CB (KM_THREADS=1) — bounds memory, still times out (the decisive split)
+
+Tested single-thread CB on all 9 (job 47766702, 600 s, 28 GB cap). EVERY ont times
+out, but peak RSS is now BOUNDED: 15672=22.5 MB, 7914=533 MB, 7499=2.1 GB,
+9663=2.1 GB, 14817=4.8 GB, 10621=5.6 GB, 3215=4.5 GB, 9724=8.2 GB, 10908=18.5 GB.
+So the parallel 18-20 GB blowups were a thread-memory-multiplication artifact, NOT
+the cause of failure — single-thread fits in memory and STILL does not converge in
+600 s. This splits the family cleanly:
+- **15672 (22 MB!), 10908, 3215** — pure SEARCH non-convergence at tiny/bounded
+  memory: the live-∀+⊔ / nominal DISJUNCTION-FAMILY problem (cf 5303/10702),
+  not throughput. Needs Konclude-grade search convergence, not saturation scale.
+- **7499/7914/9724/9663/14817/10621** — near-Horn SRIQ throughput: the in-pass
+  saturation re-architecture (P1/P2).
+
+Six distinct sound/complete paths now exhausted on this family — CB(parallel),
+CB(single-thread), complete-HT(+search), QoSat per-concept, QoSat kpset+card-split,
+QoSat branching — all time out. The reuse space is empirically closed.
+
 ## Plan (the real fix — a global-saturation re-architecture, like the 7581 QoSat work)
 
 To classify these in one pass like Konclude, the GLOBAL saturation must handle
