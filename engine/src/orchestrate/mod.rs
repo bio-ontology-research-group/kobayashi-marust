@@ -198,12 +198,16 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     // EL fast path (elc) when the RBox is EL-safe, else the CB engine. The
     // certified-elc portfolio (KM_ELC_PORTFOLIO) skips the bare elc and the
     // forced attempt — it races a certified elc against the engine below.
-    // Under the QO router the HT arm is a sound certify-or-defer specialist, so
-    // race it (first valid finisher wins) rather than fallback — this is what lets
-    // the fast hybrid certify (e.g. 7581 in ~31s) beat a CB engine that would
-    // otherwise time out. For non-candidate onts spawn_ht returns None so CB runs
-    // alone regardless of mode; normal HT-routable onts stay sound under race.
-    let ht_mode: &str = if cfg.qo_router { "race" } else { cfg.ht_mode.as_str() };
+    // The QO router runs the hybrid certify as the HT arm in the SAME
+    // correctness-aware FALLBACK mode as the normal HT race: CB (the trusted
+    // sound+complete engine) is preferred whenever it finishes, and the HT
+    // certify is taken ONLY when CB errors or runs past KM_HT_BUDGET_S. This is
+    // what makes the router safe even though the kpset certify is not guaranteed
+    // complete on every inverse ont (e.g. ore_ont_15098: the certify yields 939,
+    // CB yields the correct 951 — fallback keeps CB's answer; race mode wrongly
+    // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
+    // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
+    let ht_mode: &str = cfg.ht_mode.as_str();
     let out: EngineOut = {
         // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
         // and elc side by side); keep them on the safe single-arm paths (bare elc
