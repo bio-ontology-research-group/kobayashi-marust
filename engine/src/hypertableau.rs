@@ -198,6 +198,17 @@ struct PendingDisj {
     at: usize,
 }
 
+/// A deferred ≤n qualified-cardinality merge choice. The AtMost clause head
+/// `⋁ Eq(yi,yj)` fired with n+1 distinct r-successors in the filler; exactly one
+/// candidate `pairs` entry must be identified (merged). Branched at the dfs
+/// fixpoint like a `PendingDisj`. `at` = trail length at recording, so a
+/// backtrack past the matching body drops it (suffix pop, like `pending`).
+struct MergeDisj {
+    pairs: Vec<(Node, Node)>,
+    bdep: DepSet,
+    at: usize,
+}
+
 /// A deferred ∃-obligation `node ⊑ ∃r.fil` recorded when its clause body matched.
 struct Oblig {
     n: Node,
@@ -228,6 +239,11 @@ pub struct Ext {
     queue: Vec<Event>,
     /// ground disjunctions awaiting a branch (filled by `apply_head`).
     pending: Vec<PendingDisj>,
+    /// ≤n qualified-cardinality merge choices awaiting a branch (KM_HT_QMERGE).
+    pending_merge: Vec<MergeDisj>,
+    /// KM_HT_QMERGE: enable the n≥2 qualified ≤n merge branch (apply_head). When
+    /// off, an n≥2 AtMost head bails `unsupported` (the prior behaviour).
+    qmerge: bool,
     /// ∃-obligations awaiting expansion (filled by `apply_head`).
     obligations: Vec<Oblig>,
     /// an out-of-ALC(H) head construct was seen ⇒ result is unsound, bail.
@@ -333,6 +349,8 @@ impl Ext {
             clash: None,
             queue: Vec::new(),
             pending: Vec::new(),
+            pending_merge: Vec::new(),
+            qmerge: std::env::var_os("KM_HT_QMERGE").is_some(),
             obligations: Vec::new(),
             unsupported: false,
             number: std::env::var_os("KM_HT_NUMBER").is_some(),
@@ -486,6 +504,13 @@ impl Ext {
             self.open_in.push(false);
         }
         self.pending.push(PendingDisj { disjuncts, bdep, at });
+    }
+
+    /// Record a ≤n qualified-cardinality merge choice (KM_HT_QMERGE), branched at
+    /// the dfs fixpoint. `at` lets a backtrack drop it as a trail-ordered suffix.
+    fn push_merge(&mut self, pairs: Vec<(Node, Node)>, bdep: DepSet) {
+        let at = self.trail.len();
+        self.pending_merge.push(MergeDisj { pairs, bdep, at });
     }
 
     /// Mark every disjunction touched by a change at `(n, lit)` (either the
@@ -773,6 +798,14 @@ impl Ext {
                 self.open_in.pop();
             }
         }
+        // ≤n merge choices, like `pending`, are recorded in trail order, so the
+        // entries past `mark` form a suffix whose matching body has been undone.
+        while let Some(last) = self.pending_merge.last() {
+            if last.at <= mark {
+                break;
+            }
+            self.pending_merge.pop();
+        }
         self.obligations.retain(|e| e.at <= mark);
         if self.incroblig {
             // Obligations beyond the new length were dropped (and their indices may
@@ -1010,17 +1043,41 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
         ext.raise_clash(bdep.clone());
         return;
     }
-    // KM_HT_NUMBER: equality-head clauses (≤n / functionality). A single Eq head
-    // is a forced (unit) merge of the two role successors. Multiple Eq disjuncts
-    // (≤n, n≥2) need a merge branch not yet implemented, so bail soundly there.
+    // KM_HT_NUMBER: equality-head clauses (≤n / functionality). A single live Eq
+    // pair is a forced (unit) merge of the two role successors; multiple Eq
+    // disjuncts (≤n, n≥2) are branched as a merge choice under KM_HT_QMERGE.
     if ext.number && head.iter().any(|h| matches!(h, Atom::Eq { .. })) {
-        if head.len() == 1 {
-            if let Atom::Eq { s, t } = head[0] {
-                let sn = sigma[s as usize].expect("eq head src bound by body");
-                let tn = sigma[t as usize].expect("eq head dst bound by body");
-                ext.merge_into(sn, tn, bdep);
-                return;
+        // An all-Eq head is a ≤n qualified-cardinality merge: identify one of the
+        // candidate successor pairs (the AtMost rule). A single live pair is the
+        // functional/≤1 unit merge; ≥2 pairs (n≥2) need a branch (KM_HT_QMERGE).
+        // A mixed concept+Eq head (negative ≥n recognition) is not yet supported.
+        if head.iter().all(|h| matches!(h, Atom::Eq { .. })) {
+            let mut pairs: Vec<(Node, Node)> = Vec::with_capacity(head.len());
+            for h in head {
+                if let Atom::Eq { s, t } = *h {
+                    let sn = ext.resolve(sigma[s as usize].expect("eq head src bound by body"));
+                    let tn = ext.resolve(sigma[t as usize].expect("eq head dst bound by body"));
+                    if sn == tn {
+                        // a candidate pair is already identified ⇒ ≤n already holds.
+                        return;
+                    }
+                    pairs.push(if sn <= tn { (sn, tn) } else { (tn, sn) });
+                }
             }
+            pairs.sort_unstable();
+            pairs.dedup();
+            match pairs.len() {
+                0 => {}
+                1 => ext.merge_into(pairs[0].0, pairs[0].1, bdep),
+                _ => {
+                    if ext.qmerge {
+                        ext.push_merge(pairs, bdep.clone());
+                    } else {
+                        ext.unsupported = true;
+                    }
+                }
+            }
+            return;
         }
         ext.unsupported = true;
         return;
@@ -1513,6 +1570,9 @@ pub struct Ht {
     /// model-builder workers run fast without the `KM_HT_INCRBLOCK2/INCROBLIG`
     /// env flags. Never changes results.
     force_fast: bool,
+    /// `set_qmerge`: force the n≥2 qualified ≤n merge branch on (re-applied after
+    /// each per-run `Ext::new`), independent of the KM_HT_QMERGE env flag.
+    force_qmerge: bool,
     /// full (pos+neg) labels of nodes seen in completed clash-free models, sorted.
     sat_labels: Vec<Vec<CLit>>,
     /// smallest-literal watch index into `sat_labels` for the superset check.
@@ -4435,6 +4495,7 @@ impl Ht {
             lng_fires: 0,
             satfold: std::env::var_os("KM_HT_SATFOLD").is_some(),
             force_fast: false,
+            force_qmerge: false,
             sat_labels: Vec::new(),
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
@@ -4498,6 +4559,11 @@ impl Ht {
     /// requiring `KM_HT_INCRBLOCK2` / `KM_HT_INCROBLIG` in the environment.
     pub fn set_fast_tableau(&mut self) {
         self.force_fast = true;
+    }
+
+    /// Force the n≥2 qualified ≤n merge branch on, independent of KM_HT_QMERGE.
+    pub fn set_qmerge(&mut self) {
+        self.force_qmerge = true;
     }
 
     #[inline]
@@ -5480,6 +5546,70 @@ impl Ht {
         dep
     }
 
+    /// Scan pending ≤n merge choices for one not yet satisfied (no candidate pair
+    /// already identified). Returns its index, or None if all are satisfied. A
+    /// satisfied entry needs no branch: identifying any one of its n+1 successors
+    /// leaves n distinct, so the AtMost holds.
+    fn next_merge(&self) -> Option<usize> {
+        for (id, md) in self.ext.pending_merge.iter().enumerate() {
+            let sat = md
+                .pairs
+                .iter()
+                .any(|&(a, b)| self.ext.resolve(a) == self.ext.resolve(b));
+            if !sat {
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    /// Branch a ≤n qualified-cardinality merge: try identifying each candidate
+    /// successor pair in turn (the AtMost rule's non-deterministic choice).
+    /// Distinctness clauses (`⊥ ⟵ Eq(yi,yj)` from a ≥m constraint) clash a
+    /// forbidden identification, forcing the next pair; if every pair clashes the
+    /// AtMost is unsatisfiable here. Mirrors the concept-disjunction branch:
+    /// mark / merge / recurse, backjump when the conflict is independent of this
+    /// level, accumulate the fail dep otherwise.
+    fn branch_merge(&mut self, mid: usize, depth: Level) -> Out {
+        let level = depth + 1;
+        let pairs = self.ext.pending_merge[mid].pairs.clone();
+        let bdep = self.ext.pending_merge[mid].bdep.clone();
+        self.branch_pushes += 1;
+        let mut fail = dep_empty();
+        for &(a, b) in &pairs {
+            self.disjunct_tries += 1;
+            let ra = self.ext.resolve(a);
+            let rb = self.ext.resolve(b);
+            if ra == rb {
+                // already identified by an earlier pair's merge ⇒ satisfied; keep
+                // solving at the current level (no new decision).
+                return self.dfs(depth);
+            }
+            let mark = self.ext.mark();
+            let dep = dep_add(&bdep, level);
+            self.ext.merge_into(ra, rb, &dep);
+            // dfs's head re-propagates and detects any merge-induced clash.
+            let sub = self.dfs(level);
+            match sub {
+                Out::Sat => return Out::Sat,
+                Out::Restart => {
+                    self.ext.backtrack_to(mark);
+                    return Out::Restart;
+                }
+                Out::Conflict(cd) => {
+                    self.backtracks += 1;
+                    self.ext.backtrack_to(mark);
+                    if !dep_contains(&cd, level) {
+                        self.backjumps += 1;
+                        return Out::Conflict(cd);
+                    }
+                    fail = dep_union(&fail, &cd);
+                }
+            }
+        }
+        Out::Conflict(dep_remove(&fail, level))
+    }
+
     fn dfs(&mut self, depth: Level) -> Out {
         loop {
             self.steps += 1;
@@ -5518,6 +5648,14 @@ impl Ht {
                 }
                 Scan::Sat => {
                     if self.trace { eprintln!("TR scan-sat depth={}", depth); }
+                    // Before declaring the model complete, discharge any pending ≤n
+                    // qualified-cardinality merge (KM_HT_QMERGE): a still-violated
+                    // AtMost is a non-deterministic choice of which pair to identify.
+                    if self.ext.qmerge {
+                        if let Some(mid) = self.next_merge() {
+                            return self.branch_merge(mid, depth);
+                        }
+                    }
                     return Out::Sat;
                 }
                 Scan::Branch(mut gd) => {
@@ -5658,6 +5796,9 @@ impl Ht {
             if self.force_fast {
                 self.ext.incr2 = true;
                 self.ext.incroblig = true;
+            }
+            if self.force_qmerge {
+                self.ext.qmerge = true;
             }
             self.cache.clear();
             // learned no-goods reference this run's node uids; reset per run.
@@ -8072,6 +8213,85 @@ mod tests {
             Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
         ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
+    }
+    #[test]
+    fn atmost2_qualified_merge_branch_sat() {
+        // KM_HT_QMERGE: ≤2 r.F with three F-successors forces identifying one pair
+        // (the AtMost rule's non-deterministic merge). y0:P, y1:Q, y2:P with
+        // P⊓Q⊑⊥, so only merging the two P-successors avoids a clash — the search
+        // must branch past the two clashing pairs ⇒ {A} SAT. Exercises the merge
+        // branch + backtrack over a clashing choice (the n≥2 case at apply_head).
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const F: C = 10;
+        const P: C = 11;
+        const Q: C = 12;
+        const G0: C = 13;
+        const G1: C = 14;
+        const G2: C = 15;
+        let atmost2 = Clause::new(
+            vec![
+                role(R0, X, 1), con(false, F, 1),
+                role(R0, X, 2), con(false, F, 2),
+                role(R0, X, 3), con(false, F, 3),
+            ],
+            vec![Atom::Eq { s: 1, t: 2 }, Atom::Eq { s: 1, t: 3 }, Atom::Eq { s: 2, t: 3 }],
+        );
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G2, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, Q, X)]),
+            Clause::new(vec![con(false, G2, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G2, X)], vec![con(false, P, X)]),
+            atmost2,
+            Clause::new(vec![con(false, P, X), con(false, Q, X)], vec![]),
+        ];
+        let mut t = ht(cls);
+        t.set_qmerge();
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
+    }
+    #[test]
+    fn atmost2_qualified_merge_branch_unsat() {
+        // KM_HT_QMERGE: ≤2 r.F with three PAIRWISE-disjoint F-successors. Every
+        // identification clashes, so the AtMost cannot be satisfied ⇒ {A} unsat.
+        // Exercises the all-choices-fail conflict path of the merge branch.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const F: C = 10;
+        const P: C = 11;
+        const Q: C = 12;
+        const S: C = 16;
+        const G0: C = 13;
+        const G1: C = 14;
+        const G2: C = 15;
+        let atmost2 = Clause::new(
+            vec![
+                role(R0, X, 1), con(false, F, 1),
+                role(R0, X, 2), con(false, F, 2),
+                role(R0, X, 3), con(false, F, 3),
+            ],
+            vec![Atom::Eq { s: 1, t: 2 }, Atom::Eq { s: 1, t: 3 }, Atom::Eq { s: 2, t: 3 }],
+        );
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G2, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, Q, X)]),
+            Clause::new(vec![con(false, G2, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G2, X)], vec![con(false, S, X)]),
+            atmost2,
+            Clause::new(vec![con(false, P, X), con(false, Q, X)], vec![]),
+            Clause::new(vec![con(false, P, X), con(false, S, X)], vec![]),
+            Clause::new(vec![con(false, Q, X), con(false, S, X)], vec![]),
+        ];
+        let mut t = ht(cls);
+        t.set_qmerge();
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
     }
     #[test]
     fn anywhere_blocking_also_terminates() {
