@@ -19,10 +19,19 @@ sound certify-OR-DEFER race arm behind one flag (default off):
   hybrid+certify-only arm; non-inverse HT-routable onts keep their normal branching
   path. The CB-vs-HT race runs in "race" mode so the fast certify beats a CB that
   would time out.
-- Validated (real pipeline, only `KM_HT_QO_ROUTER=1`): 7581 recovered
-  (565317=gold, 0/0, 89.6 s — hybrid wins the race); 5404 km=1291=gold 0/0 (defers
-  → CB, eliminating the +7/-1 the forced-QO funnel produced); 10127 512=gold 0/0.
-  131 tests pass.
+- The router runs the certify arm in correctness-aware FALLBACK mode (CB preferred
+  whenever it finishes; certify taken only when CB errors/exceeds `KM_HT_BUDGET_S`).
+  This is necessary because the kpset certify is NOT a guaranteed completeness
+  oracle — on ore_ont_15098 it reports `kp_miss=0` but yields 939 where the truth
+  is 951; fallback keeps CB's correct 951, race mode wrongly let the faster
+  incomplete certify win. Sound regardless of the gap: the certify is relied on
+  only where CB produces no answer at all (e.g. 7581's timeout).
+- Router-mode corpus sweep (unimatrix job 7369, real production pipeline, only
+  `KM_HT_QO_ROUTER=1`): **561 ok / 559 clean / 21 timeout; 0 regressions vs
+  baseline.** 7581 recovered (565317=gold, 0/0, 166 s); 15098 km=951=gold (CB wins);
+  the 2 gold-gaps (11745 +5/-1, 6999 −1) are pre-existing (parallel artifact /
+  datatype gap, identical to baseline). 21 timeouts are the known-hard
+  disjunction-family / giant set the hybrid does not target. 131 tests pass.
 
 ### HT/QoSat: corpus validation of the hybrid (0 regressions) + INVCOMPOSE trigger-rebuild fix
 
