@@ -178,6 +178,9 @@ enum Trail {
     /// backtrack revive it (`merged[v] = None`). The copied concepts/edges are
     /// undone by their own (later) trail entries, so this restores the redirect.
     Merge(Node),
+    /// Nominals: a node was recorded as a carrier of nominal concept `c`; on
+    /// backtrack pop the (LIFO-last) entry of `nom_carriers[c]`.
+    NomCarrier(C),
 }
 
 /// A pending propagation event: a freshly added fact / node whose triggered
@@ -345,6 +348,17 @@ pub struct Ext {
     /// even among unblocked nodes a satisfied obligation is skipped without an edge
     /// rescan. Cleared on backtrack (a removed edge can un-satisfy one → re-verify).
     oblig_sat: Vec<bool>,
+
+    /// Nominals (O): the set of concept ids that denote singletons `{o}`. When a
+    /// node freshly gains a positive nominal concept it is recorded as a carrier;
+    /// `process_nominals` deterministically merges all carriers of one nominal into
+    /// the lowest-id survivor (the o-rule). Sound + complete for SHOQ (nominals +
+    /// number, no inverse); SHOIQ additionally needs the NN-rule (not yet here).
+    nominals: HashSet<C>,
+    /// Per-nominal carrier nodes (append-only within a branch; popped on backtrack
+    /// via `Trail::NomCarrier`). Entries may be stale post-merge — `resolve` folds
+    /// them and `process_nominals` dedups the resolved survivors.
+    nom_carriers: HashMap<C, Vec<Node>>,
 }
 
 impl Ext {
@@ -393,6 +407,8 @@ impl Ext {
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
             oblig_sat: Vec::new(),
+            nominals: HashSet::new(),
+            nom_carriers: HashMap::new(),
         }
     }
 
@@ -697,6 +713,13 @@ impl Ext {
                 self.i2_note(node);
                 self.queue.push(Event::Concept(node, lit));
                 self.mark_disj_dirty(node, lit);
+                // Nominals: a fresh positive nominal concept makes `node` a carrier
+                // of that singleton. Recorded (trail-popped on backtrack); the
+                // deterministic merge is deferred to `process_nominals`.
+                if !lit.neg && self.nominals.contains(&lit.c) {
+                    self.nom_carriers.entry(lit.c).or_default().push(node);
+                    self.trail.push(Trail::NomCarrier(lit.c));
+                }
                 true
             }
             Some(existing) => {
@@ -784,6 +807,50 @@ impl Ext {
         }
     }
 
+    /// The nominal o-rule (deterministic, no branch): for each nominal concept,
+    /// merge every distinct carrier into the lowest-id survivor — a singleton `{o}`
+    /// has exactly one element, so any two `__nom__o` carriers denote it. Returns
+    /// true iff a merge happened (the caller re-propagates); a clash during a merge
+    /// sets `self.clash` and returns true. The merge dep is the union of the two
+    /// carriers' nominal-membership deps, so a resulting clash backjumps past the
+    /// choices that put `{o}` on both. Sound + complete for SHOQ.
+    fn process_nominals(&mut self) -> bool {
+        if self.nominals.is_empty() {
+            return false;
+        }
+        let mut changed = false;
+        let noms: Vec<C> = self.nominals.iter().copied().collect();
+        for c in noms {
+            let carriers = match self.nom_carriers.get(&c) {
+                Some(v) if v.len() >= 2 => v.clone(),
+                _ => continue,
+            };
+            let mut survs: Vec<Node> = carriers.iter().map(|&n| self.resolve(n)).collect();
+            survs.sort_unstable();
+            survs.dedup();
+            if survs.len() < 2 {
+                continue;
+            }
+            let lit = CLit { neg: false, c };
+            let keep = survs[0];
+            for &o in &survs[1..] {
+                if self.resolve(keep) == self.resolve(o) {
+                    continue;
+                }
+                let dk =
+                    self.concepts[self.resolve(keep)].get(&lit).cloned().unwrap_or(None);
+                let dobj = self.concepts[o].get(&lit).cloned().unwrap_or(None);
+                let mdep = dep_union(&dk, &dobj);
+                self.merge_into(keep, o, &mdep);
+                changed = true;
+                if self.clash.is_some() {
+                    return true;
+                }
+            }
+        }
+        changed
+    }
+
     pub fn raise_clash(&mut self, dep: DepSet) {
         match &self.clash {
             Some(existing) if dep_max(existing) <= dep_max(&dep) => {}
@@ -858,6 +925,11 @@ impl Ext {
                 Trail::Merge(v) => {
                     if v < self.merged.len() {
                         self.merged[v] = None;
+                    }
+                }
+                Trail::NomCarrier(c) => {
+                    if let Some(v) = self.nom_carriers.get_mut(&c) {
+                        v.pop();
                     }
                 }
             }
@@ -1676,6 +1748,10 @@ pub struct Ht {
     /// smallest-literal watch index into `sat_labels` for the superset check.
     satfold_watch: HashMap<CLit, Vec<usize>>,
     satfold_hits: u64,
+    /// Nominals (O) passed from `run_json` (`set_nominals`); re-applied to
+    /// `ext.nominals` after each per-query `Ext::new` (which resets it). Empty ⇒
+    /// the o-rule is inert.
+    nom_set: Vec<C>,
 }
 
 /// Contrapositive Horn clauses for clash clauses (KM_HT_CONTRA). A clash clause
@@ -4597,6 +4673,7 @@ impl Ht {
             sat_labels: Vec::new(),
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
+            nom_set: Vec::new(),
         };
         if ht.trace {
             let (mut hrole, mut heq, mut hexists, mut hdisj, mut hdisj_ex) = (0, 0, 0, 0, 0);
@@ -4662,6 +4739,12 @@ impl Ht {
     /// Force the n≥2 qualified ≤n merge branch on, independent of KM_HT_QMERGE.
     pub fn set_qmerge(&mut self) {
         self.force_qmerge = true;
+    }
+
+    /// Provide the nominal concept ids (the o-rule singletons `{o}`). Re-applied to
+    /// the per-query `Ext` in `consistent`; empty ⇒ inert.
+    pub fn set_nominals(&mut self, noms: Vec<C>) {
+        self.nom_set = noms;
     }
 
     #[inline]
@@ -5706,6 +5789,19 @@ impl Ht {
                 if self.trace { eprintln!("TR prop-clash depth={}", depth); }
                 return self.conflict_out(self.ext.clash_dep());
             }
+            // Nominals (o-rule): deterministically merge nominal carriers before
+            // expanding obligations / branching, so a singleton's identity is fixed
+            // (and a resulting clash found early). Re-propagate after any merge.
+            if !self.ext.nominals.is_empty() {
+                let merged = self.ext.process_nominals();
+                if self.ext.has_clash() {
+                    if self.trace { eprintln!("TR nominal-clash depth={}", depth); }
+                    return self.conflict_out(self.ext.clash_dep());
+                }
+                if merged {
+                    continue;
+                }
+            }
             let _ot0 = Instant::now();
             let _made = self.process_obligations();
             self.oblig_us += _ot0.elapsed().as_micros();
@@ -5885,6 +5981,10 @@ impl Ht {
             // widens the incremental suffix on edge changes (the signature uses
             // the parent edge). Subset blocking (mode 1) is label-only.
             self.ext.block3 = self.block_mode == 3;
+            // Nominals (o-rule): Ext::new resets the set, so re-apply each rebuild.
+            if !self.nom_set.is_empty() {
+                self.ext.nominals = self.nom_set.iter().copied().collect();
+            }
             self.cache.clear();
             // learned no-goods reference this run's node uids; reset per run.
             self.decisions.clear();
@@ -8377,6 +8477,52 @@ mod tests {
         let mut t = ht(cls);
         t.set_qmerge();
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn nominal_orule_merge_clash_unsat() {
+        // Nominals: A has an r-successor in {o}⊓P and an s-successor in {o}⊓Q with
+        // P⊓Q⊑⊥. The o-rule merges the two {o}-carriers (a singleton) into one
+        // node, uniting P and Q ⇒ clash ⇒ {A} unsat. Exercises process_nominals
+        // and the merge dep flowing into the clash.
+        const N: C = 20;
+        const P: C = 11;
+        const Q: C = 12;
+        const G0: C = 13;
+        const G1: C = 14;
+        const R1: R = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R1, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, N, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, N, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, Q, X)]),
+            Clause::new(vec![con(false, P, X), con(false, Q, X)], vec![]),
+        ];
+        let mut t = ht(cls);
+        t.set_nominals(vec![N]);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn nominal_orule_merge_sat() {
+        // Same shape, but both {o}-carriers carry the SAME concept P (no clash):
+        // the o-rule merges them into one individual and the model is SAT.
+        const N: C = 20;
+        const P: C = 11;
+        const G0: C = 13;
+        const G1: C = 14;
+        const R1: R = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R1, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, N, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, N, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, P, X)]),
+        ];
+        let mut t = ht(cls);
+        t.set_nominals(vec![N]);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
     #[test]
     fn anywhere_blocking_also_terminates() {

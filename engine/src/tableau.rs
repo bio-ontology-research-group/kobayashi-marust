@@ -4495,15 +4495,28 @@ pub fn run_json(input: &str) -> Result<String, String> {
     // inverse/number onts for measurement — otherwise such onts fall through to
     // the legacy tableau here, never reaching Ht.
     let ht_force = std::env::var_os("KM_HT_FORCE").is_some();
+    // KM_HT_NOMINALS: route nominal (but inverse-free) KBs — SHOQ / SHON — to the
+    // fast Ht, which now carries the nominal o-rule (`set_nominals`) composed with
+    // the ≤n merge (qmerge) and pairwise blocking. Inverse stays fenced (SHOIQ
+    // needs the NN-rule, not yet ported).
+    let ht_nom = std::env::var_os("KM_HT_NOMINALS").is_some();
     if std::env::var_os("KM_HT").is_some()
-        && (ht_force || (!inp.number && !inp.inverse && inp.nominals.is_empty()))
+        && (ht_force
+            || (!inp.number && !inp.inverse && inp.nominals.is_empty())
+            || (ht_nom && !inp.inverse))
     {
         let ht_clauses = clauses.clone();
         let q = queries.clone();
+        let noms = inp.nominals.clone();
         let res = std::thread::Builder::new()
-            .stack_size(1usize << 30)
+            // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
+            // branch level; SHOQ number+nominal search can nest tens of thousands
+            // deep, overflowing the prior 1 GiB reservation. Virtual, so the unused
+            // tail costs nothing.
+            .stack_size(4usize << 30)
             .spawn(move || {
                 let mut ht = hypertableau::Ht::new(ht_clauses);
+                ht.set_nominals(noms);
                 if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
                         Some(r) => Some(r),
