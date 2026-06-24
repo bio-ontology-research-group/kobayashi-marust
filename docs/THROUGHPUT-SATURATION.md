@@ -253,3 +253,17 @@ pass is also correct), NOT route to per-concept SAT. Two scopes:
   without reproducing the shared-filler pollution. Smaller scope than global lever C
   and leverages QO's measured speed; the most tractable sound fix. Still a real
   change to the filler/saturation machinery (and eventual Lean re-cert), not a flag.
+
+### Complete HT also times out on 9724 (cardinality) — every existing path exhausted
+9724 reports `inverse=false (bridges) number=true` — it has cardinality, so its
+per-concept models are not deterministic either. Complete HT classify (HORNFAST,
+PAR=8, WITREUSE) on its 23136 concepts TIMES OUT at 150 s (318 MB). Combined with
+the 7914 results, EVERY path over existing machinery + ports #1/#2 fails within
+150 s for the two most tractable members: CB (OOM 19 GB), QO-sound (defers),
+QO-force (unsound, 190539 vs 141517), complete-HT-all (timeout), and the
+clean-bulk + complete-residue hybrid (timeout on a few explosive concepts). The
+family genuinely needs NEW sound algorithmic capability — sound fast `∀`
+(non-shared/blocked successors), in-saturation cardinality bound+merge, AND
+disjunction search-convergence — i.e. the SHIQ-completion saturation re-architecture
+(project_km_shiq_ht Phase 3), not the two named ports. Confirmed by exhaustive
+measurement, not assumed.
