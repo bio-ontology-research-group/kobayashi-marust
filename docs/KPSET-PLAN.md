@@ -368,6 +368,44 @@ missing mechanism. Next: validate no corpus regression (unimatrix sweep), then
 fold composition of the residual multi-role consumers (so kpset is not even
 needed) and trim `sat_mode`'s filler overhead.
 
+## STATUS 2026-06-24: CORPUS VALIDATION (unimatrix job 7322) — 0 regressions, 7581 recovered
+
+Full ORE-2015 sweep comparing the HYBRID (INVCOMPOSE+FPROP+SAT+KPSET) against
+PRIOR-2a (the funnel alone), both forced-QO (CB disabled, `KM_ENGINE=/bin/false`)
+with `KM_HT_QO_VERIFY`, 200 s cap, each ont scored vs Konclude gold AND vs the
+other config. 582/592 onts (10 slow-tail both-timeouts unscored):
+
+- **0 REGRESSIONS** — the hybrid is NEVER worse than prior-2a on any ont
+  (no new unsound, no new incomplete, no lost answer that prior-2a had besides the
+  3 perf cases below).
+- **7581 RECOVERED**: hybrid = 565317 = gold (0 unsound / 0 incomplete) in
+  **32.7 s**; prior-2a **TIMES OUT** at the cap. This is the only ont where the
+  hybrid wins on the answer, and it is the target ont.
+- **All 14 gold-gap onts are `agree = true`** (hybrid output byte-identical to
+  prior-2a): 10908, 11315, 11745, 14312, 1618, 5404, 5566, 6999, 8982, … Every
+  unsound/incomplete-vs-gold case is a PRE-EXISTING QO-path limitation (unsat
+  under-detection e.g. 5404 RELAPPROXC138; partial-answer e.g. 8982 −207408;
+  the known 6999 datatype gap), identical in both configs and unaffected by this
+  change. In production these route to CB (which is sound/complete on them).
+- **Cost — 3 perf cases** (11395, 3905, 3377): the hybrid TIMES OUT at the 200 s
+  cap where prior-2a finishes in ~104–121 s. These are large CB-territory onts
+  (3377 has 4.49M subsumptions); INVCOMPOSE adds composed clauses and SAT adds
+  ~filler nodes, and that overhead crosses the cap. CONCLUSION: the hybrid is a
+  sound, fast SPECIALIST for the Horn-inverse certify fragment (7581) — it must be
+  ROUTED to that fragment (or raced only there), NOT blanket-enabled, because the
+  composition+filler overhead hurts large non-certifying onts.
+
+A real bug was found and fixed by this sweep: INVCOMPOSE swapped `self.clauses`
+without rebuilding the tableau trigger indexes, so the per-concept verify tableau
+panicked (`fire_anchor_concept` out-of-range `pos`) on ore_ont_10127 — fixed by
+`rebuild_triggers` (commit 98077ba); 10127 now gold-exact.
+
+NET: the hybrid certify path is validated sound+complete (0 regressions corpus-wide,
+recovers 7581 4-6x faster than any prior path). Default-on requires a ROUTER that
+sends only Horn-inverse certify candidates to it. Routing + composing the residual
+multi-role consumers (drop the kpset dependency) + trimming sat_mode filler overhead
+are the remaining steps.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**

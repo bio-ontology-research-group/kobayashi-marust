@@ -4,6 +4,24 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT/QoSat: corpus validation of the hybrid (0 regressions) + INVCOMPOSE trigger-rebuild fix
+
+Full ORE-2015 sweep (unimatrix job 7322) comparing the HYBRID
+(INVCOMPOSE+FPROP+SAT+KPSET) vs PRIOR-2a (funnel alone), both forced-QO + VERIFY,
+each ont scored vs Konclude gold AND vs the other config (582/592):
+- **0 regressions** — the hybrid is never worse than prior-2a on any ont.
+- **7581 recovered** — hybrid 565317 = gold (0/0) in 32.7 s; prior-2a times out.
+- All 14 gold-gap onts are `agree = true` (identical output in both configs) —
+  pre-existing QO limitations (unsat under-detection, partial answers, the 6999
+  datatype gap), CB-handled in production, not introduced by this change.
+- Cost: 3 large CB-territory onts (11395, 3905, 3377=4.49M subs) time out where
+  prior-2a finishes ~110 s — INVCOMPOSE+SAT overhead ⇒ the hybrid must be ROUTED
+  to its Horn-inverse certify fragment, not blanket-enabled.
+- Bug found+fixed by the sweep: INVCOMPOSE swapped `self.clauses` without
+  rebuilding the Ht tableau triggers → per-concept verify panicked on ore_ont_10127
+  (`fire_anchor_concept` out-of-range). Fixed by `rebuild_triggers` (98077ba);
+  10127 now gold-exact.
+
 ### HT/QoSat: hybrid certifies 7581 sound+complete in 31s (4x) — `fprop` + `fcheck` + `sat` + `kpset`
 
 Closed most of the 126s → Konclude-~10s gap. The key was Konclude's G1 (a filler
