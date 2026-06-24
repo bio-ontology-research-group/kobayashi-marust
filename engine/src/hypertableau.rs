@@ -3874,6 +3874,46 @@ impl<'a> QoSat<'a> {
 }
 
 impl Ht {
+    /// Recompute the tableau trigger indexes (`concept_triggers`,
+    /// `role_triggers`, `global_clauses`, `global_disj`) from the CURRENT
+    /// `self.clauses`. Must be called whenever `self.clauses` is replaced after
+    /// construction (e.g. `KM_HT_QO_INVCOMPOSE` swaps in the composed clause
+    /// set): the trigger lists hold `(cid, pos)` pairs that index into the clause
+    /// records, so a stale index fires `fire_anchor_concept`/`_role` at an
+    /// out-of-range `pos` against the new clauses and panics. Same logic as the
+    /// inline build in `new`.
+    fn rebuild_triggers(&mut self) {
+        let mut concept_triggers: HashMap<CLit, Vec<(usize, usize)>> = HashMap::new();
+        let mut role_triggers: HashMap<R, Vec<(usize, usize)>> = HashMap::new();
+        let mut global_clauses = Vec::new();
+        let mut global_disj = Vec::new();
+        for (cid, rec) in self.clauses.iter().enumerate() {
+            if rec.1.is_empty() {
+                global_clauses.push(cid);
+                let nhc = rec.0.head.iter().filter(|a| matches!(a, Atom::Concept { .. })).count();
+                if nhc >= 2 {
+                    global_disj.push(cid);
+                }
+            }
+            for (pos, a) in rec.1.iter().enumerate() {
+                match *a {
+                    Atom::Concept { lit, .. } => {
+                        concept_triggers.entry(lit).or_default().push((cid, pos));
+                    }
+                    Atom::Role { r, .. } => {
+                        role_triggers.entry(r).or_default().push((cid, pos));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        self.global_disj_set = global_disj.iter().copied().collect();
+        self.global_disj = global_disj;
+        self.global_clauses = global_clauses;
+        self.concept_triggers = concept_triggers;
+        self.role_triggers = role_triggers;
+    }
+
     pub fn new(clauses: Vec<Clause>) -> Ht {
         let mut clauses = clauses;
         // KM_HT_TRIGABS: trigger-keyed binary absorption — rewrite global
@@ -6701,6 +6741,12 @@ impl Ht {
                 );
             }
             self.clauses = mk_recs(&composed);
+            // The tableau trigger indexes were built in `new` from the ORIGINAL
+            // clauses; rebuild them for the composed set so the per-concept verify
+            // tableau (`consistent`) fires valid `(cid, pos)` anchors. Without this
+            // `fire_anchor_concept` indexes a stale `pos` out of range and panics
+            // (observed on ore_ont_10127 under the hybrid).
+            self.rebuild_triggers();
         }
         // KM_HT_QO_KPSET: Konclude G2/G3 inverse-aware single pass — sound+complete
         // and forward-only-fast when no inverse contribution is load-bearing
