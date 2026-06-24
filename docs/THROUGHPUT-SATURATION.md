@@ -232,3 +232,24 @@ runs it per-concept; lever C means running it ONCE as the shared model. That is 
 saturation re-architecture (`saturate_global` / `ensure_filler` / `apply_head`),
 the next port — larger than #1/#2 and not requested by name, but it is what the
 data demands.
+
+### Hybrid ruled out; QO speed is fine — the sole blocker is ∀-pollution soundness
+Tested the clean-bulk + complete-residue hybrid (KM_HT_QO_DUMP_AFFECTED → restrict
+queries → complete HT on affected only):
+- 300 affected concepts: 11 s. **1000 affected: TIMEOUT (>150 s).** Non-linear — a
+  HANDFUL of affected concepts are pathologically explosive under full per-concept
+  SAT (the live-disjunction search problem, cf. 5303). So routing the residue to the
+  complete tableau does NOT work: a few hard concepts blow the budget.
+- BUT the QO branching pass itself classified ALL of 7914 (all 67 disjunctions) in
+  **55 s** — QO handles the disjunctions fine; it is FASTER and better-behaved than
+  full HT per-concept search here. Its only defect is the ∀-shared-filler
+  over-approximation (190539 vs 141517).
+
+So the lever is unambiguous: **make QO's `∀` handling SOUND** (so its fast single
+pass is also correct), NOT route to per-concept SAT. Two scopes:
+- GLOBAL (lever C): non-shared / pairwise-blocked successors in `saturate_global`.
+- RESIDUE-LOCAL: fresh non-shared fillers only inside `qo_residue_test`'s subtree
+  branch (bounded, per affected concept), so the verify decides `A⊓¬B` soundly
+  without reproducing the shared-filler pollution. Smaller scope than global lever C
+  and leverages QO's measured speed; the most tractable sound fix. Still a real
+  change to the filler/saturation machinery (and eventual Lean re-cert), not a flag.
