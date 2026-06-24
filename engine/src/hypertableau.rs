@@ -2302,6 +2302,17 @@ struct QoSat<'a> {
     /// MEASURE whether that core actually perturbs the final subsumptions for a
     /// given ont (diff vs gold). Never a production answer.
     residue_unsafe: bool,
+    /// KM_HT_QO_SHIQ (P2.1, the sound SHIQ completion): build NON-SHARED
+    /// successors (each ∃ makes a fresh node owned by its creating source) with
+    /// ancestor subset blocking for termination — Konclude's mechanism
+    /// (`createSuccessorIndividual` + `applyALLRule` forward over genuine edges +
+    /// optimized subset blocking). Eliminates the shared-filler ∀ pollution
+    /// (`qo_insufficient` critical-ALL) at the source: a `∀R.C` write now lands on
+    /// the source's OWN successor, never a node another source also reaches.
+    shiq: bool,
+    /// P2.1 ancestor link (parallel to `label`): the predecessor node that created
+    /// this successor, for the blocking ancestor walk. `None` for roots/self-nodes.
+    qo_parent: Vec<Option<Node>>,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -2689,6 +2700,8 @@ impl<'a> QoSat<'a> {
                 .unwrap_or(64u32),
             residue_tainted: false,
             residue_unsafe: std::env::var_os("KM_HT_QO_RESIDUE_FORCE").is_some(),
+            shiq: std::env::var_os("KM_HT_QO_SHIQ").is_some(),
+            qo_parent: Vec::new(),
         }
     }
 
@@ -2735,6 +2748,7 @@ impl<'a> QoSat<'a> {
         self.in_edges.push(Vec::new());
         self.node_range.push(0);
         self.is_filler.push(false);
+        self.qo_parent.push(None);
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
@@ -2903,6 +2917,28 @@ impl<'a> QoSat<'a> {
             self.kp_finalize();
         }
         self.finish(root)
+    }
+
+    /// P2.1b optimized subset blocking (Konclude `isLabelConceptOptimizedBlocking`).
+    /// `n` (a non-shared successor) is BLOCKED if some proper ancestor `a` along the
+    /// `qo_parent` chain has `label[n] ⊆ label[a]` (B1). A blocked node's
+    /// existentials are not expanded — the ancestor already witnesses the same (or a
+    /// larger) successor pattern, so a fresh subtree is redundant. This bounds the
+    /// per-source expansion that otherwise blows up (27 GB on 7914 without it).
+    /// (B2 — the parent must carry the blocker's `∀r`-operands — is required for
+    /// completeness under inverse roles and is added in the next increment; with
+    /// `KM_HT_QO_INVCOMPOSE` the inverse is composed to forward writes, which limits
+    /// the B1-only exposure.)
+    fn qo_blocked(&self, n: Node) -> bool {
+        let ln = &self.label[n];
+        let mut a = self.qo_parent[n];
+        while let Some(p) = a {
+            if ln.len() <= self.label[p].len() && ln.is_subset(&self.label[p]) {
+                return true;
+            }
+            a = self.qo_parent[p];
+        }
+        false
     }
 
     /// Global saturation: seed one shared node per named concept (positive
@@ -3363,6 +3399,8 @@ impl<'a> QoSat<'a> {
                     self.out_edges.pop();
                     self.in_edges.pop();
                     self.node_range.pop();
+                    self.qo_parent.pop();
+                    self.is_filler.pop();
                 }
                 QoUndo::Unsat(n) => {
                     self.node_unsat.remove(&n);
@@ -3856,7 +3894,11 @@ impl<'a> QoSat<'a> {
                     // and never pollute.)
                     if t != X {
                         let cls = self.node_range[n] as usize;
-                        let clean = cls != 0 && self.class_set[cls].contains(&lit);
+                        // P2.1: under `shiq` the successor `n` is the source's OWN
+                        // non-shared node, so this ∀-write is sound exactly as in
+                        // Konclude's `applyALLRule` (forward over a genuine edge into
+                        // an independent successor). No critical-ALL insufficiency.
+                        let clean = self.shiq || (cls != 0 && self.class_set[cls].contains(&lit));
                         if !clean {
                             self.qo_insufficient = true;
                             // KM_HT_QO_CARD per-node split: the write into successor
@@ -3896,6 +3938,44 @@ impl<'a> QoSat<'a> {
                     let n = sigma[t as usize].expect("head var bound");
                     if self.node_unsat.contains(&n) {
                         return;
+                    }
+                    if self.shiq {
+                        // P2.1 (Konclude `createSuccessorIndividual`): a NON-SHARED
+                        // successor owned by `n`. `∀R.C` from `n` lands here and can
+                        // never pollute another source's filler. Reuse `n`'s own
+                        // existing r-successor carrying `fil` (idempotent per source);
+                        // otherwise create a fresh node with parent link `n` (for the
+                        // ancestor blocking walk).
+                        // P2.1b ANCESTOR SUBSET BLOCKING (Konclude
+                        // `detectIndividualNodeBlockedStatus` / optimized subset): if
+                        // `n` is blocked by an ancestor whose label is a superset, do
+                        // NOT expand `n`'s existentials — the ancestor already
+                        // witnesses an identical (or larger) successor pattern, so a
+                        // fresh subtree is redundant. This is what bounds the
+                        // otherwise-unbounded per-source expansion (27 GB on 7914).
+                        if self.qo_blocked(n) {
+                            satisfied = true;
+                            break;
+                        }
+                        let existing = self.out_edges[n]
+                            .iter()
+                            .find(|(rr, tt)| *rr == r && self.label[*tt as usize].contains(&fil))
+                            .map(|&(_, tt)| tt);
+                        let f = match existing {
+                            Some(f) => f,
+                            None => {
+                                let f = self.new_node();
+                                self.qo_parent[f] = Some(n);
+                                self.is_filler[f] = true;
+                                self.add_lit(f, fil);
+                                f
+                            }
+                        };
+                        if !self.out_edges[n].iter().any(|(rr, tt)| *rr == r && *tt == f) {
+                            self.add_edge(n, r, f);
+                        }
+                        satisfied = true;
+                        break;
                     }
                     let f = self.ensure_filler(r, fil);
                     if !self.out_edges[n].iter().any(|(rr, tt)| *rr == r && *tt == f) {

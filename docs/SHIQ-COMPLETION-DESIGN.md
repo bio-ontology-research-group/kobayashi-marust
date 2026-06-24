@@ -156,6 +156,38 @@ Reading subsumers stays as in the current card-split: clean concepts emit their
 (now-sound) labels directly; concepts touching the open disjunction core get the
 all-completion confirm — now sound because the model is sound.
 
+## P2.1 built + measured (KM_HT_QO_SHIQ, gated, 131 tests pass)
+
+Implemented non-shared per-source successors in the `Exists` case (a fresh node
+owned by the creating source, parent link recorded) + suppressed the critical-ALL
+∀ insufficiency under `shiq` (the write now lands on the source's OWN node = sound,
+exactly Konclude `applyALLRule` forward-over-genuine-edge) + `qo_blocked` ancestor
+subset blocking (B1).
+
+**Measured on 7914 (isolated `km tableau`):**
+- P2.1a (no blocking): sound ∀, but 27 GB + timeout — unbounded per-source
+  expansion.
+- P2.1b (B1 subset blocking): still 31 GB OOM at 1:29.
+
+**Root cause (the crux):** blocking bounds each tree's DEPTH, not the BREADTH across
+the 17680 concept roots. A shared single pass that holds ALL concepts' non-shared
+successor trees simultaneously is inherently ×concepts memory. Konclude does NOT
+hold them all at once: it builds per-concept completions ONE AT A TIME and uses
+SATURATION CACHING (`tryEstablishSaturationCaching`) to reuse expansion WORK
+(cached saturated labels + blocking predictions) across concepts without the
+simultaneous memory. So:
+
+**Revised architecture.** "Sound non-shared ∀" and "one shared in-memory pass" are
+in tension. The viable shape is per-concept completion (`Ht::consistent`, already
+sound with block_mode=3 + KM_HT_NUMBER) made FAST by a Konclude-grade saturation
+cache — content-addressed by a node's initial forced-concept set: expand a given
+label pattern once, reuse its saturated result + blocking status for every later
+node with the same pattern. KM's `KM_HT_WITREUSE`/`satcache` are partial versions
+that did not suffice; the real lever is caching the deterministic sub-saturation +
+blocking the way `tryEstablishSaturationCaching` does. THIS is the hard core and the
+next piece (P2.4 promoted ahead of P2.2/P2.3). The P2.1 non-shared-successor code
+stays gated as the sound-∀ substrate the cache will sit on.
+
 ## Build/validate plan (incremental, on ws/IBEX — never the laptop)
 
 Gated behind `KM_HT_QO_SHIQ` so the established paths are untouched until validated.
