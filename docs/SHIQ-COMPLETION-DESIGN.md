@@ -200,3 +200,18 @@ Gated behind `KM_HT_QO_SHIQ` so the established paths are untouched until valida
 5. Run the 9 family onts vs gold (`/ibex/.../gold`), 150 s cap, iterate.
 6. Full 587-corpus regression (no soundness/coverage regression) before default-on.
 7. Lean re-cert LAST (per the user's standing rule), once the rule set is final.
+
+## Decisive scale finding (600 s correctness run, 2026-06-24)
+
+Correctly-configured SOUND complete-HT (block_mode=3 + KM_HT_NUMBER + satcache +
+lblcache + satfold + witreuse + incr + PAR=8) at a 600 s budget (4× the 150 s
+target): 9724 → TIMEOUT 600 s, 7914 → TIMEOUT 600 s, both no sig.
+
+So the gap is ORDERS OF MAGNITUDE, not a constant factor: incremental mode-3
+blocking + the existing caches will not bring the sound per-concept path within even
+4× budget. Reaching Konclude's <150 s requires Konclude's full saturation-caching
+completion (subtree-level cached saturations + saturation-blocking prediction +
+disjunction delaying) — effectively a reimplementation of its completion engine, a
+multi-month effort, not a single optimisation. The P2.1 sound-∀ substrate (committed,
+gated KM_HT_QO_SHIQ) is the correct foundation; the speed core (P2.2-P2.4 to
+Konclude's standard) is the bulk of the remaining work and is genuinely large.
