@@ -178,3 +178,57 @@ The two concrete ports remaining (both in `hypertableau.rs`, no Lean until the e
    (0 disjunctions) so after that it is a clean deterministic saturation.
 The disjunction-heavy members (7499: 7606, 3215: 18 323, 15672/10908 nominal+disj)
 are the disjunction-family search-convergence problem, tracked separately.
+
+## Session 3 (2026-06-24): both ports built+tested — the real blocker is ∀ pollution
+
+Both ports from the previous session are implemented, gated, and pass the 131-test
+suite:
+- **Port #2 `KM_HT_QO_INVCHAIN`** (in `compose_inverse`): composes a purely-virtual
+  inverse role (single bridge source, not otherwise produced) away even inside a
+  multi-role/chain body, dropping the bridge so no reversed edge is materialised.
+- **Port #1 `KM_HT_QO_RESIDUE`** (in `qo_classify_kpset`): completes the affected
+  (residue) concepts on the already-built shared model — one global completion to
+  harvest candidate extras + per-subtree `A⊓¬B` verify (checkpoint/rollback, no
+  rebuild). Gated SOUND to the pure-disjunction case; `residue_tainted` defers any
+  concept whose verify touches a deferred-insufficient (∀/cardinality) node.
+
+### Measured structure (KPSET+CARD+INVCHAIN, IBEX)
+| ont  | concepts | clean | residue | pending(⊔) | insuff_nodes | qo_insuff | inv_edges |
+|------|----------|-------|---------|------------|--------------|-----------|-----------|
+| 9724 | 23136    | 2815  | 20321   | 0 (Horn)   | 34012        | true      | 2.43 M    |
+| 7914 | 17680    | 10509 | 7171    | 67         | 173          | true      | 23 869    |
+
+INVCHAIN composes 395 bridge roles on 9724, 2 on 7914 — but the dominant cost is
+NOT inverse-chain edges or disjunction residue. It is **∀-shared-filler pollution**
+(`qo_insufficient`, the `apply_head` critical-ALL case): a `∀R.C` write lands on a
+filler shared across sources, so the shared-node label over-approximates. On 9724
+that is 34012/37251 nodes; on 7914 only 173 nodes but still enough to set
+`qo_insufficient` and block the sound residue gate.
+
+### The fast lazy arm works; the complete arm is too slow (isolated, `km tableau` on a dumped TInput)
+- **7914 fast QO pass**: 55 s / **512 MB**, correctly emits the 10509 clean
+  concepts. With `KM_HT_QO_RESIDUE_FORCE` (gate bypassed, taint suppressed) it runs
+  to completion but emits **190539 subs vs gold 141517** (~49 k spurious from the
+  affected concepts' polluted forward labels), and the polluted global model has no
+  clash-free completion (`phase1 sat=false`). So the force result is unsound — as
+  expected; the pollution is real.
+- **Complete HT classify** (the sound, non-shared-filler, per-concept path) on all
+  17680 concepts **TIMES OUT at 150 s** (277 MB), even with `KM_HT_PAR=8 +
+  KM_HT_HORNFAST + KM_HT_WITREUSE` (412 % CPU). The per-concept tableau builds
+  (inverse + cardinality + blocking) are individually expensive and there are too
+  many of them.
+
+### Conclusion: neither requested port solves the family alone
+The blocker is a pincer: the fast lazy pass is UNSOUND on these onts (∀ pollution),
+and the sound complete pass is TOO SLOW (per-concept SAT count). Pruning the
+over-approximation cheaply is not possible from the lazy side (cheap pseudo-model
+merge refutes non-subsumptions, i.e. the lower-bound direction; the pollution is an
+upper-bound error). The genuine lever is **Konclude lever C**: make the single
+shared saturation SOUND for `∀` by using the completion-graph semantics
+(non-shared / pairwise-blocked successors) instead of shared role-keyed fillers.
+Then `qo_insufficient` never fires, clean% → ~100 %, and the one pass classifies
+directly. KM already has the completion graph + blocking inside `Ht.classify`, but
+runs it per-concept; lever C means running it ONCE as the shared model. That is a
+saturation re-architecture (`saturate_global` / `ensure_filler` / `apply_head`),
+the next port — larger than #1/#2 and not requested by name, but it is what the
+data demands.
