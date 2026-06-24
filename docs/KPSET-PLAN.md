@@ -406,6 +406,38 @@ sends only Horn-inverse certify candidates to it. Routing + composing the residu
 multi-role consumers (drop the kpset dependency) + trimming sat_mode filler overhead
 are the remaining steps.
 
+## STATUS 2026-06-24 (router): wired `KM_HT_QO_ROUTER` + found the certify is NOT a complete oracle
+
+Wired the hybrid as a structurally-routed race arm (`KM_HT_QO_ROUTER`): `spawn_ht`
+detects inverse BRIDGE clauses (`has_inverse_bridge`; cb_to_ht reports
+`inverse=false` for the bridge encoding, so `tin.inverse` is the wrong signal) and
+spawns the HT worker with the hybrid + `KM_HT_QO_CERTIFY_ONLY` flags for faithful,
+nominal-free, inverse-bridge onts; `quasi_order_classify` then certifies-or-defers
+(no funnel), and the tableau worker emits no answer on a deferral so CB decides.
+
+**The router-mode corpus sweep found a real completeness gap in the certify.** On
+ore_ont_15098 the kpset certify reports `kp_miss=0` (sound+complete) but yields 939
+subsumptions where the truth is 951 — it MISSES 12 inverse-entailed subsumptions of
+internal `Q_*` definers through the `for`/`is_supported_by` inverse pairs. So
+`kp_miss=0` is NOT a guaranteed completeness certificate: the composed-forward +
+kpset saturation can silently miss inverse-entailed subsumptions even when nothing
+trips insufficiency. (7581 certifies completely; 15098 does not — the distinguishing
+structural condition is not yet characterised.)
+
+This was MASKED earlier: the hybrid-vs-prior sweep ran in fallback mode where CB's
+correct 951 was always preferred, so the certify's 939 never surfaced. The first
+router used "race" mode (first valid wins), letting the faster incomplete certify
+beat CB → wrong answer.
+
+**Fix (sound): the router runs the certify arm in FALLBACK mode** — CB (trusted
+sound+complete) preferred whenever it finishes; the certify taken ONLY when CB
+errors or exceeds `KM_HT_BUDGET_S`. 15098: CB finishes first ⇒ 951 kept (correct).
+7581: CB times out ⇒ certify taken ⇒ recovered. So the router is sound regardless of
+the certify gap — it only relies on the certify where CB produces NO answer at all.
+The certify-completeness gap (make `kp_miss=0` a true oracle, or characterise the
+safe fragment) is the remaining work before the certify could be trusted as a
+primary (non-fallback) answer.
+
 ## Implementation plan for KM (`engine/src/hypertableau.rs`, `QoSat`)
 
 **Phase A — certain/possible label split + status-only reads (G1/G2).**
