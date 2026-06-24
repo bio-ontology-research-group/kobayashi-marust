@@ -7096,6 +7096,17 @@ impl Ht {
                         }
                     }
                 }
+                // KM_HT_QO_DUMP_AFFECTED=<path>: write the affected (residue) query
+                // concept IDs (one per line), to feed a complete-SAT pass restricted
+                // to the residue — the lazy-clean-bulk + complete-residue hybrid.
+                if let Some(p) = std::env::var_os("KM_HT_QO_DUMP_AFFECTED") {
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::File::create(&p) {
+                        for &(a, _) in &residue_nodes {
+                            let _ = writeln!(f, "{}", a);
+                        }
+                    }
+                }
                 if trace {
                     eprintln!(
                         "QOKP card-split: clean={} affected(residue)={} of {} | clean_subs={} clean_unsat={} insuff_nodes={}",
