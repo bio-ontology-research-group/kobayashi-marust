@@ -6764,14 +6764,28 @@ impl Ht {
             // node over `in_edges` (NF4/∀ propagate filler→predecessor up the forward
             // out-edges, so an insufficiency at `n` can only have polluted forward
             // ancestors of `n`).
-            if qk.card_defer && !g.unsupported && qk.pending.is_empty() {
+            if qk.card_defer && !g.unsupported {
                 let nn = qk.label.len();
                 let mut affected = vec![false; nn];
                 let mut stack: Vec<Node> = Vec::new();
+                // Affected seeds = every node carrying a deferred obligation:
+                //  - cardinality Eq-head / critical-∀ writes (kp_insuff_nodes),
+                //  - inverse containment misses (kp_check_head also records these),
+                //  - PARKED DISJUNCTION anchors: a node with an unresolved ⊔ has an
+                //    incomplete label, so any concept whose model reaches it is
+                //    affected. Seeding them lets the CLEAN bulk emit even while a
+                //    small disjunction/cardinality core remains (the family members
+                //    have a tiny hard core in a deterministic bulk).
                 for &n in &qk.kp_insuff_nodes {
                     if n < nn && !affected[n] {
                         affected[n] = true;
                         stack.push(n);
+                    }
+                }
+                for &(anchor, _cid) in &qk.pending {
+                    if anchor < nn && !affected[anchor] {
+                        affected[anchor] = true;
+                        stack.push(anchor);
                     }
                 }
                 while let Some(n) = stack.pop() {

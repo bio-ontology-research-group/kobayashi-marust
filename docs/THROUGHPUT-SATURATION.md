@@ -63,6 +63,29 @@ complete-tableau path, which is fine when the residue is a small tail (7581:
 `kp_miss=0`, residue ≈ 0) but collapses when `≤`+inverse are pervasive (the whole
 near-Horn SRIQ family), because the residue becomes ~the whole ontology.
 
+## Per-node CLEAN% measured across the family (KM_HT_QO_CARD, pending-aware)
+
+The per-node split emits the saturated answer for concepts whose self-node cannot
+forward-reach any deferred node (cardinality Eq / critical-∀ / inverse-miss /
+parked-disjunction anchor). Measured CLEAN fraction of named query concepts:
+
+| ont | clean / queries | residue | hard core | verdict |
+|-----|-----------------|--------:|-----------|---------|
+| 7914 | 10509 / 17680 (59 %) | 7171 | pending=67, insuff=173, kp_miss=855 | best, still 41 % residue |
+| 9724 | 2815 / 23136 (12 %)  | 20321 | inv_edges=2.5M, kp_miss=66M | pervasive inverse |
+| 7499 | 1 / 5109 (0.02 %)    | 5108  | pending=7606 disjunctions | pervasive disjunction |
+| 9663 / 14817 | global saturation does not complete in 400 s | — | 58–60 k concepts | does not scale |
+
+So the clean emit alone solves NONE: even 7914's hard core (a few hundred nodes)
+has a reverse-reach closure covering 41 % of concepts because the graph is
+well-connected; its clean subsumptions are 62529 of the 141517 gold. Completing
+the residue needs a cardinality+inverse+disjunction-complete method on the
+residue (the gap below), or the residue must first be shrunk by handling inverse
+and cardinality IN the saturation. Complete-HT + full search discipline
+(`KM_HT_FORCE`+`KM_HT_NUMBER`+`INCRBLOCK2`+`INCROBLIG`+`EAGER`+`SATFOLD`) on the
+smallest member 7499 also TIMES OUT (600 s, 18.5 GB). No existing flag or
+combination classifies any of the 9 in budget.
+
 ## Plan (the real fix — a global-saturation re-architecture, like the 7581 QoSat work)
 
 To classify these in one pass like Konclude, the GLOBAL saturation must handle
