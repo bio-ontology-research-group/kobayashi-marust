@@ -2285,6 +2285,23 @@ struct QoSat<'a> {
     /// every cardinality-unaffected concept and the per-node CLEAN split certifies
     /// them from the forward closure (the SHIF throughput onts: 9724 etc.).
     card_defer: bool,
+    /// Per-branch DFS deadline (ms) and depth cap for `qo_branch_dfs`. Defaults
+    /// match the historical hardcoded 4000ms / depth 64; the residue model-reuse
+    /// (port #1) needs a more generous budget to complete the open core of a
+    /// disjunction-heavy ont (7914: 67 disjunctions), tunable via KM_HT_QO_RES_MS.
+    branch_ms: u128,
+    branch_depth: u32,
+    /// Set while a residue verify (`qo_residue_test`) is branching a subtree that
+    /// touched a deferred-insufficient node (cardinality Eq-head / critical-ALL).
+    /// The shared-model branch cannot decide such a concept soundly, so the test
+    /// returns None (defer) instead of a possibly-wrong verdict.
+    residue_tainted: bool,
+    /// KM_HT_QO_RESIDUE_FORCE (DIAGNOSTIC, unsound): bypass the residue soundness
+    /// gate and suppress tainting, so the residue model-reuse runs to completion
+    /// even when an insufficient (∀/cardinality) core is present. Used only to
+    /// MEASURE whether that core actually perturbs the final subsumptions for a
+    /// given ont (diff vs gold). Never a production answer.
+    residue_unsafe: bool,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -2662,6 +2679,16 @@ impl<'a> QoSat<'a> {
             is_filler: Vec::new(),
             sat_filler: HashMap::new(),
             card_defer: std::env::var_os("KM_HT_QO_CARD").is_some(),
+            branch_ms: std::env::var("KM_HT_QO_RES_MS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(4000u128),
+            branch_depth: std::env::var("KM_HT_QO_RES_DEPTH")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(64u32),
+            residue_tainted: false,
+            residue_unsafe: std::env::var_os("KM_HT_QO_RESIDUE_FORCE").is_some(),
         }
     }
 
@@ -3480,12 +3507,12 @@ impl<'a> QoSat<'a> {
 
     /// DFS: return true iff the anchor's subtree admits a clash-free completion.
     fn qo_branch_dfs(&mut self, sub: &HashSet<Node>, depth: u32, dl: Option<Instant>) -> bool {
-        if depth > 64 {
+        if depth > self.branch_depth {
             self.unsupported = true;
             return false;
         }
         if let Some(t) = dl {
-            if Instant::now().duration_since(t).as_millis() > 4000 {
+            if Instant::now().duration_since(t).as_millis() > self.branch_ms {
                 self.unsupported = true;
                 return false;
             }
@@ -3544,6 +3571,7 @@ impl<'a> QoSat<'a> {
     /// None=unsupported/out-of-fragment/depth-bounded.
     fn qo_residue_test(&mut self, anchor: Node, extra: &[CLit]) -> Option<bool> {
         self.tracing = true;
+        self.residue_tainted = false;
         let dl = Some(Instant::now());
         let mark = self.checkpoint();
         for &lit in extra {
@@ -3558,14 +3586,16 @@ impl<'a> QoSat<'a> {
         let sub = self.qo_subtree(anchor);
         let r = self.qo_branch_dfs(&sub, 0, dl);
         let unsup = self.unsupported;
+        let tainted = self.residue_tainted;
         self.rollback(mark);
         self.tracing = false;
         self.unsupported = false; // reset the branch-local flag
         if std::env::var_os("KM_HT_QOTRACE").is_some() {
             let dur = dl.unwrap().elapsed().as_millis();
-            eprintln!("KM_HT [qo-residue] anchor={} extra={:?} -> r={} unsup={} {}ms", anchor, extra, r, unsup, dur);
+            eprintln!("KM_HT [qo-residue] anchor={} extra={:?} -> r={} unsup={} tainted={} {}ms", anchor, extra, r, unsup, tainted, dur);
         }
-        if unsup {
+        if unsup || tainted {
+            // could not decide soundly on the shared model ⇒ defer this concept.
             return None;
         }
         Some(r)
@@ -3646,19 +3676,22 @@ impl<'a> QoSat<'a> {
                 tot_cand
             );
         }
-        // Phase 2: verify each candidate (and unsat) by branching A's subtree.
+        // Phase 2: verify only the candidate EXTRAS by branching A's subtree.
+        // Concepts with no candidate gained nothing from the disjunctions beyond
+        // their (already-emitted) forward subsumers, so they need no test — this is
+        // what keeps the residue pass from degenerating into a per-concept
+        // re-saturation over all affected concepts. A subtree branch that touches a
+        // deferred-insufficient (∀/cardinality) node returns None (tainted) unless
+        // KM_HT_QO_RESIDUE_FORCE suppresses the taint for measurement.
         let mut subs: Vec<(C, C)> = Vec::new();
-        let mut unsat: Vec<C> = Vec::new();
+        let unsat: Vec<C> = Vec::new();
+        let mut tested = 0usize;
         for (a, na, cs) in cand {
-            match self.qo_residue_test(na, &[]) {
-                Some(true) => {}
-                Some(false) => {
-                    unsat.push(a);
-                    continue;
-                }
-                None => return None,
+            if cs.is_empty() {
+                continue;
             }
             for b in cs {
+                tested += 1;
                 let negb = CLit { neg: true, c: b };
                 match self.qo_residue_test(na, &[negb]) {
                     Some(false) => subs.push((a, b)), // A ⊓ ¬B unsat ⇒ A ⊑ B
@@ -3668,7 +3701,7 @@ impl<'a> QoSat<'a> {
             }
         }
         if trace {
-            eprintln!("QORES phase2: verified residue_subs={} residue_unsat={}", subs.len(), unsat.len());
+            eprintln!("QORES phase2: tests={} verified residue_subs={}", tested, subs.len());
         }
         Some((unsat, subs))
     }
@@ -3834,6 +3867,12 @@ impl<'a> QoSat<'a> {
                             if self.card_defer {
                                 self.kp_insuff_nodes.insert(n);
                             }
+                            // A residue verify (tracing) that triggers a critical-ALL
+                            // deferral cannot decide this concept soundly on the
+                            // shared model ⇒ taint it so the test defers.
+                            if self.tracing && !self.residue_unsafe {
+                                self.residue_tainted = true;
+                            }
                         }
                         if self.track_forall {
                             self.forall_nodes.insert(n);
@@ -3894,6 +3933,11 @@ impl<'a> QoSat<'a> {
                         self.kp_insuff_nodes.insert(anchor);
                         self.qo_insufficient = true;
                         self.kp_insufficient = true;
+                        // residue verify (tracing): a cardinality Eq-head merge cannot
+                        // be decided soundly on the shared model ⇒ taint, test defers.
+                        if self.tracing && !self.residue_unsafe {
+                            self.residue_tainted = true;
+                        }
                         satisfied = true;
                         break;
                     }
@@ -7024,6 +7068,21 @@ impl Ht {
                         residue.push(a);
                         if i < nn {
                             residue_nodes.push((a, i as Node));
+                            // An affected concept still has a SOUND forward lower
+                            // bound: its self-node's deterministically-derived
+                            // subsumers hold regardless of how the open disjunctions
+                            // resolve (forward saturation is monotone). Emit those
+                            // now; the residue model-reuse only adds the EXTRA
+                            // disjunction-forced subsumers on top.
+                            if g.node_unsat.contains(&i) {
+                                clean_unsat.push(a); // forward clash ⇒ sound unsat
+                            } else {
+                                for &b in &g.label_pos[i] {
+                                    if b != a && qset.contains(&b) {
+                                        clean_subs.push((a, b));
+                                    }
+                                }
+                            }
                         }
                         continue;
                     }
@@ -7062,8 +7121,8 @@ impl Ht {
                 // pollution (`!qo_insufficient`). Otherwise the shared-model labels
                 // and subtree branching are not trustworthy ⇒ keep deferring.
                 if std::env::var_os("KM_HT_QO_RESIDUE").is_some()
-                    && qk.kp_insuff_nodes.is_empty()
-                    && !qk.qo_insufficient
+                    && (qk.residue_unsafe
+                        || (qk.kp_insuff_nodes.is_empty() && !qk.qo_insufficient))
                 {
                     if let Some((res_unsat, res_subs)) =
                         qk.qo_residue_classify(&residue_nodes, &g.label_pos, &qset)
