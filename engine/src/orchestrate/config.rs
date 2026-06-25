@@ -78,6 +78,12 @@ pub struct Config {
     /// touches the CB-territory onts it would slow (corpus-validated: recovers
     /// 7581 in ~31s, 0 regressions). Default off.
     pub qo_router: bool,
+    /// KM_HT_SHOQ: route the SHOQ/SHOIN/SHON fragment (nominals present, no
+    /// datatype) to the fast Ht (nominal o-rule + ≥n recognition + ≤n merge).
+    /// Monotone-safe in fallback mode (CB preferred; the fast Ht answers only on
+    /// CB timeout). Default off pending corpus validation; opt in to realise the
+    /// 10908 / 15672 wins in the real pipeline.
+    pub ht_shoq: bool,
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -133,6 +139,7 @@ impl Config {
             ht_nice: std::env::var("KM_HT_NICE").unwrap_or_else(|_| "1".to_string()),
             ht_qo: std::env::var_os("KM_HT_QO").is_some(),
             qo_router: std::env::var_os("KM_HT_QO_ROUTER").is_some(),
+            ht_shoq: std::env::var_os("KM_HT_SHOQ").is_some(),
         }
     }
 

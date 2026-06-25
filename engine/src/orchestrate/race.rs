@@ -466,6 +466,21 @@ fn has_inverse_bridge(cl: &[crate::json_io::JClause]) -> bool {
     })
 }
 
+/// Does the clause set encode datatype values? The frontend represents a literal
+/// value as an opaque `__dt__val__<lit>` concept (pairwise-disjoint), with no
+/// concrete-domain oracle in the fast Ht — forcing such an ontology to the Ht
+/// yields spurious unsat (cf ore_ont_10621). Datatype onts must stay on the CB
+/// engine, which owns the oracle.
+fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
+    use crate::json_io::JAtom;
+    cl.iter().any(|c| {
+        c.body
+            .iter()
+            .chain(c.head.iter())
+            .any(|a| matches!(a, JAtom::Concept { concept, .. } if concept.contains("__dt__val__")))
+    })
+}
+
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
@@ -520,7 +535,25 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         && tin.fenced.is_empty()
         && tin.nominals.is_empty()
         && has_inverse_bridge(&cl);
-    if !ht_routable(&tin) && !qo_candidate && std::env::var_os("KM_HT_FORCE").is_none() {
+    // SHOQ/SHOIN/SHON route (KM_HT_SHOQ): a faithful, datatype-free ontology that
+    // HAS nominals. `ht_routable` rejects nominals (and these onts carry inverse
+    // bridges that the fast Ht's nominal o-rule + self-loop fix + ≥n recognition
+    // handle soundly — 10908/15672 are gold-exact), so they would otherwise never
+    // reach the fast Ht. The nominal requirement is the structural separator from
+    // the number-only inverse SRIQ giants (9724/7914, nominals=0) where the fast
+    // Ht IS unsound (shared-filler ∀ pollution) — those stay on CB. Datatype onts
+    // are excluded (no concrete-domain oracle in the Ht; cf 10621). Monotone-safe:
+    // fallback mode keeps CB's answer whenever CB finishes.
+    let shoq_candidate = cfg.ht_shoq
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && !tin.nominals.is_empty()
+        && !has_datatype(&cl);
+    if !ht_routable(&tin)
+        && !qo_candidate
+        && !shoq_candidate
+        && std::env::var_os("KM_HT_FORCE").is_none()
+    {
         return None;
     }
     let out_path = super::tmpfile::TempPath::new(".htrace.json");
@@ -563,6 +596,27 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
             cmd.env(k, v);
         }
     }
+    if shoq_candidate {
+        // Activate the nominal o-rule + cardinality rules for the SHOQ route, and
+        // force SINGLE-THREADED classify. KM_HT_NOMINALS makes run_json's nominal
+        // path fire (set_nominals + set_number); KM_HT_QMERGE enables the qualified
+        // ≤n merge and the ≥n recognition head. KM_HT_PAR=1 is REQUIRED: the
+        // parallel per-concept classify is UNSOUND with the nominal o-rule (nominal
+        // merges are global state; parallel workers race -> false-UNSAT, e.g. 10908
+        // collapses to 86 of 6001 subs at PAR=8 but is gold-exact single-threaded).
+        // These onts classify in <1s to a few seconds single-threaded, so no
+        // parallelism is needed. Validated on ws: 10908 6001/6001 (0.22s), 15672
+        // 142/142 (3s). Explicit env overrides win.
+        for (k, v) in [
+            ("KM_HT_NOMINALS", "1"),
+            ("KM_HT_QMERGE", "1"),
+            ("KM_HT_PAR", "1"),
+        ] {
+            if std::env::var_os(k).is_none() {
+                cmd.env(k, v);
+            }
+        }
+    }
     // Production HT search discipline (validated on the live ∀+⊔ disjunction
     // family, ore_ont_5303): EAGER model folding + NEGTRIED (HermiT
     // startNextChoice) + ORD=1 (least-failing-first disjunct order). Together
@@ -595,7 +649,9 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // finishes, the parallelism is what brings HT in under budget (5303: ~23s
     // single-threaded → ~10s). Default to the available core count; explicit
     // KM_HT_PAR wins.
-    if std::env::var_os("KM_HT_PAR").is_none() {
+    // NB shoq_candidate forces KM_HT_PAR=1 above (parallel classify is unsound with
+    // the nominal o-rule); do not override it back to all-cores here.
+    if std::env::var_os("KM_HT_PAR").is_none() && !shoq_candidate {
         cmd.env("KM_HT_PAR", avail_cpus().max(1).to_string());
     }
     if cfg.ht_qo {
