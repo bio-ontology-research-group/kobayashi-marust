@@ -483,7 +483,7 @@ fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
 
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
-fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let cl: Vec<JClause> = {
         let f = File::open(clauses_path).ok()?;
@@ -669,7 +669,7 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         let mut w = stdin;
         let _ = w.write_all(&bytes);
     });
-    Some((child, out_path))
+    Some((child, out_path, shoq_candidate))
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
@@ -703,11 +703,20 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out) = match spawn_ht(cfg, clauses_path) {
+    let (mut ht, ht_out, is_shoq) = match spawn_ht(cfg, clauses_path) {
         Some(x) => x,
         None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
     };
     let reserved = ht_reserved_threads(cfg);
+    // SHOQ route: the fast Ht is sound+complete on this fragment and decides in
+    // <1-3s, so take its answer after a short budget instead of waiting out the
+    // doomed CB for the full ht_budget_s. CB still wins when it finishes first
+    // (preserves CB-preference / monotone-safety on CB-solvable nominal onts).
+    let budget = if is_shoq {
+        cfg.shoq_budget_s.min(cfg.ht_budget_s)
+    } else {
+        cfg.ht_budget_s
+    };
 
     let read_tout = |p: &Path| -> Option<EngineOut> {
         let f = File::open(p).ok()?;
@@ -792,7 +801,7 @@ where
                     if ht_polled {
                         return cb_slot.lock().unwrap().take().unwrap();
                     }
-                } else if t0.elapsed().as_secs_f64() > cfg.ht_budget_s {
+                } else if t0.elapsed().as_secs_f64() > budget {
                     if let Some(w) = ht_res.take() {
                         // CB over budget: HT fills the gap.
                         engine_run::cancel_and_kill_engines();

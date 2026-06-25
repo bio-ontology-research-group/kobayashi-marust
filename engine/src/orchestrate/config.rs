@@ -56,6 +56,11 @@ pub struct Config {
     pub ht_mode: String,
     /// KM_HT_BUDGET_S: in fallback mode, HT answers only when CB runs past this
     pub ht_budget_s: f64,
+    /// KM_HT_SHOQ_BUDGET_S: shorter fallback budget for the SHOQ route (the fast
+    /// Ht is sound+complete on that fragment and decides in <1-3s, so there is no
+    /// reason to wait the full ht_budget_s for the doomed CB). CB still wins when
+    /// it finishes first (canaries 0.9s), so CB-preference is preserved.
+    pub shoq_budget_s: f64,
     /// KM_HT_NICE: scheduling niceness for the HT racer ("0" disables nice)
     pub ht_nice: String,
     /// KM_HT_QO: use the QuasiOrderClassification driver (non-branching
@@ -76,13 +81,13 @@ pub struct Config {
     /// only onts whose cb_to_ht TInput is faithful, nominal-free, and HAS inverse
     /// roles get the hybrid arm — so the INVCOMPOSE/sat_mode overhead never
     /// touches the CB-territory onts it would slow (corpus-validated: recovers
-    /// 7581 in ~31s, 0 regressions). Default off.
+    /// 7581 in ~31s, 0 regressions). Default ON (opt out: KM_NO_HT_QO_ROUTER).
     pub qo_router: bool,
     /// KM_HT_SHOQ: route the SHOQ/SHOIN/SHON fragment (nominals present, no
     /// datatype) to the fast Ht (nominal o-rule + ≥n recognition + ≤n merge).
     /// Monotone-safe in fallback mode (CB preferred; the fast Ht answers only on
-    /// CB timeout). Default off pending corpus validation; opt in to realise the
-    /// 10908 / 15672 wins in the real pipeline.
+    /// CB timeout). Default ON (opt out: KM_NO_HT_SHOQ) — validated 0 unsound
+    /// across the 587-corpus sweep (job 7399); recovers 10908 / 15672.
     pub ht_shoq: bool,
 }
 
@@ -136,10 +141,17 @@ impl Config {
             ht_race: std::env::var_os("KM_NO_HT_RACE").is_none(),
             ht_mode: std::env::var("KM_HT_MODE").unwrap_or_else(|_| "fallback".to_string()),
             ht_budget_s: env_f64("KM_HT_BUDGET_S", 225.0),
+            shoq_budget_s: env_f64("KM_HT_SHOQ_BUDGET_S", 20.0),
             ht_nice: std::env::var("KM_HT_NICE").unwrap_or_else(|_| "1".to_string()),
             ht_qo: std::env::var_os("KM_HT_QO").is_some(),
-            qo_router: std::env::var_os("KM_HT_QO_ROUTER").is_some(),
-            ht_shoq: std::env::var_os("KM_HT_SHOQ").is_some(),
+            // Promoted default-ON (2026-06-25): the QO router recovers 7581/16444
+            // soundly (fallback mode, CB preferred), and the SHOQ route recovers
+            // 10908/15672 with 0 unsound across the 587-corpus sweep (job 7399).
+            // They target disjoint fragments (qo_candidate requires no nominals;
+            // shoq_candidate requires nominals), so they compose cleanly. Opt out
+            // with KM_NO_HT_QO_ROUTER / KM_NO_HT_SHOQ.
+            qo_router: std::env::var_os("KM_NO_HT_QO_ROUTER").is_none(),
+            ht_shoq: std::env::var_os("KM_NO_HT_SHOQ").is_none(),
         }
     }
 
