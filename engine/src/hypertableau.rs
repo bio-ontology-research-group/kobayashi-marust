@@ -1976,6 +1976,26 @@ fn index_forall(clauses: &[Clause]) -> HashMap<(CLit, R), Vec<CLit>> {
     idx
 }
 
+/// True iff the clause set encodes an inverse role as a BRIDGING clause
+/// `s(a,b) → r(b,a)` (single role body, single role head, swapped variables,
+/// distinct roles). cb_to_ht emits these (with the `inverse` TInput flag often left
+/// false), so the flag is unreliable — detect inverse structurally instead. Used to
+/// auto-select Konclude optimized blocking (mode 5), which is sound under inverse,
+/// over the subset default (mode 1, unsound under inverse). Mirrors `bridge_of`
+/// inside `compose_inverse`.
+fn has_inverse_bridge(clauses: &[Clause]) -> bool {
+    clauses.iter().any(|c| {
+        if c.body.len() == 1 && c.head.len() == 1 {
+            if let (Atom::Role { r: sr, s: ba, t: bb }, Atom::Role { r: rr, s: hs, t: ht }) =
+                (&c.body[0], &c.head[0])
+            {
+                return *hs == *bb && *ht == *ba && *sr != *rr;
+            }
+        }
+        false
+    })
+}
+
 /// KM_HT_QO_INVCOMPOSE (lever 2): eliminate materialised reversed inverse edges by
 /// RESOLVING each inverse-bridge clause into its consumers. For an inverse-
 /// EQUIVALENT pair `(r,s)` — both `s(x,y)→r(y,x)` and `r(x,y)→s(y,x)` present —
@@ -4704,10 +4724,21 @@ impl Ht {
             // incomplete (5303 drops 1 subsumption), so the router must withhold
             // KM_HT from onts with transitive roles. KM_HT_BLOCK overrides
             // (0=core, 2=full-eq).
+            // KM_HT_AUTOBLOCK (port of Konclude's default `mConfOptimizedSubSetBlocking
+            // = true`): when the clause set has inverse roles (bridging clauses) and
+            // the mode is not explicitly pinned, select the SOUND-under-inverse
+            // optimized blocking (mode 5) instead of the subset default (mode 1, which
+            // is unsound under inverse). An explicit KM_HT_BLOCK / KM_HT_SUBSET_BLOCK
+            // always wins. Gated (default off) so the validated default path is
+            // unchanged until the routing is ORE-validated.
             block_mode: if std::env::var_os("KM_HT_SUBSET_BLOCK").is_some() {
                 1
-            } else {
+            } else if std::env::var_os("KM_HT_BLOCK").is_some() {
                 env_u8("KM_HT_BLOCK", 1)
+            } else if std::env::var_os("KM_HT_AUTOBLOCK").is_some() && has_inverse_bridge(&clauses) {
+                5
+            } else {
+                1
             },
             cache: HashMap::new(),
             steps: 0,
@@ -9499,6 +9530,24 @@ mod tests {
         assert_eq!(idx.get(&(CLit::pos(B), R1)), Some(&vec![CLit::pos(CC)]));
         assert_eq!(idx.get(&(CLit::pos(A), R0)), None);
         assert_eq!(idx.len(), 1);
+    }
+
+    #[test]
+    fn has_inverse_bridge_detects_swapped_role_head() {
+        const R1: R = 1;
+        let y: Var = 1;
+        // bridge R0(x,y) → R1(y,x): swapped vars, distinct roles ⇒ inverse present.
+        let with_inv = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ];
+        assert!(has_inverse_bridge(&with_inv));
+        // a plain role inclusion R0(x,y) → R1(x,y) (NON-swapped) is not inverse.
+        let hierarchy = vec![Clause::new(vec![role(R0, X, y)], vec![role(R1, X, y)])];
+        assert!(!has_inverse_bridge(&hierarchy));
+        // no role-head clauses at all.
+        let no_roles = vec![Clause::new(vec![con(false, A, X)], vec![con(false, B, X)])];
+        assert!(!has_inverse_bridge(&no_roles));
     }
 
     #[test]

@@ -85,8 +85,31 @@ Then:
 
 ## Port plan (gated, synthetic-tested, ws build)
 1. New blocking mode = optimized (B1 subset + B2a ∀-clause-operand on v) +
-   indirect. Index ∀-clauses by body (C0, r) -> head D once at Ht::new.
-2. Synthetic tests: the same 6 mode-4 cases must pass (esp. inverse_model SAT via
-   B2a + indirect); plus a case where B2a FAILS (operand missing at v) so the node
-   is NOT blocked and expansion continues to a clash/sat correctly.
-3. Then B2b (transitive/automata), then cardinality B3-B6.
+   indirect. Index ∀-clauses by body (C0, r) -> head D once at Ht::new.  [DONE a853e1e]
+2. Synthetic tests: the same mode-4 cases must pass (esp. inverse_model SAT via
+   B2a + indirect).  [DONE — mode5_* tests]
+3. Auto-route: select mode 5 when the clause set has inverse bridging (Konclude
+   default = optimized blocking). `has_inverse_bridge` + KM_HT_AUTOBLOCK gate.  [DONE]
+4. Then B2b (transitive/automata), then cardinality B3-B6.  [see finding below]
+
+## FINDING (2026-06-25): B2b is largely PRE-COMPILED in KM
+
+Konclude needs B2b because it keeps `∀R.C` as runtime concepts with role-automata
+transitions. **KM's frontend compiles transitivity into concept-propagation clauses
+at PARSE time** (`preprocess.rs::transitivity_clauses`): for a transitive-R consumer
+`Γ ∧ R(x,y) ∧ ⋀C_i(y) → Δ`, it introduces `P = __trans__R__{C_i}` with
+`R(x,y)∧⋀C_i(y)→P(x)`, `R(x,y)∧P(y)→P(x)` (P propagates backward along R), and
+`Γ∧P(x)→Δ`. So the transitive consequences become ORDINARY concepts in node labels.
+B1 subset blocking already accounts for them (w's __trans__ concepts must be in w').
+So Konclude's runtime B2b is substantially SUBSUMED by KM's parse-time compilation +
+B1. NOT assumed — to be CONFIRMED on transitive ORE onts at validation time; if a gap
+shows, port B2b then.
+
+## Cardinality B3-B6: KM encoding differs
+
+Konclude reads `≤n/≥n r.C` operators from labels and counts successors. KM has NO
+such operators in labels: `≤n` is an Eq-head merge clause (apply_head), `≥n` is n
+distinct ∃ successors + pairwise distinctness clauses (`⊥⟵Eq(yi,yj)`). So B3-B6 are
+NOT a direct port — cardinality-under-blocking soundness rests on KM's merge +
+distinctness + B1 subset interacting. Validate on the number/functional targets
+(10908 number, 10621 F, 15672 N); port the specific safety check only if a gap shows.
