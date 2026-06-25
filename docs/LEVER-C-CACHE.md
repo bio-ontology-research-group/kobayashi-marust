@@ -68,6 +68,35 @@ Together these keep the shared single pass sound for ∀ + inverse WITHOUT ×con
 memory and WITHOUT global deferral — Konclude's actual lever. This is the substantial
 multi-session engine work (matches the shiq_build "orders of magnitude" finding).
 
+## EMPIRICAL ground truth (2026-06-26, ws, ore_ont_9724, KM_HT_TRACE)
+
+Measured the actual blockers on 9724 (SHIF, 23136 named, 14115 ∃-heads, 674 eq
+heads, 0 disjunctions). Overturns the "66M kp_miss = inverse over-defer" framing:
+
+- The default qo_candidate path (INVCOMPOSE on, no card_defer) bails the pass
+  **`unsupported=true` at the FIRST functional/≤n `Eq`-head** (`apply_head:4474`),
+  with `kp_miss=0`, `inv_edges=1`. So inverse is NOT the first wall — CARDINALITY is.
+- With **`KM_HT_QO_CARD`** (card_defer): `unsupported=false`, the forward pass
+  completes and already yields **clean_subs=456239 of gold 457090 (99.8%)** as a
+  SOUND lower bound (clean concepts complete; affected concepts emit their sound
+  forward subsumers). Only ~851 subsumptions need the inverse/cardinality
+  completion. BUT `kp_miss=66,661,218` (`inv_edges=2.5M`) ⇒ 20321/23136 concepts
+  "affected" ⇒ the gate still DEFERS.
+- **KPWRITE does NOT fire on these 66M misses** (kp_miss byte-identical with/without
+  it): the misses are **FILLER-targeted** (`is_filler`), where writing+reading as a
+  named subsumer is the conflation kpwrite correctly refuses. So the self-node
+  backward write (committed, sound, tested) is real but inert on 9724.
+- INVCOMPOSE on vs off (`KM_NO_INVCOMPOSE`): kp_miss 66.7M vs 65.9M, clean unchanged
+  — INVCOMPOSE is not the lever either.
+
+CONCLUSION: 9724 needs (1) `card_defer` (already exists, just not in the
+qo_candidate env) PLUS (2) **port #2 — the per-creation-role ALL-concept
+extension** so the 66M filler-inverse containment checks are made against the
+correct per-(successor,creation-role) operand store and PASS (eliminating the
+spurious affected-set), instead of being checked against the conflated shared
+filler label and missing. That collapses the affected set so the card-split
+certifies or leaves a tiny residue. Port #2 is the next implementation.
+
 ## Build plan (incremental, ws synthetic-test-first, Lean re-cert at END)
 
 1. Regression test locking the CLEAN/INSUFFICIENT verdicts KPSET already produces on a
