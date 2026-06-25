@@ -1748,6 +1748,13 @@ pub struct Ht {
     satcache3: bool,
     sat_sigs3: HashSet<Vec<u64>>,
     sc3_pooled: u64,
+    /// KM_HT_BLOCK=5: Konclude `isLabelConceptOptimizedBlocking` port (B1 subset +
+    /// B2a ∀-operand-on-predecessor; see docs/KONCLUDE-BLOCKING-SPEC.md). `forall_idx`
+    /// maps a (body-concept, role) to the head concepts of every ∀-clause
+    /// `C0(x) ∧ r(x,y) → D(y)` — KM's clause-world encoding of "∀r.D with C0 in the
+    /// label". B2a consults it: for each ∀r.D the blocker w' carries, the predecessor
+    /// v must already carry D. Built once at construction.
+    forall_idx: HashMap<(CLit, R), Vec<CLit>>,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -1931,6 +1938,42 @@ fn trigger_absorb(clauses: &mut [Clause]) -> usize {
         count += 1;
     }
     count
+}
+
+/// Index the ∀-clauses for Konclude optimized blocking B2a (KM_HT_BLOCK=5). A
+/// universal `C0 ⊑ ∀r.D` is clausified to `C0(x) ∧ r(x,y) → D(y)`: body is exactly
+/// one Concept on the role SOURCE var and one Role atom, head is a single Concept on
+/// the role TARGET var. We key by `(C0-literal, r)` and collect the head literal `D`,
+/// so blocking can ask "what does ∀r carry for a node whose label has C0?". Clauses
+/// of any other shape (chains, ≥2 body roles, disjunctive/empty heads) are skipped —
+/// B2a only needs the simple single-step universals. See docs/KONCLUDE-BLOCKING-SPEC.md.
+fn index_forall(clauses: &[Clause]) -> HashMap<(CLit, R), Vec<CLit>> {
+    let mut idx: HashMap<(CLit, R), Vec<CLit>> = HashMap::new();
+    for c in clauses {
+        if c.body.len() != 2 || c.head.len() != 1 {
+            continue;
+        }
+        let (dlit, dvar) = match c.head[0] {
+            Atom::Concept { lit, t } => (lit, t),
+            _ => continue,
+        };
+        let mut c0: Option<(CLit, Var)> = None;
+        let mut role: Option<(R, Var, Var)> = None;
+        for a in &c.body {
+            match *a {
+                Atom::Concept { lit, t } => c0 = Some((lit, t)),
+                Atom::Role { r, s, t } => role = Some((r, s, t)),
+                _ => {}
+            }
+        }
+        if let (Some((c0lit, c0v)), Some((r, rs, rt))) = (c0, role) {
+            // C0 on the role source, D on the role target, distinct vars.
+            if c0v == rs && dvar == rt && rs != rt {
+                idx.entry((c0lit, r)).or_default().push(dlit);
+            }
+        }
+    }
+    idx
 }
 
 /// KM_HT_QO_INVCOMPOSE (lever 2): eliminate materialised reversed inverse edges by
@@ -4639,8 +4682,10 @@ impl Ht {
                 }
             }
         }
+        let forall_idx = index_forall(&clauses);
         let ht = Ht {
             clauses: recs,
+            forall_idx,
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -4912,6 +4957,31 @@ impl Ht {
     /// 9024's model grew to 7559 nodes where HermiT folds it to 27. This forward
     /// pass collapses those models, cutting the branchable disjunction count by
     /// ~100x — the actual reason HermiT's per-test search is tiny.
+    /// B2a of Konclude optimized blocking (KM_HT_BLOCK=5): for every role `r` on an
+    /// edge from `w` back to its predecessor `v` (the inverse/own-role direction —
+    /// present only when inverse materialises a w→v edge), and every ∀r.D the
+    /// candidate blocker `wp` carries (some `C0 ∈ L(wp)` with a `(C0,r)→D` clause in
+    /// `forall_idx`), `v` must already carry `D`. Vacuously true when `w` has no edge
+    /// back to `v` (no inverse) ⇒ B1 subset alone suffices. See
+    /// docs/KONCLUDE-BLOCKING-SPEC.md.
+    fn b2a_holds(&self, w: Node, wp: Node, v: Node) -> bool {
+        for (r, t, _) in &self.ext.out_edges[w] {
+            if *t != v {
+                continue;
+            }
+            for c0 in self.ext.concepts[wp].keys() {
+                if let Some(heads) = self.forall_idx.get(&(*c0, *r)) {
+                    for d in heads {
+                        if !self.ext.concepts[v].contains_key(d) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
     fn compute_blocked(&self) -> Vec<bool> {
         let nn = self.ext.num_nodes();
         let mut blocked = vec![false; nn];
@@ -5029,6 +5099,50 @@ impl Ht {
             // one ascending pass propagates transitively (blocked[pred] is final
             // when we reach n). Clash detection is unaffected — blocking only gates
             // ∃-expansion, never `add_concept`'s clash raise.
+            for n in 0..nn {
+                if blocked[n] || !self.ext.blockable[n] {
+                    continue;
+                }
+                if let Some(p) = self.ext.pred[n] {
+                    if blocked[p] {
+                        blocked[n] = true;
+                    }
+                }
+            }
+        } else if mode == 5 {
+            // KONCLUDE OPTIMIZED BLOCKING port (isLabelConceptOptimizedBlocking):
+            // B1 = L(w) ⊆ L(w') (SUBSET, not equality); B2a = for every role r on a
+            // w→v edge (v = pred(w), the inverse/own-role direction) and every ∀r.D
+            // the blocker w' carries (some C0 ∈ L(w') with a (C0,r)→D clause), the
+            // predecessor v already carries D. Subset B1 folds the ∀-over-inverse
+            // frontier-lag directly — an incomplete frontier node {B} ⊆ a complete
+            // blocker {B,CC} blocks immediately — and B2a keeps subset blocking SOUND
+            // under inverse (plain subset is unsound there). Then the indirect pass
+            // (Konclude PRFINDIRECTBLOCKED). O(n²·|label|): correctness-first port;
+            // Konclude caches via signatures. See docs/KONCLUDE-BLOCKING-SPEC.md.
+            for w in 0..nn {
+                if !self.ext.blockable[w] {
+                    continue;
+                }
+                let v = match self.ext.pred[w] {
+                    Some(v) => v,
+                    None => continue,
+                };
+                let lwlen = self.ext.concepts[w].len();
+                for wp in 0..w {
+                    // blocker must be unblocked with |L(w)| ≤ |L(w')| and L(w) ⊆ L(w').
+                    if blocked[wp] || self.ext.concepts[wp].len() < lwlen {
+                        continue;
+                    }
+                    if !self.ext.concepts[w].keys().all(|k| self.ext.concepts[wp].contains_key(k)) {
+                        continue; // B1 fails
+                    }
+                    if self.b2a_holds(w, wp, v) {
+                        blocked[w] = true;
+                        break;
+                    }
+                }
+            }
             for n in 0..nn {
                 if blocked[n] || !self.ext.blockable[n] {
                     continue;
@@ -9295,6 +9409,96 @@ mod tests {
         let mut ht = ht(cls);
         ht.block_mode = 4;
         assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    // --- Konclude optimized blocking port (block_mode 5): B1 subset + B2a. The port
+    // must reproduce the sound verdicts of the textbook double-blocking (mode 4). The
+    // frontier-lag SAT case is the key one: subset B1 lets the incomplete frontier {B}
+    // block against the complete {B,CC} blocker directly, so it terminates without
+    // needing the indirect-blocking workaround mode 4 relies on. ---
+    #[test]
+    fn mode5_terminates_on_inverse_cycle() {
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 5;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn mode5_inverse_model_is_satisfiable() {
+        // The frontier-lag case (∀ over inverse). Konclude subset B1 ({B}⊆{B,CC}) +
+        // B2a (CC at the predecessor, written by the backward ∀) blocks the frontier
+        // node directly ⇒ terminates SAT without infinite expansion.
+        const CC: C = 4;
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 5;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn mode5_backward_inverse_propagation_clash() {
+        // Backward ∀ writes CC onto the root which is ¬CC ⇒ UNSAT. Blocking must not
+        // mask the clash (it is raised before any block fires).
+        const CC: C = 4;
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(vec![con(false, A, X)], vec![con(true, CC, X)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 5;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn mode5_agrees_with_default_on_noinverse_clash() {
+        // No-inverse regression: A ⊑ ∃R0.B, A ⊓ R0 ⊑ ¬B ⇒ UNSAT (B1 subset alone,
+        // B2a vacuous since no w→v edge).
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 5;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn index_forall_picks_up_universal_clauses() {
+        // The B2a index: `C0 ⊑ ∀r.D` clausified as C0(x) ∧ r(x,y) → D(y) is indexed
+        // by (C0, r) → [D]; an ∃ head and a 2-role chain body are NOT indexed.
+        const CC: C = 4;
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            // ∀: B ∧ R1(x,y) → CC(y)  ⇒ indexed (B,R1)->[CC]
+            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            // ∃ head: not a universal
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            // plain bridge (role head): not a concept-universal
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ];
+        let idx = index_forall(&cls);
+        assert_eq!(idx.get(&(CLit::pos(B), R1)), Some(&vec![CLit::pos(CC)]));
+        assert_eq!(idx.get(&(CLit::pos(A), R0)), None);
+        assert_eq!(idx.len(), 1);
     }
 
     #[test]
