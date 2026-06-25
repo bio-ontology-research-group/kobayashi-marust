@@ -591,6 +591,14 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
             ("KM_HT_QO_FPROP", "1"),
             ("KM_HT_QO_SAT", "1"),
             ("KM_HT_QO_KPSET", "1"),
+            // KM_HT_QO_CARD: a functional/≤n cardinality Eq-head otherwise bails the
+            // whole pass `unsupported` at the first occurrence (apply_head:4474), so
+            // any SHIF/SRIQ giant (9724: 674 eq-heads) never even completes the
+            // forward pass. card_defer instead marks the cardinality anchor
+            // INSUFFICIENT (sound — routes those concepts to the per-node card-split
+            // verify) and lets the deterministic bulk certify. Required for the
+            // cardinality throughput giants.
+            ("KM_HT_QO_CARD", "1"),
             ("KM_HT_QO_CERTIFY_ONLY", "1"),
         ] {
             cmd.env(k, v);
