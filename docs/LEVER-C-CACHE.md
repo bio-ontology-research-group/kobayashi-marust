@@ -1,91 +1,86 @@
-# Lever C — successor-subtree saturation cache (the throughput-giant lever)
+# Lever C — faithful Konclude G2/G3 saturation port (throughput giants)
 
-Status: design + code grounding (2026-06-25). Implementation = next focused
-session, synthetic-test-first on ws, no giants mid-build (build-first rule), Lean
-re-cert at the very end.
+Status: source-grounded plan (2026-06-25). PORT from Konclude, do not invent
+([[feedback_port_from_konclude]]). This REPLACES an earlier draft that invented a
+"successor-subtree cache" — Konclude does NOT do that; the real mechanism is below.
 
-## The problem (re-confirmed from code + docs/THROUGHPUT-SATURATION.md)
+## What Konclude actually does (read from source, file:line)
 
-P2.1 (`KM_HT_QO_SHIQ`) already makes the saturation SOUND for `∀`: under `shiq`,
-`apply_head`'s `∃`-case (`hypertableau.rs:4370`) creates a **non-shared** successor
-`f` owned by its source `n` (`qo_parent[f] = Some(n)`, `is_filler[f]=true`), so a
-`∀R.C` write lands on an independent node — no shared-filler pollution, no
-`qo_insufficient`. Expansion is bounded by ancestor subset blocking `qo_blocked`
-(`:3351`, B1 `label[f] ⊆ label[ancestor]`).
+`Source/Reasoner/Kernel/Algorithm/CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp`:
 
-The remaining wall is purely cost:
-- **Global single pass** holding ALL named concepts' non-shared trees at once =
-  ×#concepts memory -> 27 GB OOM on 7914 (blocking bounds DEPTH, not BREADTH).
-- **Per-concept** `saturate(&[pos(A)])` (`:3301`) is memory-fine (~490 MB) but
-  re-expands every successor subtree from scratch for each of the ~17-58k concepts
-  -> orders-of-magnitude too slow (the "DECISIVE SCALE FINDING": >600 s on 7914/9724).
+- **Shared non-branching saturation**, one node per (concept, polarity); `∃R.C`
+  reuses the shared C-node (this IS Konclude's amortization / "cache" — there is no
+  separate subtree cache).
+- **∀-rule = CHECK, never pollute** (`isCriticalALLConceptDescriptorInsufficient`,
+  :3451). For a `∀R.C` descriptor on node `n`, walk `n`'s R-successors; for each
+  successor read its `ReapplyConceptSaturationLabelSet` and test
+  `succConSet->containsConcept(operand, neg)` for every operand of C (:3514-3518). It
+  does NOT add C to the successor. If an operand is absent ⇒ `return true` (critical).
+- **Critical ⇒ INSUFFICIENT + propagate by STATUS FLAG, not label** (:881-884):
+  `updateDirectAddingIndividualStatusFlags(n, INDSATFLAGINSUFFICIENT)` +
+  `INDSATFLAGPROPAGATIONINCOMPLETE` + `setInsufficientNodeOccured`. Insufficiency
+  rides up the predecessor chain via `updateIndirectAddingIndividualStatusFlags(n,
+  succ->getIndirectStatusFlags())` (:1657/1803/1939/2018) — G2: a node inherits its
+  successor's STATUS flags, never its concept set.
+- **3-state outcome**: CLEAN (completed, no clash, not insufficient) ⇒ read subsumers
+  off the node; CLASHED ⇒ unsat; INSUFFICIENT ⇒ residue → complete tableau.
+- Cache key for the per-concept result is **(concept, negation)** (KONCLUDE-SATURATION-
+  CACHE-SPEC.md), reused at every occurrence. Session 6g: that key is INERT in KM
+  (KM's shared pass already shares C-nodes; each (concept,neg) saturates once/run).
 
-The two existing successor subtrees that recur across concepts are NOT reused. That
-reuse is the missing lever (= Konclude `tryEstablishSaturationCaching`).
+## What KM already has (do NOT re-invent)
 
-## The mechanism to build
+- Shared pass: `saturate_global` (`hypertableau.rs:3366`), one node per concept via
+  `concept_node_of` — = Konclude's shared saturation.
+- The G2/G3 CHECK: `KM_HT_QO_KPSET` — `kp_check_head` containment-checks a head write
+  instead of writing it; misses set `kp_insufficient`; `kp_finalize` =
+  `checkCriticalIndividuals`. This IS `isCriticalALLConceptDescriptorInsufficient`.
+- Criticality at the ∀-write: `apply_head` t!=X branch (`:4310-4346`) already marks
+  `qo_insufficient` + records `kp_insuff_nodes` when a write is not "clean".
+- Per-node CLEAN split + reverse-reachability affected-set (`card_defer`).
 
-A **content-addressed successor-subtree cache**, consumed in the per-concept
-`saturate` path (the memory-bounded one):
+## The REAL gap (why KM over-defers, and the faithful fix)
 
-1. **Key.** When `apply_head` `∃` creates a fresh successor `f` (`:4395`), its
-   eventual saturated content is a function of `f`'s *initial forced label* — the
-   filler concept `fil` PLUS every concept later written onto `f` by a `∀R.C` from
-   its parent BEFORE `f` expands its own existentials. So the cache key must be the
-   *complete* set of concepts forced on `f` by its creation context, captured at
-   the point `f` becomes stable-but-unexpanded. Canonicalise to a sorted `Vec<CLit>`
-   (or a 64-bit commutative signature + exact-set tiebreak, cf the mode-3
-   `i3_signature`).
+KM's kpset/criticality is present but **too coarse on inverse-heavy giants**: every
+inverse-bridge back-edge write is a "miss" (7581: kp_miss≈930k; 9724: 66M), so
+`qo_insufficient` trips globally and the per-node reverse-reach marks ~every concept
+insufficient (7581: 0/72989 clean) ⇒ whole classification deferred ⇒ falls to the slow
+per-concept path. The faithful port is NOT a new cache; it is making the G2/G3
+propagation **precise** so CLEAN concepts survive:
 
-2. **Value.** The subtree's saturated summary: `f`'s final label (its subsumer
-   set) + CLASHED/CLEAN status + the labels its own successors contributed back to
-   `f` (for the parent's reads). Store `key -> summary`.
+1. **Status-flag (not label) propagation, edge-direction-correct.** Port Konclude's
+   `updateIndirectAddingIndividualStatusFlags`: insufficiency propagates ONLY along the
+   genuine forward predecessor chain of the node that is actually critical, not via the
+   conflated reversed inverse back-edges. KM's reverse-reach currently follows inverse
+   back-edges too ⇒ over-marks. Restrict propagation to Konclude's predecessor links.
+2. **Per-creation-role ALL-concept extension** (`getRoleSuccessorALLConceptExtensionData`,
+   :960; `CSaturationLinkedSuccessorIndividualALLConceptsExtensionData`): the ∀-operands
+   live in a SEPARATE per-(successor,creation-role) structure used only for the
+   criticality check + consistency, NOT in the shared subsumer label. KM writes them
+   into the label (pollution) or defers; port the separate extension so the shared
+   subsumer label stays clean and only criticality consults the operands.
+3. **Backward propagation to predecessors** (`addConceptFilteredToIndividual` on the
+   ancestor, :1235): the sound named-subsumer inverse contribution goes BACKWARD to the
+   predecessor (non-critical), distinct from the forward operand check. KM conflates
+   these via reversed-edge label reads.
 
-3. **Reuse.** Before expanding a fresh `f` whose key is already cached, splice the
-   cached summary onto `f` instead of re-running its subtree fixpoint. Idempotent
-   because the key captures all forcing.
+Together these keep the shared single pass sound for ∀ + inverse WITHOUT ×concepts
+memory and WITHOUT global deferral — Konclude's actual lever. This is the substantial
+multi-session engine work (matches the shiq_build "orders of magnitude" finding).
 
-## The soundness subtlety (do NOT skip)
+## Build plan (incremental, ws synthetic-test-first, Lean re-cert at END)
 
-A subtree is **not** purely a function of `f`'s forward label when inverse roles are
-live: a `∀R⁻.C` operand propagates BACKWARD from `f` to its parent, and a backward
-edge can make `f`'s saturation depend on the parent/seed context. Two sound options:
+1. Regression test locking the CLEAN/INSUFFICIENT verdicts KPSET already produces on a
+   tiny ∀+∃+inverse KB (the safety net).
+2. Port #1: restrict insufficiency propagation to forward predecessor links (not
+   inverse back-edges) — measure 7581/9724 clean% rises from ~0.
+3. Port #2: the per-creation-role ALL-concept extension (operands out of the subsumer
+   label) — eliminates the remaining pollution-driven misses.
+4. Measure on 7914/9724 isolated (`km tableau` on a dumped TIN, group-safe). Target:
+   global pass certifies most concepts; small residue to the verify funnel.
+5. Full corpus sweep (rare, unimatrix) + Lean re-cert of the affected QoSat rules.
 
-- **(S1) Forward-only cache.** Cache only subtrees with no inverse-backward operand
-  reaching the parent (detect via the same inverse-bridge / `∀r⁻` machinery the
-  QoSat path already tracks). Sound always; covers the inverse-inert majority
-  (7914's hard core is small; 9724's inverse is composed away by INVCOMPOSE first).
-- **(S2) Context-extended key.** Fold the relevant parent-edge + backward-operand
-  context into the key so two creation contexts share a cache entry only when their
-  inverse-relevant context matches. Larger key, broader hit rate; the Konclude-exact
-  form.
-
-Start with **S1** (smallest sound increment, measurable hit rate), then extend to
-S2 if S1's hit rate is too low on 7914/9724.
-
-## NOT the inert cache
-
-This is DISTINCT from the self-node `(concept,neg)` cache that session 6g found
-architecturally inert: that was the SHARED global forward pass, where each
-`(concept,neg)` is saturated exactly once per classification (zero within-run hits).
-Here the unit is the **successor subtree** in the NON-SHARED per-concept pass, which
-genuinely recurs across the tens of thousands of per-concept saturations -> real hit
-rate. (satcache3, the prior attempt, keyed self-nodes / the shared pass — not this.)
-
-## Build plan (incremental, each step ws synthetic-tested)
-
-1. Synthetic regression test locking P2.1's current sound non-shared `∀+∃` verdicts
-   (the cache must preserve these byte-for-byte) — `KM_HT_QO_SHIQ` on a tiny KB.
-2. Cache key + store + reuse for S1 (gated, e.g. `KM_HT_QO_SUBCACHE`); a
-   `*_CHECK` mode asserting cached-splice == full-expansion (result-identical),
-   as the incr-blocking work did.
-3. Measure hit rate + wall on 7914 (smallest hard member) isolated (`km tableau`
-   on a dumped TIN, group-safe). Target: per-concept pass within budget.
-4. If S1 hit rate too low, extend to S2 (context-extended key).
-5. Only once a member classifies sound+fast: full corpus sweep (rare, unimatrix)
-   + Lean re-cert of the affected saturation rules.
-
-Code anchors: `saturate` `:3301`, `apply_head` `∃`-shiq `:4370`, `qo_blocked`
-`:3351`, `new_node`, `qo_parent`. Isolated run recipe: `KM_DUMP_TIN=t.json km
-classify <ont>` (kill after TIN written) then `km tableau < t.json` under
-`KM_HT=1 KM_HT_FORCE=1 KM_HT_QO=1 KM_HT_QO_SHIQ=1 ...`, group-safe.
+Konclude anchors: isCriticalALL :3451, status-flag propagation :1657/1803/1939/2018,
+INDSATFLAGINSUFFICIENT :881-884, per-creation-role ext :960, backward write :1235.
+KM anchors: kp_check_head / kp_finalize, qo_insufficient `apply_head:4331`,
+kp_insuff_nodes reverse-reach, saturate_global :3366.
