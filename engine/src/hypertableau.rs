@@ -2637,6 +2637,23 @@ struct QoSat<'a> {
     /// forward-only fast — yet it is certified COMPLETE whenever no check missed
     /// (`!kp_insufficient`), which on 7581 is every concept (forward = gold).
     kpset: bool,
+    /// KM_HT_QO_KPWRITE (lever C, the faithful Konclude `applyALLRule` backward
+    /// write). The pure-CHECK `kpset` above DEFERS every inverse-anchored operand,
+    /// which on a pervasive-inverse Horn giant (9724: 66M back-edge writes) marks
+    /// ~every concept insufficient ⇒ global deferral ⇒ timeout. Konclude does NOT
+    /// defer the backward contribution: `applyALLRule` (:6143) WRITES the ∀R⁻
+    /// operands to the genuine R-predecessors via `backPropHash`
+    /// (`addConceptFilteredToIndividual(op, backPropIndiNode)`, :6167). That is
+    /// SOUND — every R-predecessor of the (shared) filler really does entail the
+    /// operand by ∀-semantics (X ⊑ ∃R.D, D ⊑ ∀R⁻.E ⟹ X ⊑ E). So under `kpwrite`
+    /// an inverse-anchored write whose target is a real SELF/named node (`on_self`,
+    /// not a shared ∃-filler) is performed as a real `add_lit` write that
+    /// propagates forward — exactly Konclude's backward write. Only a SHARED-FILLER
+    /// target stays a containment check (reading a filler's label as a named
+    /// subsumer would conflate the context-specific filler with the concept — the
+    /// 7581 pollution this whole mechanism exists to prevent). Net: the pervasive
+    /// sound inverse propagation certifies in the single forward pass.
+    kpwrite: bool,
     /// Edges created by an inverse/symmetric bridge clause (`R(x,y) → S(y,x)`):
     /// the model-specific reversed back-edges. A rule firing anchored on such an
     /// edge has its concept-head writes turned into containment checks under
@@ -3096,6 +3113,7 @@ impl<'a> QoSat<'a> {
             node_range: Vec::new(),
             qo_insufficient: false,
             kpset: false,
+            kpwrite: std::env::var_os("KM_HT_QO_KPWRITE").is_some(),
             inv_edges: HashSet::new(),
             inv_bridge_cid,
             kp_insufficient: false,
@@ -3105,7 +3123,11 @@ impl<'a> QoSat<'a> {
             kp_insuff_nodes: HashSet::new(),
             kp_guard: std::rc::Rc::new(kp_guard_set),
             kp_guard_only: std::env::var_os("KM_HT_QO_KPGUARD").is_some(),
-            sat_mode: std::env::var_os("KM_HT_QO_SAT").is_some(),
+            // KPWRITE's soundness needs separate filler nodes so `on_self`
+            // distinguishes a real predecessor (sound write) from a shared filler
+            // (must stay a check); enabling it implies `sat_mode`.
+            sat_mode: std::env::var_os("KM_HT_QO_SAT").is_some()
+                || std::env::var_os("KM_HT_QO_KPWRITE").is_some(),
             is_filler: Vec::new(),
             sat_filler: HashMap::new(),
             card_defer: std::env::var_os("KM_HT_QO_CARD").is_some(),
@@ -4534,7 +4556,17 @@ impl<'a> QoSat<'a> {
             // all absent operands are inert (non-guard fillers) ⇒ safe, no insufficiency.
             0 => {}
             1 => {
-                self.kp_check1.insert(disj[0]);
+                let (n, lit) = disj[0];
+                // KM_HT_QO_KPWRITE: a UNIT inverse-anchored head (the sole absent
+                // operand) on a real self/named node is a definite, sound backward
+                // write (Konclude `applyALLRule`). Perform it; only a shared-filler
+                // target stays a deferred check.
+                let on_self = !(self.sat_mode && self.is_filler[n]);
+                if self.kpwrite && on_self {
+                    self.add_lit(n, lit);
+                } else {
+                    self.kp_check1.insert(disj[0]);
+                }
             }
             _ => self.kp_checkn.push(disj),
         }
@@ -4559,6 +4591,12 @@ impl<'a> QoSat<'a> {
                 // self-node (`!is_filler`) the operand could be a named subsumer
                 // read directly ⇒ always critical.
                 let on_self = !(self.sat_mode && self.is_filler[t]);
+                // KM_HT_QO_KPWRITE: a composed-clause head landing on a real
+                // self/named node is the sound Konclude backward write ⇒ perform it.
+                if self.kpwrite && on_self {
+                    self.add_lit(t, e);
+                    return;
+                }
                 let critical =
                     on_self || !self.kp_guard_only || self.kp_guard.contains(&e.c);
                 if critical {
@@ -4586,6 +4624,15 @@ impl<'a> QoSat<'a> {
                 //    a BODY GUARD. A non-guard operand at a filler is inert ⇒ safe to
                 //    drop with no insufficiency.
                 let on_self = !(self.sat_mode && self.is_filler[n]);
+                // KM_HT_QO_KPWRITE (Konclude `applyALLRule` backward write): the
+                // operand lands on a real self/named predecessor ⇒ it is a sound
+                // named-subsumer contribution (every R-predecessor of the shared
+                // filler genuinely entails it). WRITE+propagate it instead of
+                // deferring a check, so pervasive inverse propagation certifies in
+                // the single pass. A shared-filler target stays a check.
+                if self.kpwrite && on_self {
+                    return self.add_lit(n, lit);
+                }
                 let critical =
                     on_self || !self.kp_guard_only || self.kp_guard.contains(&lit.c);
                 if critical {
@@ -8049,7 +8096,14 @@ impl Ht {
         // the WHOLE clause set so both the QO gate AND `consistent()` (the
         // pseudo-model builders) avoid reversed-edge expansion + blocking. Sound
         // (the composed clauses are resolvents; real `∃`-created edges untouched).
-        if std::env::var_os("KM_HT_QO_INVCOMPOSE").is_some() {
+        // KM_NO_INVCOMPOSE off-switch: INVCOMPOSE turns compact inverse propagation
+        // into a LARGER forward saturation (9724: 125519 -> 139934 clauses) that
+        // overruns the node cap (`unsupported`). Konclude does the opposite — it
+        // keeps the inverse and writes backward (`applyALLRule` = KM_HT_QO_KPWRITE),
+        // creating NO new nodes. This switch lets the kpwrite path keep the bridges.
+        if std::env::var_os("KM_HT_QO_INVCOMPOSE").is_some()
+            && std::env::var_os("KM_NO_INVCOMPOSE").is_none()
+        {
             let composed = compose_inverse(&self.clauses);
             if std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
@@ -9541,6 +9595,50 @@ mod tests {
         assert!(
             ht.qo_classify_kpset(&[A, B, D, E]).is_none(),
             "load-bearing/spurious inverse must defer (None), never over-derive B⊑E"
+        );
+    }
+
+    #[test]
+    fn kpwrite_backward_forall_certifies_self_node() {
+        // Lever C (KM_HT_QO_KPWRITE): the sound backward-∀ write Konclude's
+        // applyALLRule performs, which the pure-CHECK kpset over-defers.
+        //   A ⊑ ∃R0.B,  R0(x,y) → R1(y,x)  (R1 = R0⁻; back-edge node(B)--R1-->node(A)),
+        //   B ⊓ R1(x,y) ⊑ E (i.e. B ⊑ ∀R1.E = ∀R0⁻.E).
+        // node(B) is the R0-filler of node(A); the bridge gives it an R1-edge back
+        // to node(A); ∀R1.E then forces E onto node(A) (a real SELF node, a genuine
+        // R0-predecessor of the B-filler). That is sound (A ⊑ ∃R0.B, B ⊑ ∀R0⁻.E ⟹
+        // A ⊑ E). With KPWRITE the operand is WRITTEN to node(A) and the pass
+        // certifies A ⊑ E with no miss; the pure check would defer (kp_insufficient).
+        const R1: R = 1;
+        const E: C = 7;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]), // R1 = R0 inverse
+            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, E, y)]), // B ⊑ ∀R1.E
+        ];
+        let h = ht(cls);
+        // CHECK-only (no kpwrite): the self-node write is deferred ⇒ insufficient.
+        let mut chk = QoSat::new_opts(&h.clauses, false, false);
+        chk.kpset = true;
+        chk.complete_roles = true;
+        chk.sat_mode = true;
+        let _ = chk.saturate_global(&[A, B, E]);
+        assert!(
+            chk.kp_insufficient,
+            "pure check must DEFER the backward self-node write (over-deferral baseline)"
+        );
+        // KPWRITE: the backward operand is written ⇒ A ⊑ E certified, no miss.
+        let mut qk = QoSat::new_opts(&h.clauses, false, false);
+        qk.kpset = true;
+        qk.complete_roles = true;
+        qk.sat_mode = true;
+        qk.kpwrite = true;
+        let g = qk.saturate_global(&[A, B, E]);
+        assert!(!qk.kp_insufficient, "KPWRITE must NOT defer: the write is sound");
+        assert!(
+            g.label_pos[0].contains(&E),
+            "A ⊑ E must be derived by the sound backward write (node 0 = query A)"
         );
     }
 
