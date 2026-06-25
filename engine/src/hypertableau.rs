@@ -1430,6 +1430,16 @@ fn fire_anchor_edge(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: usize
         Atom::Role { r, s, t } => (r, s as usize, t as usize),
         _ => return,
     };
+    // A self-loop body atom `r(x,x)` (sv == tv, same variable) is only witnessed by a
+    // SELF edge `r(es,es)`. Anchoring it on a non-self edge `r(es,et)` with es != et
+    // would bind the single var inconsistently (the second `sigma[sv]=Some(et)` just
+    // overwrote the first), silently dropping the es==et constraint and matching
+    // r(x,x) against a non-self edge — UNSOUND (e.g. ObjectHasSelf's `Q_15→r(x,x)` /
+    // its converse `r(x,x)→Q_15` wrongly fires on an inverse-derived r(n3,n1), forcing
+    // the located-in occupant spatial → false clash on 10908). Require es == et.
+    if sv == tv && es != et {
+        return;
+    }
     let dep0 = match edge_dep(ext, r, es, et) {
         Some(d) => d,
         None => return,
@@ -4124,6 +4134,15 @@ impl<'a> QoSat<'a> {
         for (i, a) in body.iter().enumerate() {
             if let Atom::Role { r: ar, s, t } = a {
                 if *ar != r {
+                    continue;
+                }
+                // A self-loop body atom `r(x,x)` (s == t, same var) is only witnessed
+                // by a SELF edge `r(es,es)`; anchoring it on a non-self edge with
+                // es != et would bind the single var to `et` and silently drop the
+                // es==et constraint (UNSOUND — same bug as fire_anchor_edge; this is
+                // the QoSat saturation path `km classify` uses for 10908's
+                // ObjectHasSelf + inverse, forcing the located-in occupant spatial).
+                if *s == *t && es != et {
                     continue;
                 }
                 let mut sigma = vec![None; nv];
