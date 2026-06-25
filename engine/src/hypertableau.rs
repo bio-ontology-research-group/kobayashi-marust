@@ -9642,6 +9642,37 @@ mod tests {
         );
     }
 
+    #[test]
+    fn qo_shared_filler_conflict_ground_truth() {
+        // Port #2 SOUNDNESS GUARD (copy-on-conflict). Two predecessors share the
+        // (D,R0) filler in sat_mode, imposing CONTRADICTORY ∀R0 constraints on it:
+        //   A ⊑ ∃R0.D ⊓ ∀R0.CC      (A's R0-successor must be CC)
+        //   B ⊑ ∃R0.D ⊓ ∀R0.¬CC     (B's R0-successor must be ¬CC)
+        // Each is individually SATISFIABLE (A's succ = D⊓CC; B's succ = D⊓¬CC). A
+        // naive shared-filler write would union CC and ¬CC onto the one (D,R0) node
+        // and clash BOTH ⇒ spurious A,B unsat (the 7581 pollution). The certify gate
+        // must NEVER report A or B unsat: today it DEFERS (qo_insufficient on the
+        // ∀-into-shared-filler); port #2 must certify with both consistent by copying
+        // the filler. This test locks the SOUND ground truth (full tableau) so the
+        // port cannot regress into the spurious double-clash.
+        const CC: C = 4;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, CC, 1)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, B, X), role(R0, X, 1)], vec![con(true, CC, 1)]),
+        ];
+        // Ground truth: each concept is consistent on its own (sound full tableau).
+        assert_eq!(ht(cls.clone()).consistent(&[CLit::pos(A)]), Some(true), "A alone is SAT");
+        assert_eq!(ht(cls.clone()).consistent(&[CLit::pos(B)]), Some(true), "B alone is SAT");
+        // The certify gate must not claim either unsat: it either DEFERS (None today)
+        // or, post port #2, certifies with neither A nor B in the unsat set.
+        if let Some((_cons, unsat, _subs)) = ht(cls).qo_classify_kpset(&[A, B, D, CC]) {
+            assert!(!unsat.contains(&A) && !unsat.contains(&B),
+                "shared-filler ∀-conflict must NOT spuriously unsat A or B");
+        }
+    }
+
     // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
     // (task #11 foundation; full-label bidirectional pairwise blocking)
 
