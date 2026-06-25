@@ -531,6 +531,44 @@ impl Ext {
         sig
     }
 
+    /// FULL-label BIDIRECTIONAL pairwise signature — the sound SHIQ double-blocking
+    /// key (block_mode 4) and the cross-query saturation cache key (KM_HT_SATCACHE3).
+    /// Differs from `i3_signature` (positive-core, sound only for SH WITHOUT inverse)
+    /// in two ways the SHIQ pairwise-blocking theorem (Horrocks/Sattler/Tobies)
+    /// requires once inverse roles are present:
+    ///  - FULL labels (pos+neg, `(c<<1)|neg`): a node's negative concepts constrain
+    ///    the unraveling, so blocking must match them (positive-core would let a
+    ///    block skip a forbidden-concept clash — unsound, and the cross-query reuse
+    ///    cannot tell two differently-forbidden contexts apart).
+    ///  - BOTH edge directions between `n` and its parent `p`: with inverse the
+    ///    connecting edge carries roles each way (`p→n` in `in_edges[n]`, `n→p` in
+    ///    `out_edges[n]`), and the pairwise condition is on that whole edge. Forward
+    ///    roles are tagged `r<<1`, backward roles `(r<<1)|1`, so the two directions
+    ///    never alias.
+    fn i3_signature_full(&self, n: Node, p: Node) -> Vec<u64> {
+        const SEP: u64 = u64::MAX;
+        let mut sig: Vec<u64> = Vec::new();
+        let mut a: Vec<u64> =
+            self.concepts[n].keys().map(|k| ((k.c as u64) << 1) | (k.neg as u64)).collect();
+        a.sort_unstable();
+        sig.extend(a);
+        sig.push(SEP);
+        let mut b: Vec<u64> =
+            self.concepts[p].keys().map(|k| ((k.c as u64) << 1) | (k.neg as u64)).collect();
+        b.sort_unstable();
+        sig.extend(b);
+        sig.push(SEP);
+        let mut e: Vec<u64> = Vec::new();
+        // forward p→n roles (tag 0)
+        e.extend(self.in_edges[n].iter().filter(|(_, s, _)| *s == p).map(|(r, _, _)| (*r as u64) << 1));
+        // backward n→p roles (tag 1) — the inverse direction of the same edge
+        e.extend(self.out_edges[n].iter().filter(|(_, t, _)| *t == p).map(|(r, _, _)| ((*r as u64) << 1) | 1));
+        e.sort_unstable();
+        e.dedup();
+        sig.extend(e);
+        sig
+    }
+
     /// Incremental pairwise (mode-3) blocking: re-evaluate only the changed suffix
     /// `i2_lo..nn`, identical in result to the full mode-3 scan in `compute_blocked`
     /// (KM_HT_INCRBLOCK2_CHECK asserts it per pass). A signature depends only on
@@ -1694,6 +1732,22 @@ pub struct Ht {
     /// model. Sound on the same fragment Ht's core blocking already assumes.
     satcache: bool,
     sat_sigs: HashSet<Vec<u64>>,
+    /// KM_HT_SATCACHE3: cross-query SATURATION CACHE for the SOUND mode-3 (pairwise)
+    /// route — the mode the inverse/number targets (10908/7914/9724/15672) require.
+    /// `satcache`/`satfold` are inert here: they fire only for block_mode 0/1/2 and
+    /// key on positive cores, which is unsound under inverse (a node clash-free in
+    /// query X can carry a forbidden concept in query Y; a positive-core block would
+    /// skip its clash). This cache pools the FULL-label pairwise signature
+    /// (`i3_signature_full`: pos+neg core(n) + core(pred) + edge-roles) of UNBLOCKED
+    /// clash-free nodes from completed models. A later mode-3 node whose full
+    /// signature is pooled is blocked: its (label, parent-context) was witnessed
+    /// consistent by a fully-expanded subtree, and the full label (incl. negatives)
+    /// guarantees that witness respects this query's forbidden concepts too. Sound
+    /// on the same SHIQ fragment within-query mode-3 blocking is sound on, lifted
+    /// cross-query. Default OFF (opt-in, validated vs gold before any promotion).
+    satcache3: bool,
+    sat_sigs3: HashSet<Vec<u64>>,
+    sc3_pooled: u64,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -4658,6 +4712,9 @@ impl Ht {
             lwatch: HashMap::new(),
             satcache: std::env::var_os("KM_HT_SATCACHE").is_some(),
             sat_sigs: HashSet::new(),
+            satcache3: std::env::var_os("KM_HT_SATCACHE3").is_some(),
+            sat_sigs3: HashSet::new(),
+            sc3_pooled: 0,
             phase_save: std::env::var_os("KM_HT_PHASE").is_some(),
             phase: HashMap::new(),
             lblng: std::env::var_os("KM_HT_LBLCACHE").is_some(),
@@ -4917,10 +4974,69 @@ impl Ht {
                     Some(p) => p,
                     None => continue, // root has no parent edge; never blocked
                 };
+                // KM_HT_SATCACHE3: a full-label pairwise signature witnessed
+                // consistent (unblocked, clash-free) in a prior completed model
+                // blocks this node — cross-query saturation reuse for the sound
+                // mode-3 route. Checked before the within-model dedup so reuse fires
+                // even for the first node carrying the signature in this build.
+                if self.satcache3 && self.sat_sigs3.contains(&self.ext.i3_signature_full(n, p)) {
+                    blocked[n] = true;
+                    continue;
+                }
                 // shared with the incremental i3_recompute, so the two are identical.
                 let sig = self.ext.i3_signature(n, p);
                 if !seen.insert(sig) {
                     blocked[n] = true;
+                }
+            }
+        } else if mode == 4 {
+            // DOUBLE BLOCKING (mode 4): the SOUND SHIQ pairwise condition for
+            // ontologies WITH inverse roles (Horrocks/Sattler/Tobies). Block n by
+            // the first earlier unblocked node with an identical FULL-label
+            // bidirectional signature: full label(n) = label(m), full label(pred n)
+            // = label(pred m), and the pred↔node edge roles match in BOTH directions
+            // (`i3_signature_full`). Unlike mode 3 (positive core, sound only without
+            // inverse) this matches negatives and the inverse edge, so unraveling the
+            // blocker into n's position respects every constraint n carries — sound
+            // under inverse + number. Folds less than mode 3 (so larger models), but
+            // it is the correct blocking for the inverse-bound family. Hashed O(n).
+            let mut seen: HashSet<Vec<u64>> = HashSet::with_capacity(nn);
+            for n in 0..nn {
+                if !self.ext.blockable[n] {
+                    continue;
+                }
+                let p = match self.ext.pred[n] {
+                    Some(p) => p,
+                    None => continue,
+                };
+                let sig = self.ext.i3_signature_full(n, p);
+                if self.satcache3 && self.sat_sigs3.contains(&sig) {
+                    blocked[n] = true;
+                    continue;
+                }
+                if !seen.insert(sig) {
+                    blocked[n] = true;
+                }
+            }
+            // INDIRECT blocking (Horrocks/Sattler/Tobies): a node with a (directly
+            // or indirectly) blocked predecessor is itself blocked and must not be
+            // expanded — its blocker's unraveling already covers it. This is what
+            // makes double blocking TERMINATE under ∀-over-inverse: a backward ∀
+            // (∀r⁻.C) completes a node's label only after its successor exists, so
+            // the frontier node never *directly* matches an earlier complete node.
+            // But once its predecessor directly blocks, the frontier is indirectly
+            // blocked and the chain stops. `pred[n] < n` (parent precedes child) so
+            // one ascending pass propagates transitively (blocked[pred] is final
+            // when we reach n). Clash detection is unaffected — blocking only gates
+            // ∃-expansion, never `add_concept`'s clash raise.
+            for n in 0..nn {
+                if blocked[n] || !self.ext.blockable[n] {
+                    continue;
+                }
+                if let Some(p) = self.ext.pred[n] {
+                    if blocked[p] {
+                        blocked[n] = true;
+                    }
                 }
             }
         } else if self.ext.incr_block {
@@ -5253,7 +5369,13 @@ impl Ht {
             // KM_HT_INCRBLOCK2: incremental subset-blocking (mode 1) — re-evaluate
             // only the changed suffix instead of all nodes every pass. Identical
             // result to the full scan; KM_HT_INCRBLOCK2_CHECK asserts it per pass.
-            Some(if self.ext.incr2 && (self.block_mode == 1 || self.block_mode == 3) {
+            // KM_HT_SATCACHE3 consults the cross-query pool only in the full
+            // `compute_blocked` (it owns `self.sat_sigs3`); fall off the incremental
+            // mode-3 path when the cache is live so pooled blocks fire.
+            Some(if self.ext.incr2
+                && (self.block_mode == 1
+                    || (self.block_mode == 3 && !self.satcache3))
+            {
                 // mode 1 = subset (i2_*), mode 3 = pairwise (i3_*); both re-evaluate
                 // only the changed suffix, identical to the full scan.
                 let b = if self.block_mode == 3 {
@@ -6011,6 +6133,30 @@ impl Ht {
                         return None;
                     }
                     let sat = matches!(other, Out::Sat);
+                    // KM_HT_SATCACHE3: pool the FULL-label pairwise signatures of
+                    // this completed clash-free model's UNBLOCKED blockable nodes —
+                    // genuine witnesses whose subtree was fully expanded. A pooled
+                    // signature blocks any later mode-3 node with the same (label,
+                    // parent, edge) context, sharing the saturation across queries.
+                    // Restricted to unblocked nodes so the witness is real (a blocked
+                    // node's subtree was never expanded). Sound for the SHIQ mode-3
+                    // fragment (the full label carries this query's negatives, so the
+                    // witness respects every forbidden concept of the blocked node).
+                    if sat && self.satcache3 && self.block_mode == 3 {
+                        let nn = self.ext.num_nodes();
+                        let blk = self.compute_blocked();
+                        for n in 0..nn {
+                            if !self.ext.blockable[n] || blk[n] {
+                                continue;
+                            }
+                            if let Some(p) = self.ext.pred[n] {
+                                let sig = self.ext.i3_signature_full(n, p);
+                                if self.sat_sigs3.insert(sig) {
+                                    self.sc3_pooled += 1;
+                                }
+                            }
+                        }
+                    }
                     // KM_HT_SATCACHE: pool the (core) signatures of this completed
                     // clash-free model's foldable nodes. Their satisfiability is
                     // label-determined (ALC(H) no-inverse), so they prune matching
@@ -6472,6 +6618,10 @@ impl Ht {
         if self.stats && witreuse {
             eprintln!("KM_HT [witreuse] queries={} reused={} built={}",
                 queries.len(), wit_hits, queries.len() as u64 - wit_hits);
+        }
+        if self.stats && self.satcache3 {
+            eprintln!("KM_HT [satcache3] pooled_full_sigs={} distinct={}",
+                self.sc3_pooled, self.sat_sigs3.len());
         }
 
         // Told subsumers (Mechanism 1, from the HermiT trace): structural
@@ -9020,6 +9170,131 @@ mod tests {
             ht.qo_classify_kpset(&[A, B, D, E]).is_none(),
             "load-bearing/spurious inverse must defer (None), never over-derive B⊑E"
         );
+    }
+
+    // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
+    // (task #11 foundation; full-label bidirectional pairwise blocking)
+
+    #[test]
+    fn mode4_terminates_on_inverse_cycle() {
+        // A ⊑ ∃R0.A is an infinite R0-chain; the inverse bridge R0(x,y)→R1(y,x)
+        // makes every successor also an R1-predecessor. Double blocking must fold
+        // the chain so consistent terminates with SAT (no infinite expansion/panic).
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 4;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn mode4_backward_inverse_propagation_clash() {
+        // A ⊑ ∃R0.B, B ⊑ ∃R0.B (infinite B-chain), inverse bridge R0(x,y)→R1(y,x),
+        // B ⊑ ∀R1.CC (a B-node's R1-successor = its R0-PREDECESSOR gets CC), and
+        // A ⊑ ¬CC. The successor n1:B has an R1-edge back to the root n0:A, so the
+        // backward-∀ writes CC onto n0, clashing with A⊑¬CC ⇒ UNSAT. Exercises sound
+        // inverse (backward) propagation under mode 4.
+        const CC: C = 4;
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(vec![con(false, A, X)], vec![con(true, CC, X)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 4;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn mode4_inverse_model_is_satisfiable() {
+        // Same backward-∀ shape but WITHOUT the A⊑¬CC clash: the model is satisfiable
+        // and the infinite chain must be folded by double blocking. Guards against
+        // OVER-blocking (spurious termination as UNSAT) and non-termination.
+        const CC: C = 4;
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 4;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn mode4_agrees_with_default_on_noinverse_clash() {
+        // Regression: mode 4 must give the same verdict as the default blocking on a
+        // pure no-inverse case. A ⊑ ∃R0.B, A ⊓ R0 ⊑ ¬B (∀R0.¬B) ⇒ UNSAT.
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 4;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn mode4_merge_cycle_inverse_terminates_sat() {
+        // Cardinality merge × inverse × double blocking together. A ⊑ ∃R0.B,
+        // A ⊑ ∃R0.D with R0 functional ⇒ the two R0-successors merge into one
+        // {B,D} node. B ⊑ ∃R0.A makes the merged node spawn an A-successor, so the
+        // model cycles {A}→{B,D}→{A}→… ; the inverse bridge R0(x,y)→R1(y,x) puts a
+        // backward R1 edge on every node. B and D are NOT disjoint ⇒ SAT. Mode-4
+        // must fold the cycle (a later {B,D}-node has the same full bidirectional
+        // signature as the first) so consistent terminates instead of expanding
+        // forever. Exercises merge-rewritten labels feeding the double-block key.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            // R0 functional: the two successors of A merge
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            // merged {B,D} node spawns an A-successor ⇒ infinite cycle
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, A, X)]),
+            // inverse bridge
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 4;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn mode4_merge_clash_inverse_unsat() {
+        // Same merge × inverse shape, but B ⊓ D ⊑ ⊥. The functional merge folds A's
+        // two R0-successors into one node carrying both B and D, which clash ⇒ {A}
+        // UNSAT. The clash is forced by the merge before any blocking can fold the
+        // cycle, so mode-4 must still report UNSAT (guards against the double-block
+        // key masking a merge-induced clash). Confident deterministic outcome.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const R1: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, A, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+            // B ⊓ D ⊑ ⊥
+            Clause::new(vec![con(false, B, X), con(false, D, X)], vec![]),
+        ];
+        let mut ht = ht(cls);
+        ht.block_mode = 4;
+        assert_eq!(ht.consistent(&[CLit::pos(A)]), Some(false));
     }
 
     #[test]
