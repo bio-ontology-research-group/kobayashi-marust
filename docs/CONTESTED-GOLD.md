@@ -72,9 +72,45 @@ all regenerated together. Verified 2026-06-17 on IBEX
 Action on IBEX: exclude 15516 / 2669 from Konclude comparison (or drop their
 gold files), since Konclude cannot produce a valid signature for them.
 
+## 10621 — functional-datatype unsatisfiability Konclude's gold misses (proven 2026-06-25)
+
+`ore_ont_10621` (FMAInOWL anatomy, ~244k clauses) has **functional boolean datatype
+properties**. Konclude's gold records it **consistent with an empty `#UNSAT` block
+(0 unsatisfiable concepts)** — this is **wrong**. The ontology genuinely has many
+unsatisfiable named concepts. Minimal proof from the told axioms:
+
+```
+Zone_of_cell ⊑ Fiat_cell_part ⊑ Fiat_anatomical_structure ⊑ Anatomical_structure
+            ⊑ Material_physical_anatomical_entity ⊑ DataHasValue(has_mass, "true"^^xsd:boolean)
+Zone_of_cell ⊑ DataHasValue(has_mass, "false"^^xsd:boolean)
+FunctionalDataProperty(has_mass)
+⟹  Zone_of_cell ⊑ ⊥   (a functional property cannot be both true and false)
+```
+
+Three-way adjudication on the minimal extracted ontology (IBEX job 47787383):
+
+| reasoner | `Zone_of_cell` verdict | notes |
+|----------|------------------------|-------|
+| **HermiT 1.4.6** | `≡ owl:Nothing` (unsatisfiable) | datatype-sound authority — **correct** |
+| **KM (CB engine)** | `unsatisfiable: [Zone_of_cell]` | **correct** |
+| Konclude (gold)  | consistent, 0 unsat | **wrong** |
+| ELK              | consistent, `Zone_of_cell ⊑ Anatomical_structure` | EL profile drops functional datatypes — **cannot see it** |
+
+So **ELK "consistent" does NOT validate Konclude here** — both miss the functional
+datatype. KM (CB *and* the fast hypertableau) is **sound** on 10621; its
+"unsatisfiable" verdicts are genuine. The 10621 timeout in any KM engine is
+correct-but-expensive unsatisfiability work, not a soundness defect. Exclude 10621
+from Konclude gold-match scoring, or re-gold it with HermiT.
+
+**General rule this establishes:** functional-datatype unsatisfiability is a
+Konclude-ORE-gold blind spot. For any datatype-bearing ontology where KM reports
+unsat but Konclude + ELK report consistent, re-adjudicate with HermiT before
+treating KM as unsound.
+
 ## Scope / honesty note
 
-Only these **four** ontologies have been *proven* (ddmin core + both reasoners).
-CLAUDE.md notes HermiT differs from Konclude on ~12 ontologies overall; the other
-~8 are **not yet adjudicated** — do not assume HermiT is right on those without
-the same ddmin-core proof.
+**Five** ontologies are now *proven* (8941, 13912, 15516, 2669 via ddmin cores;
+10621 via the minimal told-axiom ontology + HermiT). CLAUDE.md notes HermiT differs
+from Konclude on ~12 ontologies overall; the rest are **not yet adjudicated** — do
+not assume HermiT is right on those without the same proof. On every proven case so
+far, **KM agrees with HermiT and Konclude's gold is the one that is wrong.**
