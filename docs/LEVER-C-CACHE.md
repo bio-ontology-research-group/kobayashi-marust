@@ -97,6 +97,44 @@ spurious affected-set), instead of being checked against the conflated shared
 filler label and missing. That collapses the affected set so the card-split
 certifies or leaves a tiny residue. Port #2 is the next implementation.
 
+## Port #2 spec — per-creation-role ALL-concept extension (read from source 2026-06-26)
+
+Konclude data flow (CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp):
+- `applyALLRule` (:6143): a `∀R.C` on node n (a) writes operands BACKWARD to genuine
+  R-predecessors via backPropHash (`addConceptFilteredToIndividual`, :6167 = KPWRITE,
+  done); (b) if R propagates into the creation direction, calls
+  `addALLConceptExtensionProcessingRole` (:6196) + marks n CRITICAL + queues a
+  CCT_FORALL critical descriptor.
+- `addSuccessorExtensionsALLConcept` (:2520): puts the ∀-operands into a SEPARATE
+  `allConSuccExtData->addExtensionConcept(op,neg)` store — NOT the subsumer label.
+- `processSuccessorALLConceptsExtensions` (:2659) → `updateSuccessorRoleALLConceptsExtensions`
+  applies the stored operands to n's R-successors AND propagates to "dependent
+  individuals" via `addProcessExtensionToDependentIndividuals` (:2718) following
+  `getCopyDependingIndividualNodeLinker` — the COPY-ON-MERGE links.
+- `isCriticalALLConceptDescriptorInsufficient` (:3451): the operand-containment check.
+
+THE HARD PART (why this is not a small change): QoSat's `sat_filler` shares one
+filler per `(filler-concept, role)` across ALL `∃R.D` holders (bounded memory). Writing
+the per-predecessor ∀-operands into that SHARED filler accumulates the UNION of
+constraints from incompatible predecessors → a SPURIOUS clash on the filler →
+unsoundly marks every sharing predecessor unsat (this is the "7581 6.5M pollution"
+the pure-check kpset exists to avoid). Konclude resolves it with
+`copyDependingIndividualNode`: successors are SHARED UNTIL a conflicting constraint
+arrives, then COPIED (split) so each predecessor keeps its own consistent successor.
+That is the non-shared/copy-on-conflict successor infrastructure (the KM_HT_QO_SHIQ
+`qo_parent` per-source successors are the non-shared extreme — sound but ×concepts
+memory / OOM on 7914 per shiq_build). Port #2 = the MIDDLE ground Konclude uses:
+share by content, copy only on a real per-predecessor ∀-conflict.
+
+KM realization plan: (1) keep the shared `sat_filler`; (2) attach a per-(filler,role)
+extension set for inverse-∀ operands instead of deferring them as kp checks; (3)
+fire forward GUARD rules from the extension (completeness) but detect a per-filler
+clash; (4) on a clash that is NOT forced by the filler's own concept (i.e. it came
+from a predecessor-specific ∀), SPLIT the filler (copy-depending) for the conflicting
+predecessor rather than killing the shared node. Synthetic test FIRST: two predecessors
+∃R.D, one adds `∀R⁻.C`, the other `∀R⁻.¬C` — the shared filler must NOT clash both
+predecessors (the copy-on-conflict regression test). Build on ws, Lean re-cert at END.
+
 ## Build plan (incremental, ws synthetic-test-first, Lean re-cert at END)
 
 1. Regression test locking the CLEAN/INSUFFICIENT verdicts KPSET already produces on a
