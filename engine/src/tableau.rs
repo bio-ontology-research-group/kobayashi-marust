@@ -4508,6 +4508,7 @@ pub fn run_json(input: &str) -> Result<String, String> {
         let ht_clauses = clauses.clone();
         let q = queries.clone();
         let noms = inp.nominals.clone();
+        let ht_number = inp.number;
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -4517,6 +4518,10 @@ pub fn run_json(input: &str) -> Result<String, String> {
             .spawn(move || {
                 let mut ht = hypertableau::Ht::new(ht_clauses);
                 ht.set_nominals(noms);
+                // A number KB routed to the fast Ht (e.g. under KM_HT_FORCE or the
+                // nominal route) must run the qualified-cardinality rules (≤n / ≥n
+                // recognition / functional) rather than bailing `unsupported`.
+                ht.set_number(ht_number);
                 if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
                         Some(r) => Some(r),

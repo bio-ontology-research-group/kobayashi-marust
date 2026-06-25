@@ -201,12 +201,22 @@ struct PendingDisj {
     at: usize,
 }
 
-/// A deferred ≤n qualified-cardinality merge choice. The AtMost clause head
-/// `⋁ Eq(yi,yj)` fired with n+1 distinct r-successors in the filler; exactly one
-/// candidate `pairs` entry must be identified (merged). Branched at the dfs
-/// fixpoint like a `PendingDisj`. `at` = trail length at recording, so a
-/// backtrack past the matching body drops it (suffix pop, like `pending`).
+/// A deferred qualified-cardinality choice, branched at the dfs fixpoint like a
+/// `PendingDisj`. `at` = trail length at recording, so a backtrack past the
+/// matching body drops it (suffix pop, like `pending`). Two head shapes share
+/// this record:
+///   - pure ≤n AtMost: head `⋁ Eq(yi,yj)` fired with n+1 distinct r-successors in
+///     the filler; exactly one candidate `pairs` entry must be identified
+///     (merged). `concepts` is empty.
+///   - ≥n recognition: head `Q ∨ ⋁ Eq(yi,yj)` (the contrapositive of `≥n r.F ⊑ Q`)
+///     fired with n distinct r-successors in F. The branch either asserts the
+///     recognized concept `Q` (a `concepts` entry) OR identifies one of the
+///     candidate successor pairs. `concepts` holds the recognized literal(s).
+/// A branch option is thus "assert a live concept" or "merge a live pair";
+/// liveness (concept present/dead, pair already merged) is recomputed at branch
+/// time, so the stored sets are the full original disjuncts.
 struct MergeDisj {
+    concepts: Vec<(Node, CLit)>,
     pairs: Vec<(Node, Node)>,
     bdep: DepSet,
     at: usize,
@@ -656,8 +666,16 @@ impl Ext {
     /// Record a ≤n qualified-cardinality merge choice (KM_HT_QMERGE), branched at
     /// the dfs fixpoint. `at` lets a backtrack drop it as a trail-ordered suffix.
     fn push_merge(&mut self, pairs: Vec<(Node, Node)>, bdep: DepSet) {
+        self.push_card(Vec::new(), pairs, bdep);
+    }
+
+    /// Record a deferred cardinality choice with both concept-recognition
+    /// disjuncts (`concepts`, the `Q` of a `≥n r.F ⊑ Q` head) and merge candidates
+    /// (`pairs`). Branched at the dfs fixpoint (`branch_merge`), where each option
+    /// is either "assert a live concept" or "merge a live pair".
+    fn push_card(&mut self, concepts: Vec<(Node, CLit)>, pairs: Vec<(Node, Node)>, bdep: DepSet) {
         let at = self.trail.len();
-        self.pending_merge.push(MergeDisj { pairs, bdep, at });
+        self.pending_merge.push(MergeDisj { concepts, pairs, bdep, at });
     }
 
     /// Mark every disjunction touched by a change at `(n, lit)` (either the
@@ -1251,43 +1269,70 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
         ext.raise_clash(bdep.clone());
         return;
     }
-    // KM_HT_NUMBER: equality-head clauses (≤n / functionality). A single live Eq
-    // pair is a forced (unit) merge of the two role successors; multiple Eq
-    // disjuncts (≤n, n≥2) are branched as a merge choice under KM_HT_QMERGE.
+    // KM_HT_NUMBER: equality-head clauses (qualified cardinality). Two head shapes
+    // are handled uniformly as a deferred cardinality choice:
+    //   - all-Eq head `⋁ Eq(yi,yj)`            = ≤n AtMost merge (identify a pair).
+    //   - mixed concept+Eq head `Q ∨ ⋁ Eq`     = ≥n recognition (`≥n r.F ⊑ Q`,
+    //     i.e. the contrapositive `¬Q ⊑ ≤(n-1) r.F`): assert `Q`, or merge a pair.
+    // A single live option is a unit (a forced merge, or — when ¬Q is fixed and
+    // exactly one pair survives — the AtMost merge); ≥2 live options branch
+    // (`branch_merge`) under KM_HT_QMERGE. The branch's concept disjunct is the
+    // Konclude at-least/at-most recognition that earlier bailed `unsupported`.
     if ext.number && head.iter().any(|h| matches!(h, Atom::Eq { .. })) {
-        // An all-Eq head is a ≤n qualified-cardinality merge: identify one of the
-        // candidate successor pairs (the AtMost rule). A single live pair is the
-        // functional/≤1 unit merge; ≥2 pairs (n≥2) need a branch (KM_HT_QMERGE).
-        // A mixed concept+Eq head (negative ≥n recognition) is not yet supported.
-        if head.iter().all(|h| matches!(h, Atom::Eq { .. })) {
-            let mut pairs: Vec<(Node, Node)> = Vec::with_capacity(head.len());
-            for h in head {
-                if let Atom::Eq { s, t } = *h {
-                    let sn = ext.resolve(sigma[s as usize].expect("eq head src bound by body"));
-                    let tn = ext.resolve(sigma[t as usize].expect("eq head dst bound by body"));
-                    if sn == tn {
-                        // a candidate pair is already identified ⇒ ≤n already holds.
-                        return;
-                    }
-                    pairs.push(if sn <= tn { (sn, tn) } else { (tn, sn) });
+        // Recognized concept disjuncts (the `Q`): satisfied ⇒ done; dead (¬Q
+        // present) ⇒ fold its reason; else a live branch option.
+        let mut dead = dep_empty();
+        let mut concepts: Vec<(Node, CLit)> = Vec::new();
+        for h in head {
+            if let Atom::Concept { lit, t } = *h {
+                let n = ext.resolve(sigma[t as usize].expect("recognition head var bound by body"));
+                if ext.has_concept(n, lit) {
+                    return;
+                }
+                let comp = CLit { neg: !lit.neg, c: lit.c };
+                if let Some(d) = ext.dep_of(n, comp) {
+                    dead = dep_union(&dead, d);
+                } else {
+                    concepts.push((n, lit));
                 }
             }
-            pairs.sort_unstable();
-            pairs.dedup();
-            match pairs.len() {
-                0 => {}
-                1 => ext.merge_into(pairs[0].0, pairs[0].1, bdep),
-                _ => {
-                    if ext.qmerge {
-                        ext.push_merge(pairs, bdep.clone());
-                    } else {
-                        ext.unsupported = true;
-                    }
-                }
-            }
-            return;
         }
-        ext.unsupported = true;
+        // Candidate merge pairs. A pair already identified ⇒ the cardinality
+        // bound already holds ⇒ no choice needed.
+        let mut pairs: Vec<(Node, Node)> = Vec::new();
+        for h in head {
+            if let Atom::Eq { s, t } = *h {
+                let sn = ext.resolve(sigma[s as usize].expect("eq head src bound by body"));
+                let tn = ext.resolve(sigma[t as usize].expect("eq head dst bound by body"));
+                if sn == tn {
+                    return;
+                }
+                pairs.push(if sn <= tn { (sn, tn) } else { (tn, sn) });
+            }
+        }
+        pairs.sort_unstable();
+        pairs.dedup();
+        let bdep2 = dep_union(bdep, &dead);
+        // pairs is non-empty here (the head has an Eq atom and none is already
+        // identified), so there is always ≥1 option — a merge is always available,
+        // hence no immediate clash (a forbidden merge clashes later via the ≥m
+        // distinctness clauses). One option ⇒ unit; ≥2 ⇒ deferred branch.
+        match concepts.len() + pairs.len() {
+            0 | 1 => {
+                if let Some(&(n, lit)) = concepts.first() {
+                    ext.add_concept(n, lit, &bdep2);
+                } else if let Some(&(a, b)) = pairs.first() {
+                    ext.merge_into(a, b, &bdep2);
+                }
+            }
+            _ => {
+                if ext.qmerge {
+                    ext.push_card(concepts, pairs, bdep2);
+                } else {
+                    ext.unsupported = true;
+                }
+            }
+        }
         return;
     }
     let mut satisfied = false;
@@ -1520,6 +1565,13 @@ struct LClause {
     lits: Vec<(Node, u64, CLit)>,
     w0: usize,
     w1: usize,
+}
+/// One branch option of a deferred cardinality choice (`branch_merge`): assert a
+/// recognized concept (`≥n` recognition's `Q`) or identify a candidate pair.
+#[derive(Clone, Copy)]
+enum MergeChoice {
+    Concept(Node, CLit),
+    Merge(Node, Node),
 }
 enum HeadItem {
     Concept(Node, CLit),
@@ -1814,6 +1866,12 @@ pub struct Ht {
     /// `set_qmerge`: force the n≥2 qualified ≤n merge branch on (re-applied after
     /// each per-run `Ext::new`), independent of the KM_HT_QMERGE env flag.
     force_qmerge: bool,
+    /// `set_number`: force the qualified-cardinality (≤n / ≥n / functional)
+    /// equality-head handling on (re-applied after each per-run `Ext::new`),
+    /// independent of the KM_HT_NUMBER env flag. Set from the input's `number`
+    /// flag so a number KB routed to the fast Ht actually runs the cardinality
+    /// rules instead of bailing `unsupported`.
+    force_number: bool,
     /// full (pos+neg) labels of nodes seen in completed clash-free models, sorted.
     sat_labels: Vec<Vec<CLit>>,
     /// smallest-literal watch index into `sat_labels` for the superset check.
@@ -4822,6 +4880,7 @@ impl Ht {
             satfold: std::env::var_os("KM_HT_SATFOLD").is_some(),
             force_fast: false,
             force_qmerge: false,
+            force_number: false,
             sat_labels: Vec::new(),
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
@@ -4891,6 +4950,17 @@ impl Ht {
     /// Force the n≥2 qualified ≤n merge branch on, independent of KM_HT_QMERGE.
     pub fn set_qmerge(&mut self) {
         self.force_qmerge = true;
+    }
+
+    /// Enable qualified-cardinality handling (≤n / ≥n recognition / functional)
+    /// when the input KB is a number KB, independent of the KM_HT_NUMBER /
+    /// KM_HT_QMERGE env flags. The ≥n / ≤n recognition heads need the merge branch,
+    /// so this also forces qmerge on. Inert when `on` is false.
+    pub fn set_number(&mut self, on: bool) {
+        if on {
+            self.force_number = true;
+            self.force_qmerge = true;
+        }
     }
 
     /// Provide the nominal concept ids (the o-rule singletons `{o}`). Re-applied to
@@ -6002,43 +6072,81 @@ impl Ht {
     /// leaves n distinct, so the AtMost holds.
     fn next_merge(&self) -> Option<usize> {
         for (id, md) in self.ext.pending_merge.iter().enumerate() {
-            let sat = md
+            // satisfied if some candidate pair is already identified, OR (for a ≥n
+            // recognition) the recognized concept is already present.
+            let pair_sat = md
                 .pairs
                 .iter()
                 .any(|&(a, b)| self.ext.resolve(a) == self.ext.resolve(b));
-            if !sat {
+            let con_sat = md
+                .concepts
+                .iter()
+                .any(|&(n, lit)| self.ext.has_concept(self.ext.resolve(n), lit));
+            if !pair_sat && !con_sat {
                 return Some(id);
             }
         }
         None
     }
 
-    /// Branch a ≤n qualified-cardinality merge: try identifying each candidate
-    /// successor pair in turn (the AtMost rule's non-deterministic choice).
-    /// Distinctness clauses (`⊥ ⟵ Eq(yi,yj)` from a ≥m constraint) clash a
-    /// forbidden identification, forcing the next pair; if every pair clashes the
-    /// AtMost is unsatisfiable here. Mirrors the concept-disjunction branch:
-    /// mark / merge / recurse, backjump when the conflict is independent of this
-    /// level, accumulate the fail dep otherwise.
+    /// Branch a deferred qualified-cardinality choice: try each live option in
+    /// turn. For a ≤n AtMost the options are the candidate successor pairs (the
+    /// AtMost rule's non-deterministic merge); for a ≥n recognition (`≥n r.F ⊑ Q`)
+    /// they additionally include asserting the recognized concept `Q`. A forbidden
+    /// identification clashes via the ≥m distinctness clauses (`⊥ ⟵ Eq(yi,yj)`),
+    /// forcing the next option; if every option clashes the choice is unsatisfiable
+    /// here. Mirrors the concept-disjunction branch: mark / apply / recurse,
+    /// backjump when the conflict is independent of this level, else accumulate.
     fn branch_merge(&mut self, mid: usize, depth: Level) -> Out {
         let level = depth + 1;
         let pairs = self.ext.pending_merge[mid].pairs.clone();
+        let concepts = self.ext.pending_merge[mid].concepts.clone();
         let bdep = self.ext.pending_merge[mid].bdep.clone();
-        self.branch_pushes += 1;
-        let mut fail = dep_empty();
+        // Recompute liveness (the model changed since the push). A satisfied option
+        // — the recognized concept already present, or a pair already identified —
+        // discharges the choice with no new decision. A dead recognized concept
+        // (its complement present) folds its reason into the branch dep.
+        let mut dead = dep_empty();
+        let mut options: Vec<MergeChoice> = Vec::new();
+        for &(n, lit) in &concepts {
+            let rn = self.ext.resolve(n);
+            if self.ext.has_concept(rn, lit) {
+                return self.dfs(depth);
+            }
+            let comp = CLit { neg: !lit.neg, c: lit.c };
+            if let Some(d) = self.ext.dep_of(rn, comp) {
+                dead = dep_union(&dead, d);
+            } else {
+                options.push(MergeChoice::Concept(rn, lit));
+            }
+        }
         for &(a, b) in &pairs {
-            self.disjunct_tries += 1;
             let ra = self.ext.resolve(a);
             let rb = self.ext.resolve(b);
             if ra == rb {
-                // already identified by an earlier pair's merge ⇒ satisfied; keep
-                // solving at the current level (no new decision).
                 return self.dfs(depth);
             }
+            options.push(MergeChoice::Merge(ra, rb));
+        }
+        let gddep = dep_union(&bdep, &dead);
+        if options.is_empty() {
+            // no live option (all recognized concepts dead, no candidate pair):
+            // the disjunction is empty ⇒ clash on the folded reason.
+            return self.conflict_out(gddep);
+        }
+        self.branch_pushes += 1;
+        let mut fail = dep_empty();
+        for opt in &options {
+            self.disjunct_tries += 1;
             let mark = self.ext.mark();
-            let dep = dep_add(&bdep, level);
-            self.ext.merge_into(ra, rb, &dep);
-            // dfs's head re-propagates and detects any merge-induced clash.
+            let dep = dep_add(&gddep, level);
+            match *opt {
+                MergeChoice::Concept(n, lit) => {
+                    self.ext.add_concept(n, lit, &dep);
+                }
+                MergeChoice::Merge(a, b) => self.ext.merge_into(a, b, &dep),
+            }
+            // dfs's head re-propagates and detects any merge-/assertion-induced clash.
             let sub = self.dfs(level);
             match sub {
                 Out::Sat => return Out::Sat,
@@ -6262,6 +6370,9 @@ impl Ht {
             }
             if self.force_qmerge {
                 self.ext.qmerge = true;
+            }
+            if self.force_number {
+                self.ext.number = true;
             }
             // tell Ext whether mode-3 (pairwise) blocking is live, so add_edge
             // widens the incremental suffix on edge changes (the signature uses
@@ -8791,6 +8902,103 @@ mod tests {
         let mut t = ht(cls);
         t.set_qmerge();
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn atleast2_recognition_dead_merge_unsat() {
+        // KM_HT_NUMBER: the ≥n recognition head `r(x,y0)∧F(y0)∧r(x,y1)∧F(y1) →
+        // Q(x) ∨ y0≈y1` (the contrapositive of `≥2 r.F ⊑ Q`). A has two
+        // r-successors in F that cannot merge (one carries P, the other ¬P), and
+        // A ⊑ ¬Q. The Q disjunct is dead (¬Q present) and the only merge clashes
+        // (P ⊓ ¬P) ⇒ {A} unsat (A ⊑ Q is forced). Exercises the mixed concept+Eq
+        // head that previously bailed `unsupported`, via the dead-concept +
+        // unit-merge path.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const F: C = 10;
+        const P: C = 11;
+        const Q: C = 12;
+        const G0: C = 13;
+        const G1: C = 14;
+        let recog = Clause::new(
+            vec![role(R0, X, 1), con(false, F, 1), role(R0, X, 2), con(false, F, 2)],
+            vec![con(false, Q, X), Atom::Eq { s: 1, t: 2 }],
+        );
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(true, P, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(true, Q, X)]),
+            recog,
+        ];
+        let mut t = ht(cls);
+        t.set_number(true);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn atleast2_recognition_branch_asserts_concept_unsat() {
+        // ≥2 recognition BRANCH: Q is live and the merge is dead (P / ¬P), so the
+        // mixed head `Q ∨ y0≈y1` is a 2-option deferred branch. Q ⊑ Z conflicts
+        // with A ⊑ ¬Z, and the merge clashes — both options fail ⇒ {A} unsat. This
+        // can only be unsat if the recognition actually ASSERTS Q in its branch
+        // (else the Q option is a spurious model). Exercises branch_merge over a
+        // mixed concept+merge option set.
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const F: C = 10;
+        const P: C = 11;
+        const Q: C = 12;
+        const Z: C = 13;
+        const G0: C = 14;
+        const G1: C = 15;
+        let recog = Clause::new(
+            vec![role(R0, X, 1), con(false, F, 1), role(R0, X, 2), con(false, F, 2)],
+            vec![con(false, Q, X), Atom::Eq { s: 1, t: 2 }],
+        );
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(true, P, X)]),
+            Clause::new(vec![con(false, Q, X)], vec![con(false, Z, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(true, Z, X)]),
+            recog,
+        ];
+        let mut t = ht(cls);
+        t.set_number(true);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+    #[test]
+    fn atleast2_recognition_concept_branch_sat() {
+        // Same shape, but the recognized Q is consistent (no ¬Z), so asserting Q
+        // in the recognition branch yields a model ⇒ {A} sat. Guards against a
+        // spurious recognition clash (the Q branch must be explored and succeed).
+        std::env::set_var("KM_HT_NUMBER", "1");
+        const F: C = 10;
+        const P: C = 11;
+        const Q: C = 12;
+        const Z: C = 13;
+        const G0: C = 14;
+        const G1: C = 15;
+        let recog = Clause::new(
+            vec![role(R0, X, 1), con(false, F, 1), role(R0, X, 2), con(false, F, 2)],
+            vec![con(false, Q, X), Atom::Eq { s: 1, t: 2 }],
+        );
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, F, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(true, P, X)]),
+            Clause::new(vec![con(false, Q, X)], vec![con(false, Z, X)]),
+            recog,
+        ];
+        let mut t = ht(cls);
+        t.set_number(true);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
     #[test]
     fn nominal_orule_merge_clash_unsat() {
