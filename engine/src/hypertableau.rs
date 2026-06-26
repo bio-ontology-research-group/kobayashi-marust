@@ -8189,6 +8189,18 @@ impl Ht {
         let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
         let anywhere = self.anywhere;
         let stats = self.stats;
+        // Per-worker config that the fresh `Ht::new(template)` does NOT inherit from
+        // the clause set: the first-class number rules (`card_defs`) and the SHOQ
+        // o-rule (`nom_set`) live in struct fields, not the clauses (the clausal
+        // pigeonhole was dropped for the card route). Without re-installing these,
+        // a parallel worker classifies WITHOUT cardinality / nominals -> wrong
+        // subsumers (the documented "10908 collapses to 86/6001 at PAR=8" was this:
+        // workers missing the o-rule, not a race). Each worker owns its `Ht`, so the
+        // re-installed state is per-thread -> sound. Re-applied below in both phases.
+        let p_card_defs = self.card_defs.clone();
+        let p_nom_set = self.nom_set.clone();
+        let p_force_number = self.force_number;
+        let p_force_qmerge = self.force_qmerge;
         let nq = queries.len();
         let nthreads = par.min(nq).max(1);
         // Workers need a large stack: `dfs` recurses one frame per branch level,
@@ -8211,11 +8223,21 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
                     let tmpl = template.clone();
+                    let card_defs = p_card_defs.clone();
+                    let nom_set = p_nom_set.clone();
                     std::thread::Builder::new()
                         .stack_size(HT_WORKER_STACK)
                         .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
                             let mut w = Ht::new(tmpl);
                             w.set_anywhere(anywhere);
+                            w.force_number = p_force_number;
+                            w.force_qmerge = p_force_qmerge;
+                            if !card_defs.is_empty() {
+                                w.set_card_defs(card_defs);
+                            }
+                            if !nom_set.is_empty() {
+                                w.set_nominals(nom_set);
+                            }
                             let mut out = Vec::new();
                             loop {
                                 let i = next1.fetch_add(1, Ordering::Relaxed);
@@ -8275,11 +8297,21 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
                 .map(|_| {
                     let tmpl = template.clone();
+                    let card_defs = p_card_defs.clone();
+                    let nom_set = p_nom_set.clone();
                     std::thread::Builder::new()
                         .stack_size(HT_WORKER_STACK)
                         .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
                             let mut w = Ht::new(tmpl);
                             w.set_anywhere(anywhere);
+                            w.force_number = p_force_number;
+                            w.force_qmerge = p_force_qmerge;
+                            if !card_defs.is_empty() {
+                                w.set_card_defs(card_defs);
+                            }
+                            if !nom_set.is_empty() {
+                                w.set_nominals(nom_set);
+                            }
                             let mut subs = Vec::new();
                             loop {
                                 let li = next2.fetch_add(1, Ordering::Relaxed);

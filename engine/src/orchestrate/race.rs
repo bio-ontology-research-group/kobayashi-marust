@@ -671,9 +671,13 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         // KM_HT_FORCE bypasses run_json's `number` in-fragment gate so the SHQ ont
         // reaches the fast Ht; the worker installs the first-class `card_defs` from
         // the TInput (independent of env) and the `≥n`/`≤n` rules fire instead of
-        // the clausal Eq-merge. Single-threaded: the first-class number rules carry
-        // shared mutable distinct/merge state, so the parallel per-concept classify
-        // would race. KM_HT_QMERGE is NOT set — the card rules replace it.
+        // the clausal Eq-merge. KM_HT_QMERGE is NOT set — the card rules replace it.
+        // Single-threaded by default: `classify_parallel` IS now sound with card +
+        // nominals (it re-installs `card_defs`/`nom_set` per worker), but the
+        // per-concept card+nominal classify is heavy (ore_ont_9540: 86 nominals, 50
+        // tests, ~18 GB, times out even all-cores) and all-cores here would
+        // oversubscribe a concurrent sweep, so leave it serial; set KM_HT_PAR to opt
+        // into the (sound) parallel card classify.
         for (k, v) in [("KM_HT_FORCE", "1"), ("KM_HT_CARD", "1"), ("KM_HT_PAR", "1")] {
             if std::env::var_os(k).is_none() {
                 cmd.env(k, v);
