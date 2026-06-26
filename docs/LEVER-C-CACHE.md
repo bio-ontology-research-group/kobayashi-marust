@@ -1,6 +1,59 @@
 # Lever C — faithful Konclude G2/G3 saturation port (throughput giants)
 
-> ## ⇒ NEXT SESSION START HERE (status 2026-06-26, session 8)
+> ## ⇒ CORRECTED DIAGNOSIS (2026-06-26, session 9) — READ FIRST
+>
+> **Port #2 (∀ copy-on-conflict split fillers) is BUILT, sound, unit-tested, and
+> committed (`KM_HT_QO_SPLIT`, commits `aae23ed` + `530064b`) — but it is INERT
+> on 9724, because the prior "9724 = ∀-into-shared-filler over-defer" framing
+> below is WRONG.** Decisive diagnostic (ws, ore_ont_9724 TIN, KM_HT_TRACE
+> split-diag): on 9724 the forward pass has **redirects=0, forall_insuff=0,
+> card_insuff=98,380,184**. 9724's deferral is **100% cardinality Eq-heads**,
+> ZERO ∀-critical writes. So the giant lever is the **cardinality Eq-head MERGE**,
+> not port #2.
+>
+> **What port #2 IS good for:** the sound, monotone, bounded copy-on-conflict for
+> a genuine forward `∀r.C`-into-shared-filler conflict (redirect the source's
+> r-edge onto a node keyed by `(base-fil, role, source ∀-operand set)`; base
+> fillers stay unpolluted). Tests `split_certifies_shared_filler_conflict` +
+> `split_forall_operand_still_propagates`. It will help a ∀/inverse-dominated
+> giant — but we have not yet found which (the other giant TINs are not on ws;
+> relay 7914/9663/7499/14817 from unimatrix to validate). Keep it opt-in (env),
+> NOT wired into the route, until a giant shows payoff + a corpus sweep.
+>
+> **Sound refinement landed (`530064b`):** the `KM_HT_QO_CARD` Eq-head deferral
+> ignored `s`/`t` and deferred on EVERY firing including `Eq(n,n)` self-equalities
+> (both successors are the same shared node). Added the self-equality
+> short-circuit (`sn==tn ⇒ satisfied, no defer`). Sound; tests
+> `card_self_equality_not_insufficient` + `card_distinct_merge_still_defers`. On
+> 9724 it only trims 98.4M→97.5M (clean 2816→2823), so **the 97M residue are REAL
+> distinct-successor merges** — 9724 genuinely needs the merge performed.
+>
+> **THE NEXT LEVER (cardinality Eq-head merge) and why it is NOT a copy-on-merge:**
+> a forced `Eq(sn,tn)` (distinct filler nodes, under `sat_mode`) must fuse the two
+> successors. Port #2's copy-on-conflict keys a node by a MONOTONE operand SET, so
+> it is complete. A merged cardinality node's content is the UNION of two EVOLVING
+> labels (sn and tn keep gaining concepts after the merge), so a content-keyed
+> copy-on-merge is INCOMPLETE. The faithful port is a proper **union-find node
+> merge** (Konclude ≤-rule / `mergeIndividualNode`): redirect all in/out edges of
+> the victim onto the survivor, union labels (clash ⇒ source unsat), resolve every
+> node reference through `merged_into`, re-fire to fixpoint. Crux + risks:
+> (1) MUST be under `sat_mode` (merge filler nodes, NEVER concept self-nodes —
+> merging self-nodes conflates classification, unsound); (2) the shared filler is
+> reached by predecessors WITHOUT the ≤n, so the merge must be per-source
+> (copy-on-conflict again) or it pollutes them; (3) cascades + termination +
+> interaction with port #2 split and inverse. The forward-only certify already
+> yields ~99.8% of subsumptions soundly (`clean_subs`), so the real goal is a
+> TIGHT merge-affected set (mark a concept affected only when a merge actually
+> CLASHES or adds a subsumer), not raw coverage. This is multi-session,
+> soundness-critical, Lean-re-cert work — do it test-first from Konclude
+> `mergeIndividualNode`, validate on the giant TINs only.
+>
+> KM anchors: `apply_head` Eq branch (the merge site, hypertableau.rs ~4612),
+> `DBG_CARD_INSUFF` / `DBG_SPLIT` / `DBG_FORALL_INSUFF` split-diag trace,
+> `qo_classify_global_fwd` card-split (the affected-set reverse-reach).
+> Konclude anchors: the ≤-rule + `mergeIndividualNode` + choose-rule.
+
+> ## ⇒ PRIOR FRAMING (status 2026-06-26, session 8) — SUPERSEDED for 9724, see above
 >
 > **Goal still open:** classify the throughput giants (9724, 7914, 9663, 14817,
 > 7499; SRIQ/SHIF, inverse + cardinality) in ~Konclude time. None classify yet.
