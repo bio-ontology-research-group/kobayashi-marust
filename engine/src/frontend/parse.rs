@@ -9,7 +9,7 @@
 
 use super::iri::{short_base, IriRegistry};
 use super::sexpr::{Node, Parser};
-use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
+use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm};
 
 /// Out-of-fragment marker (port of `OutOfFragment`).
 #[derive(Debug)]
@@ -243,6 +243,56 @@ pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a
         .collect()
 }
 
+/// A SWRL rule term: `Variable(<iri>)` ⟶ a rule variable; a bare individual atom
+/// ⟶ a named individual. Anything else (a nested expression) is unrepresentable.
+fn parse_rule_term(reg: &mut IriRegistry, node: &Node) -> Option<RuleTerm> {
+    match node {
+        Node::List(h, a) if *h == "Variable" => Some(RuleTerm::Var(reg.short(a.first()?.as_atom()?))),
+        Node::Atom(s) => Some(RuleTerm::Ind(reg.short(s))),
+        _ => None,
+    }
+}
+
+/// Parse a `Body(...)` / `Head(...)` node into rule atoms. Returns `None` if any
+/// atom is of a kind we do not represent (datatype/builtin/data-range atom) or is
+/// malformed — the caller then drops the whole rule (sound: a dropped constraint
+/// can lose an inconsistency, never invent one).
+fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec<RuleAtom>> {
+    let args = match node {
+        Node::List(_, a) => a,
+        _ => return None,
+    };
+    let mut out = Vec::new();
+    for atom in args.iter().filter(|a| a.head() != Some("Annotation")) {
+        let (h, aa) = match atom {
+            Node::List(h, aa) => (*h, aa),
+            _ => return None,
+        };
+        match h {
+            "ClassAtom" => out.push(RuleAtom::Class(
+                cls(reg, aa.first()?).ok()?,
+                parse_rule_term(reg, aa.get(1)?)?,
+            )),
+            "ObjectPropertyAtom" => out.push(RuleAtom::Role(
+                role_str(reg, aa.first()?).ok()?,
+                parse_rule_term(reg, aa.get(1)?)?,
+                parse_rule_term(reg, aa.get(2)?)?,
+            )),
+            "DifferentIndividualsAtom" => out.push(RuleAtom::Diff(
+                parse_rule_term(reg, aa.first()?)?,
+                parse_rule_term(reg, aa.get(1)?)?,
+            )),
+            "SameIndividualAtom" => out.push(RuleAtom::Same(
+                parse_rule_term(reg, aa.first()?)?,
+                parse_rule_term(reg, aa.get(1)?)?,
+            )),
+            // DataPropertyAtom / BuiltInAtom / DataRangeAtom: drop the whole rule.
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
 /// Port of `add_axiom`.
 fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(), OutOfFragment> {
     let (head, args) = match node {
@@ -350,6 +400,22 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             for k in 0..ids.len() {
                 for l in (k + 1)..ids.len() {
                     o.add(Axiom::DifferentIndividuals(ids[k].clone(), ids[l].clone()));
+                }
+            }
+        }
+        "DLSafeRule" => {
+            // DLSafeRule(Body(...) Head(...)). DL-safe: variables range only over
+            // named individuals. A rule with any atom we cannot represent
+            // (datatype/builtin) is dropped wholesale (sound — see parse_rule_atoms).
+            let body = args.iter().find(|a| a.head() == Some("Body"));
+            let head_n = args.iter().find(|a| a.head() == Some("Head"));
+            if let (Some(b), Some(hd)) = (body, head_n) {
+                if let (Some(bvec), Some(hvec)) =
+                    (parse_rule_atoms(reg, b), parse_rule_atoms(reg, hd))
+                {
+                    if !hvec.is_empty() {
+                        o.add(Axiom::Rule(bvec, hvec));
+                    }
                 }
             }
         }
@@ -518,4 +584,50 @@ pub fn declared_class_node<'a>(node: &Node<'a>) -> Option<&'a str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod rule_tests {
+    use super::*;
+    use crate::frontend::syntax::{Axiom, RuleAtom, RuleTerm};
+
+    #[test]
+    fn dlsafe_star_rule_parses() {
+        // the ore_ont_2669 shape: br has two predecessors op1,op2 (not tree-shaped)
+        let txt = "Ontology(\
+DLSafeRule(Body(\
+ClassAtom(<http://e#C> Variable(<http://e#op1>)) \
+ClassAtom(<http://e#C> Variable(<http://e#op2>)) \
+ClassAtom(<http://e#D> Variable(<http://e#br>)) \
+ObjectPropertyAtom(<http://e#isPartOf> Variable(<http://e#op1>) Variable(<http://e#br>)) \
+ObjectPropertyAtom(<http://e#isPartOf> Variable(<http://e#op2>) Variable(<http://e#br>)) \
+DifferentIndividualsAtom(Variable(<http://e#op1>) Variable(<http://e#op2>)))\
+Head(ObjectPropertyAtom(<http://e#inv> Variable(<http://e#op1>) Variable(<http://e#op2>)))))";
+        let mut reg = IriRegistry::new();
+        let o = parse_axioms(&mut reg, txt).expect("parse");
+        let rules: Vec<&Axiom> = o.rules().collect();
+        assert_eq!(rules.len(), 1, "exactly one rule parsed");
+        match rules[0] {
+            Axiom::Rule(body, head) => {
+                assert_eq!(body.len(), 6, "5 atoms + 1 diff guard");
+                assert_eq!(head.len(), 1);
+                assert!(body.iter().any(|a| matches!(a, RuleAtom::Diff(..))), "diff guard kept");
+                assert!(matches!(&head[0], RuleAtom::Role(_, RuleTerm::Var(_), RuleTerm::Var(_))));
+            }
+            _ => panic!("not a rule"),
+        }
+    }
+
+    #[test]
+    fn dlsafe_rule_with_builtin_atom_is_dropped() {
+        // soundness: a rule with an unrepresentable atom is dropped wholesale
+        let txt = "Ontology(\
+DLSafeRule(Body(\
+ClassAtom(<http://e#C> Variable(<http://e#x>)) \
+BuiltInAtom(<http://e#gt> Variable(<http://e#x>) \"5\"))\
+Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
+        let mut reg = IriRegistry::new();
+        let o = parse_axioms(&mut reg, txt).expect("parse");
+        assert_eq!(o.rules().count(), 0, "rule with builtin atom dropped");
+    }
 }

@@ -127,6 +127,9 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // clash check is finished after the RBox domain/range records are built.
     let abox_data = abox_consistency::collect(&ontology);
     let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
+    if std::env::var_os("KM_DEBUG_RULES").is_some() {
+        eprintln!("KM_DEBUG_RULES: parsed {} DL-safe SWRL rule(s)", ontology.rules().count());
+    }
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the

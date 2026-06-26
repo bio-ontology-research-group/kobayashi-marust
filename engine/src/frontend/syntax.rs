@@ -107,6 +107,29 @@ pub enum Axiom {
     RoleAssertion(String, String, String),
     SameIndividual(String, String),
     DifferentIndividuals(String, String),
+    // SWRL DL-safe rule: body ⟶ head (conjunction of atoms each side). Variables
+    // range only over named individuals (DL-safety). Consumed by the HT path; a
+    // rule whose atoms we cannot represent is dropped wholesale (sound: a dropped
+    // constraint can lose an inconsistency, never invent one).
+    Rule(Vec<RuleAtom>, Vec<RuleAtom>),
+}
+
+/// A term inside a SWRL rule atom: either a rule variable or a named individual.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RuleTerm {
+    Var(String),
+    Ind(String),
+}
+
+/// A SWRL rule atom (the subset we represent: class membership, role edge, and
+/// the (in)equality guards). Datatype/builtin atoms are not represented; a rule
+/// containing one is dropped by the parser.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum RuleAtom {
+    Class(Concept, RuleTerm),
+    Role(String, RuleTerm, RuleTerm),
+    Same(RuleTerm, RuleTerm),
+    Diff(RuleTerm, RuleTerm),
 }
 
 impl Axiom {
@@ -176,5 +199,9 @@ impl Ontology {
     }
     pub fn abox(&self) -> impl Iterator<Item = &Axiom> {
         self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_abox())
+    }
+    /// SWRL DL-safe rules (consumed by the HT path).
+    pub fn rules(&self) -> impl Iterator<Item = &Axiom> {
+        self.axioms.iter().map(|a| a.as_ref()).filter(|a| matches!(a, Axiom::Rule(..)))
     }
 }
