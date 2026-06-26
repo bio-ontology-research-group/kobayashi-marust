@@ -133,6 +133,17 @@ RSS watchdog does not tip them over budget. The only genuine CB-memout in this
 class is **16444** (~20 GB). The true ALGORITHMIC miss set is therefore the
 giants + disjunction family below, NOT the CB-blowup list.
 
+**Thread-count experiment (exclusive, 240 s; job 7609 @16 thr vs 7628 @8 thr).**
+At KM_THREADS=16 only 6246 recovers; at **KM_THREADS=8** both 6246 (218 s) and
+**15491** (226 s, 15.2 GB) recover, and 6212 is ok @8 (129 s, ws) — fewer threads,
+less resident memory. The giants and disjunction family do NOT recover at 8
+threads (they need the deep ports). ⇒ routing memory-bound onts to ~8 threads
+closes **6212 + 15491** (+2). Lowering the global default needs a full-corpus
+no-regression check first (throughput giants may want 16 for speed); the safe form
+is a structural router (clause-count / RSS-growth) or an adaptive half-thread retry
+tier in `run_engine_adaptive` (today it jumps 16→1, no middle tier). Both are sound
+(CB is sound+complete at any thread count); pending the validation sweep.
+
 ## Residual Konclude-solvable misses (the throughput giants + disjunction family)
 
 Still timing out at 120 s, all converging on Konclude inverse-∀ handling
