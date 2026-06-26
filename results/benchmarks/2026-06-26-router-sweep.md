@@ -93,6 +93,29 @@ incomplete**. The 2 incomplete are byte-identical to the pre-fix default column,
 so they are not introduced by this change. 152 cargo tests pass. The fix is the
 production default (CERTIFY_ONLY arm, sound+complete-or-defer).
 
+## Production-budget recheck (240 s) — true miss set
+
+The 120 s sweep over-counts timeouts: many onts finish in 120–240 s. Re-running
+the 29 default-mode 120 s-timeouts at the **production 240 s** budget (job 7580;
+NB the sbatch appended all tasks to one file, so a few jsonl lines were
+corrupted — the authoritative signal is the written `.sig.gz`):
+
+**9 pass at 240 s, all GOLD-EXACT (0 unsound, 0 incomplete vs Konclude):**
+868, 5303, 7409, 9024, 9635, 9674, 10689, 12141, 16462 (incl. three 14.8 M-subs
+giants and the disjunction-family 5303 @ 238 subs). So they are budget artifacts,
+not misses. (Speed note: 5303 — solved in ~5 s in a prior session — now takes
+~225 s; a speed regression to investigate, correctness intact.)
+
+⇒ production-budget coverage ≈ **570 ok** (561 @120 s + 9) and the **true
+Konclude-solvable miss set is ~17** (excluding the 3 contested 2669/15516/10621
+where Konclude's gold is wrong):
+
+| class | onts | mechanism needed |
+|-------|------|------------------|
+| throughput giants (SRIQ/SHIF) | 7499, 7914, 9663, 9724, 14817 | **port #2**: Konclude per-creation-role ALL-concept extension + copy-on-conflict successors (inverse-∀ over-defer) |
+| disjunction family (live ∀+⊔) | 541, 1603, 4669, 9540, 10860, 12653 | Konclude pseudo-model merge + small per-test completion graphs |
+| CB memory/throughput blowups | 1194, 3215, 6212, 6246, 15491, 16444 | CB memory reduction / lazy saturation |
+
 ## Residual Konclude-solvable misses (the throughput giants + disjunction family)
 
 Still timing out at 120 s, all converging on Konclude inverse-∀ handling
