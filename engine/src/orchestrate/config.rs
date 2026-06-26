@@ -89,6 +89,15 @@ pub struct Config {
     /// CB timeout). Default ON (opt out: KM_NO_HT_SHOQ) — validated 0 unsound
     /// across the 587-corpus sweep (job 7399); recovers 10908 / 15672.
     pub ht_shoq: bool,
+    /// KM_HT_CARD: route the SHQ number fragment (number restrictions, no inverse,
+    /// no nominals, no datatype) to the fast Ht with the FIRST-CLASS Konclude
+    /// `≥n`/`≤n` rules (cb_to_ht emits `card_defs` and drops the clausal `⋁ Eq`
+    /// pigeonhole). The first-class rules FOLD the cardinality model the legacy
+    /// Eq-merge cannot (12653 12365→201 nodes, 1603 17182→206, gold-exact).
+    /// Monotone-safe in fallback mode (CB preferred; the fast Ht answers only on
+    /// CB timeout). Default OFF (opt in: KM_HT_CARD) — the master switch also makes
+    /// the frontend emit the cardinality metadata, so it gates the whole feature.
+    pub ht_card: bool,
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -152,6 +161,7 @@ impl Config {
             // with KM_NO_HT_QO_ROUTER / KM_NO_HT_SHOQ.
             qo_router: std::env::var_os("KM_NO_HT_QO_ROUTER").is_none(),
             ht_shoq: std::env::var_os("KM_NO_HT_SHOQ").is_none(),
+            ht_card: std::env::var_os("KM_HT_CARD").is_some(),
         }
     }
 

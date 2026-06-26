@@ -59,10 +59,10 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
         return None;
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let cl: Vec<JClause> = {
+    let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
         let f = File::open(clauses_path).ok()?;
         let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
-        v.clauses
+        (v.clauses, v.cardinalities)
     };
     // giants: the engine path owns them
     if cl.len() > cfg.tab_max_clauses {
@@ -73,7 +73,7 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
         return None;
     }
     let named = std::collections::HashSet::new();
-    let tin = cb_to_ht::convert(&cl, None, &named);
+    let tin = cb_to_ht::convert(&cl, None, &named, &cards, false);
     // only race when the TInput faithfully represents the ontology
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return None;
@@ -485,14 +485,14 @@ fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
 fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let cl: Vec<JClause> = {
+    let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
         let f = File::open(clauses_path).ok()?;
         let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
-        v.clauses
+        (v.clauses, v.cardinalities)
     };
     let named = std::collections::HashSet::new();
     let _tconv = Instant::now();
-    let tin = cb_to_ht::convert(&cl, None, &named);
+    let tin = cb_to_ht::convert(&cl, None, &named, &cards, std::env::var_os("KM_HT_CARD").is_some());
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!("KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s", cl.len(), _tconv.elapsed().as_secs_f64());
     }
@@ -530,7 +530,34 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // (what `compose_inverse` resolves), so detect them in the clause set — and
     // gate ONLY on bridges so non-inverse HT-routable onts (e.g. 5303) keep their
     // normal branching HT path rather than the certify-only hybrid.
+    // SHQ number route (KM_HT_CARD): a faithful, datatype/inverse/nominal-free
+    // TInput that HAS first-class number restrictions (`card_defs`). `ht_routable`
+    // rejects `number`, so these would otherwise never reach the fast Ht. The
+    // first-class `≥n`/`≤n` rules fold the cardinality model the legacy Eq-merge
+    // cannot (the disjunction-family cardinality wall). Inverse stays fenced
+    // (SHIQ needs double blocking), nominals stay on the shoq route, datatype onts
+    // are excluded (no concrete-domain oracle in the Ht). Computed FIRST so it
+    // takes precedence over the QO route: a card ont may also carry inert inverse
+    // bridges (so `has_inverse_bridge` is true), but the QO certify path's
+    // `apply_head` does not handle the kept cardinality recognition Eq-heads — the
+    // branching classify with the card rules is the correct route. Monotone-safe:
+    // fallback mode keeps CB's answer whenever CB finishes, so the corpus sweep
+    // validates soundness — the card arm only answers on CB timeout.
+    // Nominals ARE allowed here (unlike qo/shoq's structural split): the fast Ht's
+    // SHOQ o-rule composes with the first-class card rules through the shared
+    // `merge_into` (Konclude `mergeIndividual`), so a SHOQ number ont folds under
+    // the card arm instead of the non-folding QMERGE shoq arm (ore_ont_9540:
+    // 46252→64 nodes, 66/66 gold-exact). The card branch already forces
+    // KM_HT_PAR=1, which the nominal o-rule requires (parallel merges race). Inverse
+    // and datatype stay excluded (no NN-rule / no concrete-domain oracle in the Ht).
+    let card_candidate = cfg.ht_card
+        && !tin.card_defs.is_empty()
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && !tin.inverse
+        && !has_datatype(&cl);
     let qo_candidate = cfg.qo_router
+        && !card_candidate
         && tin.dropped == 0
         && tin.fenced.is_empty()
         && tin.nominals.is_empty()
@@ -545,6 +572,7 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // are excluded (no concrete-domain oracle in the Ht; cf 10621). Monotone-safe:
     // fallback mode keeps CB's answer whenever CB finishes.
     let shoq_candidate = cfg.ht_shoq
+        && !card_candidate
         && tin.dropped == 0
         && tin.fenced.is_empty()
         && !tin.nominals.is_empty()
@@ -552,6 +580,7 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     if !ht_routable(&tin)
         && !qo_candidate
         && !shoq_candidate
+        && !card_candidate
         && std::env::var_os("KM_HT_FORCE").is_none()
     {
         return None;
@@ -638,6 +667,19 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
             }
         }
     }
+    if card_candidate {
+        // KM_HT_FORCE bypasses run_json's `number` in-fragment gate so the SHQ ont
+        // reaches the fast Ht; the worker installs the first-class `card_defs` from
+        // the TInput (independent of env) and the `≥n`/`≤n` rules fire instead of
+        // the clausal Eq-merge. Single-threaded: the first-class number rules carry
+        // shared mutable distinct/merge state, so the parallel per-concept classify
+        // would race. KM_HT_QMERGE is NOT set — the card rules replace it.
+        for (k, v) in [("KM_HT_FORCE", "1"), ("KM_HT_CARD", "1"), ("KM_HT_PAR", "1")] {
+            if std::env::var_os(k).is_none() {
+                cmd.env(k, v);
+            }
+        }
+    }
     // Production HT search discipline (validated on the live ∀+⊔ disjunction
     // family, ore_ont_5303): EAGER model folding + NEGTRIED (HermiT
     // startNextChoice) + ORD=1 (least-failing-first disjunct order). Together
@@ -672,7 +714,7 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // KM_HT_PAR wins.
     // NB shoq_candidate forces KM_HT_PAR=1 above (parallel classify is unsound with
     // the nominal o-rule); do not override it back to all-cores here.
-    if std::env::var_os("KM_HT_PAR").is_none() && !shoq_candidate {
+    if std::env::var_os("KM_HT_PAR").is_none() && !shoq_candidate && !card_candidate {
         cmd.env("KM_HT_PAR", avail_cpus().max(1).to_string());
     }
     if cfg.ht_qo {
@@ -697,7 +739,13 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // CB — is monotone-safe (CB is still preferred whenever CB finishes first). The
     // QO arm certifies 7581 in ~17s but the old full-budget path never harvested it
     // within the 120-240s wall, so 7581 timed out despite a ready sound answer.
-    Some((child, out_path, shoq_candidate || qo_candidate))
+    // card_candidate joins the SHORT-race arms: the first-class card rules + o-rule
+    // are a complete decision procedure for the SHQ/SHOQ fragment and fold quickly
+    // (9540: 64 nodes, <1s), so harvest the answer after the short budget instead of
+    // waiting out the doomed CB for the full ht_budget_s (which on a 240s sweep gives
+    // the card arm only a 15s window). CB-preference is preserved: `take_cb` is
+    // checked every loop iteration, so a card ont CB solves fast still goes to CB.
+    Some((child, out_path, shoq_candidate || qo_candidate || card_candidate))
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when

@@ -68,9 +68,27 @@ pub struct JClause {
     pub head: Vec<JAtom>,
 }
 
+/// KM_HT_CARD side-channel: a first-class qualified number restriction recorded
+/// by the frontend (`define`) so cb_to_ht can install it as a Konclude
+/// `≥n`/`≤n` rule (and drop the clausal `⋁ Eq` pigeonhole) instead of letting
+/// the legacy Eq-merge over-count. `marker` is the reified concept name carrying
+/// the restriction; `min` distinguishes `≥n` (true) from `≤n` (false). Emitted
+/// only under the frontend `KM_HT_CARD` flag, so the default clause/meta output
+/// is byte-identical (empty list, skipped on serialize).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CardMeta {
+    pub marker: String,
+    pub min: bool,
+    pub n: u32,
+    pub role: String,
+    pub filler: String,
+}
+
 #[derive(Deserialize)]
 pub struct JInput {
     pub clauses: Vec<JClause>,
+    #[serde(default)]
+    pub cardinalities: Vec<CardMeta>,
 }
 
 #[derive(Serialize)]

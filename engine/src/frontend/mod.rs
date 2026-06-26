@@ -47,6 +47,9 @@ pub struct FrontendResult {
     /// If classification later proves such a class unsatisfiable, the ontology
     /// is inconsistent; `owl_classify` applies that rule after the engine runs.
     pub asserted_classes: Vec<String>,
+    /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
+    /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
+    pub cardinalities: Vec<crate::json_io::CardMeta>,
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -138,6 +141,7 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // so this flag is the authoritative one.
     let role_inverses = std::mem::take(&mut hooks.role_inverses);
     let symmetric_roles = std::mem::take(&mut hooks.symmetric_roles);
+    let cardinalities = std::mem::take(&mut hooks.cardinalities);
     drop(abox);
     drop(hooks);
     t.lap("augment");
@@ -322,5 +326,6 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         el_rbox_safe,
         abox_inconsistent,
         asserted_classes: asserted_classes.into_iter().collect(),
+        cardinalities,
     })
 }

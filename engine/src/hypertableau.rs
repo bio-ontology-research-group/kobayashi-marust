@@ -195,6 +195,9 @@ enum Trail {
     /// Nominals: a node was recorded as a carrier of nominal concept `c`; on
     /// backtrack pop the (LIFO-last) entry of `nom_carriers[c]`.
     NomCarrier(C),
+    /// KM_HT_CARD: a distinct (inequality) edge `a≠b` was recorded; on backtrack
+    /// drop the (LIFO-last) entry from both `distinct[a]` and `distinct[b]`.
+    Distinct(Node, Node),
 }
 
 /// A pending propagation event: a freshly added fact / node whose triggered
@@ -236,6 +239,27 @@ struct MergeDisj {
     at: usize,
 }
 
+/// KM_HT_CARD: a first-class qualified number restriction, the faithful Konclude
+/// representation (`CCATLEAST` / `CCATMOST` concepts) rather than KM's clausified
+/// `⋁ Eq` pigeonhole. A fresh marker concept id `c` carries the restriction onto
+/// a node's label; when `c` is added, `apply_atleast` / `apply_atmost` fire on
+/// `(node, role, filler, n)`. Built once (`card_defs`), keyed by marker concept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CardKind {
+    /// `≥n role.filler` (Konclude `applyATLEASTRule`).
+    Min,
+    /// `≤n role.filler` (Konclude `applyATMOSTRule`).
+    Max,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CardDef {
+    kind: CardKind,
+    n: u32,
+    role: R,
+    filler: CLit,
+}
+
 /// A deferred ∃-obligation `node ⊑ ∃r.fil` recorded when its clause body matched.
 struct Oblig {
     n: Node,
@@ -245,10 +269,33 @@ struct Oblig {
     at: usize,
 }
 
+/// KM_HT_CARD: a deferred number-restriction obligation recorded when its marker
+/// concept landed on node `n`. For `≥bound` (Konclude `applyATLEASTRule`) the
+/// blocking-aware obligation pass creates the missing pairwise-distinct
+/// `role.filler` successors; for `≤bound` (`applyATMOSTRule`) the `Scan::Sat`
+/// step qualifies (choose) and merges excess `role.filler` successors. Like
+/// `Oblig`, dropped as a trail-ordered suffix on backtrack (`at`).
+struct CardReq {
+    n: Node,
+    role: R,
+    filler: CLit,
+    bound: u32,
+    dep: DepSet,
+    at: usize,
+}
+
 pub struct Ext {
     concepts: Vec<HashMap<CLit, DepSet>>,
     out_edges: Vec<Vec<(R, Node, DepSet)>>,
     in_edges: Vec<Vec<(R, Node, DepSet)>>,
+    /// KM_HT_CARD: inequality / distinct edges (Konclude `CDistinctHash`). Two
+    /// nodes asserted DISTINCT (created pairwise-distinct by `≥n`, or carrying
+    /// distinct nominals) may NOT be merged: a `≤n` merge that would identify a
+    /// distinct pair is a CLASH (Konclude `isIndividualNodesMergeable` returns
+    /// false on a distinct edge). Symmetric: `distinct[a]` holds `(b, dep)` and
+    /// vice-versa. Trail-recorded (`Trail::Distinct`) so a backtrack drops it;
+    /// `merge_into` re-targets a victim's distinct edges onto the survivor.
+    distinct: Vec<Vec<(Node, DepSet)>>,
     pred: Vec<Option<Node>>,
     blockable: Vec<bool>,
     /// eager mode: per-node flag — its deferred global ⊤-disjunctions have fired.
@@ -273,6 +320,10 @@ pub struct Ext {
     qmerge: bool,
     /// ∃-obligations awaiting expansion (filled by `apply_head`).
     obligations: Vec<Oblig>,
+    /// KM_HT_CARD: deferred `≥n` obligations (Konclude `applyATLEASTRule`).
+    card_min: Vec<CardReq>,
+    /// KM_HT_CARD: deferred `≤n` obligations (Konclude `applyATMOSTRule`).
+    card_max: Vec<CardReq>,
     /// an out-of-ALC(H) head construct was seen ⇒ result is unsound, bail.
     unsupported: bool,
     /// KM_HT_NUMBER: equality-head (≤n / functional) clauses merge nodes instead
@@ -391,6 +442,7 @@ impl Ext {
             concepts: Vec::new(),
             out_edges: Vec::new(),
             in_edges: Vec::new(),
+            distinct: Vec::new(),
             pred: Vec::new(),
             blockable: Vec::new(),
             globals_fired: Vec::new(),
@@ -403,6 +455,8 @@ impl Ext {
             pending_merge: Vec::new(),
             qmerge: std::env::var_os("KM_HT_QMERGE").is_some(),
             obligations: Vec::new(),
+            card_min: Vec::new(),
+            card_max: Vec::new(),
             unsupported: false,
             number: std::env::var_os("KM_HT_NUMBER").is_some(),
             merged: Vec::new(),
@@ -722,6 +776,7 @@ impl Ext {
         self.concepts.push(HashMap::new());
         self.out_edges.push(Vec::new());
         self.in_edges.push(Vec::new());
+        self.distinct.push(Vec::new());
         self.pred.push(parent);
         self.blockable.push(blockable);
         self.globals_fired.push(false);
@@ -827,6 +882,38 @@ impl Ext {
         x
     }
 
+    /// KM_HT_CARD: assert `a ≠ b` (Konclude `createIndividualsDistinct`). Records
+    /// the inequality on both nodes' `distinct` lists under `dep`, trail-recorded.
+    /// Idempotent (a re-asserted pair is ignored). Resolves through merges first,
+    /// so an inequality always names live survivors.
+    pub fn add_distinct(&mut self, a: Node, b: Node, dep: &DepSet) {
+        let a = self.resolve(a);
+        let b = self.resolve(b);
+        if a == b {
+            // a≠a is an immediate contradiction (Konclude clashes a self-distinct).
+            self.raise_clash(dep.clone());
+            return;
+        }
+        if self.distinct[a].iter().any(|&(x, _)| x == b) {
+            return;
+        }
+        self.distinct[a].push((b, dep.clone()));
+        self.distinct[b].push((a, dep.clone()));
+        self.trail.push(Trail::Distinct(a, b));
+    }
+
+    /// KM_HT_CARD: if `a` and `b` are asserted distinct, return the witnessing
+    /// inequality's dependency (so a merge-clash backjumps past the `≥n`/nominal
+    /// choice that separated them); `None` if they may still be merged.
+    pub fn are_distinct(&self, a: Node, b: Node) -> Option<DepSet> {
+        let a = self.resolve(a);
+        let b = self.resolve(b);
+        if a == b {
+            return None;
+        }
+        self.distinct[a].iter().find(|&&(x, _)| x == b).map(|(_, d)| d.clone())
+    }
+
     /// KM_HT_NUMBER: fold nodes `a` and `b` together (a ≤n / functional merge).
     /// The lower-id node survives (keeps the model closer to the root); the
     /// victim's concept label and incident edges are copied onto the survivor
@@ -839,6 +926,14 @@ impl Ext {
         let a = self.resolve(a);
         let b = self.resolve(b);
         if a == b {
+            return;
+        }
+        // Konclude `isIndividualNodesMergeable`: a distinct (inequality) edge
+        // between the pair makes the merge a CLASH — the ≤n cannot identify two
+        // provably-distinct successors. Backjump past both the merge cause and
+        // the inequality witness.
+        if let Some(dd) = self.are_distinct(a, b) {
+            self.raise_clash(dep_union(mdep, &dd));
             return;
         }
         let (survivor, victim) = if a <= b { (a, b) } else { (b, a) };
@@ -871,6 +966,20 @@ impl Ext {
             let s2 = self.resolve(s);
             let nd = dep_union(&d, mdep);
             self.add_edge(r, s2, survivor, &nd);
+            if self.clash.is_some() {
+                return;
+            }
+        }
+        // Konclude `mergeIndividualNodeInto` distinct-edge propagation: every node
+        // the victim was distinct from is now distinct from the survivor. If the
+        // survivor was itself distinct from the victim we already clashed above;
+        // a victim distinct from the survivor's own identity (`d2 == survivor`)
+        // would be a self-distinct, which `add_distinct` turns into a clash.
+        let dvs: Vec<(Node, DepSet)> = self.distinct[victim].clone();
+        for (d, dd) in dvs {
+            let d2 = self.resolve(d);
+            let nd = dep_union(&dd, mdep);
+            self.add_distinct(survivor, d2, &nd);
             if self.clash.is_some() {
                 return;
             }
@@ -979,6 +1088,7 @@ impl Ext {
                     self.concepts.pop();
                     self.out_edges.pop();
                     self.in_edges.pop();
+                    self.distinct.pop();
                     self.pred.pop();
                     self.blockable.pop();
                     self.globals_fired.pop();
@@ -1000,6 +1110,20 @@ impl Ext {
                 Trail::NomCarrier(c) => {
                     if let Some(v) = self.nom_carriers.get_mut(&c) {
                         v.pop();
+                    }
+                }
+                Trail::Distinct(a, b) => {
+                    // LIFO: this `a≠b` was the most recent distinct entry pushed
+                    // onto both lists, so it is each list's last element.
+                    if a < self.distinct.len() {
+                        if let Some(p) = self.distinct[a].iter().rposition(|&(x, _)| x == b) {
+                            self.distinct[a].swap_remove(p);
+                        }
+                    }
+                    if b < self.distinct.len() {
+                        if let Some(p) = self.distinct[b].iter().rposition(|&(x, _)| x == a) {
+                            self.distinct[b].swap_remove(p);
+                        }
                     }
                 }
             }
@@ -1047,6 +1171,8 @@ impl Ext {
             self.pending_merge.pop();
         }
         self.obligations.retain(|e| e.at <= mark);
+        self.card_min.retain(|e| e.at <= mark);
+        self.card_max.retain(|e| e.at <= mark);
         if self.incroblig {
             // Obligations beyond the new length were dropped (and their indices may
             // be reused by later pushes), so drop dangling references to them.
@@ -1831,6 +1957,14 @@ pub struct Ht {
     /// label". B2a consults it: for each ∀r.D the blocker w' carries, the predecessor
     /// v must already carry D. Built once at construction.
     forall_idx: HashMap<(CLit, R), Vec<CLit>>,
+    /// KM_HT_CARD: first-class qualified number restrictions, keyed by their
+    /// marker concept (see `CardDef`). The faithful Konclude `applyATLEASTRule` /
+    /// `applyATMOSTRule` fire when a marker concept lands on a node, instead of
+    /// KM's clausified `⋁ Eq` merge. Empty unless `card` is on.
+    card_defs: HashMap<C, CardDef>,
+    /// KM_HT_CARD master switch: route number restrictions through the Konclude
+    /// number rules (`card_defs`) rather than the legacy `KM_HT_NUMBER` Eq-merge.
+    card: bool,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -2697,6 +2831,17 @@ struct QoSat<'a> {
     /// nothing derivable). Built once in `new_opts`.
     kp_guard: std::rc::Rc<HashSet<C>>,
     kp_guard_only: bool,
+    /// KM_RSUCC: enable the transitive+inverse reconstruction insufficiency
+    /// post-pass (see `reach_by_role`).
+    rsucc: bool,
+    /// KM_RSUCC: per role `R`, the reachability concepts `C` propagated by a
+    /// `C(y) ∧ R(x,y) → C(x)` clause; used to flag shared fillers whose
+    /// predecessor carries `C` across an inverse back-edge.
+    reach_by_role: std::rc::Rc<HashMap<R, Vec<C>>>,
+    /// KM_RSUCC: per role `S = R⁻`, the reach concepts of `R` — for the QOGF path
+    /// where only the forward inverse edge `S(p,h)` exists (the `R(h,p)` back-edge
+    /// is unmaterialised). `p --S--> h` ⟺ `h --R--> p`, so flag filler `h`.
+    reach_via_inv: std::rc::Rc<HashMap<R, Vec<C>>>,
     /// KM_HT_QO_SAT: Konclude-style separate role-keyed successor nodes. When set,
     /// `ensure_filler` ALWAYS allocates a fresh node keyed by `(filler-concept,
     /// role)` (never the concept's classification self-node, as it does when
@@ -2901,6 +3046,78 @@ impl<'a> QoSat<'a> {
                 if let Atom::Concept { lit, .. } = a {
                     kp_guard_set.insert(lit.c);
                 }
+            }
+        }
+        // r-Succ (KM_RSUCC): transitive-reachability propagation clauses of the
+        // shape `C(y) ∧ R(x,y) → C(x)` (same concept C on the role SOURCE in the
+        // head and on the role TARGET in the body — the `__trans__`/`__chain__`
+        // transitivity encoding).  In the shared forward model the head `C(x)` on
+        // a filler `x` reached across an inverse back-edge is suppressed (a filler
+        // label is not read as a subsumer), so the per-predecessor reconstruction
+        // never fires — the transitive+inverse unsat is missed.  `reach_by_role[R]`
+        // lets `kp_finalize` mark such a filler insufficient (→ residue → complete
+        // tableau, which decides it correctly).
+        let mut reach_by_role: HashMap<R, Vec<C>> = HashMap::new();
+        for rec in clauses.iter() {
+            let body = &rec.1;
+            let head = &rec.0.head;
+            if head.len() != 1 {
+                continue;
+            }
+            let (hc, hxv) = match head[0] {
+                Atom::Concept { lit, t } if !lit.neg => (lit.c, t),
+                _ => continue,
+            };
+            let mut role: Option<(R, Var, Var)> = None;
+            let mut bconc: Option<(C, Var)> = None;
+            let mut ok = true;
+            for a in body {
+                match a {
+                    Atom::Role { r, s, t } if role.is_none() => role = Some((*r, *s, *t)),
+                    Atom::Concept { lit, t } if !lit.neg && bconc.is_none() => {
+                        bconc = Some((lit.c, *t))
+                    }
+                    _ => {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+            if !ok {
+                continue;
+            }
+            if let (Some((r, sv, tv)), Some((bc, bcv))) = (role, bconc) {
+                // head concept on the role source, body concept (same C) on the target.
+                if hc == bc && hxv == sv && bcv == tv {
+                    reach_by_role.entry(r).or_default().push(hc);
+                }
+            }
+        }
+        // Inverse-role map from bridging clauses `R(x,y) → S(y,x)` (S = R⁻), used by
+        // the QOGF global-shared path: there the per-predecessor back-edge `R(h,p)`
+        // is never materialised, but the FORWARD inverse edge `S(p,h)` (= R⁻) IS in
+        // `out_edges[p]`. So `reach_via_inv[S]` lets the reach post-pass flag the
+        // filler `h` from `p --S--> h` when `p` carries the reach concept `C`.
+        let mut inv_map: HashMap<R, R> = HashMap::new();
+        for rec in clauses.iter() {
+            let body = &rec.1;
+            let head = &rec.0.head;
+            if body.len() != 1 || head.len() != 1 {
+                continue;
+            }
+            if let (Atom::Role { r: br, s: bs, t: bt }, Atom::Role { r: hr, s: hs, t: ht }) =
+                (&body[0], &head[0])
+            {
+                // R(x,y) → S(y,x): head source = body target, head dest = body source.
+                if *hs == *bt && *ht == *bs && *br != *hr {
+                    inv_map.insert(*br, *hr);
+                }
+            }
+        }
+        let mut reach_via_inv: HashMap<R, Vec<C>> = HashMap::new();
+        for (&r, cs) in reach_by_role.iter() {
+            if let Some(&rinv) = inv_map.get(&r) {
+                reach_via_inv.entry(rinv).or_default().extend(cs.iter().copied());
             }
         }
         // --- Konclude role-keyed range folding setup. ------------------------
@@ -3197,6 +3414,9 @@ impl<'a> QoSat<'a> {
             kp_insuff_nodes: HashSet::new(),
             kp_guard: std::rc::Rc::new(kp_guard_set),
             kp_guard_only: std::env::var_os("KM_HT_QO_KPGUARD").is_some(),
+            rsucc: std::env::var_os("KM_RSUCC").is_some(),
+            reach_by_role: std::rc::Rc::new(reach_by_role),
+            reach_via_inv: std::rc::Rc::new(reach_via_inv),
             // KPWRITE's soundness needs separate filler nodes so `on_self`
             // distinguishes a real predecessor (sound write) from a shared filler
             // (must stay a check); enabling it implies `sat_mode`.
@@ -3695,6 +3915,15 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
+        // NB: r-Succ deliberately does NOT trigger kp_finalize here. In the global
+        // shared model the reach post-pass flags every filler whose predecessor
+        // carries a `__trans`/`__chain` concept across a part_of/has_part edge — a
+        // pattern so pervasive in UBERON-style ontologies (7914: 213880 fillers,
+        // residue 327→7090) that the residue-complete verify explodes to a timeout.
+        // The sound per-predecessor reconstruction the giant path needs is the
+        // non-shared-filler (copy-on-conflict) infrastructure, not a flag-to-residue
+        // pass. r-Succ stays on the per-concept QOPC path (`qo_classify_perconcept`),
+        // where the model is small and the flag is precise.
         if self.kpset || self.fcheck {
             self.kp_finalize();
         }
@@ -4884,6 +5113,12 @@ impl<'a> QoSat<'a> {
     fn kp_check_head(&mut self, cid: usize, sigma: &[Option<Node>]) {
         let head = &self.clauses[cid].0.head;
         let anchor = sigma[X as usize];
+        // KPCLASH precision: an inverse-anchored head is a genuine under-detected
+        // inconsistency only when it is FULLY REFUTED at fixpoint — every concept
+        // disjunct's complement present and none satisfied (an empty head is the
+        // degenerate fully-refuted case). A head with an undetermined disjunct, or
+        // a role/∃ disjunct we cannot cheaply refute, is dropped (no deferral, no
+        // flag): the shared model need not represent that backward contribution.
         if head.is_empty() {
             // an inverse-anchored clash cannot be trusted in the shared model.
             self.kp_insufficient = true;
@@ -5022,6 +5257,78 @@ impl<'a> QoSat<'a> {
     /// complete tableau). On an inverse-inert ont every obligation is now present
     /// (the forward closure caught up), so nothing is flagged.
     fn kp_finalize(&mut self) {
+        // r-Succ reconstruction post-pass (KM_RSUCC): in the shared forward model
+        // the head `C(x)` of a transitive-reach clause `C(y) ∧ R(x,y) → C(x)`,
+        // fired with `x` a shared filler and `y` its predecessor across an inverse
+        // back-edge, is suppressed (a filler label is not read as a subsumer), so
+        // the per-predecessor reconstruction never propagates `C` to the filler.
+        // Detect it structurally: a filler `s` with an `R`-edge to a `t` that
+        // carries a reach concept `C` (for `(R, C)` a reach clause) while `s`
+        // lacks `C`. Such a filler is NOT soundly decided by the shared model ⇒
+        // mark it insufficient so the reverse-reach pulls every concept whose
+        // model reaches it into the residue-complete tableau (which decides it).
+        if self.rsucc && (!self.reach_by_role.is_empty() || !self.reach_via_inv.is_empty()) {
+            let direct = self.reach_by_role.clone();
+            let viainv = self.reach_via_inv.clone();
+            let nn = self.out_edges.len();
+            let mut _flagged = 0u64;
+            let (mut _de, mut _ie, mut _dpred, mut _ipred) = (0u64, 0u64, 0u64, 0u64);
+            // ONE edge scan over `out_edges`, each edge `src --r--> dst`:
+            //  - direct `r ∈ reach_by_role`: `r` is the reach role, so `src` is the
+            //    filler and `dst` its predecessor (the materialised back-edge case).
+            //  - inverse `r ∈ reach_via_inv`: `r = R⁻`, so `src` is the predecessor
+            //    and `dst` the filler (the QOGF case: only the forward inverse edge
+            //    exists). `src --R⁻--> dst` ⟺ `dst --R--> src`.
+            // Either way: flag the FILLER when the PREDECESSOR carries reach `C` and
+            // the filler does not — the per-predecessor reconstruction the shared
+            // model could not perform. Sound (only marks insufficient → residue).
+            for src in 0..nn {
+                let ne = self.out_edges[src].len();
+                for k in 0..ne {
+                    let (r, dst) = self.out_edges[src][k];
+                    if let Some(cs) = direct.get(&r) {
+                        _de += 1;
+                        if self.is_filler[src] && !self.node_unsat.contains(&src) {
+                            for &c in cs {
+                                let lit = CLit { neg: false, c };
+                                if !self.node_unsat.contains(&dst) && self.label[dst].contains(&lit) {
+                                    _dpred += 1;
+                                    if !self.label[src].contains(&lit) {
+                                        self.kp_insufficient = true;
+                                        self.kp_miss += 1;
+                                        self.kp_insuff_nodes.insert(src);
+                                        _flagged += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(cs) = viainv.get(&r) {
+                        _ie += 1;
+                        if self.is_filler[dst] && !self.node_unsat.contains(&dst) {
+                            for &c in cs {
+                                let lit = CLit { neg: false, c };
+                                if !self.node_unsat.contains(&src) && self.label[src].contains(&lit) {
+                                    _ipred += 1;
+                                    if !self.label[dst].contains(&lit) {
+                                        self.kp_insufficient = true;
+                                        self.kp_miss += 1;
+                                        self.kp_insuff_nodes.insert(dst);
+                                        _flagged += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if _flagged > 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "RSUCC post-pass: direct_roles={} inv_roles={} nodes={} flagged={} (direct_edges={} inv_edges={})",
+                    direct.len(), viainv.len(), nn, _flagged, _de, _ie
+                );
+            }
+        }
         let c1 = std::mem::take(&mut self.kp_check1);
         for (n, lit) in c1 {
             if !self.node_unsat.contains(&n) && !self.label[n].contains(&lit) {
@@ -5200,6 +5507,8 @@ impl Ht {
         let ht = Ht {
             clauses: recs,
             forall_idx,
+            card_defs: HashMap::new(),
+            card: std::env::var_os("KM_HT_CARD").is_some(),
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -5378,6 +5687,35 @@ impl Ht {
             self.force_number = true;
             self.force_qmerge = true;
         }
+    }
+
+    /// KM_HT_CARD: install the first-class number restrictions (marker concept →
+    /// `CardDef`) and enable the Konclude number rules. Called by cb_to_ht (and by
+    /// the unit tests) to feed `≥n`/`≤n` as first-class concepts rather than the
+    /// clausified `⋁ Eq` pigeonhole.
+    pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+        self.card_defs = defs;
+        self.card = true;
+    }
+
+    /// KM_HT_CARD: install number restrictions from the cb_to_ht TInput, whose
+    /// `card_defs` carry plain ids (the `CardDef`/`CardKind` types are private).
+    /// Each tuple is `(marker, is_min, n, role, filler)`; fillers are positive
+    /// (the frontend reifies `≥n role.C` with a positive marker `C`).
+    pub fn set_card_defs_raw(&mut self, defs: &[(C, bool, u32, R, C)]) {
+        let mut map: HashMap<C, CardDef> = HashMap::new();
+        for &(marker, is_min, n, role, filler) in defs {
+            map.insert(
+                marker,
+                CardDef {
+                    kind: if is_min { CardKind::Min } else { CardKind::Max },
+                    n,
+                    role,
+                    filler: CLit { neg: false, c: filler },
+                },
+            );
+        }
+        self.set_card_defs(map);
     }
 
     /// Provide the nominal concept ids (the o-rule singletons `{o}`). Re-applied to
@@ -5846,6 +6184,31 @@ impl Ht {
                             }
                         }
                     }
+                    // KM_HT_CARD: a positive marker concept installs its number
+                    // restriction (Konclude's `≥n`/`≤n` concept on the node). ≥n is
+                    // a deferred obligation (created on unblocked nodes in
+                    // `process_obligations`); ≤n is handled when its role-successors
+                    // are counted (`process_card_max`).
+                    if self.card && !lit.neg {
+                        if let Some(&def) = self.card_defs.get(&lit.c) {
+                            let node = self.ext.resolve(n);
+                            let dep = self.ext.dep_of(node, lit).cloned()
+                                .unwrap_or_else(dep_empty);
+                            let at = self.ext.trail.len();
+                            let req = CardReq {
+                                n: node,
+                                role: def.role,
+                                filler: def.filler,
+                                bound: def.n,
+                                dep,
+                                at,
+                            };
+                            match def.kind {
+                                CardKind::Min => self.ext.card_min.push(req),
+                                CardKind::Max => self.ext.card_max.push(req),
+                            }
+                        }
+                    }
                     if self.learn {
                         self.learned_bcp(n, lit);
                     }
@@ -6191,7 +6554,222 @@ impl Ht {
             }
         }
         self.obligloop_us += _lt0.elapsed().as_micros();
+        // KM_HT_CARD: ≥n successor creation (Konclude `applyATLEASTRule`), blocked-
+        // gated exactly like the ∃ obligations above so a blocked node never spawns
+        // cardinality successors (the model-folding the legacy Eq-merge lost).
+        if self.card && !self.ext.card_min.is_empty() {
+            made |= self.process_card_min(&blocked);
+        }
         made
+    }
+
+    /// Greedy maximal set of `node`'s `role`-successors that carry `filler` and
+    /// are pairwise DISTINCT. A lower bound on the true distinct count (greedy ≤
+    /// max-clique), so `len() >= bound` SOUNDLY witnesses that `≥bound role.filler`
+    /// already holds — the `applyATLEASTRule` refire guard
+    /// (`hasDistinctRoleSuccessorConcepts`). Successors are resolved through merges.
+    fn distinct_filler_succ(&self, node: Node, role: R, filler: CLit) -> Vec<Node> {
+        let mut succ: Vec<Node> = self.ext.out_edges[node]
+            .iter()
+            .filter(|&&(r, _, _)| r == role)
+            .map(|&(_, t, _)| self.ext.resolve(t))
+            .filter(|&t| self.ext.has_concept(t, filler))
+            .collect();
+        succ.sort_unstable();
+        succ.dedup();
+        let mut chosen: Vec<Node> = Vec::new();
+        for s in succ {
+            if chosen.iter().all(|&c| self.ext.are_distinct(c, s).is_some()) {
+                chosen.push(s);
+            }
+        }
+        chosen
+    }
+
+    /// KM_HT_CARD ≥n rule (Konclude `applyATLEASTRule` + `createDistinctSuccessor`
+    /// `Individuals`): for each `≥bound role.filler` obligation on an UNBLOCKED node
+    /// that lacks `bound` pairwise-distinct `filler`-successors, create the missing
+    /// successors (each `filler`-labelled) and assert the whole set pairwise
+    /// distinct. Idempotent: once `bound` distinct successors exist the guard skips.
+    fn process_card_min(&mut self, blocked: &Option<Vec<bool>>) -> bool {
+        let mut made = false;
+        for idx in 0..self.ext.card_min.len() {
+            let (n0, role, filler, bound, dep) = {
+                let cm = &self.ext.card_min[idx];
+                (cm.n, cm.role, cm.filler, cm.bound, cm.dep.clone())
+            };
+            if bound == 0 {
+                continue;
+            }
+            let node = self.ext.resolve(n0);
+            if self.ext.merged[n0].is_some() && self.ext.resolve(n0) != n0 {
+                // victim folded into a survivor: the survivor carries the marker
+                // and its own card_min entry, so skip this stale one.
+                continue;
+            }
+            let is_blk = match blocked {
+                Some(b) => b[node],
+                None => ancestor_blocked(&self.ext, node),
+            };
+            if is_blk {
+                continue;
+            }
+            let mut all = self.distinct_filler_succ(node, role, filler);
+            if all.len() as u32 >= bound {
+                continue;
+            }
+            self.heartbeat("card-min");
+            while (all.len() as u32) < bound {
+                let t = self.ext.new_node(Some(node));
+                self.ext.add_edge(role, node, t, &dep);
+                self.ext.add_concept(t, filler, &dep);
+                if self.ext.has_clash() {
+                    return true;
+                }
+                all.push(t);
+            }
+            for i in 0..all.len() {
+                for j in (i + 1)..all.len() {
+                    self.ext.add_distinct(all[i], all[j], &dep);
+                    if self.ext.has_clash() {
+                        return true;
+                    }
+                }
+            }
+            made = true;
+        }
+        made
+    }
+
+    /// KM_HT_CARD ≤n step (Konclude `applyATMOSTRule` + `qualifyMergingIndividual`
+    /// `Nodes`/choose), run at `Scan::Sat` where the model is saturated and no
+    /// disjunction is pending — so branching one choice here never accumulates a
+    /// duplicate. Finds the first still-violated `≤bound role.filler` and branches
+    /// ONE step:
+    ///   - an UNQUALIFIED `role`-successor (neither `filler` nor `¬filler`) ⇒
+    ///     branch it `filler` vs `¬filler` (the choose rule, exact counting);
+    ///   - `> bound` qualified successors that are all pairwise DISTINCT ⇒ CLASH
+    ///     (the `≤n` cannot be met, no merge is possible);
+    ///   - `> bound` qualified successors with a mergeable (non-distinct) pair ⇒
+    ///     branch the merge over the candidate pairs (`branch_merge`).
+    /// Returns `Some(out)` when it branched or clashed, `None` when every `≤n`
+    /// holds (the model is genuinely complete).
+    fn card_max_step(&mut self, depth: Level) -> Option<Out> {
+        let nreq = self.ext.card_max.len();
+        for idx in 0..nreq {
+            let (n0, role, filler, bound, mdep) = {
+                let cm = &self.ext.card_max[idx];
+                (cm.n, cm.role, cm.filler, cm.bound, cm.dep.clone())
+            };
+            let node = self.ext.resolve(n0);
+            let comp = CLit { neg: !filler.neg, c: filler.c };
+            let mut succ: Vec<Node> = self.ext.out_edges[node]
+                .iter()
+                .filter(|&&(r, _, _)| r == role)
+                .map(|&(_, t, _)| self.ext.resolve(t))
+                .collect();
+            succ.sort_unstable();
+            succ.dedup();
+            // choose: first successor not yet committed to filler / ¬filler.
+            let unqual = succ.iter().copied().find(|&s| {
+                !self.ext.has_concept(s, filler) && !self.ext.has_concept(s, comp)
+            });
+            if let Some(s) = unqual {
+                let edep = edge_dep(&self.ext, role, node, s).unwrap_or_else(dep_empty);
+                let base = dep_union(&mdep, &edep);
+                return Some(self.branch_choose(s, filler, &base, depth));
+            }
+            // all qualified: the filler-carrying successors are the counted ones.
+            let cs: Vec<Node> =
+                succ.into_iter().filter(|&s| self.ext.has_concept(s, filler)).collect();
+            if cs.len() as u32 <= bound {
+                continue; // this ≤n already holds
+            }
+            // > bound qualified successors. Collect mergeable (non-distinct) pairs;
+            // a missing pair means two are provably distinct (contributes to the
+            // clash reason if NO pair is mergeable).
+            let mut pairs: Vec<(Node, Node)> = Vec::new();
+            let mut distinct_dep = dep_empty();
+            for i in 0..cs.len() {
+                for j in (i + 1)..cs.len() {
+                    match self.ext.are_distinct(cs[i], cs[j]) {
+                        Some(dd) => distinct_dep = dep_union(&distinct_dep, &dd),
+                        None => {
+                            let (a, b) =
+                                if cs[i] <= cs[j] { (cs[i], cs[j]) } else { (cs[j], cs[i]) };
+                            pairs.push((a, b));
+                        }
+                    }
+                }
+            }
+            if pairs.is_empty() {
+                // every counted successor is pairwise distinct ⇒ ≤n is unsatisfiable.
+                // The clash reason is the ≤n marker + each successor's edge and
+                // filler membership + the inequality witnesses (conservative, so a
+                // backjump never skips a contributing decision).
+                let mut dep = dep_union(&mdep, &distinct_dep);
+                for &s in &cs {
+                    if let Some(d) = edge_dep(&self.ext, role, node, s) {
+                        dep = dep_union(&dep, &d);
+                    }
+                    if let Some(d) = self.ext.dep_of(s, filler) {
+                        dep = dep_union(&dep, d);
+                    }
+                }
+                return Some(self.conflict_out(dep));
+            }
+            // a merge is possible: branch over which mergeable pair to identify.
+            // The base dep carries the ≤n marker plus each counted successor's edge
+            // and filler reason, so a merge-induced clash backjumps correctly.
+            let mut bdep = mdep.clone();
+            for &s in &cs {
+                if let Some(d) = edge_dep(&self.ext, role, node, s) {
+                    bdep = dep_union(&bdep, &d);
+                }
+                if let Some(d) = self.ext.dep_of(s, filler) {
+                    bdep = dep_union(&bdep, d);
+                }
+            }
+            self.ext.push_card(Vec::new(), pairs, bdep);
+            let mid = self.ext.pending_merge.len() - 1;
+            return Some(self.branch_merge(mid, depth));
+        }
+        None
+    }
+
+    /// KM_HT_CARD choose branch (Konclude `applyAutomatChooseRule`): a `≤n`-counted
+    /// successor `s` must commit to `filler` or `¬filler` for exact counting. Try
+    /// `filler` first, then `¬filler`; standard dependency-directed backjump (mirror
+    /// of `branch_merge`'s two-option loop).
+    fn branch_choose(&mut self, s: Node, filler: CLit, base: &DepSet, depth: Level) -> Out {
+        let level = depth + 1;
+        let comp = CLit { neg: !filler.neg, c: filler.c };
+        self.branch_pushes += 1;
+        let mut fail = dep_empty();
+        for &lit in &[filler, comp] {
+            self.disjunct_tries += 1;
+            let mark = self.ext.mark();
+            let dep = dep_add(base, level);
+            self.ext.add_concept(s, lit, &dep);
+            let sub = self.dfs(level);
+            match sub {
+                Out::Sat => return Out::Sat,
+                Out::Restart => {
+                    self.ext.backtrack_to(mark);
+                    return Out::Restart;
+                }
+                Out::Conflict(cd) => {
+                    self.backtracks += 1;
+                    self.ext.backtrack_to(mark);
+                    if !dep_contains(&cd, level) {
+                        self.backjumps += 1;
+                        return Out::Conflict(cd);
+                    }
+                    fail = dep_union(&fail, &cd);
+                }
+            }
+        }
+        Out::Conflict(dep_remove(&fail, level))
     }
 
     /// Wrap a base clash into an `Out`: count it and, if the restart budget is
@@ -6636,6 +7214,14 @@ impl Ht {
                 }
                 Scan::Sat => {
                     if self.trace { eprintln!("TR scan-sat depth={}", depth); }
+                    // KM_HT_CARD: discharge a still-violated first-class ≤n
+                    // restriction (Konclude `applyATMOSTRule`: choose then merge)
+                    // before declaring the model complete.
+                    if self.card && !self.ext.card_max.is_empty() {
+                        if let Some(out) = self.card_max_step(depth) {
+                            return out;
+                        }
+                    }
                     // Before declaring the model complete, discharge any pending ≤n
                     // qualified-cardinality merge (KM_HT_QMERGE): a still-violated
                     // AtMost is a non-deterministic choice of which pair to identify.
@@ -8418,6 +9004,21 @@ impl Ht {
                             cands.push((a, b)); // inverse-only subsumption → verify
                         }
                     }
+                    // r-Succ (KM_RSUCC): the inverse-augmented forward pass reports
+                    // `sufficient`, but a transitive-reachability head `C(x)` on a
+                    // shared filler reached across an inverse back-edge was suppressed
+                    // (never written, never finalized in the per-concept QOPC path),
+                    // so the transitive+inverse reconstruction unsat can be MISSED.
+                    // `kp_finalize` runs the reach post-pass (and drains the deferred
+                    // inverse-edge checks); if it flags an insufficiency, the forward
+                    // model is not trustworthy for `a` ⇒ let the complete tableau
+                    // decide it (verify drops it if `a` is really satisfiable). Sound.
+                    if qu.rsucc {
+                        qu.kp_finalize();
+                        if qu.kp_insufficient {
+                            unsat_cands.push(a);
+                        }
+                    }
                 }
             }
             if trace && i > 0 && i % 5000 == 0 {
@@ -9298,6 +9899,198 @@ mod tests {
 
     fn ht(cls: Vec<Clause>) -> Ht {
         Ht::new(cls)
+    }
+
+    #[test]
+    fn distinct_pair_merge_clashes() {
+        // Konclude `isIndividualNodesMergeable`: merging an asserted-distinct pair
+        // is a clash. The clash dep carries BOTH the merge cause and the
+        // inequality witness, so it backjumps past whichever is shallower.
+        let mut e = Ext::new();
+        let a = e.new_root();
+        let b = e.new_root();
+        e.add_distinct(a, b, &dep_add(&dep_empty(), 3));
+        assert!(e.are_distinct(a, b).is_some());
+        e.merge_into(a, b, &dep_add(&dep_empty(), 7));
+        assert!(e.has_clash());
+        assert_eq!(dep_max(&e.clash_dep()), 7);
+    }
+
+    #[test]
+    fn distinct_self_is_clash() {
+        // a ≠ a is an immediate contradiction.
+        let mut e = Ext::new();
+        let a = e.new_root();
+        e.add_distinct(a, a, &dep_add(&dep_empty(), 4));
+        assert!(e.has_clash());
+    }
+
+    #[test]
+    fn distinct_backtrack_undoes_then_mergeable() {
+        // The inequality is trail-recorded: a backtrack past it makes the pair
+        // mergeable again with no clash.
+        let mut e = Ext::new();
+        let a = e.new_root();
+        let b = e.new_root();
+        let m = e.mark();
+        e.add_distinct(a, b, &dep_empty());
+        assert!(e.are_distinct(a, b).is_some());
+        e.backtrack_to(m);
+        assert!(e.are_distinct(a, b).is_none());
+        e.merge_into(a, b, &dep_empty());
+        assert!(!e.has_clash());
+    }
+
+    #[test]
+    fn card_atleast_sat_builds_successors() {
+        // A ⊑ ≥2 R0.FC : satisfiable; builds two distinct FC-successors.
+        const MK: C = 20;
+        const FC: C = 21;
+        let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)])];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MK, CardDef { kind: CardKind::Min, n: 2, role: R0, filler: CLit::pos(FC) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn card_atleast_unsat_via_filler_clash() {
+        // A ⊑ ≥1 R0.FC, FC ⊑ ⊥ ⇒ {A} unsat: the required successor carries FC,
+        // which clashes (FC ⊑ G and FC ⊑ ¬G). Confirms the rule creates the
+        // successor and propagates the filler.
+        const MK: C = 20;
+        const FC: C = 21;
+        const G: C = 22;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)]),
+            Clause::new(vec![con(false, FC, X)], vec![con(false, G, X)]),
+            Clause::new(vec![con(false, FC, X)], vec![con(true, G, X)]),
+        ];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MK, CardDef { kind: CardKind::Min, n: 1, role: R0, filler: CLit::pos(FC) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn card_atleast_recursive_terminates_via_blocking() {
+        // A ⊑ ≥1 R0.A : an infinite R0-chain that MUST be folded by blocking. The
+        // ≥n rule is gated by blocking exactly like ∃, so the successor (label
+        // {A, marker}) is blocked by the root and spawns no further successors ⇒
+        // consistent and terminating (the model-folding the legacy Eq-merge lost).
+        const MK: C = 20;
+        let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)])];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MK, CardDef { kind: CardKind::Min, n: 1, role: R0, filler: CLit::pos(A) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn card_atmost_distinct_clash() {
+        // A ⊑ ≥3 R0.FC ⊓ ≤2 R0.FC : three pairwise-distinct FC-successors cannot
+        // fit into ≤2 (no mergeable pair) ⇒ {A} unsat. Exercises the ≤n
+        // distinct-clash path against the ≥n distinct successors.
+        const MN: C = 20;
+        const MX: C = 21;
+        const FC: C = 22;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![con(false, MN, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
+        ];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MN, CardDef { kind: CardKind::Min, n: 3, role: R0, filler: CLit::pos(FC) });
+        defs.insert(MX, CardDef { kind: CardKind::Max, n: 2, role: R0, filler: CLit::pos(FC) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn card_atmost_merge_sat() {
+        // A ⊑ ∃R0.G0 ⊓ ∃R0.G1 ⊓ ≤1 R0.FC, G0⊑FC, G1⊑FC: two NON-distinct
+        // FC-successors merge to satisfy ≤1 ⇒ SAT.
+        const MX: C = 21;
+        const FC: C = 22;
+        const G0: C = 23;
+        const G1: C = 24;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, FC, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, FC, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
+        ];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MX, CardDef { kind: CardKind::Max, n: 1, role: R0, filler: CLit::pos(FC) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn card_atmost_merge_clash() {
+        // Same shape but G0⊑P, G1⊑¬P: the ≤1-forced merge of the two FC-successors
+        // clashes (P ⊓ ¬P) and there is no other option ⇒ {A} unsat.
+        const MX: C = 21;
+        const FC: C = 22;
+        const G0: C = 23;
+        const G1: C = 24;
+        const P: C = 25;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, FC, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(false, FC, X)]),
+            Clause::new(vec![con(false, G0, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, G1, X)], vec![con(true, P, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
+        ];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MX, CardDef { kind: CardKind::Max, n: 1, role: R0, filler: CLit::pos(FC) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
+    }
+
+    #[test]
+    fn card_atmost_choose_picks_negative() {
+        // A ⊑ ≤0 R0.FC ⊓ ∃R0.G1, G1 unrelated to FC: the unqualified successor must
+        // be labelled ¬FC by the choose rule (≤0 forbids FC) ⇒ SAT. Exercises
+        // `branch_choose` (the FC branch clashes, the ¬FC branch is the model).
+        const MX: C = 21;
+        const FC: C = 22;
+        const G1: C = 24;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G1, X)]),
+            Clause::new(vec![con(false, A, X)], vec![con(false, MX, X)]),
+        ];
+        let mut t = ht(cls);
+        let mut defs = HashMap::new();
+        defs.insert(MX, CardDef { kind: CardKind::Max, n: 0, role: R0, filler: CLit::pos(FC) });
+        t.set_card_defs(defs);
+        assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
+    }
+
+    #[test]
+    fn distinct_propagates_through_merge() {
+        // a≠c, then merge b into a's survivor; if later we try to merge the
+        // survivor with c it must clash (the inequality followed the merge).
+        // Build: c≠a (distinct), merge a,b (ok, survivor=min). survivor still ≠ c.
+        let mut e = Ext::new();
+        let a = e.new_root();
+        let b = e.new_root();
+        let c = e.new_root();
+        e.add_distinct(b, c, &dep_empty()); // b ≠ c
+        e.merge_into(a, b, &dep_empty()); // b folds into a (survivor a)
+        assert!(!e.has_clash());
+        // a inherited b's inequality with c
+        assert!(e.are_distinct(a, c).is_some());
+        e.merge_into(a, c, &dep_empty());
+        assert!(e.has_clash());
     }
 
     #[test]

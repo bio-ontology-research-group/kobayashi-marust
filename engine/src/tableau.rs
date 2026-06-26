@@ -4453,6 +4453,20 @@ pub struct TInput {
     /// seeding. Empty for nominal-free KBs (no behaviour change).
     #[serde(default)]
     pub nominals: Vec<C>,
+    /// KM_HT_CARD: first-class qualified number restrictions (marker → `≥n`/`≤n`).
+    /// Empty for the clausal-pigeonhole path (no behaviour change).
+    #[serde(default)]
+    pub card_defs: Vec<JCardDef>,
+}
+
+/// KM_HT_CARD number restriction in the TInput (mirrors cb_to_ht::CardDefJson).
+#[derive(Deserialize)]
+pub struct JCardDef {
+    pub marker: C,
+    pub min: bool,
+    pub n: u32,
+    pub role: R,
+    pub filler: C,
 }
 
 #[derive(Serialize)]
@@ -4509,6 +4523,9 @@ pub fn run_json(input: &str) -> Result<String, String> {
         let q = queries.clone();
         let noms = inp.nominals.clone();
         let ht_number = inp.number;
+        // KM_HT_CARD: first-class number restrictions to install on the Ht.
+        let card_raw: Vec<(C, bool, u32, R, C)> =
+            inp.card_defs.iter().map(|d| (d.marker, d.min, d.n, d.role, d.filler)).collect();
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -4522,6 +4539,14 @@ pub fn run_json(input: &str) -> Result<String, String> {
                 // nominal route) must run the qualified-cardinality rules (≤n / ≥n
                 // recognition / functional) rather than bailing `unsupported`.
                 ht.set_number(ht_number);
+                // KM_HT_CARD first-class number rules run on the BRANCHING classify
+                // only; the QO certify path's apply_head does not handle the kept
+                // cardinality recognition Eq-heads. cb_to_ht only emits `card_defs`
+                // for the card-routable fragment (which never takes the QO route),
+                // so this is belt-and-suspenders against a future routing change.
+                if !card_raw.is_empty() && std::env::var_os("KM_HT_QO").is_none() {
+                    ht.set_card_defs_raw(&card_raw);
+                }
                 if std::env::var_os("KM_HT_QO").is_some() {
                     match ht.quasi_order_classify(&q) {
                         Some(r) => Some(r),

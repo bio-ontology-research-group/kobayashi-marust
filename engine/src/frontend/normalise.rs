@@ -34,6 +34,12 @@ pub struct GroundHooks {
     /// reverse edges feed no concept) and route the ontology to the EL fast
     /// path instead of the CB engine.
     pub symmetric_roles: Vec<String>,
+    /// KM_HT_CARD: first-class qualified number restrictions captured during
+    /// clausification (`define`). Empty unless the frontend `KM_HT_CARD` flag is
+    /// set, so the default clause/meta output is byte-identical. Consumed by
+    /// cb_to_ht to install the Konclude `≥n`/`≤n` rules in place of the clausal
+    /// `⋁ Eq` pigeonhole.
+    pub cardinalities: Vec<crate::json_io::CardMeta>,
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +125,12 @@ pub struct Clausifier {
     absorb: bool,
     def_pos: HashSet<Concept>,
     def_neg: HashSet<Concept>,
+    /// KM_HT_CARD: when set, `define` records each `≥n`/`≤n` restriction (and the
+    /// `≥(n+1)` recognition proxy) into `hooks.cardinalities` as a first-class
+    /// `CardMeta`. The clausal expansion is still emitted unchanged (the CB engine
+    /// consumes it); the metadata only lets the HT path swap it for the Konclude
+    /// number rules. Default off ⇒ no metadata ⇒ byte-identical output.
+    card: bool,
 }
 
 impl Clausifier {
@@ -138,6 +150,7 @@ impl Clausifier {
             absorb: std::env::var("KM_ABSORB").map(|s| s != "0").unwrap_or(false),
             def_pos: HashSet::new(),
             def_neg: HashSet::new(),
+            card: std::env::var_os("KM_HT_CARD").is_some(),
         }
     }
 
@@ -455,6 +468,16 @@ impl Clausifier {
             Concept::AtLeast(n, role, filler) => {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
+                if self.card {
+                    // Definitional `q ⊑ ≥n role.filler` (Konclude applyATLEASTRule).
+                    self.hooks.cardinalities.push(crate::json_io::CardMeta {
+                        marker: q.to_string(),
+                        min: true,
+                        n: *n as u32,
+                        role: role_name.clone(),
+                        filler: filler_name.clone(),
+                    });
+                }
                 for i in 0..*n {
                     let f_name = format!("f_{}_{}", q, i);
                     let fxi = Term::Fun(f_name, Box::new(x.clone()));
@@ -509,6 +532,16 @@ impl Clausifier {
             Concept::AtMost(n, role, filler) => {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
+                if self.card {
+                    // Definitional `q ⊑ ≤n role.filler` (Konclude applyATMOSTRule).
+                    self.hooks.cardinalities.push(crate::json_io::CardMeta {
+                        marker: q.to_string(),
+                        min: false,
+                        n: *n as u32,
+                        role: role_name.clone(),
+                        filler: filler_name.clone(),
+                    });
+                }
                 let ys: Vec<Term> = (0..=*n).map(|i| Term::Var(format!("y{}", i))).collect();
                 let mut body_atoms: Vec<Atom> = vec![qx.clone()];
                 for yi in &ys {
@@ -530,6 +563,19 @@ impl Clausifier {
                 // so a pre-pass-proven positive-only occurrence skips it.
                 if !self.atmost_pos.contains(c) || self.atmost_neg.contains(c) {
                     let nq = self.fresh();
+                    if self.card {
+                        // Recognition proxy `NQ ≡ ¬q ≡ ≥(n+1) role.filler`: the
+                        // n+1 pairwise-distinct witnesses below are the same
+                        // applyATLEASTRule expansion, so route NQ through the
+                        // first-class `≥(n+1)` rule too (else it re-explodes).
+                        self.hooks.cardinalities.push(crate::json_io::CardMeta {
+                            marker: nq.clone(),
+                            min: true,
+                            n: (*n + 1) as u32,
+                            role: role_name.clone(),
+                            filler: filler_name.clone(),
+                        });
+                    }
                     let nqx = Atom::Concept(nq.clone(), x.clone());
                     self.clauses.push(clause([], [qx.clone(), nqx.clone()]));
                     self.clauses.push(clause([qx, nqx.clone()], []));

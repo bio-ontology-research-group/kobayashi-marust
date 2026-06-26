@@ -41,6 +41,19 @@ pub struct Fenced {
     pub detail: String,
 }
 
+/// KM_HT_CARD: a first-class number restriction in the TInput, resolved to HT
+/// concept/role ids. `min` ⇒ `≥n role.filler`, else `≤n role.filler`. The HT
+/// worker (`run_json`) installs these via `set_card_defs_raw`; the clausal
+/// `⋁ Eq` pigeonhole for each marker is dropped from `clauses`.
+#[derive(serde::Serialize, Clone)]
+pub struct CardDefJson {
+    pub marker: usize,
+    pub min: bool,
+    pub n: u32,
+    pub role: usize,
+    pub filler: usize,
+}
+
 #[derive(serde::Serialize)]
 pub struct TInput {
     pub concepts: Vec<String>,
@@ -52,6 +65,8 @@ pub struct TInput {
     pub inverse: bool,
     pub number: bool,
     pub nominals: Vec<usize>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub card_defs: Vec<CardDefJson>,
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +118,53 @@ fn eq_fun_pair(a: &JAtom) -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// KM_HT_CARD: is `c` part of the clausal cardinality expansion the frontend
+/// `define` emitted for a card marker (now represented first-class in
+/// `card_defs`)? Matches the three shapes `define` produces (`normalise.rs`):
+///   (1) `≥n` Skolem intro: body `[Concept(m,x)]` (m ∈ `min_markers`), head has a
+///       function term (`m → role(x,f_i(x))` / `m → filler(f_i(x))`);
+///   (2) `≥n` distinctness: empty head, body carries an `m` concept (m ∈
+///       `min_markers`) and an `Eq(f_i,f_j)` between Skolem terms;
+///   (3) `≤n` definitional: non-empty all-`Eq` head, body carries an `m` concept
+///       (m ∈ `max_markers`) — the `⋁ Eq` pigeonhole.
+/// Each marker is fresh and used only by its own restriction, so these shapes
+/// never alias a non-cardinality clause (the `≥n` recognition Horn/`∨ Eq` clause
+/// and the `q ∨ NQ` excluded middle keep an `m` concept in the HEAD, not matched).
+fn card_drop(
+    c: &JClause,
+    min_markers: &std::collections::HashSet<String>,
+    max_markers: &std::collections::HashSet<String>,
+) -> bool {
+    let body_has = |set: &std::collections::HashSet<String>| -> bool {
+        c.body.iter().any(|a| matches!(a,
+            JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && set.contains(concept)))
+    };
+    // (1) ≥n Skolem intro.
+    if c.head.iter().any(atom_has_fun) {
+        let single_min = c.body.len() == 1
+            && matches!(&c.body[0],
+                JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && min_markers.contains(concept));
+        if single_min {
+            return true;
+        }
+    }
+    // (2) ≥n distinctness.
+    if c.head.is_empty()
+        && body_has(min_markers)
+        && c.body.iter().any(|a| eq_fun_pair(a).is_some())
+    {
+        return true;
+    }
+    // (3) ≤n definitional pigeonhole.
+    if !c.head.is_empty()
+        && c.head.iter().all(|a| matches!(a, JAtom::Eq { .. }))
+        && body_has(max_markers)
+    {
+        return true;
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -186,10 +248,55 @@ impl OrderedMM {
 // ---------------------------------------------------------------------------
 // convert
 // ---------------------------------------------------------------------------
-pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::collections::HashSet<String>) -> TInput {
+pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::collections::HashSet<String>, cardinalities: &[crate::json_io::CardMeta], card_enabled: bool) -> TInput {
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
+
+    // KM_HT_CARD: the frontend tagged each `≥n`/`≤n` restriction with a `CardMeta`.
+    // Install the Konclude first-class number rule (built below into `card_defs`)
+    // and DROP exactly the clausal pigeonhole the frontend emitted for those
+    // markers, so each restriction reaches the HT via a single representation.
+    // Only do the card transform when the ont is in the card-ROUTABLE fragment
+    // (the same guard `race::spawn_ht`'s `card_candidate` uses): no datatype (no
+    // concrete-domain oracle in the Ht). Nominals ARE allowed — the fast Ht carries
+    // the SHOQ o-rule (`process_nominals`, which merges through the same `merge_into`
+    // as the ≤n rule, i.e. Konclude `mergeIndividual`), so SHOQ number onts fold
+    // correctly with the first-class card rules (ore_ont_9540: 66/66 gold-exact,
+    // 46252→64 nodes). Datatype onts still keep the clausal `⋁ Eq` pigeonhole and
+    // route elsewhere (QO / shoq / CB) — dropping it + emitting `card_defs` the other
+    // routes cannot consume would lose the cardinality (or panic the QO apply_head).
+    let card_routable = !clauses.iter().any(|c| {
+        c.body.iter().chain(c.head.iter()).any(|a| {
+            matches!(a, JAtom::Concept { concept, .. }
+                if short(concept).starts_with("__dt__"))
+        })
+    });
+    // The card transform must fire ONLY when the ont will actually take the card
+    // route (race::card_candidate: no datatype, no inverse — nominals OK). An
+    // inverse ont that dropped its clausal pigeonhole + emitted `card_defs` would
+    // route to QO/CB instead (card_candidate rejects inverse); neither consumes
+    // `card_defs`, silently LOSING the cardinality → unsound (ore_ont_10702, a
+    // nominal+inverse ont that my `card_routable` __nom__ relaxation would otherwise
+    // mis-transform). So exclude inverse here too, matching the route guard exactly.
+    let has_inverse = rbox
+        .map(|rb| rb.iter().any(|ax| ax.first().map(String::as_str) == Some("inverse")))
+        .unwrap_or(false);
+    let card_active = !cardinalities.is_empty()
+        && card_enabled
+        && card_routable
+        && !has_inverse;
+    let mut min_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut max_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if card_active {
+        for cm in cardinalities {
+            if cm.min {
+                min_markers.insert(cm.marker.clone());
+            } else {
+                max_markers.insert(cm.marker.clone());
+            }
+        }
+    }
 
     // exj as an insertion-ordered map: f -> ExjRec
     let mut exj_order: Vec<String> = Vec::new();
@@ -201,6 +308,12 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
 
     // ---- pass 1: collect existential-introduction clauses by function symbol ----
     for c in clauses {
+        // KM_HT_CARD: drop the clausal cardinality expansion the frontend emitted
+        // for a card marker (the `≥n` Skolem successors + distinctness, and the
+        // `≤n` Eq-head). The first-class rule in `card_defs` replaces it.
+        if card_active && card_drop(c, &min_markers, &max_markers) {
+            continue;
+        }
         let mut head_funs: Vec<String> = Vec::new();
         for a in &c.head {
             match a {
@@ -619,11 +732,27 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     queries.sort();
     queries.dedup();
 
+    // ---- KM_HT_CARD: resolve the first-class number restrictions to ids ----
+    let mut card_defs: Vec<CardDefJson> = Vec::new();
+    if card_active {
+        for cm in cardinalities {
+            card_defs.push(CardDefJson {
+                marker: ids.cid(&cm.marker),
+                min: cm.min,
+                n: cm.n,
+                role: ids.rid(&cm.role),
+                filler: ids.cid(&cm.filler),
+            });
+        }
+    }
+
     // ---- complementary-definer elimination (default ON) ----
     // Sound+complete since the completeness guard in elim_complements (never folds
     // a consequence-bearing pair that is not independently derivable). Opt out with
-    // KM_NO_HT_EMELIM.
-    if std::env::var_os("KM_NO_HT_EMELIM").is_none() {
+    // KM_NO_HT_EMELIM. Disabled under KM_HT_CARD: the `q`/`NQ` recognition markers
+    // are a complementary pair (`⊤⊑q∨NQ`, `q⊓NQ⊑⊥`) that emelim would fold, which
+    // would drop the NQ concept that carries the `≥(n+1)` recognition card_def.
+    if card_defs.is_empty() && std::env::var_os("KM_NO_HT_EMELIM").is_none() {
         let (out, n_elim) = elim_complements(ht, &ids.con_names);
         ht = out;
         if std::env::var_os("KM_HT_STATS").is_some() {
@@ -643,6 +772,7 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         inverse: !inverse_pairs.is_empty(),
         number,
         nominals: nominal_ids,
+        card_defs,
     }
 }
 
