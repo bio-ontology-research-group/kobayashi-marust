@@ -50,6 +50,13 @@ use std::time::Instant;
 static MATCH_TOT: AtomicU64 = AtomicU64::new(0);
 static MATCH_MAX: AtomicU64 = AtomicU64::new(0);
 
+// KM_HT_QO_SPLIT (port #2) diagnostics: redirects performed, ∀-critical
+// insufficiency inserts (the share that split could in principle remove), and
+// cardinality Eq-head insufficiency inserts (the separate cardinality-merge gap).
+static DBG_SPLIT: AtomicU64 = AtomicU64::new(0);
+static DBG_FORALL_INSUFF: AtomicU64 = AtomicU64::new(0);
+static DBG_CARD_INSUFF: AtomicU64 = AtomicU64::new(0);
+
 // KM_HT_NUMBER safety: a single clause body match (`rec_match_flex`) can blow up
 // into an enormous join over a dense merged graph (the SHIQ ≤n / inverse path),
 // which would hang. Under number-mode only, bound the recursion-step count per
@@ -2749,6 +2756,32 @@ struct QoSat<'a> {
     /// P2.1 ancestor link (parallel to `label`): the predecessor node that created
     /// this successor, for the blocking ancestor walk. `None` for roots/self-nodes.
     qo_parent: Vec<Option<Node>>,
+    /// KM_HT_QO_SPLIT (port #2, copy-on-conflict): the faithful Konclude middle
+    /// ground between the over-sharing `sat_filler` (one node per `(fil,role)`,
+    /// which forces a critical-ALL deferral the moment two predecessors impose
+    /// incompatible `∀R` operands on it — the 7581/giant over-defer) and the
+    /// non-shared `shiq` mode (one successor per source, ×concepts OOM). A
+    /// forward `∀R.C` write whose operand is not already forced does NOT trip
+    /// `qo_insufficient`; instead the source's `R`-edge is REDIRECTED off the
+    /// shared base filler onto a node keyed by `(base-fil, R, source's accumulated
+    /// ∀R-operand set)` (`copyDependingIndividualNode`). Base/shared fillers stay
+    /// unpolluted (their label is sound for every sharing predecessor); the
+    /// per-operand-set split nodes carry the operands. Nodes are bounded by the
+    /// number of DISTINCT operand sets, not by predecessors, so two predecessors
+    /// imposing the same operands still share — Konclude's content sharing.
+    split_mode: bool,
+    /// Base ∃-filler concept of each node (parallel to `label`): the `fil` of the
+    /// `∃R.fil` that created it, used as the split key's base. `None` for
+    /// roots/concept self-nodes that were never an ∃-filler.
+    node_fil: Vec<Option<CLit>>,
+    /// Accumulated forward `∀R`-operand set imposed by a source node on its
+    /// `R`-successors (`split_mode`). Grows monotonically; the sorted form is the
+    /// split key.
+    src_forall: HashMap<(Node, R), HashSet<CLit>>,
+    /// Content-keyed split fillers: `(base-fil, role, sorted-∀-operand-set) → node`.
+    /// Sources imposing the same operand set on the same `(fil,role)` share one
+    /// node (content sharing); a new operand set creates a fresh seeded node.
+    split_filler: HashMap<(CLit, R, Vec<CLit>), Node>,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -3143,6 +3176,10 @@ impl<'a> QoSat<'a> {
             residue_unsafe: std::env::var_os("KM_HT_QO_RESIDUE_FORCE").is_some(),
             shiq: std::env::var_os("KM_HT_QO_SHIQ").is_some(),
             qo_parent: Vec::new(),
+            split_mode: std::env::var_os("KM_HT_QO_SPLIT").is_some(),
+            node_fil: Vec::new(),
+            src_forall: HashMap::new(),
+            split_filler: HashMap::new(),
         }
     }
 
@@ -3177,6 +3214,9 @@ impl<'a> QoSat<'a> {
         self.kp_insuff_nodes.clear();
         self.is_filler.clear();
         self.sat_filler.clear();
+        self.node_fil.clear();
+        self.src_forall.clear();
+        self.split_filler.clear();
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -3190,6 +3230,7 @@ impl<'a> QoSat<'a> {
         self.node_range.push(0);
         self.is_filler.push(false);
         self.qo_parent.push(None);
+        self.node_fil.push(None);
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
@@ -3286,12 +3327,22 @@ impl<'a> QoSat<'a> {
             let n = self.new_node();
             self.is_filler[n] = true;
             self.sat_filler.insert((fil, r), n);
+            if self.split_mode {
+                self.node_fil[n] = Some(fil);
+            }
             self.add_lit(n, fil);
             return n;
         }
         let cls = self.range_class.get(&r).copied().unwrap_or(0);
         if cls == 0 {
-            return self.concept_node_of(fil);
+            let n = self.concept_node_of(fil);
+            // The concept self-node doubles as the shared `∃r.fil` filler. Record
+            // `fil` as its base so `split_mode` can redirect a `∀r` writer off it,
+            // keeping the self-node (read for classification, G1) unpolluted.
+            if self.split_mode && self.node_fil[n].is_none() {
+                self.node_fil[n] = Some(fil);
+            }
+            return n;
         }
         if let Some(&n) = self.filler_node.get(&(fil, cls)) {
             return n;
@@ -3299,6 +3350,9 @@ impl<'a> QoSat<'a> {
         let n = self.new_node();
         self.node_range[n] = cls;
         self.filler_node.insert((fil, cls), n);
+        if self.split_mode {
+            self.node_fil[n] = Some(fil);
+        }
         if self.tracing {
             self.trail.push(QoUndo::Filler(fil, cls));
         }
@@ -3316,6 +3370,83 @@ impl<'a> QoSat<'a> {
         if self.tracing {
             self.trail.push(QoUndo::Edge(s, r, t));
         }
+    }
+
+    /// Drop the edge `(s, r, t)` from both adjacency indexes (`split_mode`
+    /// copy-on-conflict redirect only). The shared-node saturation is otherwise
+    /// monotone (edges only grow); this is the single non-monotone operation, and
+    /// it is sound because the redirect always re-adds `(s, r, m)` to a node `m`
+    /// whose label is a superset of the relevant content of `t` (the base/shared
+    /// filler that `t` was). No undo is recorded: `split_mode` runs only in the
+    /// non-tracing global pass (the residue DFS keeps the old defer behaviour).
+    fn remove_edge(&mut self, s: Node, r: R, t: Node) {
+        self.out_edges[s].retain(|&(rr, tt)| !(rr == r && tt == t));
+        self.in_edges[t].retain(|&(rr, ss)| !(rr == r && ss == s));
+    }
+
+    /// Port #2 copy-on-conflict (`split_mode`). A forward `∀r.lit` write from
+    /// source `anchor` over the edge `(anchor, r, n)` whose operand `lit` is not
+    /// already forced on the shared filler `n`. Instead of polluting `n` (unsound
+    /// across predecessors) or deferring (`qo_insufficient`, the over-defer),
+    /// REDIRECT `anchor`'s `r`-edge onto a node keyed by `(base-fil, r, anchor's
+    /// accumulated ∀r-operand set)`: Konclude's `copyDependingIndividualNode`. The
+    /// keyed node carries `fil` + the operands, so the operand fires downstream
+    /// (complete) without conflating predecessors (sound). Returns true iff the
+    /// redirect was applied (the head is then discharged); false ⇒ caller keeps
+    /// the old defer behaviour (the write was not a plain forward `∀r` from `X`).
+    fn try_split_redirect(&mut self, cid: usize, anchor: Node, n: Node, head_t: Var, lit: CLit) -> bool {
+        // The base ∃-filler concept that keys `n`; without it `n` is not a
+        // shared filler we know how to split (e.g. a root/self seed) ⇒ defer.
+        let fil = match self.node_fil[n] {
+            Some(f) => f,
+            None => return false,
+        };
+        // Recover the edge role: a body role atom `r(X, head_t)` whose target is
+        // the head var and whose source is the clause anchor `X`, witnessed by a
+        // real edge `(anchor, r, n)`. Only this plain forward shape is redirected;
+        // backward (inverse) `∀` writes (head var = role SOURCE) fall through.
+        let body = &self.clauses[cid].1;
+        let mut role: Option<R> = None;
+        for a in body.iter() {
+            if let Atom::Role { r, s, t } = *a {
+                if s == X && t == head_t && self.out_edges[anchor].iter().any(|&(rr, tt)| rr == r && tt == n) {
+                    role = Some(r);
+                    break;
+                }
+            }
+        }
+        let r = match role {
+            Some(r) => r,
+            None => return false,
+        };
+        // Accumulate `lit` into the source's ∀r-operand set; the sorted set is the
+        // content key. A growing set re-keys to a fresh (larger) node, leaving the
+        // smaller node for predecessors that imposed only the smaller set.
+        let ops = self.src_forall.entry((anchor, r)).or_default();
+        ops.insert(lit);
+        let mut key_ops: Vec<CLit> = ops.iter().copied().collect();
+        key_ops.sort();
+        let m = match self.split_filler.get(&(fil, r, key_ops.clone())) {
+            Some(&m) => m,
+            None => {
+                let m = self.new_node();
+                self.is_filler[m] = true;
+                self.node_fil[m] = Some(fil);
+                self.add_lit(m, fil);
+                for &op in &key_ops {
+                    self.add_lit(m, op);
+                }
+                self.split_filler.insert((fil, r, key_ops), m);
+                m
+            }
+        };
+        if m == n {
+            return false; // degenerate (would re-add the same edge); defer.
+        }
+        self.remove_edge(anchor, r, n);
+        self.add_edge(anchor, r, m);
+        DBG_SPLIT.fetch_add(1, Ordering::Relaxed);
+        true
     }
 
     /// Run the non-branching saturation fixpoint from a seeded root (node 0).
@@ -4343,13 +4474,42 @@ impl<'a> QoSat<'a> {
                     // heads — NF4 backward links, domain — are predecessor-keyed
                     // and never pollute.)
                     if t != X {
+                        // SPLIT (port #2): the operand is already present on the
+                        // target (e.g. the re-fire onto the just-created split node,
+                        // which was seeded with it) ⇒ discharged, NOT a critical-ALL
+                        // insufficiency. Guarded by `split_mode` so non-split
+                        // semantics (where this falls through to the write below) are
+                        // byte-identical.
+                        if self.split_mode && self.label[n].contains(&lit) {
+                            satisfied = true;
+                            break;
+                        }
                         let cls = self.node_range[n] as usize;
                         // P2.1: under `shiq` the successor `n` is the source's OWN
                         // non-shared node, so this ∀-write is sound exactly as in
                         // Konclude's `applyALLRule` (forward over a genuine edge into
                         // an independent successor). No critical-ALL insufficiency.
                         let clean = self.shiq || (cls != 0 && self.class_set[cls].contains(&lit));
+                        // KM_HT_QO_SPLIT (port #2 copy-on-conflict): a single-operand
+                        // forward `∀r.lit` whose operand is not already forced ⇒
+                        // redirect the source's r-edge onto a content-keyed split
+                        // filler instead of polluting the shared filler / deferring
+                        // (`qo_insufficient`). Restricted to the pure single-concept
+                        // head shape so a `⊔` under `∀` still parks normally.
+                        if self.split_mode
+                            && !clean
+                            && head.len() == 1
+                            && !self.node_unsat.contains(&n)
+                            && !self.label[n].contains(&lit)
+                        {
+                            let anchor = sigma[X as usize].expect("X bound");
+                            if self.try_split_redirect(cid, anchor, n, t, lit) {
+                                satisfied = true;
+                                break;
+                            }
+                        }
                         if !clean {
+                            DBG_FORALL_INSUFF.fetch_add(1, Ordering::Relaxed);
                             self.qo_insufficient = true;
                             // KM_HT_QO_CARD per-node split: the write into successor
                             // `n` is model-specific (critical-ALL). Record `n` as
@@ -4459,6 +4619,7 @@ impl<'a> QoSat<'a> {
                     // (flag off): bail the whole pass `unsupported` (legacy — no
                     // regression on the non-SHIF onts).
                     if self.card_defer {
+                        DBG_CARD_INSUFF.fetch_add(1, Ordering::Relaxed);
                         let anchor = sigma[X as usize].expect("X bound");
                         self.kp_insuff_nodes.insert(anchor);
                         self.qo_insufficient = true;
@@ -7379,6 +7540,12 @@ impl Ht {
                     qf.kp_miss,
                     qf.kp_insuff_nodes.len()
                 );
+                eprintln!(
+                    "QOGF split-diag: redirects={} forall_insuff={} card_insuff={}",
+                    DBG_SPLIT.load(Ordering::Relaxed),
+                    DBG_FORALL_INSUFF.load(Ordering::Relaxed),
+                    DBG_CARD_INSUFF.load(Ordering::Relaxed)
+                );
                 // FCHECK per-node reachability probe: a query concept can still
                 // certify from the forward closure iff its self-node cannot be
                 // affected by any missed obligation. A missed `E(u)`, were it
@@ -9691,6 +9858,55 @@ mod tests {
             assert!(!unsat.contains(&A) && !unsat.contains(&B),
                 "shared-filler ∀-conflict must NOT spuriously unsat A or B");
         }
+    }
+
+    #[test]
+    fn split_certifies_shared_filler_conflict() {
+        // Port #2 (KM_HT_QO_SPLIT copy-on-conflict): the SAME KB as
+        // qo_shared_filler_conflict_ground_truth, but with `split_mode` on the
+        // forward pass must CERTIFY (no `qo_insufficient`, neither A nor B unsat)
+        // by redirecting A's and B's R0-edges onto two distinct content-keyed
+        // split fillers ({D,CC} and {D,¬CC}) — never polluting the shared D node.
+        const CC: C = 4;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, CC, 1)]),
+            Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, B, X), role(R0, X, 1)], vec![con(true, CC, 1)]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false); // forward-only (no inverse)
+        qs.complete_roles = true;
+        qs.split_mode = true;
+        let g = qs.saturate_global(&[A, B, D, CC]);
+        assert!(!qs.qo_insufficient, "split must NOT defer (copy-on-conflict avoids critical-ALL)");
+        assert!(!qs.unsupported, "split pass must complete");
+        assert!(!g.node_unsat.contains(&0), "A (node 0) must not be spuriously unsat");
+        assert!(!g.node_unsat.contains(&1), "B (node 1) must not be spuriously unsat");
+    }
+
+    #[test]
+    fn split_forall_operand_still_propagates() {
+        // Port #2 COMPLETENESS: the redirected ∀-operand must still fire downstream.
+        //   A ⊑ ∃R0.D,  A ⊑ ∀R0.CC,  ∃R0.CC ⊑ F   (R0(x,y) ⊓ CC(y) → F(x)).
+        // A's R0-successor carries CC (on the split filler {D,CC}), so the backward
+        // NF4 fires F onto A: A ⊑ F. Splitting must not drop this contribution.
+        const CC: C = 4;
+        const F: C = 5;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, A, X), role(R0, X, y)], vec![con(false, CC, y)]),
+            Clause::new(vec![role(R0, X, y), con(false, CC, y)], vec![con(false, F, X)]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        qs.complete_roles = true;
+        qs.split_mode = true;
+        let g = qs.saturate_global(&[A, D, CC, F]);
+        assert!(!qs.qo_insufficient, "no critical-ALL deferral expected");
+        // node 0 = A; the backward F(x) write lands on it.
+        assert!(g.label_pos[0].contains(&F), "A ⊑ F must survive the split redirect");
     }
 
     // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
