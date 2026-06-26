@@ -4609,7 +4609,22 @@ impl<'a> QoSat<'a> {
                     satisfied = true;
                     break;
                 }
-                Atom::Eq { .. } => {
+                Atom::Eq { s, t } => {
+                    // SOUND self-equality short-circuit: in the shared-node model an
+                    // at-most body usually binds both `R`-successors to the SAME
+                    // shared filler node (one node per `(fil,role)`), so the forced
+                    // equality is `node == node` — trivially satisfied, NO merge, NO
+                    // insufficiency. Marking it insufficient (as the blanket defer
+                    // did) is a spurious over-deferral: on 9724 it is the bulk of the
+                    // 98M card-insuff firings (only 674 distinct Eq-heads). Only a
+                    // merge of two DISTINCT successor nodes is a real cardinality
+                    // obligation the shared pass cannot represent.
+                    let sn = sigma[s as usize].expect("Eq s bound");
+                    let tn = sigma[t as usize].expect("Eq t bound");
+                    if sn == tn {
+                        satisfied = true;
+                        break;
+                    }
                     // at-most / functional cardinality forces a successor merge the
                     // shared-node saturation cannot represent soundly. KM_HT_QO_CARD:
                     // mark the anchor node INSUFFICIENT (Konclude's deferral) and
@@ -9907,6 +9922,45 @@ mod tests {
         assert!(!qs.qo_insufficient, "no critical-ALL deferral expected");
         // node 0 = A; the backward F(x) write lands on it.
         assert!(g.label_pos[0].contains(&F), "A ⊑ F must survive the split redirect");
+    }
+
+    #[test]
+    fn card_self_equality_not_insufficient() {
+        // SOUND self-equality short-circuit (KM_HT_QO_CARD). A ⊑ ∃R0.D with a
+        // functional R0 (R0(x,y1) ⊓ R0(x,y2) → y1=y2). In the shared-node model A's
+        // single R0-successor is ONE node, so the at-most binds y1=y2=that node — a
+        // self-equality, NOT a real merge. The forward pass must NOT mark A
+        // insufficient (this is the spurious 98M-firing over-defer on 9724).
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        qs.complete_roles = true;
+        qs.card_defer = true;
+        let _ = qs.saturate_global(&[A, D]);
+        assert!(!qs.qo_insufficient, "self-equality merge must not mark insufficient");
+        assert!(!qs.kp_insufficient, "self-equality merge is not a real cardinality obligation");
+    }
+
+    #[test]
+    fn card_distinct_merge_still_defers() {
+        // Complementary guard: two DISTINCT R0-successors (B and C2) forced equal IS
+        // a real cardinality merge the shared pass cannot represent ⇒ it must still
+        // defer (kp_insufficient), never be silently dropped by the short-circuit.
+        const C2: C = 2;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        qs.complete_roles = true;
+        qs.card_defer = true;
+        let _ = qs.saturate_global(&[A, B, C2]);
+        assert!(qs.kp_insufficient, "a distinct-successor merge must still defer");
     }
 
     // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
