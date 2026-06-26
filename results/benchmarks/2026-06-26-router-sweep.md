@@ -144,6 +144,17 @@ is a structural router (clause-count / RSS-growth) or an adaptive half-thread re
 tier in `run_engine_adaptive` (today it jumps 16→1, no middle tier). Both are sound
 (CB is sound+complete at any thread count); pending the validation sweep.
 
+**Clean conclusion (don't over-read the full 8-thread sweep):** a full-corpus
+exclusive 8-thread sweep at *120 s* (job 7647) gives ok≈554, but that is
+CONFOUNDED — it is at the 120 s measurement budget (where 6212 needs 129 s) and
+exclusive-vs-packed, so it is NOT a clean threads comparison. The clean evidence is
+the *240 s* targeted comparison (jobs 7609 @16 vs 7628 @8): at production budget, 8
+threads recovers **6212 + 15491** with no regression in that set. Safely lowering
+the GLOBAL default still needs a full exclusive 16-vs-8 sweep at 240 s (the
+throughput giants may want 16 for speed) — not yet run. So the thread lever is a
+VALIDATED +2 recovery mechanism at production budget, but its deployment as a
+default (vs a structural per-ont router) is pending that no-regression sweep.
+
 ## Residual Konclude-solvable misses (the throughput giants + disjunction family)
 
 Still timing out at 120 s, all converging on Konclude inverse-∀ handling
