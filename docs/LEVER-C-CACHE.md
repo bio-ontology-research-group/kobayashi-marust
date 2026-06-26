@@ -97,6 +97,33 @@ spurious affected-set), instead of being checked against the conflated shared
 filler label and missing. That collapses the affected set so the card-split
 certifies or leaves a tiny residue. Port #2 is the next implementation.
 
+## Konclude ROUTING trace (2026-06-26, two source agents + ws experiments)
+
+Per user directive "follow where Konclude routes these onts." Konclude's classify
+routing (file:line in agent reports): (1) ONE global saturation pass → per-concept
+pseudo-models (small trees ≤30 nodes, depth ≤3); (2) if globally clean read the WHOLE
+hierarchy off deterministic labels, NO tableau; (3) else keep pseudo-models, read
+KNOWN subsumers off deterministic-branch labels, PRUNE candidate subsumptions via
+pseudo-model merge (`isPseudoModelSubsumerPossible`, COptimizedKPSetClassSubsumption
+ClassifierThread.cpp:1626 — C⊑D needs every DETERMINISTIC concept/role-succ of C
+present in D, else refuted, sound), and run the residual `C⊓¬D`-unsat test ONLY on
+surviving insufficient candidates, propagating each verdict through the ancestor/
+descendant subtree (`prunePossibleSubsumptions`:2204) so #tests ≪ #pairs.
+
+KM ALREADY IMPLEMENTS this routing: `qo_classify_global_fwd` (global pass) +
+`KM_HT_QO_VERIFY` (structural suspects → per-suspect inverse saturation → tight
+candidates → residual test) + `KM_HT_QO_PMMERGE` (the pseudo-model refutation
+pre-filter). Validated gold-exact on 7581. THE GAP: (a) the production qo_candidate
+route uses KPSET+CERTIFY_ONLY which DEFERS to CB instead of running the funnel;
+(b) more fundamentally, KM's residual test is `consistent(A⊓¬B)` via the COMPLETE
+TABLEAU, which BLOWS UP (7581: 244s, just over timeout; 9724: traced — QOGF
+card-split 2816 clean/20320 affected, then the per-candidate complete-tableau
+verification times out). Konclude decides the residual in FAST SOUND SATURATION
+(KPSet G1/G2/G3), NOT a tableau. So "the same routing" requires the same RESIDUAL
+DECISION ENGINE = port #2 below (a sound+complete KPSet that does not over-defer the
+inverse-∀). Every lever tried (kpwrite, kpguard, invcompose, shiq, card_defer, the
+verify funnel) converges here. Port #2 IS the routing's residual engine.
+
 ## Port #2 spec — per-creation-role ALL-concept extension (read from source 2026-06-26)
 
 Konclude data flow (CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp):
