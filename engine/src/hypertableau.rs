@@ -8134,6 +8134,26 @@ impl Ht {
         // parked disjunction, or out-of-fragment) ⇒ DEFER rather than run the
         // (pre-existing-limitations) funnel. CB takes it from here.
         if certify_only {
+            // KM_HT_QO_GFCERT (2026-06-26): before deferring, try the CLEAN
+            // global-forward certify. `qo_classify_global_fwd` returns `Some` ONLY
+            // when the single forward pass is fully clean AND complete — either the
+            // card-split affected-set is empty (`res == 0`) or, in INVCOMPOSE
+            // write-mode, there are ZERO residual inverse bridges (composition
+            // total, so the forward closure already includes every inverse
+            // contribution). Both are sound (forward-only never over-derives) and
+            // complete by their guards; every incomplete/insufficient/parked case
+            // returns `None` ⇒ we still defer to CB. This recovers onts whose few
+            // inverse bridges compose totally (7581: 4 bridges → 0 residual via
+            // INVCHAIN, certifies in ~18s) WITHOUT running the verify funnel that
+            // blows up on the hard giants. Opt-in until corpus-validated.
+            if std::env::var_os("KM_HT_QO_GFCERT").is_some() {
+                if let Some(r) = self.qo_classify_global_fwd(queries) {
+                    if std::env::var_os("KM_HT_TRACE").is_some() {
+                        eprintln!("QO router: global-forward CLEAN certify (sound+complete) ⇒ answer");
+                    }
+                    return Some(r);
+                }
+            }
             if std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!("QO router: kpset did not certify ⇒ defer to CB");
             }

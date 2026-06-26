@@ -54,10 +54,21 @@
 > `~/ore2015/pool_sample/files/`). Build ws: `rsync -a engine/src/ ws:...; ssh ws 'cd
 > ~/km-frontend/kobayashi-marust/engine && nice cargo build --release'`.
 >
-> **Also pending:** 7581+16444 regressed to timeout in sweep 7419 (SHOQ default-on
-> promotion changed their routing) — a cheap recovery to investigate. Disjunction
-> family (1603/541/9540/12653): Konclude uses pseudo-model/expander cache + small
-> per-test completion graphs (separate from port #2).
+> **Also pending:** 7581+16444 regressed to timeout in sweep 7419. INVESTIGATED
+> 2026-06-26 (ws, TIN funnel trace): the regression is NOT cheap routing. With
+> SHOQ disabled (`KM_NO_HT_SHOQ`) 7581 STILL times out (130s, 0 subs), so SHOQ is
+> not stealing the route. The QO certify funnel itself now defers with the exact
+> reason `QOGF defer: INVCOMPOSE write-mode but 4 residual inverse bridges
+> (composition not total) — cannot certify` (same defer under `KM_NO_INVCOMPOSE`).
+> So 7581 is the SAME class as 9724: the inverse-composition certify is incomplete
+> — 4 cb_to_ht inverse bridges the INVCOMPOSE write-mode cannot make total, so the
+> sound gate correctly refuses to certify. The fix is the faithful Konclude inverse
+> handling (port #2's per-creation-role extension + backward-∀ over genuine
+> predecessor edges), NOT a routing toggle. 9724 reconfirmed same session: card-split
+> clean=2816 / affected=20320 of 23136 ⇒ defers ⇒ times out. Both converge on port #2.
+> TINs cached on ws: /tmp/7581.tin (52MB), /tmp/9724.tin (14MB). Disjunction family
+> (1603/541/9540/12653): Konclude uses pseudo-model/expander cache + small per-test
+> completion graphs (separate from port #2).
 >
 > **HARD RULES:** build on ws / sweep via Slurm+unimatrix, NEVER IBEX login nodes
 > ([[feedback_ibex_login_no_compute]]); group-safe km + clean orphans by PID

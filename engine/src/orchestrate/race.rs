@@ -599,6 +599,19 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
             // verify) and lets the deterministic bulk certify. Required for the
             // cardinality throughput giants.
             ("KM_HT_QO_CARD", "1"),
+            // KM_HT_QO_INVCHAIN / INVONEWAY: compose the one-way and chain-consumed
+            // inverse bridges too (not just the single-role-body ones), so an ont
+            // whose few inverse bridges are all composable reaches ZERO residual
+            // bridges and the forward closure becomes complete. KM_HT_QO_GFCERT then
+            // lets the certify-only router return that CLEAN global-forward closure
+            // (sound+complete by construction; defers otherwise). Together these
+            // recover 7581 (4 bridges → 0 residual, certifies ~18s) which the bare
+            // certify-only kpset path defers to a CB timeout. Composition is a
+            // semantics-preserving resolvent (compose_inverse), and GFCERT only
+            // answers when global_fwd is fully clean — so no unsound/incomplete risk.
+            ("KM_HT_QO_INVCHAIN", "1"),
+            ("KM_HT_QO_INVONEWAY", "1"),
+            ("KM_HT_QO_GFCERT", "1"),
             ("KM_HT_QO_CERTIFY_ONLY", "1"),
         ] {
             cmd.env(k, v);
@@ -677,7 +690,14 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         let mut w = stdin;
         let _ = w.write_all(&bytes);
     });
-    Some((child, out_path, shoq_candidate))
+    // The third element gates the SHORT race budget: true for the fast certify-or-
+    // defer arms (SHOQ fast-Ht AND the QO hybrid). Both emit an answer ONLY when
+    // they soundly+completely certify (CERTIFY_ONLY), so harvesting that answer as
+    // soon as it is ready — instead of waiting out the full ht_budget_s for a doomed
+    // CB — is monotone-safe (CB is still preferred whenever CB finishes first). The
+    // QO arm certifies 7581 in ~17s but the old full-budget path never harvested it
+    // within the 120-240s wall, so 7581 timed out despite a ready sound answer.
+    Some((child, out_path, shoq_candidate || qo_candidate))
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
@@ -711,16 +731,19 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out, is_shoq) = match spawn_ht(cfg, clauses_path) {
+    let (mut ht, ht_out, fast_certify) = match spawn_ht(cfg, clauses_path) {
         Some(x) => x,
         None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
     };
     let reserved = ht_reserved_threads(cfg);
-    // SHOQ route: the fast Ht is sound+complete on this fragment and decides in
-    // <1-3s, so take its answer after a short budget instead of waiting out the
-    // doomed CB for the full ht_budget_s. CB still wins when it finishes first
-    // (preserves CB-preference / monotone-safety on CB-solvable nominal onts).
-    let budget = if is_shoq {
+    // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid): sound+complete on their
+    // fragment and decide quickly (SHOQ <1-3s, QO certify ~tens of s), so take the
+    // answer after a SHORT budget instead of waiting out the doomed CB for the full
+    // ht_budget_s. CB still wins when it finishes first (preserves CB-preference /
+    // monotone-safety on CB-solvable onts). The budget is only the "start accepting
+    // HT" threshold: past it, the certified answer is harvested the moment it is
+    // ready, so a QO arm that certifies later than the SHOQ default is still taken.
+    let budget = if fast_certify {
         cfg.shoq_budget_s.min(cfg.ht_budget_s)
     } else {
         cfg.ht_budget_s
