@@ -459,6 +459,18 @@ struct Context {
     /// Entries are arena ids.
     succ_pool: Vec<u32>,
     succ_hwm: usize,
+    /// r-Succ (KM_RSUCC): append-only pool of worked-off clauses with a maximal
+    /// head predicate that is a CENTRAL reachability fact (`__trans__`/`__chain__(x)`).
+    /// These are forwarded to every successor as edge-conditioned neighbour facts
+    /// (the predecessor vouching "my reach holds at your neighbour"), the missing
+    /// step that lets a successor fire the transitivity clause across an inverse
+    /// back-edge.  Entries are arena ids.  Empty unless `sig.rsucc`.
+    rsucc_pool: Vec<u32>,
+    /// per (successor function term, target ctx, central reach pred) already
+    /// forwarded, to dedup the edge × reach-fact cross-product across `propagate`
+    /// rounds.  The target id is part of the key so a re-targeted (grown-core)
+    /// successor is re-sent the reach facts.
+    pushed_rsucc: HashSet<(Term, usize, Pred)>,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -512,6 +524,8 @@ impl Context {
             edge_seen: HashMap::new(),
             succ_pool: Vec::new(),
             succ_hwm: 0,
+            rsucc_pool: Vec::new(),
+            pushed_rsucc: HashSet::new(),
             seeded_inds: HashSet::new(),
             ground_body_index: HashMap::new(),
             bridge_index: HashMap::new(),
@@ -909,6 +923,7 @@ pub struct ClosureFacts {
 impl Engine {
     pub fn new(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> Engine {
         let mut sig = sig;
+        sig.rsucc = std::env::var_os("KM_RSUCC").is_some();
         let mut ont = Ontology::default();
         for c in ont_clauses {
             let idx = ont.clauses.len();
@@ -1484,6 +1499,13 @@ impl Engine {
             let succ_eligible = clause
                 .max_head_predicates()
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
+            // r-Succ: a maximal head CENTRAL reachability fact `__trans/__chain(x)`
+            // is forwarded to successors as a neighbour fact (see `rsucc_pool`).
+            let rsucc_eligible = self.sig.rsucc
+                && clause.max_head_predicates().any(|(p, _)| match p {
+                    Pred::Concept { iri, t } => is_central(t) && self.sig.is_reach(iri),
+                    _ => false,
+                });
             {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
@@ -1492,6 +1514,9 @@ impl Engine {
                 }
                 if succ_eligible {
                     ctx.succ_pool.push(cid);
+                }
+                if rsucc_eligible {
+                    ctx.rsucc_pool.push(cid);
                 }
                 ctx.worked_off.push(cid);
                 ctx.index_clause(arena, cid);
@@ -2714,6 +2739,49 @@ impl Engine {
                             p: p.apply(&|v| forwards(f, v)),
                             target,
                         });
+                    }
+                }
+            }
+        }
+        // ---- r-Succ forward push (KM_RSUCC) ----
+        // Forward this context's CENTRAL reachability facts (`__trans/__chain(x)`)
+        // to every successor as edge-conditioned neighbour facts `reach(y)`.  This
+        // is the missing step for transitive+inverse reconstruction: a successor
+        // `h` needs its predecessor's `reach` visible as `reach(y)` to fire e.g.
+        // `reach(y) ∧ hp(x,y) → reach(x)` across the inverse back-edge `hp(x,y)`
+        // it already receives.  Pushed via the ordinary Succ message (so the
+        // target gains the hypothesis `reach(y) → reach(y)` AND records `reach(y)`
+        // in this edge's pushed set).  Soundness under the shared-successor central
+        // strategy: the successor's conclusion is conditioned on `reach(y)` in its
+        // body, and the Pred routing sends it back ONLY to predecessor edges whose
+        // pushed set contains `reach(y)` — i.e. only to predecessors that actually
+        // vouched for `reach`; a co-sharing predecessor that did not is unaffected.
+        if self.sig.rsucc && !self.contexts[id].rsucc_pool.is_empty() {
+            let reach_preds: Vec<Pred> = {
+                let ctx = &self.contexts[id];
+                let arena = &self.cc_arena[ctx.root as usize];
+                let mut v: Vec<Pred> = Vec::new();
+                for &ci in &ctx.rsucc_pool {
+                    for (p, _) in arena[ci as usize].max_head_predicates() {
+                        if let Pred::Concept { iri, t } = p {
+                            if is_central(t) && self.sig.is_reach(iri) && !v.contains(&p) {
+                                v.push(p);
+                            }
+                        }
+                    }
+                }
+                v
+            };
+            let successors: Vec<(Term, usize)> = self.contexts[id]
+                .successors
+                .iter()
+                .map(|(&f, &t)| (f, t))
+                .collect();
+            for (f, target) in successors {
+                for &p in &reach_preds {
+                    if self.contexts[id].pushed_rsucc.insert((f, target, p)) {
+                        let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
+                        self.msgs.push_back(Msg::Succ { from: id, f, p: psigma, target });
                     }
                 }
             }

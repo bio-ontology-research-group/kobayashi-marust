@@ -279,6 +279,12 @@ pub struct Sig {
     pub nothing: Vec<bool>,
     /// the special `owl:Nothing` concept id, if present.
     pub bottom: Option<Iri>,
+    /// `KM_RSUCC`: enable the r-Succ forward push of predecessor central
+    /// reachability facts (`__trans__`/`__chain__(x)`) to successor contexts as
+    /// edge-conditioned neighbour predicates, closing the transitive+inverse
+    /// reconstruction completeness gap (tests/completeness-gaps; 7914
+    /// UBERON_0001373/0008977).  Default off — opt-in until corpus-swept.
+    pub rsucc: bool,
 }
 
 impl Sig {
@@ -371,12 +377,19 @@ impl Pred {
     /// hypotheses to the successor).
     pub fn is_succ_trigger(&self, sig: &Sig) -> bool {
         match *self {
-            // Reachability bookkeeping concepts (`__trans__`/`__chain__`) are
-            // never existential fillers, so `reach(f)` on a successor is always a
-            // redundant push-back of what `f`'s own context derived natively.
-            // Pushing it back would grow `f`'s core and spawn grown-core context
-            // churn; skip it (the fact still flows to predecessors via Pred).
-            Pred::Concept { iri, t } => is_function(t) && !sig.is_reach(iri),
+            // Reachability bookkeeping concepts (`__trans__`/`__chain__`): in the
+            // PURE-FORWARD case `reach(f)` on a successor is a redundant push-back
+            // of what `f`'s own context derives natively, so excluding it avoids
+            // grown-core churn.  But under r-Succ (KM_RSUCC) the transitive+inverse
+            // refutation derives `reach(f)` in the predecessor ONLY after the
+            // round-trip (predecessor pushes its central `reach(x)` as a neighbour
+            // fact → successor fires the transitivity clause across the inverse
+            // back-edge → the conditioned conclusion returns via Pred → predecessor
+            // derives `reach(f)`), and `f`'s own context cannot re-derive it
+            // natively (it would need to read its predecessor's reach).  So with
+            // rsucc the `reach(f)` push is the final, load-bearing step — pushing
+            // it gives the successor `reach` about itself and fires the clash.
+            Pred::Concept { iri, t } => is_function(t) && (sig.rsucc || !sig.is_reach(iri)),
             Pred::Role { s, t, .. } => {
                 (is_central(s) && is_function(t))
                     || (is_central(t) && is_function(s))

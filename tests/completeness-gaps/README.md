@@ -7,9 +7,26 @@ ORE ontology so the gap is isolated from scale.
 
 ## `trans_inv_reconstruct_unsat.ofn` / `mini7914_unsat.ofn`  (ore_ont_7914)
 
-`:A` (and in the 7914 source, `UBERON_0001373` / `UBERON_0008977`) is
-**unsatisfiable**. km (both the CB engine *and* the HT path) reports it
-satisfiable. HermiT on the same axioms: `A sat = false`.
+A concept is **unsatisfiable** while the ontology stays consistent; the default
+km (both the CB engine *and* the HT path) reports it satisfiable. The
+unsatisfiable concept is the one carrying `∃po.H`:
+- `trans_inv_reconstruct_unsat.ofn`: **`:A`** (HermiT: `A` unsat, ontology
+  consistent).
+- `mini7914_unsat.ofn`: **`:X`** (`:X ⊑ :A`, `:X ⊑ ∃po.H`; `:A` itself is
+  satisfiable here because its `∃po.C` successor is not forced into the clash).
+  HermiT: `X` unsat, ontology consistent.
+
+In the 7914 source the corresponding unsat concepts are `UBERON_0001373` /
+`UBERON_0008977`.
+
+### STATUS (2026-06-26): FIXED in the CB engine, gated `KM_RSUCC` (commit pending)
+`km classify` under `KM_RSUCC=1` now reports **`:A` unsat** (trans_inv) and
+**`:X` unsat** (mini) — byte-exact with HermiT on both. Default (flag off) is
+unchanged. The HT path (`consistent()`) still has the analogous gap, so the full
+ore_ont_7914 (which routes to HT, the CB engine times out on it) is not yet
+recovered — that is the HT port (see Fix direction below). The mini reproducer is
+distilled from exactly the `UBERON_0008977` pattern, so its pass is the direct
+evidence the CB mechanism is correct.
 
 ### The proof (hand-checked, mirrors km's own clausification)
 Roles: `po` = part_of, `hp` = has_part, with `hp = po⁻` (inverse) and `hp`
@@ -82,11 +99,21 @@ requires `is_function(t)`); predecessor *central* facts (`__trans(x)` about `a`
 itself) are **never forwarded**. That is the whole gap.
 
 ### Fix direction (the sound design)
-- **r-Succ forward push** (the completeness fix): when the predecessor pushes the
-  back-edge role atom `hp(f₁,x)` to a successor, it must **also** push its own
-  neighbour-relevant central concept facts `C(x)` (here `__trans(x)`) to that
-  successor as **edge-conditioned** neighbour facts `C(y)`. Then clause 37 fires
-  in `h`: `hp(x',y)∧__trans(y)→__trans(x')` ⟹ `Q_6`(∃hp.G) ⟹ `Q_5/B` ⟹ `B⊓D=⊥`.
+- **r-Succ forward push** (the completeness fix — **IMPLEMENTED, gated `KM_RSUCC`**):
+  when the predecessor pushes the back-edge role atom `hp(f₁,x)` to a successor,
+  it **also** pushes its own central reachability facts `__trans/__chain(x)` to
+  that successor as **edge-conditioned** neighbour facts `C(y)`
+  (`engine.rs` `propagate`: `rsucc_pool` collected at work-off →
+  forwarded via the ordinary `Msg::Succ` to every successor). The successor then
+  fires clause 37 **normally** (no new rule): `hp(x',y)∧__trans(y)→__trans(x')`,
+  conditioned on both pushed atoms, so the existing Pred routing (every body atom
+  must be in the edge's pushed set) sends it back **only to predecessors that
+  pushed `__trans`** — sound under the shared-successor central strategy. The
+  predecessor derives `__trans(f)`, and the `is_succ_trigger` reach push (gated
+  by the same flag, `calc.rs`) forwards it ⟹ successor gets `__trans` about
+  itself ⟹ `Q_6`(∃hp.G) ⟹ `Q_5/B` ⟹ `B⊓D=⊥`. Validated byte-exact vs HermiT on
+  both reproducers. Pending: corpus soundness/perf sweep before default-on; Lean
+  re-cert (deferred per instruction).
 - **Soundness hazard (why this is not a quick patch)**: under the central
   strategy a successor context is **shared across predecessors** (keyed by core).
   An *unconditional* forward push of `C(y)` is **unsound** for a co-sharing
