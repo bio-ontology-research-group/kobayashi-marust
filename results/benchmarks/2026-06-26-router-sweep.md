@@ -116,6 +116,23 @@ where Konclude's gold is wrong):
 | disjunction family (live ∀+⊔) | 541, 1603, 4669, 9540, 10860, 12653 | Konclude pseudo-model merge + small per-test completion graphs |
 | CB memory/throughput blowups | 1194, 3215, 6212, 6246, 15491, 16444 | CB memory reduction / lazy saturation |
 
+## Contention caveat — the packed sweep over-reports memory-bound timeouts
+
+The fast parallel sweep packs ~6 onts/node with KM_THREADS=8–10. KM's parallel
+path amplifies memory ([[project_km_threads_vs_algo]]), so memory-bound onts time
+out under contention but classify within budget when run alone. Confirmed on ws
+(single-ont, KM_THREADS=8): **6212 ok in 129 s, 15491 ok in 226 s** — both were
+"timeouts" in the packed sweep. The amplifier is **thread count**, not just
+co-tenancy: an exclusive recheck at **KM_THREADS=16** (job 7609) STILL timed out
+15491, while **KM_THREADS=8** classifies it in 226 s — more threads = more
+resident memory ([[project_km_threads_vs_algo]]). 6246 passes even at 16 threads
+(109 s, 18.4 GB). So 6212 / 15491 / 6246 are **memory/thread artifacts, not
+algorithmic misses**; the actionable lever is the routing/config one — downshift
+threads (or route by clause count to fewer threads) for memory-bound onts so the
+RSS watchdog does not tip them over budget. The only genuine CB-memout in this
+class is **16444** (~20 GB). The true ALGORITHMIC miss set is therefore the
+giants + disjunction family below, NOT the CB-blowup list.
+
 ## Residual Konclude-solvable misses (the throughput giants + disjunction family)
 
 Still timing out at 120 s, all converging on Konclude inverse-∀ handling
