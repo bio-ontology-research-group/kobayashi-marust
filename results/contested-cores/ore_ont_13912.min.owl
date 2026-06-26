@@ -1,0 +1,19 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+
+Ontology(<http://owl.cs.man.ac.uk/dlapproximated/c92565aa-32fa-4954-a987-979f50790bce_aph_saved1.owl.owl.xml>
+
+
+SubClassOf(<http://www.owl-ontologies.com/unnamed.owl#FlickrPhoto> ObjectExactCardinality(1 <http://www.owl-ontologies.com/unnamed.owl#Owner>))
+SubClassOf(<http://www.owl-ontologies.com/unnamed.owl#FlickrPhoto> DataMaxCardinality(1 <http://www.owl-ontologies.com/unnamed.owl#small_url>))
+SymmetricObjectProperty(<http://www.owl-ontologies.com/unnamed.owl#Owner>)
+ObjectPropertyDomain(<http://www.owl-ontologies.com/unnamed.owl#Owner> <http://www.owl-ontologies.com/unnamed.owl#FlickrPhoto>)
+ObjectPropertyAssertion(<http://www.owl-ontologies.com/unnamed.owl#Owner> <http://www.owl-ontologies.com/unnamed.owl#188965329> <http://www.owl-ontologies.com/unnamed.owl#FlickrUserbt2000@gmail.com>)
+DataPropertyAssertion(<http://www.owl-ontologies.com/unnamed.owl#small_url> <http://www.owl-ontologies.com/unnamed.owl#188965329> "http://photos51.flickr.com/188965329_48f6f0f10a_t.jpg"^^xsd:string)
+ObjectPropertyAssertion(<http://www.owl-ontologies.com/unnamed.owl#Owner> <http://www.owl-ontologies.com/unnamed.owl#188971502> <http://www.owl-ontologies.com/unnamed.owl#FlickrUserbt2000@gmail.com>)
+DataPropertyAssertion(<http://www.owl-ontologies.com/unnamed.owl#small_url> <http://www.owl-ontologies.com/unnamed.owl#188971502> "http://photos73.flickr.com/188971502_0e3c27527f_t.jpg"^^xsd:string)
+)

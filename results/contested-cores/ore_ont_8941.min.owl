@@ -1,0 +1,13 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(xml:=<http://www.w3.org/XML/1998/namespace>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+
+Ontology(<http://owl.cs.man.ac.uk/dlapproximated/16240c69-3d79-4e08-a68f-86e9b7d3627c_1208890067.owl.owl.xml>
+
+
+DataPropertyRange(<http://server.wilhelm-design.de/Uni/annotations/annotations.owl#hasTopic> xsd:string)
+DataPropertyAssertion(<http://server.wilhelm-design.de/Uni/annotations/annotations.owl#hasTopic> <http://server.wilhelm-design.de/Uni/annotations/annotations.owl#sz_2007-12-12_mehdorn_ist_sehr_skeptisch> "Tarifvertrag"@de)
+)

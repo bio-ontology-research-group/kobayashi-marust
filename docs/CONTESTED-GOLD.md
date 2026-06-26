@@ -33,9 +33,11 @@ Minimal inconsistent cores (witnesses):
   `ClassAssertion(DBNonKeyAttribute, salary)` ⇒ inconsistent.
 
 The minimal `.min.owl` cores were produced on `ws:~/minimize/` (via
-`ddmin_entail.py`). ws is intermittently down; regenerate from these witnesses
-if the files are lost. **TODO: copy the four `.min.owl` cores into
-`results/contested-cores/` so the proof is self-contained in the repo.**
+`ddmin_entail.py`). They are now committed in-repo at
+[`results/contested-cores/`](../results/contested-cores/) (8941, 13912,
+15516_norules, 2669_norules) so the proof is self-contained; regenerate from the
+witnesses above if ever lost. (10621's core lives on IBEX, job 47787383, not yet
+copied.)
 
 ## The two harness fixes (so the gold is now correct)
 
