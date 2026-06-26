@@ -1,0 +1,18 @@
+# Minimal reproducer: A is UNSATISFIABLE (HermiT/Konclude agree), km misses it.
+# Distilled from ore_ont_7914 (UBERON_0008977). 8 axioms.
+# Needs: inverse role (hp=po-), transitive hp, equivalence ⊒-reconstruction at a
+# successor, disjointness. The successor h of A (via ∃po.H) is forced into B
+# (=F⊓∃hp.G) through the inverse+transitive edge hp(h,a)·hp(a,g), then clashes
+# with D (h∈D, D disjoint B). Requires Sequoia r-Succ/r-Pred (engine.rs Table 3,
+# NOT IMPLEMENTED) to propagate __trans__hp__G predecessor->successor.
+Prefix(:=<http://x.org/>)
+Ontology(
+SubClassOf(:A ObjectSomeValuesFrom(:po :H))
+SubClassOf(:A ObjectSomeValuesFrom(:hp :G))
+SubClassOf(:H :F)
+EquivalentClasses(:B ObjectIntersectionOf(:F ObjectSomeValuesFrom(:hp :G)))
+SubClassOf(:H :D)
+DisjointClasses(:D :B)
+InverseObjectProperties(:hp :po)
+TransitiveObjectProperty(:hp)
+)
