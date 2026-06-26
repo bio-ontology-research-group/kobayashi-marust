@@ -1,5 +1,45 @@
 # Lever C — faithful Konclude G2/G3 saturation port (throughput giants)
 
+> ## ⇒ VALIDATED RESULTS (2026-06-26, session 9) — both Konclude mechanisms ported + measured
+>
+> Both throughput-giant mechanisms are now PORTED, SOUND (159 cargo tests, 0
+> regressions), opt-in (env, no routing change), and measured on the giant TINs.
+> They are COMPLEMENTARY: each closes one of the two forward-pass insufficiency
+> channels (`forall_insuff` and `card_insuff`), and the giants split by which
+> channel dominates.
+>
+> | giant | dominant channel | port #2 (SPLIT) | cardmerge (≤-rule) | forward affected set |
+> |-------|------------------|-----------------|--------------------|----------------------|
+> | **9663** | ∀ (325k) + card (35k) | forall_insuff 325,315→0 (114k redirects) | card_insuff 34,596→**0** (11,339 merges) | **2,451 → ~92** (bounded 92k nodes, 546 MB) |
+> | 7914 | cardinality (75k) | inert (forall_insuff=0) | NODE BLOWUP (>1.3 GB, no QOGF) | — |
+> | 9724 | cardinality (98M) | inert | NODE BLOWUP (→cap 599k, unsupported bail) | — |
+>
+> **Win: 9663.** SPLIT + CARDMERGE together collapse 9663's forward-pass affected
+> (deferred) set from ~2,451 to ~92 of 23k concepts — both insufficiency channels
+> closed, node count bounded. The vast majority of concepts now certify from the
+> sound forward pass; only ~92 go to the residue verify. (Port #2 alone already
+> took 9663 from 2,451→59 on the ∀ channel; cardmerge then closes the residual
+> cardinality channel, +~33 merge-clash deferrals → 92.)
+>
+> **Remaining to FULLY solve 9663:** the ~92-node residue verify (`KM_HT_QO_VERIFY`
+> funnel / TR dfs) is slow and times out at 175 s — a SEPARATE bottleneck from the
+> two ports (which did their structural job). Speeding that small residue verify
+> is the next lever for 9663.
+>
+> **cardmerge blows up on high-cardinality giants (7914, 9724).** The privatize
+> (`copyDependingIndividualNode`) makes a copy per (shared filler, constrained
+> predecessor); under pervasive functional roles that is ~per-edge, exploding the
+> node count (9724 → 599k cap-bail; 7914 → >1.3 GB). It is SAFE (gated; bails
+> `unsupported` at the node cap → defers → CB), never unsound — but inert there.
+> The fix is a CHEAPER merge: content-share merged nodes by their fil-set (like
+> port #2's operand-set keying) instead of one copy per predecessor, and/or a
+> node-budget fallback to `card_defer` once copies exceed a fraction of the cap so
+> the CLEAN bulk still certifies. That is the next cardmerge increment.
+>
+> Commits: `aae23ed` SPLIT, `530064b` self-equality short-circuit, `0ae502a`
+> CARDMERGE. Diagnostic: `QOGF split-diag: redirects= forall_insuff= card_insuff=
+> cardmerges=`. TINs cached on ws: `/tmp/{9663,9724,7914,7581}.tin`.
+
 > ## ⇒ CORRECTED DIAGNOSIS (2026-06-26, session 9) — READ FIRST
 >
 > **Port #2 (∀ copy-on-conflict split fillers) is BUILT, sound, unit-tested, and
