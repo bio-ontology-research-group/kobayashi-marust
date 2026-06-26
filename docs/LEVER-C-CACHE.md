@@ -66,6 +66,13 @@
 > handling (port #2's per-creation-role extension + backward-∀ over genuine
 > predecessor edges), NOT a routing toggle. 9724 reconfirmed same session: card-split
 > clean=2816 / affected=20320 of 23136 ⇒ defers ⇒ times out. Both converge on port #2.
+> CONFIRMED no-shortcut (2026-06-26): applied the 7581-winning recipe to 9724
+> (INVCOMPOSE+INVCHAIN+INVONEWAY+CARD+GFCERT). Composition SUCCEEDS (871 bridges,
+> 395 composed, 125519->140494 clauses, NOT node-capped) but QOGF still defers
+> (insufficient=true, kp_miss=0, insuff_nodes=32603, card-split clean=2815/affected
+> =20321). 9724's blocker is the cardinality Eq-heads + ∀-into-shared-filler
+> critical-ALL, NOT the inverse bridges — so the 7581 fix does not transfer; only
+> port #2 removes it.
 > TINs cached on ws: /tmp/7581.tin (52MB), /tmp/9724.tin (14MB). Disjunction family
 > (1603/541/9540/12653): Konclude uses pseudo-model/expander cache + small per-test
 > completion graphs (separate from port #2).
