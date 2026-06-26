@@ -1,5 +1,70 @@
 # Lever C — faithful Konclude G2/G3 saturation port (throughput giants)
 
+> ## ⇒ NEXT SESSION START HERE (status 2026-06-26, session 8)
+>
+> **Goal still open:** classify the throughput giants (9724, 7914, 9663, 14817,
+> 7499; SRIQ/SHIF, inverse + cardinality) in ~Konclude time. None classify yet.
+>
+> **The single remaining lever (everything converges here): PORT #2** — a
+> sound+complete KPSet saturation that does NOT over-defer the inverse-∀, i.e. the
+> per-creation-role ALL-concept extension with **copy-on-conflict** successors. Full
+> spec + the Konclude source anchors are in the "Port #2 spec" + "Konclude ROUTING
+> trace" sections below. It is the residual-decision engine inside Konclude's routing.
+>
+> **Why it's the lever (proven this session, ws, ore_ont_9724):** Konclude's routing
+> = global saturation → read known subsumers off deterministic labels → pseudo-model
+> merge prune → residual `C⊓¬D` test on survivors, decided by FAST SOUND SATURATION.
+> KM already IMPLEMENTS this routing (`qo_classify_global_fwd` + `KM_HT_QO_VERIFY` +
+> `KM_HT_QO_PMMERGE`, gold-exact on 7581). KM's gap is the residual decision: it uses
+> the COMPLETE TABLEAU (`consistent(A⊓¬B)`) which BLOWS UP (7581 244s; 9724 timeout).
+> Konclude decides it in KPSet saturation. Measured on 9724 with `card_defer`: forward
+> saturation already gives **clean_subs=456239 / gold 457090 (99.8%)** soundly; the
+> only blocker is **66.6M filler-targeted, body-guard inverse misses** that defer
+> 20321/23136 concepts. RULED OUT (kp_miss byte-identical 66,661,218 each): KPWRITE
+> (misses are filler-targeted, not self-node), KPGUARD (misses are guard concepts),
+> INVCOMPOSE-off, shiq mode (times out 200s/4.4GB), the verify funnel (residual
+> tableau blows up). ⇒ no shortcut; port #2 is required.
+>
+> **Port #2 first increment (test-first, ws):** make the guard test
+> `qo_shared_filler_conflict_ground_truth` (hypertableau.rs, already committed) flip
+> from "defers" to "certifies A,B both consistent" by: writing inverse-∀ operands into
+> a per-(filler, source-context) extension, firing guard rules from it, detecting a
+> per-filler clash, and SPLITTING the shared filler (copy-on-conflict) for the
+> conflicting predecessor instead of unsoundly clashing all sharing predecessors. The
+> hard sub-problem: KM's shared `sat_filler` keys by `(concept,role)`; splitting
+> cleanly needs per-entry provenance (which predecessor imposed each label entry) —
+> Konclude's `copyDependingIndividualNode`. Bound copies by ∀-operand-set, not by
+> predecessor, to avoid the ×concepts OOM that plain non-shared `shiq` mode hits.
+>
+> **Committed this session (payg-strategy, 152 tests pass, tree clean):**
+> `9b343b9` KPWRITE (sound backward-∀ self-node write, Konclude applyALLRule) +
+> `KM_NO_INVCOMPOSE` switch · `a7b8fc6` wired `KM_HT_QO_CARD` into the qo_candidate
+> route (cardinality giants now complete the forward pass; **needs a corpus sweep to
+> confirm 0 regressions before relying on it**) · `979e536` the copy-on-conflict
+> soundness guard test · `cd66966`/`0d79ef1`/`ee84ca2` the diagnosis + port-#2 spec +
+> routing trace (this doc).
+>
+> **Validated experiment recipes (ws, group-safe):** dump TIN: `KM_DUMP_TIN=/tmp/x.tin
+> km classify <ont>` (kill after TIN written; CB then times out). Verify-funnel direct:
+> `km tableau < tin` under `KM_HT=1 KM_HT_FORCE=1 KM_HT_QO=1 KM_HT_QO_PC=1
+> KM_HT_QO_SAT=1 KM_HT_QO_FPROP=1 KM_HT_QO_CARD=1 KM_HT_QO_VERIFY=1 KM_HT_QO_PMMERGE=1
+> KM_HT_NUMBER=1 KM_NO_INVCOMPOSE=1` (the orchestrator forces CERTIFY_ONLY, so test the
+> funnel via the direct worker, NOT via `km classify`). ore_ont_9724.owl is on ws at
+> `~/minimize/`; 7581 and the other giants are NOT on ws (use unimatrix corpus
+> `~/ore2015/pool_sample/files/`). Build ws: `rsync -a engine/src/ ws:...; ssh ws 'cd
+> ~/km-frontend/kobayashi-marust/engine && nice cargo build --release'`.
+>
+> **Also pending:** 7581+16444 regressed to timeout in sweep 7419 (SHOQ default-on
+> promotion changed their routing) — a cheap recovery to investigate. Disjunction
+> family (1603/541/9540/12653): Konclude uses pseudo-model/expander cache + small
+> per-test completion graphs (separate from port #2).
+>
+> **HARD RULES:** build on ws / sweep via Slurm+unimatrix, NEVER IBEX login nodes
+> ([[feedback_ibex_login_no_compute]]); group-safe km + clean orphans by PID
+> ([[feedback_ws_no_orphans]]); port from Konclude source, don't invent
+> ([[feedback_port_from_konclude]]); Lean re-cert at the very END. Memory:
+> [[project_km_shiq_build]] session 8.
+
 Status: source-grounded plan (2026-06-25). PORT from Konclude, do not invent
 ([[feedback_port_from_konclude]]). This REPLACES an earlier draft that invented a
 "successor-subtree cache" — Konclude does NOT do that; the real mechanism is below.
