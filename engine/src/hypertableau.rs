@@ -7136,6 +7136,123 @@ impl Ht {
         r
     }
 
+    /// KM_HT_QO_RESIDUE_COMPLETE: complete the AFFECTED (residue) concepts of a
+    /// card-split deferral with the full tableau, RESTRICTED to the residue. The
+    /// clean bulk is already certified by the forward pass (sound + complete: a
+    /// clean concept reaches no insufficient node), so only the few affected
+    /// concepts need the complete decision procedure — not a fresh global
+    /// classify of all 58k concepts (the explosion the gate exists to avoid).
+    ///
+    /// For each residue concept `a`: build one real model `M_a` (`consistent(a)`)
+    /// and read its positive query concepts. That set is a SOUND + COMPLETE
+    /// candidate superset of `a`'s subsumers — a true subsumer holds in EVERY
+    /// model of `a`, so it is in `M_a`; a concept FALSE in `M_a` is a refutation
+    /// (`a ⋢ b`). Confirm each candidate `b` with `consistent(a ⊓ ¬b)`. The gate's
+    /// polluted forward label is never trusted; the answer is the complete
+    /// tableau verdict for the residue. `None` if a model build goes
+    /// out-of-fragment (sound: the caller defers to CB).
+    ///
+    /// Immutable `self`: each worker owns a cloned `Ht`, so this can run while the
+    /// caller still holds the forward `QoSat` borrow of `self.clauses`.
+    fn qo_residue_complete(
+        &self,
+        residue: &[C],
+        qset: &HashSet<C>,
+    ) -> Option<(Vec<C>, Vec<(C, C)>)> {
+        let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        let t0 = std::time::Instant::now();
+        let par = std::env::var("KM_HT_PAR")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(1)
+            .max(1);
+        let nthreads = par.min(residue.len().max(1)).max(1);
+        let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        let anywhere = self.anywhere;
+        let next = std::sync::atomic::AtomicUsize::new(0);
+        const RWORKER_STACK: usize = 512 * 1024 * 1024;
+        let residue_ref = residue;
+        let qset_ref = qset;
+        // per worker: Some((unsat, subs)) or None ⇒ out-of-fragment, defer whole.
+        let parts: Vec<Option<(Vec<C>, Vec<(C, C)>, u64)>> = std::thread::scope(|s| {
+            let next = &next;
+            let handles: Vec<_> = (0..nthreads)
+                .map(|_| {
+                    let tmpl = template.clone();
+                    std::thread::Builder::new()
+                        .stack_size(RWORKER_STACK)
+                        .spawn_scoped(s, move || -> Option<(Vec<C>, Vec<(C, C)>, u64)> {
+                            let mut w = Ht::new(tmpl);
+                            w.set_anywhere(anywhere);
+                            w.set_fast_tableau(); // result-identical speedups
+                            let mut subs: Vec<(C, C)> = Vec::new();
+                            let mut unsat: Vec<C> = Vec::new();
+                            let mut nconf: u64 = 0;
+                            loop {
+                                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                if i >= residue_ref.len() {
+                                    break;
+                                }
+                                let a = residue_ref[i];
+                                // one real model of `a`.
+                                match w.consistent(&[CLit::pos(a)]) {
+                                    Some(false) => {
+                                        unsat.push(a); // a ⊑ ⊥ ⇒ unsatisfiable
+                                        continue;
+                                    }
+                                    None => return None, // out-of-fragment ⇒ defer
+                                    Some(true) => {}
+                                }
+                                // candidate superset = positive query concepts at root.
+                                let cand: Vec<C> = w.ext.concepts[0]
+                                    .keys()
+                                    .filter(|k| !k.neg)
+                                    .map(|k| k.c)
+                                    .filter(|b| *b != a && qset_ref.contains(b))
+                                    .collect();
+                                for b in cand {
+                                    nconf += 1;
+                                    match w.consistent(&[CLit::pos(a), CLit::neg(b)]) {
+                                        Some(false) => subs.push((a, b)), // a ⊓ ¬b unsat ⇒ a ⊑ b
+                                        Some(true) => {}                  // satisfiable ⇒ a ⋢ b
+                                        None => return None,              // defer
+                                    }
+                                }
+                            }
+                            Some((unsat, subs, nconf))
+                        })
+                        .expect("spawn residue-complete worker")
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mut unsat: Vec<C> = Vec::new();
+        let mut subs: Vec<(C, C)> = Vec::new();
+        let mut nconf: u64 = 0;
+        for part in parts {
+            match part {
+                Some((u, s, k)) => {
+                    unsat.extend(u);
+                    subs.extend(s);
+                    nconf += k;
+                }
+                None => return None, // a worker hit out-of-fragment ⇒ defer whole
+            }
+        }
+        if trace {
+            eprintln!(
+                "QOGF residue-complete: {} concepts, {} confirms, subs={} unsat={} [{:.2}s, {} threads]",
+                residue.len(),
+                nconf,
+                subs.len(),
+                unsat.len(),
+                t0.elapsed().as_secs_f64(),
+                nthreads
+            );
+        }
+        Some((unsat, subs))
+    }
+
     pub fn classify(&mut self, queries: &[C]) -> Option<(bool, Vec<C>, Vec<(C, C)>)> {
         let global = self.consistent(&[])?;
         if !global {
@@ -7810,16 +7927,47 @@ impl Ht {
             // (a forced merge / ∀ pollutes both predecessors and successors). CLEAN
             // concepts keep the sound forward-only label, which — having reached no
             // insufficient node — is also complete. Emit them; defer only the rest.
-            if qf.card_defer && !g.unsupported && qf.pending.is_empty() {
+            // The pending-disjunction seeding, in_edges-only closure, and the
+            // residue-complete verify are ALL confined to KM_HT_QO_RESIDUE_COMPLETE
+            // so the default KM_HT_QO_CARD card-split path stays byte-identical
+            // (pending-empty guard + bidirectional closure) until corpus-validated.
+            let residue_complete = std::env::var_os("KM_HT_QO_RESIDUE_COMPLETE").is_some();
+            if qf.card_defer && !g.unsupported && (residue_complete || qf.pending.is_empty()) {
                 let nn = qf.label.len();
                 let mut affected = vec![false; nn];
                 let mut stack: Vec<Node> = Vec::new();
+                // Affected seeds = every node carrying a deferred obligation:
+                //  - cardinality Eq-head / critical-∀ writes (kp_insuff_nodes), and
+                //  - PARKED DISJUNCTION anchors (residue-complete only): a node with
+                //    an unresolved ⊔ has an incomplete forward label, so any concept
+                //    whose model reaches it is affected. Seeding them lets the clean
+                //    bulk emit even while a disjunction/cardinality core remains.
                 for &n in &qf.kp_insuff_nodes {
                     if n < nn && !affected[n] {
                         affected[n] = true;
                         stack.push(n);
                     }
                 }
+                if residue_complete {
+                    for &(anchor, _cid) in &qf.pending {
+                        if anchor < nn && !affected[anchor] {
+                            affected[anchor] = true;
+                            stack.push(anchor);
+                        }
+                    }
+                }
+                // REVERSE reach only (in_edges) under residue-complete: a named query
+                // concept's root label is read at its root node, and an insufficiency
+                // / parked disjunction at node `s` can only pollute that root if `s`
+                // lies in the root's forward model — i.e. the root is an ANCESTOR of
+                // `s`. Walking predecessors (in_edges) from each seed marks exactly
+                // those ancestors. Down-pollution (out_edges) only reaches anonymous
+                // successor labels, never a query root (roots 0..|queries| are never
+                // fillers), so it cannot change a query concept's subsumers. This
+                // matches the corpus-validated QOKP closure and shrinks the residue
+                // from the bidirectional over-approximation. The default path keeps
+                // the conservative both-directions closure; KM_HT_QO_BIDIR forces it.
+                let bidir = !residue_complete || std::env::var_os("KM_HT_QO_BIDIR").is_some();
                 while let Some(n) = stack.pop() {
                     for &(_, p) in &qf.in_edges[n] {
                         if !affected[p] {
@@ -7827,19 +7975,21 @@ impl Ht {
                             stack.push(p);
                         }
                     }
-                    for &(_, t) in &qf.out_edges[n] {
-                        if !affected[t] {
-                            affected[t] = true;
-                            stack.push(t);
+                    if bidir {
+                        for &(_, t) in &qf.out_edges[n] {
+                            if !affected[t] {
+                                affected[t] = true;
+                                stack.push(t);
+                            }
                         }
                     }
                 }
                 let mut cs: Vec<(C, C)> = Vec::new();
                 let mut cu: Vec<C> = Vec::new();
-                let mut res = 0usize;
+                let mut residue: Vec<C> = Vec::new();
                 for (i, &a) in queries.iter().enumerate() {
                     if i >= nn || affected[i] {
-                        res += 1;
+                        residue.push(a);
                         continue;
                     }
                     if g.node_unsat.contains(&i) {
@@ -7852,6 +8002,7 @@ impl Ht {
                         }
                     }
                 }
+                let res = residue.len();
                 if trace {
                     eprintln!(
                         "QOGF card-split: clean={} affected={} of {} clean_subs={} clean_unsat={} insuff_nodes={}",
@@ -7866,6 +8017,41 @@ impl Ht {
                 if res == 0 {
                     let consistent = !(!queries.is_empty() && cu.len() == queries.len());
                     return Some((consistent, cu, cs));
+                }
+                // KM_HT_QO_RESIDUE_COMPLETE: finish the affected concepts with the
+                // complete tableau, restricted to the residue (the clean bulk above
+                // is already sound + complete). Bounded by KM_HT_QO_RESIDUE_CAP
+                // (default 5000) so a deferral with a still-large affected set falls
+                // through to CB rather than spawning a runaway verify.
+                if residue_complete {
+                    let rcap: usize = std::env::var("KM_HT_QO_RESIDUE_CAP")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(5000);
+                    if res <= rcap {
+                        if let Some((ru, rsv)) = self.qo_residue_complete(&residue, &qset) {
+                            cu.extend(ru);
+                            cs.extend(rsv);
+                            let consistent =
+                                !(!queries.is_empty() && cu.len() == queries.len());
+                            if trace {
+                                eprintln!(
+                                    "QOGF residue-complete certified: total_subs={} total_unsat={}",
+                                    cs.len(),
+                                    cu.len()
+                                );
+                            }
+                            return Some((consistent, cu, cs));
+                        }
+                        if trace {
+                            eprintln!("QOGF residue-complete could not certify ⇒ defer");
+                        }
+                    } else if trace {
+                        eprintln!(
+                            "QOGF residue-complete: residue {} > cap {} ⇒ defer",
+                            res, rcap
+                        );
+                    }
                 }
             }
             return None;

@@ -354,3 +354,53 @@ Konclude anchors: isCriticalALL :3451, status-flag propagation :1657/1803/1939/2
 INDSATFLAGINSUFFICIENT :881-884, per-creation-role ext :960, backward write :1235.
 KM anchors: kp_check_head / kp_finalize, qo_insufficient `apply_head:4331`,
 kp_insuff_nodes reverse-reach, saturate_global :3366.
+
+## Session 2026-06-26 results: cardmerge bounded, residue-complete built, giants still blocked
+
+Landed (committed): **content-shared cardmerge** (Konclude ≤-rule). A forced
+cardinality Eq unions the two fillers' seeds and redirects both anchor edges to
+`seed_filler(r, sorted-seed)` — one node per distinct merged content. This replaced
+the union-find privatize that blew node count up (9724 599k, 7914 >1.3 GB). Result
+(KM_HT_QO_CARDMERGE, 170s, KM_HT_TRACE): node count bounded everywhere
+(7914 21583, 9724 46822, 9663 81084), no panic, 159 tests.
+
+Per-giant gate diagnosis (`QOGF split-diag` / `eq-defer-why`):
+- **7914**: `card_insuff=0` — ALL 7785 cardinality Eqs merge; the cardinality is
+  fully handled. Residue obstacles are 146 ≤-rule branch points + 68 parked ⊔.
+- **9663**: split-dominated (114350 ∀ redirects), `card_insuff=0`, 22 insuff nodes,
+  but **105 parked ⊔** — the live-disjunction family.
+- **9724**: `card_insuff=106M` with `eq-defer-why nonfiller=73.6M norole=32.5M` — its
+  Eqs are nominal/ABox-shaped, NOT the ∃-filler-pair form content-shared cardmerge
+  handles. Needs a different (nominal/individual) merge mechanism.
+
+Built (gated `KM_HT_QO_RESIDUE_COMPLETE`, NOT yet a win): **residue-restricted
+complete verify**. On a card-split deferral, emit the clean bulk (concepts whose
+root reverse-reaches no insufficiency / parked ⊔ — sound + complete) and run the
+full tableau ONLY on the affected residue. Per residue concept: one real model
+`consistent(a)`, take its positive query concepts as a sound+complete candidate
+superset, confirm each with `consistent(a ⊓ ¬b)`. Pending-disjunction anchors are
+seeded into the affected set; closure is in_edges-only (reverse reach — a root is
+polluted only by an insufficiency in its own forward model). All confined to the
+flag; default card-split path byte-identical.
+
+WHY IT DOES NOT YET CRACK THE GIANTS (two independent walls):
+1. **Residues are not small.** in_edges-only affected counts: 7914 **7204** / 17680,
+   9724 20313 / 23136, 9663 **48315** / 58192. The insufficiencies + parked ⊔ are
+   ancestrally pervasive (most concepts reverse-reach one), so the residue is 40-83%
+   of the KB, not a tiny core.
+2. **The full-tableau `consistent()` model build itself explodes on cardinality.**
+   On 7914 each residue model build is ~18 s and growing (`TR dfs depth=0` =
+   deterministic ≥n-successor forest that never blocks) — 8 builds in 145 s. The
+   ≤-merge (KM_HT_QMERGE) in the full Ht tableau does NOT fold these the way QoSat's
+   content-shared cardmerge does.
+
+NEXT (the real remaining work, in priority order):
+- **Port content-shared cardinality folding into the full Ht tableau `consistent()`**
+  (mirror `seed_filler` in the `Ext` ≥/≤ machinery) so residue model builds
+  terminate. This is the unblocker for 7914 (residue-complete would then finish 7204
+  bounded builds). Bigger change; Ext-level, test-first.
+- **9724**: nominal/ABox-shaped Eq merge (`mergeIndividualNode` for individuals),
+  outside the ∃-filler-pair form.
+- **9663**: live-disjunction family — search convergence, the known-hard problem
+  (see project_km_disjunction_split); residue restriction cannot help when 83% of
+  concepts reverse-reach a parked ⊔.
