@@ -51,17 +51,62 @@ present). Injecting the logically-equivalent inverse-role variant of the
 propagation clauses does NOT help — the gap is the engine's cross-context
 propagation, not a missing clause.
 
-### Fix direction
-- **Completeness fix**: implement the Sequoia r-Succ / r-Pred rules in the CB
-  engine (`engine.rs`) so a concept derived at a predecessor re-propagates to an
-  existing successor context across `∃`/inverse edges. Requires **Lean
-  re-certification** of the affected rules (calculus change). Likely resolves a
-  whole class of the "correctness tail" under-detected-unsat ontologies.
-- **Immediate soundness-of-router fix** (smaller): make the engine correctly
-  DETECT clauses that need the unimplemented rules and *report* (defer) instead
-  of silently returning an incomplete answer — restoring "never silently
-  approximate". (The HT path has the analogous gap, so deferring to HT alone is
-  not sufficient for completeness.)
+### Root cause, pinned exactly (2026-06-26)
+
+The refutation needs `__trans__hp__G` derived **about the po-successor `h`**
+(`h` reaches `g` via the inverse back-edge `hp(h,a)` plus `__trans(a)`). Trace
+why km never derives it:
+
+1. At the predecessor `a` (its context, `a` = central var `x`), km derives
+   `__trans(x)` (a reaches `g` in one hp-hop) and the inverse back-edge
+   `hp(f₁,x)` (`f₁` = the po-successor function term, from `po(x,f₁)` via
+   `po(x,y)→hp(y,x)`).
+2. To get `__trans(f₁)` we would fire clause 37 `__trans(y)∧hp(x,y)→__trans(x)`
+   with **x := f₁** (a function term), y := x. But km's `unify`
+   (`calc.rs`, Role case) — faithfully matching Sequoia's `canUnify` — **forbids
+   binding an ontology clause's central variable to a function term**. So
+   clause 37 only ever fires with x = the context's own central element. The
+   conclusion `__trans(f₁)` is therefore **never produced in `a`'s context**.
+3. Consequently there is nothing to push down to `h`. (Removing the
+   `__trans`/`__chain` exclusion in `is_succ_trigger` — `calc.rs:379` — is
+   *necessary* for the eventual fix but provably **inert on its own**: the
+   predicate it would forward is never derived. Verified by rebuild: T2/mini
+   still report `consistent:true`.)
+
+The clause that *must* fire is clause 37 **in `h`'s own context** (x = central
+`h`, y = neighbour `a`), using the back-edge `hp(x',y)` km already pushes to the
+successor — but that needs `__trans(y)`, i.e. the **predecessor's** `__trans(a)`
+visible in `h` as a neighbour fact. km pushes predecessor predicates to a
+successor only when they are over the *function term* (`is_succ_trigger`
+requires `is_function(t)`); predecessor *central* facts (`__trans(x)` about `a`
+itself) are **never forwarded**. That is the whole gap.
+
+### Fix direction (the sound design)
+- **r-Succ forward push** (the completeness fix): when the predecessor pushes the
+  back-edge role atom `hp(f₁,x)` to a successor, it must **also** push its own
+  neighbour-relevant central concept facts `C(x)` (here `__trans(x)`) to that
+  successor as **edge-conditioned** neighbour facts `C(y)`. Then clause 37 fires
+  in `h`: `hp(x',y)∧__trans(y)→__trans(x')` ⟹ `Q_6`(∃hp.G) ⟹ `Q_5/B` ⟹ `B⊓D=⊥`.
+- **Soundness hazard (why this is not a quick patch)**: under the central
+  strategy a successor context is **shared across predecessors** (keyed by core).
+  An *unconditional* forward push of `C(y)` is **unsound** for a co-sharing
+  predecessor that does not entail `C`. The pushed fact must be tied to the
+  specific predecessor edge — the forward analogue of Sequoia's
+  `PredPush(neighbourCore, …)` conditioning. km has the conditioning machinery
+  for the successor→predecessor direction (`neighbor_pred` / `pred_from_neighbor`,
+  keyed by `edge_label` + sender core) but **no slot for the forward direction**;
+  one must be added.
+- **Validation gates (mandatory before default-on)**: this changes what is
+  derived ⟹ **Lean re-certification** of the affected rules; plus the full
+  corpus soundness-vs-gold sweep (the shared-successor hazard above can only be
+  caught there). Land it **gated / opt-in** first, validate `A unsat` on
+  `tests/completeness-gaps/` + the 159 unit tests on ws, *then* sweep + cert.
+- **Sequoia note**: the cloned kernel (`Rules.scala`) implements only
+  Hyper/Pred/Eq and handles inverse roles via the Pred round-trip
+  (`neighborIndex` + `getContextStructurePredecessors`), **not** a liftable
+  standalone r-Succ. The forward push above is the direct sound realisation.
+- The **HT path has the analogous gap** (`consistent()` misses the same unsat),
+  so deferring to HT alone does not restore completeness.
 
 ### Validation tooling (on ws)
 - HermiT 1.4.6 + OWL API 5.1.9: `~/minimize/hermit_cp/`.
