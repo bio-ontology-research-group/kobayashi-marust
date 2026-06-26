@@ -56,6 +56,8 @@ static MATCH_MAX: AtomicU64 = AtomicU64::new(0);
 static DBG_SPLIT: AtomicU64 = AtomicU64::new(0);
 static DBG_FORALL_INSUFF: AtomicU64 = AtomicU64::new(0);
 static DBG_CARD_INSUFF: AtomicU64 = AtomicU64::new(0);
+// KM_HT_QO_CARDMERGE: count of forced successor merges actually performed.
+static DBG_CARDMERGE: AtomicU64 = AtomicU64::new(0);
 
 // KM_HT_NUMBER safety: a single clause body match (`rec_match_flex`) can blow up
 // into an enormous join over a dense merged graph (the SHIQ ≤n / inverse path),
@@ -2782,6 +2784,22 @@ struct QoSat<'a> {
     /// Sources imposing the same operand set on the same `(fil,role)` share one
     /// node (content sharing); a new operand set creates a fresh seeded node.
     split_filler: HashMap<(CLit, R, Vec<CLit>), Node>,
+    /// KM_HT_QO_CARDMERGE (Konclude ≤-rule / `mergeIndividualNode`): PERFORM the
+    /// forced successor merge a functional/at-most `Eq`-head demands, in the
+    /// forward pass, instead of deferring (`card_defer`). Sound under separate
+    /// fillers only (merge FILLER nodes, never concept self-nodes — that would
+    /// conflate classification). The two merged successors are first PRIVATIZED to
+    /// the constrained predecessor (copied off the shared filler), so the merge
+    /// cannot pollute other predecessors that lack the `≤n` — the same per-source
+    /// discipline port #2 uses for `∀`. The victim is then folded into the
+    /// survivor (union labels — a clash ⇒ source unsat — and re-point edges) via
+    /// the `merged_into` union-find.
+    card_merge: bool,
+    /// Union-find redirect (parallel to `label`): `Some(s)` ⇒ this node was merged
+    /// INTO survivor `s` and is DEAD — evacuated (no label, no edges, absent from
+    /// every index); only stale worklist entries may still name it, skipped via the
+    /// dead check at each pop. `None` ⇒ live. Resolve any node reference with `find`.
+    merged_into: Vec<Option<Node>>,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -3180,6 +3198,8 @@ impl<'a> QoSat<'a> {
             node_fil: Vec::new(),
             src_forall: HashMap::new(),
             split_filler: HashMap::new(),
+            card_merge: std::env::var_os("KM_HT_QO_CARDMERGE").is_some(),
+            merged_into: Vec::new(),
         }
     }
 
@@ -3217,6 +3237,7 @@ impl<'a> QoSat<'a> {
         self.node_fil.clear();
         self.src_forall.clear();
         self.split_filler.clear();
+        self.merged_into.clear();
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
@@ -3231,6 +3252,7 @@ impl<'a> QoSat<'a> {
         self.is_filler.push(false);
         self.qo_parent.push(None);
         self.node_fil.push(None);
+        self.merged_into.push(None);
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
@@ -3259,6 +3281,11 @@ impl<'a> QoSat<'a> {
     /// if present. Routes through `node_alive` so a dead node stays inert.
     fn add_lit(&mut self, n: Node, lit: CLit) -> bool {
         if self.node_unsat.contains(&n) {
+            return false;
+        }
+        // a merged-away (dead) node is inert: writes resolve to its survivor via
+        // the caller's `find`, never to the evacuated node itself.
+        if self.merged_into[n].is_some() {
             return false;
         }
         let comp = CLit { neg: !lit.neg, c: lit.c };
@@ -3294,6 +3321,20 @@ impl<'a> QoSat<'a> {
     /// global `open_disj` count so sufficiency of *other* nodes is unaffected.
     fn kill_node(&mut self, n: Node) {
         if self.node_unsat.insert(n) {
+            // KM_HT_QO_CARDMERGE: a FILLER node dying (e.g. a forced cardinality
+            // merge produced an inconsistent successor — a clash that the merge's
+            // union only triggers later, via a disjointness clause, not at union
+            // time) means the ∃-sources relying on it cannot satisfy their
+            // existential in the shared model. The shared pass has no unsat
+            // back-propagation, so DEFER those sources: seed the node insufficient
+            // and let the gate's reverse-reach mark every concept reaching it.
+            // Sound (never reports the source unsat from the shared model) and
+            // scoped to the new flag, so other paths are unchanged.
+            if self.card_merge && self.is_filler[n] {
+                self.kp_insuff_nodes.insert(n);
+                self.qo_insufficient = true;
+                self.kp_insufficient = true;
+            }
             if self.tracing {
                 self.trail.push(QoUndo::Unsat(n));
                 return;
@@ -3361,6 +3402,9 @@ impl<'a> QoSat<'a> {
     }
 
     fn add_edge(&mut self, s: Node, r: R, t: Node) {
+        if self.merged_into[s].is_some() || self.merged_into[t].is_some() {
+            return; // never wire an edge to/from a dead (merged) node
+        }
         if self.out_edges[s].iter().any(|(rr, tt)| *rr == r && *tt == t) {
             return;
         }
@@ -3447,6 +3491,104 @@ impl<'a> QoSat<'a> {
         self.add_edge(anchor, r, m);
         DBG_SPLIT.fetch_add(1, Ordering::Relaxed);
         true
+    }
+
+    /// Union-find representative of `n` (KM_HT_QO_CARDMERGE): follow the
+    /// `merged_into` chain to the live survivor. No path compression (`&self`).
+    fn find(&self, mut n: Node) -> Node {
+        while let Some(s) = self.merged_into[n] {
+            n = s;
+        }
+        n
+    }
+
+    /// `n` is PRIVATE to `anchor` iff it has at least one predecessor and every
+    /// predecessor resolves to `anchor` — so merging/mutating it touches only
+    /// `anchor`'s own subtree. Concept self-nodes (no predecessor) are not private.
+    fn node_private_to(&self, n: Node, anchor: Node) -> bool {
+        !self.in_edges[n].is_empty()
+            && self.in_edges[n].iter().all(|&(_, p)| self.find(p) == anchor)
+    }
+
+    /// Return a filler node owned solely by `anchor` for the per-source merge. If
+    /// `n` is already private to `anchor`, return it; else copy `n`'s current
+    /// label + out-edges into a fresh node, redirect `anchor`'s `r`-edge `n`→copy,
+    /// and leave the shared `n` for its other predecessors (Konclude
+    /// `copyDependingIndividualNode` before a merge).
+    fn privatize(&mut self, anchor: Node, r: R, n: Node) -> Node {
+        if self.node_private_to(n, anchor) {
+            return n;
+        }
+        let m = self.new_node();
+        self.is_filler[m] = true;
+        self.node_fil[m] = self.node_fil[n];
+        let lits: Vec<CLit> = self.label[n].iter().copied().collect();
+        for l in lits {
+            self.add_lit(m, l);
+        }
+        let outs: Vec<(R, Node)> = self.out_edges[n].clone();
+        for (rr, t) in outs {
+            let t = self.find(t);
+            self.add_edge(m, rr, t);
+        }
+        self.remove_edge(anchor, r, n);
+        self.add_edge(anchor, r, m);
+        m
+    }
+
+    /// Fold private victim `v` into survivor `s` (Konclude `mergeIndividualNode`):
+    /// union `v`'s label into `s` (a complementary literal kills `s`), re-point
+    /// `v`'s out-edges and its (anchor-only) in-edges onto `s`, then mark `v` dead
+    /// and evacuate it. Both must be filler nodes private to the same anchor.
+    fn merge_victim(&mut self, s: Node, v: Node) -> bool {
+        if s == v || self.merged_into[v].is_some() || self.merged_into[s].is_some() {
+            return self.node_unsat.contains(&s);
+        }
+        let lits: Vec<CLit> = self.label[v].iter().copied().collect();
+        for l in lits {
+            self.add_lit(s, l);
+        }
+        let outs: Vec<(R, Node)> = self.out_edges[v].clone();
+        for (rr, t) in outs {
+            let t = self.find(t);
+            self.in_edges[t].retain(|&(rr2, ss)| !(rr2 == rr && ss == v));
+            self.add_edge(s, rr, t);
+        }
+        let ins: Vec<(R, Node)> = self.in_edges[v].clone();
+        for (rr, p) in ins {
+            let p = self.find(p);
+            self.out_edges[p].retain(|&(rr2, tt)| !(rr2 == rr && tt == v));
+            self.add_edge(p, rr, s);
+        }
+        self.out_edges[v].clear();
+        self.in_edges[v].clear();
+        self.label[v].clear();
+        self.merged_into[v] = Some(s);
+        DBG_CARDMERGE.fetch_add(1, Ordering::Relaxed);
+        self.node_unsat.contains(&s)
+    }
+
+    /// The cardinality role of a forced `Eq(sv, tv)` head: a body role atom
+    /// `r(X, sv)` and `r(X, tv)` for the SAME `r`. `None` (defer) if the head is
+    /// not this plain functional/at-most shape.
+    fn eq_merge_role(&self, cid: usize, sv: Var, tv: Var) -> Option<R> {
+        let body = &self.clauses[cid].1;
+        let mut rs: Option<R> = None;
+        let mut rt: Option<R> = None;
+        for a in body {
+            if let Atom::Role { r, s, t } = *a {
+                if s == X && t == sv {
+                    rs = Some(r);
+                }
+                if s == X && t == tv {
+                    rt = Some(r);
+                }
+            }
+        }
+        match (rs, rt) {
+            (Some(a), Some(b)) if a == b => Some(a),
+            _ => None,
+        }
     }
 
     /// Run the non-branching saturation fixpoint from a seeded root (node 0).
@@ -3586,7 +3728,7 @@ impl<'a> QoSat<'a> {
                     self.node_work.len(), self.pending.len()
                 );
             }
-            if self.node_unsat.contains(&n) {
+            if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
                 continue;
             }
             // Fire the concept clauses triggered by `lit`. The trigger lists are
@@ -3688,7 +3830,7 @@ impl<'a> QoSat<'a> {
                     e, self.global.len(), self.edge_work.len(), self.node_work.len()
                 );
             }
-            if self.node_unsat.contains(&n) {
+            if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
                 continue;
             }
             // Fire every global ⊤-clause on the new node. Index loop, not
@@ -3711,6 +3853,11 @@ impl<'a> QoSat<'a> {
                     e, self.edge_work.len(), self.lit_work.len(),
                     self.node_work.len(), self.label.len()
                 );
+            }
+            // a merge evacuated one endpoint: this is a stale edge, its work was
+            // migrated onto the survivor's fresh edges.
+            if self.merged_into[s].is_some() || self.merged_into[t].is_some() {
+                continue;
             }
             // Fire only the role-body clauses that mention this edge's exact
             // role `r`; a clause without `r` in its body is a guaranteed no-op
@@ -3789,7 +3936,7 @@ impl<'a> QoSat<'a> {
         // new consequences. This is the half of inverse/∀-role completeness that
         // edge-time firing misses (guard concept added AFTER the edge).
         while let Some((cid, n)) = self.guard_refire.pop() {
-            if self.node_unsat.contains(&n) {
+            if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
                 continue;
             }
             let no = self.out_edges[n].len();
@@ -4619,11 +4766,43 @@ impl<'a> QoSat<'a> {
                     // 98M card-insuff firings (only 674 distinct Eq-heads). Only a
                     // merge of two DISTINCT successor nodes is a real cardinality
                     // obligation the shared pass cannot represent.
-                    let sn = sigma[s as usize].expect("Eq s bound");
-                    let tn = sigma[t as usize].expect("Eq t bound");
+                    let sn = self.find(sigma[s as usize].expect("Eq s bound"));
+                    let tn = self.find(sigma[t as usize].expect("Eq t bound"));
                     if sn == tn {
                         satisfied = true;
                         break;
+                    }
+                    // KM_HT_QO_CARDMERGE (Konclude ≤-rule): PERFORM the forced merge
+                    // of two DISTINCT filler successors. Privatize both to the
+                    // constrained predecessor (so the merge cannot pollute other
+                    // predecessors lacking the ≤n), then fold the victim into the
+                    // survivor. Only filler nodes are merged — never concept
+                    // self-nodes (which would conflate classification). A non-plain
+                    // shape (no shared cardinality role) falls through to the defer.
+                    if self.card_merge
+                        && self.is_filler[sn]
+                        && self.is_filler[tn]
+                        && !self.node_unsat.contains(&sn)
+                        && !self.node_unsat.contains(&tn)
+                    {
+                        if let Some(r) = self.eq_merge_role(cid, s, t) {
+                            let anchor = self.find(sigma[X as usize].expect("X bound"));
+                            let ps = self.privatize(anchor, r, sn);
+                            let pt = self.privatize(anchor, r, tn);
+                            let ps = self.find(ps);
+                            let pt = self.find(pt);
+                            if ps != pt && self.merge_victim(ps, pt) {
+                                // the forced merge is inconsistent. The shared
+                                // forward pass has no unsat back-propagation to the
+                                // source, so defer the anchor to the complete verify
+                                // (sound: never guess the source's status).
+                                self.kp_insuff_nodes.insert(anchor);
+                                self.qo_insufficient = true;
+                                self.kp_insufficient = true;
+                            }
+                            satisfied = true;
+                            break;
+                        }
                     }
                     // at-most / functional cardinality forces a successor merge the
                     // shared-node saturation cannot represent soundly. KM_HT_QO_CARD:
@@ -7556,10 +7735,11 @@ impl Ht {
                     qf.kp_insuff_nodes.len()
                 );
                 eprintln!(
-                    "QOGF split-diag: redirects={} forall_insuff={} card_insuff={}",
+                    "QOGF split-diag: redirects={} forall_insuff={} card_insuff={} cardmerges={}",
                     DBG_SPLIT.load(Ordering::Relaxed),
                     DBG_FORALL_INSUFF.load(Ordering::Relaxed),
-                    DBG_CARD_INSUFF.load(Ordering::Relaxed)
+                    DBG_CARD_INSUFF.load(Ordering::Relaxed),
+                    DBG_CARDMERGE.load(Ordering::Relaxed)
                 );
                 // FCHECK per-node reachability probe: a query concept can still
                 // certify from the forward closure iff its self-node cannot be
@@ -9961,6 +10141,72 @@ mod tests {
         qs.card_defer = true;
         let _ = qs.saturate_global(&[A, B, C2]);
         assert!(qs.kp_insufficient, "a distinct-successor merge must still defer");
+    }
+
+    #[test]
+    fn cardmerge_compatible_certifies() {
+        // KM_HT_QO_CARDMERGE: A ⊑ ∃R0.B, A ⊑ ∃R0.D, R0 functional, B,D compatible.
+        // The two distinct fillers merge into one {B,D} successor (no clash) ⇒ A is
+        // CERTIFIED consistent, not deferred (the lever the blanket card_defer lacks).
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        qs.complete_roles = true;
+        qs.sat_mode = true;
+        qs.card_merge = true;
+        let g = qs.saturate_global(&[A, B, D]);
+        assert!(!qs.qo_insufficient && !qs.kp_insufficient, "a consistent merge must certify, not defer");
+        assert!(!g.node_unsat.contains(&0), "A is consistent");
+    }
+
+    #[test]
+    fn cardmerge_clash_defers() {
+        // B ⊓ C2 ⊑ ⊥ makes the forced merge inconsistent ⇒ the anchor is DEFERRED
+        // (kp_insufficient) to the complete verify, never silently certified.
+        const C2: C = 2;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(vec![con(false, B, X), con(false, C2, X)], vec![]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        qs.complete_roles = true;
+        qs.sat_mode = true;
+        qs.card_merge = true;
+        let _ = qs.saturate_global(&[A, B, C2]);
+        assert!(qs.kp_insufficient, "an inconsistent forced merge must defer the anchor");
+    }
+
+    #[test]
+    fn cardmerge_does_not_pollute_unconstrained_predecessor() {
+        // SOUNDNESS (per-source privatize). P1=A ⊑ ∃R0.B ⊓ ∃R0.D with functional R0
+        // (its two successors merge into {B,D}); P2 ⊑ ∃R0.B shares the (B,R0) filler
+        // but has only ONE R0-successor (no merge). With ∃R0.D ⊑ G: A ⊑ G (its
+        // merged successor has D) but P2 must NOT get G — privatize copies the
+        // filler before merging, leaving P2's shared {B} successor untouched.
+        const P2: C = 2;
+        const G: C = 6;
+        let cls = vec![
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
+            Clause::new(vec![con(false, P2, X)], vec![exists(R0, false, B, X)]),
+            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(vec![role(R0, X, 1), con(false, D, 1)], vec![con(false, G, X)]),
+        ];
+        let h = ht(cls);
+        let mut qs = QoSat::new_opts(&h.clauses, true, false);
+        qs.complete_roles = true;
+        qs.sat_mode = true;
+        qs.card_merge = true;
+        let g = qs.saturate_global(&[A, P2, B, D, G]);
+        assert!(g.label_pos[0].contains(&G), "A ⊑ G (its merged successor carries D)");
+        assert!(!g.label_pos[1].contains(&G), "P2 must NOT get G — the merge must not pollute the shared filler");
     }
 
     // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
