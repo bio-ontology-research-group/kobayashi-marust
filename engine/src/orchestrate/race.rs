@@ -73,7 +73,7 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
         return None;
     }
     let named = std::collections::HashSet::new();
-    let tin = cb_to_ht::convert(&cl, None, &named, &cards, false);
+    let tin = cb_to_ht::convert(&cl, None, &named, &cards, false, &[], false);
     // only race when the TInput faithfully represents the ontology
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return None;
@@ -492,7 +492,7 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     };
     let named = std::collections::HashSet::new();
     let _tconv = Instant::now();
-    let tin = cb_to_ht::convert(&cl, None, &named, &cards, std::env::var_os("KM_HT_CARD").is_some());
+    let tin = cb_to_ht::convert(&cl, None, &named, &cards, std::env::var_os("KM_HT_CARD").is_some(), &[], false);
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!("KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s", cl.len(), _tconv.elapsed().as_secs_f64());
     }

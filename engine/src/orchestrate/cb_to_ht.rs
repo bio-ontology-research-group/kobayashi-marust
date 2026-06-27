@@ -11,7 +11,132 @@
 
 use std::collections::HashMap;
 
-use crate::json_io::{JAtom, JClause, JTerm};
+use crate::json_io::{JAtom, JClause, JRule, JRuleAtom, JRuleTerm, JTerm};
+
+// ---------------------------------------------------------------------------
+// KM_HT_RULES (Stage 2): ABox seeding + DL-safe rule firing
+// ---------------------------------------------------------------------------
+/// The O-guard concept asserted on every named individual node, so a rule
+/// variable only ever binds to a named individual (DL-safety): firing a rule on
+/// an anonymous ∃-successor is unsound.
+const O_GUARD: &str = "__O__";
+
+fn nom_of(ind: &str) -> String {
+    format!("__nom__{}", ind)
+}
+
+/// A ground ABox fact recognised in the clause set (only when `ht_rules`). The
+/// frontend emits assertions as ground clauses (`normalise.rs`): a
+/// `ClassAssertion` as `⊤ → q(a)`, a `RoleAssertion` as `⊤ → r(a,b)`,
+/// `SameIndividual` as `⊤ → a≈b`, `DifferentIndividuals` as `a≈b → ⊥`.
+enum AboxFact {
+    Concept(String, String),       // q(a)
+    Role(String, String, String),  // r(a,b)
+    Same(String, String),          // a ≈ b
+    Diff(String, String),          // a ≠ b  (recorded, not encoded — see below)
+}
+
+fn ind_name(t: &JTerm) -> Option<&str> {
+    if let JTerm::Ind { name } = t { Some(name.as_str()) } else { None }
+}
+
+/// Recognise a ground ABox fact (all terms individuals). Returns `None` for any
+/// clause with a variable term — those are TBox/RBox clauses handled normally.
+fn abox_fact(c: &JClause) -> Option<AboxFact> {
+    if c.body.is_empty() && c.head.len() == 1 {
+        return match &c.head[0] {
+            JAtom::Concept { concept, term } => {
+                Some(AboxFact::Concept(concept.clone(), ind_name(term)?.to_string()))
+            }
+            JAtom::Role { role, source, target } => Some(AboxFact::Role(
+                role.clone(),
+                ind_name(source)?.to_string(),
+                ind_name(target)?.to_string(),
+            )),
+            JAtom::Eq { left, right } => {
+                Some(AboxFact::Same(ind_name(left)?.to_string(), ind_name(right)?.to_string()))
+            }
+        };
+    }
+    if c.head.is_empty() && c.body.len() == 1 {
+        if let JAtom::Eq { left, right } = &c.body[0] {
+            return Some(AboxFact::Diff(ind_name(left)?.to_string(), ind_name(right)?.to_string()));
+        }
+    }
+    None
+}
+
+fn rule_term_name(t: &JRuleTerm) -> (bool, &str) {
+    match t {
+        JRuleTerm::Var { name } => (false, name.as_str()),
+        JRuleTerm::Ind { name } => (true, name.as_str()),
+    }
+}
+
+/// Build the HT clause for one DL-safe rule (`ht_rules` path). Each distinct rule
+/// term gets a Subst index; every variable is O-guarded (`__O__(v)`) and every
+/// `Ind(a)` term is pinned by `__nom__a(v)`, so the matcher only binds variables
+/// to named individuals. Returns `None` (rule dropped, sound) when the rule has a
+/// Same/Diff atom (an (in)equality guard not yet encoded) or an empty head. The
+/// second tuple element is the individual names the rule references (so they are
+/// registered as nominal nodes). Concept/role ids are assigned in `ids`.
+fn build_rule_clause(rule: &JRule, ids: &mut Ids, oguard: usize) -> Option<(HtClause, Vec<String>)> {
+    let mut var_of: HashMap<(bool, String), usize> = HashMap::new();
+    let mut next_var = 0usize;
+    let mut ind_vars: Vec<(usize, String)> = Vec::new();
+    let mut all_vars: Vec<usize> = Vec::new();
+    let mut vget = |t: &JRuleTerm| -> usize {
+        let (is_ind, name) = rule_term_name(t);
+        let key = (is_ind, name.to_string());
+        let v = if let Some(&v) = var_of.get(&key) {
+            v
+        } else {
+            let v = next_var;
+            next_var += 1;
+            var_of.insert(key, v);
+            if is_ind {
+                ind_vars.push((v, name.to_string()));
+            }
+            v
+        };
+        if !all_vars.contains(&v) {
+            all_vars.push(v);
+        }
+        v
+    };
+    let mut conv = |atoms: &[JRuleAtom], ids: &mut Ids| -> Option<Vec<HAtom>> {
+        let mut out = Vec::new();
+        for a in atoms {
+            match a {
+                JRuleAtom::Class { concept, term } => {
+                    out.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: vget(term) });
+                }
+                JRuleAtom::Role { role, source, target } => {
+                    let s = vget(source);
+                    let t = vget(target);
+                    out.push(HAtom::Role { r: ids.rid(role), s, t });
+                }
+                JRuleAtom::Same { .. } | JRuleAtom::Diff { .. } => return None,
+            }
+        }
+        Some(out)
+    };
+    let mut body = conv(&rule.body, ids)?;
+    let head = conv(&rule.head, ids)?;
+    if head.is_empty() {
+        return None;
+    }
+    for &v in &all_vars {
+        body.push(HAtom::Concept { neg: false, c: oguard, t: v });
+    }
+    let mut inds: Vec<String> = Vec::new();
+    for (v, a) in &ind_vars {
+        let na = ids.cid(&nom_of(a));
+        body.push(HAtom::Concept { neg: false, c: na, t: *v });
+        inds.push(a.clone());
+    }
+    Some((HtClause { body, head }, inds))
+}
 
 // ---------------------------------------------------------------------------
 // output (TInput) types
@@ -248,10 +373,13 @@ impl OrderedMM {
 // ---------------------------------------------------------------------------
 // convert
 // ---------------------------------------------------------------------------
-pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::collections::HashSet<String>, cardinalities: &[crate::json_io::CardMeta], card_enabled: bool) -> TInput {
+pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::collections::HashSet<String>, cardinalities: &[crate::json_io::CardMeta], card_enabled: bool, rules: &[JRule], ht_rules: bool) -> TInput {
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
+    // KM_HT_RULES: ground ABox facts intercepted in pass 1 (so they are not
+    // dropped as un-clausifiable ground clauses), seeded as nominal nodes below.
+    let mut abox_facts: Vec<AboxFact> = Vec::new();
 
     // KM_HT_CARD: the frontend tagged each `≥n`/`≤n` restriction with a `CardMeta`.
     // Install the Konclude first-class number rule (built below into `card_defs`)
@@ -308,6 +436,13 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
 
     // ---- pass 1: collect existential-introduction clauses by function symbol ----
     for c in clauses {
+        // KM_HT_RULES: peel off the ground ABox; it is reseeded as nominal nodes.
+        if ht_rules {
+            if let Some(f) = abox_fact(c) {
+                abox_facts.push(f);
+                continue;
+            }
+        }
         // KM_HT_CARD: drop the clausal cardinality expansion the frontend emitted
         // for a card marker (the `≥n` Skolem successors + distinctness, and the
         // `≤n` Eq-head). The first-class rule in `card_defs` replaces it.
@@ -607,6 +742,97 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         ht.push(HtClause { body: bod, head: hed });
     }
 
+    // ---- KM_HT_RULES: seed the ABox as named nominal nodes + fire DL-safe rules ----
+    // Each named individual `a` becomes a nominal concept `__nom__a` (collected as a
+    // nominal below, so the tableau seeds one root carrying it; the o-rule keeps all
+    // `__nom__a` carriers identified). ABox facts attach to that node:
+    //   q(a)      ⇒ {a} ⊑ q              : __nom__a(x) → q(x)
+    //   r(a,b)    ⇒ {a} ⊑ ∃r.{b}         : __nom__a(x) → ∃r.__nom__b(x)
+    //   a ≈ b     ⇒ {a} ⊑ {b}, {b} ⊑ {a} : the two nodes merge via the o-rule
+    //   a ≠ b     ⇒ dropped (sound: losing a distinctness can never INVENT a clash;
+    //              encoding it as a tableau distinct-edge is left to a later increment)
+    // Every named node also carries the O-guard `__O__`, and every rule variable is
+    // guarded by `__O__` so it only binds to a named individual (DL-safety): firing
+    // over an anonymous ∃-successor would be unsound.
+    if ht_rules {
+        use std::collections::BTreeSet;
+        let mut individuals: BTreeSet<String> = BTreeSet::new();
+        let mut note = |ind: &str, individuals: &mut BTreeSet<String>| {
+            individuals.insert(ind.to_string());
+        };
+        for f in &abox_facts {
+            match f {
+                AboxFact::Concept(q, a) => {
+                    note(a, &mut individuals);
+                    let na = ids.cid(&nom_of(a));
+                    let qc = ids.cid(q);
+                    if is_bottom(q) {
+                        ht.push(HtClause { body: vec![HAtom::Concept { neg: false, c: na, t: 0 }], head: vec![] });
+                    } else {
+                        ht.push(HtClause {
+                            body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
+                            head: vec![HAtom::Concept { neg: false, c: qc, t: 0 }],
+                        });
+                    }
+                }
+                AboxFact::Role(r, a, b) => {
+                    note(a, &mut individuals);
+                    note(b, &mut individuals);
+                    let na = ids.cid(&nom_of(a));
+                    let nb = ids.cid(&nom_of(b));
+                    let rr = ids.rid(r);
+                    ht.push(HtClause {
+                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
+                        head: vec![HAtom::Exist { r: rr, neg: false, c: nb, t: 0 }],
+                    });
+                }
+                AboxFact::Same(a, b) => {
+                    note(a, &mut individuals);
+                    note(b, &mut individuals);
+                    let na = ids.cid(&nom_of(a));
+                    let nb = ids.cid(&nom_of(b));
+                    ht.push(HtClause {
+                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
+                        head: vec![HAtom::Concept { neg: false, c: nb, t: 0 }],
+                    });
+                    ht.push(HtClause {
+                        body: vec![HAtom::Concept { neg: false, c: nb, t: 0 }],
+                        head: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
+                    });
+                }
+                AboxFact::Diff(a, b) => {
+                    note(a, &mut individuals);
+                    note(b, &mut individuals);
+                    let _ = ids.cid(&nom_of(a));
+                    let _ = ids.cid(&nom_of(b));
+                }
+            }
+        }
+        // rule clauses: every variable carries an `__O__` guard; an `Ind(a)` term is
+        // additionally pinned by `__nom__a`. A rule with a Same/Diff atom (an
+        // (in)equality guard we do not yet encode) is dropped wholesale (sound).
+        let oguard = ids.cid(O_GUARD);
+        for rule in rules {
+            match build_rule_clause(rule, &mut ids, oguard) {
+                Some((cl, inds)) => {
+                    for a in &inds {
+                        note(a, &mut individuals);
+                    }
+                    ht.push(cl);
+                }
+                None => dropped += 1,
+            }
+        }
+        // Mark every named node with the O-guard: __nom__a(x) → __O__(x).
+        for a in &individuals {
+            let na = ids.cid(&nom_of(a));
+            ht.push(HtClause {
+                body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
+                head: vec![HAtom::Concept { neg: false, c: oguard, t: 0 }],
+            });
+        }
+    }
+
     // ---- RBox edge clauses ----
     for (sub, sup) in &subrole_pairs {
         let rs = ids.rid(sub);
@@ -752,7 +978,7 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     // KM_NO_HT_EMELIM. Disabled under KM_HT_CARD: the `q`/`NQ` recognition markers
     // are a complementary pair (`⊤⊑q∨NQ`, `q⊓NQ⊑⊥`) that emelim would fold, which
     // would drop the NQ concept that carries the `≥(n+1)` recognition card_def.
-    if card_defs.is_empty() && std::env::var_os("KM_NO_HT_EMELIM").is_none() {
+    if card_defs.is_empty() && !ht_rules && std::env::var_os("KM_NO_HT_EMELIM").is_none() {
         let (out, n_elim) = elim_complements(ht, &ids.con_names);
         ht = out;
         if std::env::var_os("KM_HT_STATS").is_some() {

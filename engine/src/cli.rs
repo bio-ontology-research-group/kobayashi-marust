@@ -30,6 +30,8 @@ struct OfnOutput {
     asserted_classes: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<crate::json_io::JRule>,
 }
 
 #[derive(serde::Serialize)]
@@ -47,6 +49,8 @@ struct OfnClausesOnly {
     clauses: Vec<JClause>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<crate::json_io::JRule>,
 }
 
 /// `args` are the post-subcommand arguments: `args[0]` = ontology path, optional
@@ -110,7 +114,7 @@ pub fn run_ofn(args: &[String]) {
                 exit(1);
             }
         }
-        let out = OfnClausesOnly { clauses: result.clauses, cardinalities: result.cardinalities };
+        let out = OfnClausesOnly { clauses: result.clauses, cardinalities: result.cardinalities, rules: result.rules };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {
             eprintln!("serialise error: {}", e);
             exit(1);
@@ -125,6 +129,7 @@ pub fn run_ofn(args: &[String]) {
             abox_inconsistent: result.abox_inconsistent,
             asserted_classes: result.asserted_classes,
             cardinalities: result.cardinalities,
+            rules: result.rules,
         };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {
             eprintln!("serialise error: {}", e);

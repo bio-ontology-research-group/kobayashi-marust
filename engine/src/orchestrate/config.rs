@@ -98,6 +98,12 @@ pub struct Config {
     /// CB timeout). Default OFF (opt in: KM_HT_CARD) — the master switch also makes
     /// the frontend emit the cardinality metadata, so it gates the whole feature.
     pub ht_card: bool,
+    /// KM_HT_RULES (Stage 2 of SWRL DL-safe rule support): when set AND the
+    /// ontology has DL-safe rules, route it to the rule-aware HT consistency check
+    /// (ABox seeded as named nominal nodes + rules fired over named individuals).
+    /// Default OFF: with the flag unset the whole feature is inert and the output
+    /// is byte-identical to the no-rules build.
+    pub ht_rules: bool,
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -162,6 +168,7 @@ impl Config {
             qo_router: std::env::var_os("KM_NO_HT_QO_ROUTER").is_none(),
             ht_shoq: std::env::var_os("KM_NO_HT_SHOQ").is_none(),
             ht_card: std::env::var_os("KM_HT_CARD").is_some(),
+            ht_rules: std::env::var_os("KM_HT_RULES").is_some(),
         }
     }
 

@@ -4499,6 +4499,33 @@ pub fn run_json(input: &str) -> Result<String, String> {
         inp.queries.clone()
     };
 
+    // KM_RULES_CONSISTENCY (KM_HT_RULES Stage 2): a CONSISTENCY-ONLY check over the
+    // ABox-seeded named-individual graph (the nominal roots in `inp.nominals` plus
+    // the rule clauses). We only need the KB-level verdict, so skip the (expensive)
+    // per-concept subsumption classification and run `consistent(&[])` on the
+    // default Tableau (whose `find_model` seeds one root per nominal and applies the
+    // o-rule). Run on a large stack since the careful DFS can recurse deeply.
+    if std::env::var_os("KM_RULES_CONSISTENCY").is_some() {
+        let ht_clauses = clauses.clone();
+        let inverse = inp.inverse;
+        let number = inp.number || !inp.card_defs.is_empty();
+        let noms = inp.nominals.clone();
+        let consistent = std::thread::Builder::new()
+            .stack_size(4usize << 30)
+            .spawn(move || {
+                let mut t = Tableau::new(ht_clauses);
+                t.set_pairwise(inverse);
+                t.set_number(number);
+                t.set_nominals(noms);
+                t.consistent(&[])
+            })
+            .map_err(|e| e.to_string())?
+            .join()
+            .map_err(|_| "rules-consistency thread panicked".to_string())?;
+        let out = TOutput { consistent, unsatisfiable: Vec::new(), subsumptions: Vec::new() };
+        return serde_json::to_string(&out).map_err(|e| e.to_string());
+    }
+
     // KM_HT: route ALC(H) KBs (no number restrictions / nominals / inverses) to
     // the ported HermiT hypertableau engine. Run on a large stack since the DFS
     // recurses once per active branching point. Falls back to the legacy

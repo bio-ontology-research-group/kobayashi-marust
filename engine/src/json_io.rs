@@ -84,11 +84,47 @@ pub struct CardMeta {
     pub filler: String,
 }
 
+/// KM_HT_RULES side-channel (Stage 2 of SWRL DL-safe rule support). A parsed
+/// `DLSafeRule` carried verbatim from the frontend to `cb_to_ht`, where it is
+/// turned into an HT DL-clause (with an O-guard restricting every variable to a
+/// named individual). Emitted by the frontend ONLY under `KM_HT_RULES`, and
+/// skipped on serialize when empty, so the default clause/meta output is
+/// byte-identical.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "kind")]
+pub enum JRuleTerm {
+    #[serde(rename = "var")]
+    Var { name: String },
+    #[serde(rename = "ind")]
+    Ind { name: String },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "kind")]
+pub enum JRuleAtom {
+    #[serde(rename = "class")]
+    Class { concept: String, term: JRuleTerm },
+    #[serde(rename = "role")]
+    Role { role: String, source: JRuleTerm, target: JRuleTerm },
+    #[serde(rename = "same")]
+    Same { left: JRuleTerm, right: JRuleTerm },
+    #[serde(rename = "diff")]
+    Diff { left: JRuleTerm, right: JRuleTerm },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct JRule {
+    pub body: Vec<JRuleAtom>,
+    pub head: Vec<JRuleAtom>,
+}
+
 #[derive(Deserialize)]
 pub struct JInput {
     pub clauses: Vec<JClause>,
     #[serde(default)]
     pub cardinalities: Vec<CardMeta>,
+    #[serde(default)]
+    pub rules: Vec<JRule>,
 }
 
 #[derive(Serialize)]

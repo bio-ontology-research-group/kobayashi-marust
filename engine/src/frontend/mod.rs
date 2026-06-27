@@ -50,6 +50,9 @@ pub struct FrontendResult {
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
+    /// KM_HT_RULES: parsed SWRL DL-safe rules, carried to `cb_to_ht`. Empty unless
+    /// the frontend `KM_HT_RULES` flag is set (so the default output is unchanged).
+    pub rules: Vec<crate::json_io::JRule>,
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -130,6 +133,17 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     if std::env::var_os("KM_DEBUG_RULES").is_some() {
         eprintln!("KM_DEBUG_RULES: parsed {} DL-safe SWRL rule(s)", ontology.rules().count());
     }
+    // KM_HT_RULES (Stage 2): carry the parsed DL-safe rules to cb_to_ht and (when
+    // any rule is present) keep the ground ABox in the clause set so cb_to_ht can
+    // seed it as named-individual nominal nodes. Gated, so the default output is
+    // unchanged. `ht_rules` stays false when the flag is off OR the ontology has no
+    // rule, so a normal ABox ontology under the flag is also unchanged.
+    let rules: Vec<crate::json_io::JRule> = if std::env::var_os("KM_HT_RULES").is_some() {
+        collect_rules(&ontology)
+    } else {
+        Vec::new()
+    };
+    let ht_rules = !rules.is_empty();
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -145,6 +159,13 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let role_inverses = std::mem::take(&mut hooks.role_inverses);
     let symmetric_roles = std::mem::take(&mut hooks.symmetric_roles);
     let cardinalities = std::mem::take(&mut hooks.cardinalities);
+    // KM_HT_RULES: keep the ground ABox in the clause set so cb_to_ht can seed the
+    // named individuals as nominal nodes (the rules + ABox consistency check runs
+    // over that graph). Only when a rule is present (`ht_rules`), so a normal ABox
+    // ontology is untouched.
+    if ht_rules {
+        tbox.extend(abox.iter().cloned());
+    }
     drop(abox);
     drop(hooks);
     t.lap("augment");
@@ -330,5 +351,48 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         abox_inconsistent,
         asserted_classes: asserted_classes.into_iter().collect(),
         cardinalities,
+        rules,
     })
+}
+
+/// Convert the ontology's parsed `DLSafeRule` axioms into the JSON rule channel
+/// (`JRule`). Only Class/Role/Same/Diff atoms over named classes are
+/// representable; an atom whose class is a complex expression makes the whole
+/// rule undrepresentable, so it is dropped (sound: a dropped rule can only lose
+/// an inconsistency, never invent one — cb_to_ht and the consistency check are
+/// monotone in the rule set).
+fn collect_rules(ontology: &syntax::Ontology) -> Vec<crate::json_io::JRule> {
+    use crate::json_io::{JRule, JRuleAtom, JRuleTerm};
+    use syntax::{Axiom, Concept, RuleAtom, RuleTerm};
+    let term = |t: &RuleTerm| -> JRuleTerm {
+        match t {
+            RuleTerm::Var(n) => JRuleTerm::Var { name: n.clone() },
+            RuleTerm::Ind(n) => JRuleTerm::Ind { name: n.clone() },
+        }
+    };
+    // a rule atom is representable only if every ClassAtom is over a *named* class.
+    let conv_atom = |a: &RuleAtom| -> Option<JRuleAtom> {
+        Some(match a {
+            RuleAtom::Class(Concept::Name(c), t) => {
+                JRuleAtom::Class { concept: c.clone(), term: term(t) }
+            }
+            RuleAtom::Class(_, _) => return None, // complex class expression: drop the rule
+            RuleAtom::Role(r, s, t) => {
+                JRuleAtom::Role { role: r.clone(), source: term(s), target: term(t) }
+            }
+            RuleAtom::Same(l, r) => JRuleAtom::Same { left: term(l), right: term(r) },
+            RuleAtom::Diff(l, r) => JRuleAtom::Diff { left: term(l), right: term(r) },
+        })
+    };
+    let mut out = Vec::new();
+    for ax in ontology.rules() {
+        if let Axiom::Rule(body, head) = ax {
+            let jb: Option<Vec<_>> = body.iter().map(&conv_atom).collect();
+            let jh: Option<Vec<_>> = head.iter().map(&conv_atom).collect();
+            if let (Some(b), Some(h)) = (jb, jh) {
+                out.push(JRule { body: b, head: h });
+            }
+        }
+    }
+    out
 }

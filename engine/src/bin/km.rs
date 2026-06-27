@@ -76,6 +76,8 @@ fn cb_to_ht_cmd() {
         rbox: Option<Vec<Vec<String>>>,
         #[serde(default)]
         cardinalities: Vec<kobayashi_marust::json_io::CardMeta>,
+        #[serde(default)]
+        rules: Vec<kobayashi_marust::json_io::JRule>,
     }
     let mut buf = String::new();
     if std::io::stdin().read_to_string(&mut buf).is_err() {
@@ -90,7 +92,7 @@ fn cb_to_ht_cmd() {
         }
     };
     let named = std::collections::HashSet::new();
-    let tin = orchestrate::cb_to_ht::convert(&input.clauses, input.rbox.as_deref(), &named, &input.cardinalities, std::env::var_os("KM_HT_CARD").is_some());
+    let tin = orchestrate::cb_to_ht::convert(&input.clauses, input.rbox.as_deref(), &named, &input.cardinalities, std::env::var_os("KM_HT_CARD").is_some(), &input.rules, std::env::var_os("KM_HT_RULES").is_some());
     let stdout = std::io::stdout();
     if let Err(e) = serde_json::to_writer(stdout.lock(), &tin) {
         eprintln!("serialise error: {e}");

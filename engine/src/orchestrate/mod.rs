@@ -180,6 +180,26 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         });
     }
 
+    // KM_HT_RULES (Stage 2): if the ontology has DL-safe rules, route it to the
+    // rule-aware HT consistency check (ABox seeded as named nominal nodes; rules
+    // fired over named individuals). Returns a consistency verdict; we report it
+    // directly (a SWRL ontology's value here is its consistency — Konclude cannot
+    // even parse these, and the CB engine drops the ABox). Inert when the flag is
+    // off (default) or the ontology has no rule, so all other paths are unchanged.
+    if cfg.ht_rules {
+        if let Some(consistent) = rules_consistency(cfg, clauses_path.path(), &meta)? {
+            if timing {
+                eprintln!("KM_TIMING rules-consistency done @ {:.2}s consistent={}", t_start.elapsed().as_secs_f64(), consistent);
+            }
+            return Ok(Classification {
+                consistent,
+                subsumptions: vec![],
+                unsatisfiable: vec![],
+                dropped: 0,
+            });
+        }
+    }
+
     let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
     let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
     // In the Rust-frontend path the per-ontology short registry is empty, so
@@ -338,6 +358,73 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         unsatisfiable: unsat,
         dropped: out.dropped,
     })
+}
+
+/// KM_HT_RULES (Stage 2): consistency check of a DL-safe-rule ontology. Reads the
+/// clause file (which under `KM_HT_RULES` also carries the ground ABox + the
+/// parsed rules), and — only if the ontology actually has rules — builds the
+/// rule-aware TInput (ABox seeded as named nominal nodes, rules turned into HT
+/// clauses with an O-guard) and runs the `km tableau` worker in
+/// CONSISTENCY-ONLY mode (`KM_RULES_CONSISTENCY`, default Tableau, no `KM_HT`).
+/// Returns `Some(consistent)` when rules are present, `None` otherwise (caller
+/// then takes the normal route).
+fn rules_consistency(
+    cfg: &Config,
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+) -> Result<Option<bool>, OrchestrateError> {
+    use crate::json_io::JInput;
+    use std::process::{Command, Stdio};
+    let input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
+    if input.rules.is_empty() {
+        return Ok(None);
+    }
+    let named: HashSet<String> = meta.named.iter().cloned().collect();
+    let tin = cb_to_ht::convert(
+        &input.clauses,
+        None,
+        &named,
+        &input.cardinalities,
+        false, // keep the clausal cardinality (Eq-heads) for the default Tableau
+        &input.rules,
+        true,  // ht_rules: seed the ABox + emit rule clauses
+    );
+    let tin_bytes = serde_json::to_vec(&tin)?;
+    let (tab_prog, tab_pre) = cfg.tab_cmd();
+    let out_path = tmpfile::TempPath::new(".rulescons.json");
+    let mut cmd = Command::new(&tab_prog);
+    cmd.args(&tab_pre)
+        .stdin(Stdio::piped())
+        .stdout(File::create(out_path.path())?)
+        .stderr(Stdio::null())
+        .env("KM_RULES_CONSISTENCY", "1");
+    // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
+    // and applies the o-rule in `consistent(&[])`.
+    cmd.env_remove("KM_HT");
+    let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn { bin: "tableau".into(), source: e })?;
+    {
+        use std::io::Write as _;
+        let mut stdin = child.stdin.take().expect("tableau stdin");
+        stdin.write_all(&tin_bytes)?;
+    }
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(OrchestrateError::Worker {
+            bin: "tableau".into(),
+            code: status.code().unwrap_or(-1),
+            stderr: String::new(),
+        });
+    }
+    #[derive(serde::Deserialize)]
+    struct TOut {
+        #[serde(default = "tt")]
+        consistent: bool,
+    }
+    fn tt() -> bool {
+        true
+    }
+    let t: TOut = serde_json::from_reader(BufReader::new(File::open(out_path.path())?))?;
+    Ok(Some(t.consistent))
 }
 
 /// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
