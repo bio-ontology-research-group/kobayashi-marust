@@ -550,11 +550,19 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // 46252→64 nodes, 66/66 gold-exact). The card branch already forces
     // KM_HT_PAR=1, which the nominal o-rule requires (parallel merges race). Inverse
     // and datatype stay excluded (no NN-rule / no concrete-domain oracle in the Ht).
+    // KM_HT_CARD_RECOG (propagation-based ≤n recognition, see the card env block
+    // below) makes the card route sound under inverse: the SHIQ non-shared ∀ +
+    // mode-5 blocking it activates handle the inverse soundly, and the
+    // deterministic counting recognition converges where the clausal excluded
+    // middle did not. So when recognition is requested, drop the `!tin.inverse`
+    // exclusion and let inverse+cardinality onts (the SRIQ number giants) onto the
+    // card route. Default OFF -> production routing is unchanged.
+    let card_recog = std::env::var_os("KM_HT_CARD_RECOG").is_some();
     let card_candidate = cfg.ht_card
         && !tin.card_defs.is_empty()
         && tin.dropped == 0
         && tin.fenced.is_empty()
-        && !tin.inverse
+        && (!tin.inverse || card_recog)
         && !has_datatype(&cl);
     let qo_candidate = cfg.qo_router
         && !card_candidate
@@ -681,6 +689,22 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         for (k, v) in [("KM_HT_FORCE", "1"), ("KM_HT_CARD", "1"), ("KM_HT_PAR", "1")] {
             if std::env::var_os(k).is_none() {
                 cmd.env(k, v);
+            }
+        }
+        // Propagation-based ≤n RECOGNITION (KM_HT_CARD_RECOG): replaces the
+        // frontend's per-node `⊤→Q∨NQ` excluded middle (which branches on every
+        // node × every cardinality definer -> disjunction non-convergence) with a
+        // deterministic count at saturation (card_recog_step + filler_impossible).
+        // When enabled, also activate the SHIQ non-shared-successor ∀ handling
+        // (KM_HT_QO_SHIQ) and Konclude optimized blocking (mode 5) that keep the
+        // recognition sound and convergent under inverse roles. Closes the small
+        // SHIQ cardinality giants (10019 162/162, 12107 116/116, gold-exact vs the
+        // HermiT transitive closure). Scoped to the card route only.
+        if card_recog {
+            for (k, v) in [("KM_HT_QO_SHIQ", "1"), ("KM_HT_BLOCK", "5")] {
+                if std::env::var_os(k).is_none() {
+                    cmd.env(k, v);
+                }
             }
         }
     }
