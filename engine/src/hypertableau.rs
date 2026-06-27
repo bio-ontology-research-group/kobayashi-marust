@@ -2668,6 +2668,13 @@ struct QoSat<'a> {
     lit_work: Vec<(Node, CLit)>,
     edge_work: Vec<(Node, R, Node)>,
     node_work: Vec<Node>,
+    /// Edge-pop budget: bail `unsupported` once this many edge-work items have been
+    /// processed in the current saturation. The node cap cannot bound the
+    /// ∀-pollution edge cascade (nodes stay fixed while edges blow to millions),
+    /// so a per-concept model that explodes must fail-fast here to the blocking
+    /// tableau instead of stalling inside one `drain_work`. `u64::MAX` = no bound
+    /// (the default for the global/complete passes). Set via QoSat field.
+    edge_budget: u64,
     /// Trigger-keyed role-clause re-fire worklist (the `complete_roles` engine).
     /// Entry `(cid, n)` means "role clause `cid` is guarded by a concept that
     /// just arrived at `n`, so re-anchor it on `n`'s incident edges." Replaces
@@ -3467,6 +3474,7 @@ impl<'a> QoSat<'a> {
             node_unsat: HashSet::new(),
             lit_work: Vec::new(),
             edge_work: Vec::new(),
+            edge_budget: u64::MAX,
             node_work: Vec::new(),
             guard_refire: Vec::new(),
             concept_trig,
@@ -4303,6 +4311,16 @@ impl<'a> QoSat<'a> {
         }
         while let Some((s, r, t)) = self.edge_work.pop() {
             let e = QO_EDGE.fetch_add(1, Ordering::Relaxed);
+            // Edge-pop budget: a per-concept model whose ∀-pollution cascade explodes
+            // bails here (node_cap cannot catch it — nodes stay fixed while edges blow
+            // up). u64::MAX for the unbounded global/complete passes.
+            if self.edge_budget != u64::MAX {
+                if self.edge_budget == 0 {
+                    self.unsupported = true;
+                    return;
+                }
+                self.edge_budget -= 1;
+            }
             if self.edgeprobe && e % 2_000 == 0 {
                 self.hb_check("edge");
             }
@@ -9665,6 +9683,30 @@ impl Ht {
         // saturation cost and its extra subsumptions are worthless without the
         // complete-tableau confirmation that the verify pass performs.
         let want_cands = std::env::var_os("KM_HT_QO_VERIFY").is_some();
+        // KM_HT_QO_PC_TALLY: feasibility diagnostic — process ALL query concepts,
+        // counting sufficient / insufficient / unsupported / clashed instead of
+        // deferring the whole classification on the first insufficient concept.
+        // Confirms whether per-concept forward saturation is uniformly tractable on
+        // a giant (no shared-filler explosion at any single root) and measures the
+        // residue (insufficient) size that a per-concept residue verify would face.
+        let pc_tally = std::env::var_os("KM_HT_QO_PC_TALLY").is_some();
+        // Under the census, cap each per-concept saturation small so a concept whose
+        // forward closure explodes (a general/near-⊤ concept) bails fast as `unsup`
+        // instead of stalling the whole census — separating the tractable per-concept
+        // models (suff/insuff) from the explosive residue (unsup) that needs the
+        // blocking tableau. Override with KM_HT_QO_PC_CAP.
+        let pc_cap: usize = std::env::var("KM_HT_QO_PC_CAP")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30_000);
+        // Edge-pop budget per concept (bounds the ∀-pollution cascade that node_cap
+        // cannot). A tractable per-concept model drains in thousands of pops; an
+        // exploding one bails as `unsup`. Override with KM_HT_QO_PC_EBUDGET.
+        let pc_ebudget: u64 = std::env::var("KM_HT_QO_PC_EBUDGET")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1_000_000);
+        let mut tally = (0u64, 0u64, 0u64, 0u64); // (suff, insuff, unsup, clash)
         let mut qf = QoSat::new_opts(
             &self.clauses,
             true,
@@ -9672,6 +9714,9 @@ impl Ht {
         );
         qf.complete_roles = true;
         qf.node_cap = cap;
+        if pc_tally {
+            qf.node_cap = pc_cap;
+        }
         let mut qu = QoSat::new_opts(
             &self.clauses,
             false,
@@ -9683,9 +9728,33 @@ impl Ht {
         let mut subs: Vec<(C, C)> = Vec::new();
         let mut cands: Vec<(C, C)> = Vec::new();
         let mut unsat_cands: Vec<C> = Vec::new();
+        let t_pc = Instant::now();
         for (i, &a) in queries.iter().enumerate() {
             qf.reset();
+            if pc_tally {
+                qf.edge_budget = pc_ebudget;
+            }
             let rf = qf.saturate(&[CLit::pos(a)]);
+            if pc_tally {
+                // Count + continue (no defer): the feasibility/residue census.
+                if rf.unsupported {
+                    tally.2 += 1;
+                } else if rf.clashed {
+                    tally.3 += 1;
+                } else if !rf.sufficient {
+                    tally.1 += 1;
+                } else {
+                    tally.0 += 1;
+                }
+                if trace && i > 0 && i % 5000 == 0 {
+                    eprintln!(
+                        "QOPC_TALLY {}/{} el={:.1}s suff={} insuff={} unsup={} clash={}",
+                        i, queries.len(), t_pc.elapsed().as_secs_f64(),
+                        tally.0, tally.1, tally.2, tally.3
+                    );
+                }
+                continue;
+            }
             if rf.unsupported {
                 if trace {
                     eprintln!("QOPC bail (fwd) at {}/{} concept {}", i, queries.len(), a);
@@ -9749,6 +9818,16 @@ impl Ht {
                 eprintln!("QOPC {}/{} subs={} cands={} unsat={} ucands={}",
                     i, queries.len(), subs.len(), cands.len(), unsat.len(), unsat_cands.len());
             }
+        }
+        if pc_tally {
+            eprintln!(
+                "QOPC_TALLY DONE concepts={} el={:.1}s suff={} insuff={} unsup={} clash={} (per-concept feasibility: residue = insuff+unsup)",
+                queries.len(), t_pc.elapsed().as_secs_f64(),
+                tally.0, tally.1, tally.2, tally.3
+            );
+            // Return a benign answer so the caller does not fall through to the
+            // monolithic classify (this is a diagnostic, not a real classification).
+            return Some((true, Vec::new(), Vec::new()));
         }
         let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
         if trace {
