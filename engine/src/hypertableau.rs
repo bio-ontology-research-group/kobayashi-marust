@@ -9390,6 +9390,16 @@ impl Ht {
                         clean_unsat.len(),
                         qk.kp_insuff_nodes.len()
                     );
+                    eprintln!(
+                        "QOKP insuff-source: forall(∀)={} card(≤n)={} cardmerge_done={} | eq_defer[nonfiller={} norole={} unsat={} other={}]",
+                        DBG_FORALL_INSUFF.load(Ordering::Relaxed),
+                        DBG_CARD_INSUFF.load(Ordering::Relaxed),
+                        DBG_CARDMERGE.load(Ordering::Relaxed),
+                        DBG_EQ_NONFILLER.load(Ordering::Relaxed),
+                        DBG_EQ_NOROLE.load(Ordering::Relaxed),
+                        DBG_EQ_UNSAT.load(Ordering::Relaxed),
+                        DBG_EQ_OTHER.load(Ordering::Relaxed),
+                    );
                 }
                 if residue.is_empty() {
                     // every query concept CLEAN ⇒ sound+complete from the single pass.
