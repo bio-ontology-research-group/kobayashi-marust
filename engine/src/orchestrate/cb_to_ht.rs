@@ -292,6 +292,29 @@ fn card_drop(
     false
 }
 
+/// KM_HT_CARD_DROP_EM (experimental): does `c` match the `⊤ → Q ∨ NQ`
+/// excluded-middle RECOGNITION clause emitted for a card marker? Shape: empty
+/// body, head is a disjunction of `Concept(_, x)` atoms, at least one of whose
+/// concepts is a fresh card marker (`min`/`max`). Card markers are fresh `Q_`
+/// names used only by their own restriction, so a genuine ontology covering
+/// disjunction (`⊤ ⊑ A ⊔ B` over named classes) never matches.
+fn em_recognition_drop(
+    c: &JClause,
+    min_markers: &std::collections::HashSet<String>,
+    max_markers: &std::collections::HashSet<String>,
+) -> bool {
+    if !c.body.is_empty() || c.head.len() < 2 {
+        return false;
+    }
+    let all_concept_x = c.head.iter().all(|a| matches!(a,
+        JAtom::Concept { term: JTerm::Var { name }, .. } if name == "x"));
+    if !all_concept_x {
+        return false;
+    }
+    c.head.iter().any(|a| matches!(a,
+        JAtom::Concept { concept, .. } if min_markers.contains(concept) || max_markers.contains(concept)))
+}
+
 // ---------------------------------------------------------------------------
 // id registries (first-seen order)
 // ---------------------------------------------------------------------------
@@ -426,6 +449,9 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         }
     }
 
+    // KM_HT_CARD_DROP_EM: read once (not per-clause); inert unless card is active.
+    let drop_em = card_active && std::env::var_os("KM_HT_CARD_DROP_EM").is_some();
+
     // exj as an insertion-ordered map: f -> ExjRec
     let mut exj_order: Vec<String> = Vec::new();
     let mut exj: HashMap<String, ExjRec> = HashMap::new();
@@ -447,6 +473,18 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         // for a card marker (the `≥n` Skolem successors + distinctness, and the
         // `≤n` Eq-head). The first-class rule in `card_defs` replaces it.
         if card_active && card_drop(c, &min_markers, &max_markers) {
+            continue;
+        }
+        // KM_HT_CARD_DROP_EM (experimental, gated): also drop the clausal
+        // `⊤ → Q ∨ NQ` excluded-middle RECOGNITION clause for a card marker. This
+        // clause fires in EVERY context (empty body) and forces every node to branch
+        // on every cardinality definer — the source of the disjunction-search
+        // non-convergence on qualified-cardinality onts (ore_ont_10019: 10 such
+        // splits × ~330 nodes). The first-class `card_defs` ≥n/≤n rules already
+        // enforce the cardinality on the nodes that carry the role; this experiment
+        // measures whether dropping the global per-node recognition branch lets the
+        // search converge (and how much recognition completeness it costs vs HermiT).
+        if drop_em && em_recognition_drop(c, &min_markers, &max_markers) {
             continue;
         }
         let mut head_funs: Vec<String> = Vec::new();
