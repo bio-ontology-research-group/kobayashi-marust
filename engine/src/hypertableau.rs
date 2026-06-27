@@ -4068,7 +4068,18 @@ impl<'a> QoSat<'a> {
             }
             if guard > 50_000_000 || self.label.len() > cap {
                 if trace {
-                    eprintln!("QOSAT BAIL unsupported guard={} nodes={}", guard, self.label.len());
+                    // Konclude-comparable precompute outcome. Konclude's non-branching
+                    // precompute records cardinality bounds and converges (e.g. 14817:
+                    // "Finished precomputing in 3296 ms"); KM's shared-model precompute
+                    // diverges here when the frontend's `⊤→Q∨NQ` cardinality-recognition
+                    // excluded-middle parks on every node (pending) and the edge closure
+                    // cascades (edge_work). Report the blocker, not just "unsupported".
+                    eprintln!(
+                        "QO PRECOMPUTE DID-NOT-CONVERGE el={:.0}ms nodes={} pending={} edge_work={} stored_edges~{} (cardinality-recognition / disjunction parking)",
+                        self.sat_elapsed() * 1000.0, self.label.len(), self.pending.len(),
+                        self.edge_work.len(),
+                        (0..self.label.len()).map(|i| self.out_edges[i].len()).sum::<usize>(),
+                    );
                 }
                 self.unsupported = true;
                 return self.finish_global();
@@ -4098,6 +4109,20 @@ impl<'a> QoSat<'a> {
         // non-shared-filler (copy-on-conflict) infrastructure, not a flag-to-residue
         // pass. r-Succ stays on the per-concept QOPC path (`qo_classify_perconcept`),
         // where the model is small and the flag is precise.
+        // Konclude-comparable precompute outcome: the worklists drained and every
+        // parked disjunction was harvested/resolved — the analogue of Konclude's
+        // "Finished precomputing in N ms". A converging precompute here is the
+        // precondition for the cheap per-concept satisfiable-test classification
+        // that follows (Konclude does ~one satisfiable test per concept, 0
+        // calculated subsumption tests, on a converged precompute).
+        if trace {
+            eprintln!(
+                "QO PRECOMPUTE converged el={:.0}ms nodes={} stored_edges~{} pending={}",
+                self.sat_elapsed() * 1000.0, self.label.len(),
+                (0..self.label.len()).map(|i| self.out_edges[i].len()).sum::<usize>(),
+                self.pending.len(),
+            );
+        }
         if self.kpset || self.fcheck {
             self.kp_finalize();
         }
@@ -4120,6 +4145,27 @@ impl<'a> QoSat<'a> {
                     DBG_HARVEST_DISJ.load(Ordering::Relaxed),
                     DBG_HARVEST_NOOP.load(Ordering::Relaxed)
                 );
+                // KM_HT_QO_EDGESTATS: edge-concentration probe. Total stored edges,
+                // distinct filler targets, and the max in-degree — to confirm whether
+                // the edge_work growth is per-node materialization into a few shared
+                // fillers (ELK backward-links would collapse it) vs a genuinely wide
+                // edge set.
+                if std::env::var_os("KM_HT_QO_EDGESTATS").is_some() {
+                    let nn = self.label.len();
+                    let total: usize = (0..nn).map(|i| self.out_edges[i].len()).sum();
+                    let nfill = (0..nn).filter(|&i| self.is_filler[i]).count();
+                    let mut maxin = 0usize;
+                    let mut fill_in: usize = 0;
+                    for i in 0..nn {
+                        let ind = self.in_edges[i].len();
+                        if ind > maxin { maxin = ind; }
+                        if self.is_filler[i] { fill_in += ind; }
+                    }
+                    eprintln!(
+                        "QOEDGESTATS stored_edges={} fillers={} max_in_degree={} edges_into_fillers={}",
+                        total, nfill, maxin, fill_in
+                    );
+                }
             }
             if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
                 continue;
