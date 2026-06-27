@@ -2650,6 +2650,15 @@ struct QoSat<'a> {
     /// 73k-node SRIF onts, so the global saturation can be a SOUND ELI saturator.
     guard_refire: Vec<(usize, Node)>,
     concept_trig: HashMap<CLit, Vec<usize>>,
+    /// elc NF1 fast path (`KM_HT_QO_FASTIMPL`): clauses of the simple Horn shape
+    /// `C(x) → D(x)` (one concept body atom on the anchor, one concept head atom on
+    /// the anchor) are the bulk of a near-EL ontology (ore_ont_14817: 83% of
+    /// 272545 clauses). Firing them through `fire_concept_clause` allocates a
+    /// substitution vector and runs the full `apply_head` machinery per call (5.1M
+    /// calls). Index them as `C → [D…]` and apply directly with `add_lit` when `C`
+    /// arrives — result-identical (apply_head of a single concept head IS add_lit),
+    /// no allocation. These clauses are then EXCLUDED from `concept_trig`.
+    simple_impl: HashMap<CLit, Vec<CLit>>,
     /// Role-body clauses with a single role atom `R(s,t)` whose ONLY adjacent
     /// concept guard sits on the TARGET var, keyed by `(R, that-guard)` — the elc
     /// NF4 `(role, filler-concept)` index. A fresh `R`-edge `(s,t)` fires only the
@@ -3035,6 +3044,8 @@ impl<'a> QoSat<'a> {
         let fcheck = std::env::var_os("KM_HT_QO_FCHECK").is_some();
         let fprop_on = fprop_on || fcheck;
         let mut concept_trig: HashMap<CLit, Vec<usize>> = HashMap::new();
+        let fastimpl = std::env::var_os("KM_HT_QO_FASTIMPL").is_some();
+        let mut simple_impl: HashMap<CLit, Vec<CLit>> = HashMap::new();
         let mut role_tgt_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
         let mut role_src_trig: HashMap<(R, CLit), Vec<usize>> = HashMap::new();
         let mut role_noguard: HashMap<R, Vec<usize>> = HashMap::new();
@@ -3368,9 +3379,24 @@ impl<'a> QoSat<'a> {
                     }
                 }
             } else {
-                for a in body {
-                    if let Atom::Concept { lit, .. } = a {
-                        concept_trig.entry(*lit).or_default().push(cid);
+                // elc NF1 fast path: `C(x) → D(x)` (single concept body on X, single
+                // concept head on X). Index as C → D and skip concept_trig.
+                let simple = fastimpl
+                    && body.len() == 1
+                    && head.len() == 1
+                    && matches!(body[0], Atom::Concept { t, .. } if t == X)
+                    && matches!(head[0], Atom::Concept { t, .. } if t == X);
+                if simple {
+                    if let (Atom::Concept { lit: bl, .. }, Atom::Concept { lit: hl, .. }) =
+                        (&body[0], &head[0])
+                    {
+                        simple_impl.entry(*bl).or_default().push(*hl);
+                    }
+                } else {
+                    for a in body {
+                        if let Atom::Concept { lit, .. } = a {
+                            concept_trig.entry(*lit).or_default().push(cid);
+                        }
                     }
                 }
             }
@@ -3388,6 +3414,7 @@ impl<'a> QoSat<'a> {
             node_work: Vec::new(),
             guard_refire: Vec::new(),
             concept_trig,
+            simple_impl,
             role_tgt_trig,
             role_src_trig,
             role_noguard,
@@ -3962,6 +3989,20 @@ impl<'a> QoSat<'a> {
             // multi-GB allocation churn at the 2M-pop scale. Take the list out of
             // the map (O(1) move, no element copy), iterate, then restore it —
             // `fire_concept_clause` never touches `concept_trig`, so this is safe.
+            // elc NF1 fast path (KM_HT_QO_FASTIMPL): `C(x)→D(x)` clauses indexed as
+            // C→[D…] apply directly with add_lit (apply_head of a single concept head
+            // IS add_lit), skipping the substitution alloc + apply_head machinery.
+            if !self.simple_impl.is_empty() {
+                if let Some(heads) = self.simple_impl.remove(&lit) {
+                    for &e in &heads {
+                        self.add_lit(n, e);
+                        if self.node_unsat.contains(&n) {
+                            break;
+                        }
+                    }
+                    self.simple_impl.insert(lit, heads);
+                }
+            }
             if let Some(trigs) = self.concept_trig.remove(&lit) {
                 for &cid in &trigs {
                     self.fire_concept_clause(cid, n);
@@ -8767,7 +8808,18 @@ impl Ht {
             // so the default KM_HT_QO_CARD card-split path stays byte-identical
             // (pending-empty guard + bidirectional closure) until corpus-validated.
             let residue_complete = std::env::var_os("KM_HT_QO_RESIDUE_COMPLETE").is_some();
-            if qf.card_defer && !g.unsupported && (residue_complete || qf.pending.is_empty()) {
+            // Engage the global-forward classification when a cardinality was
+            // deferred (default path: card_defer + pending-empty), OR — under
+            // residue-complete only — when there are PARKED DISJUNCTIONS but no
+            // cardinality. A pure-∀+⊔ ontology (ore_ont_3215: 18323 disjunctions,
+            // head_eq=0) otherwise falls to per-concept classify_parallel, which
+            // branches every disjunction per query (timeout). The forward pass
+            // parks the disjunctions into qf.pending; seeding them as affected lets
+            // the clean bulk emit and the disjunction core go to the O(n) per-concept
+            // residue-complete verify. Confined to the opt-in residue-complete path.
+            let engage = (qf.card_defer && (residue_complete || qf.pending.is_empty()))
+                || (residue_complete && !qf.pending.is_empty());
+            if engage && !g.unsupported {
                 let nn = qf.label.len();
                 let mut affected = vec![false; nn];
                 let mut stack: Vec<Node> = Vec::new();
@@ -9514,7 +9566,19 @@ impl Ht {
         // 11395/3905/3377 were exactly large non-certifying onts). Sound by
         // construction: a deferral yields no answer, so CB (sound+complete) is used.
         let certify_only = std::env::var_os("KM_HT_QO_CERTIFY_ONLY").is_some();
-        if certify_only && count_inverse_bridges(&self.clauses) == 0 {
+        // The hybrid pays off when there is an inverse contribution to compose, so a
+        // non-inverse ont normally defers here (it would only pay INVCOMPOSE/sat_mode
+        // overhead). EXCEPTION: under residue-complete, the global-forward path is
+        // also the lazy-saturation classifier for PURE-DISJUNCTION onts (ore_ont_3215:
+        // SHI, 18323 disjunctions, no inverse bridge) — the same structure Konclude
+        // uses (non-branching precompute + residue SAT tests). Those have no inverse
+        // bridge but DO have parked disjunctions the residue-complete verify decides,
+        // so do not defer them here; let the forward pass + residue-complete run.
+        let residue_complete_disj = std::env::var_os("KM_HT_QO_RESIDUE_COMPLETE").is_some();
+        if certify_only
+            && count_inverse_bridges(&self.clauses) == 0
+            && !residue_complete_disj
+        {
             if std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!("QO router: no inverse bridge ⇒ defer (not a hybrid candidate)");
             }
