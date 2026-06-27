@@ -134,10 +134,38 @@ close it.** The real levers:
       `KM_HT_INCRBLOCK2` lever from 5303 — + search discipline EAGER/NEGTRIED/ORD,
       which the *fallback* `ht.classify` may not be applying).
 
-NEXT SESSION: re-census 9663/7914/3215 the same way (run `--debug-probe`, then
-SIGUSR1 the worker) to see whether they are ALSO precompute-fast-then-branch like
-14817, or genuinely saturation-bound. Do not assume the taxonomy; the debug
-toolkit makes the routing observable in one run.
+## RE-CENSUS RESULTS (2026-06-27, `--debug-probe` + SIGUSR1) — taxonomy rewritten
+
+| ont | QoSat precompute | routing | stuck in | class |
+|-----|------------------|---------|----------|-------|
+| 14817 | fast ~4s (pending 763k) | defer → `ht.classify` | `dfs`(195-deep)→`compute_blocked` | disjunction-search convergence (5303 family) |
+| 9663 | fast (pending **75**) | defer → `ht.classify` | `consistent`→`propagate` | deterministic-expansion / central blowup (the 115GB ont) |
+| 7914 | fast | defer → `ht.classify` | `propagate`→`rec_match_flex` | rule/graph-matching blowup |
+| 3215 | **STILL RUNNING** at 31s, ~10k apply/s | in QoSat | `saturate_global`→`drain_work`→`fire_concept_clause` | genuine saturation throughput (disjunction precompute) |
+
+**3 of 4 are NOT saturation-bound.** 14817/9663/7914 all DEFER from
+`quasi_order_classify` and blow up in the **monolithic branching `Ht::classify`**
+fallback — but in three DIFFERENT internals (`compute_blocked`, `propagate`,
+`rec_match_flex`). Only 3215 is actually in the QoSat saturation, and there the
+sink is `fire_concept_clause` throughput (~10k/s, pathologically slow), NOT
+`pending` scans (its pending stays ~4683).
+
+Implications for the plan:
+- **P1+P3 (decide per-concept, never call `ht.classify(&all)`)** is the right
+  lever for 14817/9663/7914 — they only hang because the QO path defers the WHOLE
+  classification to one branching run. BUT each blows up in a different tableau
+  internal, so per-concept `C ⊓ ¬D` tests must be **bounded with per-concept CB
+  fallback** (one test can still hit `propagate`/`rec_match_flex`/`compute_blocked`).
+- **3215** is a separate problem: `fire_concept_clause` constant-factor (P0 and the
+  edge port do not touch it; its `pending` is small). Needs the Konclude
+  descriptor-dispatch / no-body-rescan saturation speedup, or routing its EL part
+  to `elc`.
+- **P0 (committed `fba98e8`)** is latent on all four right now (none is currently
+  bottlenecked on the `pending` scan) — it is prophylaxis for when P1/P3 keep the
+  saturation running over a large `pending`.
+
+Census recipe: `tableau_cli --debug-probe < ont.tin` with the QO env, let it run
+~30s, then SIGUSR1 the busy worker TID (see debug-toolkit ref below).
 
 ## Debug toolkit quick ref
 
