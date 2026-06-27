@@ -1965,6 +1965,12 @@ pub struct Ht {
     /// KM_HT_CARD master switch: route number restrictions through the Konclude
     /// number rules (`card_defs`) rather than the legacy `KM_HT_NUMBER` Eq-merge.
     card: bool,
+    /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION. Replaces the frontend's
+    /// per-node `⊤→Q∨NQ` excluded-middle recognition (which branches on every node
+    /// and causes disjunction non-convergence on cardinality giants) with a
+    /// deterministic counting rule run at `Scan::Sat` (`card_recog_step`). The
+    /// clausal excluded middle is dropped by cb_to_ht when this is set.
+    card_recog: bool,
     /// KM_HT_PHASE: label-keyed phase saving. `phase[c]` = was concept `c` true in
     /// the most recent clash-free model. `order_disjuncts` tries a disjunct whose
     /// concept was last-true first, so each per-query witness rebuild warm-starts
@@ -5509,6 +5515,7 @@ impl Ht {
             forall_idx,
             card_defs: HashMap::new(),
             card: std::env::var_os("KM_HT_CARD").is_some(),
+            card_recog: std::env::var_os("KM_HT_CARD_RECOG").is_some(),
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -6776,6 +6783,144 @@ impl Ht {
         None
     }
 
+    /// Is `filler` IMPOSSIBLE at node `s` — would asserting it clash given the
+    /// current (saturated) model? Used by `card_recog_step` to qualify an otherwise
+    /// unqualified `≤n` successor as `¬filler` (so it does not count toward the
+    /// bound). Tentatively adds `filler`, propagates the consequences, reads the
+    /// clash, then backtracks to leave the model exactly as it was. Returns the
+    /// clash dependency when impossible (a sound justification for `¬filler` at
+    /// `s`), else `None`. Sound: a purely hypothetical probe with no lasting effect.
+    fn filler_impossible(&mut self, s: Node, filler: CLit) -> Option<DepSet> {
+        let comp = CLit { neg: !filler.neg, c: filler.c };
+        if self.ext.has_concept(s, comp) {
+            return Some(self.ext.dep_of(s, comp).cloned().unwrap_or_else(dep_empty));
+        }
+        if self.ext.has_concept(s, filler) {
+            return None;
+        }
+        let mark = self.ext.trail.len();
+        let saved_clash = self.ext.clash.take(); // None at Scan::Sat
+        self.ext.add_concept(s, filler, &dep_empty());
+        self.propagate();
+        let result = self.ext.clash.take();
+        self.ext.queue.clear();
+        self.ext.backtrack_to(mark);
+        self.ext.clash = saved_clash;
+        result
+    }
+
+    /// KM_HT_CARD_RECOG: propagation-based `≤n` RECOGNITION. Run only at a saturated
+    /// model (`Scan::Sat`), where every node's `r.F`-successor count is FINAL. For
+    /// each `≤n role.filler` marker `Q` (a `Max` `card_def`) and each canonical node
+    /// `v` not already carrying `Q`, count `v`'s distinct `role`-successors: those
+    /// provably carrying `filler` (definite), those carrying `¬filler` (excluded),
+    /// and the still-unqualified rest. If `definite + unqualified ≤ n`, then AT MOST
+    /// `n` of them can be the filler in any extension, so `≤n role.filler` holds and
+    /// we DERIVE `Q` deterministically (no branch). This replaces the frontend's
+    /// `⊤→Q∨NQ` excluded middle (dropped by cb_to_ht under the same flag), which
+    /// branched on every node. Sound: deriving `Q` only enables the first-class `≤n`
+    /// enforcement (`card_max`) + the recognition chains, both of which already hold
+    /// for a node that satisfies `≤n`; any later branch that pushes the count over
+    /// `n` clashes against that enforcement with `Q`'s conservative dep, so
+    /// backjumping stays correct. Monotone (markers are only ever added), so it
+    /// reaches a fixpoint. Returns true iff it derived a new marker.
+    fn card_recog_step(&mut self) -> bool {
+        if self.card_defs.is_empty() {
+            return false;
+        }
+        let maxdefs: Vec<(C, CardDef)> = self
+            .card_defs
+            .iter()
+            .filter(|(_, d)| d.kind == CardKind::Max)
+            .map(|(&c, &d)| (c, d))
+            .collect();
+        if maxdefs.is_empty() {
+            return false;
+        }
+        let nn = self.ext.num_nodes();
+        if std::env::var_os("KM_HT_RECOG_DBG").is_some() {
+            eprintln!("RECOG_STEP card_defs={} maxdefs={} nn={}", self.card_defs.len(), maxdefs.len(), nn);
+        }
+        let mut made = false;
+        for raw in 0..nn {
+            let v = self.ext.resolve(raw);
+            // canonical nodes only (a merged victim is dead; its survivor is visited).
+            if v != raw || self.ext.merged[v].is_some() {
+                continue;
+            }
+            for &(marker, def) in &maxdefs {
+                let qlit = CLit { neg: false, c: marker };
+                if self.ext.has_concept(v, qlit) {
+                    continue;
+                }
+                let comp = CLit { neg: !def.filler.neg, c: def.filler.c };
+                let mut succ: Vec<Node> = self.ext.out_edges[v]
+                    .iter()
+                    .filter(|&&(r, _, _)| r == def.role)
+                    .map(|&(_, t, _)| self.ext.resolve(t))
+                    .collect();
+                succ.sort_unstable();
+                succ.dedup();
+                // Classify successors first (owned `succ`, cloned deps) so no `ext`
+                // borrow is held across the mutating `filler_impossible` probe.
+                let mut definite: u32 = 0;
+                let mut dep = dep_empty();
+                let mut unqual: Vec<Node> = Vec::new();
+                for &s in &succ {
+                    let edep = edge_dep(&self.ext, def.role, v, s);
+                    if self.ext.has_concept(s, def.filler) {
+                        definite += 1;
+                        if let Some(d) = edep {
+                            dep = dep_union(&dep, &d);
+                        }
+                        if let Some(d) = self.ext.dep_of(s, def.filler) {
+                            dep = dep_union(&dep, d);
+                        }
+                    } else if self.ext.has_concept(s, comp) {
+                        if let Some(d) = edep {
+                            dep = dep_union(&dep, &d);
+                        }
+                        if let Some(d) = self.ext.dep_of(s, comp) {
+                            dep = dep_union(&dep, d);
+                        }
+                    } else {
+                        if let Some(d) = edep {
+                            dep = dep_union(&dep, &d);
+                        }
+                        unqual.push(s);
+                    }
+                }
+                if definite > def.n {
+                    continue; // already over the bound — `v` does not satisfy `≤n`.
+                }
+                // An unqualified successor that CANNOT carry the filler (asserting it
+                // clashes, e.g. a disjoint-class successor) is provably `¬filler` and
+                // does not count; one that could be the filler does.
+                let mut could = definite;
+                for &s in &unqual {
+                    match self.filler_impossible(s, def.filler) {
+                        Some(cdep) => dep = dep_union(&dep, &cdep),
+                        None => could += 1,
+                    }
+                    if could > def.n {
+                        break;
+                    }
+                }
+                if std::env::var_os("KM_HT_RECOG_DBG").is_some() && !succ.is_empty() {
+                    eprintln!(
+                        "RECOG node={} marker={} role={} filler={} n={} succ={} could={} -> {}",
+                        v, marker, def.role, def.filler.c, def.n, succ.len(), could,
+                        if could <= def.n { "DERIVE" } else { "skip" }
+                    );
+                }
+                if could <= def.n && self.ext.add_concept(v, qlit, &dep) {
+                    made = true;
+                }
+            }
+        }
+        made
+    }
+
     /// KM_HT_CARD choose branch (Konclude `applyAutomatChooseRule`): a `≤n`-counted
     /// successor `s` must commit to `filler` or `¬filler` for exact counting. Try
     /// `filler` first, then `¬filler`; standard dependency-directed backjump (mirror
@@ -7268,6 +7413,14 @@ impl Ht {
                         if let Some(mid) = self.next_merge() {
                             return self.branch_merge(mid, depth);
                         }
+                    }
+                    // KM_HT_CARD_RECOG: derive any ≤n recognition marker that now
+                    // provably holds at this saturated model (deterministic, no
+                    // branch). A newly derived marker fires recognition chains and
+                    // ≤n enforcement, so re-propagate and re-scan before declaring
+                    // the model complete.
+                    if self.card_recog && self.card_recog_step() {
+                        continue;
                     }
                     return Out::Sat;
                 }

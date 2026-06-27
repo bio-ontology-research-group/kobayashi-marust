@@ -315,6 +315,105 @@ fn em_recognition_drop(
         JAtom::Concept { concept, .. } if min_markers.contains(concept) || max_markers.contains(concept)))
 }
 
+/// KM_HT_CARD_GUARD_EM (experimental, Konclude/HermiT lazy unfolding of
+/// recognition): rather than dropping the `⊤ → Q ∨ NQ` cardinality-RECOGNITION
+/// excluded middle (which loses recognition completeness), GUARD it by the real
+/// (non-marker) concepts that co-occur with Q in the bodies that CONSUME Q. A
+/// node can only contribute to a recognition derivation `Q ⊓ g1 ⊓ … → H` when it
+/// already carries the real triggers g1…; emitting `g1 ⊓ … → Q ∨ NQ` fires the
+/// branch only there instead of on every node. Sound because the ≤n/≥n SEMANTICS
+/// are enforced first-class by `card_defs`, independent of the recognition
+/// markers; the excluded middle is pure recognition. Complete because the guard
+/// uses only the real co-triggers (a SUPERSET of when the full marker-bearing
+/// body holds), so the branch fires wherever a recognition could fire. Markers
+/// never alias real classes (fresh `Q_`), so a genuine covering disjunction is
+/// untouched. NOTE: gives no reduction when the triggers are UBIQUITOUS in a
+/// dense cardinality model (every molecule node is a CarbonAtom — ore_ont_10019
+/// still does not converge); for those the deterministic propagation recognition
+/// is required. Kept (gated, inert) for the onts where triggers are sparse.
+fn guard_em_transform(
+    clauses: &[JClause],
+    min_markers: &std::collections::HashSet<String>,
+    max_markers: &std::collections::HashSet<String>,
+) -> Vec<JClause> {
+    let is_marker = |c: &str| min_markers.contains(c) || max_markers.contains(c);
+    // marker -> distinct real-concept guard sets harvested from its consumer bodies.
+    let mut guards: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+    for c in clauses {
+        let body_markers: Vec<&String> = c
+            .body
+            .iter()
+            .filter_map(|a| match a {
+                JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && is_marker(concept) => Some(concept),
+                _ => None,
+            })
+            .collect();
+        if body_markers.is_empty() {
+            continue;
+        }
+        let mut g: Vec<String> = c
+            .body
+            .iter()
+            .filter_map(|a| match a {
+                JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && !is_marker(concept) => Some(concept.clone()),
+                _ => None,
+            })
+            .collect();
+        // Skip the marker's OWN expansion clauses (body = just the marker, e.g.
+        // `Q → ∃r.F` / `Q ∧ (f_i=f_j) → ⊥`): no real co-trigger, downstream of the
+        // split, not recognition consumers. Their empty guard would force the
+        // unguarded fallback and defeat the transform.
+        if g.is_empty() {
+            continue;
+        }
+        g.sort();
+        g.dedup();
+        for m in body_markers {
+            let e = guards.entry(m.clone()).or_default();
+            if !e.contains(&g) {
+                e.push(g.clone());
+            }
+        }
+    }
+    let mut out: Vec<JClause> = Vec::with_capacity(clauses.len());
+    for c in clauses {
+        if !em_recognition_drop(c, min_markers, max_markers) {
+            out.push(c.clone());
+            continue;
+        }
+        let mut gsets: Vec<Vec<String>> = Vec::new();
+        let mut any_consumer = false;
+        for a in &c.head {
+            if let JAtom::Concept { concept, .. } = a {
+                if let Some(gs) = guards.get(concept) {
+                    any_consumer = true;
+                    for g in gs {
+                        if !gsets.contains(g) {
+                            gsets.push(g.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if !any_consumer {
+            // recognition marker never consumed in any body ⇒ the split is dead.
+            continue;
+        }
+        if gsets.iter().any(|g| g.is_empty()) {
+            out.push(c.clone());
+            continue;
+        }
+        for g in &gsets {
+            let body: Vec<JAtom> = g
+                .iter()
+                .map(|cn| JAtom::Concept { concept: cn.clone(), term: JTerm::Var { name: "x".to_string() } })
+                .collect();
+            out.push(JClause { body, head: c.head.clone() });
+        }
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // id registries (first-seen order)
 // ---------------------------------------------------------------------------
@@ -450,7 +549,24 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     }
 
     // KM_HT_CARD_DROP_EM: read once (not per-clause); inert unless card is active.
-    let drop_em = card_active && std::env::var_os("KM_HT_CARD_DROP_EM").is_some();
+    // KM_HT_CARD_RECOG also drops the clausal `⊤→Q∨NQ` excluded middle — the
+    // deterministic propagation recognition (`card_recog_step` in the HT) replaces
+    // it, so the per-node branch must not remain.
+    let drop_em = card_active
+        && (std::env::var_os("KM_HT_CARD_DROP_EM").is_some()
+            || std::env::var_os("KM_HT_CARD_RECOG").is_some());
+
+    // KM_HT_CARD_GUARD_EM: rewrite the `⊤ → Q ∨ NQ` recognition splits into
+    // guarded form before pass 1 (the sound, lazy-unfolding form of DROP_EM).
+    // Inert unless card is active and the flag is set.
+    let guard_em = card_active && std::env::var_os("KM_HT_CARD_GUARD_EM").is_some();
+    let guarded_storage: Vec<JClause>;
+    let clauses: &[JClause] = if guard_em {
+        guarded_storage = guard_em_transform(clauses, &min_markers, &max_markers);
+        &guarded_storage
+    } else {
+        clauses
+    };
 
     // exj as an insertion-ordered map: f -> ExjRec
     let mut exj_order: Vec<String> = Vec::new();
