@@ -167,6 +167,41 @@ Implications for the plan:
 Census recipe: `tableau_cli --debug-probe < ont.tin` with the QO env, let it run
 ~30s, then SIGUSR1 the busy worker TID (see debug-toolkit ref below).
 
+## P1+P3 TRACED (2026-06-27) — already implemented; the blocker is the PRECOMPUTE
+
+The Konclude classify phase (P1 per-concept sufficiency + P3 per-concept residue
+SAT tests) is **already implemented** in `quasi_order_classify` (hypertableau.rs
+~10255+): Phase 1 reads dead/sufficient/insufficient off the shared model and emits
+subsumers for sufficient concepts; insufficient ones go to `qo_residue_test` (an
+in-place branching test on the shared QoSat model with trail rollback — "no
+self.consistent rebuild"); Phase 2 does per-candidate `qo_residue_test` with
+told-closure folding. So P1+P3 are NOT the missing piece.
+
+The giants never reach P1/P3 — they fail in the **precompute** (`saturate_global`):
+- **14817**: the precompute's `apply_head` Eq-arm hits a cardinality `≤n` head and,
+  without `KM_HT_QO_CARD`, sets `unsupported` in <4s ⇒ `quasi_order_classify`
+  returns None at `if g.unsupported` ⇒ falls to the monolithic `ht.classify`
+  (the 195-deep `dfs`/`compute_blocked` hang). WITH `KM_HT_QO_CARD` it no longer
+  bails but the saturation **does not converge**: `edge_work` explodes
+  617k→3.4M+ over 53s while `pending` stays pinned at ~763k (the 13 global
+  ⊤-disjunctions, never resolved; `harvest_disj`=0). Same with `CARDMERGE` — so
+  the non-convergence is the disjunction saturation itself, not the merge.
+- **9663/7914**: precompute defers ⇒ `ht.classify` blows up in `propagate` /
+  `rec_match_flex`.
+- **3215**: precompute genuinely slow in `fire_concept_clause`.
+
+**Conclusion: the lever is precompute-level, not P1/P3 orchestration.** Two sub-problems:
+1. The all-or-nothing `None => return None` in Phase 1/2 dumps the WHOLE
+   classification to the monolithic `ht.classify` on a single residue-test failure
+   (deadline/taint/unsupported). A graceful per-concept fallback (try the bounded
+   `self.consistent` test for just the undecided concept before abandoning) is the
+   sound orchestration fix — helps onts whose precompute COMPLETES but a few tests
+   fail. Needs a corpus sweep (could regress onts `ht.classify` currently solves).
+2. The precompute non-convergence: why does `edge_work` grow to millions on a
+   FIXED 58k-node model with 763k unresolved parked disjunctions? `harvest_disj`=0
+   (harvest never fires) and `pending` never shrinks ⇒ the fixpoint re-runs
+   `drain_work` forever. This (shared with 3215) is the real remaining work.
+
 ## Debug toolkit quick ref
 
 - `tableau_cli --debug < ont.tin` → routing + phase wall timing + saturation
