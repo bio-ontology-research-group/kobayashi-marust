@@ -82,6 +82,9 @@ static DBG_ADDLIT: AtomicU64 = AtomicU64::new(0); // add_lit calls (true inserts
 static DBG_GRFIRE: AtomicU64 = AtomicU64::new(0); // guard_refire pops processed
 static DBG_TRIGSCAN: AtomicU64 = AtomicU64::new(0); // lits scanned in src/tgt-trig to_fire build
 static DBG_MAXLABEL: AtomicU64 = AtomicU64::new(0); // max label size seen in a to_fire scan
+static DBG_EVALSCAN: AtomicU64 = AtomicU64::new(0); // total `pending` entries scanned by eval_parked_at
+static DBG_KILLSCAN: AtomicU64 = AtomicU64::new(0); // total `pending` entries scanned by kill_node
+static DBG_KILLS: AtomicU64 = AtomicU64::new(0); // kill_node calls (node clashes)
 
 // KM_HT_NUMBER safety: a single clause body match (`rec_match_flex`) can blow up
 // into an enormous join over a dense merged graph (the SHIQ ≤n / inverse path),
@@ -3017,6 +3020,18 @@ struct QoSat<'a> {
     /// QOEDGE print interval (in edge pops).
     edgeprobe: bool,
     edgeprobe_iv: u64,
+    /// Wall-clock start of the current `saturate_global` pass — lets the QOSAT/
+    /// QODRAIN/QOEDGE heartbeats print elapsed seconds, so a rate collapse is
+    /// visible directly in wall time (the throughput-giant diagnosis). Set at the
+    /// top of `saturate_global`; only read under `KM_HT_TRACE`.
+    sat_t0: Option<Instant>,
+    /// Last wall-clock heartbeat print (the TIME-driven probe). The QODRAIN/QOEDGE
+    /// prints are pop-count-gated, so they go SILENT during a rate collapse (the
+    /// exact symptom we want to see). `hb_check` prints at most every `hb_interval`
+    /// seconds regardless of pop rate, so a stall shows up as a heartbeat with
+    /// barely-moving counters. Gated on `edgeprobe`.
+    last_hb: Option<Instant>,
+    hb_interval: f64,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -3525,6 +3540,47 @@ impl<'a> QoSat<'a> {
                 .and_then(|s| s.parse().ok())
                 .filter(|&n| n > 0)
                 .unwrap_or(2_000),
+            sat_t0: None,
+            last_hb: None,
+            hb_interval: std::env::var("KM_HT_QO_HB")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&n: &f64| n > 0.0)
+                .unwrap_or(2.0),
+        }
+    }
+
+    /// Seconds elapsed in the current `saturate_global` pass (0.0 before it starts).
+    /// Only called from the `KM_HT_TRACE` heartbeats.
+    fn sat_elapsed(&self) -> f64 {
+        self.sat_t0.map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0)
+    }
+
+    /// TIME-driven heartbeat (debug): print at most every `hb_interval` seconds,
+    /// regardless of how fast pops advance — so a throughput collapse is visible
+    /// (the pop-count-gated QODRAIN/QOEDGE lines go silent when the rate drops).
+    /// `tag` names the active loop. No-op unless `edgeprobe` + `KM_HT_TRACE`.
+    fn hb_check(&mut self, tag: &str) {
+        if !self.edgeprobe {
+            return;
+        }
+        let now = Instant::now();
+        let due = match self.last_hb {
+            Some(last) => now.duration_since(last).as_secs_f64() >= self.hb_interval,
+            None => true,
+        };
+        if due {
+            self.last_hb = Some(now);
+            if std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "QOHB {} el={:.1}s nodes={} lit_work={} edge_work={} node_work={} pending={} | apply={} kpw={} addlit={} frc={} match={} fprope={}",
+                    tag, self.sat_elapsed(), self.label.len(), self.lit_work.len(),
+                    self.edge_work.len(), self.node_work.len(), self.pending.len(),
+                    DBG_APPLY.load(Ordering::Relaxed), DBG_KPW.load(Ordering::Relaxed),
+                    DBG_ADDLIT.load(Ordering::Relaxed), DBG_FRC.load(Ordering::Relaxed),
+                    DBG_MATCH.load(Ordering::Relaxed), DBG_FPROPE.load(Ordering::Relaxed),
+                );
+            }
         }
     }
 
@@ -3669,6 +3725,22 @@ impl<'a> QoSat<'a> {
             if self.tracing {
                 self.trail.push(QoUndo::Unsat(n));
                 return;
+            }
+            // Probe: O(|pending|) full scan per clash — quadratic when `pending` is
+            // the 763k global-disjunction set. Count scan volume + clash count.
+            if self.edgeprobe {
+                let pl = self.pending.len() as u64;
+                let prev = DBG_KILLSCAN.fetch_add(pl, Ordering::Relaxed);
+                let kc = DBG_KILLS.fetch_add(1, Ordering::Relaxed);
+                if std::env::var_os("KM_HT_TRACE").is_some()
+                    && pl > 10_000
+                    && prev / 500_000_000 != (prev + pl) / 500_000_000
+                {
+                    eprintln!(
+                        "QOKILL el={:.1}s kill_node scan-volume={} kills={} (|pending|={})",
+                        self.sat_elapsed(), prev + pl, kc + 1, pl
+                    );
+                }
             }
             let mut i = 0;
             while i < self.pending.len() {
@@ -3953,6 +4025,8 @@ impl<'a> QoSat<'a> {
         // generous headroom for ∃-filler / definer nodes.
         let cap = named_concepts.len().saturating_add(500_000).max(QO_NODE_CAP);
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
+        self.sat_t0 = Some(Instant::now());
+        self.last_hb = None;
         if trace {
             eprintln!(
                 "QOSAT seeded named={} nodes_after_seed={} cap={}",
@@ -3966,9 +4040,9 @@ impl<'a> QoSat<'a> {
             guard += 1;
             if trace && guard % 100 == 0 {
                 eprintln!(
-                    "QOSAT guard={} nodes={} lit_work={} edge_work={} node_work={} pending={} open_disj={}",
-                    guard, self.label.len(), self.lit_work.len(), self.edge_work.len(),
-                    self.node_work.len(), self.pending.len(), self.open_disj
+                    "QOSAT el={:.1}s guard={} nodes={} lit_work={} edge_work={} node_work={} pending={} open_disj={}",
+                    self.sat_elapsed(), guard, self.label.len(), self.lit_work.len(),
+                    self.edge_work.len(), self.node_work.len(), self.pending.len(), self.open_disj
                 );
             }
             if guard > 50_000_000 || self.label.len() > cap {
@@ -4014,10 +4088,13 @@ impl<'a> QoSat<'a> {
     fn drain_work(&mut self) {
         while let Some((n, lit)) = self.lit_work.pop() {
             let d = QO_DRAIN.fetch_add(1, Ordering::Relaxed);
+            if self.edgeprobe && d % 5_000 == 0 {
+                self.hb_check("lit");
+            }
             if d > 0 && d % 2_000_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
-                    "QODRAIN steps={} nodes={} lit_work={} edge_work={} node_work={} pending={} | harvest_disj={} noop={}",
-                    d, self.label.len(), self.lit_work.len(), self.edge_work.len(),
+                    "QODRAIN el={:.1}s steps={} nodes={} lit_work={} edge_work={} node_work={} pending={} | harvest_disj={} noop={}",
+                    self.sat_elapsed(), d, self.label.len(), self.lit_work.len(), self.edge_work.len(),
                     self.node_work.len(), self.pending.len(),
                     DBG_HARVEST_DISJ.load(Ordering::Relaxed),
                     DBG_HARVEST_NOOP.load(Ordering::Relaxed)
@@ -4133,10 +4210,13 @@ impl<'a> QoSat<'a> {
         }
         while let Some(n) = self.node_work.pop() {
             let e = QO_NODE.fetch_add(1, Ordering::Relaxed);
+            if self.edgeprobe && e % 2_000 == 0 {
+                self.hb_check("node");
+            }
             if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
-                    "QONODE pops={} global_per_node={} edge_work={} node_work={}",
-                    e, self.global.len(), self.edge_work.len(), self.node_work.len()
+                    "QONODE el={:.1}s pops={} global_per_node={} edge_work={} node_work={}",
+                    self.sat_elapsed(), e, self.global.len(), self.edge_work.len(), self.node_work.len()
                 );
             }
             if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
@@ -4156,11 +4236,14 @@ impl<'a> QoSat<'a> {
         }
         while let Some((s, r, t)) = self.edge_work.pop() {
             let e = QO_EDGE.fetch_add(1, Ordering::Relaxed);
+            if self.edgeprobe && e % 2_000 == 0 {
+                self.hb_check("edge");
+            }
             if self.edgeprobe {
                 if e > 0 && e % self.edgeprobe_iv == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                     eprintln!(
-                        "QOEDGE pops={} edge_work={} lit_work={} nodes={} | frc={} match={} apply={} fprope={} kpw={} addlit={} trigscan={} maxlabel={}",
-                        e, self.edge_work.len(), self.lit_work.len(), self.label.len(),
+                        "QOEDGE el={:.1}s pops={} edge_work={} lit_work={} nodes={} | frc={} match={} apply={} fprope={} kpw={} addlit={} trigscan={} maxlabel={}",
+                        self.sat_elapsed(), e, self.edge_work.len(), self.lit_work.len(), self.label.len(),
                         DBG_FRC.load(Ordering::Relaxed), DBG_MATCH.load(Ordering::Relaxed),
                         DBG_APPLY.load(Ordering::Relaxed), DBG_FPROPE.load(Ordering::Relaxed),
                         DBG_KPW.load(Ordering::Relaxed), DBG_ADDLIT.load(Ordering::Relaxed),
@@ -4178,6 +4261,32 @@ impl<'a> QoSat<'a> {
             // migrated onto the survivor's fresh edges.
             if self.merged_into[s].is_some() || self.merged_into[t].is_some() {
                 continue;
+            }
+            // Slow-pop probe: capture this edge pop's start time + the prop/fprop
+            // set sizes it is about to iterate, so a single pathological pop (a
+            // giant prop set / a heavy fire_role_clause fan-out) is pinpointed.
+            // A big prop set is announced BEFORE the loop (so it shows even if that
+            // loop is the one that hangs); the end-of-pop timer reports the rest.
+            let dbg_pop_t0 = if self.edgeprobe { Some(Instant::now()) } else { None };
+            let dbg_propn = if self.edgeprobe {
+                self.prop.get(&(r, t)).map(|v| v.len()).unwrap_or(0)
+            } else {
+                0
+            };
+            let dbg_fpropn = if self.edgeprobe && self.fprop_on {
+                self.fprop.get(&(r, s)).map(|v| v.len()).unwrap_or(0)
+            } else {
+                0
+            };
+            if self.edgeprobe
+                && (dbg_propn > 50_000 || dbg_fpropn > 50_000)
+                && std::env::var_os("KM_HT_TRACE").is_some()
+            {
+                eprintln!(
+                    "QOSLOW el={:.1}s BIG set at pop: s={} r={} t={} propset={} fpropset={} label[s]={} label[t]={}",
+                    self.sat_elapsed(), s, r, t, dbg_propn, dbg_fpropn,
+                    self.label[s].len(), self.label[t].len()
+                );
             }
             // Fire only the role-body clauses that mention this edge's exact
             // role `r`; a clause without `r` in its body is a guaranteed no-op
@@ -4291,6 +4400,7 @@ impl<'a> QoSat<'a> {
                     }
                 }
             }
+            let dbg_tofire = to_fire.len();
             for &cid in &to_fire {
                 self.fire_role_clause(cid, s, r, t);
                 if self.unsupported {
@@ -4303,6 +4413,19 @@ impl<'a> QoSat<'a> {
             if self.edgefast {
                 self.to_fire_buf = to_fire;
             }
+            // End-of-pop slow timer: a single edge pop should be sub-microsecond; if
+            // it took a meaningful slice of wall time, report the breakdown so the
+            // throughput sink is attributed to prop-inheritance vs role-clause fan-out.
+            if let Some(t0) = dbg_pop_t0 {
+                let el = t0.elapsed().as_secs_f64();
+                if el > 0.25 && std::env::var_os("KM_HT_TRACE").is_some() {
+                    eprintln!(
+                        "QOSLOW el={:.1}s edge pop took {:.2}s: s={} r={} t={} | propset={} fpropset={} to_fire={} label[s]={} label[t]={}",
+                        self.sat_elapsed(), el, s, r, t, dbg_propn, dbg_fpropn,
+                        dbg_tofire, self.label[s].len(), self.label[t].len()
+                    );
+                }
+            }
         }
         // Trigger-keyed `complete_roles` re-firing: a guard concept arrived at a
         // node that may already have incident edges; re-anchor the keyed role
@@ -4313,10 +4436,13 @@ impl<'a> QoSat<'a> {
         while let Some((cid, n)) = self.guard_refire.pop() {
             if self.edgeprobe {
                 let g = DBG_GRFIRE.fetch_add(1, Ordering::Relaxed);
+                if g % 5_000 == 0 {
+                    self.hb_check("grfire");
+                }
                 if g > 0 && g % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                     eprintln!(
-                        "QOGRFIRE pops={} guard_refire={} lit_work={} edge_work={} | frc={} match={} apply={} fprope={} kpw={} addlit={}",
-                        g, self.guard_refire.len(), self.lit_work.len(), self.edge_work.len(),
+                        "QOGRFIRE el={:.1}s pops={} guard_refire={} lit_work={} edge_work={} | frc={} match={} apply={} fprope={} kpw={} addlit={}",
+                        self.sat_elapsed(), g, self.guard_refire.len(), self.lit_work.len(), self.edge_work.len(),
                         DBG_FRC.load(Ordering::Relaxed), DBG_MATCH.load(Ordering::Relaxed),
                         DBG_APPLY.load(Ordering::Relaxed), DBG_FPROPE.load(Ordering::Relaxed),
                         DBG_KPW.load(Ordering::Relaxed), DBG_ADDLIT.load(Ordering::Relaxed),
@@ -4359,14 +4485,24 @@ impl<'a> QoSat<'a> {
     /// `n` derives every literal common to `node(D1)..node(Dk)` into `n`.
     fn harvest_all(&mut self) {
         let parked: Vec<(Node, usize)> = self.pending.clone();
-        for (n, cid) in parked {
-            if self.node_unsat.contains(&n) {
+        if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("QOPHASE harvest_all START el={:.1}s over {} parked disjunctions", self.sat_elapsed(), parked.len());
+        }
+        for (i, (n, cid)) in parked.iter().enumerate() {
+            if self.edgeprobe && i % 50_000 == 0 {
+                self.hb_check("harvest");
+            }
+            if self.node_unsat.contains(n) {
                 continue;
             }
-            self.harvest_disj(n, cid);
+            self.harvest_disj(*n, *cid);
             if self.unsupported {
                 return;
             }
+        }
+        if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("QOPHASE harvest_all DONE el={:.1}s harvest_disj={} noop={}", self.sat_elapsed(),
+                DBG_HARVEST_DISJ.load(Ordering::Relaxed), DBG_HARVEST_NOOP.load(Ordering::Relaxed));
         }
     }
 
@@ -4433,8 +4569,17 @@ impl<'a> QoSat<'a> {
     /// Re-evaluate ALL parked disjunctions (global pass at fixpoint).
     fn eval_all_parked(&mut self) {
         let pend = self.pending.clone();
-        for (n, _cid) in pend {
-            self.eval_parked_at(n);
+        if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("QOPHASE eval_all_parked START el={:.1}s over {} parked", self.sat_elapsed(), pend.len());
+        }
+        for (i, (n, _cid)) in pend.iter().enumerate() {
+            if self.edgeprobe && i % 50_000 == 0 {
+                self.hb_check("eval_parked");
+            }
+            self.eval_parked_at(*n);
+        }
+        if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
+            eprintln!("QOPHASE eval_all_parked DONE el={:.1}s", self.sat_elapsed());
         }
     }
 
@@ -4939,7 +5084,18 @@ impl<'a> QoSat<'a> {
         out: &mut Vec<Vec<Option<Node>>>,
     ) {
         if self.edgeprobe {
-            DBG_MATCH.fetch_add(1, Ordering::Relaxed);
+            let m = DBG_MATCH.fetch_add(1, Ordering::Relaxed);
+            // A single `match_body` that recurses millions of times is a chain-clause
+            // binding explosion over a high-degree node — the suspected single-pop
+            // sink. Print periodically (wall time + depth) so it is visible even while
+            // the enclosing edge pop never returns.
+            if m % 5_000_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                eprintln!(
+                    "QOMATCH el={:.1}s match_body_calls={} apply={} addlit={}",
+                    self.sat_elapsed(), m,
+                    DBG_APPLY.load(Ordering::Relaxed), DBG_ADDLIT.load(Ordering::Relaxed)
+                );
+            }
         }
         let k = match (0..body.len()).find(|&i| !done[i]) {
             Some(k) => k,
@@ -5554,6 +5710,25 @@ impl<'a> QoSat<'a> {
     /// Re-evaluate parked disjunctions at `n`: a label change may have satisfied,
     /// unit-resolved, or all-refuted one. Maintains `open_disj`.
     fn eval_parked_at(&mut self, n: Node) {
+        // Probe: this is an O(|pending|) full scan per call (it filters `pending`
+        // by node). Called per lit pop, so with a large global-disjunction
+        // `pending` (the 13 ⊤-disjunctions of 14817 park on all 58k nodes ⇒ 763k
+        // entries) it is QUADRATIC — the dominant throughput sink. Count the scan
+        // volume so the cost is attributable; print periodically with wall time.
+        if self.edgeprobe {
+            let pl = self.pending.len() as u64;
+            let prev = DBG_EVALSCAN.fetch_add(pl, Ordering::Relaxed);
+            DBG_MAXLABEL.fetch_max(pl, Ordering::Relaxed); // reuse: max pending seen
+            if std::env::var_os("KM_HT_TRACE").is_some()
+                && pl > 10_000
+                && prev / 500_000_000 != (prev + pl) / 500_000_000
+            {
+                eprintln!(
+                    "QOEVAL el={:.1}s eval_parked scan-volume={} (|pending|={})",
+                    self.sat_elapsed(), prev + pl, pl
+                );
+            }
+        }
         let mut i = 0;
         while i < self.pending.len() {
             if self.pending[i].0 != n || self.node_unsat.contains(&n) {
@@ -8858,7 +9033,15 @@ impl Ht {
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         ); // forward-only ⇒ sound
         qf.complete_roles = true;
+        let t_pre = Instant::now();
         let g = qf.saturate_global(queries);
+        if trace {
+            eprintln!(
+                "QOPHASE precompute DONE in {:.1}s: nodes={} pending={} insuff_nodes={} qo_insuff={} kp_insuff={} unsupported={}",
+                t_pre.elapsed().as_secs_f64(), qf.label.len(), qf.pending.len(),
+                qf.kp_insuff_nodes.len(), qf.qo_insufficient, qf.kp_insufficient, g.unsupported
+            );
+        }
         // Defer to the per-concept gate unless the single pass is fully clean:
         //  - `unsupported`: out-of-fragment / node-cap bail.
         //  - `qo_insufficient`: a ∀/range write polluted a shared filler, so a
@@ -9052,7 +9235,16 @@ impl Ht {
                         .and_then(|v| v.parse().ok())
                         .unwrap_or(5000);
                     if res <= rcap {
-                        if let Some((ru, rsv)) = self.qo_residue_complete(&residue, &qset) {
+                        let t_res = Instant::now();
+                        let rc = self.qo_residue_complete(&residue, &qset);
+                        if trace {
+                            eprintln!(
+                                "QOPHASE residue-complete ({} concepts) returned {} in {:.1}s",
+                                res, if rc.is_some() { "certified" } else { "defer" },
+                                t_res.elapsed().as_secs_f64()
+                            );
+                        }
+                        if let Some((ru, rsv)) = rc {
                             cu.extend(ru);
                             cs.extend(rsv);
                             let consistent =

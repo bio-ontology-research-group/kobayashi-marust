@@ -16,6 +16,63 @@ use std::process::exit;
 
 use crate::json_io::{JClause, JInput, JOutput};
 
+/// Convenience debug switch: if `--debug` (or `--debug-probe`) is anywhere on the
+/// command line, turn on the diagnostic tracing env vars before the worker runs,
+/// so a user does not have to remember to `export` them.
+///   `--debug`       → `KM_HT_TRACE` (routing decisions, per-phase wall timing, the
+///                     QOSAT/QODRAIN/QOEDGE saturation heartbeats with elapsed s).
+///   `--debug-probe` → additionally `KM_HT_QO_EDGEPROBE` (per-primitive work-volume
+///                     counters + the time-driven `QOHB` heartbeat that stays live
+///                     during a throughput collapse).
+/// Explicitly-set env vars are never overridden. Recognised by every worker, so it
+/// works for both `km tableau --debug` and the standalone `tableau_cli --debug`.
+/// SIGUSR1 handler (debug only): dump the interrupted thread's stack. Lets a
+/// throughput sink be located without an external sampler (none are installed on
+/// the build host). `force_capture` allocates, so it is NOT async-signal-safe —
+/// this is a one-shot diagnostic used only under `--debug-probe`, never in
+/// production. Send it to the spinning worker thread with
+/// `kill -USR1 <tid>` (the TID from `/proc/<pid>/task` whose `stat` shows the CPU).
+#[cfg(unix)]
+extern "C" fn km_sigusr1_bt(_sig: i32) {
+    let bt = std::backtrace::Backtrace::force_capture();
+    eprintln!("\n=== SIGUSR1 backtrace ===\n{bt}\n=== end backtrace ===");
+}
+
+pub fn maybe_enable_debug() {
+    let mut trace = false;
+    let mut probe = false;
+    for a in std::env::args() {
+        match a.as_str() {
+            "--debug" => trace = true,
+            "--debug-probe" => {
+                trace = true;
+                probe = true;
+            }
+            _ => {}
+        }
+    }
+    if trace && std::env::var_os("KM_HT_TRACE").is_none() {
+        std::env::set_var("KM_HT_TRACE", "1");
+    }
+    if probe && std::env::var_os("KM_HT_QO_EDGEPROBE").is_none() {
+        // The value doubles as the QOEDGE per-pop print interval, so a small value
+        // (e.g. 1) prints every pop and makes the run stderr-I/O-bound — use a
+        // coarse interval; the time-driven `QOHB` heartbeat is the real probe and
+        // is independent of this. Override by exporting KM_HT_QO_EDGEPROBE yourself.
+        std::env::set_var("KM_HT_QO_EDGEPROBE", "200000");
+    }
+    if probe {
+        // Install the SIGUSR1 stack-dumper so a stuck worker can be sampled.
+        #[cfg(unix)]
+        unsafe {
+            libc::signal(libc::SIGUSR1, km_sigusr1_bt as usize as libc::sighandler_t);
+        }
+        if std::env::var_os("RUST_BACKTRACE").is_none() {
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ofn — OWL functional-syntax normalisation frontend
 // ---------------------------------------------------------------------------
@@ -216,6 +273,7 @@ pub fn run_elc() {
 // ---------------------------------------------------------------------------
 pub fn run_engine() {
     use crate::reasoner::Reasoner;
+    maybe_enable_debug();
     let mut buf = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
         eprintln!("failed to read stdin: {e}");
@@ -260,6 +318,7 @@ pub fn run_engine() {
 // tableau — the ALC(HOQ) hypertableau (TInput on stdin -> TOutput on stdout)
 // ---------------------------------------------------------------------------
 pub fn run_tableau() {
+    maybe_enable_debug();
     let mut buf = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
         eprintln!("failed to read stdin: {e}");
