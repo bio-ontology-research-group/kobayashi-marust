@@ -2654,6 +2654,15 @@ struct QoSat<'a> {
     concept_node: HashMap<CLit, Node>,
     /// parked disjunctions: (node, clause_id); re-evaluated as labels grow.
     pending: Vec<(Node, usize)>,
+    /// P0 (Konclude per-node critical queue): `pending_by_node[n]` holds the
+    /// INDICES into `pending` of the disjunctions parked at node `n`. Lets
+    /// `eval_parked_at(n)` and `kill_node(n)` touch only `n`'s parked entries
+    /// instead of scanning the whole `pending` Vec — the O(|pending|) → O(deg(n))
+    /// fix (|pending| reaches 763k on 14817: the 13 global ⊤-disjunctions × 58k
+    /// nodes). Maintained ONLY in the non-tracing global precompute; the residue
+    /// DFS (tracing) keeps its small linear scan + length-truncate undo untouched,
+    /// so this is inert there. Kept in sync with `pending` via `pending_remove`.
+    pending_by_node: Vec<Vec<usize>>,
     /// nodes whose own seed is unsatisfiable (local clash, not KB clash).
     node_unsat: HashSet<Node>,
     lit_work: Vec<(Node, CLit)>,
@@ -3454,6 +3463,7 @@ impl<'a> QoSat<'a> {
             in_edges: Vec::new(),
             concept_node: HashMap::new(),
             pending: Vec::new(),
+            pending_by_node: Vec::new(),
             node_unsat: HashSet::new(),
             lit_work: Vec::new(),
             edge_work: Vec::new(),
@@ -3596,6 +3606,7 @@ impl<'a> QoSat<'a> {
         self.in_edges.clear();
         self.concept_node.clear();
         self.pending.clear();
+        self.pending_by_node.clear();
         self.node_unsat.clear();
         self.lit_work.clear();
         self.edge_work.clear();
@@ -3637,11 +3648,34 @@ impl<'a> QoSat<'a> {
         self.node_fil.push(None);
         self.merged_into.push(None);
         self.node_seed.push(Vec::new());
+        self.pending_by_node.push(Vec::new());
         self.node_work.push(id);
         if self.tracing {
             self.trail.push(QoUndo::NodeNew);
         }
         id
+    }
+
+    /// Remove `pending[i]` while keeping the `pending_by_node` index consistent
+    /// (P0). swap_remove moves the last entry into slot `i`; both the removed
+    /// entry's node-list and (if a different entry moved) the moved entry's
+    /// node-list are fixed up. Does NOT touch `open_disj` (the caller owns that,
+    /// matching the prior inline `swap_remove` + decrement). Non-tracing only —
+    /// the tracing residue DFS never builds `pending_by_node`.
+    fn pending_remove(&mut self, i: usize) {
+        let last = self.pending.len() - 1;
+        let (n, _) = self.pending[i];
+        if let Some(pos) = self.pending_by_node[n].iter().position(|&x| x == i) {
+            self.pending_by_node[n].swap_remove(pos);
+        }
+        self.pending.swap_remove(i);
+        if i != last {
+            // the entry that was at `last` now sits at `i`: retarget its index.
+            let (nm, _) = self.pending[i];
+            if let Some(p) = self.pending_by_node[nm].iter().position(|&x| x == last) {
+                self.pending_by_node[nm][p] = i;
+            }
+        }
     }
 
     /// The dedicated shared node for a concept literal: one node per `CLit`,
@@ -3726,30 +3760,17 @@ impl<'a> QoSat<'a> {
                 self.trail.push(QoUndo::Unsat(n));
                 return;
             }
-            // Probe: O(|pending|) full scan per clash — quadratic when `pending` is
-            // the 763k global-disjunction set. Count scan volume + clash count.
+            // P0: remove `n`'s parked disjunctions via the per-node index — O(deg(n))
+            // instead of the O(|pending|) full scan (763k on 14817). The probe now
+            // measures the actual per-node work removed.
             if self.edgeprobe {
-                let pl = self.pending.len() as u64;
-                let prev = DBG_KILLSCAN.fetch_add(pl, Ordering::Relaxed);
-                let kc = DBG_KILLS.fetch_add(1, Ordering::Relaxed);
-                if std::env::var_os("KM_HT_TRACE").is_some()
-                    && pl > 10_000
-                    && prev / 500_000_000 != (prev + pl) / 500_000_000
-                {
-                    eprintln!(
-                        "QOKILL el={:.1}s kill_node scan-volume={} kills={} (|pending|={})",
-                        self.sat_elapsed(), prev + pl, kc + 1, pl
-                    );
-                }
+                let pl = self.pending_by_node[n].len() as u64;
+                DBG_KILLSCAN.fetch_add(pl, Ordering::Relaxed);
+                DBG_KILLS.fetch_add(1, Ordering::Relaxed);
             }
-            let mut i = 0;
-            while i < self.pending.len() {
-                if self.pending[i].0 == n {
-                    self.pending.swap_remove(i);
-                    self.open_disj = self.open_disj.saturating_sub(1);
-                } else {
-                    i += 1;
-                }
+            while let Some(&idx) = self.pending_by_node[n].last() {
+                self.pending_remove(idx);
+                self.open_disj = self.open_disj.saturating_sub(1);
             }
         }
     }
@@ -5437,6 +5458,9 @@ impl<'a> QoSat<'a> {
         // ≥2 live: park. Record and count as open.
         if self.tracing {
             self.trail.push(QoUndo::Pending(self.pending.len()));
+        } else {
+            // P0: index the parked entry by its anchor node (non-tracing only).
+            self.pending_by_node[anchor].push(self.pending.len());
         }
         self.pending.push((anchor, cid));
         self.open_disj += 1;
@@ -5710,24 +5734,42 @@ impl<'a> QoSat<'a> {
     /// Re-evaluate parked disjunctions at `n`: a label change may have satisfied,
     /// unit-resolved, or all-refuted one. Maintains `open_disj`.
     fn eval_parked_at(&mut self, n: Node) {
-        // Probe: this is an O(|pending|) full scan per call (it filters `pending`
-        // by node). Called per lit pop, so with a large global-disjunction
-        // `pending` (the 13 ⊤-disjunctions of 14817 park on all 58k nodes ⇒ 763k
-        // entries) it is QUADRATIC — the dominant throughput sink. Count the scan
-        // volume so the cost is attributable; print periodically with wall time.
-        if self.edgeprobe {
-            let pl = self.pending.len() as u64;
-            let prev = DBG_EVALSCAN.fetch_add(pl, Ordering::Relaxed);
-            DBG_MAXLABEL.fetch_max(pl, Ordering::Relaxed); // reuse: max pending seen
-            if std::env::var_os("KM_HT_TRACE").is_some()
-                && pl > 10_000
-                && prev / 500_000_000 != (prev + pl) / 500_000_000
-            {
-                eprintln!(
-                    "QOEVAL el={:.1}s eval_parked scan-volume={} (|pending|={})",
-                    self.sat_elapsed(), prev + pl, pl
-                );
+        // P0 fast path (non-tracing): visit only `n`'s parked disjunctions via the
+        // per-node index — O(deg(n)) instead of the O(|pending|) full scan that was
+        // quadratic when `pending` reaches 763k (14817). The tracing residue DFS
+        // does not maintain `pending_by_node`, so it keeps the linear scan.
+        if !self.tracing {
+            if self.edgeprobe {
+                let pl = self.pending_by_node[n].len() as u64;
+                DBG_EVALSCAN.fetch_add(pl, Ordering::Relaxed);
+                DBG_MAXLABEL.fetch_max(self.pending.len() as u64, Ordering::Relaxed);
             }
+            let mut k = 0;
+            while k < self.pending_by_node[n].len() {
+                if self.node_unsat.contains(&n) {
+                    return;
+                }
+                let idx = self.pending_by_node[n][k];
+                let cid = self.pending[idx].1;
+                let (satisfied, live) = self.eval_disj_state(n, cid);
+                if satisfied {
+                    self.pending_remove(idx);
+                    self.open_disj = self.open_disj.saturating_sub(1);
+                    continue; // pending_by_node[n][k] now holds a different entry
+                }
+                if live.is_empty() {
+                    self.kill_node(n);
+                    return;
+                }
+                if live.len() == 1 {
+                    self.pending_remove(idx);
+                    self.open_disj = self.open_disj.saturating_sub(1);
+                    self.add_lit(n, live[0]);
+                    continue;
+                }
+                k += 1;
+            }
+            return;
         }
         let mut i = 0;
         while i < self.pending.len() {
@@ -5736,22 +5778,7 @@ impl<'a> QoSat<'a> {
                 continue;
             }
             let cid = self.pending[i].1;
-            let head = &self.clauses[cid].0.head;
-            let mut satisfied = false;
-            let mut live: Vec<CLit> = Vec::new();
-            for h in head {
-                if let Atom::Concept { lit, t: _ } = h {
-                    if self.label[n].contains(lit) {
-                        satisfied = true;
-                        break;
-                    }
-                    let comp = CLit { neg: !lit.neg, c: lit.c };
-                    if self.label[n].contains(&comp) {
-                        continue;
-                    }
-                    live.push(*lit);
-                }
-            }
+            let (satisfied, live) = self.eval_disj_state(n, cid);
             if satisfied {
                 self.pending.swap_remove(i);
                 self.open_disj = self.open_disj.saturating_sub(1);
@@ -5769,6 +5796,28 @@ impl<'a> QoSat<'a> {
             }
             i += 1;
         }
+    }
+
+    /// Shared disjunction-state classifier for `eval_parked_at`: at node `n`, is
+    /// the parked disjunction `cid` already satisfied, and what are its still-live
+    /// (neither asserted nor refuted) Concept disjuncts? Identical logic to the
+    /// prior inline scan, factored so both the indexed and linear paths share it.
+    fn eval_disj_state(&self, n: Node, cid: usize) -> (bool, Vec<CLit>) {
+        let head = &self.clauses[cid].0.head;
+        let mut live: Vec<CLit> = Vec::new();
+        for h in head {
+            if let Atom::Concept { lit, t: _ } = h {
+                if self.label[n].contains(lit) {
+                    return (true, Vec::new());
+                }
+                let comp = CLit { neg: !lit.neg, c: lit.c };
+                if self.label[n].contains(&comp) {
+                    continue;
+                }
+                live.push(*lit);
+            }
+        }
+        (false, live)
     }
 }
 
