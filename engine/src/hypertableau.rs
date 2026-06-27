@@ -63,6 +63,9 @@ static DBG_EQ_NONFILLER: AtomicU64 = AtomicU64::new(0); // a successor is not a 
 static DBG_EQ_NOROLE: AtomicU64 = AtomicU64::new(0); // eq_merge_role None (shape)
 static DBG_EQ_UNSAT: AtomicU64 = AtomicU64::new(0); // a successor already unsat (killed merge)
 static DBG_EQ_OTHER: AtomicU64 = AtomicU64::new(0); // empty seed / budget
+// harvest churn probe: total harvest_disj calls vs those that added ZERO lits (re-scan waste)
+static DBG_HARVEST_DISJ: AtomicU64 = AtomicU64::new(0);
+static DBG_HARVEST_NOOP: AtomicU64 = AtomicU64::new(0);
 
 // KM_HT_NUMBER safety: a single clause body match (`rec_match_flex`) can blow up
 // into an enormous join over a dense merged graph (the SHIQ ≤n / inverse path),
@@ -3943,9 +3946,11 @@ impl<'a> QoSat<'a> {
             let d = QO_DRAIN.fetch_add(1, Ordering::Relaxed);
             if d > 0 && d % 2_000_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
-                    "QODRAIN steps={} nodes={} lit_work={} edge_work={} node_work={} pending={}",
+                    "QODRAIN steps={} nodes={} lit_work={} edge_work={} node_work={} pending={} | harvest_disj={} noop={}",
                     d, self.label.len(), self.lit_work.len(), self.edge_work.len(),
-                    self.node_work.len(), self.pending.len()
+                    self.node_work.len(), self.pending.len(),
+                    DBG_HARVEST_DISJ.load(Ordering::Relaxed),
+                    DBG_HARVEST_NOOP.load(Ordering::Relaxed)
                 );
             }
             if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
@@ -4209,6 +4214,15 @@ impl<'a> QoSat<'a> {
     /// consequences). Sound because the disjunction is still parked: whatever
     /// disjunct is eventually chosen, all of them carry the common label.
     fn harvest_disj(&mut self, n: Node, cid: usize) {
+        DBG_HARVEST_DISJ.fetch_add(1, Ordering::Relaxed);
+        let before = self.label[n].len();
+        self.harvest_disj_inner(n, cid);
+        if self.label[n].len() == before {
+            DBG_HARVEST_NOOP.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    fn harvest_disj_inner(&mut self, n: Node, cid: usize) {
         let head = &self.clauses[cid].0.head;
         // collect live disjuncts (Concept only; Exists/Role park at apply_head
         // is satisfied-by-routing, so a parked disj is all Concept).
