@@ -51,9 +51,27 @@ copied.)
 
 - Default oracle stays **Konclude**, but only with the `ore_canon` `Thing≡Nothing`
   fix applied.
-- **Any SWRL / `DLSafeRule` ontology → use HermiT.** Konclude cannot parse these;
-  its output is meaningless. (15516, 2669 are the known ORE members; any future
-  DLSafeRule ontology is in the same class.)
+- **Any SWRL / `DLSafeRule` ontology → use HermiT (on a cleaned core).** Konclude
+  cannot parse these, so its recorded gold ("consistent") is a bogus
+  parse-failure-exit-0 and is meaningless. The full ORE `DLSafeRule` set is **six**
+  ontologies: **2669, 15516, 10860, 10906, 12451, 13129** (found by
+  `grep -l DLSafeRule`). HermiT 1.4.6 *also* cannot parse the raw onts (it throws
+  `UnsupportedDatatypeException` on `rdfs:Literal`, or "built-in atom not
+  supported"), so the authoritative verdict is HermiT on a datatype/SWRL-stripped
+  core (a *subset* of the axioms, so a cleaned-core *inconsistent* verdict proves
+  the full ontology inconsistent). Verified 2026-06-27:
+  | ont | true verdict | evidence |
+  |-----|--------------|----------|
+  | 2669 | **inconsistent** | HermiT on `results/contested-cores/ore_ont_2669_norules.min.owl` |
+  | 15516 | **inconsistent** | HermiT on `ore_ont_15516_norules.min.owl` |
+  | 10906 | **inconsistent** | HermiT on the datatype-cleaned ont → `InconsistentOntologyException` |
+  | 13129 | consistent | HermiT cleaned → `owl:Thing satisfiable` |
+  | 12451 | consistent | HermiT (full parse) → `owl:Thing satisfiable` |
+  | 10860 | unknown | HermiT can't parse; KM times out |
+
+  KM closes 2669/15516/10906 (correctly **inconsistent**) and 13129 (correctly
+  consistent) under `KM_HT_RULES=1` (the ABox-seeded HT consistency path,
+  commit `ea0d535`); all verdicts match HermiT, zero unsound.
 - Whenever HermiT says *inconsistent* and the recorded Konclude gold says
   *consistent* via a `Thing≡Nothing` encoding or an empty/parse-failure output,
   **HermiT is correct.**
