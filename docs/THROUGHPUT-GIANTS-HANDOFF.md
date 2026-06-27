@@ -106,11 +106,56 @@ ONE saturation where Konclude builds ONE consistency model (precompute 3.0s) the
 classifies per-concept against it. The fix is the two-phase restructure, not any
 constant-factor on the edge loop.
 
-## Next steps (in priority order) for the fresh session
+## UPDATE 2026-06-27 (CORRECTED DIAGNOSIS — 14817 is NOT throughput-bound)
 
-1. ~~Speed the QO Ht edge half~~ — **DONE + RULED OUT** (see UPDATE above). The
-   edge-clone hypothesis is closed; `KM_HT_QO_EDGEFAST` is committed gated but
-   inert on the giants (kept as a correct micro-opt + for any alloc-bound ont).
+A gated debug toolkit (`--debug` / `--debug-probe`, committed `c1c8738`) +
+a SIGUSR1 stack sampler overturned the throughput premise for 14817:
+
+- The QoSat global-forward **precompute finishes in ~4s** (seeds 58364 concepts,
+  parks **763k disjunction instances** — the 13 global ⊤-disjunctions × 58k
+  nodes). It is NOT the bottleneck. The "stall after 4s" everyone (incl. the edge
+  measurements above) saw was the QoSat counters going quiet because the
+  saturation had *finished*.
+- `quasi_order_classify` then **DEFERS** (residue-complete cannot certify the
+  parked disjunctions) and falls back to the **branching `ht.classify`**.
+- SIGUSR1 backtrace of the spinning worker: **195-deep `Ht::dfs` →
+  `Ht::consistent` → `Ht::classify`, stuck in `compute_blocked`.** That branching
+  DFS is the timeout — a **disjunction-search-convergence** problem (the 5303
+  family, see `project_km_5303_perstep_cost`), NOT saturation throughput.
+
+So 14817 is mis-filed as a "throughput near-EL giant." Its 143 ontology
+disjunctions + 13 global ⊤-disjunctions make the QO path defer to a non-converging
+branching classify. **Neither the edge port nor any saturation constant-factor can
+close it.** The real levers:
+  (a) make the QO **residue-complete** path certify the parked disjunctions so it
+      never falls back to `ht.classify` (the parked set is 763k instances of only
+      13 distinct global disjunctions — likely highly compressible / harvestable);
+  (b) converge the branching DFS (incremental `compute_blocked` — the
+      `KM_HT_INCRBLOCK2` lever from 5303 — + search discipline EAGER/NEGTRIED/ORD,
+      which the *fallback* `ht.classify` may not be applying).
+
+NEXT SESSION: re-census 9663/7914/3215 the same way (run `--debug-probe`, then
+SIGUSR1 the worker) to see whether they are ALSO precompute-fast-then-branch like
+14817, or genuinely saturation-bound. Do not assume the taxonomy; the debug
+toolkit makes the routing observable in one run.
+
+## Debug toolkit quick ref
+
+- `tableau_cli --debug < ont.tin` → routing + phase wall timing + saturation
+  heartbeats (`QOSAT`/`QODRAIN`/`QOEDGE` with `el=Ns`).
+- `tableau_cli --debug-probe < ont.tin` → above + per-primitive work-volume
+  counters + time-driven `QOHB` heartbeat (`KM_HT_QO_HB=<secs>`, default 2) +
+  SIGUSR1 stack dumper. `KM_HT_QO_EDGEPROBE=<n>` sets the `QOEDGE` print interval.
+- Sample a stuck worker (no profiler on ws): find its TID
+  (`/proc/<pid>/task/*/stat` field 14 = utime, pick the busy one), then
+  `python3 -c 'import ctypes;ctypes.CDLL("libc.so.6").syscall(234,<pid>,<tid>,10)'`
+  (234=tgkill, 10=SIGUSR1); the backtrace prints to the worker's stderr.
+
+## Superseded next steps
+
+1. ~~Speed the QO Ht edge half~~ — **DONE + RULED OUT**. `KM_HT_QO_EDGEFAST`
+   committed gated but inert on the giants (the saturation is not the bottleneck
+   on 14817 at all — see CORRECTED DIAGNOSIS).
 2. **One-model precompute** — restructure the QO classify to build ONE
    consistency model (like Konclude's 3s precompute) instead of seeding all 58k
    concepts, then classify per-concept against it. KM has the pieces
