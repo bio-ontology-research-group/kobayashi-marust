@@ -2958,6 +2958,11 @@ struct QoSat<'a> {
     /// (`qo_insufficient` critical-ALL) at the source: a `∀R.C` write now lands on
     /// the source's OWN successor, never a node another source also reaches.
     shiq: bool,
+    /// KM_HT_QO_NOPOLLUTE (Konclude `isCriticalALLConceptDescriptorInsufficient`):
+    /// when a critical-ALL ∀-write lands on a shared filler, DEFER it (mark the
+    /// target insufficient) instead of writing `lit` into the filler's label. Keeps
+    /// shared fillers small (base + range-forced only) so the precompute converges.
+    no_pollute: bool,
     /// P2.1 ancestor link (parallel to `label`): the predecessor node that created
     /// this successor, for the blocking ancestor walk. `None` for roots/self-nodes.
     qo_parent: Vec<Option<Node>>,
@@ -3536,6 +3541,13 @@ impl<'a> QoSat<'a> {
             residue_tainted: false,
             residue_unsafe: std::env::var_os("KM_HT_QO_RESIDUE_FORCE").is_some(),
             shiq: std::env::var_os("KM_HT_QO_SHIQ").is_some(),
+            // KM_HT_QO_NOPOLLUTE (Konclude `isCriticalALLConceptDescriptorInsufficient`):
+            // a critical-ALL ∀-write onto a shared filler is DEFERRED, not written.
+            // The shared filler keeps only its base + range-forced (clean) label, so
+            // it never accumulates the union of all predecessors' ∀-consequences and
+            // the precompute converges (Konclude ~20 concepts/node vs KM's ~850). The
+            // affected seeds are flagged insufficient and re-verified in the residue.
+            no_pollute: std::env::var_os("KM_HT_QO_NOPOLLUTE").is_some(),
             qo_parent: Vec::new(),
             split_mode: std::env::var_os("KM_HT_QO_SPLIT").is_some(),
             node_fil: Vec::new(),
@@ -4213,7 +4225,19 @@ impl<'a> QoSat<'a> {
             // `prop[(r,n)]` (so edges added later inherit it) and push `e` to all
             // current R-predecessors. Computed once per (filler-concept, role),
             // never re-matched per incoming edge — the whole point of `prop`.
-            if let Some(rules) = self.prop_rule.remove(&lit) {
+            // KM_HT_QO_NOPOLLUTE: a shared ∃-filler conflates every predecessor's
+            // successor. Broadcasting its NF4 backward link `R(x,n) ⊓ lit(n) → e(x)`
+            // to all (here 60897) R-predecessors is the cascade driver (and, on a
+            // shared filler, the over-derivation Konclude defers): one predecessor's
+            // ∀-forced `lit` would otherwise impose `e` on ALL predecessors. Skip the
+            // broadcast and flag the filler insufficient ⇒ the residue re-verifies the
+            // affected seeds on the complete tableau. Keeps the precompute bounded.
+            let filler_defer = self.no_pollute && self.sat_mode && self.is_filler[n];
+            if filler_defer && self.prop_rule.contains_key(&lit) {
+                self.kp_insuff_nodes.insert(n);
+                self.qo_insufficient = true;
+            }
+            if let Some(rules) = (!filler_defer).then(|| ()).and_then(|_| self.prop_rule.remove(&lit)) {
                 for &(r, e) in &rules {
                     let old_len = {
                         let entry = self.prop.entry((r, n)).or_default();
@@ -4249,7 +4273,7 @@ impl<'a> QoSat<'a> {
             // (from `R(sv,tv) ⊓ lit(sv) → e(tv)`). Record the link in `fprop[(r,n)]`
             // (so edges added later inherit it) and push `e` to all current
             // R-successors. Computed once per (source-concept, role).
-            if self.fprop_on {
+            if self.fprop_on && !filler_defer {
                 if let Some(rules) = self.fprop_rule.remove(&lit) {
                     for &(r, e) in &rules {
                         let old_len = {
@@ -5318,6 +5342,21 @@ impl<'a> QoSat<'a> {
                             // concepts (not reaching `n`) keep a sound label.
                             if self.card_defer {
                                 self.kp_insuff_nodes.insert(n);
+                            }
+                            // KM_HT_QO_NOPOLLUTE (Konclude
+                            // `isCriticalALLConceptDescriptorInsufficient`): on a shared
+                            // filler, DEFER this critical-ALL write — do NOT add `lit`.
+                            // Writing it would accumulate the union of every
+                            // predecessor's ∀-consequences onto the one shared filler
+                            // (KM ~850 concepts/node) and re-trigger ∃ → the
+                            // non-converging cascade. Discharging the obligation here
+                            // (the seed is already flagged insufficient ⇒ residue
+                            // re-verifies) keeps the filler small and the precompute
+                            // bounded (Konclude ~20/node, converges in ~4.5 s).
+                            if self.no_pollute && self.sat_mode && self.is_filler[n] {
+                                self.kp_insuff_nodes.insert(n);
+                                satisfied = true;
+                                break;
                             }
                             // A residue verify (tracing) that triggers a critical-ALL
                             // deferral cannot decide this concept soundly on the
