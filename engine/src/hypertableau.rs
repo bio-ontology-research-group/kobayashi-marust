@@ -7977,6 +7977,17 @@ impl Ht {
                             let mut w = Ht::new(tmpl);
                             w.set_anywhere(anywhere);
                             w.set_fast_tableau(); // result-identical speedups
+                            // The residue concept's complete tableau may meet an
+                            // equality-head clause (`≤n` / functional, the `⋁ Eq`
+                            // disjunctive head). Without `number` the apply_head Eq
+                            // arm bails `unsupported` ⇒ the whole residue-complete
+                            // defers to CB (ore_ont_7499: a single ≤n concept forces
+                            // the defer). Enable the number+qmerge cardinality merge
+                            // (the same sound rule the card route uses): Eq-heads now
+                            // route to `push_card`/`branch_merge`. Result-identical on
+                            // a pure-disjunction residue (no Eq head ⇒ number inert).
+                            w.force_number = true;
+                            w.force_qmerge = true;
                             let mut subs: Vec<(C, C)> = Vec::new();
                             let mut unsat: Vec<C> = Vec::new();
                             let mut nconf: u64 = 0;
