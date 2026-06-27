@@ -66,6 +66,22 @@ static DBG_EQ_OTHER: AtomicU64 = AtomicU64::new(0); // empty seed / budget
 // harvest churn probe: total harvest_disj calls vs those that added ZERO lits (re-scan waste)
 static DBG_HARVEST_DISJ: AtomicU64 = AtomicU64::new(0);
 static DBG_HARVEST_NOOP: AtomicU64 = AtomicU64::new(0);
+// QO-saturation work-volume probe (gated on `KM_HT_QO_EDGEPROBE`, off by default so
+// production pays nothing — every increment sits behind the cached `edgeprobe` bool).
+// These locate where a non-converging giant (14817/9663/...) burns its time: which
+// per-step primitive dominates, and whether labels bloat. Reusable for any QO
+// throughput tuning, not just the edge loop. `KM_HT_QO_EDGEPROBE=<n>` sets the
+// QOEDGE print interval (default 2000); the counters print in the QOEDGE/QOGRFIRE
+// trace lines under `KM_HT_TRACE`.
+static DBG_FRC: AtomicU64 = AtomicU64::new(0); // fire_role_clause calls
+static DBG_MATCH: AtomicU64 = AtomicU64::new(0); // match_body recursive calls
+static DBG_APPLY: AtomicU64 = AtomicU64::new(0); // apply_head calls
+static DBG_FPROPE: AtomicU64 = AtomicU64::new(0); // fprop_emit calls
+static DBG_KPW: AtomicU64 = AtomicU64::new(0); // kp_write calls
+static DBG_ADDLIT: AtomicU64 = AtomicU64::new(0); // add_lit calls (true inserts + noops)
+static DBG_GRFIRE: AtomicU64 = AtomicU64::new(0); // guard_refire pops processed
+static DBG_TRIGSCAN: AtomicU64 = AtomicU64::new(0); // lits scanned in src/tgt-trig to_fire build
+static DBG_MAXLABEL: AtomicU64 = AtomicU64::new(0); // max label size seen in a to_fire scan
 
 // KM_HT_NUMBER safety: a single clause body match (`rec_match_flex`) can blow up
 // into an enormous join over a dense merged graph (the SHIQ ≤n / inverse path),
@@ -2986,6 +3002,21 @@ struct QoSat<'a> {
     /// this, stop creating merged nodes and fall back to `card_defer` (sound). Far
     /// above any healthy run; only a pathological fan-out trips it.
     merge_budget: usize,
+    /// KM_HT_QO_EDGEFAST (elc clone-free edge port): reuse one scratch buffer for
+    /// the `prop`/`fprop` element copies in the edge loop instead of allocating a
+    /// fresh `Vec` per edge pop (800k+ edges on the throughput giants). `edge_buf`
+    /// holds the NF4 backward/forward-link conclusions; `to_fire_buf` holds the
+    /// guard-filtered role-clause ids. Capacity is retained across pops (elc's
+    /// `nf4_buf` pattern), so the per-edge allocation churn collapses to one alloc.
+    /// Result-identical — same elements, same firing order.
+    edgefast: bool,
+    edge_buf: Vec<CLit>,
+    to_fire_buf: Vec<usize>,
+    /// KM_HT_QO_EDGEPROBE: gate for the QO work-volume counters (off ⇒ the hot-path
+    /// increments are skipped, so production has no overhead). `edgeprobe_iv` is the
+    /// QOEDGE print interval (in edge pops).
+    edgeprobe: bool,
+    edgeprobe_iv: u64,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -3485,6 +3516,15 @@ impl<'a> QoSat<'a> {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(3_000_000usize),
+            edgefast: std::env::var_os("KM_HT_QO_EDGEFAST").is_some(),
+            edge_buf: Vec::new(),
+            to_fire_buf: Vec::new(),
+            edgeprobe: std::env::var_os("KM_HT_QO_EDGEPROBE").is_some(),
+            edgeprobe_iv: std::env::var("KM_HT_QO_EDGEPROBE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(2_000),
         }
     }
 
@@ -3568,6 +3608,9 @@ impl<'a> QoSat<'a> {
     /// `n` is recorded unsat; the model keeps running for other nodes). No-ops
     /// if present. Routes through `node_alive` so a dead node stays inert.
     fn add_lit(&mut self, n: Node, lit: CLit) -> bool {
+        if self.edgeprobe {
+            DBG_ADDLIT.fetch_add(1, Ordering::Relaxed);
+        }
         if self.node_unsat.contains(&n) {
             return false;
         }
@@ -4113,7 +4156,18 @@ impl<'a> QoSat<'a> {
         }
         while let Some((s, r, t)) = self.edge_work.pop() {
             let e = QO_EDGE.fetch_add(1, Ordering::Relaxed);
-            if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+            if self.edgeprobe {
+                if e > 0 && e % self.edgeprobe_iv == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                    eprintln!(
+                        "QOEDGE pops={} edge_work={} lit_work={} nodes={} | frc={} match={} apply={} fprope={} kpw={} addlit={} trigscan={} maxlabel={}",
+                        e, self.edge_work.len(), self.lit_work.len(), self.label.len(),
+                        DBG_FRC.load(Ordering::Relaxed), DBG_MATCH.load(Ordering::Relaxed),
+                        DBG_APPLY.load(Ordering::Relaxed), DBG_FPROPE.load(Ordering::Relaxed),
+                        DBG_KPW.load(Ordering::Relaxed), DBG_ADDLIT.load(Ordering::Relaxed),
+                        DBG_TRIGSCAN.load(Ordering::Relaxed), DBG_MAXLABEL.load(Ordering::Relaxed),
+                    );
+                }
+            } else if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
                     "QOEDGE pops={} edge_work={} lit_work={} node_work={} nodes={}",
                     e, self.edge_work.len(), self.lit_work.len(),
@@ -4134,7 +4188,25 @@ impl<'a> QoSat<'a> {
             // `t`'s label has already broadcast for role `r` — O(consequences),
             // no clause matching. (The guard-arrives-after-edge direction is the
             // `prop_rule` push in the lit loop.)
-            if let Some(es) = self.prop.get(&(r, t)) {
+            if self.edgefast {
+                // elc clone-free port: copy the conclusions into the reusable
+                // `edge_buf` (capacity retained across pops) instead of a fresh
+                // per-edge `Vec`. Identical elements, identical order.
+                let via_inv = self.kpset && self.inv_edges.contains(&(s, r, t));
+                let mut buf = std::mem::take(&mut self.edge_buf);
+                buf.clear();
+                if let Some(es) = self.prop.get(&(r, t)) {
+                    buf.extend_from_slice(es);
+                }
+                for &e in &buf {
+                    self.kp_write(s, e, via_inv);
+                    if self.unsupported {
+                        self.edge_buf = buf;
+                        return;
+                    }
+                }
+                self.edge_buf = buf;
+            } else if let Some(es) = self.prop.get(&(r, t)) {
                 let es: Vec<CLit> = es.clone();
                 // KPSet: if this fresh edge is an inverse back-edge, the inherited
                 // backward links are containment checks at `s`, never writes.
@@ -4152,7 +4224,21 @@ impl<'a> QoSat<'a> {
             // clause matching. (The guard-arrives-after-edge direction is the
             // `fprop_rule` push in the lit loop.)
             if self.fprop_on {
-                if let Some(es) = self.fprop.get(&(r, s)) {
+                if self.edgefast {
+                    let mut buf = std::mem::take(&mut self.edge_buf);
+                    buf.clear();
+                    if let Some(es) = self.fprop.get(&(r, s)) {
+                        buf.extend_from_slice(es);
+                    }
+                    for &e in &buf {
+                        self.fprop_emit(t, e);
+                        if self.unsupported {
+                            self.edge_buf = buf;
+                            return;
+                        }
+                    }
+                    self.edge_buf = buf;
+                } else if let Some(es) = self.fprop.get(&(r, s)) {
                     let es: Vec<CLit> = es.clone();
                     for e in es {
                         self.fprop_emit(t, e);
@@ -4170,11 +4256,23 @@ impl<'a> QoSat<'a> {
             // (immutable borrows of the indexes + labels), then fire (mutable).
             // `match_body` re-verifies any non-keyed guard, so this is sound. The
             // guard-arrives-after-edge case is covered by `guard_refire`.
-            let mut to_fire: Vec<usize> = Vec::new();
+            // elc clone-free port: reuse `to_fire_buf` across edge pops instead of
+            // a fresh `Vec` per edge. Identical contents, identical order.
+            let mut to_fire: Vec<usize> = if self.edgefast {
+                std::mem::take(&mut self.to_fire_buf)
+            } else {
+                Vec::new()
+            };
+            to_fire.clear();
             if let Some(cids) = self.role_noguard.get(&r) {
                 to_fire.extend_from_slice(cids);
             }
             if !self.role_src_trig.is_empty() {
+                if self.edgeprobe {
+                    let ls = self.label[s].len() as u64;
+                    DBG_TRIGSCAN.fetch_add(ls, Ordering::Relaxed);
+                    DBG_MAXLABEL.fetch_max(ls, Ordering::Relaxed);
+                }
                 for &lit in &self.label[s] {
                     if let Some(cids) = self.role_src_trig.get(&(r, lit)) {
                         to_fire.extend_from_slice(cids);
@@ -4182,17 +4280,28 @@ impl<'a> QoSat<'a> {
                 }
             }
             if !self.role_tgt_trig.is_empty() {
+                if self.edgeprobe {
+                    let lt = self.label[t].len() as u64;
+                    DBG_TRIGSCAN.fetch_add(lt, Ordering::Relaxed);
+                    DBG_MAXLABEL.fetch_max(lt, Ordering::Relaxed);
+                }
                 for &lit in &self.label[t] {
                     if let Some(cids) = self.role_tgt_trig.get(&(r, lit)) {
                         to_fire.extend_from_slice(cids);
                     }
                 }
             }
-            for cid in to_fire {
+            for &cid in &to_fire {
                 self.fire_role_clause(cid, s, r, t);
                 if self.unsupported {
+                    if self.edgefast {
+                        self.to_fire_buf = to_fire;
+                    }
                     return;
                 }
+            }
+            if self.edgefast {
+                self.to_fire_buf = to_fire;
             }
         }
         // Trigger-keyed `complete_roles` re-firing: a guard concept arrived at a
@@ -4202,6 +4311,18 @@ impl<'a> QoSat<'a> {
         // new consequences. This is the half of inverse/∀-role completeness that
         // edge-time firing misses (guard concept added AFTER the edge).
         while let Some((cid, n)) = self.guard_refire.pop() {
+            if self.edgeprobe {
+                let g = DBG_GRFIRE.fetch_add(1, Ordering::Relaxed);
+                if g > 0 && g % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                    eprintln!(
+                        "QOGRFIRE pops={} guard_refire={} lit_work={} edge_work={} | frc={} match={} apply={} fprope={} kpw={} addlit={}",
+                        g, self.guard_refire.len(), self.lit_work.len(), self.edge_work.len(),
+                        DBG_FRC.load(Ordering::Relaxed), DBG_MATCH.load(Ordering::Relaxed),
+                        DBG_APPLY.load(Ordering::Relaxed), DBG_FPROPE.load(Ordering::Relaxed),
+                        DBG_KPW.load(Ordering::Relaxed), DBG_ADDLIT.load(Ordering::Relaxed),
+                    );
+                }
+            }
             if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
                 continue;
             }
@@ -4765,6 +4886,9 @@ impl<'a> QoSat<'a> {
 
     /// Fire a role-body clause, anchored at a freshly added edge (es, r, et).
     fn fire_role_clause(&mut self, cid: usize, es: Node, r: R, et: Node) {
+        if self.edgeprobe {
+            DBG_FRC.fetch_add(1, Ordering::Relaxed);
+        }
         // KPSet (G2/G3): if the anchoring edge is an inverse-bridge back-edge,
         // this firing reads a successor's label across a model-specific reversed
         // edge — its head writes become containment checks (never written).
@@ -4814,6 +4938,9 @@ impl<'a> QoSat<'a> {
         sigma: &mut Vec<Option<Node>>,
         out: &mut Vec<Vec<Option<Node>>>,
     ) {
+        if self.edgeprobe {
+            DBG_MATCH.fetch_add(1, Ordering::Relaxed);
+        }
         let k = match (0..body.len()).find(|&i| !done[i]) {
             Some(k) => k,
             None => {
@@ -4871,6 +4998,9 @@ impl<'a> QoSat<'a> {
     /// `isCriticalALLConceptDescriptorInsufficient`), never a write — see
     /// `kp_check_head`.
     fn apply_head(&mut self, cid: usize, sigma: &[Option<Node>], via_inv: bool) {
+        if self.edgeprobe {
+            DBG_APPLY.fetch_add(1, Ordering::Relaxed);
+        }
         let head = &self.clauses[cid].0.head;
         // KPSet G2/G3: an inverse-anchored firing must never write a consequence
         // into the (shared) model — it can only CHECK whether the consequence is
@@ -5246,6 +5376,9 @@ impl<'a> QoSat<'a> {
     /// (read-for-classification) label. A still-missing obligation marks the
     /// concept insufficient (routed to the complete tableau).
     fn fprop_emit(&mut self, t: Node, e: CLit) {
+        if self.edgeprobe {
+            DBG_FPROPE.fetch_add(1, Ordering::Relaxed);
+        }
         if self.fcheck {
             if !self.node_unsat.contains(&t) && !self.label[t].contains(&e) {
                 // Konclude G1 criticality (same refinement as `kp_write`): the
@@ -5279,6 +5412,9 @@ impl<'a> QoSat<'a> {
     /// never write across the reversed edge. `kp_finalize` decides at fixpoint.
     /// Returns false only on a genuine clash from a real (non-inverse) write.
     fn kp_write(&mut self, n: Node, lit: CLit, via_inv: bool) -> bool {
+        if self.edgeprobe {
+            DBG_KPW.fetch_add(1, Ordering::Relaxed);
+        }
         if self.kpset && via_inv {
             if !self.node_unsat.contains(&n) && !self.label[n].contains(&lit) {
                 // Konclude criticality refinement: a containment miss matters for

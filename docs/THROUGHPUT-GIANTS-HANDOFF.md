@@ -78,13 +78,39 @@ test).
   every trigger arrival and allocates per call. `fastimpl` removes this for the
   single-atom case; the edge/role half does NOT have it yet.
 
+## UPDATE 2026-06-27 (edge-half port — DONE + MEASURED + RULED OUT)
+
+Step 1 below was **implemented, measured, and falsified.** Committed gated:
+
+- **`KM_HT_QO_EDGEFAST`** (clone-free edge port): the `prop`/`fprop`/`to_fire`
+  per-edge `Vec` clones in the `drain_work` edge loop now reuse retained-capacity
+  scratch buffers (`edge_buf`/`to_fire_buf`), elc's `nf4_buf` pattern. **Result-
+  identical** — the QOEDGE counters are byte-identical off vs on at every
+  checkpoint. **Zero throughput gain on 14817** (off and on reach the SAME
+  500k-edge-pop checkpoint at the SAME ~4s wall, then stall identically).
+- **`KM_HT_QO_EDGEPROBE[=interval]`** (gated work-volume counters, off by default,
+  zero production overhead): per-primitive counters (`apply`/`kpw`/`addlit`/`frc`/
+  `match`/`fprope`/`trigscan`/`maxlabel`) printed in the QOEDGE/QOGRFIRE trace
+  under `KM_HT_TRACE`. Reusable for any future QO perf tuning.
+
+**Why the edge half is not the lever (measured on 14817, `KM_HT_QO_EDGEPROBE`):**
+the saturation seeds 58364 named concepts, does 2M lit-pops (~2s) then ~500k
+edge-pops (~4s), then grinds the remaining ~450k edges + cascading lits at a low
+rate that never converges in 240s. At the stall point the work is *distributed*:
+`apply_head`≈4.8M, `kp_write`≈6.1M, `add_lit`≈8.1M, all climbing together; NO
+single explosive primitive (`fprope`=0 — fprop not engaged; `trigscan`=0 —
+`role_src/tgt_trig` empty; `frc`/`match` small). The per-edge `Vec` clone was
+never the cost; the cost is the sheer VOLUME of propagation over a 58k-node global
+seed. So this is **handoff step 2, not step 1**: KM seeds all 58k concepts into
+ONE saturation where Konclude builds ONE consistency model (precompute 3.0s) then
+classifies per-concept against it. The fix is the two-phase restructure, not any
+constant-factor on the edge loop.
+
 ## Next steps (in priority order) for the fresh session
 
-1. **Speed the QO Ht edge half** — port `elc`'s clone-free NF4 role/∀-range
-   propagation into the QO saturation edge loop (`drain_work` edge loop ~line
-   4073 / `fire_role_clause`). This is the other half of the lit↔edge fixpoint
-   and where most of the remaining 60× lives. `elc` (`elcomplete.rs`) already
-   does this fast; the QO Ht does not. (`fastimpl` did the concept half.)
+1. ~~Speed the QO Ht edge half~~ — **DONE + RULED OUT** (see UPDATE above). The
+   edge-clone hypothesis is closed; `KM_HT_QO_EDGEFAST` is committed gated but
+   inert on the giants (kept as a correct micro-opt + for any alloc-bound ont).
 2. **One-model precompute** — restructure the QO classify to build ONE
    consistency model (like Konclude's 3s precompute) instead of seeding all 58k
    concepts, then classify per-concept against it. KM has the pieces
