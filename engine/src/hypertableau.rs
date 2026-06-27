@@ -5995,29 +5995,68 @@ impl Ht {
             // under inverse (plain subset is unsound there). Then the indirect pass
             // (Konclude PRFINDIRECTBLOCKED). O(n²·|label|): correctness-first port;
             // Konclude caches via signatures. See docs/KONCLUDE-BLOCKING-SPEC.md.
+            // ANYWHERE CANDIDATE-HASH search (Konclude
+            // mConfAnywhereBlockingCandidateHashSearch): a blocker w' must satisfy
+            // B1 = L(w) ⊆ L(w'), so w' appears in the posting list of EVERY concept
+            // of w, hence in the list of w's RAREST concept. Scanning only that list
+            // (earlier UNBLOCKED nodes, id order) replaces the O(n²) pairwise scan
+            // with O(n · rarest-posting-len) — the same inverted index mode 1 uses —
+            // and is RESULT-IDENTICAL: every B1 superset candidate is in the rarest
+            // list, scanned in id order, first b2a-passing match wins (= the 0..w
+            // first match). The B2a ∀-operand check (inverse soundness) is applied
+            // per candidate exactly as before.
+            let enc = |k: &CLit| -> usize { ((k.c as usize) << 1) | (k.neg as usize) };
+            let mut bb = self.block_buf.borrow_mut();
+            let BlockBuf { lists, touched } = &mut *bb;
+            for &t in touched.iter() {
+                lists[t].clear();
+            }
+            touched.clear();
             for w in 0..nn {
-                if !self.ext.blockable[w] {
-                    continue;
+                let lw = &self.ext.concepts[w];
+                if self.ext.blockable[w] && !lw.is_empty() {
+                    if let Some(v) = self.ext.pred[w] {
+                        let lwlen = lw.len();
+                        // rarest concept of w ⇒ shortest candidate posting list.
+                        let mut best: usize = usize::MAX;
+                        let mut best_len = usize::MAX;
+                        for k in lw.keys() {
+                            let e = enc(k);
+                            let l = lists.get(e).map_or(0, |v| v.len());
+                            if l < best_len {
+                                best_len = l;
+                                best = e;
+                            }
+                        }
+                        if let Some(cands) = lists.get(best) {
+                            for &wp in cands {
+                                let lwp = &self.ext.concepts[wp];
+                                if lwp.len() >= lwlen
+                                    && lw.keys().all(|k| lwp.contains_key(k))
+                                    && self.b2a_holds(w, wp, v)
+                                {
+                                    blocked[w] = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
-                let v = match self.ext.pred[w] {
-                    Some(v) => v,
-                    None => continue,
-                };
-                let lwlen = self.ext.concepts[w].len();
-                for wp in 0..w {
-                    // blocker must be unblocked with |L(w)| ≤ |L(w')| and L(w) ⊆ L(w').
-                    if blocked[wp] || self.ext.concepts[wp].len() < lwlen {
-                        continue;
-                    }
-                    if !self.ext.concepts[w].keys().all(|k| self.ext.concepts[wp].contains_key(k)) {
-                        continue; // B1 fails
-                    }
-                    if self.b2a_holds(w, wp, v) {
-                        blocked[w] = true;
-                        break;
+                // only earlier UNBLOCKED nodes are candidate blockers.
+                if !blocked[w] {
+                    for k in self.ext.concepts[w].keys() {
+                        let e = enc(k);
+                        if e >= lists.len() {
+                            lists.resize_with(e + 1, Vec::new);
+                        }
+                        if lists[e].is_empty() {
+                            touched.push(e);
+                        }
+                        lists[e].push(w);
                     }
                 }
             }
+            drop(bb);
             for n in 0..nn {
                 if blocked[n] || !self.ext.blockable[n] {
                     continue;
