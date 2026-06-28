@@ -196,6 +196,151 @@ pub fn transitivity_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     extra
 }
 
+/// KM_TRANS_CHAIN_COMPOSE (gated, additive): glue role CHAINS into a TRANSITIVE
+/// role's reachability, the way Konclude's role automaton folds a chain's
+/// transitions into the super-role's automaton (ws Konclude trace: the
+/// `has_start∘start_of` chain is glued into the `part_of` automaton, and
+/// `RO_0002224 ⊑ part_of`). For a transitive role `T` with reachability predicate
+/// `P = __trans__T__{C}` (from `transitivity_clauses`) and a chain `R∘S ⊑ U` whose
+/// super `U` is `T` or a sub-role of `T`, a node `x` with `x R y`, `y S z` has
+/// `x T z`, so `x` inherits whatever `z` reaches via `T`:
+///   S(y,z) ∧ P(z)   → __cmpp(y);  R(x,y) ∧ __cmpp(y) → P(x)   (P rides the chain)
+///   S(y,z) ∧ ⋀C_i(z)→ __cmpc(y);  R(x,y) ∧ __cmpc(y) → P(x)   (chain reaches a C-node)
+/// The P names mirror `transitivity_clauses` exactly so they line up. Sound (T
+/// transitive + U⊑T). Default OFF; validate on 14817 + corpus before default-on.
+pub fn transitive_chain_compose_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
+    if std::env::var_os("KM_TRANS_CHAIN_COMPOSE").is_none() {
+        return Vec::new();
+    }
+    transitive_chain_compose_impl(tbox)
+}
+
+fn transitive_chain_compose_impl(tbox: &[DLClause]) -> Vec<DLClause> {
+    let info = detect_role_chains(tbox);
+    if info.trans.is_empty() || info.chains.is_empty() {
+        return Vec::new();
+    }
+    let trans: HashSet<String> = info.trans.iter().cloned().collect();
+    // sub-role hierarchy U ⊑ V from single role-body→role-head clauses U(x,y)→V(x,y).
+    let mut sub_super: HashMap<String, Vec<String>> = HashMap::new();
+    for c in tbox {
+        if c.body.len() == 1 && c.head.len() == 1 {
+            if let (Atom::Role(u, us, ut), Atom::Role(v, vs, vt)) = (&c.body[0], &c.head[0]) {
+                if us == vs && ut == vt && us != ut && u != v {
+                    sub_super.entry(u.clone()).or_default().push(v.clone());
+                }
+            }
+        }
+    }
+    // first transitive role on the ⊑* chain above `u`, if any.
+    fn super_trans(
+        u: &str,
+        sub_super: &HashMap<String, Vec<String>>,
+        trans: &HashSet<String>,
+        seen: &mut HashSet<String>,
+    ) -> Option<String> {
+        if trans.contains(u) {
+            return Some(u.to_string());
+        }
+        if !seen.insert(u.to_string()) {
+            return None;
+        }
+        for v in sub_super.get(u).map(|x| x.as_slice()).unwrap_or(&[]) {
+            if let Some(t) = super_trans(v, sub_super, trans, seen) {
+                return Some(t);
+            }
+        }
+        None
+    }
+    let x = var_x();
+    let y = var_y();
+    let z = Term::Var("z".to_string());
+    // rebuild (T, sorted C_i) -> P name exactly as transitivity_clauses.
+    let mut seen_p: HashMap<(String, Vec<String>), String> = HashMap::new();
+    for c in tbox {
+        let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
+        if roles.len() != 1 {
+            continue;
+        }
+        let (rrole, rsource, rtarget) = role_parts(roles[0]);
+        if !trans.contains(rrole) || *rsource != x {
+            continue;
+        }
+        let yt = rtarget.clone();
+        if yt == x {
+            continue;
+        }
+        let mut c_on_y: Vec<String> = c
+            .body
+            .iter()
+            .filter_map(|a| match a {
+                Atom::Concept(name, t) if *t == yt => Some(name.clone()),
+                _ => None,
+            })
+            .collect();
+        c_on_y.sort();
+        if c_on_y.is_empty() || c.head.is_empty() {
+            continue;
+        }
+        if !c.head.iter().all(|h| matches!(h, Atom::Concept(_, t) if *t == x)) {
+            continue;
+        }
+        let key = (rrole.to_string(), c_on_y.clone());
+        seen_p
+            .entry(key)
+            .or_insert_with(|| format!("__trans__{}__{}", rrole, c_on_y.join("_")));
+    }
+    let mut extra = Vec::new();
+    let mut seen_mid: HashSet<String> = HashSet::new();
+    for (r, s, u) in &info.chains {
+        let mut seen2 = HashSet::new();
+        let t = match super_trans(u, &sub_super, &trans, &mut seen2) {
+            Some(t) => t,
+            None => continue,
+        };
+        for ((pt, c_on_y), p) in &seen_p {
+            if *pt != t {
+                continue;
+            }
+            // P rides the chain: S(y,z)∧P(z)→__cmpp(y) ; R(x,y)∧__cmpp(y)→P(x)
+            let midp = format!("__cmpp__{}__{}", s, p);
+            if seen_mid.insert(midp.clone()) {
+                extra.push(clause(
+                    [
+                        Atom::Role(s.clone(), y.clone(), z.clone()),
+                        Atom::Concept(p.clone(), z.clone()),
+                    ],
+                    [Atom::Concept(midp.clone(), y.clone())],
+                ));
+            }
+            extra.push(clause(
+                [
+                    Atom::Role(r.clone(), x.clone(), y.clone()),
+                    Atom::Concept(midp.clone(), y.clone()),
+                ],
+                [Atom::Concept(p.clone(), x.clone())],
+            ));
+            // chain reaches a C-node: S(y,z)∧⋀C_i(z)→__cmpc(y) ; R(x,y)∧__cmpc(y)→P(x)
+            let midc = format!("__cmpc__{}__{}", s, p);
+            if seen_mid.insert(midc.clone()) {
+                let mut body1: Vec<Atom> = vec![Atom::Role(s.clone(), y.clone(), z.clone())];
+                for ci in c_on_y {
+                    body1.push(Atom::Concept(ci.clone(), z.clone()));
+                }
+                extra.push(clause(body1, [Atom::Concept(midc.clone(), y.clone())]));
+            }
+            extra.push(clause(
+                [
+                    Atom::Role(r.clone(), x.clone(), y.clone()),
+                    Atom::Concept(midc.clone(), y.clone()),
+                ],
+                [Atom::Concept(p.clone(), x.clone())],
+            ));
+        }
+    }
+    extra
+}
+
 /// Port of `chain_clauses`.
 pub fn chain_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     let info = detect_role_chains(tbox);
@@ -521,6 +666,7 @@ pub fn augment_with_chains(
     }
     base.extend(transitivity_clauses(&tbox));
     base.extend(chain_clauses(&tbox));
+    base.extend(transitive_chain_compose_clauses(&tbox));
     (base, detect_role_chains(&tbox))
 }
 
@@ -664,6 +810,52 @@ mod tests {
 
     fn pair(r: &str, s: &str) -> (String, String) {
         (r.to_string(), s.to_string())
+    }
+
+    #[test]
+    fn trans_chain_compose_feeds_reachability() {
+        // T transitive, R∘S⊑U, U⊑T, consumer T(x,y)∧H(y)→D(x) (so D ⊒ ∃T.H,
+        // reachability P=__trans__T__H). The composition must let a node reach H
+        // via the chain R∘S: emit R(x,y)∧__cmpp__S__P(y)→P(x) and the __cmpp def
+        // S(y,z)∧P(z)→__cmpp__S__P(y), plus the __cmpc seeding S(y,z)∧H(z)→…→P.
+        let x = var_x();
+        let y = var_y();
+        let z = Term::Var("z".to_string());
+        let con = |n: &str, t: &Term| Atom::Concept(n.to_string(), t.clone());
+        let tbox = vec![
+            clause(
+                [role("T", x.clone(), y.clone()), role("T", y.clone(), z.clone())],
+                [role("T", x.clone(), z.clone())],
+            ),
+            clause(
+                [role("R", x.clone(), y.clone()), role("S", y.clone(), z.clone())],
+                [role("U", x.clone(), z.clone())],
+            ),
+            clause([role("U", x.clone(), y.clone())], [role("T", x.clone(), y.clone())]),
+            clause(
+                [role("T", x.clone(), y.clone()), con("H", &y)],
+                [con("D", &x)],
+            ),
+        ];
+        let out = transitive_chain_compose_impl(&tbox);
+        let p = "__trans__T__H";
+        let midp = "__cmpp__S____trans__T__H";
+        // P rides the chain: R(x,y) ∧ __cmpp__S__P(y) → P(x)
+        let has_ride = out.iter().any(|c| {
+            c.head == vec![con(p, &x)]
+                && c.body.contains(&role("R", x.clone(), y.clone()))
+                && c.body.contains(&con(midp, &y))
+        });
+        assert!(has_ride, "missing chain-ride clause into {p}; got {out:?}");
+        // __cmpp def: S(y,z) ∧ P(z) → __cmpp__S__P(y)
+        let has_def = out.iter().any(|c| {
+            c.head == vec![con(midp, &y)]
+                && c.body.contains(&role("S", y.clone(), z.clone()))
+                && c.body.contains(&con(p, &z))
+        });
+        assert!(has_def, "missing __cmpp definition; got {out:?}");
+        // a non-transitive / no-chain tbox yields nothing.
+        assert!(transitive_chain_compose_impl(&tbox[1..2]).is_empty());
     }
 
     #[test]
