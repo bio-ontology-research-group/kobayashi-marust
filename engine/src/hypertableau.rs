@@ -11213,9 +11213,169 @@ impl Ht {
     }
 }
 
+// ===================== Konclude pseudo-model subsumer prune ====================
+//
+// Faithful port of Konclude's fast pseudo-model subsumption precheck
+// (CClassificationClassPseudoModel{Data,RoleData} + isPseudoModelSubsumerPossible,
+// COptimizedKPSetClassSubsumptionClassifierThread.cpp:1626). Each concept gets a
+// bounded (depth ≤ MAX_PM_DEPTH, ≤ MAX_PM_NODES) labelled tree of model nodes; the
+// prune answers "can subsumer B still subsume subsumed A?" purely from the two
+// pseudo-models, returning false ⇒ definitely-not-subsumed (no tableau test). It
+// can only ELIMINATE a candidate, never confirm a subsumption.
+
+const MAX_PM_DEPTH: u32 = 3;
+const MAX_PM_NODES: usize = 30;
+
+/// Per-role cardinality record (CClassificationClassPseudoModelRoleData).
+#[derive(Clone, Debug, Default)]
+struct PmRole {
+    /// mDeterministicFlag: this role has a deterministic successor.
+    det: bool,
+    lower_at_least: i64, // max deterministic ≥n parameter on this role
+    upper_at_least: i64, // number of successor nodes actually present
+    upper_at_most: i64,  // min deterministic ≤n parameter
+    lower_at_most: i64,  // number of successor nodes (lower bound)
+    succ_model: i64,     // child model-node id, or -1
+}
+
+impl PmRole {
+    /// CClassificationClassPseudoModelRoleData::isPossibleSubsumerOf
+    /// (`self` = subsumer B's role data, `subsumed` = A's).
+    fn is_possible_subsumer_of(&self, subsumed: &PmRole) -> bool {
+        if self.det {
+            if self.lower_at_least > subsumed.upper_at_least {
+                return false; // B needs more successors than A's model can have
+            }
+            if self.upper_at_most < subsumed.lower_at_most {
+                return false; // B caps successors below A's forced minimum
+            }
+        }
+        true
+    }
+}
+
+/// One pseudo-model node (CClassificationClassPseudoModelData): concept→det-flag
+/// and role→role-data maps, each with a validity flag (false when the originating
+/// tableau node was blocked / cached / nominal / over-bound ⇒ skipped by the prune).
+#[derive(Clone, Debug)]
+struct PmNode {
+    concepts: std::collections::BTreeMap<C, bool>, // concept → deterministic
+    roles: std::collections::BTreeMap<R, PmRole>,
+    valid_concepts: bool,
+    valid_roles: bool,
+}
+
+impl Default for PmNode {
+    fn default() -> Self {
+        PmNode {
+            concepts: std::collections::BTreeMap::new(),
+            roles: std::collections::BTreeMap::new(),
+            valid_concepts: true,
+            valid_roles: true,
+        }
+    }
+}
+
+/// A concept's pseudo-model: a bounded tree of nodes; node 0 is the root.
+#[derive(Clone, Debug, Default)]
+struct PModel {
+    nodes: Vec<PmNode>,
+}
+
+/// isPseudoModelSubsumerPossible (COptimizedKPSetClassSubsumptionClassifierThread
+/// .cpp:1626). Can subsumer `b`@`bn` still subsume subsumed `a`@`an`? Returns
+/// false ⇒ prune (definitely not subsumed). A deterministic feature B requires but
+/// A lacks ⇒ impossible. Non-deterministic B-entries never prune. Recurses on
+/// shared roles into the successor models (same A-subsumed / B-subsumer direction).
+fn pm_subsumer_possible(a: &PModel, an: usize, b: &PModel, bn: usize) -> bool {
+    let na = &a.nodes[an];
+    let nb = &b.nodes[bn];
+    // (a) concept check: a deterministic B-concept absent from A ⇒ prune.
+    if na.valid_concepts && nb.valid_concepts {
+        for (&cb, &det_b) in nb.concepts.iter() {
+            if det_b && !na.concepts.contains_key(&cb) {
+                return false;
+            }
+        }
+    }
+    // (b) role / cardinality check.
+    if na.valid_roles && nb.valid_roles {
+        for (&rb, rb_data) in nb.roles.iter() {
+            match na.roles.get(&rb) {
+                Some(ra_data) => {
+                    if !rb_data.is_possible_subsumer_of(ra_data) {
+                        return false;
+                    }
+                    if ra_data.succ_model >= 0 && rb_data.succ_model >= 0 {
+                        if !pm_subsumer_possible(
+                            a,
+                            ra_data.succ_model as usize,
+                            b,
+                            rb_data.succ_model as usize,
+                        ) {
+                            return false;
+                        }
+                    }
+                }
+                None => {
+                    // role present in B only: prune iff deterministic in B.
+                    if rb_data.det {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Konclude pm_subsumer_possible: a deterministic subsumer-concept absent in the
+    // subsumed prunes; non-deterministic does not; cardinality bounds prune.
+    fn pm_one(concepts: &[(C, bool)], roles: &[(R, PmRole)]) -> PModel {
+        let mut n = PmNode::default();
+        for &(c, d) in concepts {
+            n.concepts.insert(c, d);
+        }
+        for (r, rd) in roles {
+            n.roles.insert(*r, rd.clone());
+        }
+        PModel { nodes: vec![n] }
+    }
+
+    #[test]
+    fn pm_prune_concept_deterministic() {
+        // A = {A det, S det}; subsumer S = {S det} ⇒ possible (S's det ⊆ A).
+        let a = pm_one(&[(1, true), (2, true)], &[]);
+        let s = pm_one(&[(2, true)], &[]);
+        assert!(pm_subsumer_possible(&a, 0, &s, 0));
+        // unrelated CC = {9 det}: 9 absent in A and deterministic ⇒ PRUNE.
+        let cc = pm_one(&[(9, true)], &[]);
+        assert!(!pm_subsumer_possible(&a, 0, &cc, 0));
+        // CC' = {9 NONdet}: absent but non-deterministic ⇒ NOT pruned.
+        let cc2 = pm_one(&[(9, false)], &[]);
+        assert!(pm_subsumer_possible(&a, 0, &cc2, 0));
+    }
+
+    #[test]
+    fn pm_prune_cardinality() {
+        // B needs ≥3 on role r (det); A's model has only 1 successor ⇒ PRUNE.
+        let a = pm_one(
+            &[],
+            &[(0, PmRole { det: true, upper_at_least: 1, ..Default::default() })],
+        );
+        let b = pm_one(
+            &[],
+            &[(0, PmRole { det: true, lower_at_least: 3, ..Default::default() })],
+        );
+        assert!(!pm_subsumer_possible(&a, 0, &b, 0));
+        // role present only in B and deterministic ⇒ PRUNE.
+        let a2 = pm_one(&[], &[]);
+        assert!(!pm_subsumer_possible(&a2, 0, &b, 0));
+    }
 
     fn lit(neg: bool, c: C) -> CLit {
         CLit { neg, c }
