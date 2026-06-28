@@ -68,6 +68,11 @@ fn fmt_atom_dbg(a: &Atom) -> String {
 }
 
 static DBG_SPLIT: AtomicU64 = AtomicU64::new(0);
+static DBG_PM_COUNT: AtomicU64 = AtomicU64::new(0);
+static DBG_PM_MAXNODES: AtomicU64 = AtomicU64::new(0);
+static DBG_PM_TOTNODES: AtomicU64 = AtomicU64::new(0);
+static DBG_PM_TOTCONC: AtomicU64 = AtomicU64::new(0);
+static DBG_PM_MAXCONC: AtomicU64 = AtomicU64::new(0);
 static DBG_FORALL_INSUFF: AtomicU64 = AtomicU64::new(0);
 static DBG_CARD_INSUFF: AtomicU64 = AtomicU64::new(0);
 // KM_HT_QO_CARDMERGE: count of forced successor merges actually performed.
@@ -4768,6 +4773,81 @@ impl<'a> QoSat<'a> {
         if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
             eprintln!("QOPHASE eval_all_parked DONE el={:.1}s", self.sat_elapsed());
         }
+    }
+
+    /// Konclude pseudo-model build (CSatisfiableTaskClassificationMessageAnalyser
+    /// .cpp:1832): a bounded (depth ≤ MAX_PM_DEPTH, ≤ MAX_PM_NODES) tree of model
+    /// nodes from THIS concept's forward saturation (call after `saturate`). The
+    /// forward labels are deterministic; the parked-disjunction heads are the
+    /// non-deterministic possible labels. Each role records its successor count
+    /// (`upperAtLeast`/`lowerAtMost`) and links the first successor's child node.
+    /// Over-bound successors mark `valid_roles=false` (skipped by the prune).
+    fn build_pmodel(&self) -> PModel {
+        let mut pm = PModel { nodes: vec![PmNode::default()] };
+        let mut map: HashMap<Node, usize> = HashMap::new();
+        map.insert(0, 0);
+        let mut queue: Vec<(Node, u32)> = vec![(0, 0)];
+        let mut head = 0usize;
+        while head < queue.len() {
+            let (n, depth) = queue[head];
+            head += 1;
+            let pid = map[&n];
+            for lit in self.label[n].iter() {
+                if !lit.neg {
+                    pm.nodes[pid].concepts.insert(lit.c, true); // deterministic
+                }
+            }
+            // non-deterministic possible labels: parked-disjunction heads at `n`.
+            for &(anchor, cid) in self.pending.iter() {
+                if anchor == n {
+                    for atom in self.clauses[cid].0.head.iter() {
+                        if let Atom::Concept { lit, .. } = atom {
+                            if !lit.neg {
+                                pm.nodes[pid].concepts.entry(lit.c).or_insert(false);
+                            }
+                        }
+                    }
+                }
+            }
+            if depth >= MAX_PM_DEPTH {
+                if !self.out_edges[n].is_empty() {
+                    pm.nodes[pid].valid_roles = false; // successors not modelled
+                }
+                continue;
+            }
+            let mut by_role: std::collections::BTreeMap<R, Vec<Node>> =
+                std::collections::BTreeMap::new();
+            for &(r, t) in self.out_edges[n].iter() {
+                by_role.entry(r).or_default().push(t);
+            }
+            for (r, succs) in by_role {
+                let child = succs[0];
+                let cidx = if let Some(&id) = map.get(&child) {
+                    id
+                } else if pm.nodes.len() < MAX_PM_NODES {
+                    let id = pm.nodes.len();
+                    pm.nodes.push(PmNode::default());
+                    map.insert(child, id);
+                    queue.push((child, depth + 1));
+                    id
+                } else {
+                    pm.nodes[pid].valid_roles = false; // over node bound
+                    continue;
+                };
+                pm.nodes[pid].roles.insert(
+                    r,
+                    PmRole {
+                        det: true,
+                        lower_at_least: 0,
+                        upper_at_least: succs.len() as i64,
+                        upper_at_most: i64::MAX,
+                        lower_at_most: succs.len() as i64,
+                        succ_model: cidx as i64,
+                    },
+                );
+            }
+        }
+        pm
     }
 
     fn finish(&self, root: Node) -> QoResult {
@@ -10054,6 +10134,7 @@ impl Ht {
             // residue — skip its model build. Konclude resolves these without a
             // calculated test.
             let discharge = std::env::var_os("KM_HT_QO_DISCHARGE").is_some();
+            let pmbuild = std::env::var_os("KM_HT_QO_PMBUILD").is_some();
             let concept_level: HashSet<usize> = if discharge {
                 self.concept_level_disjunction_cids()
             } else {
@@ -10104,6 +10185,19 @@ impl Ht {
                                             lsub.push((a, b)); // sound
                                             sound.push(b);
                                         }
+                                    }
+                                    // Milestone 1 validation: build the pseudo-model and
+                                    // accumulate size stats to compare with Konclude.
+                                    if pmbuild {
+                                        let pm = qf.build_pmodel();
+                                        let nn = pm.nodes.len() as u64;
+                                        let nc: u64 = pm.nodes.iter().map(|x| x.concepts.len() as u64).sum();
+                                        let mc = pm.nodes.iter().map(|x| x.concepts.len()).max().unwrap_or(0) as u64;
+                                        DBG_PM_COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                        DBG_PM_TOTNODES.fetch_add(nn, std::sync::atomic::Ordering::Relaxed);
+                                        DBG_PM_TOTCONC.fetch_add(nc, std::sync::atomic::Ordering::Relaxed);
+                                        DBG_PM_MAXNODES.fetch_max(nn, std::sync::atomic::Ordering::Relaxed);
+                                        DBG_PM_MAXCONC.fetch_max(mc, std::sync::atomic::Ordering::Relaxed);
                                     }
                                     if !rf.sufficient {
                                         // KM_HT_QO_DISCHARGE: if every parked disjunction
@@ -10159,6 +10253,17 @@ impl Ht {
                     "QOPC bulk done el={:.1}s: suff_subs={} unsat={} residue={} ({} threads)",
                     t_pc.elapsed().as_secs_f64(), subs.len(), unsat.len(), residue.len(), nthreads
                 );
+                if pmbuild {
+                    let cnt = DBG_PM_COUNT.load(Ordering::Relaxed).max(1);
+                    eprintln!(
+                        "QOPMBUILD: {} pseudo-models | nodes max={} avg={:.1} | concepts/model max={} avg={:.1}",
+                        DBG_PM_COUNT.load(Ordering::Relaxed),
+                        DBG_PM_MAXNODES.load(Ordering::Relaxed),
+                        DBG_PM_TOTNODES.load(Ordering::Relaxed) as f64 / cnt as f64,
+                        DBG_PM_MAXCONC.load(Ordering::Relaxed),
+                        DBG_PM_TOTCONC.load(Ordering::Relaxed) as f64 / cnt as f64,
+                    );
+                }
             }
             if let Some(h) = res_hist_ref {
                 let mut rows: Vec<(usize, usize)> = h
