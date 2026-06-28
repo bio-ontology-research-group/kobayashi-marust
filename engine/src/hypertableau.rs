@@ -2990,6 +2990,13 @@ struct QoSat<'a> {
     /// context (≈217k contexts on 14817) so the `∃R.X⊑Y` backward broadcast stays
     /// LOCAL and bounded — keeping the broadcasts (unlike NOPOLLUTE), hence complete.
     psplit: bool,
+    /// KM_HT_QO_APPROX (Konclude CCalculationTableauApproximationSaturation): at a
+    /// disjunction, PICK the first live disjunct (greedy, non-backtracking) and
+    /// mark the concept insufficient, instead of parking. Produces an approximate
+    /// model whose labels are the possible-subsumer candidates (the branch-resolved,
+    /// role-mediated consequences) — the candidate source the forward-only pass
+    /// lacks. Over-approximate: a calculated test confirms each candidate.
+    approx: bool,
     /// P2.1 ancestor link (parallel to `label`): the predecessor node that created
     /// this successor, for the blocking ancestor walk. `None` for roots/self-nodes.
     qo_parent: Vec<Option<Node>>,
@@ -3576,6 +3583,7 @@ impl<'a> QoSat<'a> {
             // affected seeds are flagged insufficient and re-verified in the residue.
             no_pollute: std::env::var_os("KM_HT_QO_NOPOLLUTE").is_some(),
             psplit: std::env::var_os("KM_HT_QO_PSPLIT").is_some(),
+            approx: std::env::var_os("KM_HT_QO_APPROX").is_some(),
             qo_parent: Vec::new(),
             split_mode: std::env::var_os("KM_HT_QO_SPLIT").is_some(),
             node_fil: Vec::new(),
@@ -5716,7 +5724,18 @@ impl<'a> QoSat<'a> {
             self.add_lit(live[0].0, live[0].1);
             return;
         }
-        // ≥2 live: park. Record and count as open.
+        // ≥2 live. KM_HT_QO_APPROX (Konclude approximate saturation): instead of
+        // parking, pick the first live disjunct and continue (non-backtracking),
+        // marking the concept insufficient. The picked branch's forward closure
+        // becomes the possible-subsumer candidate set; a calculated test confirms.
+        if self.approx {
+            self.qo_insufficient = true;
+            self.pending.push((anchor, cid)); // still recorded as a parked disjunction
+            self.open_disj += 1;
+            self.add_lit(live[0].0, live[0].1);
+            return;
+        }
+        // Otherwise park. Record and count as open.
         if self.tracing {
             self.trail.push(QoUndo::Pending(self.pending.len()));
         } else {
