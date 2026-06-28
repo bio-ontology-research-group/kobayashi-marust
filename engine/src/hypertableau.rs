@@ -8550,14 +8550,14 @@ impl Ht {
         let qset_ref = qset;
         let known_ref = known;
         // per worker: Some((unsat, subs)) or None ⇒ out-of-fragment, defer whole.
-        let parts: Vec<Option<(Vec<C>, Vec<(C, C)>, u64)>> = std::thread::scope(|s| {
+        let parts: Vec<Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)>> = std::thread::scope(|s| {
             let next = &next;
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
                     let tmpl = template.clone();
                     std::thread::Builder::new()
                         .stack_size(RWORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<(Vec<C>, Vec<(C, C)>, u64)> {
+                        .spawn_scoped(s, move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
                             let mut w = Ht::new(tmpl);
                             w.set_anywhere(anywhere);
                             w.set_fast_tableau(); // result-identical speedups
@@ -8575,14 +8575,24 @@ impl Ht {
                             let mut subs: Vec<(C, C)> = Vec::new();
                             let mut unsat: Vec<C> = Vec::new();
                             let mut nconf: u64 = 0;
+                            // KM_HT_QO_RESIDUE_SAMPLE=N: process only the first N residue
+                            // concepts (diagnostic: measure per-concept model-build vs
+                            // candidate-test cost without waiting for all 9755).
+                            let sample = std::env::var("KM_HT_QO_RESIDUE_SAMPLE")
+                                .ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
+                            let mut t_model = std::time::Duration::ZERO;
+                            let mut t_cand = std::time::Duration::ZERO;
                             loop {
                                 let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                if i >= residue_ref.len() {
+                                if i >= residue_ref.len() || (sample > 0 && i >= sample) {
                                     break;
                                 }
                                 let a = residue_ref[i];
                                 // one real model of `a`.
-                                match w.consistent(&[CLit::pos(a)]) {
+                                let tm = std::time::Instant::now();
+                                let cons_a = w.consistent(&[CLit::pos(a)]);
+                                t_model += tm.elapsed();
+                                match cons_a {
                                     Some(false) => {
                                         unsat.push(a); // a ⊑ ⊥ ⇒ unsatisfiable
                                         continue;
@@ -8606,6 +8616,7 @@ impl Ht {
                                     .filter(|b| *b != a && qset_ref.contains(b))
                                     .filter(|b| ka.map_or(true, |s| !s.contains(b)))
                                     .collect();
+                                let tc = std::time::Instant::now();
                                 for b in cand {
                                     nconf += 1;
                                     match w.consistent(&[CLit::pos(a), CLit::neg(b)]) {
@@ -8614,8 +8625,9 @@ impl Ht {
                                         None => return None,              // defer
                                     }
                                 }
+                                t_cand += tc.elapsed();
                             }
-                            Some((unsat, subs, nconf))
+                            Some((unsat, subs, nconf, t_model.as_secs_f64(), t_cand.as_secs_f64()))
                         })
                         .expect("spawn residue-complete worker")
                 })
@@ -8625,24 +8637,28 @@ impl Ht {
         let mut unsat: Vec<C> = Vec::new();
         let mut subs: Vec<(C, C)> = Vec::new();
         let mut nconf: u64 = 0;
+        let (mut tmod, mut tcnd) = (0f64, 0f64);
         for part in parts {
             match part {
-                Some((u, s, k)) => {
+                Some((u, s, k, tm, tc)) => {
                     unsat.extend(u);
                     subs.extend(s);
                     nconf += k;
+                    tmod += tm;
+                    tcnd += tc;
                 }
                 None => return None, // a worker hit out-of-fragment ⇒ defer whole
             }
         }
         if trace {
             eprintln!(
-                "QOGF residue-complete: {} concepts, {} confirms, subs={} unsat={} [{:.2}s, {} threads]",
+                "QOGF residue-complete: {} concepts, {} confirms, subs={} unsat={} [{:.2}s wall, model-build={:.1}s cand-test={:.1}s (thread-summed), {} threads]",
                 residue.len(),
                 nconf,
                 subs.len(),
                 unsat.len(),
                 t0.elapsed().as_secs_f64(),
+                tmod, tcnd,
                 nthreads
             );
         }
