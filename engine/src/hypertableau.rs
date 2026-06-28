@@ -10755,7 +10755,19 @@ impl Ht {
         ); // KEEP inverse bridges
         qk.kpset = true;
         qk.complete_roles = true;
+        let _sg_t0 = std::time::Instant::now();
         let g = qk.saturate_global(queries);
+        if trace || std::env::var_os("KM_HT_QO_PMTIME").is_some() {
+            eprintln!(
+                "KPSET saturate_global: {:.2}s nodes={} unsupported={} kp_insuff={} qo_insuff={} pending={}",
+                _sg_t0.elapsed().as_secs_f64(),
+                qk.label.len(),
+                g.unsupported,
+                qk.kp_insufficient,
+                qk.qo_insufficient,
+                qk.pending.len()
+            );
+        }
         if g.unsupported || qk.kp_insufficient || qk.qo_insufficient || !qk.pending.is_empty() {
             // KM_HT_QO_CARD per-node split (study P2). When the ONLY obstacles are
             // insufficient nodes (cardinality Eq-heads / critical-ALL deferrals) —
