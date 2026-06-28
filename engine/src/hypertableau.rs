@@ -8454,6 +8454,7 @@ impl Ht {
         &self,
         residue: &[C],
         qset: &HashSet<C>,
+        known: &HashMap<C, HashSet<C>>,
     ) -> Option<(Vec<C>, Vec<(C, C)>)> {
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         let t0 = std::time::Instant::now();
@@ -8469,6 +8470,7 @@ impl Ht {
         const RWORKER_STACK: usize = 512 * 1024 * 1024;
         let residue_ref = residue;
         let qset_ref = qset;
+        let known_ref = known;
         // per worker: Some((unsat, subs)) or None ⇒ out-of-fragment, defer whole.
         let parts: Vec<Option<(Vec<C>, Vec<(C, C)>, u64)>> = std::thread::scope(|s| {
             let next = &next;
@@ -8510,12 +8512,21 @@ impl Ht {
                                     None => return None, // out-of-fragment ⇒ defer
                                     Some(true) => {}
                                 }
-                                // candidate superset = positive query concepts at root.
+                                // candidate superset = positive query concepts at root,
+                                // MINUS the already-confirmed sound subsumers (`known[a]`,
+                                // the residue concept's monotone forward-only label — the
+                                // caller already emitted those). Only the uncertain ones
+                                // (added by resolving the parked disjunction) pay the
+                                // expensive `A ⊓ ¬B` unsat proof. This is the lever that
+                                // cuts the per-concept candidate count from "all subsumers"
+                                // to "the few the disjunction could change".
+                                let ka = known_ref.get(&a);
                                 let cand: Vec<C> = w.ext.concepts[0]
                                     .keys()
                                     .filter(|k| !k.neg)
                                     .map(|k| k.c)
                                     .filter(|b| *b != a && qset_ref.contains(b))
+                                    .filter(|b| ka.map_or(true, |s| !s.contains(b)))
                                     .collect();
                                 for b in cand {
                                     nconf += 1;
@@ -9388,7 +9399,7 @@ impl Ht {
                         .unwrap_or(5000);
                     if res <= rcap {
                         let t_res = Instant::now();
-                        let rc = self.qo_residue_complete(&residue, &qset);
+                        let rc = self.qo_residue_complete(&residue, &qset, &HashMap::new());
                         if trace {
                             eprintln!(
                                 "QOPHASE residue-complete ({} concepts) returned {} in {:.1}s",
@@ -9767,7 +9778,150 @@ impl Ht {
         let mut subs: Vec<(C, C)> = Vec::new();
         let mut cands: Vec<(C, C)> = Vec::new();
         let mut unsat_cands: Vec<C> = Vec::new();
+        // KM_HT_QO_PC_RESIDUE (Konclude classify phase): instead of DEFERRING the
+        // whole classification on the first concept whose forward saturation parks a
+        // disjunction (`!sufficient`), COLLECT those concepts into a residue and
+        // finish them with the per-concept complete tableau (`qo_residue_complete`).
+        // The sufficient bulk (48609/58364 on ore_ont_14817 with CARD_RECOG) is read
+        // directly off its forward closure; only the small insufficient residue
+        // (9755) pays a complete test — exactly Konclude's precompute + per-concept
+        // SAT split, now that NOPOLLUTE makes the forward pass converge and CARD_RECOG
+        // collapses the cardinality-recognition disjunctions.
+        let pc_residue = std::env::var_os("KM_HT_QO_PC_RESIDUE").is_some();
+        let mut residue: Vec<C> = Vec::new();
         let t_pc = Instant::now();
+        // KM_HT_QO_PC_RESIDUE parallel bulk: the sufficient-bulk forward saturation
+        // is independent per concept, so fan it out over KM_HT_PAR threads (each its
+        // own QoSat over a cloned clause template). A thread returns None if any
+        // concept is out-of-fragment ⇒ defer the whole. Only the simple forward path
+        // (no KM_HT_QO_VERIFY inverse-candidate pass, no census) is parallelised here.
+        if pc_residue && !want_cands && !pc_tally {
+            let par = std::env::var("KM_HT_PAR")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(1)
+                .max(1);
+            let nthreads = par.min(queries.len().max(1)).max(1);
+            let fprop = std::env::var_os("KM_HT_QO_FPROP").is_some();
+            let next = std::sync::atomic::AtomicUsize::new(0);
+            let clauses_ref: &[ClauseRec] = &self.clauses;
+            let queries_ref = queries;
+            let qset_ref = &qset;
+            // (unsat, subs, residue, residue_sound[concept→sound subsumers])
+            type PcPart = (Vec<C>, Vec<(C, C)>, Vec<C>, Vec<(C, Vec<C>)>);
+            let parts: Vec<Option<PcPart>> = std::thread::scope(|s| {
+                let next = &next;
+                let handles: Vec<_> = (0..nthreads)
+                    .map(|_| {
+                        let tmpl: Vec<ClauseRec> = clauses_ref.to_vec();
+                        std::thread::Builder::new()
+                            .stack_size(64 * 1024 * 1024)
+                            .spawn_scoped(s, move || -> Option<PcPart> {
+                                let mut qf = QoSat::new_opts(&tmpl, true, fprop);
+                                qf.complete_roles = true;
+                                qf.node_cap = cap;
+                                let mut lsub: Vec<(C, C)> = Vec::new();
+                                let mut luns: Vec<C> = Vec::new();
+                                let mut lres: Vec<C> = Vec::new();
+                                let mut lknown: Vec<(C, Vec<C>)> = Vec::new();
+                                loop {
+                                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    if i >= queries_ref.len() {
+                                        break;
+                                    }
+                                    let a = queries_ref[i];
+                                    qf.reset();
+                                    let rf = qf.saturate(&[CLit::pos(a)]);
+                                    if rf.unsupported {
+                                        return None; // out-of-fragment ⇒ defer whole
+                                    }
+                                    if rf.clashed {
+                                        luns.push(a); // sound forward-only unsat
+                                        continue;
+                                    }
+                                    // A forward-only label is SOUND (monotone, no branch)
+                                    // whether or not the pass is sufficient: emit its
+                                    // query subsumers directly. For an INSUFFICIENT concept
+                                    // these are the confirmed-known subsumers the complete
+                                    // residue test then skips (testing only the uncertain
+                                    // delta the parked disjunction could add).
+                                    let mut sound: Vec<C> = Vec::new();
+                                    for &b in &rf.root_label {
+                                        if b != a && qset_ref.contains(&b) {
+                                            lsub.push((a, b)); // sound
+                                            sound.push(b);
+                                        }
+                                    }
+                                    if !rf.sufficient {
+                                        lres.push(a); // parked disjunction ⇒ complete-test
+                                        lknown.push((a, sound));
+                                    }
+                                }
+                                Some((luns, lsub, lres, lknown))
+                            })
+                            .expect("spawn pc bulk worker")
+                    })
+                    .collect();
+                handles.into_iter().map(|h| h.join().unwrap()).collect()
+            });
+            let mut known: HashMap<C, HashSet<C>> = HashMap::new();
+            for part in parts {
+                match part {
+                    Some((u, sb, r, kn)) => {
+                        unsat.extend(u);
+                        subs.extend(sb);
+                        residue.extend(r);
+                        for (a, s) in kn {
+                            known.insert(a, s.into_iter().collect());
+                        }
+                    }
+                    None => {
+                        if trace {
+                            eprintln!("QOPC bulk: a concept is out-of-fragment ⇒ defer to CB");
+                        }
+                        return None;
+                    }
+                }
+            }
+            if trace {
+                eprintln!(
+                    "QOPC bulk done el={:.1}s: suff_subs={} unsat={} residue={} ({} threads)",
+                    t_pc.elapsed().as_secs_f64(), subs.len(), unsat.len(), residue.len(), nthreads
+                );
+            }
+            // fall through to the shared residue-complete block below.
+            if pc_residue && !residue.is_empty() {
+                if trace {
+                    eprintln!(
+                        "QOPC residue-complete: {} insufficient of {} (suff bulk {} subs) el={:.1}s",
+                        residue.len(), queries.len(), subs.len(), t_pc.elapsed().as_secs_f64()
+                    );
+                }
+                match self.qo_residue_complete(&residue, &qset, &known) {
+                    Some((ru, rs)) => {
+                        unsat.extend(ru);
+                        subs.extend(rs);
+                    }
+                    None => {
+                        if trace {
+                            eprintln!("QOPC residue-complete could not certify ⇒ defer to CB");
+                        }
+                        return None;
+                    }
+                }
+            }
+            let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
+            if trace {
+                eprintln!(
+                    "QOPC done (parallel) subs={} unsat={} consistent={} el={:.1}s",
+                    subs.len(), unsat.len(), consistent, t_pc.elapsed().as_secs_f64()
+                );
+            }
+            self.pc_candidates = Vec::new();
+            self.pc_unsat_candidates = Vec::new();
+            self.pc_tainted = Vec::new();
+            return Some((consistent, unsat, subs));
+        }
         for (i, &a) in queries.iter().enumerate() {
             qf.reset();
             if pc_tally {
@@ -9808,6 +9962,10 @@ impl Ht {
                 continue;
             }
             if !rf.sufficient {
+                if pc_residue {
+                    residue.push(a); // finish with the complete tableau after the bulk
+                    continue;
+                }
                 if trace {
                     eprintln!("QOPC bail (insufficient) at {}/{} concept {}", i, queries.len(), a);
                 }
@@ -9867,6 +10025,31 @@ impl Ht {
             // Return a benign answer so the caller does not fall through to the
             // monolithic classify (this is a diagnostic, not a real classification).
             return Some((true, Vec::new(), Vec::new()));
+        }
+        // Finish the insufficient residue with the per-concept complete tableau.
+        // `qo_residue_complete` runs one real model per concept (depth 0 once
+        // CARD_RECOG handles cardinality deterministically) + a told-subsumer-keyed
+        // per-candidate refutation, parallel over KM_HT_PAR. A `None` means a residue
+        // concept is out-of-fragment for the tableau too ⇒ defer the whole (sound).
+        if pc_residue && !residue.is_empty() {
+            if trace {
+                eprintln!(
+                    "QOPC residue-complete: {} insufficient of {} (suff bulk {} subs so far) el={:.1}s",
+                    residue.len(), queries.len(), subs.len(), t_pc.elapsed().as_secs_f64()
+                );
+            }
+            match self.qo_residue_complete(&residue, &qset, &HashMap::new()) {
+                Some((ru, rs)) => {
+                    unsat.extend(ru);
+                    subs.extend(rs);
+                }
+                None => {
+                    if trace {
+                        eprintln!("QOPC residue-complete could not certify ⇒ defer to CB");
+                    }
+                    return None;
+                }
+            }
         }
         let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
         if trace {
