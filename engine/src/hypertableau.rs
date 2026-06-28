@@ -67,6 +67,80 @@ fn fmt_atom_dbg(a: &Atom) -> String {
     }
 }
 
+/// KM_HT_QO_NODECERTAIN: build `cid → ⋂-closure D of its disjuncts` for the given
+/// concept-level disjunction clause ids. `closure(h)` is `h`'s forward saturation
+/// label; `D = ⋂_h closure(h)` is the set true in EVERY branch. A disjunction whose
+/// intersection is just the disjuncts themselves (or empty) carries no extra certain
+/// consequence and is omitted. The closures are computed once per unique disjunct
+/// head with a single reused `QoSat`.
+fn build_nodecertain_map(
+    clauses: &[ClauseRec],
+    cids: &HashSet<usize>,
+    fprop: bool,
+    cap: usize,
+) -> HashMap<usize, Vec<C>> {
+    // unique disjunct heads across all concept-level disjunctions
+    let mut heads: Vec<C> = Vec::new();
+    {
+        let mut seen: HashSet<C> = HashSet::new();
+        for &cid in cids {
+            for a in clauses[cid].0.head.iter() {
+                if let Atom::Concept { lit, .. } = a {
+                    if !lit.neg && seen.insert(lit.c) {
+                        heads.push(lit.c);
+                    }
+                }
+            }
+        }
+    }
+    let mut closure: HashMap<C, HashSet<C>> = HashMap::new();
+    let mut qf = QoSat::new_opts(clauses, true, fprop);
+    qf.complete_roles = true;
+    qf.node_cap = cap;
+    for &h in &heads {
+        qf.reset();
+        let rf = qf.saturate(&[CLit::pos(h)]);
+        let lab: HashSet<C> = rf.root_label.into_iter().collect();
+        closure.insert(h, lab);
+    }
+    let mut out: HashMap<usize, Vec<C>> = HashMap::new();
+    for &cid in cids {
+        let hs: Vec<C> = clauses[cid]
+            .0
+            .head
+            .iter()
+            .filter_map(|a| match a {
+                Atom::Concept { lit, .. } if !lit.neg => Some(lit.c),
+                _ => None,
+            })
+            .collect();
+        if hs.len() < 2 {
+            continue;
+        }
+        let mut d: HashSet<C> = match closure.get(&hs[0]) {
+            Some(c) => c.clone(),
+            None => continue,
+        };
+        for h in &hs[1..] {
+            match closure.get(h) {
+                Some(c) => d.retain(|x| c.contains(x)),
+                None => {
+                    d.clear();
+                    break;
+                }
+            }
+        }
+        // drop the disjunct heads themselves (already handled by the clause)
+        for h in &hs {
+            d.remove(h);
+        }
+        if !d.is_empty() {
+            out.insert(cid, d.into_iter().collect());
+        }
+    }
+    out
+}
+
 static DBG_SPLIT: AtomicU64 = AtomicU64::new(0);
 static DBG_PM_COUNT: AtomicU64 = AtomicU64::new(0);
 static DBG_PM_MAXNODES: AtomicU64 = AtomicU64::new(0);
@@ -2997,6 +3071,17 @@ struct QoSat<'a> {
     /// role-mediated consequences) — the candidate source the forward-only pass
     /// lacks. Over-approximate: a calculated test confirms each candidate.
     approx: bool,
+    /// KM_HT_QO_NODECERTAIN: map from a CONCEPT-LEVEL disjunction's clause id to
+    /// the ⋂-closure `D` of its disjuncts (a concept in every disjunct's closure,
+    /// hence true in every branch). When such a disjunction parks at a node, inject
+    /// `D` AT THAT NODE and continue (don't park): `D` then fires the role rules
+    /// (∃R.X⊑Y) forward, so role-mediated certain subsumers reach the predecessor —
+    /// which the concept-lattice `certain_disjunction_consequences` cannot do.
+    /// Sound (D holds in all branches); complete for subsumption.
+    node_certain: Option<std::sync::Arc<HashMap<usize, Vec<C>>>>,
+    /// per-saturation guard: an injected concept-level disjunction is not
+    /// re-injected each time its clause re-fires at the same node.
+    nc_resolved: HashSet<(Node, usize)>,
     /// P2.1 ancestor link (parallel to `label`): the predecessor node that created
     /// this successor, for the blocking ancestor walk. `None` for roots/self-nodes.
     qo_parent: Vec<Option<Node>>,
@@ -3100,6 +3185,7 @@ enum QoUndo {
     Prop(R, Node, usize), // prop[(R,Node)] grew to this len
     Fprop(R, Node, usize), // fprop[(R,Node)] grew to this len
     Filler(CLit, u32),    // filler_node[(CLit, class)] was created
+    SatFiller(CLit, R),   // sat_filler[(CLit, role)] was created
 }
 
 pub struct QoResult {
@@ -3584,6 +3670,8 @@ impl<'a> QoSat<'a> {
             no_pollute: std::env::var_os("KM_HT_QO_NOPOLLUTE").is_some(),
             psplit: std::env::var_os("KM_HT_QO_PSPLIT").is_some(),
             approx: std::env::var_os("KM_HT_QO_APPROX").is_some(),
+            node_certain: None,
+            nc_resolved: HashSet::new(),
             qo_parent: Vec::new(),
             split_mode: std::env::var_os("KM_HT_QO_SPLIT").is_some(),
             node_fil: Vec::new(),
@@ -3691,6 +3779,7 @@ impl<'a> QoSat<'a> {
         self.trail.clear();
         self.unsupported = false;
         self.open_disj = 0;
+        self.nc_resolved.clear();
     }
 
     fn new_node(&mut self) -> Node {
@@ -3848,6 +3937,9 @@ impl<'a> QoSat<'a> {
             let n = self.new_node();
             self.is_filler[n] = true;
             self.sat_filler.insert((fil, r), n);
+            if self.tracing {
+                self.trail.push(QoUndo::SatFiller(fil, r));
+            }
             if self.split_mode {
                 self.node_fil[n] = Some(fil);
             }
@@ -4937,12 +5029,19 @@ impl<'a> QoSat<'a> {
                     }
                 }
                 QoUndo::NodeNew => {
+                    // Must pop EVERY parallel array `new_node` pushes, or the node
+                    // arrays desync after a branch rollback (a later `new_node`
+                    // reuses an id whose `merged_into`/`node_fil`/… slot is stale).
                     self.label.pop();
                     self.out_edges.pop();
                     self.in_edges.pop();
                     self.node_range.pop();
                     self.qo_parent.pop();
                     self.is_filler.pop();
+                    self.node_fil.pop();
+                    self.merged_into.pop();
+                    self.node_seed.pop();
+                    self.pending_by_node.pop();
                 }
                 QoUndo::Unsat(n) => {
                     self.node_unsat.remove(&n);
@@ -4965,6 +5064,9 @@ impl<'a> QoSat<'a> {
                 }
                 QoUndo::Filler(fil, cls) => {
                     self.filler_node.remove(&(fil, cls));
+                }
+                QoUndo::SatFiller(fil, r) => {
+                    self.sat_filler.remove(&(fil, r));
                 }
             }
         }
@@ -5734,6 +5836,22 @@ impl<'a> QoSat<'a> {
             self.open_disj += 1;
             self.add_lit(live[0].0, live[0].1);
             return;
+        }
+        // KM_HT_QO_NODECERTAIN: a concept-level disjunction parked at `anchor`
+        // entails (in every branch) the ⋂-closure `D` of its disjuncts. Inject `D`
+        // at `anchor` and continue WITHOUT parking: re-saturation fires the role
+        // rules on `D`, so role-mediated certain subsumers reach the predecessor.
+        // The disjunct-specific (non-certain) part is correctly dropped — it is not
+        // a subsumer. Guarded per (node,cid) against re-injection.
+        if let Some(nc) = self.node_certain.clone() {
+            if let Some(d) = nc.get(&cid) {
+                if self.nc_resolved.insert((anchor, cid)) {
+                    for &c in d.iter() {
+                        self.add_lit(anchor, CLit::pos(c));
+                    }
+                }
+                return; // resolved to the certain part; not parked
+            }
         }
         // Otherwise park. Record and count as open.
         if self.tracing {
@@ -10046,6 +10164,28 @@ impl Ht {
         if trace {
             eprintln!("QOPC entry queries={} clauses={}", queries.len(), self.clauses.len());
         }
+        // KM_HT_QO_TESTONE=A,B : adjudicate one pair A⊑B with the COMPLETE Ht
+        // tableau (a different engine than QoSat) — does consistent(A ⊓ ¬B) say
+        // unsat (A⊑B certain) or sat (not a subsumer)? Decides whether a QoSat-side
+        // incompleteness or a contested gold explains a missing pair.
+        if let Ok(v) = std::env::var("KM_HT_QO_TESTONE") {
+            let parts: Vec<C> = v.split(',').filter_map(|s| s.parse().ok()).collect();
+            if parts.len() == 2 {
+                let (a, b) = (parts[0], parts[1]);
+                let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                let mut w = Ht::new(template);
+                w.set_fast_tableau();
+                let sat_a = w.consistent(&[CLit::pos(a)]);
+                let mut w2 = Ht::new(self.clauses.iter().map(|(c, _, _)| c.clone()).collect());
+                w2.set_fast_tableau();
+                let sat_anb = w2.consistent(&[CLit::pos(a), CLit::neg(b)]);
+                eprintln!(
+                    "QOTESTONE a={} b={}: consistent(a)={:?} consistent(a⊓¬b)={:?}  ⇒ {}",
+                    a, b, sat_a, sat_anb,
+                    match sat_anb { Some(false) => "a⊑b CERTAIN (QoSat gap)", Some(true) => "a⋢b (gold contested)", None => "unsupported/defer" }
+                );
+            }
+        }
         let cap = queries.len().saturating_mul(4).saturating_add(500_000);
         // Two single-seed saturations per concept:
         //  - `qf` forward-only (inverse-bridge clauses dropped): SOUND. Reading a
@@ -10153,13 +10293,45 @@ impl Ht {
             // residue — skip its model build. Konclude resolves these without a
             // calculated test.
             let discharge = std::env::var_os("KM_HT_QO_DISCHARGE").is_some();
+            // KM_HT_QO_INPLACE: complete each insufficient concept on the qf that
+            // ALREADY saturated it (a converging ~100-node per-concept model),
+            // reusing qo_residue_classify (Phase 1 one completion → candidates,
+            // Phase 2 verify via in-place subtree branching). No fresh consistent()
+            // rebuild. False residue has no candidate ⇒ no test (cheap); only the
+            // genuinely role-mediated concepts run calculated tests. None ⇒ defer
+            // that concept to the fresh-build residue (sound).
+            let inplace = std::env::var_os("KM_HT_QO_INPLACE").is_some();
             let pmbuild = std::env::var_os("KM_HT_QO_PMBUILD").is_some();
-            let concept_level: HashSet<usize> = if discharge {
+            let probe: Option<C> = std::env::var("KM_HT_QO_PROBE").ok().and_then(|s| s.parse().ok());
+            let probe_sup: Option<C> = std::env::var("KM_HT_QO_PROBE_SUP").ok().and_then(|s| s.parse().ok());
+            let nodecertain = std::env::var_os("KM_HT_QO_NODECERTAIN").is_some();
+            let concept_level: HashSet<usize> = if discharge || nodecertain {
                 self.concept_level_disjunction_cids()
             } else {
                 HashSet::new()
             };
             let concept_level_ref = &concept_level;
+            // KM_HT_QO_NODECERTAIN: precompute cid → ⋂-closure D of its disjuncts
+            // (concept-level disjunctions only). Injected at parked nodes so the
+            // role rules fire forward — recovers role-mediated certain subsumers.
+            let nc_map: Option<std::sync::Arc<HashMap<usize, Vec<C>>>> = if nodecertain {
+                let m = build_nodecertain_map(clauses_ref, concept_level_ref, fprop, cap);
+                if std::env::var_os("KM_HT_TRACE").is_some() {
+                    eprintln!("QONODECERTAIN map: {} concept-level disjunctions enriched", m.len());
+                    if let Ok(p) = std::env::var("KM_HT_QO_PROBE_CID") {
+                        if let Ok(pc) = p.parse::<usize>() {
+                            eprintln!("QONODECERTAIN cid={} in_map={} D_len={:?}",
+                                pc, m.contains_key(&pc), m.get(&pc).map(|d| d.len()));
+                        }
+                    }
+                    // how many concept-level cids had a NON-empty intersection
+                    eprintln!("QONODECERTAIN concept_level_total={}", concept_level_ref.len());
+                }
+                Some(std::sync::Arc::new(m))
+            } else {
+                None
+            };
+            let nc_map_ref = &nc_map;
             // (unsat, subs, residue, residue_sound[concept→sound subsumers])
             type PcPart = (Vec<C>, Vec<(C, C)>, Vec<C>, Vec<(C, Vec<C>)>);
             let parts: Vec<Option<PcPart>> = std::thread::scope(|s| {
@@ -10173,6 +10345,7 @@ impl Ht {
                                 let mut qf = QoSat::new_opts(&tmpl, true, fprop);
                                 qf.complete_roles = true;
                                 qf.node_cap = cap;
+                                qf.node_certain = nc_map_ref.clone();
                                 let mut lsub: Vec<(C, C)> = Vec::new();
                                 let mut luns: Vec<C> = Vec::new();
                                 let mut lres: Vec<C> = Vec::new();
@@ -10185,6 +10358,20 @@ impl Ht {
                                     let a = queries_ref[i];
                                     qf.reset();
                                     let rf = qf.saturate(&[CLit::pos(a)]);
+                                    if probe == Some(a) {
+                                        let sup_in = probe_sup.map(|y| rf.root_label.contains(&y));
+                                        let cl_park = qf.pending.iter().filter(|(_, c)| concept_level_ref.contains(c)).count();
+                                        let cids: Vec<usize> = {
+                                            let mut s: Vec<usize> = qf.pending.iter().map(|(_, c)| *c).collect();
+                                            s.sort_unstable(); s.dedup(); s
+                                        };
+                                        eprintln!(
+                                            "QOPROBE a={} suff={} clashed={} pending={} (concept_level={}) distinct_cids={} sup{:?}_in_label={:?} rootlen={}",
+                                            a, rf.sufficient, rf.clashed, qf.pending.len(), cl_park,
+                                            cids.len(), probe_sup, sup_in, rf.root_label.len()
+                                        );
+                                        eprintln!("QOPROBE   parked cids={:?}", &cids[..cids.len().min(40)]);
+                                    }
                                     if rf.unsupported {
                                         return None; // out-of-fragment ⇒ defer whole
                                     }
@@ -10219,11 +10406,37 @@ impl Ht {
                                         DBG_PM_MAXCONC.fetch_max(mc, std::sync::atomic::Ordering::Relaxed);
                                     }
                                     if !rf.sufficient {
-                                        // KM_HT_QO_DISCHARGE: if every parked disjunction
-                                        // of `a` is concept-level, its forward label is
-                                        // already complete ⇒ skip the model build.
+                                        // KM_HT_QO_INPLACE: complete on the already-built
+                                        // per-concept model (no fresh consistent() rebuild).
+                                        if inplace {
+                                            let clean_set: HashSet<C> =
+                                                rf.root_label.iter().copied().collect();
+                                            match qf.qo_residue_classify(
+                                                &[(a, 0)],
+                                                std::slice::from_ref(&clean_set),
+                                                qset_ref,
+                                            ) {
+                                                Some((luns2, lsub2)) => {
+                                                    luns.extend(luns2);
+                                                    lsub.extend(lsub2);
+                                                    continue;
+                                                }
+                                                None => {} // defer to fresh build below
+                                            }
+                                        }
+                                        // KM_HT_QO_DISCHARGE: a concept-level disjunction is
+                                        // safe to discharge (its ⋂-closure is already in the
+                                        // forward label) ONLY when it parks at the ROOT node.
+                                        // At a FILLER node the same disjunction carries
+                                        // role-mediated certain consequences (∃R.disjunct⊑Y
+                                        // with Y common to all disjuncts) that the concept
+                                        // ⋂-closure cannot reach — those concepts need the
+                                        // real model build. Discharge iff every parked
+                                        // disjunction is concept-level AND root-anchored.
                                         if discharge
-                                            && qf.pending.iter().all(|(_, cid)| concept_level_ref.contains(cid))
+                                            && qf.pending.iter().all(|(n, cid)| {
+                                                *n == 0 && concept_level_ref.contains(cid)
+                                            })
                                         {
                                             continue;
                                         }
