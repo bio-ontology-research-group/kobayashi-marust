@@ -10359,6 +10359,20 @@ impl Ht {
                                     qf.reset();
                                     let rf = qf.saturate(&[CLit::pos(a)]);
                                     if probe == Some(a) {
+                                        // model-structure dump: node/edge counts, and where
+                                        // key concepts land (P=__trans, the chain target, the
+                                        // super). Reveals if the part_of chain expands + P fires.
+                                        let nnodes = qf.label.len();
+                                        let nedges: usize = qf.out_edges.iter().map(|e| e.len()).sum();
+                                        let has = |cid: C| qf.label.iter().any(|l| l.contains(&CLit::pos(cid)));
+                                        let root_has = |cid: C| qf.label.get(0).map(|l| l.contains(&CLit::pos(cid))).unwrap_or(false);
+                                        let dbg: Vec<C> = std::env::var("KM_HT_QO_PROBE_IDS")
+                                            .ok().map(|s| s.split(',').filter_map(|x| x.parse().ok()).collect())
+                                            .unwrap_or_default();
+                                        eprintln!("QOPROBE2 a={} nodes={} edges={} | for each id (root_has, any_has):", a, nnodes, nedges);
+                                        for &cid in &dbg {
+                                            eprintln!("QOPROBE2   c{} root={} any={}", cid, root_has(cid), has(cid));
+                                        }
                                         let sup_in = probe_sup.map(|y| rf.root_label.contains(&y));
                                         let cl_park = qf.pending.iter().filter(|(_, c)| concept_level_ref.contains(c)).count();
                                         let cids: Vec<usize> = {
