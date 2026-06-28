@@ -8528,6 +8528,144 @@ impl Ht {
     ///
     /// Immutable `self`: each worker owns a cloned `Ht`, so this can run while the
     /// caller still holds the forward `QoSat` borrow of `self.clauses`.
+    /// KM_HT_QO_CERTAIN — Konclude-style deterministic disjunction resolution.
+    /// A parked concept-level disjunction `Q → h1 ⊔ … ⊔ hk` entails, in EVERY
+    /// model, the intersection of the disjuncts' subsumer closures
+    /// `D = ⋂ᵢ closure(hᵢ)` (a concept in all branches is certain). For every
+    /// concept `A` that carries the body (`Q ∈ closure(A)`), add `D` to `A`'s
+    /// subsumers — deterministically, no branch, no model build. This is the
+    /// certain part Konclude derives in saturation; it (a) recovers the genuine
+    /// disjunction-mediated subsumers and (b) makes the false-residue concepts
+    /// cheap (their `D` is already present ⇒ nothing added). Sound: every emitted
+    /// pair holds in all models. Iterated to a fixpoint (an added subsumer may be
+    /// the body of another disjunction). Returns the new (a, b) pairs.
+    /// Clause ids of CONCEPT-LEVEL disjunctions: head ≥2 and every head/body atom
+    /// is a positive Concept on the central variable X. These are the disjunctions
+    /// whose certain consequence is the concept ⋂-closure (no edge spanned), so a
+    /// residue concept parked ONLY on these is fully explained by the forward pass
+    /// + `certain_disjunction_consequences` and needs no model build.
+    fn concept_level_disjunction_cids(&self) -> HashSet<usize> {
+        let mut out = HashSet::new();
+        for (cid, (cl, _, _)) in self.clauses.iter().enumerate() {
+            if cl.head.len() < 2 {
+                continue;
+            }
+            let ok = cl.head.iter().chain(cl.body.iter()).all(|a| {
+                matches!(a, Atom::Concept { lit, t } if !lit.neg && *t == X)
+            }) && !cl.body.is_empty();
+            if ok {
+                out.insert(cid);
+            }
+        }
+        out
+    }
+
+    fn certain_disjunction_consequences(
+        &self,
+        subs: &[(C, C)],
+        qset: &HashSet<C>,
+    ) -> Vec<(C, C)> {
+        // closure maps: fwd[a] = subsumers of a; inv[b] = concepts subsumed by b.
+        let mut fwd: HashMap<C, HashSet<C>> = HashMap::new();
+        let mut inv: HashMap<C, HashSet<C>> = HashMap::new();
+        for &(a, b) in subs {
+            fwd.entry(a).or_default().insert(b);
+            inv.entry(b).or_default().insert(a);
+        }
+        // Concept-level disjunctions: head ≥2, all positive Concept atoms at the
+        // same (single) variable, body all positive Concept atoms. (∃/role/Eq
+        // heads or multi-var disjunctions are not concept-level certain rules.)
+        let mut disj: Vec<(Vec<C>, Vec<C>)> = Vec::new();
+        for (cl, _, _) in &self.clauses {
+            if cl.head.len() < 2 {
+                continue;
+            }
+            // Concept-level ⟺ EVERY head and body atom is a positive Concept on the
+            // CENTRAL variable X. A head atom on another variable (e.g. a role
+            // successor `e(y)`) means the disjunction spans an edge and its ⋂-closure
+            // is NOT a sound certain consequence at X — reject the whole clause.
+            let mut ok = true;
+            let mut heads: Vec<C> = Vec::new();
+            for a in &cl.head {
+                match a {
+                    Atom::Concept { lit, t } if !lit.neg && *t == X => heads.push(lit.c),
+                    _ => { ok = false; break; }
+                }
+            }
+            if !ok {
+                continue;
+            }
+            let mut body: Vec<C> = Vec::new();
+            for a in &cl.body {
+                match a {
+                    Atom::Concept { lit, t } if !lit.neg && *t == X => body.push(lit.c),
+                    _ => { ok = false; break; }
+                }
+            }
+            if !ok || body.is_empty() {
+                continue;
+            }
+            disj.push((body, heads));
+        }
+        let contains = |fwd: &HashMap<C, HashSet<C>>, a: C, x: C| -> bool {
+            a == x || fwd.get(&a).map_or(false, |s| s.contains(&x))
+        };
+        let mut new_subs: Vec<(C, C)> = Vec::new();
+        loop {
+            let mut round: Vec<(C, C)> = Vec::new();
+            for (body, heads) in &disj {
+                // D = ⋂ closure(hᵢ) ∩ qset, closure(h) = fwd[h] ∪ {h}.
+                let mut it = heads.iter();
+                let h0 = *it.next().unwrap();
+                let mut d: HashSet<C> = fwd.get(&h0).cloned().unwrap_or_default();
+                d.insert(h0);
+                for &h in it {
+                    let ch = fwd.get(&h);
+                    d.retain(|x| *x == h || ch.map_or(false, |s| s.contains(x)));
+                    if d.is_empty() {
+                        break;
+                    }
+                }
+                d.retain(|x| qset.contains(x));
+                if d.is_empty() {
+                    continue;
+                }
+                // triggers = concepts carrying every body concept in their closure.
+                let mut triggers: HashSet<C> = inv.get(&body[0]).cloned().unwrap_or_default();
+                triggers.insert(body[0]);
+                for &qb in &body[1..] {
+                    let t2 = inv.get(&qb);
+                    triggers.retain(|a| *a == qb || t2.map_or(false, |s| s.contains(a)));
+                }
+                for &a in &triggers {
+                    // Only emit subsumptions whose SUBCLASS is a real query concept
+                    // (the body trigger may itself be a synthetic Q-marker, which is
+                    // not a classified class — Konclude never reports marker subs).
+                    if !qset.contains(&a) {
+                        continue;
+                    }
+                    for &x in &d {
+                        if x != a && !contains(&fwd, a, x) {
+                            round.push((a, x));
+                        }
+                    }
+                }
+            }
+            let mut changed = false;
+            for (a, x) in round {
+                if fwd.entry(a).or_default().insert(x) {
+                    inv.entry(x).or_default().insert(a);
+                    new_subs.push((a, x));
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        new_subs
+    }
+
     fn qo_residue_complete(
         &self,
         residue: &[C],
@@ -9911,6 +10049,17 @@ impl Ht {
                     None
                 };
             let res_hist_ref = res_hist.as_ref();
+            // KM_HT_QO_DISCHARGE: a residue concept whose parked disjunctions are
+            // ALL concept-level (⋂-closure already in its forward label) is false
+            // residue — skip its model build. Konclude resolves these without a
+            // calculated test.
+            let discharge = std::env::var_os("KM_HT_QO_DISCHARGE").is_some();
+            let concept_level: HashSet<usize> = if discharge {
+                self.concept_level_disjunction_cids()
+            } else {
+                HashSet::new()
+            };
+            let concept_level_ref = &concept_level;
             // (unsat, subs, residue, residue_sound[concept→sound subsumers])
             type PcPart = (Vec<C>, Vec<(C, C)>, Vec<C>, Vec<(C, Vec<C>)>);
             let parts: Vec<Option<PcPart>> = std::thread::scope(|s| {
@@ -9957,6 +10106,14 @@ impl Ht {
                                         }
                                     }
                                     if !rf.sufficient {
+                                        // KM_HT_QO_DISCHARGE: if every parked disjunction
+                                        // of `a` is concept-level, its forward label is
+                                        // already complete ⇒ skip the model build.
+                                        if discharge
+                                            && qf.pending.iter().all(|(_, cid)| concept_level_ref.contains(cid))
+                                        {
+                                            continue;
+                                        }
                                         lres.push(a); // parked disjunction ⇒ complete-test
                                         lknown.push((a, sound));
                                         // Tag this residue concept by the DISTINCT clauses
@@ -10024,6 +10181,29 @@ impl Ht {
                         "QORESHIST cid={} n={} head=[{}] body=[{}]",
                         cid, c, hstr.join(" ; "), bstr.join(" , ")
                     );
+                }
+            }
+            // KM_HT_QO_CERTAIN: deterministic disjunction resolution (the certain
+            // ⋂-closure consequence). Adds the disjunction-mediated subsumers
+            // without any model build; the false-residue concepts gain nothing.
+            if std::env::var_os("KM_HT_QO_CERTAIN").is_some() {
+                let t_c = std::time::Instant::now();
+                let new_subs = self.certain_disjunction_consequences(&subs, &qset);
+                if trace {
+                    eprintln!(
+                        "QOCERTAIN: +{} certain disjunction subs el={:.2}s",
+                        new_subs.len(), t_c.elapsed().as_secs_f64()
+                    );
+                }
+                subs.extend(new_subs);
+                // KM_HT_QO_CERTAIN_ONLY: emit bulk ∪ certain, skip the residue
+                // complete test (measure the certain-derivation's coverage vs gold).
+                if std::env::var_os("KM_HT_QO_CERTAIN_ONLY").is_some() {
+                    let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
+                    self.pc_candidates = Vec::new();
+                    self.pc_unsat_candidates = Vec::new();
+                    self.pc_tainted = Vec::new();
+                    return Some((consistent, unsat, subs));
                 }
             }
             // fall through to the shared residue-complete block below.
