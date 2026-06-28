@@ -324,16 +324,33 @@ pub fn run_tableau() {
         eprintln!("failed to read stdin: {e}");
         exit(1);
     }
-    match crate::tableau::run_json(&buf) {
-        Ok(s) => {
+    // Run the model build on a large-stack worker thread. The QO/tableau
+    // saturation and consistency check recurse proportional to role-chain
+    // depth and overflow the default 8 MB main stack on deep ontologies (e.g.
+    // transitive-chain composition on ore_ont_14817 — 178 MB RSS yet
+    // main-thread stack overflow). KM_TAB_STACK_MB overrides (default 2 GB).
+    let stack_mb = std::env::var("KM_TAB_STACK_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2048);
+    let worker = std::thread::Builder::new()
+        .stack_size(stack_mb * 1024 * 1024)
+        .spawn(move || crate::tableau::run_json(&buf))
+        .expect("spawn tableau worker thread");
+    match worker.join() {
+        Ok(Ok(s)) => {
             let stdout = std::io::stdout();
             let mut h = stdout.lock();
             h.write_all(s.as_bytes()).expect("write stdout");
             h.write_all(b"\n").expect("write newline");
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             eprintln!("tableau error: {e}");
             exit(1);
+        }
+        Err(_) => {
+            eprintln!("tableau worker thread panicked");
+            exit(101);
         }
     }
 }
