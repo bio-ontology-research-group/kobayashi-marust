@@ -53,6 +53,20 @@ static MATCH_MAX: AtomicU64 = AtomicU64::new(0);
 // KM_HT_QO_SPLIT (port #2) diagnostics: redirects performed, ∀-critical
 // insufficiency inserts (the share that split could in principle remove), and
 // cardinality Eq-head insufficiency inserts (the separate cardinality-merge gap).
+/// Debug formatter for a clause Atom (residue histogram diagnostic).
+fn fmt_atom_dbg(a: &Atom) -> String {
+    match a {
+        Atom::Concept { lit, t } => {
+            format!("{}C{}@{}", if lit.neg { "¬" } else { "" }, lit.c, t)
+        }
+        Atom::Role { r, s, t } => format!("R{}({},{})", r, s, t),
+        Atom::Exists { r, fil, t } => {
+            format!("∃R{}.{}C{}@{}", r, if fil.neg { "¬" } else { "" }, fil.c, t)
+        }
+        Atom::Eq { s, t } => format!("Eq({},{})", s, t),
+    }
+}
+
 static DBG_SPLIT: AtomicU64 = AtomicU64::new(0);
 static DBG_FORALL_INSUFF: AtomicU64 = AtomicU64::new(0);
 static DBG_CARD_INSUFF: AtomicU64 = AtomicU64::new(0);
@@ -9871,6 +9885,16 @@ impl Ht {
             let clauses_ref: &[ClauseRec] = &self.clauses;
             let queries_ref = queries;
             let qset_ref = &qset;
+            // KM_HT_QO_RESIDUE_HIST: per-clause histogram of which parked
+            // disjunctions make a concept residue. hist[cid] = #residue concepts
+            // that parked clause `cid`. Diagnostic for the 9755-vs-Konclude-675 gap.
+            let res_hist: Option<Vec<std::sync::atomic::AtomicUsize>> =
+                if std::env::var_os("KM_HT_QO_RESIDUE_HIST").is_some() {
+                    Some((0..clauses_ref.len()).map(|_| std::sync::atomic::AtomicUsize::new(0)).collect())
+                } else {
+                    None
+                };
+            let res_hist_ref = res_hist.as_ref();
             // (unsat, subs, residue, residue_sound[concept→sound subsumers])
             type PcPart = (Vec<C>, Vec<(C, C)>, Vec<C>, Vec<(C, Vec<C>)>);
             let parts: Vec<Option<PcPart>> = std::thread::scope(|s| {
@@ -9919,6 +9943,16 @@ impl Ht {
                                     if !rf.sufficient {
                                         lres.push(a); // parked disjunction ⇒ complete-test
                                         lknown.push((a, sound));
+                                        // Tag this residue concept by the DISTINCT clauses
+                                        // whose parked disjunctions left it insufficient.
+                                        if let Some(h) = res_hist_ref {
+                                            let mut seen: HashSet<usize> = HashSet::new();
+                                            for &(_n, cid) in qf.pending.iter() {
+                                                if seen.insert(cid) {
+                                                    h[cid].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 Some((luns, lsub, lres, lknown))
@@ -9952,6 +9986,29 @@ impl Ht {
                     "QOPC bulk done el={:.1}s: suff_subs={} unsat={} residue={} ({} threads)",
                     t_pc.elapsed().as_secs_f64(), subs.len(), unsat.len(), residue.len(), nthreads
                 );
+            }
+            if let Some(h) = res_hist_ref {
+                let mut rows: Vec<(usize, usize)> = h
+                    .iter()
+                    .enumerate()
+                    .map(|(cid, c)| (cid, c.load(std::sync::atomic::Ordering::Relaxed)))
+                    .filter(|&(_, c)| c > 0)
+                    .collect();
+                rows.sort_by(|a, b| b.1.cmp(&a.1));
+                let total: usize = rows.iter().map(|&(_, c)| c).sum();
+                eprintln!(
+                    "QORESHIST residue={} distinct_clauses={} total_parkings={}",
+                    residue.len(), rows.len(), total
+                );
+                for (cid, c) in rows.iter().take(40) {
+                    let cl = &self.clauses[*cid].0;
+                    let hstr: Vec<String> = cl.head.iter().map(fmt_atom_dbg).collect();
+                    let bstr: Vec<String> = cl.body.iter().map(fmt_atom_dbg).collect();
+                    eprintln!(
+                        "QORESHIST cid={} n={} head=[{}] body=[{}]",
+                        cid, c, hstr.join(" ; "), bstr.join(" , ")
+                    );
+                }
             }
             // fall through to the shared residue-complete block below.
             if pc_residue && !residue.is_empty() {
