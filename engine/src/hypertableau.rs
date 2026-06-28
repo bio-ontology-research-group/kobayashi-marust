@@ -2963,6 +2963,14 @@ struct QoSat<'a> {
     /// target insufficient) instead of writing `lit` into the filler's label. Keeps
     /// shared fillers small (base + range-forced only) so the precompute converges.
     no_pollute: bool,
+    /// KM_HT_QO_PSPLIT (Konclude copy-on-conflict for the NF4 forward-∀ path): when
+    /// the forward broadcast `R(n,t) ⊓ lit(n) → e(t)` would impose a predecessor-
+    /// specific operand `e` on a SHARED ∃-filler `t`, redirect `n`'s edge to a
+    /// content-keyed successor (keyed by filler-concept + n's accumulated operand
+    /// set) instead of polluting `t`. Reproduces Konclude's separate-successor-by-
+    /// context (≈217k contexts on 14817) so the `∃R.X⊑Y` backward broadcast stays
+    /// LOCAL and bounded — keeping the broadcasts (unlike NOPOLLUTE), hence complete.
+    psplit: bool,
     /// P2.1 ancestor link (parallel to `label`): the predecessor node that created
     /// this successor, for the blocking ancestor walk. `None` for roots/self-nodes.
     qo_parent: Vec<Option<Node>>,
@@ -3548,6 +3556,7 @@ impl<'a> QoSat<'a> {
             // the precompute converges (Konclude ~20 concepts/node vs KM's ~850). The
             // affected seeds are flagged insufficient and re-verified in the residue.
             no_pollute: std::env::var_os("KM_HT_QO_NOPOLLUTE").is_some(),
+            psplit: std::env::var_os("KM_HT_QO_PSPLIT").is_some(),
             qo_parent: Vec::new(),
             split_mode: std::env::var_os("KM_HT_QO_SPLIT").is_some(),
             node_fil: Vec::new(),
@@ -3940,6 +3949,49 @@ impl<'a> QoSat<'a> {
         true
     }
 
+    /// KM_HT_QO_PSPLIT copy-on-conflict for the NF4 forward broadcast. `src` is
+    /// about to impose operand `e` on its shared r-successor `t` (via
+    /// `R(src,t) ⊓ lit(src) → e(t)`). Instead of writing `e` into the shared `t`
+    /// (conflation), redirect `src`'s r-edge to a content-keyed successor `m` keyed
+    /// by `(filler-concept, r, src's accumulated operand set)` — the same key as
+    /// `try_split_redirect`, so the apply_head and fprop paths share split nodes.
+    /// `e` lands on `m` (seeded with the operand set). Returns true if redirected.
+    fn fprop_split_redirect(&mut self, src: Node, r: R, t: Node, e: CLit) -> bool {
+        let fil = match self.node_fil[t] {
+            Some(f) => f,
+            None => return false,
+        };
+        // src must actually have the shared r-edge to `t` to redirect it.
+        if !self.out_edges[src].iter().any(|&(rr, tt)| rr == r && tt == t) {
+            return false;
+        }
+        let ops = self.src_forall.entry((src, r)).or_default();
+        ops.insert(e);
+        let mut key_ops: Vec<CLit> = ops.iter().copied().collect();
+        key_ops.sort();
+        let m = match self.split_filler.get(&(fil, r, key_ops.clone())) {
+            Some(&m) => m,
+            None => {
+                let m = self.new_node();
+                self.is_filler[m] = true;
+                self.node_fil[m] = Some(fil);
+                self.add_lit(m, fil);
+                for &op in &key_ops {
+                    self.add_lit(m, op);
+                }
+                self.split_filler.insert((fil, r, key_ops), m);
+                m
+            }
+        };
+        if m == t {
+            return false;
+        }
+        self.remove_edge(src, r, t);
+        self.add_edge(src, r, m);
+        DBG_SPLIT.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
     /// Content-keyed merged/split filler (KM_HT_QO_CARDMERGE): the node for
     /// `(role, sorted seed-set)`, created + seeded on first use. A cardinality
     /// merge redirects the constrained predecessor's r-edges onto it; predecessors
@@ -4293,6 +4345,18 @@ impl<'a> QoSat<'a> {
                             .map(|(_, t)| *t)
                             .collect();
                         for t in succs {
+                            // KM_HT_QO_PSPLIT: if `e` would pollute a shared filler,
+                            // redirect `n`'s edge to a content-keyed successor (the
+                            // operand lands there). Konclude copy-on-conflict.
+                            if self.psplit
+                                && self.sat_mode
+                                && self.is_filler[t]
+                                && self.node_fil[t].is_some()
+                                && !self.label[t].contains(&e)
+                                && self.fprop_split_redirect(n, r, t, e)
+                            {
+                                continue;
+                            }
                             self.fprop_emit(t, e);
                             if self.unsupported {
                                 self.fprop_rule.insert(lit, rules);
