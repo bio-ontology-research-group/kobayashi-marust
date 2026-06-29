@@ -954,11 +954,15 @@ pub fn augment_with_chains(
     abox: &[DLClause],
     hooks: &GroundHooks,
 ) -> (Vec<DLClause>, ChainInfo) {
-    // KM_ROLE_AUTOMATON: keep the raw `R1∘R2⊑R` (and `R∘R⊑R` transitive) role
-    // axioms in the clause stream (un-filtered) so the post-cb_to_ht pass can
-    // detect the chain triples and compose ∃R.C reachability through them.
+    // KM_ROLE_AUTOMATON (or KM_KEEP_CHAIN_AXIOMS): keep the raw `R1∘R2⊑R` (and
+    // `R∘R⊑R` transitive) role axioms in the clause stream (un-filtered) so the
+    // tableau's chain-unfolding ∀-propagation (KM_TAB_CHAIN_UNI) and the
+    // post-cb_to_ht ∃R.C reachability pass can detect the chain triples.
     // Default OFF: the filtered stream is the byte-identity baseline.
-    let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some();
+    // KM_KEEP_CHAIN_AXIOMS separates the clause-keeping (cheap) from the
+    // expensive preprocessing closure (KM_ROLE_AUTOMATON).
+    let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some()
+        || std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some();
     let mut base: Vec<DLClause> = tbox
         .iter()
         .filter(|c| keep_chains || !is_chain_axiom(c))

@@ -2969,6 +2969,123 @@ impl Tableau {
                 }
             }
         }
+        // Chain unfolding (Konclude generateRoleChainAutomatConcept, the
+        // begin --R1--> mid --R2--> end path).  For a chain R1∘R2⊑R and a
+        // ∀R.C absorbed-marker Uni (xbody=[M], role=R, yhead=[neg_cy]), a node
+        // carrying M that gains an R1-successor must propagate a ∀R2.C
+        // obligation onto that successor, so ∀R2.C fires on its R2-successors
+        // (reaching C).  Realised by emitting a fresh marker M2 for ∀R2.C with
+        // its own Uni { xbody:[M2], role:R2, yhead:[neg_cy] }, plus a Uni
+        // { xbody:[M], role:R1, yhead:[M2] } that carries M2 across the R1-edge.
+        // This is the clause-form of the automaton's R1∘R2 unfolding: ∀R.C ⇒
+        // ∀R1.∀R2.C.  Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Chains detected from
+        // the raw `R1∘R2⊑R` axiom (2-role-body / 1-role-head, not all-equal);
+        // only present when the frontend kept them (KM_ROLE_AUTOMATON).
+        let mut chains: Vec<(R, R, R)> = Vec::new();
+        for info in &self.clauses {
+            let cl = &info.cl;
+            let rb: Vec<&Atom> = cl.body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+            if cl.body.len() == 2 && cl.head.len() == 1
+                && matches!(cl.body[0], Atom::Role { .. })
+                && matches!(cl.body[1], Atom::Role { .. })
+                && matches!(cl.head[0], Atom::Role { .. })
+            {
+                if let (Atom::Role { r: r1, s: r1s, t: r1t },
+                         Atom::Role { r: r2, s: r2s, t: r2t },
+                         Atom::Role { r: hr, s: hs, t: ht_ }) =
+                    (rb[0], rb[1], &cl.head[0])
+                {
+                    let (fr, sr, mid_ok) = if r1t == r2s { (*r1, *r2, true) }
+                        else if r2t == r1s { (*r2, *r1, true) }
+                        else { (0, 0, false) };
+                    if mid_ok && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t
+                        && !(fr == sr && sr == *hr)
+                    {
+                        chains.push((fr, sr, *hr));
+                    }
+                }
+            }
+        }
+        if !chains.is_empty() {
+            // Collect the absorbed-marker Unis (xbody=[M], yhead=[neg_cy]) by role,
+            // so each chain R1∘R2⊑R can find ∀R.C markers on R.
+            // marker_by_role: R -> Vec<(M, neg_cy)>
+            let mut marker_by_role: HashMap<R, Vec<(C, CLit)>> = HashMap::new();
+            for u in &uni {
+                if u.xbody.len() == 1 && !u.xbody[0].neg && u.ybody.is_empty() && u.yhead.len() == 1 {
+                    marker_by_role.entry(u.role).or_default().push((u.xbody[0].c, u.yhead[0]));
+                }
+            }
+            // sub-role closure (R ⊑* R'): a chain R1∘R2⊑U with U⊑*R also unfolds
+            // ∀R.C (super_close(U) contains R).
+            let super_close = |r: R| -> HashSet<R> {
+                let mut out = HashSet::new();
+                out.insert(r);
+                let mut st = vec![r];
+                while let Some(u) = st.pop() {
+                    for &(a, b) in &subrole {
+                        if a == u && out.insert(b) {
+                            st.push(b);
+                        }
+                    }
+                }
+                out
+            };
+            let mut new_uni: Vec<Uni> = Vec::new();
+            let mut chain_markers: HashMap<(R, R, CLit), C> = HashMap::new(); // (R2, M_parent, neg_cy) -> M2
+            for (r1, r2, u) in &chains {
+                let targets: Vec<(C, CLit)> = marker_by_role
+                    .iter()
+                    .filter(|(rr, _)| super_close(*u).contains(rr))
+                    .flat_map(|(_, v)| v.iter().copied())
+                    .collect();
+                for (m_parent, neg_cy) in targets {
+                    // M2 = marker for ∀R2.C, keyed by (R2, M_parent, neg_cy)
+                    let m2 = *chain_markers
+                        .entry((*r2, m_parent, neg_cy))
+                        .or_insert_with(|| {
+                            let id = next_marker;
+                            next_marker += 1;
+                            // ∀R2.C Uni: fires on R2-successors, pushes neg_cy.
+                            new_uni.push(Uni {
+                                xbody: vec![CLit::pos(id)],
+                                role: *r2,
+                                ybody: vec![],
+                                yhead: vec![neg_cy],
+                            });
+                            // transitive R2: self-propagate (chain + transitivity compose)
+                            if transitive.contains(r2) {
+                                new_uni.push(Uni {
+                                    xbody: vec![CLit::pos(id)],
+                                    role: *r2,
+                                    ybody: vec![],
+                                    yhead: vec![CLit::pos(id)],
+                                });
+                            }
+                            id
+                        });
+                    // carry M2 across the R1-edge: a node carrying M_parent, on
+                    // gaining an R1-successor, imposes M2 on it.
+                    new_uni.push(Uni {
+                        xbody: vec![CLit::pos(m_parent)],
+                        role: *r1,
+                        ybody: vec![],
+                        yhead: vec![CLit::pos(m2)],
+                    });
+                    // transitive R1: self-propagate M_parent (so the chain fires
+                    // down an R1-chain too — R1∘R2⊑R composed with R1 transitive).
+                    if transitive.contains(r1) {
+                        new_uni.push(Uni {
+                            xbody: vec![CLit::pos(m_parent)],
+                            role: *r1,
+                            ybody: vec![],
+                            yhead: vec![CLit::pos(m_parent)],
+                        });
+                    }
+                }
+            }
+            uni.extend(new_uni);
+        }
         Some(CProg {
             node_horn, node_clash, node_disj, node_exists, uni, domain, supers,
             horn_by_lit, horn_empty, clash_by_lit, clash_empty, marker_role,
