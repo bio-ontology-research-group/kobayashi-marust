@@ -371,6 +371,175 @@ pub fn reached_end(auto: &RoleAutomaton, states: &HashSet<State>) -> bool {
     states.contains(&auto.end)
 }
 
+/// The faithful ∀-forward-walk — the runtime half of Konclude's `applyALLRule`
+/// + per-node per-role reapply queue, expressed as a pure function over the
+/// automaton + an edge-path.  Given a `∀R.C` seeded at a root (begin-state),
+/// and a sequence of role-edges a successor is reachable by, returns whether
+/// `C` must hold on that successor (the walk reached `end`).
+///
+/// This is exactly what Konclude's tableau does: `applyALLRule` propagates the
+/// automaton state across each R-edge; `addConceptToReapplyQueue` +
+/// `createNewIndividualsLinksReapplied` re-fire on every newly-created edge;
+/// the epsilon self-loop (transitivity) and the chain unfoldings are baked
+/// into the automaton topology, so the runtime rule is uniform.  Here we walk
+/// an explicit path; the tableau wiring (next increment) will call this per
+/// edge as successors are generated, threading the live state set.
+///
+/// `seeded` is the initial state set (typically `epsilon_closure(begin)`).
+/// `path` is the sequence of roles labelling the edges from root to the
+/// successor under test.  Returns the final state set; the caller checks
+/// `reached_end`.
+pub fn walk_forward(
+    auto: &RoleAutomaton,
+    seeded: &HashSet<State>,
+    path: &[Role],
+) -> HashSet<State> {
+    let mut states = seeded.clone();
+    for &role in path {
+        states = step(auto, &states, role);
+        if states.is_empty() {
+            return states;
+        }
+    }
+    states
+}
+
+/// A per-`(∀R.C, root)` walker that threads the live automaton state across a
+/// tree of generated successors — the structure the tableau holds to re-fire on
+/// each new edge (Konclude's per-node per-role `CReapplyQueue`).  Each node
+/// carries the state set it inherited from its parent; a new edge to a child
+/// advances the child's state by the edge's role.  When a child's state reaches
+/// `end`, the ∀-operand `C` is asserted there (the caller does that).
+///
+/// This object mirrors `applyReapplyQueueConceptsRestricted`: on a new edge it
+/// advances ONLY that edge's contribution (not a full re-walk from the root),
+/// which is what makes Konclude's reapply queue O(edges), not O(path-length ×
+/// edges).  The state set is the delta the queue carries.
+#[derive(Clone, Debug)]
+pub struct AllWalker<'a> {
+    auto: &'a RoleAutomaton,
+    /// Live state set at this node (after epsilon closure).
+    pub states: HashSet<State>,
+}
+
+impl<'a> AllWalker<'a> {
+    pub fn new(auto: &'a RoleAutomaton) -> Self {
+        let states = epsilon_closure(auto, &[auto.begin]);
+        AllWalker { auto, states }
+    }
+
+    /// Advance along a fresh role-edge to a child: returns the child's walker.
+    /// (Konclude `applyALLRule` branch (a): propagate restricted to one link.)
+    pub fn child(&self, role: Role) -> AllWalker<'a> {
+        AllWalker {
+            auto: self.auto,
+            states: step(self.auto, &self.states, role),
+        }
+    }
+
+    /// Does this node's state force `C` (reached the end-state)?  Konclude
+    /// asserts the end-state's AND-operands (the original C of ∀R.C) here.
+    pub fn forces_c(&self) -> bool {
+        reached_end(self.auto, &self.states)
+    }
+
+    /// Is the walk dead (no live states)?  A dead walker contributes nothing
+    /// to its subtree.
+    pub fn dead(&self) -> bool {
+        self.states.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod walker_tests {
+    use super::*;
+
+    /// Transitive ∀R.C: a 2-hop path forces C (the self-loop carries the state
+    /// back to begin after each hop, so the chase is unbounded).
+    #[test]
+    fn transitive_walk_2hop() {
+        let rb = RoleBox {
+            transitive: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        let mut b = AutomatonBuilder::new(rb);
+        let a = b.build(1);
+        let seeded = epsilon_closure(&a, &[a.begin]);
+        let after1 = walk_forward(&a, &seeded, &[1]);
+        assert!(reached_end(&a, &after1));
+        let after2 = walk_forward(&a, &seeded, &[1, 1]);
+        assert!(reached_end(&a, &after2));
+    }
+
+    /// Chain ∀R.C (R1∘R2⊑R): forces C only after BOTH hops in order.
+    #[test]
+    fn chain_walk_order() {
+        let rb = RoleBox {
+            chains: vec![(1, 2, 3)],
+            ..Default::default()
+        };
+        let mut b = AutomatonBuilder::new(rb);
+        let a = b.build(3);
+        let seeded = epsilon_closure(&a, &[a.begin]);
+        assert!(!reached_end(&a, &walk_forward(&a, &seeded, &[1])));
+        assert!(!reached_end(&a, &walk_forward(&a, &seeded, &[2, 1])));
+        assert!(reached_end(&a, &walk_forward(&a, &seeded, &[1, 2])));
+    }
+
+    /// The AllWalker (per-node threaded state): a child of the root along R
+    /// forces C; a grandchild along R∘R (transitive) also forces C.
+    #[test]
+    fn all_walker_transitive_threading() {
+        let rb = RoleBox {
+            transitive: [1].into_iter().collect(),
+            ..Default::default()
+        };
+        let mut b = AutomatonBuilder::new(rb);
+        let a = b.build(1);
+        let root = AllWalker::new(&a);
+        let child = root.child(1);
+        assert!(child.forces_c());
+        let grandchild = child.child(1);
+        assert!(grandchild.forces_c());
+    }
+
+    /// AllWalker on a chain: root.child(R1) does NOT force C; its child(R2) does.
+    #[test]
+    fn all_walker_chain_threading() {
+        let rb = RoleBox {
+            chains: vec![(1, 2, 3)],
+            ..Default::default()
+        };
+        let mut b = AutomatonBuilder::new(rb);
+        let a = b.build(3);
+        let root = AllWalker::new(&a);
+        let after_r1 = root.child(1);
+        assert!(!after_r1.forces_c());
+        let after_r2 = after_r1.child(2);
+        assert!(after_r2.forces_c());
+    }
+
+    /// Transitive + chain (the 14817 pattern: dev transitive + dev∘part⊑dev):
+    /// a path [dev, part] forces C (chain), and [dev, dev] forces C (self-loop).
+    #[test]
+    fn all_walker_14817_pattern() {
+        let rb = RoleBox {
+            transitive: [1].into_iter().collect(),           // dev transitive
+            chains: vec![(1, 2, 1)],                          // dev∘part ⊑ dev
+            ..Default::default()
+        };
+        let mut b = AutomatonBuilder::new(rb);
+        let a = b.build(1);
+        let root = AllWalker::new(&a);
+        // [dev, part]: chain fires
+        assert!(root.child(1).child(2).forces_c());
+        // [dev, dev]: transitive self-loop fires
+        assert!(root.child(1).child(1).forces_c());
+        // [dev, part, dev]: chain then transitive
+        assert!(root.child(1).child(2).child(1).forces_c());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
