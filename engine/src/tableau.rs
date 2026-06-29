@@ -2598,6 +2598,15 @@ struct CProg {
     trigger_lits: HashSet<CLit>,
     // build_succ index: obligation-role → applicable uni indices (role_le).
     uni_for_role: HashMap<R, Vec<usize>>,
+    // Transitive roles (Konclude's epsilon self-loop in the role automaton).
+    // A `∀R.C` Uni whose role is transitive self-propagates: the successor
+    // inherits the ∀-obligation (the marker), so ∀R.C re-fires down the whole
+    // R-chain — the clause-form of the automaton's endState→beginState epsilon
+    // self-loop.  Without this, a ∀R.C Uni only fires on nodes carrying the
+    // marker (the root that chose the ∀ disjunct), missing deeper generated
+    // successors (ore_ont_14817's 71: ∀develops_from.¬UBERON_0000926 must
+    // clash on a dev-successor reached through an anonymous chain).
+    transitive: HashSet<R>,
     // upper bound on concept ids (real concepts + synthetic markers). Sizes the
     // per-concept VSIDS activity / phase-saving arrays.
     n_concepts: C,
@@ -2886,10 +2895,85 @@ impl Tableau {
                 .collect();
             uni_for_role.insert(r0, v);
         }
+        // Detect transitive roles (Konclude's role-automaton epsilon self-loop).
+        // Sources:
+        //   (a) the raw transitivity axiom `R(x,y) ∧ R(y,z) → R(x,z)` (a
+        //       2-role-body / 1-role-head clause with all three roles equal),
+        //       when the frontend kept it (KM_ROLE_AUTOMATON path);
+        //   (b) the standard transitivity encoding `R(x,y) ∧ P(y) → P(x)`
+        //       where P is a `__trans__R__…` marker concept — the role R of
+        //       such a clause is transitive.  This is the default-path encoding.
+        // Either source marks R transitive; the Uni self-propagation below then
+        // makes ∀R.C chase all R-successors (Konclude's endState→beginState
+        // epsilon self-loop, in clause form).
+        let mut transitive: HashSet<R> = HashSet::new();
+        for info in &self.clauses {
+            let cl = &info.cl;
+            // (a) raw R∘R⊑R
+            let rb: Vec<&Atom> = cl.body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+            if cl.body.len() == 2 && cl.head.len() == 1
+                && matches!(cl.body[0], Atom::Role { .. })
+                && matches!(cl.body[1], Atom::Role { .. })
+                && matches!(cl.head[0], Atom::Role { .. })
+            {
+                if let (Atom::Role { r: r1, s: r1s, t: r1t },
+                         Atom::Role { r: r2, s: r2s, t: r2t },
+                         Atom::Role { r: hr, s: hs, t: ht_ }) =
+                    (rb[0], rb[1], &cl.head[0])
+                {
+                    if r1 == r2 && r2 == hr && r1t == r2s && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t {
+                        transitive.insert(*hr);
+                    }
+                }
+            }
+            // (b) marker-propagation `R(x,y) ∧ P(y) → P(x)` with P a __trans__R__ marker.
+            // The clause shape: body = [Role R x y, Concept P y], head = [Concept P x].
+            // We cannot see concept NAMES here (Tableau carries only ids), so detect
+            // the SHAPE: 2-body (1 role + 1 concept on the role target), 1-head concept
+            // on the role source, where the body concept and head concept are the SAME
+            // marker.  This is the transitive-propagation shape; its role is transitive.
+            if cl.body.len() == 2 && cl.head.len() == 1
+                && matches!(cl.head[0], Atom::Concept { t: 0, .. })
+            {
+                let mut role_atom: Option<(&R, Var, Var)> = None;
+                let mut body_con: Option<(&CLit, Var)> = None;
+                for a in &cl.body {
+                    match a {
+                        Atom::Role { r, s, t } => role_atom = Some((r, *s, *t)),
+                        Atom::Concept { lit, t } => body_con = Some((lit, *t)),
+                        _ => {}
+                    }
+                }
+                if let (Some((r, rs, rt)), Some((bl, bt))) = (role_atom, body_con) {
+                    if let Atom::Concept { lit: hl, t: ht } = cl.head[0] {
+                        if bl == &hl && bt == rt && ht == rs && rs != rt {
+                            transitive.insert(*r);
+                        }
+                    }
+                }
+            }
+        }
+        // Apply the transitive self-loop: for each Uni whose role is transitive,
+        // add the marker to its yhead so the ∀-obligation self-propagates to
+        // the successor (the clause-form of Konclude's endState→beginState
+        // epsilon self-loop).  Only the absorbed-marker Uni shape
+        // (xbody=[marker], ybody=[], yhead=[neg_cy]) is extended; the marker is
+        // the xbody's single positive concept.  The successor then carries the
+        // marker, so ∀R.C re-fires on its own R-successors — the transitive
+        // chase Konclude's automaton does natively.
+        for u in uni.iter_mut() {
+            if transitive.contains(&u.role) && u.xbody.len() == 1 && u.xbody[0].neg == false {
+                let marker = u.xbody[0];
+                if !u.yhead.contains(&marker) {
+                    u.yhead.push(marker);
+                }
+            }
+        }
         Some(CProg {
             node_horn, node_clash, node_disj, node_exists, uni, domain, supers,
             horn_by_lit, horn_empty, clash_by_lit, clash_empty, marker_role,
             trigger_lits, uni_for_role,
+            transitive,
             n_concepts: next_marker,
         })
     }
