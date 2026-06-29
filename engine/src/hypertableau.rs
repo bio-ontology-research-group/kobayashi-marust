@@ -2313,7 +2313,175 @@ fn index_forall(clauses: &[Clause]) -> HashMap<(CLit, R), Vec<CLit>> {
     idx
 }
 
-/// True iff the clause set encodes an inverse role as a BRIDGING clause
+/// Faithful port of Konclude's chain-unfolding (generateRoleChainAutomatConcept)
+/// for the Ht complete-tableau path.  For each ∀R.C clause `D(x) ∧ R(x,y) →
+/// C(y)` and each chain R1∘R2⊑R (with R a creation role, per
+/// CExtractPropagationIntoCreationDirectionPreProcess), emit:
+///   `D(x) ∧ R1(x,y) → M2(y)`   (carry ∀R2.C marker across R1)
+///   `M2(x) ∧ R2(x,y) → C(y)`   (M2 fires C on R2-successors)
+/// M2 is a fresh marker concept.  Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).
+fn ht_chain_unfolding_clauses(clauses: &[Clause]) -> Vec<Clause> {
+    use std::collections::{HashMap, HashSet};
+    // detect chains R1∘R2⊑R (2-role-body, 1-role-head, not all-equal)
+    let mut chains: Vec<(R, R, R)> = Vec::new();
+    let mut transitive: HashSet<R> = HashSet::new();
+    let mut superrole: HashMap<R, Vec<R>> = HashMap::new();
+    for c in clauses {
+        let body = &c.body;
+        let head = &c.head;
+        let rb: Vec<&Atom> = body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+        if body.len() == 2 && head.len() == 1
+            && matches!(body[0], Atom::Role { .. })
+            && matches!(body[1], Atom::Role { .. })
+            && matches!(head[0], Atom::Role { .. })
+        {
+            if let (Atom::Role { r: r1, s: r1s, t: r1t },
+                     Atom::Role { r: r2, s: r2s, t: r2t },
+                     Atom::Role { r: hr, s: hs, t: ht_ }) =
+                (rb[0], rb[1], &head[0])
+            {
+                let (fr, sr, mid_ok) = if r1t == r2s { (*r1, *r2, true) }
+                    else if r2t == r1s { (*r2, *r1, true) }
+                    else { (0, 0, false) };
+                if mid_ok && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t {
+                    if fr == sr && sr == *hr {
+                        transitive.insert(*hr);
+                    } else {
+                        chains.push((fr, sr, *hr));
+                    }
+                }
+            }
+        }
+        // sub-role S⊑R: body=[Role S x y], head=[Role R x y]
+        if body.len() == 1 && head.len() == 1
+            && matches!(body[0], Atom::Role { .. })
+            && matches!(head[0], Atom::Role { .. })
+        {
+            if let (Atom::Role { r: sr, .. }, Atom::Role { r: hr, .. }) = (&body[0], &head[0]) {
+                if sr != hr {
+                    superrole.entry(*sr).or_default().push(*hr);
+                }
+            }
+        }
+    }
+    if chains.is_empty() {
+        return Vec::new();
+    }
+    // creation roles (roles with some ∃R.D exists-head) + super-role closure
+    let mut creation_roles: HashSet<R> = HashSet::new();
+    for c in clauses {
+        for a in &c.head {
+            if let Atom::Exists { r, .. } = a {
+                creation_roles.insert(*r);
+            }
+        }
+    }
+    let creation_closure: HashSet<R> = {
+        let mut out = HashSet::new();
+        for &r in &creation_roles {
+            let mut st = vec![r];
+            while let Some(u) = st.pop() {
+                if out.insert(u) {
+                    for &v in superrole.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                        st.push(v);
+                    }
+                }
+            }
+        }
+        out
+    };
+    let super_close = |r: R| -> HashSet<R> {
+        let mut out = HashSet::new();
+        out.insert(r);
+        let mut st = vec![r];
+        while let Some(u) = st.pop() {
+            for &v in superrole.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                if out.insert(v) {
+                    st.push(v);
+                }
+            }
+        }
+        out
+    };
+    // max concept id (allocate fresh markers past it)
+    let mut maxc: C = 0;
+    for c in clauses {
+        for a in c.body.iter().chain(c.head.iter()) {
+            match a {
+                Atom::Concept { lit, .. } => maxc = maxc.max(lit.c + 1),
+                Atom::Exists { fil, .. } => maxc = maxc.max(fil.c + 1),
+                _ => {}
+            }
+        }
+    }
+    let mut next_marker: C = maxc;
+    // ∀R.C clauses: D(x) ∧ R(x,y) → C(y)  (one concept on source, one role, one concept on target)
+    // Collect (D, R, C) for creation-role R only.
+    let mut forall_clauses: Vec<(CLit, R, CLit)> = Vec::new();
+    for c in clauses {
+        let body = &c.body;
+        let head = &c.head;
+        if body.len() != 2 || head.len() != 1 {
+            continue;
+        }
+        let mut src_con: Option<CLit> = None;
+        let mut role: Option<(R, Var, Var)> = None;
+        for a in body {
+            match a {
+                Atom::Concept { lit, t } if *t == X => src_con = Some(*lit),
+                Atom::Role { r, s, t } => role = Some((*r, *s, *t)),
+                _ => {}
+            }
+        }
+        let (r, rs, rt) = match role {
+            Some(r) => r,
+            None => continue,
+        };
+        if let (Some(d), Atom::Concept { lit: e, t: et }) = (src_con, &head[0]) {
+            if rs == X && *et == rt && rs != rt && creation_closure.contains(&r) {
+                forall_clauses.push((d, r, *e));
+            }
+        }
+    }
+    // emit chain-unfolding clauses
+    let mut out: Vec<Clause> = Vec::new();
+    let mut chain_markers: HashMap<(R, CLit, CLit), C> = HashMap::new();
+    for (d, r, e) in &forall_clauses {
+        for &(r1, r2, u) in &chains {
+            if !super_close(u).contains(r) {
+                continue;
+            }
+            // M2 = marker for ∀R2.E
+            let m2 = *chain_markers
+                .entry((r2, *d, *e))
+                .or_insert_with(|| {
+                    let id = next_marker;
+                    next_marker += 1;
+                    // M2(x) ∧ R2(x,y) → E(y): M2 fires E on R2-successors
+                    out.push(Clause {
+                        body: vec![
+                            Atom::Concept { lit: CLit::pos(id), t: X },
+                            Atom::Role { r: r2, s: X, t: 1 },
+                        ],
+                        head: vec![Atom::Concept { lit: *e, t: 1 }],
+                    });
+                    id
+                });
+            // D(x) ∧ R1(x,y) → M2(y): carry M2 across R1
+            out.push(Clause {
+                body: vec![
+                    Atom::Concept { lit: *d, t: X },
+                    Atom::Role { r: r1, s: X, t: 1 },
+                ],
+                head: vec![Atom::Concept { lit: CLit::pos(m2), t: 1 }],
+            });
+        }
+    }
+    let _ = transitive; // (transitive self-loop handled by existing __trans__ clauses)
+    out
+}
+
+
 /// `s(a,b) → r(b,a)` (single role body, single role head, swapped variables,
 /// distinct roles). cb_to_ht emits these (with the `inverse` TInput flag often left
 /// false), so the flag is unreliable — detect inverse structurally instead. Used to
@@ -6473,6 +6641,27 @@ impl Ht {
                 eprintln!("KM_HT_STATS contrapositives added={}", extra.len());
             }
             clauses.extend(extra);
+        }
+        // KM_KEEP_CHAIN_AXIOMS: faithful port of Konclude's chain-unfolding
+        // (generateRoleChainAutomatConcept) for the Ht complete-tableau path —
+        // the path that decides 14817's 71 via residue-complete.  For a chain
+        // R1∘R2⊑R and a ∀R.C clause `D(x) ∧ R(x,y) → C(y)`, the ∀R.C ≡
+        // ∀R1.∀R2.C, so emit:
+        //   `D(x) ∧ R1(x,y) → M2(y)`   (carry the ∀R2.C marker across R1)
+        //   `M2(x) ∧ R2(x,y) → C(y)`   (M2 fires C on R2-successors)
+        // These are standard binary ∀ clauses that Ht::apply_head handles via
+        // try_split_redirect (copy-on-conflict, Konclude copyDependingIndividual
+        // Node) for shared-filler soundness — the sound+bounded path the QoSat
+        // fprop unfolding cannot use.  Gated on KM_KEEP_CHAIN_AXIOMS (raw chains
+        // present).  Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).
+        if std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
+            let extra = ht_chain_unfolding_clauses(&clauses);
+            if !extra.is_empty() {
+                if std::env::var_os("KM_HT_STATS").is_some() {
+                    eprintln!("KM_HT_STATS chain-unfolding clauses={}", extra.len());
+                }
+                clauses.extend(extra);
+            }
         }
         let mut recs: Vec<ClauseRec> = mk_recs(&clauses);
         // KM_HT_HARVEST: inject global common-disjunct consequences as ⊤-facts so
