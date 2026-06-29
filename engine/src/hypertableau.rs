@@ -2150,6 +2150,20 @@ pub struct Ht {
     /// `ext.nominals` after each per-query `Ext::new` (which resets it). Empty ⇒
     /// the o-rule is inert.
     nom_set: Vec<C>,
+    /// Role chains `R1∘R2⊑R` (incl. transitive `R∘R⊑R`) received via `set_chains`
+    /// side-data, passed to each QoSat worker via `install_edge_compose` for the
+    /// faithful Konclude role-automaton edge composition (KM_QO_EDGE_COMPOSE).
+    /// The raw chain axioms are filtered from the clause stream by the frontend
+    /// (`is_chain_axiom`), so QoSat cannot detect them from its clause set — the
+    /// chain info MUST reach it through this side channel.
+    qo_edge_chains: Vec<(R, R, R)>,
+    /// Forward/backward chain-composition indexes for the Ht propagate loop
+    /// (KM_QO_EDGE_COMPOSE on the complete-tableau path).  Populated in
+    /// `set_chains`; fired on each `Event::Edge` in `propagate`.  Bounded by the
+    /// Ht's blocking (the tableau model is finite), unlike the shared-filler
+    /// QoSat where the same composition cascades.
+    ht_chain_fwd: HashMap<R, Vec<(R, R)>>,
+    ht_chain_bwd: HashMap<R, Vec<(R, R)>>,
 }
 
 /// Contrapositive Horn clauses for clash clauses (KM_HT_CONTRA). A clash clause
@@ -3316,6 +3330,25 @@ struct QoSat<'a> {
     /// barely-moving counters. Gated on `edgeprobe`.
     last_hb: Option<Instant>,
     hb_interval: f64,
+    /// KM_QO_EDGE_COMPOSE (default OFF): faithful port of Konclude's role-automaton
+    /// edge composition.  For each detected chain `R1∘R2⊑R` (incl. transitive
+    /// `R∘R⊑R`), a fresh `R1`-edge `(s,t)` joined with an existing `R2`-edge
+    /// `(t,z)` creates a composed `R`-edge `(s,z)` — and dually for a fresh
+    /// `R2`-edge.  This is the mechanism Konclude's precompute uses to derive
+    /// `∃dev.0926` on a root that only has `∃part.(∃dev.0926)` via `part∘dev⊑dev`
+    /// (ore_ont_14817's 71 missing subsumptions).  Bounded by ACTUAL edges (each
+    /// unique `(s,role,t)` is added at most once), not the ∀-filler cross-product
+    /// that cascaded under KM_QO_CHAIN_UNFOLD.  The two lookup maps key the
+    /// O(degree) join on each fresh edge:
+    ///   `chain_fwd[R1] = [(R2, R), ...]`  — fresh R1-edge (s,t): scan t's R2-outs
+    ///   `chain_bwd[R2] = [(R1, R), ...]`  — fresh R2-edge (t,z): scan t's R1-ins
+    chain_fwd: HashMap<R, Vec<(R, R)>>,
+    chain_bwd: HashMap<R, Vec<(R, R)>>,
+    /// KM_QO_EDGE_COMPOSE: set when the edge-composition cascade exceeded the
+    /// per-concept edge budget (KM_QO_EC_BUDGET, default 200k).  The drain loop
+    /// bails with `edge_bailed = true` instead of `unsupported = true` so the
+    /// concept goes to residue (Ht edge-compose) rather than deferring the whole.
+    edge_bailed: bool,
 }
 
 /// undoable mutation for the residue-test DFS.
@@ -3337,6 +3370,11 @@ pub struct QoResult {
     pub clashed: bool,
     pub sufficient: bool,
     pub root_label: HashSet<C>,
+    /// KM_QO_EDGE_COMPOSE: the edge-composition cascade exceeded the per-concept
+    /// edge budget.  The forward label is INCOMPLETE (chain-derived subsumers may
+    /// be missing) but not unsound.  Treat as insufficient → residue (the Ht
+    /// complete-tableau with edge-compose derives the missing chain subsumers).
+    pub edge_bailed: bool,
 }
 
 /// Per-node model data after a global saturation: for each query concept `A`
@@ -3923,6 +3961,14 @@ impl<'a> QoSat<'a> {
                 }
             }
         }
+        // KM_QO_EDGE_COMPOSE: chain edge-composition indexes are populated by
+        // `install_edge_compose` (called from the Ht classify path with the
+        // side-data chains from `set_chains`).  The raw chain axioms are filtered
+        // from the clause stream by the frontend, so detection from `clauses`
+        // here would find nothing — the chain info MUST come through the side
+        // channel.  See `install_edge_compose`.
+        let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
+        let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::new();
         QoSat {
             clauses,
             label: Vec::new(),
@@ -4036,6 +4082,9 @@ impl<'a> QoSat<'a> {
                 .and_then(|s| s.parse().ok())
                 .filter(|&n: &f64| n > 0.0)
                 .unwrap_or(2.0),
+            chain_fwd,
+            chain_bwd,
+            edge_bailed: false,
         }
     }
 
@@ -4043,6 +4092,24 @@ impl<'a> QoSat<'a> {
     /// Only called from the `KM_HT_TRACE` heartbeats.
     fn sat_elapsed(&self) -> f64 {
         self.sat_t0.map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0)
+    }
+
+    /// KM_QO_EDGE_COMPOSE: install the role-chain edge-composition indexes from
+    /// the side-data chains `R1∘R2⊑R` (incl. transitive `R∘R⊑R`) received via
+    /// `Ht::set_chains`.  Faithful port of Konclude's role-automaton edge
+    /// composition: a fresh `R1`-edge `(s,t)` joined with an `R2`-edge `(t,z)`
+    /// creates a composed `R`-edge `(s,z)` (and dually for a fresh `R2`-edge).
+    /// Bounded by actual edges (each unique edge added at most once), NOT the
+    /// ∀-filler cross-product that cascaded under KM_QO_CHAIN_UNFOLD.  Gated by
+    /// `KM_QO_EDGE_COMPOSE` (default OFF until corpus-validated).
+    fn install_edge_compose(&mut self, chains: &[(R, R, R)]) {
+        if !std::env::var_os("KM_QO_EDGE_COMPOSE").is_some() {
+            return;
+        }
+        for &(r1, r2, hr) in chains {
+            self.chain_fwd.entry(r1).or_default().push((r2, hr));
+            self.chain_bwd.entry(r2).or_default().push((r1, hr));
+        }
     }
 
     /// TIME-driven heartbeat (debug): print at most every `hb_interval` seconds,
@@ -4115,6 +4182,7 @@ impl<'a> QoSat<'a> {
         self.unsupported = false;
         self.open_disj = 0;
         self.nc_resolved.clear();
+        self.edge_bailed = false;
     }
 
     fn new_node(&mut self) -> Node {
@@ -4858,7 +4926,16 @@ impl<'a> QoSat<'a> {
             // up). u64::MAX for the unbounded global/complete passes.
             if self.edge_budget != u64::MAX {
                 if self.edge_budget == 0 {
-                    self.unsupported = true;
+                    // KM_QO_EDGE_COMPOSE: if the cascade is from edge-composition,
+                    // bail to residue (insufficient) instead of deferring the whole
+                    // classification (unsupported).  The Ht complete-tableau with
+                    // edge-compose derives the missing chain subsumers there.
+                    if !self.chain_fwd.is_empty() {
+                        self.edge_bailed = true;
+                        self.qo_insufficient = true;
+                    } else {
+                        self.unsupported = true;
+                    }
                     return;
                 }
                 self.edge_budget -= 1;
@@ -5039,6 +5116,46 @@ impl<'a> QoSat<'a> {
             }
             if self.edgefast {
                 self.to_fire_buf = to_fire;
+            }
+            // KM_QO_EDGE_COMPOSE: role-automaton edge composition (Konclude's
+            // applyAutomatTransactions).  A fresh R-edge `(s,t)` triggers, for
+            // each chain R1∘R2⊑R whose FIRST role R1==r, a join with every
+            // existing R2-edge `(t,z)` → composed R-edge `(s,z)`; and dually,
+            // for each chain whose SECOND role R2==r, a join with every
+            // existing R1-edge `(x,s)` (i.e. `s`'s R1-predecessors) → composed
+            // R-edge `(x,t)`.  `add_edge` dedups + pushes fresh edges onto
+            // `edge_work`, so the composition is monotone, bounded by actual
+            // reachable edges (not the ∀-filler cross-product).  Gather first
+            // (immutable borrows of `out_edges`/`in_edges` + the index), then
+            // `add_edge` (mutable).
+            if !self.chain_fwd.is_empty() {
+                let mut new_edges: Vec<(Node, R, Node)> = Vec::new();
+                // forward: fresh R1-edge (s,t), chain R1∘R2⊑R ⇒ R2-edge (t,z) → R-edge (s,z)
+                if let Some(chains) = self.chain_fwd.get(&r) {
+                    for &(r2, hr) in chains {
+                        for &(rr, z) in &self.out_edges[t] {
+                            if rr == r2 && z != t {
+                                new_edges.push((s, hr, z));
+                            }
+                        }
+                    }
+                }
+                // backward: fresh R2-edge (s,t), chain R1∘R2⊑R ⇒ R1-edge (x,s) → R-edge (x,t)
+                if let Some(chains) = self.chain_bwd.get(&r) {
+                    for &(r1, hr) in chains {
+                        for &(rr, x) in &self.in_edges[s] {
+                            if rr == r1 && x != s {
+                                new_edges.push((x, hr, t));
+                            }
+                        }
+                    }
+                }
+                for (ss, rr, tt) in new_edges {
+                    if self.unsupported {
+                        break;
+                    }
+                    self.add_edge(ss, rr, tt);
+                }
             }
             // End-of-pop slow timer: a single edge pop should be sub-microsecond; if
             // it took a meaningful slice of wall time, report the breakdown so the
@@ -5296,6 +5413,7 @@ impl<'a> QoSat<'a> {
             clashed: self.node_unsat.contains(&root),
             sufficient: !self.node_unsat.contains(&root) && self.open_disj == 0,
             root_label,
+            edge_bailed: self.edge_bailed,
         }
     }
 
@@ -6769,6 +6887,9 @@ impl Ht {
             satfold_watch: HashMap::new(),
             satfold_hits: 0,
             nom_set: Vec::new(),
+            qo_edge_chains: Vec::new(),
+            ht_chain_fwd: HashMap::new(),
+            ht_chain_bwd: HashMap::new(),
         };
         if ht.trace {
             let (mut hrole, mut heq, mut hexists, mut hdisj, mut hdisj_ex) = (0, 0, 0, 0, 0);
@@ -6793,6 +6914,17 @@ impl Ht {
     #[inline]
     fn act_of(&self, c: C) -> u64 {
         *self.activity.get(&c).unwrap_or(&0)
+    }
+
+    /// KM_QO_EDGE_COMPOSE: install the chain edge-composition indexes directly
+    /// (for fresh Ht workers, e.g. the residue-complete tableau, that don't run
+    /// `set_chains`).  Copies the forward/backward chain indexes built by the
+    /// parent Ht's `set_chains`.
+    pub fn set_edge_compose(&mut self, fwd: HashMap<R, Vec<(R, R)>>, bwd: HashMap<R, Vec<(R, R)>>) {
+        if !fwd.is_empty() {
+            self.ht_chain_fwd = fwd;
+            self.ht_chain_bwd = bwd;
+        }
     }
 
     /// Order disjuncts within a branch by clash activity (stable: ties keep
@@ -6866,6 +6998,34 @@ impl Ht {
     /// (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Rebuilds the trigger indexes after
     /// appending the clauses.
     pub fn set_chains(&mut self, chains: Vec<(R, R, R)>, transitive: Vec<R>) {
+        // Store the CROSS-ROLE chains for QoSat edge-composition (KM_QO_EDGE_COMPOSE).
+        // Transitive self-chains R∘R⊑R are EXCLUDED: they create the full transitive
+        // edge closure, which cascades on shared-filler QoSat (no blocking) — the
+        // ∀-propagation of transitive roles is already handled by
+        // `transitivity_clauses`.  The 71 missing subsumptions on 14817 need only
+        // the cross-role chain `part∘dev⊑dev` (anonymous-successor composition),
+        // not the transitive self-composition.
+        let edge_chains: Vec<(R, R, R)> = chains
+            .iter()
+            .filter(|(r1, r2, _)| !(r1 == r2 && transitive.contains(r1)))
+            .copied()
+            .collect();
+        if !edge_chains.is_empty() {
+            self.qo_edge_chains = edge_chains;
+        }
+        // Ht path (complete tableau, bounded by blocking): use ALL chains incl.
+        // transitive self-chains R∘R⊑R.  The Ht's subset-blocking bounds the
+        // model, so the composition fixpoint converges (unlike shared-filler QoSat).
+        if std::env::var_os("KM_HT_EDGE_COMPOSE").is_some() {
+            let mut all_chains = chains.clone();
+            for &r in &transitive {
+                all_chains.push((r, r, r));
+            }
+            for (r1, r2, hr) in &all_chains {
+                self.ht_chain_fwd.entry(*r1).or_default().push((*r2, *hr));
+                self.ht_chain_bwd.entry(*r2).or_default().push((*r1, *hr));
+            }
+        }
         if chains.is_empty() {
             return;
         }
@@ -7473,6 +7633,41 @@ impl Ht {
                             if self.ext.has_clash() {
                                 return;
                             }
+                        }
+                    }
+                    // KM_QO_EDGE_COMPOSE: role-automaton edge composition on the
+                    // complete-tableau path (bounded by Ht blocking).  A fresh
+                    // R-edge (s,t) triggers, for each chain R1∘R2⊑R with R1==r, a
+                    // join with every existing R2-edge (t,z) → R-edge (s,z); and
+                    // dually for R2==r, a join with every R1-edge (x,s) → R-edge
+                    // (x,t).  add_edge dedups + re-queues, so the composition is
+                    // monotone and converges (the model is finite under blocking).
+                    if !self.ht_chain_fwd.is_empty() {
+                        let mut new_edges: Vec<(R, Node, Node)> = Vec::new();
+                        if let Some(chains) = self.ht_chain_fwd.get(&r) {
+                            for &(r2, hr) in chains {
+                                for &(rr, z, _) in &self.ext.out_edges[t] {
+                                    if rr == r2 && z != t {
+                                        new_edges.push((hr, s, z));
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(chains) = self.ht_chain_bwd.get(&r) {
+                            for &(r1, hr) in chains {
+                                for &(rr, x, _) in &self.ext.in_edges[s] {
+                                    if rr == r1 && x != s {
+                                        new_edges.push((hr, x, t));
+                                    }
+                                }
+                            }
+                        }
+                        let dep = self.ext.dep_of(s, CLit::pos(0)).cloned().unwrap_or_else(dep_empty);
+                        for (rr, ss, tt) in new_edges {
+                            if self.ext.has_clash() {
+                                return;
+                            }
+                            self.ext.add_edge(rr, ss, tt, &dep);
                         }
                     }
                 }
@@ -9297,18 +9492,26 @@ impl Ht {
         let residue_ref = residue;
         let qset_ref = qset;
         let known_ref = known;
+        // KM_QO_EDGE_COMPOSE: copy the chain-composition indexes (built by the
+        // parent's set_chains) into each residue worker so the complete tableau
+        // composes role-chain edges (bounded by Ht blocking).
+        let ec_fwd = self.ht_chain_fwd.clone();
+        let ec_bwd = self.ht_chain_bwd.clone();
         // per worker: Some((unsat, subs)) or None ⇒ out-of-fragment, defer whole.
         let parts: Vec<Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)>> = std::thread::scope(|s| {
             let next = &next;
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
                     let tmpl = template.clone();
+                    let ec_fwd = ec_fwd.clone();
+                    let ec_bwd = ec_bwd.clone();
                     std::thread::Builder::new()
                         .stack_size(RWORKER_STACK)
                         .spawn_scoped(s, move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
                             let mut w = Ht::new(tmpl);
                             w.set_anywhere(anywhere);
                             w.set_fast_tableau(); // result-identical speedups
+                            w.set_edge_compose(ec_fwd, ec_bwd);
                             // The residue concept's complete tableau may meet an
                             // equality-head clause (`≤n` / functional, the `⋁ Eq`
                             // disjunctive head). Without `number` the apply_head Eq
@@ -10037,6 +10240,7 @@ impl Ht {
             true,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         ); // forward-only ⇒ sound
+        qf.install_edge_compose(&self.qo_edge_chains);
         qf.complete_roles = true;
         let t_pre = Instant::now();
         let g = qf.saturate_global(queries);
@@ -10568,9 +10772,11 @@ impl Ht {
                 let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
                 let mut w = Ht::new(template);
                 w.set_fast_tableau();
+                w.set_edge_compose(self.ht_chain_fwd.clone(), self.ht_chain_bwd.clone());
                 let sat_a = w.consistent(&[CLit::pos(a)]);
                 let mut w2 = Ht::new(self.clauses.iter().map(|(c, _, _)| c.clone()).collect());
                 w2.set_fast_tableau();
+                w2.set_edge_compose(self.ht_chain_fwd.clone(), self.ht_chain_bwd.clone());
                 let sat_anb = w2.consistent(&[CLit::pos(a), CLit::neg(b)]);
                 eprintln!(
                     "QOTESTONE a={} b={}: consistent(a)={:?} consistent(a⊓¬b)={:?}  ⇒ {}",
@@ -10676,6 +10882,7 @@ impl Ht {
             true,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         );
+        qf.install_edge_compose(&self.qo_edge_chains);
         qf.complete_roles = true;
         qf.node_cap = cap;
         if pc_tally {
@@ -10686,6 +10893,7 @@ impl Ht {
             false,
             std::env::var_os("KM_HT_QO_FPROP").is_some(),
         );
+        qu.install_edge_compose(&self.qo_edge_chains);
         qu.complete_roles = true;
         qu.node_cap = cap;
         let mut unsat: Vec<C> = Vec::new();
@@ -10775,6 +10983,7 @@ impl Ht {
                 None
             };
             let nc_map_ref = &nc_map;
+            let chains_ref = &self.qo_edge_chains;
             // (unsat, subs, residue, residue_sound[concept→sound subsumers])
             type PcPart = (Vec<C>, Vec<(C, C)>, Vec<C>, Vec<(C, Vec<C>)>);
             let parts: Vec<Option<PcPart>> = std::thread::scope(|s| {
@@ -10786,8 +10995,17 @@ impl Ht {
                             .stack_size(64 * 1024 * 1024)
                             .spawn_scoped(s, move || -> Option<PcPart> {
                                 let mut qf = QoSat::new_opts(&tmpl, true, fprop);
+                                qf.install_edge_compose(chains_ref);
                                 qf.complete_roles = true;
                                 qf.node_cap = cap;
+                                // KM_QO_EDGE_COMPOSE: bound the edge-composition
+                                // cascade per concept.  Small models (the 9 true
+                                // chain-derived) derive 4120 well under this; general
+                                // concepts (large ∃-closures) bail to residue (Ht).
+                                if !chains_ref.is_empty() {
+                                    qf.edge_budget = std::env::var("KM_QO_EC_BUDGET")
+                                        .ok().and_then(|s| s.parse().ok()).unwrap_or(200_000);
+                                }
                                 qf.node_certain = nc_map_ref.clone();
                                 let mut lsub: Vec<(C, C)> = Vec::new();
                                 let mut luns: Vec<C> = Vec::new();
@@ -10848,6 +11066,14 @@ impl Ht {
                                             lsub.push((a, b)); // sound
                                             sound.push(b);
                                         }
+                                    }
+                                    if rf.edge_bailed {
+                                        // edge-composition cascade exceeded budget:
+                                        // the forward label is sound but may miss
+                                        // chain subsumers → residue (Ht edge-compose).
+                                        lres.push(a);
+                                        lknown.push((a, sound));
+                                        continue;
                                     }
                                     // Milestone 1 validation: build the pseudo-model and
                                     // accumulate size stats to compare with Konclude.

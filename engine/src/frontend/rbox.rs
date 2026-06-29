@@ -83,9 +83,9 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                     // axiom is filtered from the clause stream (it bloats
                     // cb_to_ht); the chain info rides the rbox.  Fall back to the
                     // fenced record when the chain roles are not plain.
-                    let chain_args = match sub {
+                    let chain_args: Vec<&Node> = match sub {
                         Node::List(_, ca) => strip_annotations(ca),
-                        _ => &[][..],
+                        _ => Vec::new(),
                     };
                     if chain_args.len() == 2
                         && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some()
@@ -244,6 +244,7 @@ pub fn el_rbox_safe(records: &[RboxRecord]) -> bool {
         RboxRecord::Subrole(..) | RboxRecord::Domain(..) | RboxRecord::Range(..) => true,
         RboxRecord::Fenced(reason, _) => reason == "role-chain" || reason == "reflexivity",
         RboxRecord::Inverse(..) => false,
+        RboxRecord::Transitive(..) | RboxRecord::Chain(..) => true,
     })
 }
 
@@ -264,5 +265,6 @@ pub fn el_rbox_safe_relaxed(records: &[RboxRecord], relevant: &HashSet<String>) 
                 || (reason == "symmetric-role" && !relevant.contains(role))
         }
         RboxRecord::Inverse(r, s) => !relevant.contains(r) && !relevant.contains(s),
+        RboxRecord::Transitive(..) | RboxRecord::Chain(..) => true,
     })
 }
