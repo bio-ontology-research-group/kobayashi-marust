@@ -3426,6 +3426,24 @@ impl<'a> QoSat<'a> {
                 continue;
             }
             let has_role = body.iter().any(|a| matches!(a, Atom::Role { .. }));
+            // KM_KEEP_CHAIN_AXIOMS: the raw `R1∘R2⊑R` (and `R∘R⊑R` transitive)
+            // role axioms are 2-role-body / 1-role-head clauses kept in the
+            // stream ONLY for chain/transitivity detection (the fprop chain-
+            // unfolding + the Uni self-propagation).  They must NOT enter the
+            // QoSat role-clause indexes: a 2-role-body clause hits the slow
+            // `role_noguard` path (fires on every edge of each of its roles),
+            // which blows up the saturation (14817 kc.tin: 60s timeout vs 13.5s
+            // baseline).  The chain semantics is handled by the fprop unfolding,
+            // not by matching the raw axiom.  Skip them here.
+            if has_role
+                && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some()
+                && body.len() == 2
+                && body.iter().all(|a| matches!(a, Atom::Role { .. }))
+                && head.len() == 1
+                && matches!(head[0], Atom::Role { .. })
+            {
+                continue;
+            }
             if has_role {
                 // Record inverse/symmetric bridge clauses (single role head whose
                 // args are SWAPPED vs a body role atom) regardless of `no_inv`,
@@ -3583,6 +3601,136 @@ impl<'a> QoSat<'a> {
                     for a in body {
                         if let Atom::Concept { lit, .. } = a {
                             concept_trig.entry(*lit).or_default().push(cid);
+                        }
+                    }
+                }
+            }
+        }
+        // ---- QoSat chain-unfolding of ∀R.C (Konclude generateRoleChain-
+        // AutomatConcept, the begin --R1--> mid --R2--> end unfolding) ----
+        // For a chain R1∘R2⊑R and a forward-∀ rule `D(sv) ∧ R(sv,tv) → E(tv)`
+        // (in `fprop_rule[D] = (R, E)`), the ∀R.C ≡ ∀R1.∀R2.C, so a node
+        // carrying D that gains an R1-successor must impose a fresh guard M2
+        // (for ∀R2.E) on it, and M2's own fprop_rule fires E on its R2-successors.
+        // This is the clause-form chain unfolding, applied to the QoSat fprop
+        // index — the QoSat-path equivalent of tableau.rs's chain-unfolding Uni.
+        // Gated on KM_KEEP_CHAIN_AXIOMS (raw chains present) + fprop_on.  Sound
+        // (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Fresh marker concepts allocated past
+        // the max concept id.
+        if fprop_on && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
+            // detect chains R1∘R2⊑R (2-role-body, 1-role-head, not all-equal)
+            let mut chains: Vec<(R, R, R)> = Vec::new();
+            for rec in clauses.iter() {
+                let body = &rec.1;
+                let head = &rec.0.head;
+                let rb: Vec<&Atom> = body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+                if body.len() == 2 && head.len() == 1
+                    && matches!(body[0], Atom::Role { .. })
+                    && matches!(body[1], Atom::Role { .. })
+                    && matches!(head[0], Atom::Role { .. })
+                {
+                    if let (Atom::Role { r: r1, s: r1s, t: r1t },
+                             Atom::Role { r: r2, s: r2s, t: r2t },
+                             Atom::Role { r: hr, s: hs, t: ht_ }) =
+                        (rb[0], rb[1], &head[0])
+                    {
+                        let (fr, sr, mid_ok) = if r1t == r2s { (*r1, *r2, true) }
+                            else if r2t == r1s { (*r2, *r1, true) }
+                            else { (0, 0, false) };
+                        if mid_ok && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t
+                            && !(fr == sr && sr == *hr)
+                        {
+                            chains.push((fr, sr, *hr));
+                        }
+                    }
+                }
+            }
+            // detect transitive roles (R∘R⊑R) for self-propagation
+            let mut transitive: HashSet<R> = HashSet::new();
+            for rec in clauses.iter() {
+                let body = &rec.1;
+                let head = &rec.0.head;
+                let rb: Vec<&Atom> = body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+                if body.len() == 2 && head.len() == 1
+                    && matches!(body[0], Atom::Role { .. })
+                    && matches!(body[1], Atom::Role { .. })
+                    && matches!(head[0], Atom::Role { .. })
+                {
+                    if let (Atom::Role { r: r1, s: r1s, t: r1t },
+                             Atom::Role { r: r2, s: r2s, t: r2t },
+                             Atom::Role { r: hr, s: hs, t: ht_ }) =
+                        (rb[0], rb[1], &head[0])
+                    {
+                        if r1 == r2 && r2 == hr && r1t == r2s && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t {
+                            transitive.insert(*hr);
+                        }
+                    }
+                }
+            }
+            if !chains.is_empty() {
+                // super-role closure (reflexive-transitive) for chain targeting
+                let super_close = |r: R| -> HashSet<R> {
+                    let mut out = HashSet::new();
+                    out.insert(r);
+                    let mut st = vec![r];
+                    while let Some(u) = st.pop() {
+                        for &v in superrole.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                            if out.insert(v) {
+                                st.push(v);
+                            }
+                        }
+                    }
+                    out
+                };
+                // max concept id (allocate fresh markers past it)
+                let mut maxc: C = 0;
+                for rec in clauses.iter() {
+                    for a in rec.1.iter().chain(rec.0.head.iter()) {
+                        match a {
+                            Atom::Concept { lit, .. } => maxc = maxc.max(lit.c + 1),
+                            Atom::Exists { fil, .. } => maxc = maxc.max(fil.c + 1),
+                            _ => {}
+                        }
+                    }
+                }
+                let mut next_marker: C = maxc;
+                // snapshot the fprop_rule (guard -> [(R, E)]) to iterate while mutating
+                let snap: Vec<(CLit, Vec<(R, CLit)>)> = fprop_rule.iter().map(|(k, v)| (*k, v.clone())).collect();
+                // M2 marker for (R2, parent_guard, E): carries ∀R2.E
+                let mut chain_markers: HashMap<(R, CLit, CLit), CLit> = HashMap::new();
+                for (guard, rules) in &snap {
+                    for &(r, e) in rules {
+                        // for each chain R1∘R2⊑U with U ⊑* r (r is U or a sub-role of U)
+                        for &(r1, r2, u) in &chains {
+                            if !super_close(u).contains(&r) {
+                                continue;
+                            }
+                            // M2 = marker for ∀R2.E
+                            let m2 = *chain_markers
+                                .entry((r2, *guard, e))
+                                .or_insert_with(|| {
+                                    let id = CLit { neg: false, c: next_marker };
+                                    next_marker += 1;
+                                    // M2's own fprop_rule: ∀R2.E fires E on R2-successors
+                                    fprop_rule.entry(id).or_default().push((r2, e));
+                                    // transitive R2: self-propagate M2
+                                    if transitive.contains(&r2) {
+                                        fprop_rule.entry(id).or_default().push((r2, id));
+                                    }
+                                    id
+                                });
+                            // carry M2 across the R1-edge: guard D on source ∧ R1-edge → M2 on successor
+                            let entry = fprop_rule.entry(*guard).or_default();
+                            if !entry.contains(&(r1, m2)) {
+                                entry.push((r1, m2));
+                            }
+                            // transitive R1: self-propagate the parent guard (chain + R1-transitive compose)
+                            if transitive.contains(&r1) {
+                                let entry2 = fprop_rule.entry(*guard).or_default();
+                                if !entry2.contains(&(r1, *guard)) {
+                                    entry2.push((r1, *guard));
+                                }
+                            }
                         }
                     }
                 }
