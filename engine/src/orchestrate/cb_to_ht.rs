@@ -214,6 +214,449 @@ fn is_internal(n: &str) -> bool {
         || (s.contains(':') && s != "Nothing" && s != "owl:Nothing")
 }
 
+// ===========================================================================
+// KM_ROLE_AUTOMATON: ∃R.C reachability closure over named classes.
+//
+// Konclude compiles transitive roles + role chains + the sub-role hierarchy
+// into a per-role automaton and propagates `∃R.C` through it at runtime via
+// a per-node per-role reapply queue that re-fires on every newly-created edge
+// (incl. generated successors) — CRoleChainAutomataTransformationPreProcess +
+// applyALLRule.  KM's shared-filler QoSat model cannot fire that forward push
+// across a shared/generated successor soundly (the r-Succ gap), so the marker
+// `__trans__R__C` that propagates `∃R.C ⊑ D` consumers up a transitive R never
+// reaches the root on chain-composed routes (ore_ont_14817: 71 missing
+// `X ⊑ ∃develops_from.UBERON_0000926` subsumptions).
+//
+// This pass closes that gap with a SOUND, FINITE preprocessing closure over
+// named classes, mirroring what Konclude's automaton derives at runtime:
+//   - transitivity of R:     A ⊑ ∃R.B ∧ B ⊑ ∃R.C  ⟹  A ⊑ ∃R.C
+//   - chain R1∘R2 ⊑ R:       A ⊑ ∃R1.B ∧ B ⊑ ∃R2.C  ⟝  A ⊑ ∃R.C
+//   - sub-role S ⊑ R:        A ⊑ ∃S.C  ⟝  A ⊑ ∃R.C
+// Each derived `A ⊑ ∃R.C` is emitted as marker-seed + consumer clauses using
+// the existing `__trans__R__C` predicate name, so the in-engine propagation
+// rides the SAME predicate (monotone, sound).  Named-to-named only (finite).
+// ===========================================================================
+fn role_automaton_exist_reachability(
+    ht: &[HtClause],
+    ids: &mut Ids,
+    inverse_pairs: &[(String, String)],
+) -> Vec<HtClause> {
+    use std::collections::{HashMap, HashSet};
+    let nc = ids.con_names.len();
+    let nr = ids.rol_names.len();
+
+    // -- detect transitive roles + chains from the rbox + marker clauses --
+    // Transitivity is not a raw `R∘R⊑R` clause (filtered by the frontend
+    // `is_chain_axiom`); it lives as the marker-propagation clause
+    // `R(x,y) ∧ __trans__R__C(y) → __trans__R__C(x)`.  Re-detect it: every
+    // `__trans__R__…` marker name names a transitive role R.  Chains are the
+    // `__chain__S__…` / `__cmpp__S__P` / `__cmpc__S__P` markers (the frontend
+    // `chain_clauses` / `transitive_chain_compose_clauses` emission), but
+    // those encode the chain's CONSUMER side, not the (R1,R2,R) triple — so
+    // for the chain join we instead scan the 2-role-body/1-role-head clauses
+    // that survived (the frontend emits those for non-transitive chains).
+    let mut trans: HashSet<usize> = HashSet::new();
+    let mut chains: Vec<(usize, usize, usize)> = Vec::new(); // (r1,r2,r)
+    let mut sub_super: HashMap<usize, Vec<usize>> = HashMap::new();
+    // transitive roles from marker names
+    for (i, n) in ids.con_names.iter().enumerate() {
+        if let Some(rest) = n.strip_prefix("__trans__") {
+            // format: __trans__R__C  (R is the role name, C the filler)
+            if let Some(idx) = rest.find("__") {
+                let rname = &rest[..idx];
+                if let Some(&rid) = ids.rol_id.get(rname) {
+                    trans.insert(rid);
+                }
+            }
+        }
+    }
+    // chains + sub-roles from the clause set
+    for c in ht {
+        let rb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
+        if c.body.len() == 2 && c.head.len() == 1
+            && matches!(c.body[0], HAtom::Role { .. })
+            && matches!(c.body[1], HAtom::Role { .. })
+            && matches!(c.head[0], HAtom::Role { .. })
+        {
+            if let (HAtom::Role { r: r1, s: r1s, t: r1t },
+                     HAtom::Role { r: r2, s: r2s, t: r2t },
+                     HAtom::Role { r: hr, s: hs, t: ht_ }) =
+                (rb[0], rb[1], &c.head[0])
+            {
+                let (fr, sr, _mid) = if r1t == r2s {
+                    (*r1, *r2, r1t)
+                } else if r2t == r1s {
+                    (*r2, *r1, r2t)
+                } else {
+                    continue;
+                };
+                if *hs == *r1s && *ht_ == *r2t && *r1s != *r2t && !(fr == sr && sr == *hr) {
+                    chains.push((fr, sr, *hr));
+                }
+            }
+            continue;
+        }
+        // sub-role S⊑R: body=[Role S x y], head=[Role R x y]
+        if c.body.len() == 1 && c.head.len() == 1
+            && matches!(c.body[0], HAtom::Role { .. })
+            && matches!(c.head[0], HAtom::Role { .. })
+        {
+            if let (HAtom::Role { r: sr, s: ss, t: st }, HAtom::Role { r: hr, s: hs, t: ht_ }) =
+                (rb[0], &c.head[0])
+            {
+                if *ss == *hs && *st == *ht_ && *ss != *st && sr != hr {
+                    sub_super.entry(*sr).or_default().push(*hr);
+                }
+            }
+        }
+    }
+    if trans.is_empty() && chains.is_empty() {
+        return Vec::new();
+    }
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!(
+            "cb_to_ht [role-automaton] trans={} chains={} subroles={} nc={} nr={}",
+            trans.len(),
+            chains.len(),
+            sub_super.len(),
+            nc,
+            nr
+        );
+    }
+
+    // -- concept subsumption graph (A ⊑ B from A(x)→B(x) concept-only clauses) --
+    // used to resolve the absorbed definer chains around ∃R.C.
+    let mut sub: HashMap<usize, Vec<usize>> = HashMap::new();
+    for c in ht {
+        if c.body.len() == 1 && c.head.len() == 1
+            && matches!(c.body[0], HAtom::Concept { neg: false, t: 0, .. })
+            && matches!(c.head[0], HAtom::Concept { neg: false, t: 0, .. })
+        {
+            if let (HAtom::Concept { c: a, .. }, HAtom::Concept { c: b, .. }) =
+                (&c.body[0], &c.head[0])
+            {
+                if a != b {
+                    sub.entry(*a).or_default().push(*b);
+                }
+            }
+        }
+    }
+    // transitive closure of subsumption (per-start BFS; nc is bounded by named set)
+    let sub_close = |start: usize| -> HashSet<usize> {
+        let mut out = HashSet::new();
+        let mut st = vec![start];
+        while let Some(u) = st.pop() {
+            for &v in sub.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                if out.insert(v) {
+                    st.push(v);
+                }
+            }
+        }
+        out
+    };
+    // reverse subsumption graph (subclasses): rsub[B] = {A : A ⊑ B}.  Used to
+    // resolve the named sources `A ⊑* D` of an absorbed exists-introducer `D ⊑ ∃R.F`.
+    let mut rsub: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (&a, sups) in sub.iter() {
+        for &b in sups {
+            rsub.entry(b).or_default().push(a);
+        }
+    }
+    let rsub_close = |start: usize| -> HashSet<usize> {
+        let mut out = HashSet::new();
+        let mut st = vec![start];
+        while let Some(u) = st.pop() {
+            for &v in rsub.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                if out.insert(v) {
+                    st.push(v);
+                }
+            }
+        }
+        out
+    };
+    // super-role closure (reflexive-transitive)
+    let super_close = |r: usize| -> HashSet<usize> {
+        let mut out = HashSet::new();
+        out.insert(r);
+        let mut st = vec![r];
+        while let Some(u) = st.pop() {
+            for &v in sub_super.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                if out.insert(v) {
+                    st.push(v);
+                }
+            }
+        }
+        out
+    };
+
+    // -- ∃R.C introducers: A ⊑ ∃R.C, resolving definer chains --
+    // An exists-head clause `D(x) → ∃R.F(x)` where D is a definer reachable
+    // from a named A (A ⊑* D), and F is a definer reaching named Cs (F ⊑* C).
+    // Collect (A_named, R, C_named) for every named A that ⊑* D and named C ⊑* F.
+    // exists-head clauses: body=[Concept D t:0], head contains Exist{r,c,t:0}
+    let mut exists_heads: Vec<(usize, usize, usize)> = Vec::new(); // (D, R, F)
+    for c in ht {
+        if c.body.len() != 1 || !matches!(c.body[0], HAtom::Concept { neg: false, t: 0, .. }) {
+            continue;
+        }
+        if let HAtom::Concept { c: d, .. } = c.body[0] {
+            for h in &c.head {
+                if let HAtom::Exist { r, neg: false, c: f, t: 0 } = h {
+                    exists_heads.push((d, *r, *f));
+                }
+            }
+        }
+    }
+    // For each exists-head (D,R,F): the named sources A with A ⊑* D, and named
+    // fillers C with F ⊑* C.  Cache the closures.
+    let mut src_cache: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut fil_cache: HashMap<usize, Vec<usize>> = HashMap::new();
+    let named_sources = |d: usize, sc: &mut HashMap<usize, Vec<usize>>| -> Vec<usize> {
+        // named A with A ⊑* D  (A is a subclass of D, reflexive): reverse
+        // closure of D.  Includes D itself when D is named.
+        if let Some(v) = sc.get(&d) {
+            return v.clone();
+        }
+        let mut cls = rsub_close(d);
+        cls.insert(d);
+        let mut named: Vec<usize> = cls
+            .into_iter()
+            .filter(|&c| c < nc && !is_internal(&ids.con_names[c]))
+            .collect();
+        named.sort_unstable();
+        named.dedup();
+        sc.insert(d, named.clone());
+        named
+    };
+    let named_fillers = |f: usize, fc: &mut HashMap<usize, Vec<usize>>| -> Vec<usize> {
+        // named C with F ⊑* C  (C is a superclass of F, reflexive): forward
+        // closure of F.  Includes F itself when F is named (reflexive ⊑).
+        if let Some(v) = fc.get(&f) {
+            return v.clone();
+        }
+        let mut cls = sub_close(f);
+        cls.insert(f);
+        let mut named: Vec<usize> = cls
+            .into_iter()
+            .filter(|&c| c < nc && !is_internal(&ids.con_names[c]))
+            .collect();
+        named.sort_unstable();
+        named.dedup();
+        fc.insert(f, named.clone());
+        named
+    };
+    // intros: (A, R, C) for named A,C.  Also keep the (A,R,Fdef) form for the
+    // chain join (the join is over the FILLER being a source of the next hop;
+    // the named filler is the resolution target).
+    let mut intros: HashSet<(usize, usize, usize)> = HashSet::new(); // (A, R, Cnamed)
+    // by_rf for the fixpoint: (R, Cnamed) -> {Anamed}.  Use named throughout so
+    // the closure is finite and the join is sound (A⊑∃R1.Bnamed, Bnamed⊑∃R2.C).
+    let mut by_rf: HashMap<(usize, usize), HashSet<usize>> = HashMap::new();
+    let mut _dbg_eh = 0u64;
+    let mut _dbg_src0 = 0u64;
+    for (d, r, f) in &exists_heads {
+        _dbg_eh += 1;
+        let srcs = named_sources(*d, &mut src_cache);
+        if srcs.is_empty() {
+            _dbg_src0 += 1;
+        }
+        let fils = named_fillers(*f, &mut fil_cache);
+        for &a in &srcs {
+            for &c in &fils {
+                intros.insert((a, *r, c));
+                by_rf.entry((*r, c)).or_default().insert(a);
+            }
+        }
+    }
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!(
+            "cb_to_ht [role-automaton] exists_heads={} src0={} intros0={}",
+            _dbg_eh,
+            _dbg_src0,
+            intros.len()
+        );
+    }
+
+    // -- ∃R.C consumers: ∃R.C ⊑ D — role-body + filler-concept-on-y clauses --
+    // body=[Role R x y, Concept C y], head=[Concept D x].  Resolve definer
+    // fillers: a consumer with filler-def F covers every named C ⊑* F.  And
+    // sub-role: ∃S.C ⊑ D also covers ∃R.C ⊑ D when S ⊑* R.
+    // (R, Cnamed) -> [Dnamed]
+    let mut consumers: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
+    for c in ht {
+        let rb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
+        if rb.len() != 1 || c.head.is_empty() {
+            continue;
+        }
+        if let HAtom::Role { r, s: rs, t: rt } = rb[0] {
+            if *rs != 0 || *rt == 0 {
+                continue;
+            }
+            // single filler concept on y (=rt)
+            let mut fil: Option<usize> = None;
+            for a in &c.body {
+                if let HAtom::Concept { neg: false, c: cc, t } = a {
+                    if *t == *rt {
+                        if fil.is_none() {
+                            fil = Some(*cc);
+                        } else {
+                            fil = None;
+                            break;
+                        }
+                    }
+                }
+            }
+            let fdef = match fil {
+                Some(f) => f,
+                None => continue,
+            };
+            // head concepts on x (=0): named Ds
+            let mut ds: Vec<usize> = Vec::new();
+            for h in &c.head {
+                if let HAtom::Concept { neg: false, c: cc, t: 0 } = h {
+                    if *cc < nc && !is_internal(&ids.con_names[*cc]) {
+                        ds.push(*cc);
+                    }
+                }
+            }
+            if ds.is_empty() {
+                continue;
+            }
+            // resolve filler: named Cs with C ⊑* fdef  (fdef is a definer above C)
+            // NOTE: sub_close(fdef) gives concepts fdef subsumes; a named C with
+            // C ⊑* fdef means fdef is in sub_close(C).  We need the reverse.  But
+            // in the absorbed form the filler definer F satisfies F ⊑ C (F reaches
+            // the named filler downward), so named_fillers(fdef) = sub_close(fdef)
+            // filtered to named — that is what the exists side uses too.  Use the
+            // same resolution for consistency.
+            let fils = named_fillers(fdef, &mut fil_cache);
+            for cf in fils {
+                consumers.entry((*r, cf)).or_default().extend(ds.iter().copied());
+            }
+        }
+    }
+
+    // -- role-automaton two-step routes per super-role R --
+    // (R1, R2) with R1∘R2 ⊑ U and U ⊑* R  ⟹  route for R.
+    let mut two_step: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+    for (r1, r2, u) in &chains {
+        for sup in super_close(*u) {
+            two_step.entry(sup).or_default().push((*r1, *r2));
+        }
+    }
+    for r in &trans {
+        two_step.entry(*r).or_default().push((*r, *r));
+    }
+
+    // -- fixpoint closure --
+    let mut changed = true;
+    let mut iters = 0u32;
+    while changed {
+        changed = false;
+        iters += 1;
+        if iters > 2000 {
+            break;
+        }
+        let snapshot = by_rf.clone();
+        // two-step: A ⊑ ∃R1.B ∧ B ⊑ ∃R2.C ⟹ A ⊑ ∃R.C
+        for (r, routes) in &two_step {
+            for (r1, r2) in routes {
+                // Bs with B ⊑ ∃R2.C: keys (R2, C) in snapshot
+                let r2_cs: Vec<(usize, usize)> = snapshot
+                    .keys()
+                    .filter(|(rr, _)| rr == r2)
+                    .cloned()
+                    .collect();
+                for (_, c) in r2_cs {
+                    let bs = match snapshot.get(&(*r2, c)) {
+                        Some(s) => s.iter().copied().collect::<Vec<_>>(),
+                        None => continue,
+                    };
+                    for b in bs {
+                        if let Some(as_) = snapshot.get(&(*r1, b)) {
+                            for &a in as_ {
+                                let set = by_rf.entry((*r, c)).or_default();
+                                if set.insert(a) {
+                                    intros.insert((a, *r, c));
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // sub-role: A ⊑ ∃S.C ∧ S ⊑ R ⟹ A ⊑ ∃R.C
+        for (s, sups) in &sub_super {
+            for r in sups {
+                let s_cs: Vec<(usize, usize)> = snapshot
+                    .keys()
+                    .filter(|(rr, _)| rr == s)
+                    .cloned()
+                    .collect();
+                for (_, c) in s_cs {
+                    let as_ = match snapshot.get(&(*s, c)) {
+                        Some(s2) => s2.iter().copied().collect::<Vec<_>>(),
+                        None => continue,
+                    };
+                    for a in as_ {
+                        let set = by_rf.entry((*r, c)).or_default();
+                        if set.insert(a) {
+                            intros.insert((a, *r, c));
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -- emit marker-seed + consumer clauses --
+    // marker name __trans__R__C  (id allocated via ids.cid, mirroring the
+    // frontend transitivity_clauses name so the predicates coincide when both
+    // fire).  The marker propagates via the existing in-engine clauses; here
+    // we only SEED it on each named A that R-reaches C, and fan out consumers.
+    let _ = inverse_pairs; // (inverse not needed; the role automaton is forward)
+    let _ = nr;
+    let mut out = Vec::new();
+    let mut marker_cache: HashMap<(usize, usize), usize> = HashMap::new();
+    let mut emitted: HashSet<(usize, usize, usize)> = HashSet::new();
+    for (a, r, c) in &intros {
+        if !emitted.insert((*a, *r, *c)) {
+            continue;
+        }
+        let mid = *marker_cache
+            .entry((*r, *c))
+            .or_insert_with(|| ids.cid(&format!("__trans__{}__{}", ids.rol_names[*r], ids.con_names[*c])));
+        // seed: A(x) → marker(x)
+        out.push(HtClause {
+            body: vec![HAtom::Concept { neg: false, c: *a, t: 0 }],
+            head: vec![HAtom::Concept { neg: false, c: mid, t: 0 }],
+        });
+        // consumers: marker(x) → D(x) for each D with ∃R.C ⊑ D (incl. sub-role)
+        let mut ds: Vec<usize> = Vec::new();
+        if let Some(v) = consumers.get(&(*r, *c)) {
+            ds.extend(v.iter().copied());
+        }
+        for (s, sups) in &sub_super {
+            if sups.iter().any(|rr| rr == r) {
+                if let Some(v) = consumers.get(&(*s, *c)) {
+                    ds.extend(v.iter().copied());
+                }
+            }
+        }
+        ds.sort_unstable();
+        ds.dedup();
+        for d in ds {
+            out.push(HtClause {
+                body: vec![HAtom::Concept { neg: false, c: mid, t: 0 }],
+                head: vec![HAtom::Concept { neg: false, c: d, t: 0 }],
+            });
+        }
+    }
+    out
+}
+
 fn term_is_fun(t: &JTerm) -> bool {
     matches!(t, JTerm::Fun { .. })
 }
@@ -1104,6 +1547,22 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
 
     // ---- queries ----
     let mut queries: Vec<usize> = Vec::new();
+
+    // ---- KM_ROLE_AUTOMATON: ∃R.C reachability closure over named classes ----
+    // (see engine/src/frontend/preprocess.rs::role_automaton_reachability_clauses
+    // for the full rationale; this is the post-cb_to_ht form that can see the
+    // Exist atoms the clausifier's absorption produced).  Gated, additive,
+    // default OFF.
+    if std::env::var_os("KM_ROLE_AUTOMATON").is_some() {
+        let extra = role_automaton_exist_reachability(&ht, &mut ids, &inverse_pairs);
+        if !extra.is_empty() {
+            if std::env::var_os("KM_HT_STATS").is_some() {
+                eprintln!("cb_to_ht [role-automaton] +{} reachability clauses", extra.len());
+            }
+            ht.extend(extra);
+        }
+    }
+
     for (i, n) in ids.con_names.iter().enumerate() {
         if (named.contains(n) || !is_internal(n)) && !is_bottom(n) {
             queries.push(i);

@@ -615,6 +615,302 @@ pub fn prune_inert_role_bridges(
     });
 }
 
+// ===========================================================================
+// Role-automaton reachability (KM_ROLE_AUTOMATON)
+//
+// Konclude compiles transitive roles + role chains + the sub-role hierarchy
+// into a per-role automaton, then propagates `∃R.C` (and `∀R.C`) through it
+// at tableau runtime via a per-node per-role reapply queue that re-fires on
+// every newly created edge (incl. generated successors).  See
+// CRoleChainAutomataTransformationPreProcess + applyALLRule +
+// CExtractPropagationIntoCreationDirectionPreProcess.
+//
+// KM's shared-filler QoSat model cannot fire that forward push across a
+// generated/shared successor soundly (the r-Succ gap), so the marker
+// `__trans__R__C` — which propagates `∃R.C ⊑ D` consumers up a transitive R —
+// never reaches the root on chain-composed routes (ore_ont_14817: 71 missing
+// `X ⊑ ∃develops_from.UBERON_0000926`-style subsumptions, all reached only
+// through `part_of ∘ develops_from ⊑ develops_from` / dev-transitivity).
+//
+// This pass closes that gap with a SOUND, FINITE preprocessing closure over
+// NAMED classes, mirroring what Konclude's automaton derives at runtime:
+//   - transitivity of R:     `A ⊑ ∃R.B ∧ B ⊑ ∃R.C  ⟹  A ⊑ ∃R.C`
+//   - chain R1∘R2 ⊑ R:       `A ⊑ ∃R1.B ∧ B ⊑ ∃R2.C  ⟝  A ⊑ ∃R.C`
+//   - sub-role S ⊑ R:        `A ⊑ ∃S.C  ⟝  A ⊑ ∃R.C`   (and in the filler)
+// Each newly-derived `A ⊑ ∃R.C` is emitted as the two clausal fragments the
+// rest of the pipeline already consumes:
+//   introducer: `A(x) → marker_R_C(x)`         (the exists obligation, as the
+//              marker concept the transitivity/chain machinery propagates)
+//   consumer:   `marker_R_C(x) → D(x)`          for every `∃R.C ⊑ D` consumer
+// where `marker_R_C` is the existing `__trans__R__C` name so the in-engine
+// propagation rides the SAME predicate (no new derivation paths, only new
+// SEED facts — the derived set grows monotonically, soundly).  Additive: only
+// emits clauses for (A, R, C) triples not already present.  Default OFF.
+// ===========================================================================
+
+/// Collect `∃R.C` introducers `A ⊑ ∃R.C` from the clausified tbox.  After
+/// normalisation an `A ⊑ ∃R.C` axiom is the exists-introducing clause
+/// `A(x) → R(x,f) ∧ C(f)` (role + filler concept in the HEAD).  Returns the
+/// set of `(A, R, C)` triples (A and C are concept names, R a role name).
+fn collect_exists_introducers(tbox: &[DLClause]) -> HashSet<(String, String, String)> {
+    let x = var_x();
+    let mut out = HashSet::new();
+    for c in tbox {
+        // introducer shape: body = [Concept(A, x)], head = [Role(R, x, t), Concept(C, t)]
+        if c.body.len() != 1 || c.head.len() != 2 {
+            continue;
+        }
+        let ba = match &c.body[0] {
+            Atom::Concept(name, t) if *t == x => name.clone(),
+            _ => continue,
+        };
+        let mut role: Option<(&str, &Term)> = None;
+        let mut fil: Option<&str> = None;
+        for h in &c.head {
+            match h {
+                Atom::Role(r, s, t) if *s == x => role = Some((r.as_str(), t)),
+                Atom::Concept(name, t) if *t != x => {
+                    if fil.is_none() {
+                        fil = Some(name.as_str());
+                    }
+                }
+                _ => {}
+            }
+        }
+        let (r, t) = match role {
+            Some((r, t)) => (r.to_string(), t),
+            None => continue,
+        };
+        let c_name = match fil {
+            Some(c) => c.to_string(),
+            None => continue,
+        };
+        if t == &x {
+            continue;
+        }
+        out.insert((ba, r, c_name));
+    }
+    out
+}
+
+/// Collect `∃R.C` consumers `∃R.C ⊑ D`, i.e. the role-body clause
+/// `R(x,y) ∧ C(y) → D(x)`.  Returns `(R, C) → [D, ...]`.
+fn collect_exists_consumers(tbox: &[DLClause]) -> HashMap<(String, String), Vec<String>> {
+    let x = var_x();
+    let y = var_y();
+    let mut out: HashMap<(String, String), Vec<String>> = HashMap::new();
+    for c in tbox {
+        if c.head.is_empty() {
+            continue;
+        }
+        let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
+        if roles.len() != 1 {
+            continue;
+        }
+        let (r, s, t) = role_parts(roles[0]);
+        if *s != x || *t != y || *t == x {
+            continue;
+        }
+        let mut fil: Option<String> = None;
+        for a in &c.body {
+            if let Atom::Concept(name, tt) = a {
+                if *tt == y {
+                    if fil.is_none() {
+                        fil = Some(name.clone());
+                    } else {
+                        fil = None;
+                        break;
+                    }
+                }
+            }
+        }
+        let fil = match fil {
+            Some(f) => f,
+            None => continue,
+        };
+        if !c
+            .head
+            .iter()
+            .all(|h| matches!(h, Atom::Concept(_, t) if *t == x))
+        {
+            continue;
+        }
+        for h in &c.head {
+            if let Atom::Concept(name, _) = h {
+                out.entry((r.to_string(), fil.clone()))
+                    .or_default()
+                    .push(name.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Build the sub-role hierarchy `S ⊑ R` from single role-body→role-head clauses.
+fn collect_sub_roles(tbox: &[DLClause]) -> HashMap<String, Vec<String>> {
+    let mut sub_super: HashMap<String, Vec<String>> = HashMap::new();
+    for c in tbox {
+        if c.body.len() == 1 && c.head.len() == 1 {
+            if let (Atom::Role(u, us, ut), Atom::Role(v, vs, vt)) = (&c.body[0], &c.head[0]) {
+                if us == vs && ut == vt && us != ut && u != v {
+                    sub_super.entry(u.clone()).or_default().push(v.clone());
+                }
+            }
+        }
+    }
+    sub_super
+}
+
+/// Marker name matching `transitivity_clauses` for `(R, [C])`.
+fn marker_name(r: &str, c: &str) -> String {
+    format!("__trans__{}__{}", r, c)
+}
+
+/// KM_ROLE_AUTOMATON (gated, additive): derive the finite `∃R.C` reachability
+/// closure over named classes via the role automaton (transitivity + chains +
+/// sub-role hierarchy) and emit the derived `A ⊑ ∃R.C` as marker-seed +
+/// consumer clauses.  Sound + finite (named-to-named closure only).
+pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
+    if std::env::var_os("KM_ROLE_AUTOMATON").is_none() {
+        return Vec::new();
+    }
+    let info = detect_role_chains(tbox);
+    if info.trans.is_empty() && info.chains.is_empty() {
+        return Vec::new();
+    }
+    let trans: HashSet<String> = info.trans.iter().cloned().collect();
+    let sub_super = collect_sub_roles(tbox);
+
+    let super_close = |r: &str| -> HashSet<String> {
+        let mut out = HashSet::new();
+        out.insert(r.to_string());
+        let mut stack = vec![r.to_string()];
+        while let Some(u) = stack.pop() {
+            for v in sub_super.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                if out.insert(v.clone()) {
+                    stack.push(v.clone());
+                }
+            }
+        }
+        out
+    };
+
+    let mut intros = collect_exists_introducers(tbox);
+    let consumers = collect_exists_consumers(tbox);
+
+    let mut two_step: HashMap<String, Vec<(String, String)>> = HashMap::new();
+    for (r1, r2, u) in &info.chains {
+        for sup in super_close(u) {
+            two_step.entry(sup).or_default().push((r1.clone(), r2.clone()));
+        }
+    }
+    for r in &trans {
+        two_step.entry(r.clone()).or_default().push((r.clone(), r.clone()));
+    }
+
+    let mut by_rf: HashMap<(String, String), HashSet<String>> = HashMap::new();
+    for (a, r, c) in &intros {
+        by_rf.entry((r.clone(), c.clone()))
+            .or_default()
+            .insert(a.clone());
+    }
+    let mut changed = true;
+    let mut iters = 0u32;
+    while changed {
+        changed = false;
+        iters += 1;
+        if iters > 1000 {
+            break;
+        }
+        let snapshot = by_rf.clone();
+        for (r, routes) in &two_step {
+            for (r1, r2) in routes {
+                let r2_cs: Vec<(String, String)> = snapshot
+                    .keys()
+                    .filter(|(rr, _)| rr == r2)
+                    .cloned()
+                    .collect();
+                for (_rr2, c) in r2_cs {
+                    let bs = match snapshot.get(&(r2.clone(), c.clone())) {
+                        Some(s) => s.iter().cloned().collect::<Vec<_>>(),
+                        None => continue,
+                    };
+                    for b in bs {
+                        if let Some(as_) = snapshot.get(&(r1.clone(), b.clone())) {
+                            for a in as_ {
+                                let key = (r.clone(), c.clone());
+                                let set = by_rf.entry(key).or_default();
+                                if set.insert(a.clone()) {
+                                    intros.insert((a.clone(), r.clone(), c.clone()));
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (s, sups) in &sub_super {
+            for r in sups {
+                let s_cs: Vec<(String, String)> = snapshot
+                    .keys()
+                    .filter(|(rr, _)| rr == s)
+                    .cloned()
+                    .collect();
+                for (_ss, c) in s_cs {
+                    let as_ = match snapshot.get(&(s.clone(), c.clone())) {
+                        Some(s2) => s2.iter().cloned().collect::<Vec<_>>(),
+                        None => continue,
+                    };
+                    for a in as_ {
+                        let key = (r.clone(), c.clone());
+                        let set = by_rf.entry(key).or_default();
+                        if set.insert(a.clone()) {
+                            intros.insert((a.clone(), r.clone(), c.clone()));
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let x = var_x();
+    let mut out = Vec::new();
+    let mut emitted: HashSet<(String, String, String)> = HashSet::new();
+    for (a, r, c) in &intros {
+        if !emitted.insert((a.clone(), r.clone(), c.clone())) {
+            continue;
+        }
+        let m = marker_name(r, c);
+        out.push(clause(
+            [Atom::Concept(a.clone(), x.clone())],
+            [Atom::Concept(m.clone(), x.clone())],
+        ));
+        let mut ds: Vec<String> = Vec::new();
+        if let Some(v) = consumers.get(&(r.clone(), c.clone())) {
+            ds.extend(v.iter().cloned());
+        }
+        for (s, sups) in &sub_super {
+            if sups.iter().any(|rr| rr == r) {
+                if let Some(v) = consumers.get(&(s.clone(), c.clone())) {
+                    ds.extend(v.iter().cloned());
+                }
+            }
+        }
+        ds.sort();
+        ds.dedup();
+        for d in ds {
+            out.push(clause(
+                [Atom::Concept(m.clone(), x.clone())],
+                [Atom::Concept(d, x.clone())],
+            ));
+        }
+    }
+    out
+}
+
+
 /// Port of `_is_chain_axiom`.
 fn is_chain_axiom(c: &DLClause) -> bool {
     let roles: Vec<&Atom> = c.body.iter().filter(|a| is_role(a)).collect();
@@ -658,7 +954,16 @@ pub fn augment_with_chains(
     abox: &[DLClause],
     hooks: &GroundHooks,
 ) -> (Vec<DLClause>, ChainInfo) {
-    let mut base: Vec<DLClause> = tbox.iter().filter(|c| !is_chain_axiom(c)).cloned().collect();
+    // KM_ROLE_AUTOMATON: keep the raw `R1∘R2⊑R` (and `R∘R⊑R` transitive) role
+    // axioms in the clause stream (un-filtered) so the post-cb_to_ht pass can
+    // detect the chain triples and compose ∃R.C reachability through them.
+    // Default OFF: the filtered stream is the byte-identity baseline.
+    let keep_chains = std::env::var_os("KM_ROLE_AUTOMATON").is_some();
+    let mut base: Vec<DLClause> = tbox
+        .iter()
+        .filter(|c| keep_chains || !is_chain_axiom(c))
+        .cloned()
+        .collect();
     base.extend(nominal_clauses(abox, hooks));
     if std::env::var_os("KM_NOMINALS").is_some() {
         base.extend(abox.iter().cloned());
@@ -667,6 +972,7 @@ pub fn augment_with_chains(
     base.extend(transitivity_clauses(&tbox));
     base.extend(chain_clauses(&tbox));
     base.extend(transitive_chain_compose_clauses(&tbox));
+    base.extend(role_automaton_reachability_clauses(&tbox));
     (base, detect_role_chains(&tbox))
 }
 

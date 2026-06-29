@@ -10184,6 +10184,56 @@ impl Ht {
                     a, b, sat_a, sat_anb,
                     match sat_anb { Some(false) => "a⊑b CERTAIN (QoSat gap)", Some(true) => "a⋢b (gold contested)", None => "unsupported/defer" }
                 );
+                if std::env::var_os("KM_HT_TESTONE_TRACE").is_some() {
+                    let e = &w2.ext;
+                    let nn = e.num_nodes();
+                    let mut ebyrole: std::collections::HashMap<R, u64> = std::collections::HashMap::new();
+                    let mut tot_e = 0u64;
+                    for s in 0..nn {
+                        for (r, _t, _d) in &e.out_edges[s] {
+                            *ebyrole.entry(*r).or_default() += 1;
+                            tot_e += 1;
+                        }
+                    }
+                    // does any node carry B (b) positively? (root deriving B would clash with ¬B)
+                    let mut nodes_with_b: Vec<Node> = Vec::new();
+                    for n in 0..nn {
+                        if e.concepts[n].contains_key(&CLit::pos(b)) {
+                            nodes_with_b.push(n);
+                        }
+                    }
+                    // root (node 0) positive label
+                    let mut root_pos: Vec<C> = e.concepts[0]
+                        .keys().filter(|k| !k.neg).map(|k| k.c).collect();
+                    root_pos.sort_unstable();
+                    let mut root_neg: Vec<C> = e.concepts[0]
+                        .keys().filter(|k| k.neg).map(|k| k.c).collect();
+                    root_neg.sort_unstable();
+                    // max BFS depth from root over any role
+                    let mut dist = vec![u32::MAX; nn];
+                    if nn > 0 { dist[0] = 0; }
+                    let mut qdep = std::collections::VecDeque::new();
+                    qdep.push_back(0u32);
+                    let mut maxd = 0u32;
+                    while let Some(u) = qdep.pop_front() {
+                        for (_r, t, _d) in &e.out_edges[u as usize] {
+                            if dist[*t] == u32::MAX {
+                                dist[*t] = dist[u as usize] + 1;
+                                maxd = maxd.max(dist[*t]);
+                                qdep.push_back(*t as u32);
+                            }
+                        }
+                    }
+                    let mut ebyrole_v: Vec<(R, u64)> = ebyrole.into_iter().collect();
+                    ebyrole_v.sort_unstable_by_key(|x| x.1);
+                    eprintln!(
+                        "TESTONE_TRACE: unsupported={} nodes={} edges_total={} max_depth={} branch_pushes={} backtracks={} steps={} | nodes_with_B({})={} | roles(by cnt): {:?}",
+                        e.unsupported, nn, tot_e, maxd, w2.branch_pushes, w2.backtracks, w2.steps,
+                        b, nodes_with_b.len(), ebyrole_v
+                    );
+                    eprintln!("TESTONE_TRACE: root_pos_count={} root_pos(first40)={:?}", root_pos.len(), &root_pos[..root_pos.len().min(40)]);
+                    eprintln!("TESTONE_TRACE: root_neg_count={} root_neg={:?}", root_neg.len(), &root_neg);
+                }
             }
         }
         let cap = queries.len().saturating_mul(4).saturating_add(500_000);
