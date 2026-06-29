@@ -15,4 +15,5 @@ pub mod frontend;
 pub mod json_io;
 pub mod orchestrate;
 pub mod reasoner;
+pub mod role_automaton;
 pub mod tableau;
