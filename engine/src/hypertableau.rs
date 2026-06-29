@@ -2164,6 +2164,12 @@ pub struct Ht {
     /// QoSat where the same composition cascades.
     ht_chain_fwd: HashMap<R, Vec<(R, R)>>,
     ht_chain_bwd: HashMap<R, Vec<(R, R)>>,
+    /// Ht-only `__cmpp__` clauses (transitive-chain compose, generated in
+    /// `set_chains` via `ht_transitive_chain_compose`).  Stored SEPARATELY from
+    /// `self.clauses` so the QoSat forward pass (which reads `&self.clauses`)
+    /// never sees them — they cascade on the shared-filler model.  The Ht residue
+    /// workers extend their template with these clauses (bounded by blocking).
+    ht_tcc_clauses: Vec<Clause>,
 }
 
 /// Contrapositive Horn clauses for clash clauses (KM_HT_CONTRA). A clash clause
@@ -2468,6 +2474,175 @@ fn ht_chain_unfolding_clauses(clauses: &[Clause], chains: &[(R, R, R)], transiti
         }
     }
     let _ = transitive; // (transitive self-loop handled by existing __trans__ clauses)
+    out
+}
+
+/// Ht-only port of `transitive_chain_compose_clauses` (frontend preprocess.rs).
+/// Generates the `__cmpp__` mid-marker clauses that propagate a transitive
+/// marker `__trans__T__C` (= P) through a chain `R∘S⊑T` (T transitive):
+///   S(X,Z) ∧ P(Z) → M(X)      (S-edge + P on target ⇒ mid marker M on source)
+///   R(X,Y) ∧ M(Y) → P(X)      (R-edge + M on target ⇒ P on source)
+/// plus the `__cmpc__` variant (S-edge + the C_i operands on target ⇒ M2; R-edge
+/// + M2 ⇒ P).  This is Konclude's role-automaton state propagation expressed as
+/// Horn clauses — bounded by the finite marker set, NOT edge composition (which
+/// cascades on the shared-filler QoSat).  Installed Ht-only via `set_chains` so
+/// the QoSat forward pass never sees these clauses (no cascade); the Ht residue
+/// (with blocking) derives the chain subsumptions.
+fn ht_transitive_chain_compose(
+    clauses: &[Clause],
+    chains: &[(R, R, R)],
+    transitive: &[R],
+) -> Vec<Clause> {
+    let trans: HashSet<R> = transitive.iter().copied().collect();
+    if trans.is_empty() || chains.is_empty() {
+        return Vec::new();
+    }
+    // sub-role hierarchy R⊑S from single-role-body→role-head clauses.
+    let mut sub_super: HashMap<R, Vec<R>> = HashMap::new();
+    for c in clauses {
+        if c.body.len() == 1 && c.head.len() == 1 {
+            if let (Atom::Role { r: u, s: us, t: ut }, Atom::Role { r: v, s: vs, t: vt }) =
+                (&c.body[0], &c.head[0])
+            {
+                if us == vs && ut == vt && us != ut && u != v {
+                    sub_super.entry(*u).or_default().push(*v);
+                }
+            }
+        }
+    }
+    fn super_trans(
+        u: R,
+        sub_super: &HashMap<R, Vec<R>>,
+        trans: &HashSet<R>,
+        seen: &mut HashSet<R>,
+    ) -> Option<R> {
+        if trans.contains(&u) {
+            return Some(u);
+        }
+        if !seen.insert(u) {
+            return None;
+        }
+        for v in sub_super.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+            if let Some(t) = super_trans(*v, sub_super, trans, seen) {
+                return Some(t);
+            }
+        }
+        None
+    }
+    // seen_p: for each clause R(X,Y) ∧ C1(Y) ∧ ... → P(X) where R is transitive,
+    // key (R, sorted [C1,...]) → P (the head CLit).  P is the __trans__R__C marker.
+    let mut seen_p: HashMap<(R, Vec<CLit>), CLit> = HashMap::new();
+    for c in clauses {
+        let roles: Vec<&Atom> = c.body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+        if roles.len() != 1 {
+            continue;
+        }
+        if let Atom::Role { r, s, t } = roles[0] {
+            if !trans.contains(r) || *s != X {
+                continue;
+            }
+            let yt = *t;
+            if yt == X {
+                continue;
+            }
+            let mut c_on_y: Vec<CLit> = c
+                .body
+                .iter()
+                .filter_map(|a| match a {
+                    Atom::Concept { lit, t } if *t == yt => Some(*lit),
+                    _ => None,
+                })
+                .collect();
+            c_on_y.sort();
+            c_on_y.dedup();
+            if c_on_y.is_empty() || c.head.is_empty() {
+                continue;
+            }
+            if !c.head.iter().all(|h| matches!(h, Atom::Concept { t, .. } if *t == X)) {
+                continue;
+            }
+            if let Atom::Concept { lit: p, .. } = &c.head[0] {
+                seen_p.entry((*r, c_on_y)).or_insert(*p);
+            }
+        }
+    }
+    if seen_p.is_empty() {
+        return Vec::new();
+    }
+    // fresh marker ids past the max concept id
+    let mut maxc: C = 0;
+    for c in clauses {
+        for a in c.body.iter().chain(c.head.iter()) {
+            if let Atom::Concept { lit, .. } = a {
+                maxc = maxc.max(lit.c + 1);
+            }
+        }
+    }
+    let mut next_marker: C = maxc;
+    let y: Var = 1;
+    let z: Var = 2;
+    let mut out: Vec<Clause> = Vec::new();
+    // mid-marker maps keyed by (s, P) / (s, operands) so repeated chains share
+    let mut mid_p: HashMap<(R, CLit), C> = HashMap::new();
+    let mut mid_c: HashMap<(R, Vec<CLit>), C> = HashMap::new();
+    for &(r, s, u) in chains {
+        let mut seen2 = HashSet::new();
+        let t = match super_trans(u, &sub_super, &trans, &mut seen2) {
+            Some(t) => t,
+            None => continue,
+        };
+        for ((pt, c_on_y), p) in &seen_p {
+            if *pt != t {
+                continue;
+            }
+            // __cmpp variant: S(X,Z) ∧ P(Z) → M(X) ; R(X,Y) ∧ M(Y) → P(X)
+            let m = *mid_p
+                .entry((s, *p))
+                .or_insert_with(|| {
+                    let id = next_marker;
+                    next_marker += 1;
+                    out.push(Clause {
+                        body: vec![
+                            Atom::Role { r: s, s: X, t: z },
+                            Atom::Concept { lit: *p, t: z },
+                        ],
+                        head: vec![Atom::Concept { lit: CLit::pos(id), t: X }],
+                    });
+                    id
+                });
+            out.push(Clause {
+                body: vec![
+                    Atom::Role { r, s: X, t: y },
+                    Atom::Concept { lit: CLit::pos(m), t: y },
+                ],
+                head: vec![Atom::Concept { lit: *p, t: X }],
+            });
+            // __cmpc variant: S(X,Z) ∧ ⋀C_i(Z) → M2(X) ; R(X,Y) ∧ M2(Y) → P(X)
+            let key = (s, c_on_y.clone());
+            let m2 = *mid_c
+                .entry(key)
+                .or_insert_with(|| {
+                    let id = next_marker;
+                    next_marker += 1;
+                    let mut body1: Vec<Atom> = vec![Atom::Role { r: s, s: X, t: z }];
+                    for ci in c_on_y {
+                        body1.push(Atom::Concept { lit: *ci, t: z });
+                    }
+                    out.push(Clause {
+                        body: body1,
+                        head: vec![Atom::Concept { lit: CLit::pos(id), t: X }],
+                    });
+                    id
+                });
+            out.push(Clause {
+                body: vec![
+                    Atom::Role { r, s: X, t: y },
+                    Atom::Concept { lit: CLit::pos(m2), t: y },
+                ],
+                head: vec![Atom::Concept { lit: *p, t: X }],
+            });
+        }
+    }
     out
 }
 
@@ -6889,6 +7064,7 @@ impl Ht {
             qo_edge_chains: Vec::new(),
             ht_chain_fwd: HashMap::new(),
             ht_chain_bwd: HashMap::new(),
+            ht_tcc_clauses: Vec::new(),
         };
         if ht.trace {
             let (mut hrole, mut heq, mut hexists, mut hdisj, mut hdisj_ex) = (0, 0, 0, 0, 0);
@@ -6923,6 +7099,17 @@ impl Ht {
         if !fwd.is_empty() {
             self.ht_chain_fwd = fwd;
             self.ht_chain_bwd = bwd;
+        }
+    }
+
+    /// Ht-only TCC: extend the clause template with the `__cmpp__` clauses (stored
+    /// separately so QoSat never sees them).  Called by the residue workers + the
+    /// TESTONE path so the Ht complete-tableau (with blocking) propagates the
+    /// transitive markers through cross-role chains, deriving the chain subsumers
+    /// the shared-filler QoSat misses.
+    pub fn set_tcc_clauses(&mut self, tcc: Vec<Clause>) {
+        if !tcc.is_empty() {
+            self.ht_tcc_clauses = tcc;
         }
     }
 
@@ -7025,49 +7212,32 @@ impl Ht {
                 self.ht_chain_bwd.entry(*r2).or_default().push((*r1, *hr));
             }
         }
-        if chains.is_empty() {
+        if chains.is_empty() && transitive.is_empty() {
             return;
         }
         let clauses: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
-        let extra = ht_chain_unfolding_clauses(&clauses, &chains, &transitive);
-        if extra.is_empty() {
-            return;
-        }
-        if std::env::var_os("KM_HT_STATS").is_some() {
-            eprintln!("KM_HT_STATS chain-unfolding clauses={}", extra.len());
-        }
-        // append the chain-unfolding clauses as new ClauseRecs
-        let start = self.clauses.len();
-        for c in extra {
-            let nv = nvars_of(&c);
-            self.clauses.push((c, Vec::new(), nv));
-        }
-        // index the new clauses into the trigger maps
-        for cid in start..self.clauses.len() {
-            let rec = &self.clauses[cid];
-            if rec.1.is_empty() {
-                self.global_clauses.push(cid);
-                let nhc = rec.0.head.iter().filter(|a| matches!(a, Atom::Concept { .. })).count();
-                if nhc >= 2 {
-                    self.global_disj.push(cid);
-                }
+        // Ht-only transitive-chain compose (__cmpp__ clauses): propagate the
+        // transitive markers through cross-role chains.  Stored separately
+        // (ht_tcc_clauses) so QoSat never sees them (cascade); the Ht residue
+        // workers extend their template with these.
+        let tcc = ht_transitive_chain_compose(&clauses, &chains, &transitive);
+        // The ∀-unfolding clauses (ht_chain_unfolding_clauses) are ALSO Ht-only:
+        // they cascade on the shared-filler QoSat (the ∀R1.∀R2.C propagation
+        // through high-fanout creation roles).  Store them alongside the TCC
+        // clauses so ONLY the Ht residue workers (with blocking) see them.
+        let unfold = if chains.is_empty() {
+            Vec::new()
+        } else {
+            ht_chain_unfolding_clauses(&clauses, &chains, &transitive)
+        };
+        let mut ht_only: Vec<Clause> = tcc;
+        ht_only.extend(unfold);
+        if !ht_only.is_empty() {
+            if std::env::var_os("KM_HT_STATS").is_some() {
+                eprintln!("KM_HT_STATS ht-only (tcc+unfold) clauses={}", ht_only.len());
             }
-            for (pos, a) in rec.1.iter().enumerate() {
-                match *a {
-                    Atom::Concept { lit, .. } => {
-                        self.concept_triggers.entry(lit).or_default().push((cid, pos));
-                    }
-                    Atom::Role { r, .. } => {
-                        self.role_triggers.entry(r).or_default().push((cid, pos));
-                    }
-                    _ => {}
-                }
-            }
+            self.ht_tcc_clauses = ht_only;
         }
-        self.global_disj_set = self.global_disj.iter().copied().collect();
-        // rebuild forall_idx with the extended clause set
-        let all_clauses: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
-        self.forall_idx = index_forall(&all_clauses);
     }
 
     /// KM_HT_CARD: install number restrictions from the cb_to_ht TInput, whose
@@ -11084,6 +11254,33 @@ impl Ht {
                                         lknown.push((a, sound));
                                         continue;
                                     }
+                                    // KM_HT_TCC_CLAUSES (Ht-only __cmpp__): the forward
+                                    // QoSat (without the __cmpp__ clauses, which cascade
+                                    // on shared-fillers) misses chain-derived subsumers.
+                                    // If the concept's model has a chain-opportunity (an
+                                    // R1-edge to a node with an R2-edge, for some chain
+                                    // R1∘R2⊑R), send it to residue where the Ht (WITH the
+                                    // __cmpp__ clauses + blocking) derives them.
+                                    if rf.sufficient && !chains_ref.is_empty() {
+                                        let mut chain_opp = false;
+                                        'outer: for &(_, r2, _hr) in chains_ref.iter() {
+                                            for n in 0..qf.out_edges.len() {
+                                                for &(_, y) in &qf.out_edges[n] {
+                                                    if y < qf.out_edges.len()
+                                                        && qf.out_edges[y].iter().any(|(rr, _)| *rr == r2)
+                                                    {
+                                                        chain_opp = true;
+                                                        break 'outer;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if chain_opp {
+                                            lres.push(a);
+                                            lknown.push((a, sound));
+                                            continue;
+                                        }
+                                    }
                                     // Milestone 1 validation: build the pseudo-model and
                                     // accumulate size stats to compare with Konclude.
                                     if pmbuild {
@@ -11886,8 +12083,19 @@ impl Ht {
                         .unwrap_or(1)
                         .max(1);
                     let nthreads = par.min(cands.len().max(1)).max(1);
-                    let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
-                    let anywhere = self.anywhere;
+        let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        // Ht-only TCC: extend the residue template with the __cmpp__ clauses so
+        // the complete tableau (with blocking) propagates transitive markers
+        // through cross-role chains.  The QoSat (reads &self.clauses) never sees
+        // them — no cascade.  The Ht's blocking bounds the propagation.
+        let template: Vec<Clause> = if !self.ht_tcc_clauses.is_empty() {
+            let mut t = template;
+            t.extend(self.ht_tcc_clauses.iter().cloned());
+            t
+        } else {
+            template
+        };
+        let anywhere = self.anywhere;
                     let next = std::sync::atomic::AtomicUsize::new(0);
                     const VWORKER_STACK: usize = 512 * 1024 * 1024;
                     let cands_ref = &cands;
