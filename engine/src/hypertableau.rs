@@ -3750,11 +3750,18 @@ impl<'a> QoSat<'a> {
                                     next_marker += 1;
                                     // M2's own fprop_rule: ∀R2.E fires E on R2-successors
                                     fprop_rule.entry(id).or_default().push((r2, e));
-                                    // transitive R2: self-propagate M2 (the ∀R2.C
-                                    // epsilon self-loop — re-fires on R2-successors)
-                                    if transitive.contains(&r2) {
-                                        fprop_rule.entry(id).or_default().push((r2, id));
-                                    }
+                                    // NOTE: the transitive self-loop on R2 (∀R2.C
+                                    // re-fires on R2-successors) is NOT added here.
+                                    // On the shared-filler model the self-prop
+                                    // `(r2, id)` cascades (every R2-edge re-fires id
+                                    // onto a shared filler → non-convergent).  The
+                                    // transitive ∀R2.C chase is handled by the
+                                    // existing __trans__ marker-propagation +
+                                    // reach_by_role/kp_finalize post-pass + residue
+                                    // complete tableau (sound).  Adding the self-loop
+                                    // here is faithful to Konclude's automaton but
+                                    // requires copy-on-conflict (copyDependingIndividual
+                                    // Node) to bound — the deep architectural piece.
                                     id
                                 });
                             // carry M2 across the R1-edge: guard D on source ∧ R1-edge → M2 on successor
@@ -3763,17 +3770,13 @@ impl<'a> QoSat<'a> {
                                 entry.push((r1, m2));
                             }
                         }
-                        // transitive self-propagation of the PARENT ∀: ∀R.C with R
-                        // transitive re-fires on R-successors (the epsilon self-loop,
-                        // on R's OWN edges — NOT R1's, which would be an unsound
-                        // cross-role self-propagation).  This is the clause-form of
-                        // Konclude's endState→beginState on the parent automaton.
-                        if transitive.contains(&r) {
-                            let entry = fprop_rule.entry(*guard).or_default();
-                            if !entry.contains(&(r, *guard)) {
-                                entry.push((r, *guard));
-                            }
-                        }
+                        // The parent ∀R.C transitive self-propagation (fprop_rule[D]
+                        // += (r, D)) is intentionally NOT added: on the shared-filler
+                        // model it cascades (every R-edge re-fires D onto a shared
+                        // filler).  The transitive ∀R.C chase is handled by the
+                        // existing __trans__ + reach_by_role + residue path (sound).
+                        // The chain-unfolding above (M2 across R1) is the novel
+                        // composition; the self-loop needs copy-on-conflict to bound.
                     }
                 }
             }
