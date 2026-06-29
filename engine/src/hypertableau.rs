@@ -3667,6 +3667,36 @@ impl<'a> QoSat<'a> {
                     }
                 }
             }
+            // Faithful port of CExtractPropagationIntoCreationDirectionPreProcess:
+            // collect CREATION ROLES — roles R for which some ∃R.D exists in the
+            // clauses (an Exists head atom), plus their super-roles (Konclude's
+            // getIndirectSuperRoleList).  Only ∀R.C whose R is a creation role
+            // needs propagation into a created successor (the bound that prevents
+            // the ∀-cascade on every edge).  This is the gating Konclude uses to
+            // keep the saturation bounded.
+            let mut creation_roles: HashSet<R> = HashSet::new();
+            for rec in clauses.iter() {
+                for a in &rec.0.head {
+                    if let Atom::Exists { r, .. } = a {
+                        creation_roles.insert(*r);
+                    }
+                }
+            }
+            // close over super-roles
+            let creation_closure: HashSet<R> = {
+                let mut out = HashSet::new();
+                for &r in &creation_roles {
+                    let mut st = vec![r];
+                    while let Some(u) = st.pop() {
+                        if out.insert(u) {
+                            for &v in superrole.get(&u).map(|x| x.as_slice()).unwrap_or(&[]) {
+                                st.push(v);
+                            }
+                        }
+                    }
+                }
+                out
+            };
             if !chains.is_empty() {
                 // super-role closure (reflexive-transitive) for chain targeting
                 let super_close = |r: R| -> HashSet<R> {
@@ -3700,6 +3730,13 @@ impl<'a> QoSat<'a> {
                 let mut chain_markers: HashMap<(R, CLit, CLit), CLit> = HashMap::new();
                 for (guard, rules) in &snap {
                     for &(r, e) in rules {
+                        // Konclude propagation-into-creation-direction gate: only
+                        // unfold ∀R.C whose R is a creation role.  Non-creation ∀s
+                        // never need to reach a created successor, so propagating
+                        // them is wasted work (the cascade source).
+                        if !creation_closure.contains(&r) {
+                            continue;
+                        }
                         // for each chain R1∘R2⊑U with U ⊑* r (r is U or a sub-role of U)
                         for &(r1, r2, u) in &chains {
                             if !super_close(u).contains(&r) {
@@ -3713,7 +3750,8 @@ impl<'a> QoSat<'a> {
                                     next_marker += 1;
                                     // M2's own fprop_rule: ∀R2.E fires E on R2-successors
                                     fprop_rule.entry(id).or_default().push((r2, e));
-                                    // transitive R2: self-propagate M2
+                                    // transitive R2: self-propagate M2 (the ∀R2.C
+                                    // epsilon self-loop — re-fires on R2-successors)
                                     if transitive.contains(&r2) {
                                         fprop_rule.entry(id).or_default().push((r2, id));
                                     }
@@ -3724,12 +3762,16 @@ impl<'a> QoSat<'a> {
                             if !entry.contains(&(r1, m2)) {
                                 entry.push((r1, m2));
                             }
-                            // transitive R1: self-propagate the parent guard (chain + R1-transitive compose)
-                            if transitive.contains(&r1) {
-                                let entry2 = fprop_rule.entry(*guard).or_default();
-                                if !entry2.contains(&(r1, *guard)) {
-                                    entry2.push((r1, *guard));
-                                }
+                        }
+                        // transitive self-propagation of the PARENT ∀: ∀R.C with R
+                        // transitive re-fires on R-successors (the epsilon self-loop,
+                        // on R's OWN edges — NOT R1's, which would be an unsound
+                        // cross-role self-propagation).  This is the clause-form of
+                        // Konclude's endState→beginState on the parent automaton.
+                        if transitive.contains(&r) {
+                            let entry = fprop_rule.entry(*guard).or_default();
+                            if !entry.contains(&(r, *guard)) {
+                                entry.push((r, *guard));
                             }
                         }
                     }
