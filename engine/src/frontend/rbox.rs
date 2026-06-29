@@ -17,6 +17,16 @@ pub enum RboxRecord {
     Range(String, String),
     Inverse(String, String),
     Fenced(String, String),
+    /// Transitive role (KM_KEEP_CHAIN_AXIOMS side data).  Emitted for
+    /// `TransitiveObjectProperty(R)` so cb_to_ht can populate the `transitive`
+    /// TInput field for the Ht chain-unfolding.
+    Transitive(String),
+    /// Role chain R1∘R2⊑R (KM_KEEP_CHAIN_AXIOMS side data).  Emitted for
+    /// `SubObjectPropertyOf(ObjectPropertyChain(R1 R2) R)` so cb_to_ht can
+    /// populate the `chains` TInput field.  The raw chain axiom is filtered
+    /// from the clause stream (it bloats cb_to_ht); the chain info rides the
+    /// rbox instead.
+    Chain(String, String, String),
 }
 
 /// Port of `_plain_role`: named role -> Some(short); inverse/complex -> None.
@@ -67,10 +77,35 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 let sup = args[1];
                 let ssup = plain_role(reg, sup);
                 if sub.head() == Some("ObjectPropertyChain") {
-                    out.push(RboxRecord::Fenced(
-                        "role-chain".to_string(),
-                        format!("{:?} ⊑ {:?}", sub, sup),
-                    ));
+                    // KM_KEEP_CHAIN_AXIOMS: emit the chain as side data
+                    // (Chain(r1, r2, sup)) so cb_to_ht can populate the TInput
+                    // `chains` field for the Ht chain-unfolding.  The raw chain
+                    // axiom is filtered from the clause stream (it bloats
+                    // cb_to_ht); the chain info rides the rbox.  Fall back to the
+                    // fenced record when the chain roles are not plain.
+                    let chain_args = match sub {
+                        Node::List(_, ca) => strip_annotations(ca),
+                        _ => &[][..],
+                    };
+                    if chain_args.len() == 2
+                        && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some()
+                    {
+                        if let (Some(r1), Some(r2), Some(rs)) =
+                            (plain_role(reg, chain_args[0]), plain_role(reg, chain_args[1]), ssup)
+                        {
+                            out.push(RboxRecord::Chain(r1, r2, rs));
+                        } else {
+                            out.push(RboxRecord::Fenced(
+                                "role-chain".to_string(),
+                                format!("{:?} ⊑ {:?}", sub, sup),
+                            ));
+                        }
+                    } else {
+                        out.push(RboxRecord::Fenced(
+                            "role-chain".to_string(),
+                            format!("{:?} ⊑ {:?}", sub, sup),
+                        ));
+                    }
                 } else if let (Some(rsub), Some(rsup)) = (plain_role(reg, sub), ssup) {
                     out.push(RboxRecord::Subrole(rsub, rsup));
                 } else {
@@ -153,7 +188,14 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 }
             }
             "TransitiveObjectProperty" => {
-                // not fenced (handled by TBox normalisation)
+                // KM_KEEP_CHAIN_AXIOMS: emit as side data so cb_to_ht can
+                // populate the TInput `transitive` field.  Not fenced (TBox
+                // normalisation still handles it for the default path).
+                if std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
+                    if let Some(r) = plain_role(reg, args[0]) {
+                        out.push(RboxRecord::Transitive(r));
+                    }
+                }
             }
             "SymmetricObjectProperty" => {
                 let r = plain_role(reg, args[0]).unwrap_or_else(|| format!("{:?}", args[0]));

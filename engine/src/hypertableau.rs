@@ -2320,39 +2320,18 @@ fn index_forall(clauses: &[Clause]) -> HashMap<(CLit, R), Vec<CLit>> {
 ///   `D(x) ∧ R1(x,y) → M2(y)`   (carry ∀R2.C marker across R1)
 ///   `M2(x) ∧ R2(x,y) → C(y)`   (M2 fires C on R2-successors)
 /// M2 is a fresh marker concept.  Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).
-fn ht_chain_unfolding_clauses(clauses: &[Clause]) -> Vec<Clause> {
+fn ht_chain_unfolding_clauses(clauses: &[Clause], chains: &[(R, R, R)], transitive: &[R]) -> Vec<Clause> {
     use std::collections::{HashMap, HashSet};
-    // detect chains R1∘R2⊑R (2-role-body, 1-role-head, not all-equal)
-    let mut chains: Vec<(R, R, R)> = Vec::new();
-    let mut transitive: HashSet<R> = HashSet::new();
+    if chains.is_empty() {
+        return Vec::new();
+    }
+    let transitive: HashSet<R> = transitive.iter().copied().collect();
     let mut superrole: HashMap<R, Vec<R>> = HashMap::new();
+    // sub-role S⊑R from single-role-body/head clauses (these are NOT raw chain
+    // axioms; they're the normal role-hierarchy clauses, kept in the clause set)
     for c in clauses {
         let body = &c.body;
         let head = &c.head;
-        let rb: Vec<&Atom> = body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
-        if body.len() == 2 && head.len() == 1
-            && matches!(body[0], Atom::Role { .. })
-            && matches!(body[1], Atom::Role { .. })
-            && matches!(head[0], Atom::Role { .. })
-        {
-            if let (Atom::Role { r: r1, s: r1s, t: r1t },
-                     Atom::Role { r: r2, s: r2s, t: r2t },
-                     Atom::Role { r: hr, s: hs, t: ht_ }) =
-                (rb[0], rb[1], &head[0])
-            {
-                let (fr, sr, mid_ok) = if r1t == r2s { (*r1, *r2, true) }
-                    else if r2t == r1s { (*r2, *r1, true) }
-                    else { (0, 0, false) };
-                if mid_ok && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t {
-                    if fr == sr && sr == *hr {
-                        transitive.insert(*hr);
-                    } else {
-                        chains.push((fr, sr, *hr));
-                    }
-                }
-            }
-        }
-        // sub-role S⊑R: body=[Role S x y], head=[Role R x y]
         if body.len() == 1 && head.len() == 1
             && matches!(body[0], Atom::Role { .. })
             && matches!(head[0], Atom::Role { .. })
@@ -2363,9 +2342,6 @@ fn ht_chain_unfolding_clauses(clauses: &[Clause]) -> Vec<Clause> {
                 }
             }
         }
-    }
-    if chains.is_empty() {
-        return Vec::new();
     }
     // creation roles (roles with some ∃R.D exists-head) + super-role closure
     let mut creation_roles: HashSet<R> = HashSet::new();
@@ -2447,7 +2423,7 @@ fn ht_chain_unfolding_clauses(clauses: &[Clause]) -> Vec<Clause> {
     let mut out: Vec<Clause> = Vec::new();
     let mut chain_markers: HashMap<(R, CLit, CLit), C> = HashMap::new();
     for (d, r, e) in &forall_clauses {
-        for &(r1, r2, u) in &chains {
+        for &(r1, r2, u) in chains.iter() {
             if !super_close(u).contains(r) {
                 continue;
             }
@@ -3904,7 +3880,7 @@ impl<'a> QoSat<'a> {
                             continue;
                         }
                         // for each chain R1∘R2⊑U with U ⊑* r (r is U or a sub-role of U)
-                        for &(r1, r2, u) in &chains {
+        for &(r1, r2, u) in chains.iter() {
                             if !super_close(u).contains(&r) {
                                 continue;
                             }
@@ -6640,27 +6616,9 @@ impl Ht {
             }
             clauses.extend(extra);
         }
-        // KM_KEEP_CHAIN_AXIOMS: faithful port of Konclude's chain-unfolding
-        // (generateRoleChainAutomatConcept) for the Ht complete-tableau path —
-        // the path that decides 14817's 71 via residue-complete.  For a chain
-        // R1∘R2⊑R and a ∀R.C clause `D(x) ∧ R(x,y) → C(y)`, the ∀R.C ≡
-        // ∀R1.∀R2.C, so emit:
-        //   `D(x) ∧ R1(x,y) → M2(y)`   (carry the ∀R2.C marker across R1)
-        //   `M2(x) ∧ R2(x,y) → C(y)`   (M2 fires C on R2-successors)
-        // These are standard binary ∀ clauses that Ht::apply_head handles via
-        // try_split_redirect (copy-on-conflict, Konclude copyDependingIndividual
-        // Node) for shared-filler soundness — the sound+bounded path the QoSat
-        // fprop unfolding cannot use.  Gated on KM_KEEP_CHAIN_AXIOMS (raw chains
-        // present).  Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).
-        if std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
-            let extra = ht_chain_unfolding_clauses(&clauses);
-            if !extra.is_empty() {
-                if std::env::var_os("KM_HT_STATS").is_some() {
-                    eprintln!("KM_HT_STATS chain-unfolding clauses={}", extra.len());
-                }
-                clauses.extend(extra);
-            }
-        }
+        // KM_KEEP_CHAIN_AXIOMS chain-unfolding is applied via `set_chains` (after
+        // construction, when the TInput side data is available).  See `set_chains`.
+
         let mut recs: Vec<ClauseRec> = mk_recs(&clauses);
         // KM_HT_HARVEST: inject global common-disjunct consequences as ⊤-facts so
         // the tableau derives them deterministically instead of re-branching them
@@ -6896,6 +6854,61 @@ impl Ht {
     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
         self.card_defs = defs;
         self.card = true;
+    }
+
+    /// KM_KEEP_CHAIN_AXIOMS: install the detected role chains `(R1,R2,R)` and
+    /// transitive roles, and emit the chain-unfolding clauses (faithful port of
+    /// Konclude's generateRoleChainAutomatConcept).  For each ∀R.C clause
+    /// `D(x) ∧ R(x,y) → C(y)` and chain R1∘R2⊑R, emit:
+    ///   `D(x) ∧ R1(x,y) → M2(y)` + `M2(x) ∧ R2(x,y) → C(y)`
+    /// so ∀R.C ≡ ∀R1.∀R2.C propagates through generated successors (the Ht
+    /// creates per-edge successors, no shared-filler pollution).  Sound
+    /// (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Rebuilds the trigger indexes after
+    /// appending the clauses.
+    pub fn set_chains(&mut self, chains: Vec<(R, R, R)>, transitive: Vec<R>) {
+        if chains.is_empty() {
+            return;
+        }
+        let clauses: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        let extra = ht_chain_unfolding_clauses(&clauses, &chains, &transitive);
+        if extra.is_empty() {
+            return;
+        }
+        if std::env::var_os("KM_HT_STATS").is_some() {
+            eprintln!("KM_HT_STATS chain-unfolding clauses={}", extra.len());
+        }
+        // append the chain-unfolding clauses as new ClauseRecs
+        let start = self.clauses.len();
+        for c in extra {
+            let nv = nvars_of(&c);
+            self.clauses.push((c, Vec::new(), nv));
+        }
+        // index the new clauses into the trigger maps
+        for cid in start..self.clauses.len() {
+            let rec = &self.clauses[cid];
+            if rec.1.is_empty() {
+                self.global_clauses.push(cid);
+                let nhc = rec.0.head.iter().filter(|a| matches!(a, Atom::Concept { .. })).count();
+                if nhc >= 2 {
+                    self.global_disj.push(cid);
+                }
+            }
+            for (pos, a) in rec.1.iter().enumerate() {
+                match *a {
+                    Atom::Concept { lit, .. } => {
+                        self.concept_triggers.entry(lit).or_default().push((cid, pos));
+                    }
+                    Atom::Role { r, .. } => {
+                        self.role_triggers.entry(r).or_default().push((cid, pos));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        self.global_disj_set = self.global_disj.iter().copied().collect();
+        // rebuild forall_idx with the extended clause set
+        let all_clauses: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+        self.forall_idx = index_forall(&all_clauses);
     }
 
     /// KM_HT_CARD: install number restrictions from the cb_to_ht TInput, whose

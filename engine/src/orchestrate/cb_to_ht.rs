@@ -192,6 +192,16 @@ pub struct TInput {
     pub nominals: Vec<usize>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub card_defs: Vec<CardDefJson>,
+    /// Detected role chains `(R1, R2, R)` for `R1∘R2⊑R` (KM_KEEP_CHAIN_AXIOMS).
+    /// Populated from the raw chain axioms, which are EXCLUDED from `clauses`
+    /// (they bloat cb_to_ht's cardinality/disjunction expansion).  Consumed by
+    /// the Ht chain-unfolding (`ht_chain_unfolding_clauses`) and the QoSat
+    /// fprop chain-unfolding for the faithful Konclude role-automaton port.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub chains: Vec<(usize, usize, usize)>,
+    /// Transitive roles (KM_KEEP_CHAIN_AXIOMS), from the raw `R∘R⊑R` axioms.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub transitive: Vec<usize>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,8 +1030,69 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     let mut distinct_pairs: Vec<(String, String)> = Vec::new();
 
     // ---- pass 1: collect existential-introduction clauses by function symbol ----
+    // KM_KEEP_CHAIN_AXIOMS: detect role chains (R1∘R2⊑R) and transitive roles
+    // (R∘R⊑R) from the raw axioms, store as side data (`chains`/`transitive`),
+    // and EXCLUDE the raw axioms from the clause set.  Keeping them in the
+    // clause set bloats cb_to_ht's cardinality/disjunction expansion (14817:
+    // +33 7-body-3-eq clauses + 13 global disjunctions → QoSat cascade).  The
+    // chain info is consumed by the Ht chain-unfolding (ht_chain_unfolding_
+    // clauses) and the QoSat fprop chain-unfolding — the faithful Konclude
+    // role-automaton port.  Default OFF (no side data, raw axioms already
+    // filtered by the frontend's is_chain_axiom).
+    let keep_chains = std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some();
+    let mut detected_chains: Vec<(usize, usize, usize)> = Vec::new();
+    let mut detected_transitive: Vec<usize> = Vec::new();
+    if keep_chains {
+        for c in clauses {
+            let body = &c.body;
+            let head = &c.head;
+            if body.len() != 2 || head.len() != 1 {
+                continue;
+            }
+            // 2 role-body + 1 role-head
+            let roles: Vec<(&str, &crate::json_io::JTerm, &crate::json_io::JTerm)> = body
+                .iter()
+                .filter_map(|a| match a {
+                    crate::json_io::JAtom::Role { role, source, target } => Some((role.as_str(), source, target)),
+                    _ => None,
+                })
+                .collect();
+            if roles.len() != 2 {
+                continue;
+            }
+            if let crate::json_io::JAtom::Role { role: hr, source: hs, target: ht } = &head[0] {
+                let (r1n, r1s, r1t) = roles[0];
+                let (r2n, r2s, r2t) = roles[1];
+                // orient: first.target == second.source (middle)
+                let (fr, sr, _mid_ok) = if r1t == r2s { (r1n, r2n, true) }
+                    else if r2t == r1s { (r2n, r1n, true) }
+                    else { ("", "", false) };
+                // head source = first.source, head target = second.target
+                if hs == r1s && ht == r2t && r1s != r2t {
+                    let r1id = ids.rid(fr);
+                    let r2id = ids.rid(sr);
+                    let hrid = ids.rid(hr);
+                    if r1id == r2id && r2id == hrid {
+                        // R∘R⊑R (transitive)
+                        if !detected_transitive.contains(&hrid) {
+                            detected_transitive.push(hrid);
+                        }
+                    } else {
+                        detected_chains.push((r1id, r2id, hrid));
+                    }
+                }
+            }
+        }
+    }
     for c in clauses {
-        // KM_HT_RULES: peel off the ground ABox; it is reseeded as nominal nodes.
+        // KM_KEEP_CHAIN_AXIOMS: skip the raw chain/transitive axioms (detected
+        // above as side data; keeping them in the clause set bloats cb_to_ht).
+        if keep_chains && c.body.len() == 2 && c.head.len() == 1
+            && c.body.iter().all(|a| matches!(a, crate::json_io::JAtom::Role { .. }))
+            && matches!(c.head[0], crate::json_io::JAtom::Role { .. })
+        {
+            continue;
+        }
         if ht_rules {
             if let Some(f) = abox_fact(c) {
                 abox_facts.push(f);
@@ -1612,6 +1683,8 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         number,
         nominals: nominal_ids,
         card_defs,
+        chains: detected_chains,
+        transitive: detected_transitive,
     }
 }
 

@@ -4658,6 +4658,14 @@ pub struct TInput {
     /// Empty for the clausal-pigeonhole path (no behaviour change).
     #[serde(default)]
     pub card_defs: Vec<JCardDef>,
+    /// KM_KEEP_CHAIN_AXIOMS: detected role chains (R1,R2,R) for R1∘R2⊑R, as side
+    /// data (the raw axioms are excluded from `clauses` to avoid cb_to_ht bloat).
+    /// Consumed by Ht::set_chains for the chain-unfolding ∀-propagation.
+    #[serde(default)]
+    pub chains: Vec<(C, C, C)>,
+    /// KM_KEEP_CHAIN_AXIOMS: transitive roles (from R∘R⊑R axioms).
+    #[serde(default)]
+    pub transitive: Vec<C>,
 }
 
 /// KM_HT_CARD number restriction in the TInput (mirrors cb_to_ht::CardDefJson).
@@ -4763,6 +4771,13 @@ pub fn run_json(input: &str) -> Result<String, String> {
             .spawn(move || {
                 let mut ht = hypertableau::Ht::new(ht_clauses);
                 ht.set_nominals(noms);
+                // KM_KEEP_CHAIN_AXIOMS: install the detected role chains for the
+                // Ht chain-unfolding (faithful Konclude generateRoleChainAutomat
+                // Concept).  The chains are side data in the TInput (the raw
+                // axioms are excluded from the clause set to avoid cb_to_ht bloat).
+                if !inp.chains.is_empty() {
+                    ht.set_chains(inp.chains.clone(), inp.transitive.clone());
+                }
                 // A number KB routed to the fast Ht (e.g. under KM_HT_FORCE or the
                 // nominal route) must run the qualified-cardinality rules (≤n / ≥n
                 // recognition / functional) rather than bailing `unsupported`.
