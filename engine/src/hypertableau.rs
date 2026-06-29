@@ -3776,16 +3776,14 @@ impl<'a> QoSat<'a> {
         }
         // ---- QoSat chain-unfolding of ∀R.C (Konclude generateRoleChain-
         // AutomatConcept, the begin --R1--> mid --R2--> end unfolding) ----
-        // For a chain R1∘R2⊑R and a forward-∀ rule `D(sv) ∧ R(sv,tv) → E(tv)`
-        // (in `fprop_rule[D] = (R, E)`), the ∀R.C ≡ ∀R1.∀R2.C, so a node
-        // carrying D that gains an R1-successor must impose a fresh guard M2
-        // (for ∀R2.E) on it, and M2's own fprop_rule fires E on its R2-successors.
-        // This is the clause-form chain unfolding, applied to the QoSat fprop
-        // index — the QoSat-path equivalent of tableau.rs's chain-unfolding Uni.
-        // Gated on KM_KEEP_CHAIN_AXIOMS (raw chains present) + fprop_on.  Sound
-        // (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Fresh marker concepts allocated past
-        // the max concept id.
-        if fprop_on && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
+        // SUPERSeded by the Ht path (Ht::new chain-unfolding clauses, gated
+        // KM_KEEP_CHAIN_AXIOMS) for the complete-tableau decision.  Kept behind
+        // KM_QO_CHAIN_UNFOLD (default OFF) because it cascades on high-fanout
+        // creation roles (14817 dev: 9-14M edge pops).  Useful for low-fanout
+        // ontologies where the QoSat fast path can soundly compose the chain ∀.
+        // Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Fresh marker concepts allocated
+        // past the max concept id.
+        if fprop_on && std::env::var_os("KM_QO_CHAIN_UNFOLD").is_some() {
             // detect chains R1∘R2⊑R (2-role-body, 1-role-head, not all-equal)
             let mut chains: Vec<(R, R, R)> = Vec::new();
             for rec in clauses.iter() {
