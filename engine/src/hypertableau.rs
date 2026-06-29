@@ -3348,6 +3348,8 @@ struct QoSat<'a> {
     /// per-concept edge budget (KM_QO_EC_BUDGET, default 200k).  The drain loop
     /// bails with `edge_bailed = true` instead of `unsupported = true` so the
     /// concept goes to residue (Ht edge-compose) rather than deferring the whole.
+    /// Also set under KM_TRANS_CHAIN_COMPOSE when the __cmpp__ clause propagation
+    /// cascades (the transitive marker spreading through high-fanout part-edges).
     edge_bailed: bool,
 }
 
@@ -4926,16 +4928,13 @@ impl<'a> QoSat<'a> {
             // up). u64::MAX for the unbounded global/complete passes.
             if self.edge_budget != u64::MAX {
                 if self.edge_budget == 0 {
-                    // KM_QO_EDGE_COMPOSE: if the cascade is from edge-composition,
-                    // bail to residue (insufficient) instead of deferring the whole
-                    // classification (unsupported).  The Ht complete-tableau with
-                    // edge-compose derives the missing chain subsumers there.
-                    if !self.chain_fwd.is_empty() {
-                        self.edge_bailed = true;
-                        self.qo_insufficient = true;
-                    } else {
-                        self.unsupported = true;
-                    }
+                    // A per-concept edge budget was set (KM_QO_EC_BUDGET under
+                    // KM_QO_EDGE_COMPOSE, or KM_TRANS_CHAIN_COMPOSE).  Bail to
+                    // residue (insufficient) instead of deferring the whole
+                    // classification (unsupported) — the Ht complete-tableau
+                    // (with blocking) derives the missing subsumers there.
+                    self.edge_bailed = true;
+                    self.qo_insufficient = true;
                     return;
                 }
                 self.edge_budget -= 1;
@@ -11005,6 +11004,16 @@ impl Ht {
                                 if !chains_ref.is_empty() {
                                     qf.edge_budget = std::env::var("KM_QO_EC_BUDGET")
                                         .ok().and_then(|s| s.parse().ok()).unwrap_or(200_000);
+                                }
+                                // KM_TRANS_CHAIN_COMPOSE: the __cmpp__ clauses can
+                                // cascade the transitive marker through high-fanout
+                                // part-edges on the shared-filler model.  Bound it so
+                                // cascading concepts bail to residue (Ht, with
+                                // blocking) instead of stalling.
+                                if std::env::var_os("KM_TRANS_CHAIN_COMPOSE").is_some() {
+                                    qf.edge_budget = qf.edge_budget.min(
+                                        std::env::var("KM_QO_EC_BUDGET")
+                                            .ok().and_then(|s| s.parse().ok()).unwrap_or(200_000));
                                 }
                                 qf.node_certain = nc_map_ref.clone();
                                 let mut lsub: Vec<(C, C)> = Vec::new();
