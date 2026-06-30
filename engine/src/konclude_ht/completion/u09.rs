@@ -618,6 +618,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // RECONCILE-NEED: IndividualProcessNode lacks the PRFSATISFIABLECACHED /
                 // PRFCOMPLETIONGRAPHCACHED partial-processing-restriction flags; the
                 // hasPartialProcessingRestrictionFlags(...) check is stubbed false.
+                // (PORTED: node.rs — `PRF_SATISFIABLECACHED` + `PRF_COMPLETIONGRAPHCACHED`
+                // consts and `has_partial_processing_restriction_flags` all exist; the
+                // un-defer wave can replace the stub with
+                // `ctx.node(*process_indi).has_partial_processing_restriction_flags(
+                //   IndividualProcessNode::PRF_SATISFIABLECACHED
+                //   | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED)`. LEFT: the
+                // sat-exp cache subsystem that *sets* these flags is unported.)
                 let has_sat_or_completion_cached = false;
                 let _ = planned_branching_process_restriction;
                 if self.conf_sat_exp_cached_disj_absorp && has_sat_or_completion_cached {

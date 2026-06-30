@@ -123,8 +123,9 @@ impl ReapplyConceptLabelSet {
     fn clone_data(d: &ConceptDescriptorDependencyReapplyData) -> ConceptDescriptorDependencyReapplyData {
         ConceptDescriptorDependencyReapplyData {
             concept_descriptor: d.concept_descriptor,
-            // W2-DEFER[api]: deep-copy the CCondensedReapplyQueue contents.
-            pos_neg_reapply_queue: CondensedReapplyQueue,
+            // u15: the queue is a value member sharing its chain head (the C++
+            // `initReapplyQueue` share semantics); copy the head id.
+            pos_neg_reapply_queue: d.pos_neg_reapply_queue,
         }
     }
 
@@ -484,7 +485,7 @@ impl ReapplyConceptLabelSet {
                 .entry(con_tag)
                 .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
                     concept_descriptor,
-                    pos_neg_reapply_queue: CondensedReapplyQueue,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
                 });
         let mut contains_already = existed;
         // C++ tracks containFromAdditionMap but never reads it afterwards.
@@ -556,7 +557,7 @@ impl ReapplyConceptLabelSet {
                 .entry(con_tag)
                 .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
                     concept_descriptor,
-                    pos_neg_reapply_queue: CondensedReapplyQueue,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
                 });
         let mut contains_already = existed;
         if !contains_already && add_present {
@@ -807,7 +808,7 @@ impl ReapplyConceptLabelSet {
                 .entry(con_tag)
                 .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
                     concept_descriptor: ConDescId::NONE,
-                    pos_neg_reapply_queue: CondensedReapplyQueue,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
                 });
             if !existed && add_present {
                 if let Some(add) = add_opt {
@@ -864,7 +865,7 @@ impl ReapplyConceptLabelSet {
                 .entry(con_tag)
                 .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
                     concept_descriptor: ConDescId::NONE,
-                    pos_neg_reapply_queue: CondensedReapplyQueue,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
                 });
             if !existed && add_present {
                 if let Some(add) = add_opt {

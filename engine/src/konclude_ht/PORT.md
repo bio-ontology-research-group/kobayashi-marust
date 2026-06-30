@@ -345,6 +345,7 @@ Legend: ☐ todo · ◐ in progress · ☑ ported (pre-compile) · ✓ compiles 
 | W3.5 | static terminology arenas | `Reasoner/Ontology/` (TBox/RBox) | `model/ontology.rs` | ✓ (`OntologyArenas`: 4 read-shared `Arena<T>` + `concept/role/individual/variable` accessor trio) |
 | W3.5 | wire container into calc context | `Algorithm/CCalculationAlgorithmContext.h` | `completion/context.rs` | ✓ (`used_process_context` now `ProcessContext` by-value; `ontology_arenas` added; Base `process_context` = opaque alias) |
 | W3 | completion units 1–36 | completion `.cpp` | `completion/u01..u36.rs` | ✓ (wired + reconciled; `cargo check --release` exit 0, 0 errors) |
+| W8 | main driver loop live (take-next + rule dispatch) | `…CompletionTaskHandleAlgorithm.cpp` 2190-2790 / 9496-9549 | `completion/u02.rs` `take_next_process_individual`, `completion/u03.rs` `tableau_rule_processing`/`tableau_rule_choice` | ✓ (3 driver `todo!`s → live; jump table → `match` into `apply_*_rule`; cache-testing + sorted-nominal probes LIVE, queue-contents arms `W3-DEFER`; `cargo check --release` exit 0) |
 | W3 | Strategy/ policies | `Reasoner/Kernel/Strategy/` | `completion/strategy.rs` | ✓ |
 | W3 | reconcile sibling stubs | (W3-RECONCILE, [api]) | `completion/pending.rs` | ✓ (1 stub: label-set `containsIndividualNodeConcepts` overload) |
 | W4 | saturation struct fields | `…SaturationTaskHandleAlgorithm.h` | `saturation/algorithm.rs` | ✓ (member fields + 7 rule-count getters + ctor `new()`) |
@@ -360,6 +361,7 @@ Legend: ☐ todo · ◐ in progress · ☑ ported (pre-compile) · ✓ compiles 
 | W3c | clash/stop propagation mechanism | `Algorithm/CCalculation{Clash,Stop}ProcessingException.{h,cpp}` | `completion/clash.rs` + `completion/context.rs` | ✓ (`CalcSignal` enum + `pending_signal` context field + `raise_clash`/`raise_stop`/`has_pending_signal`/`take_pending_signal`; additive; `cargo check --release` exit 0) |
 | W3.6 | node-resolution keystone (tagger + node-vector + 5 resolvers) | `Process/CProcessTagger`,`CIndividualProcessNodeVector`, `…CompletionTaskHandleAlgorithm.cpp` 22477–22510 / 26412–26488 | `process/node_resolution.rs` (+ databox/context/edge/pn1 fields) | ✓ (real `CProcessTagger` + `CIndividualProcessNodeVector` by value; ctx-level resolvers on `CalculationAlgorithmContextBase`; `cargo check --release` exit 0) |
 | W3.5b | blocking-family satellites (candidate hash/data/iterator + sig-block concept-expansion) | `Process/CBlockingIndividualNodeCandidate{Data,Hash,Iterator}.{h,cpp}`, `CSignatureBlockingIndividualNodeConceptExpansionData.{h,cpp}` | `process/blocking_hash.rs` (+ context/stubs/databox/db4) | ✓ (4 classes ported; 3 new arenas + trios; `SigBlockConExpDataId` re-aliased; databox/db4 `SignatureBlockingCandidateHash` + `BlockingIndividualNodeCandidateHash` un-wired onto real structs; `cargo check --release` exit 0) |
+| u15 | merge/nominal process satellites (merging hash + condensed-reapply queue + succ-role hash backend) | `Process/CIndividualMergingHash{,Data}.{h,cpp}`, `CCondensedReapplyQueue.{h,cpp}`, `CSuccessorRoleHash.{h,cpp}` (+ `CSuccessorRole`/`CSuccessor` iterators) | `process/{merging_hash,condensed_reapply,succ_role_hash}.rs` (+ context/stubs/mod/satellites/ls1/pn3) | ✓ (5 classes ported; 2 new arenas + trios; `SuccRoleHashId`+`IndividualMergingHashId` stub ids re-aliased to real structs; placeholder `satellites::CondensedReapplyQueue` re-exported from `condensed_reapply` + 6 unit-construction sites reconciled to `::new()`/value-share; 5 `ctx.node_*` context-threaded succ/disjoint iterators seed the real hashes; `cargo check --release` exit 0) |
 | W4 | calculation controllers | `Calculation/` | `calculation/*.rs` | ☐ |
 | W6 | Cache / Manager / Strategy / Task | resp. subtrees | `cache/`,`manager/`,… | ☐ |
 | W6 cache-skeleton | cache struct skeleton (F0–F8, 9 families) | `Reasoner/Kernel/Cache/` | `cache/{base,value,unsat,reuse,satnode,consequences,sigexpand,occstats,events,backend,backend_data}.rs` | ✓ (`cache/mod.rs` wires all 11 files; `cargo check --release` exit 0, warnings only) |
@@ -539,6 +541,50 @@ Error trajectory: 0 errors throughout (purely additive). The only edit to a
 compiling file was adding the `pending_signal` field + initialiser to
 `completion/context.rs`. `cargo check --release` on ws exit 0 (warnings only, none
 from either new file). Rule call sites NOT rewritten — that is the un-defer wave.
+
+### W7 IndividualProcessNode RECONCILE-NEED reconcile (2026-06-30): COMPILES, 0→0 errors
+
+Audited every `RECONCILE-NEED` flag the completion/saturation fill left that names
+an `IndividualProcessNode` (process-layer) method. **40 `RECONCILE-NEED` flags
+total across `completion/` + `saturation/`; the node-method subset is the 6 flags
+in `completion/u15.rs` (×5) + `completion/u09.rs` (×1).**
+
+Finding: nearly all the named node accessors were ALREADY ported by earlier waves
+under Rust naming (the port drops the C++ `get_` prefix), so the flags were stale.
+Verified-and-annotated (`(PORTED: <where>)` appended in place, call sites NOT
+rewritten — that is the un-defer wave):
+- `add_processing_restriction_flags` → `pn4.rs` (exists).
+- `get_successor_nominal_connection_set` → `pn6.rs` `successor_nominal_connection_set`;
+  `get_nominal_individual` → `sat1.rs` (exist).
+- 7 assertion-linker getters (`get_assertion_role_linker` …
+  `get_asserted_data_literal_linker`) → `pn2.rs` (exist, no-`get_` names).
+- `get_ancestor_link` / `get_role_successor_to_individual_link` / `set_ancestor_link`
+  / `has_individual_ancestor` → `pn3.rs`; `get_individual_ancestor_depth` →
+  `node.rs` `individual_ancestor_depth` (exist).
+- `PRF_SATISFIABLECACHED` / `PRF_COMPLETIONGRAPHCACHED` consts +
+  `has_partial_processing_restriction_flags` → `node.rs` (exist).
+
+Genuinely-missing method surface PORTED this wave (1 real code change, `pn3.rs`):
+the phase-5 link-relocation iterators were zero-size placeholder structs with **no
+`has_next`/`next`** (the flag's actual complaint). Added the faithful **empty-iterator**
+`has_next`/`next` surface to `SuccessorRoleIterator`, `DisjointSuccessorRoleIterator`,
+`RoleSuccessorIterator`, `RoleSuccessorLinkIterator`, and `SuccessorIterator`
+(`next_link`/`next_individual_id`), each returning the C++ default-constructed
+iterator result (`hasNext == false`, `next == nullptr/0`). This is the `else`-branch
+empty iterator the getters yield while `mUseSuccRoleHash` / `mUseDisjointSuccRoleHash`
+are absent, so the relocation loops now COMPILE + run zero iterations.
+
+LEFT (still-missing subsystem, noted in the flags): the `SuccessorRoleHash` /
+`DisjointSuccessorRoleHash` process-hash backends (W2-DEFER) so the iterators yield
+real links; the phase-5 `depTrackPointHash` dedup; the sat-exp cache that *sets*
+the PRF flags; the nominal-connection-set backend. `get_predecessor_link` (a task
+example) does NOT exist in Konclude's `CIndividualProcessNode` — no such method.
+The non-node `RECONCILE-NEED` flags (representative map in `u33`, dependency-factory
+in `u12`, propagation bindings in `u06`/`u07`, saturation status masks in `s08`) are
+separate unported subsystems, out of this wave's scope.
+
+`cargo check --release` on ws exit 0 (warnings only, none from `pn3.rs`). Additive;
+the compiling kernel is intact.
 
 ### W6 task/calc reconcile (2026-06-30): WIRED + COMPILES, 7→0 errors — KERNEL COMPLETE
 
@@ -977,6 +1023,106 @@ edited files).
   `getUpToDateIndividual`; the `HandleTaskException` drain is unrelated). No other
   completion/saturation body's sole blocker was this adapter.
 - **Error trajectory: 0 → 0** (purely additive). `cargo check --release` on ws exit 0.
+
+### u15 merge/nominal process satellites (2026-06-30): WIRED + COMPILES, exit 0
+
+The three still-missing `Process/` satellites that block the merge (u15 phases 5/6)
++ nominal expansion (u17 `getIndividualMergingHash`), in three new files:
+
+- **`merging_hash.rs` — `CIndividualMergingHash{,Data}`.** The Qt-hash subclass
+  `CPROCESSHASH<cint64, CIndividualMergingHashData>` → wrapper owning a
+  `HashMap<cint64, IndividualMergingHashData>`; `CXLinker<cint64>* mMergedIndividualLinker`
+  → head-front `Vec<cint64>`; `CIndividualMergingHashData : CDependencyTracker` folds
+  the track-point base + holds a `CCondensedReapplyQueue` by value. `hasMergedIndividual`
+  faithfully reproduces Qt `value(key)`'s default-on-absent (`false`).
+- **`condensed_reapply.rs` — `CCondensedReapplyQueue`.** The dynamic reapply-queue:
+  a `CondensedReapplyConceptDescriptorId` head into the existing `cond_reapply_con_descs`
+  arena. `getIterator` constructs the ALREADY-PORTED `reapply_sat::CondensedReapplyQueueIterator`
+  seeded from the head (clear-on-take); `addReapplyConceptDescriptor` is the head-front
+  splice via the arena node's `next`. The W2 zero-size `satellites::CondensedReapplyQueue`
+  placeholder is deleted and re-exported from here; 6 unit-construction sites
+  (satellites + ls1) reconciled (`::new()` for fresh, value-share for the COW copy).
+- **`succ_role_hash.rs` — `CSuccessorRoleHash` + `CSuccessorRoleIterator` + `CSuccessorIterator`.**
+  The `QMultiHash<cint64, CIndividualLinkEdge*>` → `HashMap<cint64, Vec<EdgeId>>`; the
+  shared `mPrevSuccessorLinkHash` COW partner → owned `Option<…>` clone with the full
+  size-threshold COW (`<=100` share / `>100` keep-prev / `*10` combine) of
+  `initSuccessorRoleHash` reproduced; the iterators snapshot the relevant buckets into
+  owned `Vec`s (the `CSuccessorIterator` distinct-key dedup reproduced by one
+  `(indi, first-link)` per bucket).
+
+- **2 arenas + trios on `ProcessContext`** (`individual_merging_hashes`,
+  `succ_role_hashes`). 2 stub ids re-aliased (`SuccRoleHashId` → `succ_role_hash::SuccessorRoleHashId`,
+  `IndividualMergingHashId` → `merging_hash::IndividualMergingHashId`; names unchanged so
+  node.rs/pn3/pn6 fields keep resolving onto the real arena structs).
+- **Iterator wiring (low-risk path):** 5 `ctx.node_*` context-threaded methods added —
+  `node_successor_role_hash` (lazy alloc), `node_successor_role_iterator`,
+  `node_successor_iterator`, `node_has_successor_individual_node`,
+  `node_disjoint_successor_role_iterator` (the last seeds the ALREADY-real
+  `distinct::DisjointSuccessorRoleIterator` — `CDisjointSuccessorRoleHash` was already
+  ported in W2.7). These resolve the node's `use_*` hash id and seed the REAL iterator;
+  the existing pn3 `&self` getters stay empty-but-typed with `// superseded by ctx.node_*`
+  notes (the W3b supersedes-stub pattern), so no call site breaks. The un-defer wave
+  routes the phase-5 relocation loops through the `ctx.node_*` siblings.
+- **Error trajectory: exit 0 throughout** (purely additive apart from the 6 mechanical
+  `CondensedReapplyQueue` construction reconciles). `cargo check --release` on ws exit 0,
+  0 konclude_ht errors. `DisjointSuccessorRoleHash` needed NO new port (already real in
+  `distinct.rs`); the population path (`install_individual_link` insert + `getOppositeIndividualID`)
+  stays W2-DEFER, so the iterators run zero rows until that un-defers — the plumbing is
+  real and typed.
+
+### W8 main driver loop — take-next + rule dispatch LIVE (2026-06-30): COMPILES, exit 0
+
+The heartbeat that turns the (already-ported) `handleTask` skeleton into a runnable
+satisfiability test. Three `todo!`s on the driver path were replaced with faithful,
+live bodies; `cargo check --release` on ws exit 0, 0 konclude_ht errors.
+
+- **u01 `handle_task`** — already a full faithful port (no `todo!`); LEFT AS-IS. Its
+  outer `while take_next_process_individual(...)` drive, the per-frame `drain_pending!`
+  clash/stop check (the `clash.rs` `take_pending_signal` → `HandleTaskException` catch),
+  completion detection and the result epilogue are all present. It is GATED OFF for now
+  only because `satCalcTask` acquisition (`dynamic_cast<CSatisfiableCalculationTask*>` +
+  `getProcessContext`) is a `W3-DEFER[api]` task-adapter dependency, so the body short-
+  circuits (`sat_calc_task == Id::NONE` → returns `false`) until the Task/Calculation
+  controllers seed a real task. No `todo!` on the path.
+- **u02 `take_next_process_individual`** — `todo!` REPLACED with the faithful probe
+  cascade. Probe 1 (cache-testing nodes) and probe 24 (sorted nominal-non-deterministic
+  nodes) are LIVE — both are backed by real `process/db4.rs` linkers
+  (`mIndividualNodeCacheTestingLinker` / `mSortedNominalNonDeterministicProcessingNode
+  Linker`). The other ~34 triple-buffered-queue probes are kept DEFERRED behind ONE
+  consolidated `W3-DEFER[api]` block: the `CIndividual*ProcessingQueue` CONTENTS
+  subsystem is unported (`process/db3.rs` getters return `Id::NONE`,
+  `initProcessingQueue` is `W2-DEFER`, the queue stub types carry no `isEmpty`/`takeNext`),
+  and several of those arms also call still-deferred merge/nominal/cache/backend helpers.
+  The fixed 1-36 probe order stays recorded verbatim in the method doc-comment. On the
+  trivial (non-merge/non-cache) path the function returns `Id::NONE` cleanly (no work
+  queued), so the driver loop runs zero iterations and concludes — no `todo!`.
+- **u03 `tableau_rule_processing` + `tableau_rule_choice`** — both `todo!`s REPLACED.
+  `tableau_rule_processing` is a full faithful port (the three guard helpers
+  `try_delay_nominal_processing` / `needs_individual_node_expansion_blocking_test` /
+  `is_individual_node_{backend_cache_synchronization_processing,expansion}_blocked` were
+  already LIVE in u16/u18/u20). `tableau_rule_choice` ports the member-fn-pointer jump
+  table (`m{Pos,Neg}JumpFuncVec`, opaque per the struct wave) as an explicit `match` on
+  the operator code mirroring the algorithm-ctor table 1:1 (cpp 238-345): ~60 positive +
+  17 negative opcode arms dispatching into the LIVE `self.apply_*_rule` siblings
+  (u05-u09), with the two config gates (`conf_specialized_automate_rules` →
+  `apply_automat_and_rule`; `conf_representative_propagation_rules` → the
+  `apply_representative_*` family). `mLastJumpFunc` is recorded as a fired/not-fired bit
+  (`W3-DEFER[pointer-alias]`: no fn-pointer identity to store; no current reader needs it).
+- **Reachable now:** the whole `apply_*_rule` engine is now wired from the driver — AND
+  (`apply_and_rule`, fully live), BOTTOM (`apply_bottom_rule`), OR/ALL/SOME, automat AND/
+  choose, NOT, SELF, ATLEAST/ATMOST, NOMINAL, VALUE, IMPLICATION, the datatype family,
+  the bind/varbind/representative propagation families, and the `*IMPLI` variants.
+- **What a trivial run still hits (deeper, off the driver path):** the `apply_*_rule`
+  bodies retain their own `W*-DEFER` internals (u08 = 6, u09 = 1 `todo!`s on the
+  ∃/atleast/atmost/nominal/value sub-paths needing saturation-node / backend-cache /
+  successor subsystems); and the inner concept-drain loop in `handle_task` only fires
+  once the concept-processing-queue subsystem lands (today `continue_individual_processing`
+  returns `false` — the queue-contents `W3-DEFER` — so the rule dispatch is wired but not
+  yet exercised). Seeding a real root node + a concept on its processing queue (the
+  Task/Calculation seed + the queue-contents port) is the next unblock.
+- **Error trajectory: exit 0** throughout (the only edits are u02/u03 bodies + 3 new u03
+  imports `ConDescId` / `op` / `ConceptId` + `INVALID`). No unreachable-pattern warnings
+  in the dispatch ⇒ all opcode groupings are value-distinct.
 
 ## Build / validate
 

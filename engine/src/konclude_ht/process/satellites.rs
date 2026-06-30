@@ -38,9 +38,12 @@ use super::{ClashDescId, ConDescId, DependencyId, EdgeId, RestrictionSpecId, Tra
 // ported. They are stubbed here so the field types stay exact; the real structs
 // land in their own units and these placeholders reconcile then.
 
-/// Port of `CCondensedReapplyQueue` (placeholder, held by value).
-#[derive(Default, Clone)]
-pub struct CondensedReapplyQueue;
+// u15 reconcile: `CCondensedReapplyQueue` is now the real ported struct in
+// `process::condensed_reapply` (dynamic reapply-queue head + descriptor linker).
+// Re-exported here so every `use super::satellites::{… CondensedReapplyQueue}`
+// call site (this file's `ConceptDescriptorDependencyReapplyData`,
+// `reapply_sat::LabelSetMapEntry`, `ls1`) keeps resolving onto the real type.
+pub use super::condensed_reapply::CondensedReapplyQueue;
 
 /// Port of `CReapplyQueue` (placeholder, held by value).
 #[derive(Default)]
@@ -83,7 +86,7 @@ impl Default for ConceptDescriptorDependencyReapplyData {
     fn default() -> Self {
         ConceptDescriptorDependencyReapplyData {
             concept_descriptor: Id::NONE,
-            pos_neg_reapply_queue: CondensedReapplyQueue,
+            pos_neg_reapply_queue: CondensedReapplyQueue::new(),
         }
     }
 }

@@ -44,6 +44,9 @@ pub mod reapply_sat; // W2.7: reapply label-set iterator / signature blocking-ca
 pub mod node_resolution; // node-resolution keystone: CProcessTagger + CIndividualProcessNodeVector + getUpToDate/Localized/Successor/Ancestor resolvers (ctx-level)
 pub mod blocking_hash; // W3.5b: blocking-individual-node candidate hash/data/iterator + signature-blocking concept-expansion data (3 arenas)
 pub mod representative; // W3.5r: representative variable-binding-path-set subsystem (set-data/migrate-data/propagation-set/descriptor; 4 arenas)
+pub mod condensed_reapply; // u15: CCondensedReapplyQueue (dynamic reapply-queue head + descriptor linker, feeds the reapply_sat iterator)
+pub mod merging_hash; // u15/nominal: CIndividualMergingHash + CIndividualMergingHashData (per-node merge hash; 1 arena)
+pub mod succ_role_hash; // u15: CSuccessorRoleHash backend + CSuccessorRoleIterator / CSuccessorIterator (so pn3 relocation iterators iterate; 1 arena)
 
 // --- the 16 process-layer ids (manifest/05) ---
 /// `CIndividualProcessNode*`           → `NodeId`.

@@ -84,6 +84,63 @@ pub struct ReapplyQueuePtr;
 /// Placeholder for `CCondensedReapplyQueue*` (returned by `getConceptReapplyQueue`).
 pub struct CondensedReapplyQueuePtr;
 
+// ===========================================================================
+// Empty-iterator `hasNext`/`next` surface for the PN-3 placeholder iterators.
+//
+// KONCLUDE-PORT-NOTE[api]: the C++ `getSuccessorRoleIterator` /
+// `getDisjointSuccessorRoleIterator` (and the sibling role/link/successor
+// iterators) return an iterator over the node's `mUseSuccRoleHash` /
+// `mUseDisjointSuccRoleHash` process-hash. Those hash backends are W2-DEFER
+// (their arenas are not threaded through the process context yet), so the
+// `else` branch of each getter yields the *empty* iterator — exactly the
+// default-constructed C++ iterator with `mIterator1 == mIterator2 == false`,
+// whose `hasNext()` is `false` and whose `next()` is `nullptr`/`0`.
+//
+// These `has_next`/`next` bodies port that empty-iterator behaviour faithfully
+// so the phase-5 link-relocation loops in `completion/u15.rs` (and any other
+// caller) COMPILE and run zero iterations until the real hash backend lands.
+// They are the `(no has_next/next)` gap the `RECONCILE-NEED` flags called out.
+// ===========================================================================
+
+impl SuccessorRoleIterator {
+    /// Port of `CSuccessorRoleIterator::hasNext` (empty-iterator surface).
+    pub fn has_next(&self) -> bool { false }
+    /// Port of `CSuccessorRoleIterator::next` → `CIndividualLinkEdge*` (empty → NONE).
+    pub fn next(&mut self, _move_next: bool) -> EdgeId { EdgeId::NONE }
+}
+
+impl DisjointSuccessorRoleIterator {
+    /// Port of `CDisjointSuccessorRoleIterator::hasNext` (empty-iterator surface).
+    pub fn has_next(&self) -> bool { false }
+    /// Port of `CDisjointSuccessorRoleIterator::next` → `CNegationDisjointEdge*`
+    /// (empty → NONE).
+    pub fn next(&mut self, _move_next: bool) -> DisjointEdgeId { DisjointEdgeId::NONE }
+}
+
+impl RoleSuccessorIterator {
+    /// Port of `CRoleSuccessorIterator::hasNext` (empty-iterator surface).
+    pub fn has_next(&self) -> bool { false }
+    /// Port of `CRoleSuccessorIterator::next` → `CRole*` (empty → NONE).
+    pub fn next(&mut self, _move_next: bool) -> RoleId { RoleId::NONE }
+}
+
+impl RoleSuccessorLinkIterator {
+    /// Port of `CRoleSuccessorLinkIterator::hasNext` (empty-iterator surface).
+    pub fn has_next(&self) -> bool { false }
+    /// Port of `CRoleSuccessorLinkIterator::next` → `CIndividualLinkEdge*`
+    /// (empty → NONE).
+    pub fn next(&mut self, _move_next: bool) -> EdgeId { EdgeId::NONE }
+}
+
+impl SuccessorIterator {
+    /// Port of `CSuccessorIterator::hasNext` (empty-iterator surface).
+    pub fn has_next(&self) -> bool { false }
+    /// Port of `CSuccessorIterator::nextLink` → `CIndividualLinkEdge*` (empty → NONE).
+    pub fn next_link(&mut self, _move_next: bool) -> EdgeId { EdgeId::NONE }
+    /// Port of `CSuccessorIterator::nextIndividualID` → `cint64` (empty → 0).
+    pub fn next_individual_id(&mut self, _move_next: bool) -> Cint64 { 0 }
+}
+
 impl IndividualProcessNode {
     // ===================================================================
     // Lazy label / hash / queue getters (`create`-on-demand).
@@ -330,6 +387,8 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::getDisjointSuccessorRoleIterator(cint64)`.
+    // superseded by ctx.node_disjoint_successor_role_iterator (u15 context-threaded;
+    // seeds the real distinct::DisjointSuccessorRoleIterator).
     pub fn get_disjoint_successor_role_iterator_id(
         &self,
         _succ_indi_id: Cint64,
@@ -382,6 +441,9 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::getSuccessorRoleIterator(cint64)`.
+    // superseded by ctx.node_successor_role_iterator (u15 context-threaded; seeds the
+    // real succ_role_hash::SuccessorRoleIterator). This `&self` body returns the
+    // empty placeholder because it cannot resolve the hash id against the arena.
     pub fn get_successor_role_iterator_id(&self, _indi_id: Cint64) -> SuccessorRoleIterator {
         if self.use_succ_role_hash.is_none() {
             SuccessorRoleIterator
@@ -628,6 +690,8 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::getSuccessorIterator`.
+    // superseded by ctx.node_successor_iterator (u15 context-threaded; seeds the real
+    // succ_role_hash::SuccessorIterator).
     pub fn get_successor_iterator(&self) -> SuccessorIterator {
         if self.use_succ_role_hash.is_none() {
             return SuccessorIterator;

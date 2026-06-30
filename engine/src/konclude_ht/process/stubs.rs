@@ -54,7 +54,8 @@ stub_id! {
     /// replaces the pool allocator; the field is retained for layout fidelity.
     MemoryAllocationManager => MemAllocId,
     ConceptProcessingQueue => ConceptProcessingQueueId,
-    SuccessorRoleHash => SuccRoleHashId,
+    // u15 reconcile: SuccessorRoleHash relocated to `process::succ_role_hash`
+    // (real ported backend); its `SuccRoleHashId` re-aliases below.
     // W2.7 reconcile: ConnectionSuccessorSet / DistinctHash / DisjointSuccessorRoleHash
     // relocated to `process::distinct`; their ids re-alias below.
     IndividualNodeSaturationBlockingData => IndiSatBlockDataId,
@@ -84,7 +85,8 @@ stub_id! {
     DatatypesValueSpaceData => DatatypesValueSpaceDataId,
     // W2.7 reconcile: IndividualNodeIncrementalExpansionData relocated to
     // `process::reapply_sat`; id re-aliases below.
-    IndividualMergingHash => IndividualMergingHashId,
+    // u15 reconcile: IndividualMergingHash relocated to `process::merging_hash`
+    // (real ported hash); its `IndividualMergingHashId` re-aliases below.
     // intrusive ontology-side assertion linker chain heads.
     // KONCLUDE-PORT-NOTE[ownership]: kept as single head-of-chain ids here; PN-2
     // decides whether to materialise each as a `Vec`.
@@ -125,6 +127,14 @@ pub type ConceptVarBindPathSetHashId = super::binding_hash::ConceptVariableBindi
 /// `sig_block_con_exp_data` field + `pn4.rs` getters keep resolving.
 pub type SigBlockConExpDataId =
     super::blocking_hash::SignatureBlockingIndividualNodeConceptExpansionDataId;
+/// u15 reconcile: `CSuccessorRoleHash*` — now `process::succ_role_hash::SuccessorRoleHash`.
+/// The alias NAME (`SuccRoleHashId`) is unchanged, so `node.rs`'s
+/// `succ_role_hash` / `use_` / `prev_` fields + pn3's getters keep resolving.
+pub type SuccRoleHashId = super::succ_role_hash::SuccessorRoleHashId;
+/// u15 reconcile: `CIndividualMergingHash*` — now `process::merging_hash::IndividualMergingHash`.
+/// The alias NAME (`IndividualMergingHashId`) is unchanged, so `node.rs`'s
+/// `use_individual_merging_hash` / `loc_` fields + pn6's getter keep resolving.
+pub type IndividualMergingHashId = super::merging_hash::IndividualMergingHashId;
 
 // ===========================================================================
 // SD-4 `CIndividualSaturationProcessNode` field targets (from `sat_node.rs`).

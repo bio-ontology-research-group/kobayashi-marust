@@ -87,6 +87,12 @@ use super::reapply_sat::{
     IncrementalExpansionDataId, IndividualNodeBlockingTestData,
     IndividualNodeIncrementalExpansionData, SigBlockCandHashId, SignatureBlockingCandidateHash,
 };
+// --- u15 merge / nominal-expansion satellites ---
+use super::merging_hash::{IndividualMergingHash, IndividualMergingHashId};
+use super::succ_role_hash::{
+    SuccessorIterator, SuccessorRoleHash, SuccessorRoleHashId, SuccessorRoleIterator,
+};
+use super::distinct::DisjointSuccessorRoleIterator;
 // --- W3b node-owned binding-set container hashes ---
 use super::binding_hash::{
     ConceptPropagationBindingSetHash, ConceptPropagationBindingSetHashId,
@@ -295,6 +301,12 @@ pub struct ProcessContext {
     /// `CReapplyConceptSaturationLabelSet` pool.
     reapply_con_sat_label_sets: Arena<ReapplyConceptSaturationLabelSet>,
 
+    // --- u15 merge / nominal-expansion satellite pools ---
+    /// `CIndividualMergingHash` pool (per-node merge hash).
+    individual_merging_hashes: Arena<IndividualMergingHash>,
+    /// `CSuccessorRoleHash` pool (per-node successor-role hash backend).
+    succ_role_hashes: Arena<SuccessorRoleHash>,
+
     // --- the opaque CProcessContext handles (filled when those subsystems land) ---
     /// `CProcessMemoryPoolAllocationManager* mUsedMemMan`.
     /// KONCLUDE-PORT-NOTE[memory-pool]: the pool is replaced by the typed arenas
@@ -368,6 +380,8 @@ impl ProcessContext {
             linked_role_sat_succ_hashes: Arena::new(),
             indi_sat_node_ext_datas: Arena::new(),
             reapply_con_sat_label_sets: Arena::new(),
+            individual_merging_hashes: Arena::new(),
+            succ_role_hashes: Arena::new(),
             used_mem_man: INVALID,
             used_process_tagger: ProcessTagger::new(),
             used_process_stat_gath: INVALID,
@@ -824,6 +838,107 @@ impl ProcessContext {
         reapply_con_sat_label_set_mut,
         alloc_reapply_con_sat_label_set
     );
+
+    // --- u15 merge / nominal-expansion satellite trios ---
+    arena_accessors!(
+        individual_merging_hashes,
+        IndividualMergingHash,
+        IndividualMergingHashId,
+        individual_merging_hash,
+        individual_merging_hash_mut,
+        alloc_individual_merging_hash
+    );
+    arena_accessors!(
+        succ_role_hashes,
+        SuccessorRoleHash,
+        SuccessorRoleHashId,
+        succ_role_hash,
+        succ_role_hash_mut,
+        alloc_succ_role_hash
+    );
+
+    // =======================================================================
+    // u15 CONTEXT-THREADED node successor-role / disjoint-role wiring.
+    //
+    // The PN-3 getters (`get_successor_role_iterator`, `get_successor_iterator`,
+    // `has_successor_individual_node_id`, `get_disjoint_successor_role_iterator_id`)
+    // are `&self` methods on `IndividualProcessNode`; they cannot resolve the
+    // node's `use_succ_role_hash` / `use_disjoint_succ_role_hash` id against the
+    // arena, so they return the empty placeholder iterator. These context-threaded
+    // siblings DO resolve the id and seed the REAL iterator from the backing hash —
+    // the un-defer wave routes the relocation loops through these (the same
+    // `ctx.node_*` supersedes-`&mut self`-stub pattern as the W3b lazy-getters).
+    // =======================================================================
+
+    /// Context-threaded port of `CIndividualProcessNode::getSuccessorRoleHash(true)`
+    /// (lazy-allocate the node's successor-role hash from the pool).
+    pub fn node_successor_role_hash(&mut self, node: NodeId) -> SuccessorRoleHashId {
+        if self.node(node).succ_role_hash.is_none() {
+            let prev = self.node(node).prev_succ_role_hash;
+            let new_id = self.alloc_succ_role_hash(SuccessorRoleHash::new());
+            if prev.is_some() {
+                let taken =
+                    std::mem::replace(self.succ_role_hash_mut(prev), SuccessorRoleHash::new());
+                self.succ_role_hash_mut(new_id)
+                    .init_successor_role_hash(Some(&taken));
+                *self.succ_role_hash_mut(prev) = taken;
+            } else {
+                self.succ_role_hash_mut(new_id).init_successor_role_hash(None);
+            }
+            let n = self.node_mut(node);
+            n.succ_role_hash = new_id;
+            n.use_succ_role_hash = new_id;
+        }
+        self.node(node).use_succ_role_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getSuccessorRoleIterator(indiID)`
+    /// — seeds the real `SuccessorRoleIterator` from the node's successor-role hash.
+    pub fn node_successor_role_iterator(&self, node: NodeId, indi_id: Cint64) -> SuccessorRoleIterator {
+        let hash = self.node(node).use_succ_role_hash;
+        if hash.is_none() {
+            SuccessorRoleIterator::empty()
+        } else {
+            self.succ_role_hash(hash).get_successor_role_iterator(indi_id)
+        }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getSuccessorIterator()`.
+    pub fn node_successor_iterator(&self, node: NodeId) -> SuccessorIterator {
+        let hash = self.node(node).use_succ_role_hash;
+        if hash.is_none() {
+            SuccessorIterator::empty()
+        } else {
+            self.succ_role_hash(hash).get_successor_iterator()
+        }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::hasSuccessorIndividualNode(indiID)`.
+    pub fn node_has_successor_individual_node(&self, node: NodeId, indi_id: Cint64) -> bool {
+        let hash = self.node(node).use_succ_role_hash;
+        if hash.is_none() {
+            false
+        } else {
+            self.succ_role_hash(hash).has_successor_individual_node(indi_id)
+        }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getDisjointSuccessorRoleIterator(succIndiId)`
+    /// — seeds the real `distinct::DisjointSuccessorRoleIterator` from the node's
+    /// disjoint-successor-role hash (already a real port in `process::distinct`).
+    pub fn node_disjoint_successor_role_iterator(
+        &self,
+        node: NodeId,
+        succ_indi_id: Cint64,
+    ) -> DisjointSuccessorRoleIterator {
+        let hash = self.node(node).use_disjoint_succ_role_hash;
+        if hash.is_none() {
+            DisjointSuccessorRoleIterator::new()
+        } else {
+            self.disjoint_succ_role_hash(hash)
+                .get_disjoint_role_iterator(succ_indi_id)
+        }
+    }
 
     // =======================================================================
     // W3b CONTEXT-THREADED node lazy-getters (the `&mut self` C++

@@ -41,10 +41,12 @@
 #![allow(unused_variables, dead_code)]
 
 use super::super::model::substrate::Cint64;
-use super::super::process::{ConProcDescId, EdgeId, NodeId, RestrictionSpecId};
+use super::super::process::{ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId};
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
-use super::super::model::substrate::Id;
+use super::super::model::substrate::{Id, INVALID};
+use super::super::model::op;
+use super::super::model::ConceptId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::initialNodeInitialize`.
@@ -233,12 +235,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_proc_des: ConProcDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: tableauRuleProcessing — needs descriptor/concept arena reads + \
-             tryDelayNominalProcessing / needsIndividualNodeExpansionBlockingTest / \
-             isIndividualNode*Blocked predicate units"
-        )
+        // CConceptDescriptor* conDes = conProcDes->getConceptDescriptor();
+        // bool conNeg = conDes->getNegation();
+        // CConcept* concept = conDes->getConcept();
+        // cint64 conOpCode = concept->getOperatorCode();
+        // (Faithful C++ prelude: these locals are read but only consumed by
+        // `tableauRuleChoice`, which recomputes them; omitted here to avoid an
+        // unused arena read — the descriptor/concept reads happen in the choice.)
+
+        // if (tryDelayNominalProcessing(conProcDes,indiProcNode,calcAlgContext)) return false;
+        if self.try_delay_nominal_processing(con_proc_des, indi_proc_node, calc_alg_context) {
+            return false;
+        }
+
+        // if (needsIndividualNodeExpansionBlockingTest(conProcDes,indiProcNode,calcAlgContext)) {
+        if self.needs_individual_node_expansion_blocking_test(
+            con_proc_des,
+            indi_proc_node,
+            calc_alg_context,
+        ) {
+            // if (isIndividualNodeBackendCacheSynchronizationProcessingBlocked(...)) return false;
+            if self.is_individual_node_backend_cache_synchronization_processing_blocked(
+                indi_proc_node,
+                calc_alg_context,
+            ) {
+                return false;
+            }
+            // if (isIndividualNodeExpansionBlocked(indiProcNode,calcAlgContext)) return false;
+            if self.is_individual_node_expansion_blocked(indi_proc_node, calc_alg_context) {
+                return false;
+            }
+        }
+
+        // tableauRuleChoice(indiProcNode,conProcDes,calcAlgContext);
+        self.tableau_rule_choice(indi_proc_node, con_proc_des, calc_alg_context);
+
+        // return true;
+        true
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::tableauRuleChoice`.
@@ -265,12 +298,232 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_proc_des: ConProcDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER[pointer-alias]: tableauRuleChoice — member-fn-pointer jump-table \
-             dispatch into the apply*Rule engine (jump tables opaque until those rule \
-             units are ported) + descriptor/concept arena reads for conOpCode"
-        )
+        // CConceptDescriptor* conDes = conProcDes->getConceptDescriptor();
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_proc_des)
+            .get_concept_descriptor();
+        // bool conNeg = conDes->getNegation();
+        let con_neg: bool = calc_alg_context.process_context().con_desc(con_des).is_negated();
+        // CConcept* concept = conDes->getConcept();
+        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        // cint64 conOpCode = concept->getOperatorCode();
+        let con_op_code: Cint64 =
+            calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+
+        // ++mCurrentRecProcDepth;
+        self.current_rec_proc_depth += 1;
+
+        // KONCLUDE-PORT-NOTE[pointer-alias]: the C++ dispatch is a member-function-
+        // pointer jump table — `func = mPosJumpFuncVec[conOpCode]` (resp.
+        // `mNegJumpFuncVec`), then `(this->*func)(indiProcNode,conProcDes,negate,ctx)`.
+        // Rust cannot store the algorithm's `apply*Rule` methods as member-fn pointers
+        // in the struct (`PORT.md` keeps `m{Pos,Neg}JumpFuncVec` opaque), so the
+        // indirect call is ported as an explicit `match` on the operator code that
+        // mirrors the table built in the algorithm ctor 1:1 (cpp 238-345). Positive
+        // entries are invoked with `negate == false`, negative entries with
+        // `negate == true`, exactly as the two `(this->*func)(...)` call sites. The two
+        // config gates select the alternative entries the C++ overwrites:
+        //   - mConfSpecializedAutomateRules → AQAND family uses applyAutomatANDRule;
+        //   - mConfRepresentativePropagationRules → VARBIND family uses the
+        //     applyREPRESENTATIVE* rules instead of the applyVARBIND*/applyVARIABLE*.
+        // `func == nullptr` (no table entry) ⇒ no rule fired (the `_` arms).
+        // The C++ passes `indiProcNode` / `conProcDes` by reference (`*&`) so an
+        // apply rule can advance them; mirror with mutable locals (`&mut` into the
+        // rules). The caller does not observe the advance (tableauRuleChoice returns
+        // void and tableauRuleProcessing discards it), so local copies are faithful.
+        let mut indi = indi_proc_node;
+        let mut cpd = con_proc_des;
+        let indi = &mut indi;
+        let cpd = &mut cpd;
+        let mut dispatched = true;
+
+        if !con_neg {
+            // func = mPosJumpFuncVec[conOpCode];
+            match con_op_code {
+                op::CCTOP => self.apply_and_rule(indi, cpd, false, calc_alg_context),
+                op::CCBOTTOM => self.apply_bottom_rule(indi, cpd, false, calc_alg_context),
+                op::CCAND | op::CCSUB | op::CCEQ | op::CCIMPLTRIG | op::CCBRANCHTRIG => {
+                    self.apply_and_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCAQAND | op::CCIMPLAQAND | op::CCBRANCHAQAND => {
+                    if self.conf_specialized_automate_rules {
+                        self.apply_automat_and_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_and_rule(indi, cpd, false, calc_alg_context)
+                    }
+                }
+                op::CCDATATYPE => self.apply_datatype_rule(indi, cpd, false, calc_alg_context),
+                op::CCDATALITERAL => self.apply_data_literal_rule(indi, cpd, false, calc_alg_context),
+                op::CCDATARESTRICTION => {
+                    self.apply_data_restriction_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCOR => self.apply_or_rule(indi, cpd, false, calc_alg_context),
+                op::CCALL
+                | op::CCAQALL
+                | op::CCIMPLAQALL
+                | op::CCBRANCHAQALL
+                | op::CCIMPLALL
+                | op::CCBRANCHALL => self.apply_all_rule(indi, cpd, false, calc_alg_context),
+                op::CCSOME | op::CCAQSOME => self.apply_some_rule(indi, cpd, false, calc_alg_context),
+                op::CCAQCHOOCE => self.apply_automat_choose_rule(indi, cpd, false, calc_alg_context),
+                op::CCNOT => self.apply_neg_and_rule(indi, cpd, false, calc_alg_context),
+                op::CCSELF => self.apply_self_rule(indi, cpd, false, calc_alg_context),
+                op::CCATLEAST => self.apply_atleast_rule(indi, cpd, false, calc_alg_context),
+                op::CCATMOST => self.apply_atmost_rule(indi, cpd, false, calc_alg_context),
+                op::CCNOMINAL => self.apply_nominal_rule(indi, cpd, false, calc_alg_context),
+                op::CCVALUE => self.apply_value_rule(indi, cpd, false, calc_alg_context),
+                op::CCIMPL => self.apply_implication_rule(indi, cpd, false, calc_alg_context),
+                op::CCPBINDVARIABLE => {
+                    self.apply_bind_variable_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCPBINDTRIG | op::CCPBINDAND | op::CCPBINDAQAND => {
+                    self.apply_bind_propagate_and_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCPBINDIMPL => {
+                    self.apply_bind_propagate_implication_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCPBINDALL | op::CCPBINDAQALL => {
+                    self.apply_bind_propagate_all_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCPBINDCYCLE => {
+                    self.apply_bind_propagate_cycle_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCPBINDGROUND => {
+                    self.apply_bind_propagate_grounding_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCVARBINDVARIABLE => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_bind_variable_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_varbind_variable_rule(indi, cpd, false, calc_alg_context)
+                    }
+                }
+                op::CCVARBINDTRIG | op::CCVARBINDAND | op::CCVARBINDAQAND => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_and_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_variable_binding_and_rule(indi, cpd, false, calc_alg_context)
+                    }
+                }
+                op::CCVARBINDIMPL => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_implication_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_varbind_propagate_implication_rule(
+                            indi,
+                            cpd,
+                            false,
+                            calc_alg_context,
+                        )
+                    }
+                }
+                op::CCVARBINDALL | op::CCVARBINDAQALL => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_all_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_varbind_propagate_all_rule(indi, cpd, false, calc_alg_context)
+                    }
+                }
+                op::CCVARBINDJOIN => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_join_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_varbind_propagate_join_rule(indi, cpd, false, calc_alg_context)
+                    }
+                }
+                op::CCVARBINDGROUND => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_grounding_rule(indi, cpd, false, calc_alg_context)
+                    } else {
+                        self.apply_varbind_propagate_grounding_rule(
+                            indi,
+                            cpd,
+                            false,
+                            calc_alg_context,
+                        )
+                    }
+                }
+                op::CCBACKACTIVTRIG => {
+                    self.apply_bind_propagate_and_flag_all_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCVARPBACKTRIG | op::CCVARPBACKAQAND => {
+                    self.apply_bind_propagate_and_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCVARPBACKALL | op::CCVARPBACKAQALL => {
+                    self.apply_bind_propagate_all_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCBACKACTIVIMPL => {
+                    self.apply_bind_propagate_implication_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCNOMINALIMPLI => {
+                    self.apply_nominal_implication_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCDATATYPEIMPLI => {
+                    self.apply_datatype_implication_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCDATALITERALIMPLI => {
+                    self.apply_data_literal_implication_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCDATARESTRICTIONIMPLI => {
+                    self.apply_data_restriction_implication_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCVARBINDPREPARE => {
+                    self.apply_varbind_prepare_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCVARBINDFINALZE => {
+                    self.apply_varbind_finalize_rule(indi, cpd, false, calc_alg_context)
+                }
+                _ => dispatched = false,
+            }
+        } else {
+            // func = mNegJumpFuncVec[conOpCode];
+            match con_op_code {
+                op::CCDATATYPE => self.apply_datatype_rule(indi, cpd, true, calc_alg_context),
+                op::CCDATALITERAL => self.apply_data_literal_rule(indi, cpd, true, calc_alg_context),
+                op::CCDATARESTRICTION => {
+                    self.apply_data_restriction_rule(indi, cpd, true, calc_alg_context)
+                }
+                op::CCAND => self.apply_or_rule(indi, cpd, true, calc_alg_context),
+                op::CCOR => self.apply_and_rule(indi, cpd, true, calc_alg_context),
+                op::CCEQ => self.apply_or_rule(indi, cpd, true, calc_alg_context),
+                op::CCALL => self.apply_some_rule(indi, cpd, true, calc_alg_context),
+                op::CCNOT => self.apply_neg_and_rule(indi, cpd, true, calc_alg_context),
+                op::CCSOME => self.apply_all_rule(indi, cpd, true, calc_alg_context),
+                op::CCAQCHOOCE => self.apply_automat_choose_rule(indi, cpd, true, calc_alg_context),
+                op::CCSELF => self.apply_self_rule(indi, cpd, true, calc_alg_context),
+                op::CCATMOST => self.apply_atleast_rule(indi, cpd, true, calc_alg_context),
+                op::CCATLEAST => self.apply_atmost_rule(indi, cpd, true, calc_alg_context),
+                op::CCNOMINAL => self.apply_nominal_rule(indi, cpd, true, calc_alg_context),
+                op::CCVALUE => self.apply_value_rule(indi, cpd, true, calc_alg_context),
+                op::CCPBINDGROUND => {
+                    self.apply_bind_propagate_grounding_rule(indi, cpd, true, calc_alg_context)
+                }
+                op::CCVARBINDGROUND => {
+                    if self.conf_representative_propagation_rules {
+                        self.apply_representative_grounding_rule(indi, cpd, true, calc_alg_context)
+                    } else {
+                        self.apply_varbind_propagate_grounding_rule(
+                            indi,
+                            cpd,
+                            true,
+                            calc_alg_context,
+                        )
+                    }
+                }
+                _ => dispatched = false,
+            }
+        }
+
+        // mLastJumpFunc = func;
+        // W3-DEFER[pointer-alias]: the C++ records the dispatched member-fn pointer
+        // (or nullptr) for later identity comparison; with the `match` port there is
+        // no fn-pointer value to store, so we record only whether a rule fired
+        // (no current reader depends on the precise identity).
+        self.last_jump_func = if dispatched { 1 } else { INVALID };
+
+        // --mCurrentRecProcDepth;
+        self.current_rec_proc_depth -= 1;
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::initializeORProcessing`.

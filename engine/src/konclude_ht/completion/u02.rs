@@ -119,16 +119,80 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        let _ = calc_alg_context;
         // CIndividualProcessNode* indiProcNode = nullptr;
+        let mut indi_proc_node: NodeId = NodeId::NONE;
         // mIndiNodeConcludeUnsatCaching = false;
         self.indi_node_conclude_unsat_caching = false;
         // mIndiNodeFromQueueType = INQT_NONE;
         self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_None;
-        todo!(
-            "W3-DEFER: takeNextProcessIndividual body — depends on ~40 unported \
-             queue/review subsystems and ~30 algorithm helpers from other units"
-        )
+
+        // --- Probe 1: cache-testing individual nodes (cpp 2195-2202). LIVE. ---
+        // This arm is backed by the real `mIndividualNodeCacheTestingLinker`
+        // (`process/db4.rs`), so it is ported in full.
+        if indi_proc_node.is_none() {
+            // mMinConceptProcessingPriorityLevel = mImmediatelyProcessPriority;
+            self.min_concept_processing_priority_level =
+                super::algorithm::IMMEDIATELY_PROCESS_PRIORITY as f64;
+            if calc_alg_context
+                .processing_data_box()
+                .has_cache_testing_individual_nodes()
+            {
+                indi_proc_node = calc_alg_context
+                    .processing_data_box_mut()
+                    .take_next_cache_testing_individual_node();
+                self.indi_node_conclude_unsat_caching = true;
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_CacheTest;
+            }
+        }
+
+        // --- Probes 2-23 + 25-36: the triple-buffered processing-queue cascade. ---
+        //
+        // W3-DEFER[api]: every remaining probe (immediately-processing, delayed-
+        // backend-init, role-assertion, depth-deterministic / depth-first-
+        // deterministic expansion, distinct value-space sat-checking, value-space-
+        // triggering, backend-cache-sync retest, backend direct/indirect-influence
+        // expansion, variable-binding concept-batch, incremental-compatibility /
+        // -expansion-initializing / -expansion / compatible-merge, early/late
+        // individual-reactivation, fixed/prioritized backend reuse-expansion,
+        // the INQT_OUTDATED individual-processing queue, nominal / nominal-caching-
+        // loss-reactivation, backend individual-neighbour + propagation-cut
+        // expansion, individual depth / depth-first, blocking-update / blocked-
+        // reactivation review, signature-blocking review set, reusing review data,
+        // backend late-neighbour expansion, delaying-nominal, backend indirect-
+        // compatibility) probes a `CIndividual*ProcessingQueue` whose CONTENTS
+        // subsystem is the not-yet-ported processing-queue layer: the `process/db3.rs`
+        // lazy getters currently return `Id::NONE` (the queue is never allocated,
+        // `initProcessingQueue` is `W2-DEFER`), and the queue stub types in
+        // `process/stubs.rs` expose no `isEmpty` / `takeNextProcessIndividual*`.
+        // Several arms additionally dispatch into still-deferred merge/nominal/
+        // cache/backend helpers (`getUpToDateIndividual`, `incrementalNodeExpansion`,
+        // `detectIndividualNodeSignatureBlockingStatus`,
+        // `queuedIndividualBackendNeighbourExpansion`, `removeIndividualReusing`,
+        // `getCorrectedNominalIndividualNode`, ...). They are therefore kept DEFERRED
+        // and the trivial (non-merge / non-cache) consistency path never reaches them
+        // (it finds either a cache-testing node above, a sorted nominal node below, or
+        // — for a freshly-seeded immediately-processing root — nothing, and concludes).
+        // The faithful, fixed probe ORDER is recorded verbatim in the doc-comment on
+        // this method (probes 1-36) for the eventual full port once the queue-contents
+        // layer lands.
+
+        // --- Probe 24: sorted nominal-non-deterministic processing node
+        // (cpp 2576-2581). LIVE (db4-backed `mSortedNominalNonDeterministicProcessing
+        // NodeLinker`); reached only after the deferred sort-prep arm, so it is inert
+        // until nominal non-deterministic nodes exist (none on the trivial path). ---
+        if indi_proc_node.is_none()
+            && calc_alg_context
+                .processing_data_box()
+                .has_sorted_nominal_non_deterministic_processing_nodes()
+        {
+            indi_proc_node = calc_alg_context
+                .processing_data_box_mut()
+                .take_sorted_nominal_non_deterministic_processing_node();
+            self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Nominal;
+        }
+
+        // return indiProcNode;
+        indi_proc_node
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::analyzeCompletionGraphStatistics`.

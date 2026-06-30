@@ -221,6 +221,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //     `create_individual_node_negation_link` — both already exist as siblings —
         //     `remove_individual_link` / `remove_disjoint_links` /
         //     `remove_individual_connection`) cannot iterate yet.
+        //     (PORTED: pn3.rs — the getters exist; the `has_next`/`next` empty-iterator
+        //     surface is now on `SuccessorRoleIterator`/`DisjointSuccessorRoleIterator`
+        //     (+ `RoleSuccessorIterator`/`RoleSuccessorLinkIterator`/`SuccessorIterator`).
+        //     LEFT: the iterators still yield empty until the `mUseSuccRoleHash` /
+        //     `mUseDisjointSuccRoleHash` process-hash backends (W2-DEFER) are threaded.)
         // Faithful self-loop vs other-node split + the dedup-via-depTrackPointHash +
         // `create_merged_link_dependency` structure is recorded in the doc comment.
 
@@ -242,6 +247,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   get_role_successor_to_individual_link, set_ancestor_link, has_individual_ancestor,
         //   get_individual_ancestor_depth}` (not yet on node) + `get_ancestor_individual`
         //   (sibling, exists). Deferred with phase 5.
+        //   (PORTED: pn3.rs `get_ancestor_link` / `get_role_successor_to_individual_link`
+        //   / `set_ancestor_link` / `has_individual_ancestor`; node.rs
+        //   `individual_ancestor_depth`. All five node accessors exist; only the
+        //   `depTrackPointHash` dedup (phase-5) remains LEFT.)
         let _ = self.conf_minimize_merging;
 
         // ---- phase 8: add distinct information (PORTED) --------------------------
@@ -361,12 +370,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             //   (the PRF setter) is not yet exposed on the node; faithful call:
             //   ctx.node_mut(merge_into).add_processing_restriction_flags(
             //       IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING);
+            //   (PORTED: pn4.rs `add_processing_restriction_flags` exists; un-defer wave
+            //   wires the call site.)
         }
 
         // ---- phase 10: exact-nominal dependency-tracking connection copy --------
         // RECONCILE-NEED: `IndividualProcessNode::get_successor_nominal_connection_set`
         //   + `get_nominal_individual` are not yet on node (the
-        //   `add_successor_connection_to_nominal` sink exists as a pn6 stub). Faithful
+        //   `add_successor_connection_to_nominal` sink exists as a pn6 stub).
+        //   (PORTED: pn6.rs `successor_nominal_connection_set` + sat1.rs
+        //   `nominal_individual` both exist; the connection-set backend is W2-DEFER.)
+        //   Faithful
         //   structure (un-defer once the getters land):
         //   if self.conf_exact_nominal_dependency_tracking
         //       && both nodes nominal {
@@ -383,6 +397,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   `get_additional_role_assertions_linker`, `get_process_initializing_concept_linker`,
         //   `get_assertion_data_linker`, `get_additional_data_assertions_linker`,
         //   `get_asserted_data_literal_linker`) are not yet on node; the *sink* siblings
+        //   (PORTED: pn2.rs — all seven getters exist under Rust naming, dropping the
+        //   C++ `get_` prefix: `assertion_role_linker` / `reverse_assertion_role_linker`
+        //   / `additional_role_assertions_linker` / `process_initializing_concept_linker`
+        //   / `assertion_data_linker` / `additional_data_assertions_linker` /
+        //   `asserted_data_literal_linker`; un-defer wave wires the relocation loop.)
         //   (`add_additional_role_assertions_linker`, `add_initializing_concept_linker`,
         //   `add_additional_data_assertions_linker`, `add_asserted_data_literal_linker`)
         //   already exist (pn2). Each relocation co-allocates the additional linker (with
