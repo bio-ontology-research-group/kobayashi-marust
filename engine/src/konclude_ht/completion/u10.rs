@@ -117,6 +117,79 @@ pub struct ConceptNegationPair {
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
+    // W15-rbox: RBox-resolved ∀-propagation targets (role hierarchy + inverse).
+    // =======================================================================
+
+    /// Collect the nodes an `∀role.C` restriction on `source` must reach, resolving
+    /// the RBox on lookup. Used by `apply_all_rule` (u09) in place of the exact-match
+    /// `ht_role_successor_links` (u08).
+    ///
+    /// Two RBox dimensions are resolved:
+    ///  - **role hierarchy** `R ⊑ S`: a forward edge `source --E--> succ` makes `succ`
+    ///    an `S`-successor when `E == S` or `S` is an indirect super-role of `E`
+    ///    (`role(E).has_indirect_super_role(S)`). So `∀S.C` reaches every R-successor
+    ///    with `R ⊑ S`. (Konclude registers a distinct edge per indirect super-role on
+    ///    install via `createNewIndividualsLinksReapplyed` walking
+    ///    `role->getIndirectSuperRoleList()`; the port keeps one forward edge and
+    ///    resolves super-roles here instead.)
+    ///  - **inverse roles** `∀R⁻.C`: the predecessor reached through `source`'s ancestor
+    ///    link. The ancestor edge is `pred --E--> source`, so `pred` is an `E⁻`-successor
+    ///    of `source`; it matches when `role == E⁻` (or `role` is a super-role of `E⁻`).
+    ///    (Konclude installs the inverse direction via the negated entries of the
+    ///    indirect-super-role list — `installIndividualNodeRoleLink(dst, src, …)`; the
+    ///    port reaches the single predecessor via the ancestor link, faithful for the
+    ///    blockable-successor regime exercised here.)
+    pub fn ht_all_rule_targets(
+        &self,
+        source: NodeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<NodeId> {
+        let mut out: Vec<NodeId> = Vec::new();
+        let pc = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
+
+        // (1) forward successors, hierarchy-resolved.
+        let mut it = pc.node_successor_iterator(source);
+        while it.has_next() {
+            let link: EdgeId = it.next_link(false);
+            let succ_id: Cint64 = it.next_individual_id(true);
+            if link.is_none() {
+                continue;
+            }
+            let edge_role: RoleId = pc.edge(link).get_link_role();
+            let role_matches = edge_role == role
+                || (edge_role.is_some() && onto.role(edge_role).has_indirect_super_role(role));
+            if role_matches {
+                let succ = calc_alg_context
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(succ_id);
+                if succ.is_some() && !out.contains(&succ) {
+                    out.push(succ);
+                }
+            }
+        }
+
+        // (2) inverse: the predecessor via the ancestor link.
+        let anc_link: EdgeId = pc.node(source).get_ancestor_link();
+        if anc_link.is_some() {
+            let e = pc.edge(anc_link);
+            let edge_role: RoleId = e.get_link_role();
+            let pred: NodeId = e.get_source_individual();
+            if edge_role.is_some() && pred.is_some() {
+                let inv: RoleId = onto.role(edge_role).get_inverse_role();
+                let inv_matches = inv == role
+                    || (inv.is_some() && onto.role(inv).has_indirect_super_role(role));
+                if inv_matches && !out.contains(&pred) {
+                    out.push(pred);
+                }
+            }
+        }
+        out
+    }
+
+    // =======================================================================
     // Satisfiable-cached-absorbed flush (cpp 6252 / 6275).
     // =======================================================================
 

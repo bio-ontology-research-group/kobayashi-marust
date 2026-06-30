@@ -348,6 +348,7 @@ Legend: ☐ todo · ◐ in progress · ☑ ported (pre-compile) · ✓ compiles 
 | W8 | main driver loop live (take-next + rule dispatch) | `…CompletionTaskHandleAlgorithm.cpp` 2190-2790 / 9496-9549 | `completion/u02.rs` `take_next_process_individual`, `completion/u03.rs` `tableau_rule_processing`/`tableau_rule_choice` | ✓ (3 driver `todo!`s → live; jump table → `match` into `apply_*_rule`; cache-testing + sorted-nominal probes LIVE, queue-contents arms `W3-DEFER`; `cargo check --release` exit 0) |
 | W8.1 | processing-queue subsystem (the triple-buffered queues) | `Process/CIndividual{Unsorted,LinkerRotation,Depth}ProcessingQueue.{h,cpp}`, `CConceptProcessingQueue.{h,cpp}`, `CIndividualDepthPriority`, `CConceptProcessingPriorityQueueData` | `process/queues.rs` (+ context/db3/stubs/u01/u02/u04 + completion/context forwarders) | ✓ (4 real queues + 2 helpers; 4 arenas on `ProcessContext`; db3 22/24 getters + 14 u02 probes + `continue_individual_processing` + u01 concept take-next un-defered; `cargo check --release` exit 0) |
 | W12 | ∃/∀ edge subsystem (applySOMERule successor+edge / applyALLRule propagation + edge-triggered ∀) | `…CompletionTaskHandleAlgorithm.cpp` `applySOMERule`/`applyALLRule`/`createSuccessorIndividual`/`createNewIndividualsLink` | `completion/u08.rs` (`apply_some_rule` + 4 `ht_*` edge helpers), `completion/u09.rs` (`apply_all_rule` general branch), `completion/selftest.rs` | ★ (14/14 tests pass on ws; ∃ builds+labels+enqueues a successor over a real R-edge in `SuccessorRoleHash`, ∀ propagates to existing + later successors; ALC consistency `∃R.C ⊓ ∀R.¬C` ⇒ clash) |
+| W14-number | SHIQ qualified-cardinality core (applyATLEASTRule ≥n distinct-successor generation / applyATMOSTRule ≤n merge-or-clash) | `…CompletionTaskHandleAlgorithm.cpp` `applyATLEASTRule`/`applyATMOSTRule`/`createDistinctSuccessorIndividuals`/`createIndividualsDistinct`/`mergeMergingIndividualNodes`/`isIndividualNodesMergeable` | `completion/u08.rs` (`apply_atleast_rule`/`apply_atmost_rule` bodies + 5 `ht_*` cardinality helpers), `completion/selftest.rs` (W14 section) | ★ (3/3 W14 tests pass on ws; ≥n builds n pairwise-distinct successors over distinct-edges, ≤n merges-or-clashes via the real distinct hash) |
 | W3 | Strategy/ policies | `Reasoner/Kernel/Strategy/` | `completion/strategy.rs` | ✓ |
 | W3 | reconcile sibling stubs | (W3-RECONCILE, [api]) | `completion/pending.rs` | ✓ (1 stub: label-set `containsIndividualNodeConcepts` overload) |
 | W4 | saturation struct fields | `…SaturationTaskHandleAlgorithm.h` | `saturation/algorithm.rs` | ✓ (member fields + 7 rule-count getters + ctor `new()`) |
@@ -1526,6 +1527,136 @@ faithful edge-triggered-∀; super-role propagation
 (`create_all_dependency` / `create_some_dependency`) are threaded as the bare
 descriptor track point. Functional / at-most / nominal `∃` sub-paths (the merge +
 backend-cache + nominal subsystems) remain W3-DEFER.
+
+## W13 — classification via consistency (the real KM reasoning task)
+
+The port now does TBox CLASSIFICATION, reduced to consistency exactly as Konclude
+does it: a subsumption `A ⊑ B` w.r.t. a TBox holds IFF the concept `A ⊓ ¬B` is
+UNSATISFIABLE w.r.t. that TBox. No new calculus — this reuses the live W5-W12
+machinery (`add_concept_to_individual` seeds the probe, `run_completion_on` drives
+the AND / IMPL-unfold / clash rules, the verdict is read off the pending clash
+signal).
+
+- **Reusable harness (`completion/classify_test.rs`, `#[cfg(test)]`, NEW file wired
+  via `mod.rs`).** `is_unsatisfiable(env, seed, gcis)` builds a fresh root, adds the
+  probe concepts (`(concept, negated)`) to its label set, and RE-DRIVES the
+  completion to a fixpoint over the TBox implications; returns whether a Clash fired.
+  `Env::entails_subsumption(sub, super, gcis)` = `is_unsatisfiable([(sub,false),
+  (super,true)], gcis)`. GCIs are built as `CCIMPL` concepts (`A ⊑ B` == `¬A ⊔ B`,
+  operands `[head, ¬sub-trigger]`), conjunctive heads as `CCAND`.
+- **The reapply-queue stand-in.** Because `addConceptToReapplyQueue` is W3-DEFER, a
+  GCI fires only when its trigger is already present when the implication is
+  processed, and the concept queue is LIFO at the default priority — so a chain
+  `A ⊑ B ⊑ C` needs `B ⊑ C` re-processed after `B` is derived. `is_unsatisfiable`
+  therefore re-enqueues every GCI and re-runs the completion until a clash fires or
+  the root label-set count (`get_concept_count`) stops growing. Each pass advances
+  one link of an acyclic chain ⇒ fixpoint in ≤ `#GCIs` passes; sound + terminating.
+- **Per-probe reset.** Probes share one context, so each `is_unsatisfiable` first
+  `clear_pending_signal()` + `or_branch_stack.clear()` (a leftover clash from the
+  prior, positive-direction probe would otherwise be read as immediate unsat — the
+  bug that initially made the negative-direction asserts fail).
+- **FOUR classify tests, all PASS on ws.** `subsumption_direct` (`{A⊑B}`: `A⊑B`
+  holds, `B⊑A` does NOT), `subsumption_transitive` (`{A⊑B,B⊑C}`: `A⊑C` holds via the
+  unfold chain, `C⊑A` does NOT), `subsumption_via_conjunction` (`{A⊑B⊓C}`: both `A⊑C`
+  and `A⊑B` hold via the ⊓-rule), `unsatisfiable_concept` (`{A⊑B,A⊑¬B}`: `A`
+  unsatisfiable). `cargo test --release konclude_ht` runs them green (the only
+  failures in that module run are in-flight cardinality/transitive WIP in
+  `selftest.rs`, owned by a parallel effort — not the classify path).
+- **CONFIRMED: the port performs consistency-based subsumption** — real
+  classification, not just trivial clash-at-init verdicts.
+
+### W14-number — SHIQ qualified-cardinality core (2026-06-30): 3/3 tests pass on ws
+
+The ≥n R.C / ≤n R.C rules, realised over the W12 ∃/∀ live edge primitives. Edits
+confined to `completion/u08.rs` + `completion/selftest.rs` (no u03/u10 touched).
+
+- **`apply_atleast_rule` (≥n R.C, cardinality ≥ 2)** — the `todo!` is replaced by
+  `ht_create_distinct_successors` (port of `createDistinctSuccessorIndividuals`
+  cpp 22143–22186 + `createIndividualsDistinct` cpp 22413–22429): create n fresh
+  successors with the W12 inline realisation (`create_new_individual` +
+  `ht_install_role_successor_edge` + qualifier `add_concept_to_individual` +
+  `ht_reapply_universal_restrictions` + enqueue), then install pairwise
+  `CDistinctEdge`s into both endpoints' distinct hashes. Guarded by a minimal
+  `hasDistinctRoleSuccessorConcepts` (already ≥ n suitable successors ⇒ skip).
+  cardinality≤0 ⇒ no-op, ==1 ⇒ delegates to `apply_some_rule` (pre-existing).
+- **`apply_atmost_rule` (≤n R.C)** — the `todo!` is replaced by
+  `ht_apply_atmost_merge` (the merge/clash spine of `applyATMOSTRule` /
+  `mergeMergingIndividualNodes` cpp 14861–15006): gather the role-successors
+  carrying the qualifier; while they exceed the bound, merge the first MERGEABLE
+  pair via the u15 `merge_individual_node_into`, else — every excess pair is
+  pairwise-distinct (the leading distinct-test of `isIndividualNodesMergeable`
+  cpp 20714–20726) — raise the at-most CLASH. The unqualified ≤1 (functional)
+  case falls through to the same path with an empty (⊤) filter rather than the
+  PORT-PENDING `apply_functional_rule`.
+- **5 new `ht_*` helpers in u08:** `ht_make_individuals_distinct`,
+  `ht_create_distinct_successors`, `ht_role_successors_with_concepts`,
+  `ht_individuals_mergeable`, `ht_apply_atmost_merge`.
+- **Tests (W14 section of selftest.rs):** `at_least_creates_n_successors`
+  (≥2 R.C ⇒ exactly 2 distinct successors labelled C, CONSISTENT),
+  `at_most_merges_or_clashes` (≥2 R.C ⊓ ≤1 R.⊤ ⇒ CLASH — forced-distinct
+  successors over the bound), `cardinality_clash` (≥2 R.C ⊓ ≤1 R.C ⇒ CLASH).
+  All 3 pass; `cargo test --release konclude_ht::completion::selftest` runs them
+  green (the one red, `transitive_forall`, is the parallel W15-rbox effort's WIP).
+- **W14-DEFER (gap noted):** the full NN-rule / `applyNN` (nominal predecessor
+  pre-scan), global pairwise-blocking (mode-3), the branching-merging
+  restriction-spec + non-deterministic merge branch (`mConfPairwiseMerging`), the
+  ATLEAST/ATMOST dependency creators, the at-least/at-most fast-clash label walk,
+  and the role-succ-hash satellite iterators stay PORT-PENDING — the W14 port is
+  the minimal `choose`+merge realisation (deterministic greedy merge, faithful
+  distinct-edge clash). The merge path itself reuses the u15
+  `merge_individual_node_into`, whose concept-label merge (phase 4) + link
+  relocation (phase 5) remain W2-DEFER, so MERGE-to-consistent is not yet
+  exercised (the W14 tests all hit the forced-distinct clash path). Qualified
+  membership uses the real `getConceptTag` via the ontology arena (the label
+  set's `has_concept`/`concept_tag`/`con_des_negated` statics are W2-DEFER stubs
+  keyed by raw arena index — the negated-qualifier path inherits that gap).
+
+### W15-rbox the SHIQ RBox-side ∀/∃ propagation (2026-06-30): WIRED + 24/24 selftests pass, ws exit 0
+
+Added the role-side propagation that `∀`/`∃` depend on — **role hierarchy
+(`R ⊑ S`), inverse roles (`R⁻`), and transitive roles (`Trans(R)`)** — resolved
+entirely on the `∀`-rule LOOKUP side, so no change to the (parallel-owned) u08 edge
+install / reapply helpers was needed.
+
+- **Where wired:** `completion/u09.rs` `apply_all_rule` now collects its propagation
+  targets via the new `completion/u10.rs` `ht_all_rule_targets(source, role)` (replacing
+  the exact-match `ht_role_successor_links`). That helper resolves the RBox on lookup:
+  - **role hierarchy** — a forward edge `source --E--> succ` is an `S`-successor when
+    `E == S` or `S ∈ indirectSuperRoles(E)` (`role(E).has_indirect_super_role(S)`), so
+    `∀S.C` reaches every R-successor with `R ⊑ S`. (Konclude registers a distinct edge
+    per indirect super-role on install via `createNewIndividualsLinksReapplyed` walking
+    `role->getIndirectSuperRoleList()`; the port keeps one forward edge and resolves
+    super-roles here — the "resolve on lookup" option, chosen so u08 stays untouched.)
+  - **inverse roles** — `∀R⁻.C` reaches the predecessor via the node's ANCESTOR LINK:
+    the ancestor edge `pred --E--> source` makes `pred` an `E⁻`-successor of `source`,
+    matched when `role == E⁻` (or a super-role of `E⁻`). (Konclude installs the inverse
+    direction via the negated entries of the indirect-super-role list, i.e. a real
+    reverse edge `installIndividualNodeRoleLink(dst, src, …)`; the port reaches the single
+    predecessor through the ancestor link, faithful for the blockable-successor regime.)
+  - **transitive roles** — when `role.is_transitive()`, `apply_all_rule` propagates the
+    `∀role.C` concept ITSELF (not just the operands `C`) to each role-successor, so it
+    re-fires at the next hop (the SHIQ transitivity ∀-rule). KONCLUDE-PORT-NOTE[api]:
+    Konclude encodes this in the normaliser (a transitive role's `∀` operand list carries
+    a re-propagating `∀`); the port applies it inline per the W15 directive,
+    behaviour-equivalent.
+
+- **Tests added (`completion/selftest.rs`, `// W15` section), all PASS on ws:**
+  - `role_hierarchy_forall` — `R ⊑ S`, `∃R.D ⊓ ∀S.C`: the R-successor gains C via S. ✓
+  - `inverse_role_propagation` — `∃R.(∀R⁻.C)`: the `∀R⁻` restriction on the successor
+    propagates C back to the ROOT predecessor through the inverse role. ✓
+  - `transitive_forall` — `Trans(R)` over a pre-built chain `root --R--> m --R--> n`
+    with `∀R.C` on the root: C reaches BOTH m and n (m also receives the re-propagating
+    `∀R.C` itself). Driven in two phases + a `build_role_successor` helper because
+    existentials on SUCCESSOR nodes are not yet drained (`take_next_process_individual`'s
+    depth-expansion probes are PORT-PENDING, W8.1); the transitivity propagation under
+    test is independent of that gap. ✓
+
+- **Files touched:** `completion/u09.rs` (apply_all_rule), `completion/u10.rs`
+  (`ht_all_rule_targets` helper), `completion/selftest.rs` (3 tests + 2 helpers). u08
+  (edge install / reapply) was deliberately NOT modified (parallel-agent owned); the
+  inverse direction is therefore reached via the ancestor link rather than a real
+  reverse edge — equivalent for these fragments, a documented gap for the merge regime.
+  `cargo test --release konclude_ht` on ws: **24/24 pass, exit 0** (was 14 at W12).
 
 ## Build / validate
 

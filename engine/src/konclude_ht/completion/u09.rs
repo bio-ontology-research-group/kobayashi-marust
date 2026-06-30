@@ -119,9 +119,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // role-successor (cpp 16348–16392). The node-level role-successor iterators are
         // W2-DEFER stubs; the context-threaded `ht_role_successor_links` (u08) resolves
         // the successor-role hash for real.
+        //
+        // W15-rbox: the targets are now RBox-resolved by `ht_all_rule_targets` (u10):
+        //  - role HIERARCHY (`R ⊑ S`): an R-successor is also an S-successor, so a
+        //    `∀S.C` reaches it (Konclude registers an edge per indirect super-role on
+        //    install; the port resolves super-roles on lookup);
+        //  - INVERSE roles (`∀R⁻.C`): the predecessor reached via the node's ancestor
+        //    link (an R-edge `pred --R--> node` makes `pred` an R⁻-successor of `node`).
+        // TRANSITIVE roles (`Trans(S)`): in addition to the operands `C`, the `∀S.C`
+        // concept ITSELF is propagated to every S-successor so it re-fires at the next
+        // hop (the SHIQ transitivity ∀-rule). KONCLUDE-PORT-NOTE[api]: Konclude encodes
+        // this in the normaliser (the `∀` operand list of a transitive role carries a
+        // re-propagating `∀` concept) rather than inline in `applyALLRule`; the port
+        // applies it inline here per the W15 task directive, behaviour-equivalent.
         self.applied_all_rule_count += 1;
-        let role_successors = self.ht_role_successor_links(*process_indi, role, calc_alg_context);
-        for (_link, succ_indi) in role_successors {
+        let is_transitive: bool = calc_alg_context.ontology_arenas().role(role).is_transitive();
+        let role_targets = self.ht_all_rule_targets(*process_indi, role, calc_alg_context);
+        for succ_indi in role_targets {
             // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation — treated as false
             // (no restricted top-object-property propagation in this fragment).
             let mut loc_succ_indi: NodeId =
@@ -147,6 +161,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     self.add_concept_to_individual(
                         op_concept,
                         op_con_neg,
+                        &mut loc_succ_indi,
+                        dep_track_point,
+                        true,
+                        true,
+                        calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+            }
+            // W15-rbox transitivity: re-propagate `∀role.C` itself to the successor.
+            if is_transitive {
+                let has_all_self = {
+                    let ls: LabelSetId = calc_alg_context
+                        .process_context()
+                        .node(loc_succ_indi)
+                        .use_reapply_con_label_set;
+                    ls != Id::NONE
+                        && calc_alg_context
+                            .process_context()
+                            .label_set(ls)
+                            .has_concept(concept, negate)
+                };
+                if !has_all_self {
+                    self.add_concept_to_individual(
+                        concept,
+                        negate,
                         &mut loc_succ_indi,
                         dep_track_point,
                         true,

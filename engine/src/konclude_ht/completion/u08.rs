@@ -68,7 +68,7 @@
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{op, ConceptId, RoleId};
-use super::super::process::edge::IndividualLinkEdge;
+use super::super::process::edge::{DistinctEdge, IndividualLinkEdge};
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::{ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
@@ -642,6 +642,279 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
     }
 
+    // =======================================================================
+    // W14-number — the SHIQ qualified-cardinality core (≥n R.C / ≤n R.C),
+    // realised over the LIVE ∃/∀ edge primitives. These stand in for the
+    // PORT-PENDING `createDistinctSuccessorIndividuals` (cpp 22143–22186) +
+    // `createIndividualsDistinct` (cpp 22401–22429) and the merge/clash spine of
+    // `applyATMOSTRule` / `mergeMergingIndividualNodes` (cpp 14861–15006).
+    // KONCLUDE-PORT-NOTE[api]: the C++ rules funnel through the role-successor-hash
+    // satellite iterators + the branching-merging restriction-spec subsystem (W2/W3
+    // DEFER); the W14 port instead drives the same observable graph effect — n fresh
+    // pairwise-distinct successors for ≥n, and pair-merge-else-distinct-clash for ≤n —
+    // over the context-threaded node successor iterator + the real distinct-edge hash.
+    // =======================================================================
+
+    /// Make every pair in `indis` pairwise distinct via `CDistinctEdge`s installed in
+    /// both endpoints' distinct hashes. Port of `createIndividualsDistinct(indiList)`
+    /// (cpp 22413–22429).
+    pub fn ht_make_individuals_distinct(
+        &mut self,
+        indis: &[NodeId],
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        for i in 0..indis.len() {
+            for j in (i + 1)..indis.len() {
+                let a = indis[i];
+                let b = indis[j];
+                let a_id = calc_alg_context.process_context().node(a).individual_node_id();
+                let b_id = calc_alg_context.process_context().node(b).individual_node_id();
+                // new CDistinctEdge; initDistinctEdge(a, b, depTrackPoint).
+                let mut e = DistinctEdge::new();
+                e.set_source_individual(a);
+                e.set_destination_individual(b);
+                e.set_dependency_track_point(dep_track_point);
+                let edge = calc_alg_context.process_context_mut().alloc_distinct_edge(e);
+                // disHash1->insertDistinctIndividual(b_id, edge); disHash2->insert…(a_id, edge).
+                let dh_a = calc_alg_context.process_context_mut().node_distinct_hash(a);
+                calc_alg_context
+                    .process_context_mut()
+                    .distinct_hash_mut(dh_a)
+                    .insert_distinct_individual(b_id, edge);
+                let dh_b = calc_alg_context.process_context_mut().node_distinct_hash(b);
+                calc_alg_context
+                    .process_context_mut()
+                    .distinct_hash_mut(dh_b)
+                    .insert_distinct_individual(a_id, edge);
+            }
+        }
+    }
+
+    /// Create `cardinality` fresh `role`-successors of `source`, each labelled with the
+    /// qualifier `concept_linker` (polarity XOR `negate`), made PAIRWISE DISTINCT, then
+    /// enqueued. Port-faithful core of `createDistinctSuccessorIndividuals`
+    /// (cpp 22143–22186): the ∃-rule's inline successor realisation, looped n times,
+    /// followed by `createIndividualsDistinct` and the per-successor enqueue.
+    pub fn ht_create_distinct_successors(
+        &mut self,
+        source: NodeId,
+        role: RoleId,
+        concept_linker: &[NegLink<ConceptId>],
+        negate: bool,
+        dep_track_point: TrackPointId,
+        cardinality: Cint64,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let is_data_role: bool =
+            calc_alg_context.ontology_arenas().role(role).is_data_role();
+        let depth: Cint64 = calc_alg_context
+            .process_context()
+            .node(source)
+            .individual_ancestor_depth();
+        let mut succs: Vec<NodeId> = Vec::new();
+        // (1) create the n successors + install the R link-edge + the qualifier C.
+        for _ in 0..cardinality {
+            let mut succ: NodeId =
+                self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
+            let anc_link: EdgeId = self.ht_install_role_successor_edge(
+                source,
+                succ,
+                role,
+                dep_track_point,
+                calc_alg_context,
+            );
+            {
+                let n = calc_alg_context.process_context_mut().node_mut(succ);
+                n.set_ancestor_link(anc_link);
+                n.set_individual_ancestor_depth(depth + 1);
+            }
+            for nl in concept_linker {
+                self.add_concept_to_individual(
+                    nl.target,
+                    nl.negated ^ negate,
+                    &mut succ,
+                    dep_track_point,
+                    true,
+                    true,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
+            self.ht_reapply_universal_restrictions(
+                source,
+                &mut succ,
+                role,
+                dep_track_point,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            succs.push(succ);
+        }
+        // (2) createIndividualsDistinct(indiList): pairwise distinct edges.
+        self.ht_make_individuals_distinct(&succs, dep_track_point, calc_alg_context);
+        // (3) addIndividualToProcessingQueue(succIndi) for each.
+        for succ in succs {
+            self.add_individual_to_processing_queue(succ, calc_alg_context);
+            let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(iq)
+                .insert_indiviudal_process_node(succ);
+        }
+    }
+
+    /// The distinct `role`-successor nodes of `source` whose label set carries every
+    /// concept of `concept_linker` (polarity XOR `negate`). An empty `concept_linker`
+    /// (the unqualified ≤n R.⊤ / functional case) matches every successor. Port-faithful
+    /// core of `hasDistinctRoleSuccessorConcepts` / the at-most successor gather.
+    pub fn ht_role_successors_with_concepts(
+        &mut self,
+        source: NodeId,
+        role: RoleId,
+        concept_linker: &[NegLink<ConceptId>],
+        negate: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Vec<NodeId> {
+        // KONCLUDE-PORT-NOTE[api]: the label set is keyed by `CConcept::getConceptTag`,
+        // but `ReapplyConceptLabelSet::has_concept` / the `concept_tag` static are
+        // W2-DEFER stubs that key by the raw arena index (and `con_des_negated` is
+        // stubbed to `false`). To test qualifier membership reliably, resolve the real
+        // concept tag through the ontology arena and probe via `get_concept_descriptor_by_tag`
+        // (the same surface the selftests read the label set with). Negation matching is
+        // limited by the `con_des_negated` stub — positive qualifiers (the ≥n/≤n common
+        // case) match exactly; the negated-qualifier path inherits the W2-DEFER gap.
+        let _ = negate;
+        let tags: Vec<Cint64> = concept_linker
+            .iter()
+            .map(|nl| calc_alg_context.ontology_arenas().concept(nl.target).get_concept_tag())
+            .collect();
+        let mut out: Vec<NodeId> = Vec::new();
+        for (_link, succ) in self.ht_role_successor_links(source, role, calc_alg_context) {
+            if out.contains(&succ) {
+                continue;
+            }
+            let mut all = true;
+            if !tags.is_empty() {
+                let ls = calc_alg_context
+                    .process_context()
+                    .node(succ)
+                    .use_reapply_con_label_set;
+                if ls.is_none() {
+                    all = false;
+                } else {
+                    for &t in &tags {
+                        let mut cd: ConDescId = Id::NONE;
+                        let mut dtp: TrackPointId = TrackPointId::NONE;
+                        if !calc_alg_context
+                            .process_context()
+                            .label_set(ls)
+                            .get_concept_descriptor_by_tag(t, &mut cd, &mut dtp)
+                        {
+                            all = false;
+                            break;
+                        }
+                    }
+                }
+            }
+            if all {
+                out.push(succ);
+            }
+        }
+        out
+    }
+
+    /// Are `indi1` and `indi2` mergeable? `false` iff `indi1`'s active distinct hash
+    /// records `indi2` as `owl:differentFrom` (a distinct-edge). Port of the leading
+    /// distinct-test of `isIndividualNodesMergeable` (cpp 20714–20726).
+    pub fn ht_individuals_mergeable(
+        &self,
+        indi1: NodeId,
+        indi2: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        // disHash = indi1->getDistinctHash(false) (the active mUseDistinctHash).
+        let dh = calc_alg_context.process_context().node(indi1).use_distinct_hash;
+        if dh.is_none() {
+            return true;
+        }
+        let id2 = calc_alg_context.process_context().node(indi2).individual_node_id();
+        !calc_alg_context
+            .process_context()
+            .distinct_hash(dh)
+            .is_individual_distinct(id2)
+    }
+
+    /// The merge/clash spine of `applyATMOSTRule` / `mergeMergingIndividualNodes`
+    /// (cpp 14861–15006). Gather the `role`-successors carrying the qualifier, then while
+    /// they exceed the bound: merge the first MERGEABLE pair (`merge_individual_node_into`,
+    /// unit 15), else — every excess pair is pairwise-distinct — raise the at-most CLASH.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: the full NN-rule / global pairwise-blocking / branching
+    /// restriction-spec machinery (`mConfPairwiseMerging` / the non-deterministic merge
+    /// branch) stays W3-DEFER; this is the minimal `choose`+merge realisation the task
+    /// scopes — deterministic greedy merge, faithful distinct-edge clash.
+    pub fn ht_apply_atmost_merge(
+        &mut self,
+        process_indi: &mut NodeId,
+        role: RoleId,
+        concept_linker: &[NegLink<ConceptId>],
+        negate: bool,
+        cardinality: Cint64,
+        dep_track_point: TrackPointId,
+        con_des: ConDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let mut succs = self.ht_role_successors_with_concepts(
+            *process_indi,
+            role,
+            concept_linker,
+            negate,
+            calc_alg_context,
+        );
+        while (succs.len() as Cint64) > cardinality {
+            // find a mergeable pair (min-id merge target is the C++ refinement; the
+            // first mergeable pair is the minimal faithful choose).
+            let mut pair: Option<(usize, usize)> = None;
+            'outer: for i in 0..succs.len() {
+                for j in (i + 1)..succs.len() {
+                    if self.ht_individuals_mergeable(succs[i], succs[j], calc_alg_context) {
+                        pair = Some((i, j));
+                        break 'outer;
+                    }
+                }
+            }
+            match pair {
+                Some((i, j)) => {
+                    // merge succs[j] INTO succs[i].
+                    let into = succs[i];
+                    let from = succs[j];
+                    self.merge_individual_node_into(into, from, dep_track_point, calc_alg_context);
+                    succs.remove(j);
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+                None => {
+                    // every excess successor is pairwise-distinct ⇒ at-most violated.
+                    let clash = self.create_clashed_concept_descriptor(
+                        Id::NONE,
+                        process_indi,
+                        con_des,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                    calc_alg_context.raise_clash(clash);
+                    return;
+                }
+            }
+        }
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyVALUERule`.
     ///
     /// PORT-PENDING: ∀-value to a named nominal. Faithful structure (cpp 14608–14685):
@@ -865,9 +1138,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             calc_alg_context.raise_clash(clash);
             return;
         } else if cardinality == 1 && !has_operands {
-            // unqualified at-most-1 ≡ functional.
-            self.apply_functional_rule(process_indi, con_pro_des, negate, calc_alg_context);
-            return;
+            // KONCLUDE-PORT-NOTE[api]: Konclude delegates unqualified at-most-1 to
+            // applyFUNCTIONALRule (the NN-rule pre-scan + min-id merge target). That rule
+            // is PORT-PENDING, so the W14 port handles the functional case uniformly
+            // through the generic at-most merge/clash path below with an empty (⊤)
+            // qualifier filter (every R-successor counts). The NN-rule for nominal
+            // predecessors stays W3-DEFER. Fall through (no early return).
         }
         if self.conf_sat_exp_cached_merg_absorp
             && calc_alg_context
@@ -888,18 +1164,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
             return;
         }
-        let _ = role;
-        // PORT-PENDING (remainder): the role-successor-hash satellite + its iterators
-        // (`getReapplyRoleSuccessorHash` / `getRoleSuccessorLinkIterator` /
-        // `getRoleSuccessorHistoryLinkIterator`, W2-DEFER), the at-most fast-clash
-        // label walk (`mConfAtleastAtmostFastClashCheck`), the ATMOST /
-        // non-deterministic dependency creators (units 28/29), the branching-merging
-        // restriction-spec allocation, the merge subsystem
-        // (`initializeMergingIndividualNodes`, `qualifyMergingIndividualNodes`,
-        // `mergeMergingIndividualNodes[Pairwise]`, units 12–15), the
-        // unsatisfiable-cache retrieval strategy (W6 Strategy) and the trailing
-        // `addConceptToReapplyQueue` — none ported.
-        todo!("W3-DEFER: applyATMOSTRule remainder — role-succ-hash iterators / merge subsystem / restriction-spec alloc / unsat-cache unported");
+        let _ = proc_rest;
+        // W14-number: the merge/clash spine, over the live role-successor iterator +
+        // the real distinct-edge hash. conceptOpLinkerIt = concept->getOperandList()
+        // (the at-most qualifier C; empty ⇒ unqualified/functional). The role-succ-hash
+        // satellite iterators (W2-DEFER), the at-most fast-clash label walk, the ATMOST /
+        // non-deterministic dependency creators + branching-merging restriction-spec, the
+        // unsat-cache retrieval strategy and the trailing `addConceptToReapplyQueue` stay
+        // PORT-PENDING (KONCLUDE-PORT-NOTE on `ht_apply_atmost_merge`).
+        let concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+        self.ht_apply_atmost_merge(
+            process_indi,
+            role,
+            &concept_op_linker,
+            negate,
+            cardinality,
+            dep_track_point,
+            con_des,
+            calc_alg_context,
+        );
     }
 
     // =======================================================================
@@ -974,14 +1261,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 );
                 return;
             }
-            let _ = role;
-            // PORT-PENDING (cardinality>=2 remainder): the at-least fast-clash label
-            // walk (`mConfAtleastAtmostFastClashCheck`), the unsatisfiable-cache
-            // retrieval strategy (W6 Strategy), `++mAppliedATLEASTRuleCount`,
-            // `createATLEASTDependency`, `hasDistinctRoleSuccessorConcepts` +
-            // `createDistinctSuccessorIndividuals` (distinct-successor generation,
-            // unit 27) and the per-successor processing-queue insertion — none ported.
-            todo!("W3-DEFER: applyATLEASTRule cardinality>=2 — distinct-successor generation / fast-clash label set / unsat-cache unported");
+            // W14-number: distinct-successor generation, over the live ∃-rule
+            // primitives. conceptOpLinkerIt = concept->getOperandList() (the qualifier C).
+            let concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            // alreadyExistSuitableSuccessors = hasDistinctRoleSuccessorConcepts(...) —
+            // if `cardinality` distinct R-successors already carry C, nothing to do.
+            let existing = self.ht_role_successors_with_concepts(
+                *process_indi,
+                role,
+                &concept_op_linker,
+                negate,
+                calc_alg_context,
+            );
+            if (existing.len() as Cint64) >= cardinality {
+                return;
+            }
+            // PORT-PENDING: the at-least fast-clash label walk
+            // (`mConfAtleastAtmostFastClashCheck`), the unsat-cache retrieval strategy
+            // (W6 Strategy) and `createATLEASTDependency` stay deferred.
+            self.applied_atleast_rule_count += 1; // ++mAppliedATLEASTRuleCount
+            self.ht_create_distinct_successors(
+                *process_indi,
+                role,
+                &concept_op_linker,
+                negate,
+                dep_track_point,
+                cardinality,
+                calc_alg_context,
+            );
         }
     }
 

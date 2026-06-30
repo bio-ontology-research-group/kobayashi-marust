@@ -937,3 +937,471 @@ fn exists_all_clash() {
         other => panic!("expected a Clash signal, got {:?}", other),
     }
 }
+
+// ===========================================================================
+// W14-number: the SHIQ qualified-cardinality core (≥n R.C / ≤n R.C). ≥n builds
+// n fresh PAIRWISE-DISTINCT successors each labelled C; ≤n merges or, when the
+// successors are forced distinct, CLASHES. Drives end-to-end through
+// `run_completion_on`.
+// ===========================================================================
+
+/// All distinct `role`-successor nodes of `node` (via the algorithm's live
+/// role-successor link iterator).
+fn role_successors(env: &SelfTestEnv, node: NodeId, role: super::super::model::RoleId) -> Vec<NodeId> {
+    let mut out: Vec<NodeId> = Vec::new();
+    for (_link, succ) in env.algo.ht_role_successor_links(node, role, &env.ctx) {
+        if !out.contains(&succ) {
+            out.push(succ);
+        }
+    }
+    out
+}
+
+/// `≥2 R.C` over the drive loop: after the run there are exactly TWO R-successor
+/// nodes, each labelled C, pairwise DISTINCT, and the graph is CONSISTENT.
+#[test]
+fn at_least_creates_n_successors() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(160);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ≥2 R.C : CCATLEAST, role R, parameter 2, operand list [C].
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(260);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(consistent, "≥2 R.C is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash expected for ≥2 R.C");
+
+    let succs = role_successors(&env, root, role_r);
+    assert_eq!(
+        succs.len(),
+        2,
+        "the ≥2-rule must create exactly two R-successors (got {})",
+        succs.len()
+    );
+    for &s in &succs {
+        assert!(
+            label_set_has_tag(&mut env, s, 160),
+            "each ≥n successor must carry the qualifier C (tag 160)"
+        );
+    }
+    assert!(
+        !env.algo.ht_individuals_mergeable(succs[0], succs[1], &env.ctx),
+        "the two ≥n successors must be pairwise distinct (a distinct-edge links them)"
+    );
+}
+
+/// `≥2 R.C ⊓ ≤1 R.⊤` over the drive loop. ≥2 forces two DISTINCT R-successors;
+/// the unqualified ≤1 (functional) then sees two distinct R-successors over the
+/// bound and they cannot merge ⇒ CLASH. (The faithful Konclude outcome: forced
+/// distinct successors over an at-most bound are inconsistent, not merged.)
+#[test]
+fn at_most_merges_or_clashes() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(161);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(261);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ≤1 R.⊤ : CCATMOST, role R, parameter 1, NO operands (unqualified / functional).
+    let atmost_1_top = {
+        let mut c = Concept::new();
+        c.set_concept_tag(262);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+
+    // run 1: ≥2 R.C creates the two distinct successors.
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_root_immediate(&mut env, root);
+    let consistent1 = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent1, "≥2 R.C alone is consistent");
+    assert_eq!(role_successors(&env, root, role_r).len(), 2, "two successors after ≥2");
+
+    // run 2: ≤1 R.⊤ now sees two distinct R-successors over the bound ⇒ CLASH.
+    seed_concept_on_queue(&mut env, root, atmost_1_top);
+    seed_root_immediate(&mut env, root);
+    let consistent2 = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(
+        !consistent2,
+        "≥2 R.C ⊓ ≤1 R.⊤ is INCONSISTENT (two forced-distinct successors over the at-most bound)"
+    );
+    assert!(env.ctx.has_pending_signal(), "the at-most violation must raise a clash");
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
+/// `≥2 R.C ⊓ ≤1 R.C` over the drive loop: the two distinct R-successors both carry
+/// C, so the QUALIFIED ≤1 R.C sees them over the bound and — being pairwise distinct
+/// — raises a CLASH ⇒ INCONSISTENT.
+#[test]
+fn cardinality_clash() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(162);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(263);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ≤1 R.C : CCATMOST, role R, parameter 1, operand list [C] (qualified).
+    let atmost_1_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(264);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_root_immediate(&mut env, root);
+    let consistent1 = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent1, "≥2 R.C alone is consistent");
+    assert_eq!(role_successors(&env, root, role_r).len(), 2, "two successors after ≥2");
+
+    seed_concept_on_queue(&mut env, root, atmost_1_rc);
+    seed_root_immediate(&mut env, root);
+    let consistent2 = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(
+        !consistent2,
+        "≥2 R.C ⊓ ≤1 R.C with the two successors distinct is INCONSISTENT"
+    );
+    assert!(env.ctx.has_pending_signal(), "the qualified at-most violation must clash");
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
+// ===========================================================================
+// W15-rbox: the SHIQ RBox-side propagation that ∀/∃ depend on — role HIERARCHY
+// (`R ⊑ S`), INVERSE roles (`R⁻`), and TRANSITIVE roles (`Trans(R)`). Resolved by
+// `apply_all_rule` (u09) via the `ht_all_rule_targets` lookup (u10): a ∀S restriction
+// reaches R-successors with `R ⊑ S`, the inverse predecessor via the ancestor link,
+// and re-propagates itself across transitive roles. Drives end-to-end through
+// `run_completion_on`.
+// ===========================================================================
+
+/// Seed a concept-process descriptor for `concept` on `root`'s concept queue at an
+/// explicit priority `pri` (higher = taken first). Lets a test order ∃ before ∀.
+fn seed_concept_on_queue_pri(env: &mut SelfTestEnv, root: NodeId, concept: ConceptId, pri: f64) {
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+    let con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(ConceptDescriptor::new());
+    env.ctx.process_context_mut().con_desc_mut(con_des).concept = concept;
+    let mut cpd_val = ConceptProcessDescriptor::new();
+    cpd_val.concept_des = con_des;
+    cpd_val.priority = ConceptProcessPriority::new(pri);
+    let cpd = env.ctx.process_context_mut().alloc_con_proc_desc(cpd_val);
+    ConceptProcessingQueue::insert_concept_process_descriptor(
+        queue,
+        cpd,
+        env.ctx.process_context_mut(),
+    );
+}
+
+/// `R ⊑ S`, root `∃R.D ⊓ ∀S.C`: the ∃ builds an R-successor; the ∀S restriction must
+/// reach it BECAUSE the R-edge is also an S-edge (`R ⊑ S`). After the run the
+/// R-successor carries BOTH D (from ∃R.D) and C (from ∀S.C via the hierarchy).
+#[test]
+fn role_hierarchy_forall() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+    use super::super::model::substrate::NegLink;
+
+    let mut env = build_env();
+    // role S, then role R with `R ⊑ S` (S in R's indirect-super-role list).
+    let role_s = {
+        let mut r = Role::new();
+        r.set_role_tag(2);
+        env.ctx.ontology_arenas_mut().alloc_role(r)
+    };
+    let role_r = {
+        let mut r = Role::new();
+        r.set_role_tag(1);
+        r.add_indirect_super_role_linker(NegLink { target: role_s, negated: false });
+        env.ctx.ontology_arenas_mut().alloc_role(r)
+    };
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(160);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(161);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(260);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∀S.C : CCALL, role S, operand [C].
+    let all_sc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(261);
+        c.set_operator_code(op::CCALL);
+        c.set_role(role_s);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    // ∃R.D at higher priority (12) so the R-successor exists when ∀S.C (8) is processed.
+    seed_concept_on_queue_pri(&mut env, root, some_rd, 12.0);
+    seed_concept_on_queue_pri(&mut env, root, all_sc, 8.0);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent, "∃R.D ⊓ ∀S.C with R ⊑ S is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash expected");
+
+    let succ = first_role_successor(&env, root);
+    assert!(
+        label_set_has_tag(&mut env, succ, 160),
+        "the R-successor must carry D (tag 160) from ∃R.D"
+    );
+    assert!(
+        label_set_has_tag(&mut env, succ, 161),
+        "∀S.C must reach the R-successor via the hierarchy R ⊑ S (tag 161)"
+    );
+}
+
+/// `R⁻` inverse, root `∃R.(∀R⁻.C)`: the ∃ builds an R-successor whose qualifier is
+/// `∀R⁻.C`; since the R-edge root→succ is an R⁻-edge succ→root, that ∀R⁻ restriction
+/// must propagate C BACK to the root (the predecessor). After the run the ROOT carries
+/// C, reached purely through the inverse role.
+#[test]
+fn inverse_role_propagation() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_rinv = {
+        let mut r = Role::new();
+        r.set_role_tag(4);
+        env.ctx.ontology_arenas_mut().alloc_role(r)
+    };
+    let role_r = {
+        let mut r = Role::new();
+        r.set_role_tag(3);
+        r.set_inverse_role(role_rinv);
+        env.ctx.ontology_arenas_mut().alloc_role(r)
+    };
+    env.ctx.ontology_arenas_mut().role_mut(role_rinv).set_inverse_role(role_r);
+
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(162);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∀R⁻.C : CCALL, role R⁻, operand [C].
+    let all_rinv_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(262);
+        c.set_operator_code(op::CCALL);
+        c.set_role(role_rinv);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∃R.(∀R⁻.C) : CCSOME, role R, operand [∀R⁻.C].
+    let some_r_all = {
+        let mut c = Concept::new();
+        c.set_concept_tag(263);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(all_rinv_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, some_r_all);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent, "∃R.(∀R⁻.C) is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash expected");
+
+    assert!(
+        label_set_has_tag(&mut env, root, 162),
+        "∀R⁻.C on the successor must propagate C back to the root predecessor (tag 162)"
+    );
+}
+
+/// Build a fresh `role`-successor of `parent`: a new node, the directed `parent
+/// --role--> child` link-edge installed into `parent`'s successor-role hash, plus the
+/// child's ancestor link / depth — the same wiring `apply_some_rule` performs, exposed
+/// so a test can pre-build a role CHAIN. (Needed because existentials on SUCCESSOR
+/// nodes are not yet drained — `take_next_process_individual`'s depth-expansion probes
+/// are PORT-PENDING (W8.1) — so a nested `∃R.(∃R.D)` cannot grow the second hop on its
+/// own. The RBox transitivity rule under test is independent of that gap.)
+fn build_role_successor(
+    env: &mut SelfTestEnv,
+    parent: NodeId,
+    role: super::super::model::RoleId,
+) -> NodeId {
+    let child = env
+        .algo
+        .create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
+    let link = env.algo.ht_install_role_successor_edge(
+        parent,
+        child,
+        role,
+        TrackPointId::NONE,
+        &mut env.ctx,
+    );
+    let depth = env
+        .ctx
+        .process_context()
+        .node(parent)
+        .individual_ancestor_depth();
+    {
+        let n = env.ctx.process_context_mut().node_mut(child);
+        n.set_ancestor_link(link);
+        n.set_individual_ancestor_depth(depth + 1);
+    }
+    child
+}
+
+/// `Trans(R)` over a pre-built chain `root --R--> m --R--> n`, with `∀R.C` on the root:
+/// the transitivity ∀-rule must re-propagate `∀R.C` ITSELF (not just `C`) along R, so
+/// `C` reaches BOTH the direct R-successor `m` AND the R-R-successor `n`. Driven in two
+/// phases (root, then m) because successor existential/queue draining is a separate
+/// unported subsystem (W8.1); the transitivity propagation itself is what is exercised.
+#[test]
+fn transitive_forall() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = {
+        let mut r = Role::new();
+        r.set_role_tag(5);
+        r.set_transitive(true);
+        env.ctx.ontology_arenas_mut().alloc_role(r)
+    };
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(164);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∀R.C : CCALL, role R, operand [C].
+    let all_r_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(266);
+        c.set_operator_code(op::CCALL);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    // pre-build the two-hop R-chain root --R--> m --R--> n.
+    let m = build_role_successor(&mut env, root, role_r);
+    let n = build_role_successor(&mut env, m, role_r);
+
+    // phase 1: ∀R.C on the root → reaches m (C + the re-propagating ∀R.C).
+    seed_concept_on_queue(&mut env, root, all_r_c);
+    seed_root_immediate(&mut env, root);
+    let consistent1 = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent1, "phase 1 is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash in phase 1");
+    assert!(
+        label_set_has_tag(&mut env, m, 164),
+        "the direct R-successor m must carry C (tag 164)"
+    );
+    assert!(
+        label_set_has_tag(&mut env, m, 266),
+        "the transitivity ∀-rule must re-propagate ∀R.C ITSELF (tag 266) onto m"
+    );
+
+    // phase 2: drive m → the re-propagated ∀R.C on m reaches the R-R-successor n.
+    seed_root_immediate(&mut env, m);
+    let consistent2 = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent2, "phase 2 is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash in phase 2");
+    assert!(
+        label_set_has_tag(&mut env, n, 164),
+        "the R-R-successor n must carry C (tag 164) via the transitivity ∀-rule"
+    );
+}

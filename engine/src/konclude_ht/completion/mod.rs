@@ -65,3 +65,5 @@ pub mod pending;   // W3-RECONCILE: minimal PORT-PENDING sibling stubs (api gaps
 
 #[cfg(test)]
 mod selftest;      // W5: the first behavioural run — trivial consistency verdicts
+#[cfg(test)]
+mod classify_test; // W13: classification via consistency (subsumption = unsat probe)
