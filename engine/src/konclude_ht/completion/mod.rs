@@ -62,3 +62,6 @@ pub mod u34;
 pub mod u35;
 pub mod u36;
 pub mod pending;   // W3-RECONCILE: minimal PORT-PENDING sibling stubs (api gaps)
+
+#[cfg(test)]
+mod selftest;      // W5: the first behavioural run — trivial consistency verdicts

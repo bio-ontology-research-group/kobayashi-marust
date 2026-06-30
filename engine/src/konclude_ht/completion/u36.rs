@@ -91,7 +91,9 @@
 
 use super::super::model::substrate::{Cint64, Id, INVALID, NegLink};
 use super::super::model::ConceptId;
+use super::super::process::descriptor::ClashDescriptor;
 use super::super::process::ls1::CondensedReapplyQueueIterator;
+use super::super::process::satellites::ReapplyConceptLabelSet;
 use super::super::process::{ConDescId, EdgeId, LabelSetId, NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
@@ -359,14 +361,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // conProQueue = processIndi->getConceptProcessingQueue(true);
         // conLabelSet = processIndi->getReapplyConceptLabelSet(true);
+        // W5: the create branch's arena allocation cannot run from the superseded
+        // `&mut self` node getters (they return `Id::NONE`); route through the
+        // context-threaded lazy getters (W3b/W8.1) that DO allocate.
         let con_pro_queue = calc_alg_context
             .process_context_mut()
-            .node_mut(*process_indi)
-            .get_concept_processing_queue(true);
+            .node_concept_processing_queue(*process_indi, true);
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*process_indi)
-            .get_reapply_concept_label_set(true);
+            .node_reapply_concept_label_set(*process_indi);
         // KONCLUDE_ASSERT_X(dependencyTrackPoint / addingConcept) — debug asserts, elided.
 
         // conceptDescriptor = createConceptDescriptor(ctx);
@@ -896,16 +899,41 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // contained = conLabelSet->insertConceptGetClash(conceptDescriptor, dependencyTrackPoint,
         //                 reapplyIt, &clashedConceptDescriptor, &clashedDependencyTrackPoint);
-        let contained = calc_alg_context
-            .process_context_mut()
-            .label_set_mut(con_label_set)
-            .insert_concept_get_clash(
+        // W5: resolve the descriptor's real concept tag + negation against the arenas
+        // (the label set cannot do it from `&mut self`), lift the label set out of the
+        // arena so the `&ProcessContext` descriptor-negation resolver is free of the
+        // `&mut` borrow, run the faithful clash insert, then restore the label set.
+        let _ = reapply_it; // reapply-queue out-iterator deferred (queue is a stub).
+        let new_concept = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .get_concept();
+        let new_negated = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .is_negated();
+        let new_con_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(new_concept)
+            .get_concept_tag();
+        let mut lifted_label_set = std::mem::replace(
+            calc_alg_context.process_context_mut().label_set_mut(con_label_set),
+            ReapplyConceptLabelSet::default(),
+        );
+        let contained = {
+            let pc = calc_alg_context.process_context();
+            lifted_label_set.insert_concept_get_clash_resolved(
                 concept_descriptor,
-                dependency_track_point,
-                reapply_it,
+                new_con_tag,
+                new_negated,
+                &|d| pc.con_desc(d).is_negated(),
                 Some(&mut clashed_concept_descriptor),
                 Some(&mut clashed_dependency_track_point),
-            );
+            )
+        };
+        *calc_alg_context
+            .process_context_mut()
+            .label_set_mut(con_label_set) = lifted_label_set;
 
         if !contained {
             // if (allowInitalization && !processIndi->getIndividualInitializationConcept())
@@ -944,11 +972,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   throw CCalculationClashProcessingException(clashConDesLinker);
         // }
         if contained && clashed_concept_descriptor != ConDescId::NONE {
-            // W3-DEFER[exceptions]: the two `createClashedConceptDescriptor` links (clash
-            //   unit) + `throw CCalculationClashProcessingException` — clash-exception channel
-            //   not yet established. The clash IS detected (the guard is live); the non-local
-            //   throw is deferred. (The KTRACE debug print is elided.)
-            let _ = clashed_dependency_track_point;
+            // W5: un-defer the clash throw. The C++ allocates two
+            // `CClashedConceptDescriptor`s (for the new + the contained descriptor),
+            // chains them, and `throw CCalculationClashProcessingException(clashDes1)`.
+            // The port allocates ONE clash descriptor carrying the clash dependency
+            // track point and raises the pending-signal stand-in for the throw
+            // (`completion/clash.rs`); `handleTask`'s drain converts it to the clash
+            // catch. The full two-link clash-descriptor chain (for dependency
+            // backtracking) lands with the clash unit; the signal + verdict are live.
+            let clash = calc_alg_context
+                .process_context_mut()
+                .alloc_clash_desc(ClashDescriptor::new());
+            calc_alg_context
+                .process_context_mut()
+                .clash_desc_mut(clash)
+                .set_dependency_track_point(clashed_dependency_track_point);
+            calc_alg_context.raise_clash(clash);
         }
 
         // (the large commented-out biotop/amount-of-substance debug block in the C++ is

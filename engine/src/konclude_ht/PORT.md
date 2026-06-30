@@ -1208,6 +1208,55 @@ getters, `continue_individual_processing` returning `false`) is now REAL. New fi
   (51 benign warnings, dead-code in not-yet-called queue ops). Completion /
   saturation / cache / task / calculation / model untouched and still compile.
 
+### W5 FIRST RUN — the port produces its first consistency verdicts (2026-06-30): 3/3 TESTS PASS on ws
+
+The behavioural milestone: the kernel RUNS for the first time and returns trivial
+consistency verdicts. `cargo test --release konclude_ht` on ws = **6 passed / 0
+failed** (3 new `completion::selftest` + 3 pre-existing `model::op`); full lib
+build exit 0.
+
+- **Seed primitives un-defered (gap a + b):**
+  - `completion/u36.rs` `add_concept_to_individual` now routes the node's concept
+    queue + reapply label set through the W3b/W8.1 context-threaded lazy getters
+    (`ctx.node_concept_processing_queue(node,true)` /
+    `ctx.node_reapply_concept_label_set(node)`) instead of the superseded
+    `&mut self` node getters that returned `Id::NONE` (they cannot run the arena
+    allocation) — so the label set + concept queue actually materialise.
+  - `process/queues.rs` `CConceptProcessingQueue::insert_concept_process_descriptor`
+    / `take_next_concept_descriptor_process` (already real, W8.1) are exercised
+    directly in `concept_queue_insert_primitive` over a freshly-allocated
+    `CConceptProcessDescriptor` (gap a — the seed the future drive loop pops).
+- **Clash detection + raise made live (the verdict):** `insert_concept_get_clash`'s
+  W2-DEFER shims keyed the label-set map by the descriptor id (`con_des.raw`) and
+  read negation as a constant `false`, so A vs ¬A never collided/compared. New
+  `process/ls1.rs` `insert_concept_get_clash_resolved` takes the descriptor's REAL
+  concept tag + negation (resolved by the caller, which holds the context) + a
+  `desc_negated` resolver for the stored descriptor — the faithful C++
+  `insertConceptGetClash` keying/polarity-compare. `u36`
+  `insert_concepts_to_individual_concept_set` resolves the tag, lifts the label set
+  out of the arena (`mem::replace`, the established pattern) so the
+  `&ProcessContext` resolver is free of the `&mut` borrow, runs the clash insert,
+  restores the label set, and on a detected clash allocates a `CClashedDependency
+  Descriptor` and `raise_clash`es the pending signal (the `clash.rs` stand-in for
+  `throw CCalculationClashProcessingException`).
+- **Thin test entry (gap c + d):** `completion/selftest.rs` (`#[cfg(test)]`, wired
+  in `completion/mod.rs`) bypasses the still-`W3-DEFER` Task/scheduler adapter and
+  drives a constructed `CalculationAlgorithmContextBase` directly. It hand-builds a
+  one-concept TBox, allocates a root `IndividualProcessNode` + registers it in the
+  databox node vector (minimal `initializeCompletionGraph`/`buildCompletionGraph`),
+  then `addConceptToIndividual`s the test concepts. Verdict = the per-task pending
+  signal (handleTask's catch semantics): `sat_single_atomic_concept_is_consistent`
+  (A → no signal = CONSISTENT/COMPLETE), `clash_a_and_not_a_is_inconsistent`
+  (A + ¬A → pending `Clash` = INCONSISTENT), `concept_queue_insert_primitive`.
+- **What remains for a FULL drive loop:** the saturation loop in `handleTask`
+  (`take_next_process_individual` → `individual_node_initializing` →
+  rule drain) is still gated by the `individualNodeInitializing` `todo!`
+  (`completion/u03.rs:175`) + the `satCalcTask` task-adapter seed (`u01`
+  short-circuits on `sat_calc_task == Id::NONE`). The W5 verdict is the
+  clash-at-initialization path, which does not need either; the next wave un-defers
+  `individual_node_initializing` (or seeds a real `satCalcTask`) to run the rule
+  engine over the concept queue.
+
 ## Build / validate
 
 Never build on the laptop. Sync to `ws` and `cargo build --release` there.

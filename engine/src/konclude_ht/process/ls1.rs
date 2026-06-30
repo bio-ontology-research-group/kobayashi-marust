@@ -529,6 +529,76 @@ impl ReapplyConceptLabelSet {
         }
     }
 
+    /// W5 un-defer of `insertConceptGetClash` with the descriptor arena resolved.
+    ///
+    /// The plain `insert_concept_get_clash` keys the map by the local `con_des_tag`
+    /// shim (the descriptor id) and reads `con_des_negated` as a constant `false`,
+    /// because `CReapplyConceptLabelSet` cannot resolve a `ConDescId` against the
+    /// per-test descriptor arena from `&mut self`. For the W5 behavioural milestone
+    /// the caller (`insert_concepts_to_individual_concept_set`, which DOES hold the
+    /// context) resolves the new descriptor's real concept tag + negation and passes
+    /// a `desc_negated` resolver for the EXISTING stored descriptor, so the clash
+    /// branch (`getNegation() != getNegation()`) becomes live and faithful. The
+    /// map-keying-by-concept-tag and the polarity compare are exactly the C++
+    /// `insertConceptGetClash` (lines 200–280); only the deref source moved from the
+    /// W2-DEFER shims to the threaded resolvers.
+    pub fn insert_concept_get_clash_resolved(
+        &mut self,
+        concept_descriptor: ConDescId,
+        con_tag: Cint64,
+        negated: bool,
+        desc_negated: &dyn Fn(ConDescId) -> bool,
+        clashed_con_des: Option<&mut ConDescId>,
+        clashed_dep_track_point: Option<&mut TrackPointId>,
+    ) -> bool {
+        let add_present = self.additional_is_present();
+        let add_opt = if add_present {
+            self.additional_get_cloned(con_tag)
+        } else {
+            None
+        };
+        let existed = self.concept_des_dep_map.contains_key(&con_tag);
+        let contained_con_des_dep_data =
+            self.concept_des_dep_map
+                .entry(con_tag)
+                .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
+                    concept_descriptor,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
+                });
+        let mut contains_already = existed;
+        if !contains_already && add_present {
+            if let Some(add) = add_opt {
+                if add.concept_descriptor.is_some() || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
+                {
+                    *contained_con_des_dep_data = add;
+                    contains_already = true;
+                }
+            }
+        }
+        if contained_con_des_dep_data.concept_descriptor.is_none() {
+            contained_con_des_dep_data.concept_descriptor = concept_descriptor;
+            contains_already = false;
+        }
+        if contains_already {
+            let contains_con_des = contained_con_des_dep_data.concept_descriptor;
+            // CConceptDescriptor::getNegation() of the stored vs the new descriptor.
+            if desc_negated(contains_con_des) != negated {
+                if let Some(out) = clashed_con_des {
+                    *out = contains_con_des;
+                }
+                if let Some(out) = clashed_dep_track_point {
+                    *out = Self::con_des_dep_track_point(contains_con_des);
+                }
+            }
+            true
+        } else {
+            self.concept_count += 1;
+            // W2-DEFER[api]: mConceptFlags/mConceptSignature/mConceptStructure adds.
+            self.concept_des_linker = concept_descriptor;
+            false
+        }
+    }
+
     /// Port of `insertConceptReturnClash` → `CClashedConceptDescriptor*`
     /// (`ClashDescId::NONE` == `nullptr`).
     ///
