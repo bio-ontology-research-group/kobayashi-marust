@@ -938,6 +938,135 @@ fn exists_all_clash() {
     }
 }
 
+/// NESTED ∃ GROWS over the drive loop (W16-successor-drain): a root with
+/// `∃R.(∃R.D)` on its concept queue. The ∃-rule builds the first successor `n1`
+/// labelled `∃R.D`; because `n1` is now routed onto the DEPTH processing queue,
+/// `take_next_process_individual` returns it with `min = DETERMINISTIC (4)`, so its
+/// own `∃R.D` (priority 4) DRAINS and builds the SECOND hop `n2` labelled `D`. After
+/// the run there are two successor hops root --R--> n1 --R--> n2, n2 carries D, and
+/// the graph is CONSISTENT. This is the multi-node growth the immediate-queue routing
+/// (min = 8) silently blocked.
+#[test]
+fn nested_exists_grows() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(170);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∃R.D : CCSOME, role R, operand [D].
+    let some_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(270);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∃R.(∃R.D) : CCSOME, role R, operand [∃R.D].
+    let some_r_some_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(271);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(some_rd, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, some_r_some_rd);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(consistent, "∃R.(∃R.D) is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash expected for ∃R.(∃R.D)");
+
+    // first hop: root --R--> n1.
+    let n1 = first_role_successor(&env, root);
+    // second hop: n1 --R--> n2 — exists only if n1's own ∃R.D drained.
+    let n2 = first_role_successor(&env, n1);
+    assert_ne!(n1, n2, "the second hop must be a distinct fresh successor");
+    assert!(
+        label_set_has_tag(&mut env, n2, 170),
+        "the nested ∃ must grow a SECOND successor n2 labelled D (tag 170)"
+    );
+}
+
+/// NESTED ∃ CLASH at depth 2 (W16-successor-drain): a root with `∃R.(∃R.(D ⊓ ¬D))`.
+/// The drive grows root --R--> n1 --R--> n2, and the innermost qualifier `D ⊓ ¬D` on
+/// `n2` unfolds (the ⊓-rule) to `D` and `¬D`, whose polarity compare raises a CLASH at
+/// depth 2 ⇒ the graph is INCONSISTENT. Proves the clash channel reaches a node two
+/// hops deep — only possible if successors actually drain.
+#[test]
+fn nested_exists_clash() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(171);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // D ⊓ ¬D : CCAND, operands [D(false), D(true)].
+    let d_and_not_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(272);
+        c.set_operator_code(op::CCAND);
+        c.add_operand_linker(con_d, false);
+        c.add_operand_linker(con_d, true);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∃R.(D ⊓ ¬D) : CCSOME, role R, operand [D ⊓ ¬D].
+    let some_r_clash = {
+        let mut c = Concept::new();
+        c.set_concept_tag(273);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(d_and_not_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∃R.(∃R.(D ⊓ ¬D)) : CCSOME, role R, operand [∃R.(D ⊓ ¬D)].
+    let some_r_some_r_clash = {
+        let mut c = Concept::new();
+        c.set_concept_tag(274);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(some_r_clash, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, some_r_some_r_clash);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(
+        !consistent,
+        "∃R.(∃R.(D ⊓ ¬D)) is INCONSISTENT — the depth-2 successor gets D and ¬D"
+    );
+    assert!(
+        env.ctx.has_pending_signal(),
+        "the depth-2 D / ¬D contradiction must raise a clash"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
 // ===========================================================================
 // W14-number: the SHIQ qualified-cardinality core (≥n R.C / ≤n R.C). ≥n builds
 // n fresh PAIRWISE-DISTINCT successors each labelled C; ≤n merges or, when the

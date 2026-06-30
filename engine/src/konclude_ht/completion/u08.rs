@@ -435,17 +435,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 return;
             }
             // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
-            // flag bookkeeping, then the successor is placed on the immediately-processing
-            // queue so `take_next_process_individual` (Probe 2) drains it — the terminal
-            // `insertIndiviudalProcessNode` inside `add_individual_to_processing_queue_based_on_processing_concepts`
-            // is itself W3-DEFER (commented out, cpp), so the ∃-rule performs the real enqueue
-            // (the same primitive the harness seeds the root with).
+            // flag bookkeeping, then the successor is enqueued so
+            // `take_next_process_individual` drains it — the terminal `insertIndiviudal...`
+            // inside `add_individual_to_processing_queue_based_on_processing_concepts` is
+            // itself W3-DEFER (commented out, cpp), so the ∃-rule performs the real enqueue.
             self.add_individual_to_processing_queue(succ_indi, calc_alg_context);
-            let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+            // KONCLUDE-PORT-NOTE[W16-successor-drain]: route the fresh successor onto the
+            // DEPTH processing queue (`take_next_process_individual` Probe 25 /
+            // INQT_DEPTHNORMAL), NOT the immediately-processing queue. The drive reaches
+            // Probe 25 only AFTER Probe 5 lowers `min_concept_processing_priority_level` to
+            // DETERMINISTIC (4), so the successor's own deterministic-priority concepts
+            // (∃R.C = 4, ≥n = 5) ARE admitted by `continue_individual_processing` and DRAIN —
+            // this is what lets a nested ∃R.(∃R.D) grow the second hop. The immediate queue
+            // forced min = IMMEDIATELY (8), silently dropping every successor concept below 8
+            // (the old W8.1 "successors don't drain" gap). Faithful `addIndividualToProcessingQueue`
+            // depth-oriented routing for a blockable (non-nominal) node.
+            let dq = calc_alg_context.get_individual_depth_processing_queue(true);
             calc_alg_context
                 .process_context_mut()
-                .indi_unsorted_proc_queue_mut(iq)
-                .insert_indiviudal_process_node(succ_indi);
+                .indi_depth_queue_insert(dq, succ_indi);
         } else {
             // A suitable successor already exists — Konclude records a backward
             // dependency to the ancestor (cpp 14403–14418); the backward-dependency
@@ -758,13 +766,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (2) createIndividualsDistinct(indiList): pairwise distinct edges.
         self.ht_make_individuals_distinct(&succs, dep_track_point, calc_alg_context);
         // (3) addIndividualToProcessingQueue(succIndi) for each.
+        // KONCLUDE-PORT-NOTE[W16-successor-drain]: depth-queue routing (see apply_some_rule)
+        // so each ≥n successor's own deterministic-priority concepts drain.
         for succ in succs {
             self.add_individual_to_processing_queue(succ, calc_alg_context);
-            let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+            let dq = calc_alg_context.get_individual_depth_processing_queue(true);
             calc_alg_context
                 .process_context_mut()
-                .indi_unsorted_proc_queue_mut(iq)
-                .insert_indiviudal_process_node(succ);
+                .indi_depth_queue_insert(dq, succ);
         }
     }
 

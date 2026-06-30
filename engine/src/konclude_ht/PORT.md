@@ -349,6 +349,7 @@ Legend: ☐ todo · ◐ in progress · ☑ ported (pre-compile) · ✓ compiles 
 | W8.1 | processing-queue subsystem (the triple-buffered queues) | `Process/CIndividual{Unsorted,LinkerRotation,Depth}ProcessingQueue.{h,cpp}`, `CConceptProcessingQueue.{h,cpp}`, `CIndividualDepthPriority`, `CConceptProcessingPriorityQueueData` | `process/queues.rs` (+ context/db3/stubs/u01/u02/u04 + completion/context forwarders) | ✓ (4 real queues + 2 helpers; 4 arenas on `ProcessContext`; db3 22/24 getters + 14 u02 probes + `continue_individual_processing` + u01 concept take-next un-defered; `cargo check --release` exit 0) |
 | W12 | ∃/∀ edge subsystem (applySOMERule successor+edge / applyALLRule propagation + edge-triggered ∀) | `…CompletionTaskHandleAlgorithm.cpp` `applySOMERule`/`applyALLRule`/`createSuccessorIndividual`/`createNewIndividualsLink` | `completion/u08.rs` (`apply_some_rule` + 4 `ht_*` edge helpers), `completion/u09.rs` (`apply_all_rule` general branch), `completion/selftest.rs` | ★ (14/14 tests pass on ws; ∃ builds+labels+enqueues a successor over a real R-edge in `SuccessorRoleHash`, ∀ propagates to existing + later successors; ALC consistency `∃R.C ⊓ ∀R.¬C` ⇒ clash) |
 | W14-number | SHIQ qualified-cardinality core (applyATLEASTRule ≥n distinct-successor generation / applyATMOSTRule ≤n merge-or-clash) | `…CompletionTaskHandleAlgorithm.cpp` `applyATLEASTRule`/`applyATMOSTRule`/`createDistinctSuccessorIndividuals`/`createIndividualsDistinct`/`mergeMergingIndividualNodes`/`isIndividualNodesMergeable` | `completion/u08.rs` (`apply_atleast_rule`/`apply_atmost_rule` bodies + 5 `ht_*` cardinality helpers), `completion/selftest.rs` (W14 section) | ★ (3/3 W14 tests pass on ws; ≥n builds n pairwise-distinct successors over distinct-edges, ≤n merges-or-clashes via the real distinct hash) |
+| W16-successor-drain | fresh successors actually DRAIN their own concept queue (nested ∃ grows multi-node) | `…CompletionTaskHandleAlgorithm.cpp` `addIndividualToProcessingQueue` (depth-oriented routing) + `takeNextProcessIndividual` Probe 5/25 min-level | `completion/u08.rs` (`apply_some_rule`/`ht_create_distinct_successors` enqueue), `completion/u02.rs` (iteration cap), `completion/selftest.rs` (`nested_exists_grows`/`nested_exists_clash`) | ★ (26/26 konclude_ht tests pass on ws; `∃R.(∃R.D)` grows TWO hops, `∃R.(∃R.(D⊓¬D))` clashes at depth 2) |
 | W3 | Strategy/ policies | `Reasoner/Kernel/Strategy/` | `completion/strategy.rs` | ✓ |
 | W3 | reconcile sibling stubs | (W3-RECONCILE, [api]) | `completion/pending.rs` | ✓ (1 stub: label-set `containsIndividualNodeConcepts` overload) |
 | W4 | saturation struct fields | `…SaturationTaskHandleAlgorithm.h` | `saturation/algorithm.rs` | ✓ (member fields + 7 rule-count getters + ctor `new()`) |
@@ -1657,6 +1658,42 @@ install / reapply helpers was needed.
   inverse direction is therefore reached via the ancestor link rather than a real
   reverse edge — equivalent for these fragments, a documented gap for the merge regime.
   `cargo test --release konclude_ht` on ws: **24/24 pass, exit 0** (was 14 at W12).
+
+### W16-successor-drain: nested ∃ GROWS — fresh successors drain their own concepts (2026-06-30): 26/26 TESTS PASS on ws
+
+The W12 gap "existentials on SUCCESSOR nodes are not drained" is CLOSED. Root cause
+was a queue-routing bug, not a missing subsystem: `apply_some_rule` enqueued each
+fresh successor onto the **immediately-processing queue** (Probe 2), but `take_next_
+process_individual` only sets `min_concept_processing_priority_level = IMMEDIATELY (8)`
+for that queue. A successor's own `∃R.D` carries the SOME priority **4** (DETERMINISTIC,
+per `strategy.rs`), so `continue_individual_processing` rejected it (`4 < 8`) and the
+node was concluded WITHOUT firing its existential — the second hop never grew.
+
+- **Fix (`completion/u08.rs`).** Route the fresh successor onto the **DEPTH processing
+  queue** (`get_individual_depth_processing_queue` + `indi_depth_queue_insert`), the
+  faithful `addIndividualToProcessingQueue` depth-oriented routing for a blockable
+  (non-nominal) node. `take_next_process_individual` reaches that queue at **Probe 25**
+  (`INQT_DEPTHNORMAL`), and Probe 5 has by then lowered `min_concept_processing_
+  priority_level` to **DETERMINISTIC (4)** — so the successor's priority-4 ∃ (and
+  priority-5 ≥n) ARE admitted and DRAIN. Applied to both `apply_some_rule` and
+  `ht_create_distinct_successors`. No new subsystem; the depth queue, Probe 25, and
+  the min-level were all already LIVE (W8.1) — only the enqueue target was wrong.
+- **Termination safety net (`completion/u02.rs`).** `run_saturation_loop` now carries a
+  hard `MAX_DRIVE_ITERATIONS = 5_000_000` cap on the outer take-next loop AND the inner
+  concept-drain loop; on overrun it raises a stop and returns. Acyclic inputs never
+  approach it; it exists only so a future cyclic regression (blocking is a LATER wave)
+  cannot hang the build host.
+- **Tests (`completion/selftest.rs`).** `nested_exists_grows` — `∃R.(∃R.D)` grows TWO
+  hops `root --R--> n1 --R--> n2`, n2 labelled D, CONSISTENT. `nested_exists_clash` —
+  `∃R.(∃R.(D⊓¬D))` grows to depth 2 where the ⊓-rule derives D and ¬D ⇒ CLASH /
+  INCONSISTENT. `cargo test --release konclude_ht` on ws: **26/26 pass, exit 0**
+  (was 24; the 24 prior tests, incl. `transitive_forall`'s two-phase chain, unchanged).
+- **Residual / shared needs.** Successor draining is now live, but real cyclic
+  ontologies need BLOCKING (subset/pairwise) to terminate without the iteration cap —
+  the next wave. The `≤n` priority (3) is still below DETERMINISTIC (4), so a successor's
+  own at-most would not drain from the depth queue yet (out of scope here; would route
+  via a lower-priority queue in full Konclude). The `transitive_forall` doc note about
+  successors "not drained" is now historical for the ∃ path.
 
 ## Build / validate
 

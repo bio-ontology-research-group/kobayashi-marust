@@ -217,11 +217,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if calc_alg_context.has_pending_signal() {
             return;
         }
+        // KONCLUDE-PORT-NOTE[W16-successor-drain]: hard iteration cap — a safety net so a
+        // regression that generates successors without a terminating guard (blocking is a
+        // later wave) cannot HANG the build host. Set far above any real test workload; in
+        // normal operation it is never reached. On overrun we raise a stop (the drive ends
+        // "not consistent" rather than silently claiming consistency).
+        const MAX_DRIVE_ITERATIONS: u64 = 5_000_000;
+        let mut drive_iters: u64 = 0;
         let mut indi_proc_node: NodeId = self.take_next_process_individual(calc_alg_context);
         if calc_alg_context.has_pending_signal() {
             return;
         }
         while indi_proc_node.is_some() {
+            drive_iters += 1;
+            if drive_iters > MAX_DRIVE_ITERATIONS {
+                calc_alg_context.raise_stop(false);
+                return;
+            }
             let initialized = self.individual_node_initializing(indi_proc_node, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
                 return;
@@ -233,6 +245,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return;
                 }
                 while continue_processing_individual {
+                    drive_iters += 1;
+                    if drive_iters > MAX_DRIVE_ITERATIONS {
+                        calc_alg_context.raise_stop(false);
+                        return;
+                    }
                     // CConceptProcessingQueue* conProcQueue = indiProcNode->getConceptProcessingQueue(true);
                     let con_proc_queue: ConceptProcessingQueueId = calc_alg_context
                         .process_context_mut()
