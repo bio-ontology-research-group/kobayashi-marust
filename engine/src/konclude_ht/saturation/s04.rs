@@ -1,0 +1,488 @@
+//! `saturation::s04` — Saturation tableau-rule family, batch 2 (port unit #4 of 12).
+//!
+//! Faithful port of port-unit **PU-SAT-4** of Konclude
+//! `Source/Reasoner/Kernel/Algorithm/CCalculationTableauApproximationSaturationTaskHandleAlgorithm.cpp`
+//! (manifest `03-saturation-calc.md`, unit #4 — "ALL + ATMOST/ATLEAST rules +
+//! VALUE/NOMINAL rules"):
+//!
+//!   * `applyATMOSTRule`  (cpp 6108–6129),
+//!   * `applyATLEASTRule` (cpp 6132–6143),
+//!   * `applyALLRule`     (cpp 6154–6204),
+//!   * `applyVALUERule`   (cpp 6474–6671),
+//!   * `applyNOMINALRule` (cpp 6731–6843).
+//!
+//! These five are the cardinality / universal-restriction / nominal saturation
+//! expansion rules of the cheap non-branching pre-pass. (`applyEQCANDRule`,
+//! `applyBOTTOMRule`, the `add*ConceptExtensionProcessingRole` helpers and
+//! `delayNominalSaturationConceptProcessing` interleave in the same cpp line
+//! range but belong to units #3 / #6 / #7 / #11 and are NOT ported here.)
+//!
+//! ## Context convention
+//!
+//! KONCLUDE-PORT-NOTE[api]: per the saturation header
+//! (`CCalculationTableauApproximationSaturationTaskHandleAlgorithm.h` lines
+//! 168–175) the `apply*Rule` methods take ONLY
+//! `CIndividualSaturationProcessNode*& processIndi, CConceptSaturationProcessLinker* conProLinker`
+//! and reach the shared per-thread context through the algorithm MEMBER
+//! `mCalcAlgContext` (a `CCalculationAlgorithmContextBase*`; see cpp uses at
+//! 6109/6116/6118/…). The port stores that member as an opaque `Cint64`
+//! (`algorithm.rs::calc_alg_context`), so — matching the W3 completion-rule
+//! convention (`completion/u05.rs` …) — the shared context is THREADED as an
+//! explicit `calc_alg_context: &mut CalculationAlgorithmContextBase` parameter
+//! instead of read from the field. The C++ `CIndividualSaturationProcessNode*&`
+//! out/in-out pointer-reference becomes `&mut SatNodeId` (an arena id), and
+//! `CConceptSaturationProcessLinker*` becomes `ConceptSaturationProcessLinkerId`.
+//!
+//! ## Why these bodies are PORT-PENDING
+//!
+//! KONCLUDE-PORT-NOTE[api]: every one of the five rules dereferences, on its FIRST
+//! statement, the saturation descriptor chain
+//! `conSatProLinker->getConceptSaturationDescriptor()->getNegation()/getConcept()`.
+//! `CConceptSaturationProcessLinker` and `CConceptSaturationDescriptor` are both
+//! still zero-field marker stubs in `process::stubs` (no accessors, no per-test
+//! arena), so the `con_negation` / `concept` locals that drive ALL downstream
+//! control flow cannot yet be bound. The bodies then bottom out in three further
+//! not-yet-ported facilities:
+//!   1. the saturation node accessors deferred to process unit **SAT-1**
+//!      (`getRoleBackwardPropagationHash`, `getDirectStatusFlags`,
+//!      `getReapplyConceptSaturationLabelSet`, `getNominalIndividual`,
+//!      `getMultipleCardinalityAncestorNodesLinker`, `hasNominalIntegrated` /
+//!      `setIntegratedNominal`, `getNominalHandlingData`);
+//!   2. the saturation status-flag masks
+//!      (`CIndividualSaturationProcessNodeStatusFlags::INDSATFLAG*`) and the
+//!      critical-queue tags (`CCriticalSaturationConceptTypeQueues::CCT_*`), which
+//!      land with the saturation status-flag unit;
+//!   3. the SIBLING saturation-algorithm methods in OTHER PU-SAT units
+//!      (`updateDirectAddingIndividualStatusFlags`, `updateMaxCardinalityCandidates`,
+//!      `updateAddingSuccessorConnectedNominal`, `addCriticalConceptDescriptor`,
+//!      `addFUNCTIONALConceptExtensionProcessingRole`,
+//!      `addQualifiedFUNCTIONALAtmostConceptExtensionProcessing`,
+//!      `addALLConceptExtensionProcessingRole`, `createSuccessorForConcept`,
+//!      `addConceptFilteredToIndividual`, `addAutomateTransitionOperands`,
+//!      `isConsistenceDataAvailable`, `getCorrectedNode`, `addInfluencedNominal`,
+//!      `setInsufficientNodeOccured`, `addNominalDependentIndividualNode`,
+//!      `delayNominalSaturationConceptProcessing`), plus the backend-association
+//!      cache handler (`mBackendAssCaceHandler`, `W6-DEFER[api]`).
+//!
+//! Following the established porting convention (`completion/u05.rs`): the faithful
+//! Rust signatures are written here, and each body is recorded as a `// PORT-PENDING`
+//! line-by-line structural transcription of the C++ so the next wave fills it in
+//! without re-reading the source. Logic is documented in full, never dropped.
+
+#![allow(dead_code)]
+#![allow(unused_variables)]
+
+use super::super::completion::context::CalculationAlgorithmContextBase;
+use super::super::process::stubs::ConceptSaturationProcessLinkerId;
+use super::super::process::SatNodeId;
+
+impl super::algorithm::SaturationTaskHandleAlgorithm {
+    // =======================================================================
+    // applyATMOSTRule (cpp 6108–6129).
+    // =======================================================================
+
+    /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyATMOSTRule`.
+    ///
+    /// PORT-PENDING — faithful structure recorded below. Needs the descriptor
+    /// chain (`getConceptSaturationDescriptor`/`getNegation`/`getConcept`), the
+    /// concept reads (`getRole`/`getParameter`/`getOperandList`, model-ported),
+    /// the status-flag masks, and the siblings `updateMaxCardinalityCandidates` /
+    /// `updateDirectAddingIndividualStatusFlags` /
+    /// `addFUNCTIONALConceptExtensionProcessingRole` /
+    /// `addQualifiedFUNCTIONALAtmostConceptExtensionProcessing` /
+    /// `addCriticalConceptDescriptor`.
+    ///
+    /// C++ structure:
+    /// ```text
+    /// STATINC(ATMOSTRULEAPPLICATIONCOUNT, mCalcAlgContext)
+    /// conDes      = conSatProLinker->getConceptSaturationDescriptor()
+    /// conNegation = conDes->getNegation()
+    /// concept     = conDes->getConcept()
+    /// role        = concept->getRole()
+    /// cardinality = concept->getParameter() - 1*conNegation
+    /// if cardinality < 0:
+    ///     updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGCLASHED)
+    /// else:
+    ///     updateMaxCardinalityCandidates(processIndi, 0, cardinality)
+    ///     updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGCARDINALITYRESTRICTED)
+    ///     if cardinality == 1:
+    ///         if !concept->getOperandList():
+    ///             addFUNCTIONALConceptExtensionProcessingRole(role, processIndi)
+    ///         else:
+    ///             addQualifiedFUNCTIONALAtmostConceptExtensionProcessing(conDes, processIndi)
+    ///     addCriticalConceptDescriptor(conDes, CCT_ATMOST, processIndi)
+    /// ```
+    pub fn apply_atmost_rule(
+        &mut self,
+        process_indi: &mut SatNodeId,
+        con_sat_pro_linker: ConceptSaturationProcessLinkerId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: the
+        // `conDes`/`concept`/`cardinality` locals come from the unported
+        // `CConceptSaturationProcessLinker`/`CConceptSaturationDescriptor` accessor
+        // chain; the status-flag masks and the five sibling helpers are not ported.
+        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+    }
+
+    // =======================================================================
+    // applyATLEASTRule (cpp 6132–6143).
+    // =======================================================================
+
+    /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyATLEASTRule`.
+    ///
+    /// PORT-PENDING — faithful structure recorded below. Needs the descriptor
+    /// chain, the status-flag masks, and the siblings
+    /// `updateMaxCardinalityCandidates` / `createSuccessorForConcept`.
+    ///
+    /// C++ structure:
+    /// ```text
+    /// STATINC(ATLEASTRULEAPPLICATIONCOUNT, mCalcAlgContext)
+    /// conDes      = conSatProLinker->getConceptSaturationDescriptor()
+    /// conNegation = conDes->getNegation()
+    /// concept     = conDes->getConcept()
+    /// role        = concept->getRole()                     // bound but unused below
+    /// cardinality = concept->getParameter() + 1*conNegation
+    /// if cardinality > 0:
+    ///     updateMaxCardinalityCandidates(processIndi, cardinality, 0)
+    ///     createSuccessorForConcept(processIndi, conSatProLinker, cardinality)
+    /// ```
+    pub fn apply_atleast_rule(
+        &mut self,
+        process_indi: &mut SatNodeId,
+        con_sat_pro_linker: ConceptSaturationProcessLinkerId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
+        // chain + `updateMaxCardinalityCandidates` / `createSuccessorForConcept`
+        // siblings not ported.
+        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+    }
+
+    // =======================================================================
+    // applyALLRule (cpp 6154–6204).
+    // =======================================================================
+
+    /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyALLRule`.
+    ///
+    /// The universal-restriction saturation rule: registers a backward-propagation
+    /// reapply descriptor for `role`, replays the `∀` operands onto every already
+    /// backward-linked source node, then either queues forward ALL-concept
+    /// extension processing or flags the node for an unregistered-propagation
+    /// end-check.
+    ///
+    /// PORT-PENDING — faithful structure recorded below. Needs: the task memory
+    /// allocator (`getUsedProcessTaskMemoryAllocationManager`, `[memory-pool]`),
+    /// the saturation node `getRoleBackwardPropagationHash`, the unported
+    /// `CRoleBackwardSaturationPropagationHash` /
+    /// `CBackwardSaturationPropagationReapplyDescriptor` /
+    /// `CRoleBackwardSaturationPropagationHashData` /
+    /// `CBackwardSaturationPropagationLink` satellite types, the descriptor chain,
+    /// the concept reads (`getRole`/`getOperandList`, model-ported) +
+    /// `getConceptData`/`hasPropagationIntoCreationDirection` (`CConceptProcessData`,
+    /// unported) + `getRoleData`/`hasPropagationAndCreationConceptsFlag`
+    /// (`CRoleProcessData`, unported), the status-flag masks, and the siblings
+    /// `addConceptFilteredToIndividual` / `addALLConceptExtensionProcessingRole` /
+    /// `updateDirectAddingIndividualStatusFlags` / `addCriticalConceptDescriptor`.
+    ///
+    /// C++ structure:
+    /// ```text
+    /// STATINC(ALLRULEAPPLICATIONCOUNT, mCalcAlgContext); g_ksat_allRule++
+    /// conDes      = conSatProLinker->getConceptSaturationDescriptor()
+    /// conNegation = conDes->getNegation()
+    /// concept     = conDes->getConcept()
+    /// role        = concept->getRole()
+    ///
+    /// taskMemMan          = mCalcAlgContext->getUsedProcessTaskMemoryAllocationManager()
+    /// backPropHash        = processIndi->getRoleBackwardPropagationHash(true)
+    /// backPropReapplyDes  = alloc CBackwardSaturationPropagationReapplyDescriptor(taskMemMan)
+    /// backPropReapplyDes->initBackwardPropagationReapplyDescriptor(conDes)
+    /// backPropHashData    = backPropHash->addBackwardPropagationConceptDescriptor(role, backPropReapplyDes)
+    /// backPropLinkIt      = backPropHashData.mLinkLinker
+    ///
+    /// if backPropLinkIt:
+    ///     while backPropLinkIt:
+    ///         backPropIndiNode = backPropLinkIt->getSourceIndividual()
+    ///         conceptOpLinkerIt = concept->getOperandList()
+    ///         while conceptOpLinkerIt:
+    ///             opConcept    = conceptOpLinkerIt->getData()
+    ///             opConNegation = conceptOpLinkerIt->isNegated() ^ conNegation
+    ///             STATINC(ALLROLERESTRICTIONCOUNT); g_ksat_allBackProp++
+    ///             addConceptFilteredToIndividual(opConcept, opConNegation, backPropIndiNode, true)
+    ///             conceptOpLinkerIt = conceptOpLinkerIt->getNext()
+    ///         backPropLinkIt = backPropLinkIt->getNext()
+    ///
+    /// conProData = (CConceptProcessData*)concept->getConceptData()
+    /// if role->isDataRole() || conProData:
+    ///     if role->isDataRole() || conProData->hasPropagationIntoCreationDirection():
+    ///         addALLConceptExtensionProcessingRole(role, backPropHashData, processIndi)
+    ///         updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGCRITICAL)
+    ///         addCriticalConceptDescriptor(conDes, CCT_FORALL, processIndi)
+    ///     else:
+    ///         roleProData = (CRoleProcessData*)role->getRoleData()
+    ///         if !roleProData || roleProData->hasPropagationAndCreationConceptsFlag():
+    ///             updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGUNREGISTEREDPROPAGATION)
+    /// ```
+    pub fn apply_all_rule(
+        &mut self,
+        process_indi: &mut SatNodeId,
+        con_sat_pro_linker: ConceptSaturationProcessLinkerId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: the
+        // backward-propagation hash/reapply-descriptor/link satellites and the
+        // process-data flag accessors are unported; the descriptor chain, the
+        // status-flag masks and the four siblings land in later PU-SAT units.
+        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+    }
+
+    // =======================================================================
+    // applyVALUERule (cpp 6474–6671).
+    // =======================================================================
+
+    /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyVALUERule`.
+    ///
+    /// The nominal-value (`∃role.{a}` / `role value a`) saturation rule. With
+    /// nominal processing enabled it connects the node to the nominal, then —
+    /// depending on whether consistence (cached completion-graph) data is
+    /// available — either (A) replays the cached nominal node's role
+    /// domain/range/reapply concepts and detects whether the connection is
+    /// insufficient (disjoint roles / propagation-ALL / unhandled reapply ⇒
+    /// insufficient; range concept absent on the nominal ⇒ nominal-influenced), or
+    /// (B) does the same against the backend representative-memory cache label, or
+    /// (C, no consistence data) adds only the domain/range concepts and delays the
+    /// nominal concept. With nominal processing disabled the node is marked
+    /// insufficient.
+    ///
+    /// PORT-PENDING — faithful structure recorded below. Needs: the descriptor
+    /// chain; the concept reads (`getRole`/`getNominalIndividual`, model-ported)
+    /// and `CIndividual::getIndividualID`; the saturation node accessors
+    /// (`getDirectStatusFlags`/`getNominalIndividual`); the role reads
+    /// (`getIndirectSuperRoleList`/`hasDisjointRoles`/`getDomainRangeConceptList`,
+    /// model-ported); the unported `CReapplyConceptLabelSet` /
+    /// `CReapplyRoleSuccessorHash` / `CReapplyQueueIterator` /
+    /// `CReapplyConceptDescriptor` reads; `CConceptOperator::hasPartialOperatorCodeFlag`
+    /// (model-ported) with the `CCFS_*` flag groups and the `CCSOME` code; the
+    /// backend cache handler `mBackendAssCaceHandler` (`getIndividualAssociationData`
+    /// / `hasConceptInAssociatedFullConceptSetLabel` /
+    /// `visitConceptsOfAssociatedFullConceptSetLabel`, `W6-DEFER[api]`); the status
+    /// masks (`INDSATFLAGNOMINALCONNECTION`/`INDSATFLAGINSUFFICIENT`) and the
+    /// critical tag `CCT_VALUE`; and the siblings
+    /// `updateDirectAddingIndividualStatusFlags` /
+    /// `updateAddingSuccessorConnectedNominal` / `isConsistenceDataAvailable` /
+    /// `getCorrectedNode` / `addConceptFilteredToIndividual` /
+    /// `addAutomateTransitionOperands` / `addInfluencedNominal` /
+    /// `setInsufficientNodeOccured` / `addCriticalConceptDescriptor` /
+    /// `addNominalDependentIndividualNode` / `delayNominalSaturationConceptProcessing`.
+    ///
+    /// C++ structure:
+    /// ```text
+    /// STATINC(VALUERULEAPPLICATIONCOUNT, mCalcAlgContext)
+    /// conDes      = conSatProLinker->getConceptSaturationDescriptor()
+    /// conNegation = conDes->getNegation()
+    /// concept     = conDes->getConcept()
+    /// role        = concept->getRole()
+    /// nominalIndividual = concept->getNominalIndividual()
+    /// nominalID   = nominalIndividual->getIndividualID()
+    ///
+    /// if mConfNominalProcessing:
+    ///     updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGNOMINALCONNECTION)
+    ///     updateAddingSuccessorConnectedNominal(processIndi, nominalID)
+    ///
+    ///     if isConsistenceDataAvailable(mCalcAlgContext):
+    ///         nominalProcessNode = getCorrectedNode(nominalID, mDetCachedCGIndiVector)
+    ///         if nominalProcessNode:                          // --- branch (A): cached CG node ---
+    ///             nominalInfluenced = false; insufficientNominalConnection = false
+    ///             nominalReapplyRoleSuccHash = nominalProcessNode->getReapplyRoleSuccessorHash(false)
+    ///             for superRoleIt in role->getIndirectSuperRoleList():
+    ///                 superRole = superRoleIt->getData(); inversedSuperRole = superRoleIt->isNegated()
+    ///                 if superRole->hasDisjointRoles(): insufficientNominalConnection = true
+    ///                 directStatFlags = processIndi->getDirectStatusFlags()
+    ///                 for domainConLinkerIt in superRole->getDomainRangeConceptList(inversedSuperRole):
+    ///                     addConceptFilteredToIndividual(domainConcept, domainConceptNegation, processIndi)
+    ///                 for rangeConLinkerIt in superRole->getDomainRangeConceptList(!inversedSuperRole)
+    ///                          while !directStatFlags->hasInsufficientFlag():
+    ///                     nominalConSet = nominalProcessNode->getReapplyConceptLabelSet(false)
+    ///                     if !nominalConSet || !nominalConSet->containsConcept(rangeConcept, rangeConceptNegation):
+    ///                         nominalInfluenced = true
+    ///                 if inversedSuperRole && nominalReapplyRoleSuccHash:
+    ///                     reapplyRoleIt = nominalReapplyRoleSuccHash->getRoleReapplyIterator(superRole)
+    ///                     while reapplyRoleIt.hasNext():
+    ///                         reapplyDes  = reapplyRoleIt.next()
+    ///                         reapplyConDes = reapplyDes->getConceptDescriptor()
+    ///                         reapplyConcept = reapplyConDes->getConcept(); reapplyConceptNegation = reapplyConDes->isNegated()
+    ///                         reapplyConceptCode = reapplyConcept->getOperatorCode()
+    ///                         reapplyConceptOperator = reapplyConcept->getConceptOperator()
+    ///                         if !neg && op.has(CCFS_PROPAGATION_ALL_TYPE):       insufficientNominalConnection = true
+    ///                         elif (!neg && op.has(CCFS_ALL_AQALL_TYPE)) || (neg && code==CCSOME):
+    ///                             for reapplyConceptOpLinkerIt in reapplyConcept->getOperandList():
+    ///                                 addConceptFilteredToIndividual(reapplyOperandConcept,
+    ///                                     reapplyConceptOpLinkerIt->isNegated()^reapplyConceptNegation, processIndi)
+    ///                         elif !neg && op.has(CCFS_AQAND_TYPE): addAutomateTransitionOperands(processIndi, reapplyConcept, role)
+    ///                         else:                                                insufficientNominalConnection = true
+    ///             if nominalInfluenced:
+    ///                 insufficientNominalConnection = true
+    ///                 if !processIndi->getNominalIndividual(): addInfluencedNominal(nominalID)
+    ///             if insufficientNominalConnection:
+    ///                 updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGINSUFFICIENT); setInsufficientNodeOccured()
+    ///             if mNonDetConsistencyCG: addCriticalConceptDescriptor(conDes, CCT_VALUE, processIndi)
+    ///             addNominalDependentIndividualNode(nominalID, processIndi, VALUECONNECTION)
+    ///         else:                                            // --- branch (B): backend cache ---
+    ///             nominalInfluenced = false; insufficientNominalConnection = false
+    ///             indiAssData = mBackendAssCaceHandler->getIndividualAssociationData(nominalIndividual)
+    ///             for superRoleIt in role->getIndirectSuperRoleList():
+    ///                 superRole = ...; inversedSuperRole = ...
+    ///                 if superRole->hasDisjointRoles(): insufficientNominalConnection = true
+    ///                 directStatFlags = processIndi->getDirectStatusFlags()
+    ///                 for domainConLinkerIt in superRole->getDomainRangeConceptList(inversedSuperRole):
+    ///                     addConceptFilteredToIndividual(domainConcept, domainConceptNegation, processIndi)
+    ///                 for rangeConLinkerIt in superRole->getDomainRangeConceptList(!inversedSuperRole)
+    ///                          while !directStatFlags->hasInsufficientFlag():
+    ///                     if !mBackendAssCaceHandler->hasConceptInAssociatedFullConceptSetLabel(
+    ///                             indiAssData, indiAssData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL),
+    ///                             rangeConcept, rangeConceptNegation):
+    ///                         nominalInfluenced = true
+    ///                 if inversedSuperRole:
+    ///                     mBackendAssCaceHandler->visitConceptsOfAssociatedFullConceptSetLabel(
+    ///                         indiAssData, indiAssData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL),
+    ///                         lambda(reapplyConcept, reapplyConceptNegation, deterministic):
+    ///                             if reapplyConcept->getRole() == superRole:
+    ///                                 ... // SAME dispatch as branch (A): PROPAGATION_ALL/ALL_AQALL|SOME/AQAND/else
+    ///                             return true,
+    ///                         true, false)
+    ///             if nominalInfluenced:
+    ///                 insufficientNominalConnection = true
+    ///                 if !processIndi->getNominalIndividual(): addInfluencedNominal(nominalID)
+    ///             if insufficientNominalConnection:
+    ///                 updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGINSUFFICIENT); setInsufficientNodeOccured()
+    ///             addNominalDependentIndividualNode(nominalID, processIndi, VALUECONNECTION)
+    ///     else:                                                // --- branch (C): no consistence data ---
+    ///         for superRoleIt in role->getIndirectSuperRoleList():
+    ///             superRole = ...; inversedSuperRole = ...
+    ///             for domainConLinkerIt in superRole->getDomainRangeConceptList(inversedSuperRole):
+    ///                 addConceptFilteredToIndividual(domainConcept, domainConceptNegation, processIndi)
+    ///         delayNominalSaturationConceptProcessing(processIndi, conSatProLinker, nominalID)
+    /// else:
+    ///     updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGINSUFFICIENT); setInsufficientNodeOccured()
+    /// ```
+    pub fn apply_value_rule(
+        &mut self,
+        process_indi: &mut SatNodeId,
+        con_sat_pro_linker: ConceptSaturationProcessLinkerId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
+        // chain, reapply label-set / role-succ-hash satellite reads, the backend
+        // association cache handler (W6-DEFER[api]), the status/critical masks, and
+        // the ~10 siblings are all not yet ported.
+        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+    }
+
+    // =======================================================================
+    // applyNOMINALRule (cpp 6731–6843).
+    // =======================================================================
+
+    /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyNOMINALRule`.
+    ///
+    /// The nominal (`{a}`) saturation rule. Integrates the nominal into the node,
+    /// and with nominal processing enabled: connects the successor nominal, clashes
+    /// every multiple-cardinality ancestor, then — if consistence data is available
+    /// — replays the cached nominal node's full concept label (or, failing a cached
+    /// node, the backend representative-memory full-concept-set label) onto the
+    /// node, detecting whether the node is nominal-influenced (a saturation-label
+    /// concept absent from the nominal's label, ignoring the self-nominal concept).
+    /// Without consistence data it delays the nominal concept; with nominal
+    /// processing disabled it marks the node insufficient.
+    ///
+    /// PORT-PENDING — faithful structure recorded below. Needs: the descriptor
+    /// chain; the concept reads (`getRole`/`getNominalIndividual`, model-ported) +
+    /// `CIndividual::getIndividualID`; the saturation node accessors
+    /// (`hasNominalIntegrated`/`setIntegratedNominal`,
+    /// `getMultipleCardinalityAncestorNodesLinker`,
+    /// `getReapplyConceptSaturationLabelSet`/`getNominalIndividual`); the unported
+    /// `CReapplyConceptLabelSet` / `CReapplyConceptSaturationLabelSet` /
+    /// `CConceptSaturationDescriptor` / `CConceptDescriptor` chain reads;
+    /// `getOperatorCode` with `CCNOMINAL` (model-ported); the backend cache handler
+    /// `mBackendAssCaceHandler` (`getIndividualAssociationData`/`getLabelCacheEntry`/
+    /// `hasConceptInAssociatedFullConceptSetLabel`/
+    /// `visitConceptsOfAssociatedFullConceptSetLabel`, `W6-DEFER[api]`); the status
+    /// masks (`INDSATFLAGNOMINALCONNECTION`/`INDSATFLAGCLASHED`/`INDSATFLAGINSUFFICIENT`)
+    /// and the critical tag `CCT_NOMINAL`; and the siblings
+    /// `updateDirectAddingIndividualStatusFlags` /
+    /// `updateAddingSuccessorConnectedNominal` / `isConsistenceDataAvailable` /
+    /// `getCorrectedNode` / `addInfluencedNominal` /
+    /// `addConceptFilteredToIndividual` / `addCriticalConceptDescriptor` /
+    /// `addNominalDependentIndividualNode` / `setInsufficientNodeOccured` /
+    /// `delayNominalSaturationConceptProcessing`.
+    ///
+    /// C++ structure:
+    /// ```text
+    /// STATINC(NOMINALRULEAPPLICATIONCOUNT, mCalcAlgContext)
+    /// conDes      = conSatProLinker->getConceptSaturationDescriptor()
+    /// conNegation = conDes->getNegation()                 // bound, unused below
+    /// concept     = conDes->getConcept()
+    /// role        = concept->getRole()                    // bound, unused below
+    /// nominalIndividual = concept->getNominalIndividual()
+    /// nominalID   = nominalIndividual->getIndividualID()
+    ///
+    /// if !processIndi->hasNominalIntegrated():
+    ///     processIndi->setIntegratedNominal(nominalIndividual)
+    ///
+    /// if mConfNominalProcessing:
+    ///     updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGNOMINALCONNECTION)
+    ///     updateAddingSuccessorConnectedNominal(processIndi, nominalID)
+    ///     for multipleCardinalityAncestorNodesLinkerIt in processIndi->getMultipleCardinalityAncestorNodesLinker():
+    ///         updateDirectAddingIndividualStatusFlags(multipleCardinalityAncestorNode, INDSATFLAGCLASHED)
+    ///
+    ///     CBackendRepresentativeMemoryCacheIndividualAssociationData* indiAssData = nullptr  // (outer, shadowed inside)
+    ///     if isConsistenceDataAvailable(mCalcAlgContext):
+    ///         nominalProcessNode = getCorrectedNode(nominalID, mDetCachedCGIndiVector)
+    ///         if nominalProcessNode:                          // --- cached CG node ---
+    ///             nominalConSet = nominalProcessNode->getReapplyConceptLabelSet(false)
+    ///             if nominalConSet:
+    ///                 nominalInfluenced = false
+    ///                 satConSet = processIndi->getReapplyConceptSaturationLabelSet(false)
+    ///                 for satConDesIt in satConSet->getConceptSaturationDescriptionLinker() while !nominalInfluenced:
+    ///                     if !nominalConSet->containsConcept(satConcept, satConceptNegation): nominalInfluenced = true
+    ///                 if nominalInfluenced && !processIndi->getNominalIndividual(): addInfluencedNominal(nominalID)
+    ///                 for nominalConDesIt in nominalConSet->getAddingSortedConceptDescriptionLinker():
+    ///                     addConceptFilteredToIndividual(nominalConcept, nominalConceptNegation, processIndi)
+    ///             if mNonDetConsistencyCG: addCriticalConceptDescriptor(conDes, CCT_NOMINAL, processIndi)
+    ///         else:                                            // --- backend cache ---
+    ///             indiAssData = mBackendAssCaceHandler->getIndividualAssociationData(nominalIndividual)
+    ///             if indiAssData:
+    ///                 labelCacheItem = indiAssData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL)
+    ///                 if labelCacheItem:
+    ///                     nominalInfluenced = false
+    ///                     satConSet = processIndi->getReapplyConceptSaturationLabelSet(false)
+    ///                     for satConDesIt in satConSet->getConceptSaturationDescriptionLinker() while !nominalInfluenced:
+    ///                         if satConceptNegation || satConcept->getOperatorCode()!=CCNOMINAL
+    ///                                 || satConcept->getNominalIndividual()!=nominalIndividual:
+    ///                             if !mBackendAssCaceHandler->hasConceptInAssociatedFullConceptSetLabel(
+    ///                                     indiAssData, labelCacheItem, satConcept, satConceptNegation):
+    ///                                 nominalInfluenced = true
+    ///                     if nominalInfluenced && !processIndi->getNominalIndividual(): addInfluencedNominal(nominalID)
+    ///                     mBackendAssCaceHandler->visitConceptsOfAssociatedFullConceptSetLabel(
+    ///                         indiAssData, indiAssData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL),
+    ///                         lambda(addConcept, addConceptNegation, deterministic):
+    ///                             addConceptFilteredToIndividual(addConcept, addConceptNegation, processIndi); return true,
+    ///                         true, false)
+    ///         addNominalDependentIndividualNode(nominalID, processIndi, NOMINALCONNECTION)
+    ///     else:
+    ///         delayNominalSaturationConceptProcessing(processIndi, conSatProLinker, nominalID)
+    /// else:
+    ///     updateDirectAddingIndividualStatusFlags(processIndi, INDSATFLAGINSUFFICIENT); setInsufficientNodeOccured()
+    /// ```
+    pub fn apply_nominal_rule(
+        &mut self,
+        process_indi: &mut SatNodeId,
+        con_sat_pro_linker: ConceptSaturationProcessLinkerId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
+        // chain, the saturation/reapply label-set reads, the backend association
+        // cache handler (W6-DEFER[api]), the status/critical masks, and the ~9
+        // siblings are all not yet ported.
+        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+    }
+}
