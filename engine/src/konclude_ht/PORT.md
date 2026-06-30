@@ -347,6 +347,7 @@ Legend: ☐ todo · ◐ in progress · ☑ ported (pre-compile) · ✓ compiles 
 | W3 | completion units 1–36 | completion `.cpp` | `completion/u01..u36.rs` | ✓ (wired + reconciled; `cargo check --release` exit 0, 0 errors) |
 | W8 | main driver loop live (take-next + rule dispatch) | `…CompletionTaskHandleAlgorithm.cpp` 2190-2790 / 9496-9549 | `completion/u02.rs` `take_next_process_individual`, `completion/u03.rs` `tableau_rule_processing`/`tableau_rule_choice` | ✓ (3 driver `todo!`s → live; jump table → `match` into `apply_*_rule`; cache-testing + sorted-nominal probes LIVE, queue-contents arms `W3-DEFER`; `cargo check --release` exit 0) |
 | W8.1 | processing-queue subsystem (the triple-buffered queues) | `Process/CIndividual{Unsorted,LinkerRotation,Depth}ProcessingQueue.{h,cpp}`, `CConceptProcessingQueue.{h,cpp}`, `CIndividualDepthPriority`, `CConceptProcessingPriorityQueueData` | `process/queues.rs` (+ context/db3/stubs/u01/u02/u04 + completion/context forwarders) | ✓ (4 real queues + 2 helpers; 4 arenas on `ProcessContext`; db3 22/24 getters + 14 u02 probes + `continue_individual_processing` + u01 concept take-next un-defered; `cargo check --release` exit 0) |
+| W12 | ∃/∀ edge subsystem (applySOMERule successor+edge / applyALLRule propagation + edge-triggered ∀) | `…CompletionTaskHandleAlgorithm.cpp` `applySOMERule`/`applyALLRule`/`createSuccessorIndividual`/`createNewIndividualsLink` | `completion/u08.rs` (`apply_some_rule` + 4 `ht_*` edge helpers), `completion/u09.rs` (`apply_all_rule` general branch), `completion/selftest.rs` | ★ (14/14 tests pass on ws; ∃ builds+labels+enqueues a successor over a real R-edge in `SuccessorRoleHash`, ∀ propagates to existing + later successors; ALC consistency `∃R.C ⊓ ∀R.¬C` ⇒ clash) |
 | W3 | Strategy/ policies | `Reasoner/Kernel/Strategy/` | `completion/strategy.rs` | ✓ |
 | W3 | reconcile sibling stubs | (W3-RECONCILE, [api]) | `completion/pending.rs` | ✓ (1 stub: label-set `containsIndividualNodeConcepts` overload) |
 | W4 | saturation struct fields | `…SaturationTaskHandleAlgorithm.h` | `saturation/algorithm.rs` | ✓ (member fields + 7 rule-count getters + ctor `new()`) |
@@ -1454,6 +1455,77 @@ the engine UNFOLDS the TBox. `cargo test --release konclude_ht` on ws =
 **Verdict:** TBox unfolding via the rule engine is confirmed — `A ⊑ B`, root `A` ⇒ `B`
 is derived over the natural enqueue + drive loop, and the unfold-to-clash variant is
 detected.
+
+### W12 EDGE SUBSYSTEM: ∃ creates successors, ∀ propagates over edges — ALC consistency (2026-06-30): 14/14 TESTS PASS on ws
+
+The completion engine becomes a real hypertableau: `applySOMERule` now BUILDS a
+successor node + an R link-edge and labels it, and `applyALLRule` propagates the
+universal restriction over those edges. `cargo test --release konclude_ht` on ws =
+**14 passed / 0 failed** (11 `completion::selftest` + 3 `model::op`).
+
+- **`apply_some_rule` (∃R.C) UN-DEFERED (`completion/u08.rs`).** The `todo!` is
+  replaced with the faithful general-∃ successor generation (cpp 14380–14402 +
+  `createSuccessorIndividual` cpp 21635–21670): `getRoleSuccessorWithConcepts`
+  suitable-successor check; then `create_new_individual` (LIVE, u35) for the fresh
+  node; the directed `source --R--> dest` `CIndividualLinkEdge` installed into the
+  source's real `SuccessorRoleHash` (`process/succ_role_hash.rs`); the ancestor
+  link + ancestor-depth set; the ∃ qualifier `C` added via the LIVE
+  `add_concept_to_individual`; and the successor enqueued onto the
+  immediately-processing queue so the drive loop drains it. The backend-cache
+  neighbour-reuse (1) + single-nominal VALUE shortcut (2) + functional-extension /
+  unsat-cache stay W3-DEFER (no backend cache / nominals / merge subsystem).
+- **`apply_all_rule` (∀R.C) UN-DEFERED (`completion/u09.rs`).** The first line called
+  the still-`todo!` `get_link_processing_restriction` (the
+  `CLinkProcessingRestrictionSpecification` subtype is unported) — it would have
+  PANICKED on any ∀. Replaced: a node-processed ∀ carries no link restriction
+  (restLink == NONE), so the general re-propagation branch (cpp 16348–16392) runs
+  LIVE — it iterates the node's real R-successors (context-threaded
+  `ht_role_successor_links`, since the node-level role-successor iterators are
+  W2-DEFER stubs) and adds `C` to each (skipping any already present). The trailing
+  `addConceptToReapplyQueue` is unchanged.
+- **The ∀ re-trigger for LATER successors — KONCLUDE-PORT-NOTE[api].** Konclude
+  re-fires a predecessor's ∀ on a freshly created link through the role
+  reapply-queue + the link-processing-restriction `applyALLRule(restLink)`. That
+  reapply-queue subsystem is W2-DEFER, so the ∃-rule instead scans the predecessor's
+  concept label set for `CCALL` restrictions on the edge role and pushes them onto
+  the new successor (`ht_reapply_universal_restrictions`, u08) — behaviourally the
+  same edge-triggered ∀ propagation, only the trigger source differs. This makes the
+  `∃R.D ⊓ ∀R.C` order-independent (the ∀ is in the label set the moment it is added,
+  before the ∃ fires) and is what closes `exists_all_clash`.
+- **Edge helpers (all in `completion/u08.rs`, callable from u09):**
+  `ht_role_successor_links` (resolve a node's R-successors via the
+  context-threaded `node_successor_iterator` + the node vector),
+  `ht_role_successor_with_concepts` (`getRoleSuccessorWithConcepts` core),
+  `ht_install_role_successor_edge` (`createNewIndividualsLink` +
+  `installIndividualNodeRoleLink` over the live edge arena + `SuccessorRoleHash`),
+  `ht_reapply_universal_restrictions` (the edge-triggered ∀ stand-in). The successor
+  enqueue does the real immediate-queue insert (the terminal
+  `insertIndiviudalProcessNode` inside
+  `add_individual_to_processing_queue_based_on_processing_concepts` is itself a
+  W3-DEFER commented-out line).
+- **THREE NEW TESTS (`completion/selftest.rs`), all PASS.**
+  `exists_creates_successor`: root `∃R.C` ⇒ after the drive there is an R-successor
+  node labelled C, CONSISTENT. `all_propagates_to_successor`: `∃R.D ⊓ ∀R.C` ⇒ the
+  R-successor carries BOTH D (from ∃) and C (from ∀). `exists_all_clash`:
+  `∃R.C ⊓ ∀R.¬C` ⇒ the successor gets C and ¬C ⇒ the label-set polarity compare
+  raises a CLASH ⇒ INCONSISTENT. `build_env` now seeds the ontology TOP concept
+  (`create_new_individual` labels every fresh successor with it).
+- **CONFIRMED: ∃ creates a PROCESSED successor (enqueued + drained by the loop) and
+  ∀ propagates over the edge** (both to existing successors via `apply_all_rule` and
+  to a later-created one via the ∃-rule's re-trigger).
+
+**First blockers on the faithful path (precise):** `createSuccessorIndividual`
+(`completion/u35.rs:836`) + `createNewIndividualsLinksReapplyed`
+(`completion/u10.rs:714`) + `createNewIndividualsLinks` (`completion/u35.rs:939`)
+are PORT-PENDING stubs returning NONE — the ∃-rule realises the successor/edge
+inline instead of through them (a shared-file fill is the faithful next step). The
+role reapply-queue (`get_role_reapply_queue`, `process/pn3.rs:486`, W2-DEFER) +
+`get_link_processing_restriction` (`completion/u03.rs:869`, `todo!`) gate the
+faithful edge-triggered-∀; super-role propagation
+(`role->getIndirectSuperRoleList()`) and the ALL/SOME dependency creators
+(`create_all_dependency` / `create_some_dependency`) are threaded as the bare
+descriptor track point. Functional / at-most / nominal `∃` sub-paths (the merge +
+backend-cache + nominal subsystems) remain W3-DEFER.
 
 ## Build / validate
 

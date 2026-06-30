@@ -67,9 +67,10 @@
 #![allow(unused_variables)]
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
-use super::super::model::ConceptId;
+use super::super::model::{op, ConceptId, RoleId};
+use super::super::process::edge::IndividualLinkEdge;
 use super::super::process::node::IndividualProcessNode;
-use super::super::process::{ConDescId, ConProcDescId, NodeId, RestrictionSpecId, TrackPointId};
+use super::super::process::{ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -332,29 +333,313 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // Prelude (cpp 14215–14219), all deps available: the rule's first unported
-        // dependency is `getCreationSuccessorSaturationNode` (saturation, unit 27).
+        // W3-DEFER[macro]: STATINC(SOMERULEAPPLICATIONCOUNT, calc_alg_context)
+        // Prelude (cpp 14215–14219). The read heads resolve live against the arenas.
         let con_des: ConDescId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
         let concept: ConceptId =
             calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let role: RoleId = calc_alg_context.ontology_arenas().concept(concept).get_role();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_dependency_track_point();
-        // conceptOpLinker = concept->getOperandList()  (the ∃ qualifier operands)
-        let _ = (process_indi, negate, role, dep_track_point);
-        // PORT-PENDING: see structural transcription above. Past the prelude the rule
-        // needs `getCreationSuccessorSaturationNode` (saturation, unit 27), the
-        // backend-cache handler neighbour-visit (W6 Cache), the successor-generation /
-        // functional-extension machinery (`createSuccessorIndividual`,
-        // `tryExtendFunctionalSuccessorIndividual`, units 26/27), the label-set lazy
-        // getter (`getReapplyConceptLabelSet`, W2-DEFER) and the unsatisfiable-cache
-        // retrieval strategy (W6 Strategy) — none ported.
-        todo!("W3-DEFER: applySOMERule — saturation-node creation / backend-cache / successor-generation / unsat-cache unported");
+        // conceptOpLinker = concept->getOperandList()  (the ∃ qualifier operands C).
+        let concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+
+        // (1) backend-cache neighbour reuse + (2) the single-nominal VALUE shortcut
+        // (cpp 14220–14379) stay W3-DEFER: they need the backend-cache handler / the
+        // nominal-localisation subsystem, neither ported. The general ∃ successor
+        // generation — the part that makes this a hypertableau — follows.
+
+        // (3) general ∃ successor (cpp 14380–14402):
+        //   alreadyExistSuitableSuccessor = getRoleSuccessorWithConcepts(processIndi, role, conceptOpLinker, negate)
+        let already_exist: NodeId = self.ht_role_successor_with_concepts(
+            *process_indi,
+            role,
+            &concept_op_linker,
+            negate,
+            calc_alg_context,
+        );
+        if already_exist == NodeId::NONE {
+            self.applied_some_rule_count += 1;
+            // W3-DEFER[api]: testUnsatisfiableCacheForSuccessorGeneration / unsat-cache strategy.
+            // succIndi = tryExtendFunctionalSuccessorIndividual(...) — W3-DEFER (functional
+            // reuse + merge subsystem); falls through to a fresh successor.
+            // succIndi = createSuccessorIndividual(processIndi, conDes, role->getIndirectSuperRoleList(),
+            //                                      role, conceptOpLinker, negate, depTrackPoint, saturationNode)
+            // KONCLUDE-PORT-NOTE[api]: createSuccessorIndividual / createNewIndividualsLinksReapplyed
+            // (units 35/10) are PORT-PENDING stubs returning NONE; the ∃-rule realises the
+            // successor inline from the LIVE primitives (`create_new_individual`, the edge +
+            // succ-role-hash install, `add_concept_to_individual`) faithful to that method's
+            // body (cpp 21635–21670): create the node, install the R link-edge, set the
+            // ancestor link/depth, add the qualifier concepts.
+            let is_data_role: bool =
+                calc_alg_context.ontology_arenas().role(role).is_data_role();
+            let mut succ_indi: NodeId =
+                self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
+            // createNewIndividualsLinksReapplyed → the directed R link-edge + succ-role-hash.
+            let anc_link: EdgeId = self.ht_install_role_successor_edge(
+                *process_indi,
+                succ_indi,
+                role,
+                dep_track_point,
+                calc_alg_context,
+            );
+            // succIndi->setAncestorLink(ancLink); succIndi->setIndividualAncestorDepth(depth+1).
+            let depth: Cint64 = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .individual_ancestor_depth();
+            {
+                let n = calc_alg_context.process_context_mut().node_mut(succ_indi);
+                n.set_ancestor_link(anc_link);
+                n.set_individual_ancestor_depth(depth + 1);
+            }
+            // addConcepts(conceptOpLinker, negate, succIndi, ...) — the ∃ qualifier C.
+            for nl in &concept_op_linker {
+                self.add_concept_to_individual(
+                    nl.target,
+                    nl.negated ^ negate,
+                    &mut succ_indi,
+                    dep_track_point,
+                    true,
+                    true,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
+            // Edge-triggered ∀ re-application along the freshly created link.
+            // KONCLUDE-PORT-NOTE[api]: Konclude re-fires the predecessor's ∀-restrictions
+            // on a new link through the role reapply-queue + the link-processing-restriction
+            // (applyALLRule with a restLink). That reapply-queue subsystem is W2-DEFER, so
+            // the ∃-rule instead scans the predecessor's concept label set for ∀-restrictions
+            // on `role` and pushes them onto the new successor (behaviourally the same
+            // edge-triggered ∀ propagation; only the trigger source differs).
+            self.ht_reapply_universal_restrictions(
+                *process_indi,
+                &mut succ_indi,
+                role,
+                dep_track_point,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
+            // flag bookkeeping, then the successor is placed on the immediately-processing
+            // queue so `take_next_process_individual` (Probe 2) drains it — the terminal
+            // `insertIndiviudalProcessNode` inside `add_individual_to_processing_queue_based_on_processing_concepts`
+            // is itself W3-DEFER (commented out, cpp), so the ∃-rule performs the real enqueue
+            // (the same primitive the harness seeds the root with).
+            self.add_individual_to_processing_queue(succ_indi, calc_alg_context);
+            let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(iq)
+                .insert_indiviudal_process_node(succ_indi);
+        } else {
+            // A suitable successor already exists — Konclude records a backward
+            // dependency to the ancestor (cpp 14403–14418); the backward-dependency
+            // linker subsystem is W3-DEFER, no graph mutation needed here.
+        }
+    }
+
+    // =======================================================================
+    // HT edge subsystem (W9-W11 follow-on) — the ∃/∀ successor-and-edge
+    // machinery realised over the LIVE primitives. These stand in for the
+    // still-PORT-PENDING `createSuccessorIndividual` / `createNewIndividualsLinks*`
+    // (units 35/10) successor/link chain whose node-level role-successor iterators
+    // are W2-DEFER (they cannot resolve the hash id against the arena); the
+    // context-threaded `node_successor_*` accessors DO, so the edge/edge-iteration
+    // is threaded through `&mut CalculationAlgorithmContextBase` here.
+    // =======================================================================
+
+    /// Collect the live `role`-successor `(link, successor-node)` pairs of `source`,
+    /// resolving the node's successor-role hash through the context.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: stands in for `getRoleSuccessorLinkIterator(role)`.
+    /// The role test is `edge.role == role` (exact match); faithful super-role
+    /// propagation via `role->getIndirectSuperRoleList()` is deferred (the test roles
+    /// coincide). `node_successor_iterator` yields one link per distinct successor,
+    /// which is exactly one R-edge per successor in the no-merge regime here.
+    pub fn ht_role_successor_links(
+        &self,
+        source: NodeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<(EdgeId, NodeId)> {
+        let mut out: Vec<(EdgeId, NodeId)> = Vec::new();
+        let pc = calc_alg_context.process_context();
+        let mut it = pc.node_successor_iterator(source);
+        while it.has_next() {
+            let link: EdgeId = it.next_link(false);
+            let succ_id: Cint64 = it.next_individual_id(true);
+            if link.is_none() {
+                continue;
+            }
+            if pc.edge(link).get_link_role() == role {
+                let succ = calc_alg_context
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(succ_id);
+                if succ.is_some() {
+                    out.push((link, succ));
+                }
+            }
+        }
+        out
+    }
+
+    /// Port-faithful core of `getRoleSuccessorWithConcepts` (cpp 20170–20193):
+    /// the first `role`-successor of `source` that already carries every concept of
+    /// `concept_linker` (polarity XOR `negate`), else `NodeId::NONE`.
+    pub fn ht_role_successor_with_concepts(
+        &mut self,
+        source: NodeId,
+        role: RoleId,
+        concept_linker: &[NegLink<ConceptId>],
+        negate: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> NodeId {
+        for (_link, succ) in self.ht_role_successor_links(source, role, calc_alg_context) {
+            let ls = calc_alg_context
+                .process_context()
+                .node(succ)
+                .use_reapply_con_label_set;
+            if ls.is_none() {
+                continue;
+            }
+            let mut all = true;
+            for nl in concept_linker {
+                if !calc_alg_context
+                    .process_context()
+                    .label_set(ls)
+                    .has_concept(nl.target, nl.negated ^ negate)
+                {
+                    all = false;
+                    break;
+                }
+            }
+            if all {
+                return succ;
+            }
+        }
+        NodeId::NONE
+    }
+
+    /// Allocate a directed `source --role--> destination` `CIndividualLinkEdge` and
+    /// install it into `source`'s successor-role hash (keyed by the destination
+    /// individual id). Realises `createNewIndividualsLink` (cpp 22355–22369) +
+    /// `installIndividualNodeRoleLink` (cpp 22251–22269) over the live edge arena +
+    /// the real `SuccessorRoleHash` backend. Returns the new link.
+    pub fn ht_install_role_successor_edge(
+        &mut self,
+        source: NodeId,
+        destination: NodeId,
+        role: RoleId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> EdgeId {
+        // new CIndividualLinkEdge; initIndividualLinkEdge(creator=source, source, destination, role, dtp).
+        let mut e = IndividualLinkEdge::new();
+        e.set_source_individual(source);
+        e.set_destination_individual(destination);
+        e.set_link_role(role);
+        e.set_dependency_track_point(dep_track_point);
+        e.creator = source;
+        let link: EdgeId = calc_alg_context.process_context_mut().alloc_edge(e);
+        // installIndividualNodeRoleLink → succRoleHash.insertSuccessorRoleLink(oppIndiID, link).
+        let dest_id: Cint64 = calc_alg_context
+            .process_context()
+            .node(destination)
+            .individual_node_id();
+        let hash = calc_alg_context
+            .process_context_mut()
+            .node_successor_role_hash(source);
+        calc_alg_context
+            .process_context_mut()
+            .succ_role_hash_mut(hash)
+            .insert_successor_role_link(dest_id, link);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(source)
+            .last_added_link = link;
+        link
+    }
+
+    /// Edge-triggered ∀ re-application: push the positive `role`-`∀`-restrictions
+    /// present on `source` onto the freshly created `successor`.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: stands in for the role reapply-queue + the
+    /// link-processing-restriction `applyALLRule(restLink)` path (W2-DEFER). It scans
+    /// `source`'s concept label set for `CCALL` concepts on `role` and adds their
+    /// operands, which is exactly the set of `∀role.C` consequences a new R-edge must
+    /// receive.
+    pub fn ht_reapply_universal_restrictions(
+        &mut self,
+        source: NodeId,
+        successor: &mut NodeId,
+        role: RoleId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let ls = calc_alg_context
+            .process_context()
+            .node(source)
+            .use_reapply_con_label_set;
+        if ls.is_none() {
+            return;
+        }
+        // Collect the operands first (the iterator borrows the context immutably);
+        // then add them (mutating) after the borrow ends.
+        let mut ops: Vec<(ConceptId, bool)> = Vec::new();
+        {
+            let pc = calc_alg_context.process_context();
+            let onto = calc_alg_context.ontology_arenas();
+            let mut it = pc
+                .label_set(ls)
+                .get_concept_label_set_iterator(true, false, false);
+            while it.has_next() {
+                let cd: ConDescId = it.next(true, pc);
+                if cd.is_none() {
+                    break;
+                }
+                if pc.con_desc(cd).is_negated() {
+                    continue;
+                }
+                let con: ConceptId = pc.con_desc(cd).get_concept();
+                if onto.concept(con).get_operator_code() == op::CCALL
+                    && onto.concept(con).get_role() == role
+                {
+                    for nl in onto.concept(con).get_operand_list() {
+                        ops.push((nl.target, nl.negated));
+                    }
+                }
+            }
+        }
+        for (op_concept, op_neg) in ops {
+            self.add_concept_to_individual(
+                op_concept,
+                op_neg,
+                successor,
+                dep_track_point,
+                true,
+                true,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyVALUERule`.

@@ -107,148 +107,58 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_operand_list()
             .to_vec();
 
-        // getLinkProcessingRestriction(conProDes) [sibling, u03] — now callable.
-        let rest_link: EdgeId = self.get_link_processing_restriction(*con_pro_des, calc_alg_context);
-        if rest_link != Id::NONE {
-            self.applied_all_rule_count += 1;
-            // W3-DEFER[macro]: STATINC(ALLROLERESTRICTIONCOUNT, calc_alg_context)
-            let mut succ_indi: NodeId =
-                self.get_successor_individual(process_indi, rest_link, calc_alg_context);
-            let restricted_top_object_property = self
-                .is_restricted_top_object_property_propagation(
-                    process_indi,
-                    &mut succ_indi,
-                    concept,
-                    negate,
-                    calc_alg_context,
-                );
-            if !restricted_top_object_property {
-                // W3-DEFER[api]: KTRACE debug-trace block (env-gated fprintf)
+        // KONCLUDE-PORT-NOTE[api]: getLinkProcessingRestriction(conProDes) (u03) is still
+        // a `todo!` (the CLinkProcessingRestrictionSpecification subtype is unported). A
+        // node-processed ∀ carries no link restriction, so restLink == NONE here and the
+        // general re-propagation branch runs; the per-link restLink branch (edge-triggered
+        // ∀, cpp 16306–16345) is realised instead by the ∃-rule's
+        // `ht_reapply_universal_restrictions` when a new R-edge is created.
+        // (rest_link == Id::NONE)
 
-                let mut loc_succ_indi: NodeId = Id::NONE;
-                // succIndi->getReapplyConceptLabelSet(false)
-                let mut con_label_set: LabelSetId = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(succ_indi)
-                    .get_reapply_concept_label_set(false);
-
-                // create dependency
-                let mut next_dep_track_point: TrackPointId = Id::NONE;
-                let mut all_dep_node_created = false;
-
-                for con_op_linker_it in concept_op_linker.iter() {
-                    let op_concept: ConceptId = con_op_linker_it.target;
-                    let op_con_neg: bool = con_op_linker_it.negated ^ negate;
-                    // conLabelSet->hasConcept(opConcept, opConNeg)
-                    let has_concept = con_label_set != Id::NONE
+        // General ∀: re-propagate the universal restriction to every existing
+        // role-successor (cpp 16348–16392). The node-level role-successor iterators are
+        // W2-DEFER stubs; the context-threaded `ht_role_successor_links` (u08) resolves
+        // the successor-role hash for real.
+        self.applied_all_rule_count += 1;
+        let role_successors = self.ht_role_successor_links(*process_indi, role, calc_alg_context);
+        for (_link, succ_indi) in role_successors {
+            // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation — treated as false
+            // (no restricted top-object-property propagation in this fragment).
+            let mut loc_succ_indi: NodeId =
+                self.get_localized_individual(succ_indi, false, calc_alg_context);
+            for con_op_linker_it in concept_op_linker.iter() {
+                let op_concept: ConceptId = con_op_linker_it.target;
+                let op_con_neg: bool = con_op_linker_it.negated ^ negate;
+                // conLabelSet->hasConcept(opConcept, opConNeg) — skip if already present.
+                let has_concept = {
+                    let ls: LabelSetId = calc_alg_context
+                        .process_context()
+                        .node(loc_succ_indi)
+                        .use_reapply_con_label_set;
+                    ls != Id::NONE
                         && calc_alg_context
                             .process_context()
-                            .label_set(con_label_set)
-                            .has_concept(op_concept, op_con_neg);
-                    if !has_concept {
-                        // add concept
-                        if !all_dep_node_created {
-                            all_dep_node_created = true;
-                            // createALLDependency(nextDepTrackPoint, processIndi, conDes, depTrackPoint, restLink->getDependencyTrackPoint(), ...)
-                            let link_dep_track_point: TrackPointId = calc_alg_context
-                                .process_context()
-                                .edge(rest_link)
-                                .get_dependency_track_point();
-                            self.create_all_dependency(
-                                &mut next_dep_track_point,
-                                process_indi,
-                                con_des,
-                                dep_track_point,
-                                link_dep_track_point,
-                                calc_alg_context,
-                            );
-                        }
-                        if loc_succ_indi == Id::NONE {
-                            loc_succ_indi =
-                                self.get_localized_individual(succ_indi, false, calc_alg_context);
-                            con_label_set = calc_alg_context
-                                .process_context_mut()
-                                .node_mut(loc_succ_indi)
-                                .get_reapply_concept_label_set(true);
-                        }
-                        self.add_concept_to_individual(
-                            op_concept,
-                            op_con_neg,
-                            &mut loc_succ_indi,
-                            next_dep_track_point,
-                            true,
-                            true,
-                            calc_alg_context,
-                        );
-                    }
-                }
-                if loc_succ_indi != Id::NONE {
-                    self.add_individual_to_processing_queue(loc_succ_indi, calc_alg_context);
-                }
-            }
-        } else {
-            // processIndi->getReapplyRoleSuccessorHash(false) — node getter now available;
-            // the CRoleSuccessorLinkIterator it yields is STILL W2-DEFER (no has_next/next
-            // ported), so the iteration body below stays deferred.
-            let role_succ_hash: RoleSuccHashId = calc_alg_context
-                .process_context_mut()
-                .node_mut(*process_indi)
-                .get_reapply_role_successor_hash(false);
-            if role_succ_hash != Id::NONE {
-                // W3-DEFER[api]: CRoleSuccessorLinkIterator roleSuccIt = roleSuccHash->getRoleSuccessorLinkIterator(role)
-                loop {
-                    // W3-DEFER[api]: roleSuccIt.hasNext()
-                    let has_next = false;
-                    if !has_next {
-                        break;
-                    }
-                    self.applied_all_rule_count += 1;
-                    // W3-DEFER[macro]: STATINC(ALLROLERESTRICTIONCOUNT, calc_alg_context)
-                    // W3-DEFER[api]: roleSuccIt.next(true)
-                    let link: EdgeId = Id::NONE;
-                    // W3-DEFER[api]: getSuccessorIndividual(processIndi, link, calcAlgContext)
-                    let succ_indi: NodeId = Id::NONE;
-                    // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation(processIndi, succIndi, concept, negate, calcAlgContext)
-                    let restricted_top_object_property = false;
-                    if !restricted_top_object_property {
-                        // W3-DEFER[api]: KTRACE debug-trace block (env-gated fprintf)
-
-                        let mut loc_succ_indi: NodeId = Id::NONE;
-                        // W3-DEFER[api]: succIndi->getReapplyConceptLabelSet(false)
-                        let mut con_label_set: LabelSetId = Id::NONE;
-
-                        // create dependency
-                        let mut next_dep_track_point: TrackPointId = Id::NONE;
-                        // W3-DEFER[api]: CALLDependencyNode* allDepNode = nullptr;
-                        let mut all_dep_node_created = false;
-
-                        for con_op_linker_it in concept_op_linker.iter() {
-                            let op_concept: ConceptId = con_op_linker_it.target;
-                            let op_con_neg: bool = con_op_linker_it.negated ^ negate;
-                            // W3-DEFER[api]: conLabelSet->hasConcept(opConcept, opConNeg)
-                            let has_concept = false;
-                            if !has_concept {
-                                // add concept
-                                if !all_dep_node_created {
-                                    all_dep_node_created = true;
-                                    // W3-DEFER[api]: createALLDependency(nextDepTrackPoint, processIndi, conDes, depTrackPoint, link->getDependencyTrackPoint(), calcAlgContext)
-                                    next_dep_track_point = Id::NONE;
-                                }
-                                if loc_succ_indi == Id::NONE {
-                                    // W3-DEFER[api]: getLocalizedIndividual(succIndi, false, calcAlgContext)
-                                    loc_succ_indi = Id::NONE;
-                                    // W3-DEFER[api]: locSuccIndi->getReapplyConceptLabelSet(true)
-                                    con_label_set = Id::NONE;
-                                }
-                                // W3-DEFER[api]: addConceptToIndividual(opConcept, opConNeg, locSuccIndi, nextDepTrackPoint, true, true, calcAlgContext)
-                            }
-                        }
-                        if loc_succ_indi != Id::NONE {
-                            // W3-DEFER[api]: addIndividualToProcessingQueue(locSuccIndi, calcAlgContext)
-                        }
+                            .label_set(ls)
+                            .has_concept(op_concept, op_con_neg)
+                };
+                if !has_concept {
+                    // W3-DEFER[api]: createALLDependency — the descriptor's dependency
+                    // track point is threaded directly (∀ adds no non-deterministic split).
+                    self.add_concept_to_individual(
+                        op_concept,
+                        op_con_neg,
+                        &mut loc_succ_indi,
+                        dep_track_point,
+                        true,
+                        true,
+                        calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
                     }
                 }
             }
+            self.add_individual_to_processing_queue(loc_succ_indi, calc_alg_context);
         }
 
         let is_concept_reapplied: bool = calc_alg_context

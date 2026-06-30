@@ -74,6 +74,16 @@ fn build_env() -> SelfTestEnv {
         ctx.ontology_arenas_mut().alloc_concept(c)
     };
 
+    // --- the ontology TOP concept (CCTOP) — `create_new_individual` seeds every
+    //     fresh successor node with it, so it must resolve to a real concept. ---
+    let top = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1);
+        c.set_operator_code(super::super::model::op::CCTOP);
+        ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    ctx.processing_data_box_mut().ontology_top_concept = top;
+
     // --- minimal completion-graph init: the root individual node ---
     // new CIndividualProcessNode(processContext) — no process-context arena handle
     // is needed here, so `Id::NONE` (the node-resolution keystone uses the same).
@@ -681,6 +691,246 @@ fn implication_unfold_clash() {
     assert!(
         env.ctx.has_pending_signal(),
         "the unfolded B / ¬B contradiction must raise a clash signal"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
+// ===========================================================================
+// W9-W11 follow-on: the ∃/∀ EDGE subsystem — the rules that make this a
+// hypertableau. ∃R.C builds a fresh successor node + an R link-edge and labels
+// it C; ∀R.C re-propagates C onto the predecessor's R-successors (existing ones
+// via the ALL rule, and a later-created one via the edge-triggered ∀ in the
+// SOME rule). Drives end-to-end through `run_completion_on`.
+// ===========================================================================
+
+/// Seed a concept-process descriptor for `concept` on `root`'s concept-processing
+/// queue at the immediately-processing priority (8). SOME's own priority is 4
+/// (the deterministic level); the harness seeds at the immediate level to drive
+/// the rule directly, exactly as the conjunction / disjunction selftests do.
+fn seed_concept_on_queue(env: &mut SelfTestEnv, root: NodeId, concept: ConceptId) {
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+    let con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(ConceptDescriptor::new());
+    env.ctx.process_context_mut().con_desc_mut(con_des).concept = concept;
+    let mut cpd_val = ConceptProcessDescriptor::new();
+    cpd_val.concept_des = con_des;
+    cpd_val.priority = ConceptProcessPriority::new(8.0);
+    let cpd = env.ctx.process_context_mut().alloc_con_proc_desc(cpd_val);
+    ConceptProcessingQueue::insert_concept_process_descriptor(
+        queue,
+        cpd,
+        env.ctx.process_context_mut(),
+    );
+}
+
+/// Seed `root` onto the immediately-processing individual queue (Probe 2).
+fn seed_root_immediate(env: &mut SelfTestEnv, root: NodeId) {
+    let iq = env.ctx.get_individual_immediately_processing_queue(true);
+    env.ctx
+        .process_context_mut()
+        .indi_unsorted_proc_queue_mut(iq)
+        .insert_indiviudal_process_node(root);
+}
+
+/// The first R-successor node of `node` (resolved through the node's successor-role
+/// hash + the node vector), or panic if none.
+fn first_role_successor(env: &SelfTestEnv, node: NodeId) -> NodeId {
+    let mut it = env.ctx.process_context().node_successor_iterator(node);
+    assert!(it.has_next(), "expected a role successor but found none");
+    let succ_id = it.next_individual_id(true);
+    let succ = env
+        .ctx
+        .processing_data_box()
+        .individual_process_node_vector()
+        .get_data(succ_id);
+    assert!(succ.is_some(), "the successor must be registered in the node vector");
+    succ
+}
+
+/// Does `node`'s concept label set contain the concept with tag `tag`?
+fn label_set_has_tag(env: &mut SelfTestEnv, node: NodeId, tag: i64) -> bool {
+    let ls = env
+        .ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(node);
+    let mut cd: ConDescId = Id::NONE;
+    let mut dtp = TrackPointId::NONE;
+    env.ctx
+        .process_context()
+        .label_set(ls)
+        .get_concept_descriptor_by_tag(tag, &mut cd, &mut dtp)
+}
+
+/// ∃R.C over the drive loop: a root with `∃R.C` on its concept queue. After the
+/// run there is an R-successor node carrying C, and the graph is CONSISTENT.
+#[test]
+fn exists_creates_successor() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(150);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∃R.C : CCSOME, role R, operand list [C].
+    let some_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(250);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, some_rc);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(consistent, "∃R.C is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash expected for ∃R.C");
+
+    let succ = first_role_successor(&env, root);
+    assert!(
+        label_set_has_tag(&mut env, succ, 150),
+        "the ∃-rule must label the new successor with the qualifier C (tag 150)"
+    );
+}
+
+/// `∃R.D ⊓ ∀R.C` over the drive loop: the ∀ restriction must reach the
+/// ∃-generated successor. After the run the R-successor carries BOTH D (from ∃)
+/// and C (from ∀ propagation), and the graph is CONSISTENT.
+#[test]
+fn all_propagates_to_successor() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(151);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(152);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(251);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∀R.C : CCALL, role R, operand list [C].
+    let all_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(252);
+        c.set_operator_code(op::CCALL);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let mut root = env.root;
+    // ∀R.C added the natural way → into the label set (so the ∃-rule's edge-triggered
+    // ∀ re-application finds it) AND onto the queue at priority 12 (≥ immediate).
+    env.algo.add_concept_to_individual(
+        all_rc, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+    // ∃R.D seeded on the concept queue at the immediate priority.
+    seed_concept_on_queue(&mut env, root, some_rd);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(consistent, "∃R.D ⊓ ∀R.C is consistent");
+    assert!(!env.ctx.has_pending_signal(), "no clash expected");
+
+    let succ = first_role_successor(&env, root);
+    assert!(
+        label_set_has_tag(&mut env, succ, 151),
+        "the successor must carry D (tag 151) from ∃R.D"
+    );
+    assert!(
+        label_set_has_tag(&mut env, succ, 152),
+        "the ∀-restriction must propagate C (tag 152) onto the R-successor"
+    );
+}
+
+/// `∃R.C ⊓ ∀R.¬C` over the drive loop: the ∃-successor gets C (from ∃) and ¬C
+/// (from the ∀ propagation), so the successor's label-set polarity compare raises a
+/// CLASH and the graph is INCONSISTENT.
+#[test]
+fn exists_all_clash() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(153);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(253);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // ∀R.¬C : CCALL, role R, operand list [¬C].
+    let all_not_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(254);
+        c.set_operator_code(op::CCALL);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, true);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let mut root = env.root;
+    env.algo.add_concept_to_individual(
+        all_not_c, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+    seed_concept_on_queue(&mut env, root, some_rc);
+    seed_root_immediate(&mut env, root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(
+        !consistent,
+        "∃R.C ⊓ ∀R.¬C is INCONSISTENT (successor gets C and ¬C)"
+    );
+    assert!(
+        env.ctx.has_pending_signal(),
+        "the C / ¬C contradiction on the successor must raise a clash"
     );
     match env.ctx.pending_signal() {
         CalcSignal::Clash(_) => {}
