@@ -677,7 +677,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if !is_immediately_processing_queued {
                     // W3-DEFER[api]: individual->setImmediatelyProcessingQueued(true);
                     let _un_pr_queue = calc_alg_context
-                        .processing_data_box_mut()
                         .get_individual_immediately_processing_queue(true);
                     // W3-DEFER[api]: unPrQueue->insertIndiviudalProcessNode(individual);
                     individual_inserted = true;
@@ -701,7 +700,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             if !is_immediately_processing_queued {
                                 // W3-DEFER[api]: individual->setImmediatelyProcessingQueued(true);
                                 let _un_pr_queue = calc_alg_context
-                                    .processing_data_box_mut()
                                     .get_individual_immediately_processing_queue(true);
                                 // W3-DEFER[api]: unPrQueue->insertIndiviudalProcessNode(individual);
                                 individual_inserted = true;
@@ -720,7 +718,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         if !is_deterministic_expanding_queued {
                             // W3-DEFER[api]: individual->setDeterministicExpandingProcessingQueued(true);
                             let _un_pr_queue = calc_alg_context
-                                .processing_data_box_mut()
                                 .get_individual_depth_deterministic_expansion_preprocessing_queue(true);
                             // W3-DEFER[api]: unPrQueue->insertProcessIndiviudal(individual);
                             individual_inserted = true;
@@ -745,13 +742,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     //                processingDataBox->addSortedNominalNonDeterministicProcessingNodeLinker(linker);
                                 } else {
                                     let _nominal_pro_queue = calc_alg_context
-                                        .processing_data_box_mut()
                                         .get_nominal_processing_queue(true);
                                     // W3-DEFER[api]: nominalProQueue->insertProcessIndiviudal(individual);
                                 }
                             } else {
                                 let _in_depth_pro_queue = calc_alg_context
-                                    .processing_data_box_mut()
                                     .get_individual_depth_processing_queue(true);
                                 // W3-DEFER[api]: inDepthProQueue->insertProcessIndiviudal(individual);
                             }
@@ -799,15 +794,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
                 if deterministic_preprocessing_queued {
-                    let _un_pr_queue = calc_alg_context
-                        .processing_data_box_mut()
+                    let un_pr_queue = calc_alg_context
                         .get_individual_depth_first_deterministic_expansion_processing_queue(true);
-                    // W3-DEFER[api]: unPrQueue->insertIndiviudalProcessNode(individual);
+                    // unPrQueue->insertIndiviudalProcessNode(individual);
+                    calc_alg_context
+                        .process_context_mut()
+                        .indi_unsorted_proc_queue_mut(un_pr_queue)
+                        .insert_indiviudal_process_node(individual);
                 } else {
-                    let _depth_processing_queue = calc_alg_context
-                        .processing_data_box_mut()
+                    let depth_processing_queue = calc_alg_context
                         .get_individual_depth_first_processing_queue(true);
-                    // W3-DEFER[api]: depthProcessingQueue->insertIndiviudalProcessNode(individual);
+                    // depthProcessingQueue->insertIndiviudalProcessNode(individual);
+                    calc_alg_context
+                        .process_context_mut()
+                        .indi_unsorted_proc_queue_mut(depth_processing_queue)
+                        .insert_indiviudal_process_node(individual);
                 }
                 // W3-DEFER[api]: individual->setProcessingQueued(true);
                 individual_inserted = true;
@@ -896,10 +897,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let is_blocked_reactivation_processing_queued = false;
                     if !is_blocked_reactivation_processing_queued {
                         // W3-DEFER[api]: individual->setBlockedReactivationProcessingQueued(true);
-                        let _block_react_pro_queue = calc_alg_context
-                            .processing_data_box_mut()
+                        let block_react_pro_queue = calc_alg_context
                             .get_blocked_reactivation_processing_queue(true);
-                        // W3-DEFER[api]: blockReactProQueue->insertProcessIndiviudal(individual);
+                        // blockReactProQueue->insertProcessIndiviudal(individual);
+                        calc_alg_context
+                            .process_context_mut()
+                            .indi_depth_queue_insert(block_react_pro_queue, individual);
                         individual_inserted = true;
                     }
                 } else {
@@ -910,10 +913,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         let is_regular_depth_processing_queued = false;
                         if !is_regular_depth_processing_queued {
                             // W3-DEFER[api]: individual->setRegularDepthProcessingQueued(true);
-                            let _in_depth_pro_queue = calc_alg_context
-                                .processing_data_box_mut()
+                            let in_depth_pro_queue = calc_alg_context
                                 .get_individual_depth_processing_queue(true);
-                            // W3-DEFER[api]: inDepthProQueue->insertProcessIndiviudal(individual);
+                            // inDepthProQueue->insertProcessIndiviudal(individual);
+                            calc_alg_context
+                                .process_context_mut()
+                                .indi_depth_queue_insert(in_depth_pro_queue, individual);
                             individual_inserted = true;
                         }
                     }

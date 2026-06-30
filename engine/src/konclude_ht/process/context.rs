@@ -89,6 +89,12 @@ use super::reapply_sat::{
 };
 // --- u15 merge / nominal-expansion satellites ---
 use super::merging_hash::{IndividualMergingHash, IndividualMergingHashId};
+use super::queues::{
+    ConceptProcessingQueue, ConceptProcessingQueueId, IndividualDepthProcessingQueue,
+    IndividualDepthProcessingQueueId, IndividualLinkerRotationProcessingQueue,
+    IndividualLinkerRotationProcessingQueueId, IndividualUnsortedProcessingQueue,
+    IndividualUnsortedProcessingQueueId,
+};
 use super::succ_role_hash::{
     SuccessorIterator, SuccessorRoleHash, SuccessorRoleHashId, SuccessorRoleIterator,
 };
@@ -307,6 +313,16 @@ pub struct ProcessContext {
     /// `CSuccessorRoleHash` pool (per-node successor-role hash backend).
     succ_role_hashes: Arena<SuccessorRoleHash>,
 
+    // --- processing-queue subsystem pools (queues.rs) ---
+    /// `CIndividualUnsortedProcessingQueue` pool.
+    indi_unsorted_proc_queues: Arena<IndividualUnsortedProcessingQueue>,
+    /// `CIndividualLinkerRotationProcessingQueue` pool.
+    indi_rotation_proc_queues: Arena<IndividualLinkerRotationProcessingQueue>,
+    /// `CIndividualDepthProcessingQueue` pool.
+    indi_depth_proc_queues: Arena<IndividualDepthProcessingQueue>,
+    /// `CConceptProcessingQueue` pool (per-node concept-descriptor queue).
+    concept_proc_queues: Arena<ConceptProcessingQueue>,
+
     // --- the opaque CProcessContext handles (filled when those subsystems land) ---
     /// `CProcessMemoryPoolAllocationManager* mUsedMemMan`.
     /// KONCLUDE-PORT-NOTE[memory-pool]: the pool is replaced by the typed arenas
@@ -382,6 +398,10 @@ impl ProcessContext {
             reapply_con_sat_label_sets: Arena::new(),
             individual_merging_hashes: Arena::new(),
             succ_role_hashes: Arena::new(),
+            indi_unsorted_proc_queues: Arena::new(),
+            indi_rotation_proc_queues: Arena::new(),
+            indi_depth_proc_queues: Arena::new(),
+            concept_proc_queues: Arena::new(),
             used_mem_man: INVALID,
             used_process_tagger: ProcessTagger::new(),
             used_process_stat_gath: INVALID,
@@ -395,6 +415,139 @@ impl ProcessContext {
     /// Mutable access to the owned tagger (the tag-increment path).
     pub fn used_process_tagger_mut(&mut self) -> &mut ProcessTagger {
         &mut self.used_process_tagger
+    }
+
+    // --- processing-queue accessor trios ---
+    arena_accessors!(
+        indi_unsorted_proc_queues,
+        IndividualUnsortedProcessingQueue,
+        IndividualUnsortedProcessingQueueId,
+        indi_unsorted_proc_queue,
+        indi_unsorted_proc_queue_mut,
+        alloc_indi_unsorted_proc_queue
+    );
+    arena_accessors!(
+        indi_rotation_proc_queues,
+        IndividualLinkerRotationProcessingQueue,
+        IndividualLinkerRotationProcessingQueueId,
+        indi_rotation_proc_queue,
+        indi_rotation_proc_queue_mut,
+        alloc_indi_rotation_proc_queue
+    );
+    arena_accessors!(
+        indi_depth_proc_queues,
+        IndividualDepthProcessingQueue,
+        IndividualDepthProcessingQueueId,
+        indi_depth_proc_queue,
+        indi_depth_proc_queue_mut,
+        alloc_indi_depth_proc_queue
+    );
+    arena_accessors!(
+        concept_proc_queues,
+        ConceptProcessingQueue,
+        ConceptProcessingQueueId,
+        concept_proc_queue,
+        concept_proc_queue_mut,
+        alloc_concept_proc_queue
+    );
+
+    /// `CIndividualDepthProcessingQueue::takeNextProcessIndividual` — disjoint
+    /// borrow of the depth-queue arena (mut) + the node arena (read).
+    pub fn indi_depth_queue_take_next(
+        &mut self,
+        qid: IndividualDepthProcessingQueueId,
+    ) -> NodeId {
+        let ProcessContext { ref mut indi_depth_proc_queues, ref nodes, .. } = *self;
+        indi_depth_proc_queues.get_mut(qid).take_next_process_individual(nodes)
+    }
+
+    /// `CIndividualDepthProcessingQueue::insertProcessIndiviudal` — disjoint borrow.
+    pub fn indi_depth_queue_insert(
+        &mut self,
+        qid: IndividualDepthProcessingQueueId,
+        individual: NodeId,
+    ) {
+        let ProcessContext { ref mut indi_depth_proc_queues, ref nodes, .. } = *self;
+        indi_depth_proc_queues
+            .get_mut(qid)
+            .insert_process_indiviudal(nodes, individual);
+    }
+
+    /// Allocate a fresh `CIndividualUnsortedProcessingQueue` and run
+    /// `initProcessingQueue(prev)` (the db3 `getXxx(create)` allocation site).
+    pub fn alloc_unsorted_proc_queue_from_prev(
+        &mut self,
+        prev: IndividualUnsortedProcessingQueueId,
+    ) -> IndividualUnsortedProcessingQueueId {
+        let mut q = IndividualUnsortedProcessingQueue::new();
+        if prev.is_some() {
+            let prev_val = self.indi_unsorted_proc_queue(prev).clone();
+            q.init_processing_queue(Some(&prev_val));
+        } else {
+            q.init_processing_queue(None);
+        }
+        self.alloc_indi_unsorted_proc_queue(q)
+    }
+
+    /// Allocate a fresh `CIndividualLinkerRotationProcessingQueue` + init from prev.
+    pub fn alloc_rotation_proc_queue_from_prev(
+        &mut self,
+        prev: IndividualLinkerRotationProcessingQueueId,
+    ) -> IndividualLinkerRotationProcessingQueueId {
+        let mut q = IndividualLinkerRotationProcessingQueue::new();
+        if prev.is_some() {
+            let prev_val = self.indi_rotation_proc_queue(prev).clone();
+            q.init_processing_queue(Some(&prev_val));
+        } else {
+            q.init_processing_queue(None);
+        }
+        self.alloc_indi_rotation_proc_queue(q)
+    }
+
+    /// Allocate a fresh `CIndividualDepthProcessingQueue` + init from prev.
+    pub fn alloc_depth_proc_queue_from_prev(
+        &mut self,
+        prev: IndividualDepthProcessingQueueId,
+    ) -> IndividualDepthProcessingQueueId {
+        let mut q = IndividualDepthProcessingQueue::new();
+        if prev.is_some() {
+            let prev_val = self.indi_depth_proc_queue(prev).clone();
+            q.init_processing_queue(Some(&prev_val));
+        } else {
+            q.init_processing_queue(None);
+        }
+        self.alloc_indi_depth_proc_queue(q)
+    }
+
+    /// Port of `CIndividualProcessNode::getConceptProcessingQueue` (the lazy-alloc
+    /// create path), lifted to the context because the allocation needs the
+    /// `concept_proc_queues` arena that lives here (the W3b node-lazy-getter
+    /// convention). Returns `mUseConceptProcessingQueue` (`Id::NONE` when absent and
+    /// `create` is false).
+    pub fn node_concept_processing_queue(
+        &mut self,
+        node: NodeId,
+        create: bool,
+    ) -> ConceptProcessingQueueId {
+        if create && self.node(node).concept_processing_queue.is_none() {
+            let prev = self.node(node).prev_concept_processing_queue;
+            // initProcessingQueue(prev): deep-copy the parent's contents.
+            let init_val = if prev.is_some() {
+                let mut q = ConceptProcessingQueue::new();
+                let prev_val = self.concept_proc_queue(prev).clone();
+                q.init_processing_queue(Some(&prev_val));
+                q
+            } else {
+                let mut q = ConceptProcessingQueue::new();
+                q.init_processing_queue(None);
+                q
+            };
+            let qid = self.alloc_concept_proc_queue(init_val);
+            let n = self.node_mut(node);
+            n.concept_processing_queue = qid;
+            n.use_concept_processing_queue = qid;
+        }
+        self.node(node).use_concept_processing_queue
     }
 
     // --- the accessor trios (the C++ `obj->method()` deref replacement) ---

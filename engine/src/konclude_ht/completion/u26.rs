@@ -876,7 +876,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .node_mut(individual)
                 .set_incremental_compatibility_checking_queued(true);
             let _inc_comp_checking_queue = calc_alg_context
-                .processing_data_box_mut()
                 .get_incremental_compatibility_checking_queue(true);
             // W3-DEFER[api]: incCompCheckingQueue->insertProcessIndiviudal(individual);
             //   (`CIndividualDepthProcessingQueue::insertProcessIndiviudal` is a
@@ -930,7 +929,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .set_incremental_expansion_queued(true);
                 // incExpInitQueue = ctx->getProcessingDataBox()->getIncrementalExpansionInitializingProcessingQueue(true);
                 let _inc_exp_init_queue = calc_alg_context
-                    .processing_data_box_mut()
                     .get_incremental_expansion_initializing_processing_queue(true);
                 // W3-DEFER[api]: incExpInitQueue->insertProcessIndiviudal(individual);
                 // W3-DEFER[macro]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, ctx);

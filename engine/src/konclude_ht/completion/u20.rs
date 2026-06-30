@@ -1406,7 +1406,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let _sig_block_upd_pro_queue = calc_alg_context
-            .processing_data_box_mut()
             .get_blocking_update_review_processing_queue(true);
         // W6-DEFER[api]: sigBlockUpdProQueue->insertProcessIndiviudal(individual);
         let _ = individual;

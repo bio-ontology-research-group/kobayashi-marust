@@ -19,8 +19,9 @@
 #![allow(dead_code, unused_variables, unused_mut)]
 
 use super::super::model::substrate::Cint64;
+use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
 use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
-use super::algorithm::IndiNodeQueueType;
+use super::algorithm::{IndiNodeQueueType, DETERMINISTIC_PROCESS_PRIORITY};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -28,7 +29,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub fn continue_individual_processing(
         &self,
         indi_proc_node: NodeId,
-        calc_alg_context: &CalculationAlgorithmContextBase,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // bool purgedIndiBlocked = indiProcNode->hasIndirectBlockedProcessingRestrictionFlags()
         //                          || indiProcNode->hasPurgedBlockedProcessingRestrictionFlags();
@@ -41,18 +42,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
 
-        // W3-DEFER[api]: CConceptProcessingQueue* conProQue = indiProcNode->getConceptProcessingQueue(false);
-        // STILL-MISSING: the `CConceptProcessingQueue` container is not yet ported
-        // (only `ConceptProcessingQueueId` stub + a node field exist; no `isEmpty` /
-        // `getNextConceptProcessPriority` / `getPriority`). Treated as absent/empty
-        // (the `conProQue && !conProQue->isEmpty()` guard is false) until that wave.
-        let con_pro_que_present_and_non_empty = false;
-        if con_pro_que_present_and_non_empty {
-            // W3-DEFER[api]: conProQue->getNextConceptProcessPriority(&conProPri)
-            let got_next_priority = false;
-            if got_next_priority {
-                // W3-DEFER[api]: conProPri.getPriority()
-                let priority: f64 = 0.0;
+        // CConceptProcessingQueue* conProQue = indiProcNode->getConceptProcessingQueue(false);
+        let con_pro_que: ConceptProcessingQueueId = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(indi_proc_node, false);
+
+        // if (conProQue && !conProQue->isEmpty()) {
+        if con_pro_que.is_some()
+            && !calc_alg_context.process_context().concept_proc_queue(con_pro_que).is_empty()
+        {
+            // CConceptProcessPriority conProPri;
+            // if (conProQue->getNextConceptProcessPriority(&conProPri)) {
+            if let Some(con_pro_pri) = ConceptProcessingQueue::get_next_concept_process_priority(
+                con_pro_que,
+                calc_alg_context.process_context_mut(),
+            ) {
+                // double priority = conProPri.getPriority();
+                let priority: f64 = con_pro_pri.get_priority();
                 if priority < self.min_concept_processing_priority_level {
                     return false;
                 }
@@ -145,36 +151,167 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
-        // --- Probes 2-23 + 25-36: the triple-buffered processing-queue cascade. ---
-        //
-        // W3-DEFER[api]: every remaining probe (immediately-processing, delayed-
-        // backend-init, role-assertion, depth-deterministic / depth-first-
-        // deterministic expansion, distinct value-space sat-checking, value-space-
-        // triggering, backend-cache-sync retest, backend direct/indirect-influence
-        // expansion, variable-binding concept-batch, incremental-compatibility /
-        // -expansion-initializing / -expansion / compatible-merge, early/late
-        // individual-reactivation, fixed/prioritized backend reuse-expansion,
-        // the INQT_OUTDATED individual-processing queue, nominal / nominal-caching-
-        // loss-reactivation, backend individual-neighbour + propagation-cut
-        // expansion, individual depth / depth-first, blocking-update / blocked-
-        // reactivation review, signature-blocking review set, reusing review data,
-        // backend late-neighbour expansion, delaying-nominal, backend indirect-
-        // compatibility) probes a `CIndividual*ProcessingQueue` whose CONTENTS
-        // subsystem is the not-yet-ported processing-queue layer: the `process/db3.rs`
-        // lazy getters currently return `Id::NONE` (the queue is never allocated,
-        // `initProcessingQueue` is `W2-DEFER`), and the queue stub types in
-        // `process/stubs.rs` expose no `isEmpty` / `takeNextProcessIndividual*`.
-        // Several arms additionally dispatch into still-deferred merge/nominal/
-        // cache/backend helpers (`getUpToDateIndividual`, `incrementalNodeExpansion`,
-        // `detectIndividualNodeSignatureBlockingStatus`,
-        // `queuedIndividualBackendNeighbourExpansion`, `removeIndividualReusing`,
-        // `getCorrectedNominalIndividualNode`, ...). They are therefore kept DEFERRED
-        // and the trivial (non-merge / non-cache) consistency path never reaches them
-        // (it finds either a cache-testing node above, a sorted nominal node below, or
-        // — for a freshly-seeded immediately-processing root — nothing, and concludes).
-        // The faithful, fixed probe ORDER is recorded verbatim in the doc-comment on
-        // this method (probes 1-36) for the eventual full port once the queue-contents
-        // layer lands.
+        // --- Probe 2: immediately-processing queue (cpp 2204-2210). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_individual_immediately_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_individual_immediately_processing_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Immediate;
+            }
+        }
+
+        // --- Probe 3: delayed-backend-init queue (cpp 2212-2226). W3-DEFER[api]:
+        // `CIndividualDelayedBackendInitializationProcessingQueue` stub +
+        // `getUpToDateIndividual` MISS path + backend-sync data. ---
+
+        // --- Probe 4: role-assertion-expansion queue (cpp 2228-2234). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_role_assertion_expansion_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_role_assertion_expansion_processing_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_RoleAss;
+            }
+        }
+
+        // --- Probe 5: depth-deterministic-expansion preprocessing queue
+        // (cpp 2236-2243, min-pri = deterministic). LIVE. ---
+        if indi_proc_node.is_none() {
+            self.min_concept_processing_priority_level = DETERMINISTIC_PROCESS_PRIORITY as f64;
+            let q = calc_alg_context
+                .get_individual_depth_deterministic_expansion_preprocessing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context
+                    .get_individual_depth_deterministic_expansion_preprocessing_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DetExp;
+            }
+        }
+
+        // --- Probe 6: depth-first-deterministic-exp queue (cpp 2245-2251). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context
+                .get_individual_depth_first_deterministic_expansion_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context
+                    .get_individual_depth_first_deterministic_expansion_processing_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DepthFirst;
+            }
+        }
+
+        // --- Probe 7: distinct value-space sat-checking queue (cpp 2259-2270). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_distinct_value_space_satisfiability_checking_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q =
+                    calc_alg_context.get_distinct_value_space_satisfiability_checking_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_VstSatTesting;
+                if indi_proc_node.is_some() {
+                    indi_proc_node =
+                        calc_alg_context.get_localized_individual(indi_proc_node, true);
+                }
+            }
+        }
+
+        // --- Probe 8: value-space-triggering queue (cpp 2272-2283). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_value_space_triggering_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_value_space_triggering_processing_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_VsTriggering;
+                if indi_proc_node.is_some() {
+                    indi_proc_node =
+                        calc_alg_context.get_localized_individual(indi_proc_node, true);
+                }
+            }
+        }
+
+        // --- Probe 9: backend-cache-sync retest queue (cpp 2287-2293). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_backend_cache_synchronization_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_backend_cache_synchronization_processing_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BackendSyncRetest;
+            }
+        }
+
+        // --- Probe 10: backend-direct-influence-expansion queue (cpp 2295-2301). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_backend_direct_influence_expansion_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_backend_direct_influence_expansion_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type =
+                    IndiNodeQueueType::Inqt_BackendDirectInfluenceExpansion;
+            }
+        }
+
+        // --- Probes 11-19: variable-binding concept-batch (CIndividualConceptBatch-
+        // ProcessingQueue stub), incremental compatibility-checking / expansion-
+        // initializing / expansion (CIndividualCustomPriorityProcessingQueue stub) /
+        // compatible-merge, early reactivation (CIndividualReactivationProcessingQueue
+        // stub), nominal-non-det SORT, backend reuse-expansion prepare/fixed.
+        // W3-DEFER[api]: these probe still-stubbed queue containers and/or dispatch
+        // into deferred merge/incremental/backend helpers. ---
+
+        // --- Probe 20: INQT_OUTDATED individual-processing queue. W3-DEFER[api]:
+        // `CIndividualProcessingQueue` (the CIndividualProcessNodeDescriptor priority
+        // map) is still a stub; off the trivial path. ---
+
+        // --- Probe 21: nominal processing queue (cpp 2381-2387). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_nominal_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_nominal_processing_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Nominal;
+            }
+        }
+
+        // --- Probes 22-23: backend individual-neighbour + propagation-cut expansion.
+        // W3-DEFER[api]: backend-cache + neighbour-expansion controlling data. ---
 
         // --- Probe 24: sorted nominal-non-deterministic processing node
         // (cpp 2576-2581). LIVE (db4-backed `mSortedNominalNonDeterministicProcessing
@@ -190,6 +327,88 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .take_sorted_nominal_non_deterministic_processing_node();
             self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Nominal;
         }
+
+        // --- Probe 25: individual depth processing queue (cpp 2589-2595). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_individual_depth_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_individual_depth_processing_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DepthNormal;
+            }
+        }
+
+        // --- Probe 26: nominal-caching-loss reactivation. W3-DEFER[api]:
+        // `getUpToDateIndividual` MISS path + PRFSATURATIONBLOCKINGCACHED flags. ---
+
+        // --- Probe 27: individual depth-first queue (cpp 2613-2619). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_individual_depth_first_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_individual_depth_first_processing_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DepthFirst;
+            }
+        }
+
+        // --- Probe 28: late individual-reactivation. W3-DEFER[api]:
+        // `CIndividualReactivationProcessingQueue` stub + reapply helpers. ---
+
+        // --- Probe 29: blocking-update review queue (cpp 2643-2650). LIVE. ---
+        if indi_proc_node.is_none() {
+            // mOptDetExpPreporcessing = false;
+            self.opt_det_exp_preporcessing = false;
+            let q = calc_alg_context.get_blocking_update_review_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_blocking_update_review_processing_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BlockUp;
+            }
+        }
+
+        // --- Probe 30: blocked-reactivation queue (cpp 2652-2658). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_blocked_reactivation_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+            {
+                let q = calc_alg_context.get_blocked_reactivation_processing_queue(true);
+                indi_proc_node =
+                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BlockReact;
+            }
+        }
+
+        // --- Probes 31-34: signature-blocking review set, reusing review data,
+        // backend late-neighbour expansion, prioritized backend reuse-expansion.
+        // W3-DEFER[api]: review-set / reusing / backend subsystems. ---
+
+        // --- Probe 35: delaying-nominal processing queue (cpp 2761-2767). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_delaying_nominal_processing_queue(false);
+            if q.is_some() {
+                let q = calc_alg_context.get_delaying_nominal_processing_queue(true);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_unsorted_proc_queue_mut(q)
+                    .take_next_process_individual_node();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DelayedNominal;
+            }
+        }
+
+        // --- Probe 36: backend indirect-compatibility expansion. W3-DEFER[api]:
+        // `getCorrectedNominalIndividualNode` + backend-cache sync/expansion. ---
 
         // return indiProcNode;
         indi_proc_node

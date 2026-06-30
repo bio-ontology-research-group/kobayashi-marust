@@ -223,7 +223,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .is_none();
                 if has_reverse_assertion || has_assertion || has_additional {
                     let _role_ass_queue = calc_alg_context
-                        .processing_data_box_mut()
                         .get_role_assertion_expansion_processing_queue(true);
                     // W6-DEFER[api]: roleAssertionExpansionProcessingQueue->insertIndiviudalProcessNode(individualNode);
                 }

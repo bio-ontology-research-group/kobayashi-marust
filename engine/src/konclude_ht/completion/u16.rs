@@ -244,7 +244,6 @@ impl CompletionTaskHandleAlgorithm {
                 if blocker_nominal_indi_node.is_some() {
                     // CProcessingDataBox* processingDataBox = calcAlgContext->getProcessingDataBox();
                     let _delaying_nominal_processing_queue = ctx
-                        .processing_data_box_mut()
                         .get_delaying_nominal_processing_queue(true);
                     // W6-DEFER[api]: CIndividualUnsortedProcessingQueue::insertIndiviudalProcessNode
                     // is unported. Faithful: delayingNominalProcessingQueu.insert_indiviudal_process_node(test_indi);

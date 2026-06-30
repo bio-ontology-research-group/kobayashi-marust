@@ -151,6 +151,11 @@ impl ConceptDescriptor {
 /// A concept descriptor queued for processing, carrying its priority, the
 /// justifying track point, an optional processing-restriction spec, and a
 /// "reapplied" flag.
+///
+/// KONCLUDE-PORT-NOTE[ownership]: all fields are `Copy` (ids / priority / bool),
+/// so the struct derives `Copy`; `CConceptProcessDescriptor::initCopy` (a
+/// field-wise copy) is realised as `*dst = *src`.
+#[derive(Copy, Clone)]
 pub struct ConceptProcessDescriptor {
     // KONCLUDE-PORT-NOTE[ownership]: `CConceptDescriptor* conceptDes` -> `ConDescId`.
     /// `CConceptProcessDescriptor::conceptDes`.

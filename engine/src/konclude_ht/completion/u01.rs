@@ -39,6 +39,7 @@
 #![allow(unused_assignments)]
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
 use super::super::process::{ClashDescId, ConProcDescId, NodeId, TrackPointId};
 use super::clash::CalcSignal;
 use super::context::CalculationAlgorithmContextBase;
@@ -429,9 +430,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
                             while continue_processing_individual && !canceled {
                                 // CConceptProcessingQueue* conProcQueue = indiProcNode->getConceptProcessingQueue(true);
+                                let con_proc_queue: ConceptProcessingQueueId = calc_alg_context
+                                    .process_context_mut()
+                                    .node_concept_processing_queue(indi_proc_node, true);
                                 // conProcDes = conProcQueue->takeNextConceptDescriptorProcess();
-                                // W3-DEFER[api]: indiProcNode->getConceptProcessingQueue(true)->takeNextConceptDescriptorProcess()
-                                con_proc_des = Id::NONE;
+                                con_proc_des = ConceptProcessingQueue::take_next_concept_descriptor_process(
+                                    con_proc_queue,
+                                    calc_alg_context.process_context_mut(),
+                                );
 
                                 // processingDataBox->setLastProcessingIndividualNodeAndConceptDescriptor(indiProcNode, conProcDes);
                                 // W3-DEFER[api]: processingDataBox->setLastProcessingIndividualNodeAndConceptDescriptor(...)
@@ -466,8 +472,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     // (W3-DEFER[api]: the queue the descriptor was taken from).
                                     self.add_concept_to_processing_queue_reinsert(
                                         con_proc_des,
-                                        // W3-RECONCILE[api]: conProcQueue arg (the queue the descriptor came from) deferred.
-                                        Id::NONE,
+                                        con_proc_queue,
                                         indi_proc_node,
                                         &mut calc_alg_context,
                                     );

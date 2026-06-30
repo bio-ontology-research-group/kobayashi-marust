@@ -8,18 +8,20 @@
 //!
 //!   * `getXxx(create)` — lazy-alloc getter: when the local handle is null and
 //!     `create` is set, allocate the queue from the per-test pool, seed it from
-//!     the saved `mPrevX`, and publish it through `mUseX`; always return `mUseX`.
+//!     the saved `mPrevX` (`initProcessingQueue`), and publish it through `mUseX`;
+//!     always return `mUseX`.
 //!   * `clearXxx()` — null all three handles; returns `this`.
 //!
-//! KONCLUDE-PORT-NOTE[api]: the C++ `getXxx` create branch allocates via
-//! `CObjectParameterizingAllocator<…, CProcessContext*>` from
-//! `mProcessContext->getUsedMemoryAllocationManager()` and then calls
-//! `initProcessingQueue(mPrevX)` on the new queue. Both the per-test arena
-//! allocation and the queue `initProcessingQueue` method live in the
-//! not-yet-ported `CProcessContext` / processing-queue layer, so each allocation
-//! site is left as a `// W2-DEFER[api]` marker: the local handle stays `Id::NONE`
-//! and the `mUseX = mX` publish (which then assigns `Id::NONE`) is preserved so
-//! the control flow diffs cleanly against the C++. The `clear` bodies are exact.
+//! QUEUE-PORT (un-defer): the C++ `getXxx` create branch allocates via
+//! `CObjectParameterizingAllocator<…, CProcessContext*>` and calls
+//! `initProcessingQueue(mPrevX)`. The port realises the per-test pool as the
+//! `Arena<T>` fields on `ProcessContext` (the single pool every branch databox
+//! shares — see `process::queues`), so the getters now take `ctx: &mut
+//! ProcessContext` and call the matching `ctx.alloc_*_proc_queue_from_prev(prev)`
+//! helper (allocate + `initProcessingQueue`). The two queues whose container is
+//! still a stub (`var_bind_concept_batch` → `CIndividualConceptBatchProcessingQueue`,
+//! `incremental_exansion` → `CIndividualCustomPriorityProcessingQueue`) keep the
+//! `W2-DEFER[api]` body. The `clear` bodies are exact.
 //!
 //! NOTE: `isBackendIndividualLateReuseExpansionActivated` (`.cpp` 905) and
 //! `setBackendIndividualLateReuseExpansionActivated` (`.cpp` 909) fall inside this
@@ -28,6 +30,7 @@
 #![allow(dead_code)]
 
 use super::super::model::substrate::Id;
+use super::context::ProcessContext;
 use super::databox::ProcessingDataBox;
 use super::stubs::{
     IndividualConceptBatchProcessingQueue, IndividualCustomPriorityProcessingQueue,
@@ -40,14 +43,12 @@ impl ProcessingDataBox {
     /// `.cpp` 784–791.
     pub fn get_individual_depth_first_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.indi_depth_first_process_queue.is_none() && create {
-            // W2-DEFER[api]: mIndiDepthFirstProcessQueue =
-            //   CObjectParameterizingAllocator<CIndividualUnsortedProcessingQueue,
-            //   CProcessContext*>::allocateAndConstructAndParameterize(
-            //   mProcessContext->getUsedMemoryAllocationManager(), mProcessContext);
-            //   mIndiDepthFirstProcessQueue->initProcessingQueue(mPrevIndiDepthFirstProcessQueue);
+            self.indi_depth_first_process_queue =
+                ctx.alloc_unsorted_proc_queue_from_prev(self.prev_indi_depth_first_process_queue);
             self.use_indi_depth_first_process_queue = self.indi_depth_first_process_queue;
         }
         self.use_indi_depth_first_process_queue
@@ -66,11 +67,12 @@ impl ProcessingDataBox {
     /// `.cpp` 803–810.
     pub fn get_individual_immediately_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.indi_imm_process_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mIndiImmProcessQueue->initProcessingQueue(mPrevIndiImmProcessQueue);
+            self.indi_imm_process_queue =
+                ctx.alloc_unsorted_proc_queue_from_prev(self.prev_indi_imm_process_queue);
             self.use_indi_imm_process_queue = self.indi_imm_process_queue;
         }
         self.use_indi_imm_process_queue
@@ -89,11 +91,12 @@ impl ProcessingDataBox {
     /// `.cpp` 822–829.
     pub fn get_role_assertion_expansion_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.role_assertion_process_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mRoleAssertionProcessQueue->initProcessingQueue(mPrevRoleAssertionProcessQueue);
+            self.role_assertion_process_queue =
+                ctx.alloc_unsorted_proc_queue_from_prev(self.prev_role_assertion_process_queue);
             self.use_role_assertion_process_queue = self.role_assertion_process_queue;
         }
         self.use_role_assertion_process_queue
@@ -112,11 +115,12 @@ impl ProcessingDataBox {
     /// `.cpp` 842–849.
     pub fn get_backend_cache_synchronization_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.backend_sync_retest_process_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mBackendSyncRetestProcessQueue->initProcessingQueue(mPrevBackendSyncRetestProcessQueue);
+            self.backend_sync_retest_process_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(self.prev_backend_sync_retest_process_queue);
             self.use_backend_sync_retest_process_queue = self.backend_sync_retest_process_queue;
         }
         self.use_backend_sync_retest_process_queue
@@ -135,11 +139,14 @@ impl ProcessingDataBox {
     /// `.cpp` 862–869.
     pub fn get_backend_direct_influence_expansion_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.backend_direct_influence_expansion_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mBackendDirectInfluenceExpansionQueue->initProcessingQueue(mPrevBackendDirectInfluenceExpansionQueue);
+            self.backend_direct_influence_expansion_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(
+                    self.prev_backend_direct_influence_expansion_queue,
+                );
             self.use_backend_direct_influence_expansion_queue =
                 self.backend_direct_influence_expansion_queue;
         }
@@ -159,6 +166,7 @@ impl ProcessingDataBox {
     /// `.cpp` 881–888.
     pub fn get_backend_indirect_compatibility_expansion_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self
@@ -166,8 +174,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mBackendIndirectCompatibilityExpansionQueue->initProcessingQueue(mPrevBackendIndirectCompatibilityExpansionQueue);
+            self.backend_indirect_compatibility_expansion_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(
+                    self.prev_backend_indirect_compatibility_expansion_queue,
+                );
             self.use_backend_indirect_compatibility_expansion_queue =
                 self.backend_indirect_compatibility_expansion_queue;
         }
@@ -196,6 +206,7 @@ impl ProcessingDataBox {
     /// verbatim — the field choice matches the C++ exactly.
     pub fn get_backend_individual_reuse_expansion_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self
@@ -203,8 +214,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mBackendLateIndividualReuseExpansionQueue->initProcessingQueue(mPrevBackendLateIndividualReuseExpansionQueue);
+            self.backend_late_individual_reuse_expansion_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(
+                    self.prev_backend_late_individual_reuse_expansion_queue,
+                );
             self.use_backend_late_individual_reuse_expansion_queue =
                 self.backend_late_individual_reuse_expansion_queue;
         }
@@ -228,11 +241,14 @@ impl ProcessingDataBox {
     /// (`mBackendIndividualReuseExpansionQueue`/`mUse`/`mPrev`). Ported verbatim.
     pub fn get_backend_late_individual_neighbour_expansion_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.backend_individual_reuse_expansion_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mBackendIndividualReuseExpansionQueue->initProcessingQueue(mPrevBackendIndividualReuseExpansionQueue);
+            self.backend_individual_reuse_expansion_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(
+                    self.prev_backend_individual_reuse_expansion_queue,
+                );
             self.use_backend_individual_reuse_expansion_queue =
                 self.backend_individual_reuse_expansion_queue;
         }
@@ -252,6 +268,7 @@ impl ProcessingDataBox {
     /// `.cpp` 969–976.
     pub fn get_backend_individual_neighbour_expansion_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualLinkerRotationProcessingQueue> {
         if self
@@ -259,8 +276,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualLinkerRotationProcessingQueue, then
-            //   mBackendIndividualNeighbourExpansionQueue->initProcessingQueue(mPrevBackendIndividualNeighbourExpansionQueue);
+            self.backend_individual_neighbour_expansion_queue = ctx
+                .alloc_rotation_proc_queue_from_prev(
+                    self.prev_backend_individual_neighbour_expansion_queue,
+                );
             self.use_backend_individual_neighbour_expansion_queue =
                 self.backend_individual_neighbour_expansion_queue;
         }
@@ -280,11 +299,12 @@ impl ProcessingDataBox {
     /// `.cpp` 990–997.
     pub fn get_delaying_nominal_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.delay_nom_process_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mDelayNomProcessQueue->initProcessingQueue(mPrevDelayNomProcessQueue);
+            self.delay_nom_process_queue =
+                ctx.alloc_unsorted_proc_queue_from_prev(self.prev_delay_nom_process_queue);
             self.use_delay_nom_process_queue = self.delay_nom_process_queue;
         }
         self.use_delay_nom_process_queue
@@ -303,11 +323,14 @@ impl ProcessingDataBox {
     /// `.cpp` 1009–1016.
     pub fn get_nominal_caching_loss_reactivation_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self.caching_loss_reactivation_process_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mCachingLossReactivationProcessQueue->initProcessingQueue(mPrevCachingLossReactivationProcessQueue);
+            self.caching_loss_reactivation_process_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(
+                    self.prev_caching_loss_reactivation_process_queue,
+                );
             self.use_caching_loss_reactivation_process_queue =
                 self.caching_loss_reactivation_process_queue;
         }
@@ -325,6 +348,10 @@ impl ProcessingDataBox {
 
     /// Port of `CProcessingDataBox::getVariableBindingConceptBatchProcessingQueue`.
     /// `.cpp` 1027–1034.
+    ///
+    /// W2-DEFER[api]: the `CIndividualConceptBatchProcessingQueue` container is a
+    /// stub still (its `CIndividualConceptBatchProcessingData` sub-queues are
+    /// unported); allocation stays deferred.
     pub fn get_variable_binding_concept_batch_processing_queue(
         &mut self,
         create: bool,
@@ -351,11 +378,12 @@ impl ProcessingDataBox {
     /// `.cpp` 1045–1052.
     pub fn get_individual_depth_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self.indi_depth_processing_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mIndiDepthProcessingQueue->initProcessingQueue(mPrevIndiDepthProcessingQueue);
+            self.indi_depth_processing_queue =
+                ctx.alloc_depth_proc_queue_from_prev(self.prev_indi_depth_processing_queue);
             self.use_indi_depth_processing_queue = self.indi_depth_processing_queue;
         }
         self.use_indi_depth_processing_queue
@@ -374,11 +402,12 @@ impl ProcessingDataBox {
     /// `.cpp` 1068–1075.
     pub fn get_nominal_deterministic_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self.nominal_deterministic_processing_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mNominalDeterministicProcessingQueue->initProcessingQueue(mPrevNominalDeterministicProcessingQueue);
+            self.nominal_deterministic_processing_queue = ctx
+                .alloc_depth_proc_queue_from_prev(self.prev_nominal_deterministic_processing_queue);
             self.use_nominal_deterministic_processing_queue =
                 self.nominal_deterministic_processing_queue;
         }
@@ -398,11 +427,12 @@ impl ProcessingDataBox {
     /// `.cpp` 1088–1095.
     pub fn get_nominal_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self.nominal_processing_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mNominalProcessingQueue->initProcessingQueue(mPrevNominalProcessingQueue);
+            self.nominal_processing_queue =
+                ctx.alloc_depth_proc_queue_from_prev(self.prev_nominal_processing_queue);
             self.use_nominal_processing_queue = self.nominal_processing_queue;
         }
         self.use_nominal_processing_queue
@@ -421,6 +451,7 @@ impl ProcessingDataBox {
     /// `.cpp` 1110–1117.
     pub fn get_incremental_expansion_initializing_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self
@@ -428,8 +459,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mIncrementalExansionInitializingProcessingQueue->initProcessingQueue(mPrevIncrementalExansionInitializingProcessingQueue);
+            self.incremental_exansion_initializing_processing_queue = ctx
+                .alloc_depth_proc_queue_from_prev(
+                    self.prev_incremental_exansion_initializing_processing_queue,
+                );
             self.use_incremental_exansion_initializing_processing_queue =
                 self.incremental_exansion_initializing_processing_queue;
         }
@@ -447,6 +480,9 @@ impl ProcessingDataBox {
 
     /// Port of `CProcessingDataBox::getIncrementalExpansionProcessingQueue`.
     /// `.cpp` 1131–1138.
+    ///
+    /// W2-DEFER[api]: the `CIndividualCustomPriorityProcessingQueue` container is a
+    /// stub still; allocation stays deferred.
     pub fn get_incremental_expansion_processing_queue(
         &mut self,
         create: bool,
@@ -473,11 +509,12 @@ impl ProcessingDataBox {
     /// `.cpp` 1152–1159.
     pub fn get_incremental_compatibility_checking_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self.incremental_compatibility_checking_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mIncrementalCompatibilityCheckingQueue->initProcessingQueue(mPrevIncrementalCompatibilityCheckingQueue);
+            self.incremental_compatibility_checking_queue = ctx
+                .alloc_depth_proc_queue_from_prev(self.prev_incremental_compatibility_checking_queue);
             self.use_incremental_compatibility_checking_queue =
                 self.incremental_compatibility_checking_queue;
         }
@@ -497,6 +534,7 @@ impl ProcessingDataBox {
     /// `.cpp` 1172–1179.
     pub fn get_individual_depth_first_deterministic_expansion_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualUnsortedProcessingQueue> {
         if self
@@ -504,8 +542,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualUnsortedProcessingQueue, then
-            //   mIndiDepthFirstDetExpPreProcessingQueue->initProcessingQueue(mPrevIndiDepthFirstDetExpPreProcessingQueue);
+            self.indi_depth_first_det_exp_pre_processing_queue = ctx
+                .alloc_unsorted_proc_queue_from_prev(
+                    self.prev_indi_depth_first_det_exp_pre_processing_queue,
+                );
             self.use_indi_depth_first_det_exp_pre_processing_queue =
                 self.indi_depth_first_det_exp_pre_processing_queue;
         }
@@ -527,11 +567,12 @@ impl ProcessingDataBox {
     /// `.cpp` 1190–1197.
     pub fn get_individual_depth_deterministic_expansion_preprocessing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self.indi_depth_det_exp_pre_processing_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mIndiDepthDetExpPreProcessingQueue->initProcessingQueue(mPrevIndiDepthDetExpPreProcessingQueue);
+            self.indi_depth_det_exp_pre_processing_queue = ctx
+                .alloc_depth_proc_queue_from_prev(self.prev_indi_depth_det_exp_pre_processing_queue);
             self.use_indi_depth_det_exp_pre_processing_queue =
                 self.indi_depth_det_exp_pre_processing_queue;
         }
@@ -553,6 +594,7 @@ impl ProcessingDataBox {
     /// `.cpp` 1209–1216.
     pub fn get_blocking_update_review_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self
@@ -560,8 +602,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mIndiSignatureBlockingUpdateProcessingQueue->initProcessingQueue(mPrevIndiSignatureBlockingUpdateProcessingQueue);
+            self.indi_signature_blocking_update_processing_queue = ctx
+                .alloc_depth_proc_queue_from_prev(
+                    self.prev_indi_signature_blocking_update_processing_queue,
+                );
             self.use_indi_signature_blocking_update_processing_queue =
                 self.indi_signature_blocking_update_processing_queue;
         }
@@ -581,6 +625,7 @@ impl ProcessingDataBox {
     /// `.cpp` 1227–1234.
     pub fn get_blocked_reactivation_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self
@@ -588,8 +633,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mIndiBlockedReactivationProcessingQueue->initProcessingQueue(mPrevIndiBlockedReactivationProcessingQueue);
+            self.indi_blocked_reactivation_processing_queue = ctx
+                .alloc_depth_proc_queue_from_prev(
+                    self.prev_indi_blocked_reactivation_processing_queue,
+                );
             self.use_indi_blocked_reactivation_processing_queue =
                 self.indi_blocked_reactivation_processing_queue;
         }
@@ -609,11 +656,12 @@ impl ProcessingDataBox {
     /// `.cpp` 1247–1254.
     pub fn get_value_space_triggering_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self.value_space_triggering_processing_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mValueSpaceTriggeringProcessingQueue->initProcessingQueue(mPrevValueSpaceTriggeringProcessingQueue);
+            self.value_space_triggering_processing_queue = ctx
+                .alloc_depth_proc_queue_from_prev(self.prev_value_space_triggering_processing_queue);
             self.use_value_space_triggering_processing_queue =
                 self.value_space_triggering_processing_queue;
         }
@@ -633,6 +681,7 @@ impl ProcessingDataBox {
     /// `.cpp` 1269–1276.
     pub fn get_distinct_value_space_satisfiability_checking_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualDepthProcessingQueue> {
         if self
@@ -640,8 +689,10 @@ impl ProcessingDataBox {
             .is_none()
             && create
         {
-            // W2-DEFER[api]: allocate CIndividualDepthProcessingQueue, then
-            //   mDistinctValueSpaceSatisfiabilityCheckingQueue->initProcessingQueue(mPrevDistinctValueSpaceSatisfiabilityCheckingQueue);
+            self.distinct_value_space_satisfiability_checking_queue = ctx
+                .alloc_depth_proc_queue_from_prev(
+                    self.prev_distinct_value_space_satisfiability_checking_queue,
+                );
             self.use_distinct_value_space_satisfiability_checking_queue =
                 self.distinct_value_space_satisfiability_checking_queue;
         }

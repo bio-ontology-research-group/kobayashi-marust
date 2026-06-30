@@ -23,6 +23,10 @@ use super::super::model::substrate::{Arena, Cint64, Id, INVALID};
 use super::super::process::context::ProcessContext;
 use super::super::task::adapters::SatisfiableTaskIncrementalConsistencyTestingAdapter;
 use super::super::process::databox::ProcessingDataBox;
+use super::super::process::queues::{
+    IndividualDepthProcessingQueue, IndividualLinkerRotationProcessingQueue,
+    IndividualUnsortedProcessingQueue,
+};
 use super::super::process::{BranchNodeId, DependencyId, NodeId};
 use super::clash::CalcSignal;
 use super::stubs::{
@@ -323,6 +327,19 @@ pub struct CalculationAlgorithmContextBase {
     pub sat_node_exp_cache_handler: Id<SaturationNodeExpansionCacheHandler>,
 }
 
+/// Generate a databox processing-queue getter forwarder that threads the
+/// `ProcessContext` queue arena (both are disjoint fields of `base`).
+macro_rules! db_queue_forward {
+    ($name:ident, $ret:ty) => {
+        #[inline]
+        pub fn $name(&mut self, create: bool) -> $ret {
+            let b = &mut self.base;
+            b.used_processing_data_box
+                .$name(&mut b.used_process_context, create)
+        }
+    };
+}
+
 impl CalculationAlgorithmContextBase {
     /// Port of `CCalculationAlgorithmContextBase::CCalculationAlgorithmContextBase`.
     pub fn new() -> Self {
@@ -365,6 +382,98 @@ impl CalculationAlgorithmContextBase {
     pub fn process_context_mut(&mut self) -> &mut ProcessContext {
         &mut self.base.used_process_context
     }
+    // --- processing-queue getter forwarders ---------------------------------
+    // The db3 `getXxx(create)` allocation site needs BOTH the databox (the
+    // `mX`/`mUseX`/`mPrev` triple) AND the `ProcessContext` queue arena. Both are
+    // disjoint fields of `base`, so these forwarders destructure `base` and hand
+    // the db getter `&mut used_process_context`. Callers that previously wrote
+    // `ctx.processing_data_box_mut().get_X(create)` now write `ctx.get_X(create)`.
+    db_queue_forward!(
+        get_individual_immediately_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_individual_depth_first_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_role_assertion_expansion_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_backend_cache_synchronization_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_backend_direct_influence_expansion_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_backend_indirect_compatibility_expansion_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_backend_individual_reuse_expansion_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_backend_late_individual_neighbour_expansion_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_delaying_nominal_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_nominal_caching_loss_reactivation_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_individual_depth_first_deterministic_expansion_processing_queue,
+        Id<IndividualUnsortedProcessingQueue>
+    );
+    db_queue_forward!(
+        get_backend_individual_neighbour_expansion_queue,
+        Id<IndividualLinkerRotationProcessingQueue>
+    );
+    db_queue_forward!(
+        get_individual_depth_processing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_nominal_deterministic_processing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(get_nominal_processing_queue, Id<IndividualDepthProcessingQueue>);
+    db_queue_forward!(
+        get_incremental_expansion_initializing_processing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_incremental_compatibility_checking_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_individual_depth_deterministic_expansion_preprocessing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_blocking_update_review_processing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_blocked_reactivation_processing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_value_space_triggering_processing_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+    db_queue_forward!(
+        get_distinct_value_space_satisfiability_checking_queue,
+        Id<IndividualDepthProcessingQueue>
+    );
+
     /// The static terminology arenas (live in `base`).
     pub fn ontology_arenas(&self) -> &OntologyArenas { &self.base.ontology_arenas }
     /// Mutable terminology access.

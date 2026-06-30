@@ -346,6 +346,7 @@ Legend: ☐ todo · ◐ in progress · ☑ ported (pre-compile) · ✓ compiles 
 | W3.5 | wire container into calc context | `Algorithm/CCalculationAlgorithmContext.h` | `completion/context.rs` | ✓ (`used_process_context` now `ProcessContext` by-value; `ontology_arenas` added; Base `process_context` = opaque alias) |
 | W3 | completion units 1–36 | completion `.cpp` | `completion/u01..u36.rs` | ✓ (wired + reconciled; `cargo check --release` exit 0, 0 errors) |
 | W8 | main driver loop live (take-next + rule dispatch) | `…CompletionTaskHandleAlgorithm.cpp` 2190-2790 / 9496-9549 | `completion/u02.rs` `take_next_process_individual`, `completion/u03.rs` `tableau_rule_processing`/`tableau_rule_choice` | ✓ (3 driver `todo!`s → live; jump table → `match` into `apply_*_rule`; cache-testing + sorted-nominal probes LIVE, queue-contents arms `W3-DEFER`; `cargo check --release` exit 0) |
+| W8.1 | processing-queue subsystem (the triple-buffered queues) | `Process/CIndividual{Unsorted,LinkerRotation,Depth}ProcessingQueue.{h,cpp}`, `CConceptProcessingQueue.{h,cpp}`, `CIndividualDepthPriority`, `CConceptProcessingPriorityQueueData` | `process/queues.rs` (+ context/db3/stubs/u01/u02/u04 + completion/context forwarders) | ✓ (4 real queues + 2 helpers; 4 arenas on `ProcessContext`; db3 22/24 getters + 14 u02 probes + `continue_individual_processing` + u01 concept take-next un-defered; `cargo check --release` exit 0) |
 | W3 | Strategy/ policies | `Reasoner/Kernel/Strategy/` | `completion/strategy.rs` | ✓ |
 | W3 | reconcile sibling stubs | (W3-RECONCILE, [api]) | `completion/pending.rs` | ✓ (1 stub: label-set `containsIndividualNodeConcepts` overload) |
 | W4 | saturation struct fields | `…SaturationTaskHandleAlgorithm.h` | `saturation/algorithm.rs` | ✓ (member fields + 7 rule-count getters + ctor `new()`) |
@@ -1123,6 +1124,89 @@ live bodies; `cargo check --release` on ws exit 0, 0 konclude_ht errors.
 - **Error trajectory: exit 0** throughout (the only edits are u02/u03 bodies + 3 new u03
   imports `ConDescId` / `op` / `ConceptId` + `INVALID`). No unreachable-pattern warnings
   in the dispatch ⇒ all opcode groupings are value-distinct.
+
+### W8.1 processing-queue subsystem — the inner drain made LIVE (2026-06-30): COMPILES, exit 0
+
+The concept / individual **processing-queue** layer the W8 driver short-circuited
+on (`take_next_process_individual`'s ~34 deferred probes, db3's `Id::NONE` queue
+getters, `continue_individual_processing` returning `false`) is now REAL. New file
+`process/queues.rs` ports the workhorse queue family faithfully:
+
+- **4 real queues + 2 value helpers.** `CIndividualUnsortedProcessingQueue`
+  (LIFO node linker), `CIndividualLinkerRotationProcessingQueue` (two-stage
+  process/rotation), `CIndividualDepthProcessingQueue` (depth-priority +
+  remaining-depth bucketing), `CConceptProcessingQueue` (the per-node 15-slot
+  concept-descriptor priority vector that drives the rule loop); plus
+  `CIndividualDepthPriority` (the `(depth,id)` `Ord` key) and
+  `CConceptProcessingPriorityQueueData`. Each queue has the faithful
+  `init_processing_queue`(COW)/`is_empty`/`take_next`/`insert`/`clear` ops in
+  Konclude order (priority where applicable: depth queue = `BTreeMap` begin();
+  concept queue = high-index-first with default-then-sorted chains).
+- **Where held — arena on `ProcessContext`.** KONCLUDE-PORT-NOTE[ownership]:
+  across a non-deterministic branch the child databox shares the parent queue via
+  `mPrevX` (a pointer into the per-test pool), so the queue objects must live in
+  the ONE shared pool, not per-databox. The port keeps that faithful: 4
+  `Arena<T>` on `ProcessContext` (`indi_unsorted/rotation/depth_proc_queues`,
+  `concept_proc_queues`) addressed by the `Id<T>` triples already on the databox.
+  The queued ENTRIES are bare `Vec<NodeId>`/`BTreeMap` by value inside each queue
+  (no linker arena); the concept queue's descriptor chains use the existing
+  `con_proc_descs` arena. The COW `initProcessingQueue(prev)` is a deep `clone()`
+  (behaviour-identical, sharing optimisation dropped — `[memory-pool]` note); the
+  depth queue's `mAdditionalPriorityIndiDesMap` overlay is likewise collapsed.
+- **db3 getters un-defered (22 of 26).** Each `getXxx(create)` now threads
+  `ctx: &mut ProcessContext` and allocates via
+  `ctx.alloc_{unsorted,rotation,depth}_proc_queue_from_prev(prev)` +
+  `initProcessingQueue`. The 2 whose container is still a stub
+  (`var_bind_concept_batch` = `CIndividualConceptBatchProcessingQueue`,
+  `incremental_exansion` = `CIndividualCustomPriorityProcessingQueue`) keep the
+  `W2-DEFER`. Callers reach them through new forwarders on
+  `CalculationAlgorithmContextBase` (`db_queue_forward!`) that destructure `base`
+  for the disjoint databox + process-context borrows (the W3.6 pattern); the 14
+  external call sites in u04/u16/u18/u20/u26 were rewritten to the forwarders.
+- **`continue_individual_processing` LIVE** (u02): reads the node's
+  `getConceptProcessingQueue(false)` (lifted to
+  `ProcessContext::node_concept_processing_queue`, the W3b lazy-getter pattern) +
+  `isEmpty` + `getNextConceptProcessPriority` against the `min_concept_processing_priority_level`.
+- **`take_next_process_individual` — 14 probes LIVE** (u02): immediately (2),
+  role-assertion (4), depth-det-exp preprocessing (5), depth-first-det-exp (6),
+  distinct-VS-sat (7) + VS-triggering (8) [+ `getLocalizedIndividual`],
+  backend-sync-retest (9), backend-direct-influence (10), nominal (21),
+  depth-normal (25), depth-first (27), blocking-update (29), blocked-react (30),
+  delaying-nominal (35). The fixed 1-36 order is preserved; the probes needing
+  still-separate subsystems (batch/custom queues, reactivation queue,
+  `getUpToDateIndividual` MISS, signature/reusing review, backend
+  neighbour/reuse, the INQT_OUTDATED descriptor queue) stay `W3-DEFER`.
+- **u01 inner concept drain LIVE.** The `while continue_processing_individual`
+  loop now takes the real `conProcDes =
+  getConceptProcessingQueue(true)->takeNextConceptDescriptorProcess()` and feeds
+  it to `tableau_rule_processing` → `tableau_rule_choice` → `apply_*_rule` (W8's
+  live dispatch). The reinsert path passes the real queue id.
+- **Insert side (u04): the individual-queue inserts un-defered** (real `NodeId`):
+  `add_individual_to_processing_queue`'s depth-first / det-exp / blocked-react /
+  depth inserts now call `insert_indiviudal_process_node` /
+  `indi_depth_queue_insert`. The **concept-queue insert stays deferred** — its
+  blocker is the `CConceptProcessDescriptor` allocation (the concept-priority
+  strategy + concept reads), a genuinely-separate subsystem (rule 3), not the
+  queue; the queue's `insert_concept_process_descriptor` method is real and
+  waiting on a real descriptor. The node-flag dedup (`setProcessingQueued`) also
+  stays deferred (separate restriction-flag subsystem).
+- **What the driver can now drain.** `take_next_process_individual` returns real
+  nodes off the populated individual queues; `continue_individual_processing`
+  reads the real per-node concept queue; the inner loop pops real concept
+  descriptors and dispatches into the live `apply_*_rule` engine. The end-to-end
+  run still bottoms out only where the concept-descriptor allocation +
+  satisfiable-task seed land (the `handle_task` `satCalcTask` acquisition is still
+  `W3-DEFER`, so `handle_task` short-circuits until Task/Calculation seeds a
+  task).
+- **Error trajectory: 3 → 0 → 0.** The only build errors were two `Default`
+  derives on structs holding `Id<T>` (`ConceptProcessingPriorityQueueData`, the
+  array init) — fixed with manual `impl Default` (the `descriptor.rs`/`value.rs`
+  pattern); `ConceptProcessDescriptor` gained `#[derive(Copy,Clone)]` so
+  `initCopy` is `*dst = *src`. The depth queue's node-field reads while mutating
+  the queue arena are resolved by disjoint `ProcessContext` wrappers
+  (`indi_depth_queue_take_next`/`_insert`). `cargo check --release` on ws exit 0
+  (51 benign warnings, dead-code in not-yet-called queue ops). Completion /
+  saturation / cache / task / calculation / model untouched and still compile.
 
 ## Build / validate
 

@@ -53,7 +53,9 @@ stub_id! {
     /// `CMemoryAllocationManager*`. KONCLUDE-PORT-NOTE[memory-pool]: the arena model
     /// replaces the pool allocator; the field is retained for layout fidelity.
     MemoryAllocationManager => MemAllocId,
-    ConceptProcessingQueue => ConceptProcessingQueueId,
+    // queue-port reconcile: ConceptProcessingQueue relocated to `process::queues`
+    // (real ported per-node concept queue); its `ConceptProcessingQueueId`
+    // re-aliases below.
     // u15 reconcile: SuccessorRoleHash relocated to `process::succ_role_hash`
     // (real ported backend); its `SuccRoleHashId` re-aliases below.
     // W2.7 reconcile: ConnectionSuccessorSet / DistinctHash / DisjointSuccessorRoleHash
@@ -137,6 +139,21 @@ pub type SuccRoleHashId = super::succ_role_hash::SuccessorRoleHashId;
 pub type IndividualMergingHashId = super::merging_hash::IndividualMergingHashId;
 
 // ===========================================================================
+// queue-port RECONCILE: the three workhorse individual queues + the per-node
+// concept queue are ported for real in `process::queues`. The struct NAMES are
+// re-exported (so `databox.rs` / `db3.rs` `use super::stubs::{…}` sites keep
+// resolving) and `ConceptProcessingQueueId` re-aliases — only the pointed-at type
+// changes (stub marker → real queue struct). The batch / custom-priority queues
+// stay stub markers above (their bodies are still deferred).
+// ===========================================================================
+pub use super::queues::{
+    ConceptProcessingQueue, IndividualDepthProcessingQueue,
+    IndividualLinkerRotationProcessingQueue, IndividualUnsortedProcessingQueue,
+};
+/// `CConceptProcessingQueue*` — now `process::queues::ConceptProcessingQueue`.
+pub type ConceptProcessingQueueId = super::queues::ConceptProcessingQueueId;
+
+// ===========================================================================
 // SD-4 `CIndividualSaturationProcessNode` field targets (from `sat_node.rs`).
 // (`ConceptSaturationDescriptor` is shared with the databox — see below.)
 // ===========================================================================
@@ -214,12 +231,9 @@ stub! {
     IndividualProcessingQueue,
     // `CIndividualProcessNodeVector` relocated to `process::node_resolution` (real
     // ported type, held by value on the databox) — no longer a stub marker.
-    /// Port of `CIndividualUnsortedProcessingQueue`.
-    IndividualUnsortedProcessingQueue,
-    /// Port of `CIndividualLinkerRotationProcessingQueue`.
-    IndividualLinkerRotationProcessingQueue,
-    /// Port of `CIndividualDepthProcessingQueue`.
-    IndividualDepthProcessingQueue,
+    // queue-port reconcile: CIndividualUnsortedProcessingQueue /
+    // CIndividualLinkerRotationProcessingQueue / CIndividualDepthProcessingQueue
+    // relocated to `process::queues` (real ported queues); re-exported below.
     /// Port of `CIndividualConceptBatchProcessingQueue`.
     IndividualConceptBatchProcessingQueue,
     /// Port of `CIndividualCustomPriorityProcessingQueue`.

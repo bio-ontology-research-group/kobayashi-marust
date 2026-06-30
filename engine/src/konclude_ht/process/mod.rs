@@ -12,6 +12,7 @@ use super::model::substrate::Id;
 pub mod stubs;       // W2: shared not-yet-ported `Process/` placeholder markers + ids
 pub mod edge;        // SD-1: CIndividualLinkEdge + distinct/disjoint edges
 pub mod descriptor;  // SD-1: CConceptDescriptor / CConceptProcessDescriptor / clash
+pub mod queues;      // processing-queue subsystem: individual (unsorted/rotation/depth) + per-node concept queue
 pub mod node;        // SD-3: CIndividualProcessNode (the completion-graph node)
 pub mod pn1;         // PN-1: CIndividualProcessNode init/ctor/buffer-handoff method bodies
 pub mod sat_node;    // SD-4: CIndividualSaturationProcessNode
