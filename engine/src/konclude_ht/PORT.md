@@ -1257,6 +1257,80 @@ build exit 0.
   `individual_node_initializing` (or seeds a real `satCalcTask`) to run the rule
   engine over the concept queue.
 
+### W9 RULE-DRIVEN: the drive loop fires the rule engine + derives a real inference (2026-06-30): 7/7 TESTS PASS on ws
+
+The port moves from "clash-at-initialization" to a running rule engine: the
+completion main loop now drives a seeded root through `take_next_process_individual`
+→ `individual_node_initializing` → concept-queue drain → `tableau_rule_choice` →
+`apply_*_rule`, and produces a **correct conjunction inference**. `cargo test
+--release konclude_ht` on ws = **7 passed / 0 failed** (4 `completion::selftest`
++ 3 `model::op`).
+
+- **`individual_node_initializing` UN-DEFERED (`completion/u03.rs`).** The `todo!`
+  is replaced with the faithful per-node setup that runs before the concept queue
+  is drained (cpp 9061-9169): `setProcessingQueued(false)` /
+  `setExtendedQueueProcessing(true)` / `setCurrentIndividualNode`, the
+  `mIndiNodeFromQueueType` switch clearing the queue-specific "queued" flag (the
+  Immediate / DetExp / DepthNormal+Nominal / BlockReact arms live, the
+  backend-init/-sync/-influence arms `W8-DEFER`), `resetLastProcessingPriority`,
+  and the unblocked-path `return true`. The heavy `initialNodeInitialize` (still a
+  `todo!`), the INQT cache/value-space dispatch, and the
+  `isIndividualNodeProcessingBlocked` test (whose sub-helpers cascade into
+  still-`todo!` saturation/signature/CG-cache `detect_*` units) stay `W8-DEFER` —
+  all no-ops on the trivial unblocked root, so the node is reported INITIALISED and
+  the drain proceeds (the faithful C++ unblocked result).
+- **`run_completion_on(ctx)` ADDED (`completion/u02.rs`).** A thin drive entry the
+  harness calls WITHOUT the still-`W3-DEFER` Task/scheduler adapter (`handle_task`
+  short-circuits on `sat_calc_task == Id::NONE`). It performs `handle_task`'s inner
+  main loop (cpp 1112-1236) directly: outer `while take_next_process_individual`,
+  `individual_node_initializing`, `continue_individual_processing`, the inner
+  concept-queue drain (`take_next_concept_descriptor_process` →
+  `tableau_rule_processing` → `tableau_rule_choice` → `apply_*_rule`), the
+  reinsert-vs-continue branch, and `individual_node_conclusion`. A raised
+  clash/stop pending-signal (the `clash.rs` stand-in for the C++ throw) ends the
+  drive early; the return is the consistency verdict `handle_task`'s catch reads.
+- **`add_concepts_to_individual` enqueue/label-set getters FIXED (`completion/u36.rs`).**
+  The W5 fix to `add_concept_to_individual` (route the node's concept queue +
+  reapply label set through the context-threaded lazy getters, not the superseded
+  `&mut self` node getters that return `Id::NONE`) is now also applied to
+  `add_concepts_to_individual`, so the ⊓-rule's operand inserts land in a REAL
+  label set.
+- **NEW TEST `conjunction_rule_fires_over_drive_loop` (`completion/selftest.rs`).**
+  A root whose concept-processing queue holds `A ⊓ B` (a real `CConcept`, operator
+  `CCAND`, operands the atomic A/B). After `run_completion_on`, the root's concept
+  label set contains BOTH A and B (asserted by tag via
+  `ReapplyConceptLabelSet::get_concept_descriptor_by_tag`). The drive: Probe-2
+  immediately-queue take returns the root, `individual_node_initializing` →
+  true, the concept drain pops the `A ⊓ B` descriptor, `apply_and_rule` (live,
+  no `todo!`) adds A and B to the label set. **This is the first inference the
+  engine derives by RUNNING the rule loop, not at clash-init.** Nodes processed: 1
+  (root); concepts drained: 1 (`A ⊓ B`); rules fired: 1 (`apply_and_rule`); new
+  nodes: 0.
+
+**First blockers still on the run path (precise, file:line):**
+- **Enqueue from `add_concept_to_individual` is inert** —
+  `add_concept_preprocessed_to_processing_queue_skip` (`completion/u04.rs:~520`)
+  reads a hardcoded `op_code = 0`, sets `con_neg = false`, allocates
+  `con_pro_des = Id::NONE`, and gates on the OPAQUE jump-func-vec
+  (`func == INVALID` → early return). So adding a concept inserts it into the
+  label set but does NOT enqueue a real `CConceptProcessDescriptor`. The selftest
+  therefore SEEDS the concept queue directly (the `concept_queue_insert_primitive`
+  pattern) + seeds the root onto the immediately-processing individual queue. To
+  un-defer: read the descriptor's real concept/op-code + negation, replace the
+  jump-table gate with a `has_tableau_rule(op_code, neg)` predicate mirroring
+  `tableau_rule_choice`, allocate+init a real `CConceptProcessDescriptor` with a
+  computed priority, and enqueue it.
+- **Unfolding `A ⊑ B` BLOCKED** — `apply_implication_rule` (`completion/u09.rs:654`)
+  is `W3-DEFER` end-to-end (the `CTriggeredImplicationProcessingRestrictionSpecification`
+  trigger machinery is unported), so the IMPL operator fires nothing.
+- **Disjunction `A ⊔ B` BLOCKED** — `apply_or_rule` routes through
+  `initialize_or_processing` (`completion/u03.rs:~563`), still a `todo!` (the
+  branching restriction-spec subsystem is unported).
+- **Priority gate** — `continue_individual_processing` admits a descriptor only if
+  its priority ≥ the queue's min level (the immediately-queue level is
+  `IMMEDIATELY_PROCESS_PRIORITY = 8`); the seeded descriptor is given priority 8.0
+  (what `getPriorityForConcept` would assign).
+
 ## Build / validate
 
 Never build on the laptop. Sync to `ws` and `cargo build --release` there.

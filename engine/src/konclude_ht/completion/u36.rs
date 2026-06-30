@@ -617,17 +617,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         concept_count: Option<&mut Cint64>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // W8: route the node's concept queue + reapply label set through the
+        // context-threaded lazy getters (W3b/W8.1) — the superseded `&mut self` node
+        // getters return `Id::NONE` (they cannot run the arena allocation), so the
+        // operand inserts below would otherwise hit no real label set. This mirrors
+        // the W5 fix already applied to `add_concept_to_individual`.
         let con_pro_queue = calc_alg_context
             .process_context_mut()
-            .node_mut(*process_indi)
-            .get_concept_processing_queue(true);
+            .node_concept_processing_queue(*process_indi, true);
         // KONCLUDE_ASSERT_X(dependencyTrackPoint) — elided.
 
         let mut con_count: Cint64 = 0;
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*process_indi)
-            .get_reapply_concept_label_set(true);
+            .node_reapply_concept_label_set(*process_indi);
         for link in concept_add_linker_it {
             let concept = link.target;
             let con_neg = link.negated ^ negate;

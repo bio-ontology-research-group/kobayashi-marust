@@ -68,6 +68,114 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         false
     }
 
+    /// W8: a thin standalone drive entry the selftest harness (and any non-Task
+    /// caller) can invoke WITHOUT the still-`W3-DEFER` Task / scheduler adapter that
+    /// `handle_task` acquires (`handle_task` short-circuits on
+    /// `sat_calc_task == Id::NONE`). It performs `handle_task`'s inner main loop
+    /// directly on a constructed context (cpp 1112-1236):
+    ///
+    /// ```text
+    /// indi = takeNextProcessIndividual(ctx)
+    /// while indi && !clash:
+    ///   if individualNodeInitializing(indi, ctx):
+    ///     cont = continueIndividualProcessing(indi, ctx)
+    ///     while cont && !clash:
+    ///       q = indi.getConceptProcessingQueue(true)
+    ///       cpd = q.takeNextConceptDescriptorProcess()
+    ///       cont = tableauRuleProcessing(indi, cpd, ctx)   // → tableauRuleChoice → apply_*_rule
+    ///       if cont: cont = continueIndividualProcessing(indi, ctx)
+    ///       else:    addConceptToProcessingQueue(cpd, q, indi, ctx)   // reinsert
+    ///     individualNodeConclusion(indi, ctx)
+    ///   indi = takeNextProcessIndividual(ctx)
+    /// ```
+    ///
+    /// A raised clash/stop signal (the `clash.rs` stand-in for the C++
+    /// `throw CCalculationClashProcessingException`, which `handle_task` catches)
+    /// ends the drive early. Returns `true` if the completion graph is CONSISTENT
+    /// (no clash raised), `false` if a clash/stop fired — exactly the verdict
+    /// `handle_task`'s catch reads off the pending signal.
+    ///
+    /// The seeded root node must already be ON one of the individual processing
+    /// queues (e.g. the immediately-processing queue) so `take_next_process_individual`
+    /// returns it; that is the `buildCompletionGraph` seed the caller performs.
+    pub fn run_completion_on(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        if calc_alg_context.has_pending_signal() {
+            return false;
+        }
+        let mut indi_proc_node: NodeId = self.take_next_process_individual(calc_alg_context);
+        if calc_alg_context.has_pending_signal() {
+            return false;
+        }
+        while indi_proc_node.is_some() {
+            let initialized = self.individual_node_initializing(indi_proc_node, calc_alg_context);
+            if calc_alg_context.has_pending_signal() {
+                return false;
+            }
+            if initialized {
+                let mut continue_processing_individual =
+                    self.continue_individual_processing(indi_proc_node, calc_alg_context);
+                if calc_alg_context.has_pending_signal() {
+                    return false;
+                }
+                while continue_processing_individual {
+                    // CConceptProcessingQueue* conProcQueue = indiProcNode->getConceptProcessingQueue(true);
+                    let con_proc_queue: ConceptProcessingQueueId = calc_alg_context
+                        .process_context_mut()
+                        .node_concept_processing_queue(indi_proc_node, true);
+                    // conProcDes = conProcQueue->takeNextConceptDescriptorProcess();
+                    let con_proc_des = ConceptProcessingQueue::take_next_concept_descriptor_process(
+                        con_proc_queue,
+                        calc_alg_context.process_context_mut(),
+                    );
+
+                    self.current_rec_proc_depth = 0;
+                    self.applied_total_rule_count += 1;
+
+                    // tableauRuleProcessing → tableauRuleChoice → apply_*_rule engine.
+                    continue_processing_individual =
+                        self.tableau_rule_processing(indi_proc_node, con_proc_des, calc_alg_context);
+                    // The clash/stop a rule may raise unwinds HERE (the C++ throw from
+                    // inside tableauRuleProcessing), before the reinsert/continue branch.
+                    if calc_alg_context.has_pending_signal() {
+                        return false;
+                    }
+
+                    if continue_processing_individual {
+                        continue_processing_individual =
+                            self.continue_individual_processing(indi_proc_node, calc_alg_context);
+                        if calc_alg_context.has_pending_signal() {
+                            return false;
+                        }
+                    } else {
+                        self.add_concept_to_processing_queue_reinsert(
+                            con_proc_des,
+                            con_proc_queue,
+                            indi_proc_node,
+                            calc_alg_context,
+                        );
+                        if calc_alg_context.has_pending_signal() {
+                            return false;
+                        }
+                    }
+                }
+
+                self.individual_node_conclusion(indi_proc_node, calc_alg_context);
+                if calc_alg_context.has_pending_signal() {
+                    return false;
+                }
+            }
+
+            indi_proc_node = self.take_next_process_individual(calc_alg_context);
+            if calc_alg_context.has_pending_signal() {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::takeNextProcessIndividual`.
     ///
     /// PORT-PENDING: the 601-line body probes ~40 distinct processing queues /

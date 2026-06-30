@@ -42,6 +42,7 @@
 
 use super::super::model::substrate::Cint64;
 use super::super::process::{ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId};
+use super::algorithm::IndiNodeQueueType;
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
 use super::super::model::substrate::{Id, INVALID};
@@ -177,12 +178,88 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_proc_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: individualNodeInitializing — needs getLocalizedIndividual + node \
-             per-queue flag setters (arena) + backend-cache/value-space/unsat-cache \
-             helper units"
-        )
+        // W8: the per-node setup that runs before the concept queue is drained.
+        // The queue-flag resets + current-node set + the unblocked-path `return true`
+        // are ported live; the heavy initialNodeInitialize / blocking-test / value-space
+        // arms (whose sub-helpers cascade into still-`todo!` saturation / signature /
+        // backend-cache `detect_*` units) stay deferred and are inert on the trivial
+        // (non-merge / non-cache / non-blocked) driver path.
+
+        // CIndividualProcessNode* lastIndiProcNode = indiProcNode;
+        // W8-DEFER[api]: indiProcNode = getLocalizedIndividual(indiProcNode, true, ctx)
+        //   — relocalisation; the trivial driver performs no merges/relocalisation, so
+        //   the node is already up to date.
+
+        // indiProcNode->setProcessingQueued(false); indiProcNode->setExtendedQueueProcessing(true);
+        {
+            let n = calc_alg_context.process_context_mut().node_mut(indi_proc_node);
+            n.set_processing_queued(false);
+            n.set_extended_queue_processing(true);
+        }
+        // calcAlgContext->setCurrentIndividualNode(indiProcNode);
+        calc_alg_context.base.set_current_individual_node(indi_proc_node);
+
+        // switch (mIndiNodeFromQueueType) — clear the queue-specific "queued" flag of
+        // the queue the node was taken from (cpp 9070-9123).
+        match self.indi_node_from_queue_type {
+            IndiNodeQueueType::Inqt_Immediate => {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .set_immediately_processing_queued(false);
+            }
+            IndiNodeQueueType::Inqt_DetExp => {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .set_deterministic_expanding_processing_queued(false);
+            }
+            IndiNodeQueueType::Inqt_DepthNormal | IndiNodeQueueType::Inqt_Nominal => {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .set_regular_depth_processing_queued(false);
+            }
+            IndiNodeQueueType::Inqt_BlockReact => {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .set_blocked_reactivation_processing_queued(false);
+            }
+            // W8-DEFER[api]: the remaining INQT_* arms (DELAYEDBACKENDINIT /
+            //   DELAYEDNOMINAL / BACKENDSYNCRETEST / BACKENDDIRECTINFLUENCEEXPANSION /
+            //   BACKENDINDIRECTCOMPATIBILITYEXPANSION) flip queue-specific flags whose
+            //   setters / backend-sync data are still W*-DEFER; inert on the trivial
+            //   driver path.
+            _ => {}
+        }
+
+        // indiProcNode->resetLastProcessingPriority();
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(indi_proc_node)
+            .reset_last_processing_priority();
+
+        // if (!indiProcNode->hasPurgedBlockedProcessingRestrictionFlags()) {
+        if !calc_alg_context
+            .process_context()
+            .node(indi_proc_node)
+            .has_purged_blocked_processing_restriction_flags()
+        {
+            // W8-DEFER[api]: initialNodeInitialize(indiProcNode, true, ctx) — the per-node
+            //   cache/signature/backend setup (still a `todo!`); the INQT_CACHETEST /
+            //   INQT_VST* / INQT_BACKENDEXPANSIONREUSE dispatch arms; and
+            //   `if (isIndividualNodeProcessingBlocked(indiProcNode, ctx)) {
+            //       eliminiateBlockedIndividuals(indiProcNode, ctx); return false; }`
+            //   (cascades into unported saturation / signature / CG-cache `detect_*`
+            //   helpers). For the trivial unblocked root these are all no-ops, so the
+            //   node is reported INITIALISED and the concept-queue drain proceeds — the
+            //   faithful result of the C++ unblocked path.
+            // if (mConfSignatureSaving) addSignatureIndividualNodeBlockerCandidate(...) [W8-DEFER]
+            return true;
+        }
+        // return false;
+        false
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::individualNodeConclusion`.
