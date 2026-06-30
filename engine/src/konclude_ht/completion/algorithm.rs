@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::substrate::{Cint64, Id, INVALID, NegLink};
 use super::super::model::ConceptId;
 use super::super::process::stubs::{
     IndividualConceptBatchProcessingQueue, IndividualCustomPriorityProcessingQueue,
@@ -27,7 +27,7 @@ use super::super::process::stubs::{
     IndividualProcessingQueue, IndividualReactivationProcessingQueue,
     IndividualUnsortedProcessingQueue, ReusingReviewData, SignatureBlockingReviewSet,
 };
-use super::super::process::{BranchNodeId, NodeId, RestrictionSpecId};
+use super::super::process::{BranchNodeId, DependencyId, NodeId, RestrictionSpecId, TrackPointId};
 use super::stubs::{
     ClashDescriptorFactory, ComputedConsequencesCacheHandler, CompletionGraphCacheHandler,
     ConceptNominalSchemaGroundingHandler, ConceptProcessingPriorityStrategy,
@@ -108,6 +108,41 @@ pub const DEBUG_TASK_ID_VECTOR_SIZE: usize = 100;
 pub const DETERMINISTIC_PROCESS_PRIORITY: Cint64 = 4;
 /// `mImmediatelyProcessPriority`.
 pub const IMMEDIATELY_PROCESS_PRIORITY: Cint64 = 8;
+
+/// An open disjunction branch point on the in-process chronological search stack.
+///
+/// KONCLUDE-PORT-NOTE[branching]: Konclude does NOT keep an in-process branch stack
+/// — `applyORRule`/`executeORBranching` (u09) FORK a `CSatisfiableCalculationTask`
+/// per alternative and throw `CCalculationStopProcessingException`, and the
+/// scheduler re-drives each child task; backtracking is the dependency-directed
+/// `clashedBacktracking` (u29) over the `CBranchTreeNode` / non-deterministic
+/// `CDependencyTrackPoint` graph. Both the Task/scheduler layer and the u29
+/// tracking-line records are still unported (`W3-DEFER`/`PORT-PENDING`). To exercise
+/// disjunction end-to-end the port models the search IN-PROCESS: each disjunction
+/// pushes one `OrBranchPoint`, the first unexplored alternative is added eagerly, and
+/// on a clash the drive loop (u02) restores to the topmost branch with a remaining
+/// alternative and tries the next disjunct (a CHRONOLOGICAL backtrack). The faithful
+/// per-alternative task fork + dependency-directed backjump is the documented gap;
+/// the `branch_node` / `or_dependency_node` are the real ported records (`CBranchTreeNode`
+/// / `CORDependencyNode`) so the eventual faithful path reuses them.
+pub struct OrBranchPoint {
+    /// The individual node the disjunction is processed on.
+    pub node: NodeId,
+    /// The disjunction's operand list (`concept->getOperandList()`), in order.
+    pub disjuncts: Vec<NegLink<ConceptId>>,
+    /// The `negate` flag the OR rule was dispatched with (each alternative's
+    /// effective negation is `disjunct.negated ^ negate`).
+    pub negate: bool,
+    /// Index of the NEXT unexplored alternative (the first was added at push time,
+    /// so this starts at 1).
+    pub next_alt: usize,
+    /// The dependency track point the chosen disjunct is added under.
+    pub dep_track_point: TrackPointId,
+    /// The allocated `CBranchTreeNode` for this branch (search-tree spine).
+    pub branch_node: BranchNodeId,
+    /// The allocated `CORDependencyNode` (`DNTORDEPENDENCY`).
+    pub or_dependency_node: DependencyId,
+}
 
 /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm`.
 ///
@@ -543,6 +578,11 @@ pub struct CompletionTaskHandleAlgorithm {
     pub last_task_depth: Cint64,
     /// `= 500`.
     pub debug_expansion_count: Cint64,
+
+    /// The in-process disjunction search stack (see [`OrBranchPoint`]). Empty in the
+    /// faithful (task-fork) model; populated by the chronological-branching port the
+    /// drive loop (u02) + `initialize_or_processing` (u03) install.
+    pub or_branch_stack: Vec<OrBranchPoint>,
 }
 
 impl CompletionTaskHandleAlgorithm {
@@ -923,6 +963,8 @@ impl CompletionTaskHandleAlgorithm {
             last_recomputation_task_id: 0,
             last_task_depth: 100,
             debug_expansion_count: 500,
+
+            or_branch_stack: Vec::new(),
         }
     }
 

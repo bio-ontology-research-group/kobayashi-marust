@@ -318,3 +318,372 @@ fn conjunction_rule_fires_over_drive_loop() {
         "the ⊓-rule must add operand B (tag 102) to the root concept label set"
     );
 }
+
+/// DISJUNCTION BRANCHING (the ⊔-rule): a root whose concept-processing queue holds
+/// the disjunction `A ⊔ B`. After `run_completion_on` drives the rule engine, the
+/// ⊔-rule (`apply_or_rule` → `plan_or_processing` → `initialize_or_processing`)
+/// created a branch point and EXPLORED the first alternative — adding A (and only A)
+/// to the root label set — with no clash, so the completion graph is CONSISTENT with
+/// one open branch. This is the first time the ported engine takes a non-deterministic
+/// choice and runs through it.
+#[test]
+fn disjunction_branch_explored() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+
+    // atomic operands A (tag 101) and B (tag 102).
+    let con_a = {
+        let mut c = Concept::new();
+        c.set_concept_tag(101);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(102);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // the disjunction C = A ⊔ B (tag 201, operator CCOR, operands A, B).
+    let con_or = {
+        let mut c = Concept::new();
+        c.set_concept_tag(201);
+        c.set_operator_code(op::CCOR);
+        c.add_operand_linker(con_a, false);
+        c.add_operand_linker(con_b, false);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+
+    // seed the (A⊔B) descriptor on the root concept-processing queue.
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+    let con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(ConceptDescriptor::new());
+    env.ctx.process_context_mut().con_desc_mut(con_des).concept = con_or;
+    let mut cpd_val = ConceptProcessDescriptor::new();
+    cpd_val.concept_des = con_des;
+    cpd_val.priority = ConceptProcessPriority::new(8.0);
+    let cpd = env.ctx.process_context_mut().alloc_con_proc_desc(cpd_val);
+    ConceptProcessingQueue::insert_concept_process_descriptor(
+        queue,
+        cpd,
+        env.ctx.process_context_mut(),
+    );
+
+    // seed the root onto the immediately-processing individual queue.
+    let iq = env.ctx.get_individual_immediately_processing_queue(true);
+    env.ctx
+        .process_context_mut()
+        .indi_unsorted_proc_queue_mut(iq)
+        .insert_indiviudal_process_node(root);
+
+    // RUN the completion main loop.
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    // VERDICT: consistent, one branch open, the first disjunct A chosen.
+    assert!(consistent, "A ⊔ B is consistent (first branch A explored)");
+    assert!(
+        !env.ctx.has_pending_signal(),
+        "no clash expected for a satisfiable disjunction"
+    );
+    assert_eq!(
+        env.algo.or_branch_stack.len(),
+        1,
+        "exactly one open disjunction branch point remains"
+    );
+
+    let label_set = env
+        .ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(root);
+    let mut cd: ConDescId = Id::NONE;
+    let mut dtp = TrackPointId::NONE;
+    let pc = env.ctx.process_context();
+    assert!(
+        pc.label_set(label_set)
+            .get_concept_descriptor_by_tag(101, &mut cd, &mut dtp),
+        "the ⊔-rule must add the first disjunct A (tag 101)"
+    );
+    let mut cd2: ConDescId = Id::NONE;
+    let mut dtp2 = TrackPointId::NONE;
+    assert!(
+        !pc.label_set(label_set)
+            .get_concept_descriptor_by_tag(102, &mut cd2, &mut dtp2),
+        "only the first branch is explored — B (tag 102) is NOT added"
+    );
+}
+
+/// DISJUNCTION BACKTRACKING (the ⊔-rule + chronological backjump): a root in the
+/// context `(A ⊔ B) ⊓ ¬A ⊓ ¬B` — the label set already holds ¬A and ¬B and the
+/// concept queue holds the disjunction `A ⊔ B`. The drive explores the first
+/// disjunct A (clashes with ¬A), BACKTRACKS to the branch point and tries the second
+/// disjunct B (clashes with ¬B); with no alternative left the clash propagates and
+/// the completion graph is INCONSISTENT. This exercises the in-process branch
+/// creation AND the chronological backtrack in `run_completion_on`.
+#[test]
+fn disjunction_all_branches_clash() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+
+    let con_a = {
+        let mut c = Concept::new();
+        c.set_concept_tag(101);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(102);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_or = {
+        let mut c = Concept::new();
+        c.set_concept_tag(201);
+        c.set_operator_code(op::CCOR);
+        c.add_operand_linker(con_a, false);
+        c.add_operand_linker(con_b, false);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let mut root = env.root;
+
+    // the ⊓ ¬A ⊓ ¬B context: pre-add ¬A and ¬B to the root label set. They do not
+    // clash with each other (distinct concept tags).
+    env.algo.add_concept_to_individual(
+        con_a,
+        true,
+        &mut root,
+        TrackPointId::NONE,
+        false,
+        true,
+        &mut env.ctx,
+    );
+    env.algo.add_concept_to_individual(
+        con_b,
+        true,
+        &mut root,
+        TrackPointId::NONE,
+        false,
+        true,
+        &mut env.ctx,
+    );
+    assert!(
+        !env.ctx.has_pending_signal(),
+        "¬A and ¬B must not clash with each other"
+    );
+
+    // seed the (A⊔B) descriptor on the root concept-processing queue.
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, true);
+    let con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(ConceptDescriptor::new());
+    env.ctx.process_context_mut().con_desc_mut(con_des).concept = con_or;
+    let mut cpd_val = ConceptProcessDescriptor::new();
+    cpd_val.concept_des = con_des;
+    cpd_val.priority = ConceptProcessPriority::new(8.0);
+    let cpd = env.ctx.process_context_mut().alloc_con_proc_desc(cpd_val);
+    ConceptProcessingQueue::insert_concept_process_descriptor(
+        queue,
+        cpd,
+        env.ctx.process_context_mut(),
+    );
+
+    // seed the root onto the immediately-processing individual queue.
+    let iq = env.ctx.get_individual_immediately_processing_queue(true);
+    env.ctx
+        .process_context_mut()
+        .indi_unsorted_proc_queue_mut(iq)
+        .insert_indiviudal_process_node(root);
+
+    // RUN: explore A → clash, backtrack, explore B → clash, propagate.
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    // VERDICT: inconsistent — both branches clashed and were exhausted.
+    assert!(
+        !consistent,
+        "(A ⊔ B) ⊓ ¬A ⊓ ¬B is INCONSISTENT (both disjuncts clash)"
+    );
+    assert!(
+        env.ctx.has_pending_signal(),
+        "a clash must be pending after both branches fail"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+    assert!(
+        env.algo.or_branch_stack.is_empty(),
+        "the exhausted disjunction branch point must be popped"
+    );
+}
+
+/// REAL TBox UNFOLDING over the FULL drive loop: a GCI `A ⊑ B` (a real IMPL
+/// `CConcept`) plus a root labelled `A`. The implication concept is enqueued the
+/// NATURAL way — `add_concept_to_individual` reads its op-code (CCIMPL), sees it has
+/// a tableau rule (`has_tableau_rule`), computes its priority (9 ≥ IMMEDIATELY = 8)
+/// and pushes a real `CConceptProcessDescriptor`; the selftest no longer seeds the
+/// concept queue directly. `run_completion_on` then drains the queue →
+/// `apply_implication_rule`, whose trigger `¬A` is satisfied by the present positive
+/// `A`, so the implied `B` is added to the root. After the run the root concept label
+/// set contains `B` — the first consequence the engine derives by UNFOLDING a GCI.
+///
+/// `A ⊑ B` is the disjunction `¬A ⊔ B`: the IMPL concept's operand list is
+/// `[B(implied), ¬A(trigger)]`; the rule waits for the trigger concept `A` with the
+/// OPPOSITE polarity of the `¬A` linker (i.e. positive `A`).
+#[test]
+fn implication_unfolds_a_to_b() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+
+    let con_a = {
+        let mut c = Concept::new();
+        c.set_concept_tag(101);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(102);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // the GCI  A ⊑ B  ==  ¬A ⊔ B : IMPL concept (tag 300), operands [B(implied), ¬A(trigger)].
+    let con_impl = {
+        let mut c = Concept::new();
+        c.set_concept_tag(300);
+        c.set_operator_code(op::CCIMPL);
+        c.add_operand_linker(con_b, false); // implied head B
+        c.add_operand_linker(con_a, true); // trigger ¬A
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let mut root = env.root;
+
+    // root labelled A (atomic ⇒ no tableau rule ⇒ lands in the label set, not enqueued).
+    env.algo.add_concept_to_individual(
+        con_a, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+    // add the implication concept — the NATURAL enqueue path pushes a real descriptor.
+    env.algo.add_concept_to_individual(
+        con_impl, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+
+    // seed the root onto the immediately-processing individual queue.
+    let iq = env.ctx.get_individual_immediately_processing_queue(true);
+    env.ctx
+        .process_context_mut()
+        .indi_unsorted_proc_queue_mut(iq)
+        .insert_indiviudal_process_node(root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(consistent, "A ⊑ B with A present is consistent (no clash)");
+    assert!(!env.ctx.has_pending_signal(), "no clash/stop expected");
+
+    let label_set = env
+        .ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(root);
+    let mut cd: ConDescId = Id::NONE;
+    let mut dtp = TrackPointId::NONE;
+    let pc = env.ctx.process_context();
+    assert!(
+        pc.label_set(label_set)
+            .get_concept_descriptor_by_tag(102, &mut cd, &mut dtp),
+        "the IMPLICATION rule must unfold A ⊑ B and add B (tag 102) to the root label set"
+    );
+}
+
+/// CLASH through TBox unfolding: `A ⊑ B` and `A ⊑ ¬B` over a root labelled `A`. Both
+/// implications are enqueued naturally and fire from the same trigger `A`; the first
+/// adds `B`, the second adds `¬B`, and the label-set polarity compare raises a CLASH.
+/// `run_completion_on` ends the drive with the inconsistent verdict.
+#[test]
+fn implication_unfold_clash() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+
+    let con_a = {
+        let mut c = Concept::new();
+        c.set_concept_tag(101);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(102);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // A ⊑ B : operands [B(implied), ¬A(trigger)].
+    let con_impl_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(301);
+        c.set_operator_code(op::CCIMPL);
+        c.add_operand_linker(con_b, false);
+        c.add_operand_linker(con_a, true);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    // A ⊑ ¬B : operands [¬B(implied), ¬A(trigger)].
+    let con_impl_not_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(302);
+        c.set_operator_code(op::CCIMPL);
+        c.add_operand_linker(con_b, true);
+        c.add_operand_linker(con_a, true);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let mut root = env.root;
+
+    env.algo.add_concept_to_individual(
+        con_a, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+    env.algo.add_concept_to_individual(
+        con_impl_b, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+    env.algo.add_concept_to_individual(
+        con_impl_not_b, false, &mut root, TrackPointId::NONE, false, true, &mut env.ctx,
+    );
+
+    let iq = env.ctx.get_individual_immediately_processing_queue(true);
+    env.ctx
+        .process_context_mut()
+        .indi_unsorted_proc_queue_mut(iq)
+        .insert_indiviudal_process_node(root);
+
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+
+    assert!(
+        !consistent,
+        "A ⊑ B and A ⊑ ¬B over A must derive B and ¬B ⇒ CLASH (inconsistent)"
+    );
+    assert!(
+        env.ctx.has_pending_signal(),
+        "the unfolded B / ¬B contradiction must raise a clash signal"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}

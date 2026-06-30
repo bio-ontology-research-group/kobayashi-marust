@@ -1308,21 +1308,19 @@ completion main loop now drives a seeded root through `take_next_process_individ
   nodes: 0.
 
 **First blockers still on the run path (precise, file:line):**
-- **Enqueue from `add_concept_to_individual` is inert** —
-  `add_concept_preprocessed_to_processing_queue_skip` (`completion/u04.rs:~520`)
-  reads a hardcoded `op_code = 0`, sets `con_neg = false`, allocates
-  `con_pro_des = Id::NONE`, and gates on the OPAQUE jump-func-vec
-  (`func == INVALID` → early return). So adding a concept inserts it into the
-  label set but does NOT enqueue a real `CConceptProcessDescriptor`. The selftest
-  therefore SEEDS the concept queue directly (the `concept_queue_insert_primitive`
-  pattern) + seeds the root onto the immediately-processing individual queue. To
-  un-defer: read the descriptor's real concept/op-code + negation, replace the
-  jump-table gate with a `has_tableau_rule(op_code, neg)` predicate mirroring
-  `tableau_rule_choice`, allocate+init a real `CConceptProcessDescriptor` with a
-  computed priority, and enqueue it.
-- **Unfolding `A ⊑ B` BLOCKED** — `apply_implication_rule` (`completion/u09.rs:654`)
-  is `W3-DEFER` end-to-end (the `CTriggeredImplicationProcessingRestrictionSpecification`
-  trigger machinery is unported), so the IMPL operator fires nothing.
+- **Enqueue from `add_concept_to_individual` — RESOLVED (W11, 2026-06-30).**
+  `add_concept_preprocessed_to_processing_queue_skip` (`completion/u04.rs`) now
+  reads the descriptor's real op-code + negation, gates on the faithful
+  `has_tableau_rule(op_code, neg)` predicate (mirrors the `tableau_rule_choice`
+  dispatch / ctor jump table 1:1), computes the priority via
+  `ConcreteConceptProcessingOperatorPriorityStrategy::get_priority_for_concept`,
+  allocates + inits a real `CConceptProcessDescriptor`, and inserts it (the
+  `insert_concept_process_descriptor_to_processing_queue` else-branch now actually
+  calls `ConceptProcessingQueue::insert_concept_process_descriptor`). See W11.
+- **Unfolding `A ⊑ B` — RESOLVED (W11, 2026-06-30).** `apply_implication_rule`
+  (`completion/u09.rs`) ports the trigger loop faithfully for the basic GCI/unfold;
+  the deeper trigger-absorption (`addConceptToReapplyQueue` re-fire) stays W3-DEFER.
+  See W11.
 - **Disjunction `A ⊔ B` BLOCKED** — `apply_or_rule` routes through
   `initialize_or_processing` (`completion/u03.rs:~563`), still a `todo!` (the
   branching restriction-spec subsystem is unported).
@@ -1330,6 +1328,132 @@ completion main loop now drives a seeded root through `take_next_process_individ
   its priority ≥ the queue's min level (the immediately-queue level is
   `IMMEDIATELY_PROCESS_PRIORITY = 8`); the seeded descriptor is given priority 8.0
   (what `getPriorityForConcept` would assign).
+
+### W10 DISJUNCTION: branching + chronological backtracking — the ⊔-rule runs (2026-06-30): 9/9 TESTS PASS on ws
+
+The search core that makes disjunction work. The drive loop now creates a branch
+for `A ⊔ B`, explores the first alternative, and on a clash BACKTRACKS to try the
+next disjunct; both a satisfiable and an all-branches-clash disjunction are decided
+correctly. `cargo test --release konclude_ht` on ws = **9 passed / 0 failed** (6
+`completion::selftest` + 3 `model::op`).
+
+- **`initialize_or_processing` + `plan_or_processing` UN-DEFERED (`completion/u03.rs`).**
+  Both `todo!`s are replaced. `plan_or_processing`'s faithful first line
+  (`if (initializeORProcessing(...)) return true;`, cpp 16500) delegates to
+  `initialize_or_processing`, which now performs the disjunction branch IN-PROCESS:
+  reads `concept->getOperandList()`, allocates the real `CORDependencyNode`
+  (`alloc_or_dependency_node`) + `CBranchTreeNode` (parent/root chained
+  chronologically), pushes one `OrBranchPoint` onto a new search stack
+  (`algorithm.rs`), and `addConceptToIndividual`s the FIRST alternative
+  (`operand.negated ^ negate`). It returns true so `apply_or_rule` (u09, untouched)
+  never reaches the deferred task-fork `execute_or_branching`.
+- **BRANCHING model — KONCLUDE-PORT-NOTE[branching].** Konclude does NOT keep an
+  in-process branch stack: `applyORRule`/`executeORBranching` FORK one
+  `CSatisfiableCalculationTask` per alternative + throw a stop, and the scheduler
+  re-drives each child; backtracking is the dependency-directed `clashedBacktracking`
+  (u29) over the `CBranchTreeNode` / non-det `CDependencyTrackPoint` graph. Both the
+  Task/scheduler layer and the u29 tracking-line records (Units 28/30) are unported,
+  so the port models the search in-process. The `CBranchTreeNode` / `CORDependencyNode`
+  ARE the real ported records, so the eventual faithful path reuses them.
+- **BACKTRACK — CHRONOLOGICAL (`completion/u02.rs`).** `run_completion_on` is now an
+  outer search loop around the factored-out `run_saturation_loop` (the old
+  `handleTask` inner loop). On a pending `Clash`, `try_backtrack_or_branch` discards
+  exhausted branch points, restores to the topmost open one, clears the clash,
+  advances to its next disjunct, `addConceptToIndividual`s it, and re-seeds the node
+  on the immediately-processing queue; the loop re-drives. No open branch ⇒ the clash
+  is genuine ⇒ INCONSISTENT. The backtrack is CHRONOLOGICAL (not the dependency-
+  directed backjump): it relies on the failed alternative committing no graph
+  mutation, which holds when the disjunct clashes at insert-time (`A` added while
+  `¬A` present — the polarity clash fires in `insert_concept_get_clash_resolved`
+  BEFORE `A` enters the label set, so the set is unchanged). The faithful
+  `clashedBacktracking` with full arena/databox watermark restore (Arena `truncate_to`
+  + db1 save/restore) is the documented gap — it needs the unported Unit 28/30
+  tracking-line records.
+- **TWO NEW TESTS (`completion/selftest.rs`), both PASS.**
+  `disjunction_branch_explored`: root concept queue holds `A ⊔ B` ⇒ after drive,
+  CONSISTENT with one open branch, A (only) in the label set (first alternative
+  explored). `disjunction_all_branches_clash`: root in the context `(A⊔B) ⊓ ¬A ⊓ ¬B`
+  (¬A,¬B pre-seeded) ⇒ explore A (clash with ¬A) → backtrack → explore B (clash with
+  ¬B) → both exhausted ⇒ INCONSISTENT (pending `Clash`, branch stack popped empty).
+- **CONFIRMED: disjunction branching AND backtracking both work.** Edits confined to
+  `u03`/`u02`/`algorithm`/`selftest`; `u04`/`u09` untouched.
+
+**First blockers on the faithful path (precise):**
+- **Per-alternative task fork** — `execute_or_branching` (`completion/u09.rs:281`) is
+  `W3-DEFER`/`W6-DEFER` end-to-end (the multi-branch arm forks
+  `CSatisfiableCalculationTask`s + throws stop; the Task/scheduler layer is unported).
+  The in-process stack stands in for it.
+- **Dependency-directed backjump** — `clashedBacktracking` /
+  `backtrackFromTrackingLineStep` (`completion/u29.rs:430,495`) are `PORT-PENDING`:
+  the `CTrackedClashedDependencyLine` tracking-line record + the Unit 28/30 siblings
+  (`createTrackedClashesDescriptors` / `initializeTrackingLine` /
+  `writeClashDescriptorsToCache`) have no arena yet.
+- **Deeper-than-insert clashes** — a disjunct that is ADDED (no immediate clash) and
+  later clashes through queue processing would need state-trail restore on backtrack;
+  the concept-queue enqueue from `add_concept_to_individual` is still inert
+  (`add_concept_preprocessed_to_processing_queue_skip`, `completion/u04.rs:~520`,
+  hardcoded op-code 0 + opaque jump-func gate), so today a seeded disjunct either
+  clashes at insert-time or terminates the drain — the chronological backtrack covers
+  exactly that regime.
+  (NB W11 below has since un-deferred this enqueue; rule-bearing concepts added via
+  `add_concept_to_individual` now push real descriptors and are drained.)
+
+### W11 TBOX UNFOLDING: the natural enqueue path + the implication/unfold rule (2026-06-30): 11/11 TESTS PASS on ws
+
+A GCI `A ⊑ B` over a root labelled `A` now derives `B` over the live drive loop —
+the engine UNFOLDS the TBox. `cargo test --release konclude_ht` on ws =
+**11 passed / 0 failed** (8 `completion::selftest` + 3 `model::op`).
+
+- **Enqueue un-deferred (`completion/u04.rs`).**
+  `add_concept_preprocessed_to_processing_queue_skip` (the `skipFunction` overload,
+  cpp 27228) is now faithful: it reads the concept descriptor's real op-code
+  (`ontology_arenas().concept(con).get_operator_code()`) and negation, gates on the
+  new `has_tableau_rule(op_code, neg)` predicate (a 1:1 mirror of the
+  `tableau_rule_choice` (`u03`) dispatch / the ctor jump table cpp 238-345, split by
+  `neg` into the pos/neg vectors — config-invariant in PRESENCE), reads
+  `hasPartialOperatorCodeFlag(CCFS_PROPAGATION_TYPE)` off the concept operator,
+  computes the priority via `ConcreteConceptProcessingOperatorPriorityStrategy`
+  (`get_priority_for_concept`, the placeholder strategy slot is `Id::NONE`, so the
+  stateless table is constructed on demand → `priority_for_concept` helper),
+  allocates + inits a real `CConceptProcessDescriptor`
+  (`concept_des`/`priority`/`dep_track_point`/`reapplied=false`/`proc_spec=NONE`),
+  and either runs it inline (`tableauRuleChoice`, when `allowPreprocessing &&
+  priority ≥ IMMEDIATELY`) or inserts it. The
+  `insert_concept_process_descriptor_to_processing_queue` else-branch now actually
+  calls `ConceptProcessingQueue::insert_concept_process_descriptor` (was a
+  `let _ = …` no-op). So `add_concept_to_individual` ENQUEUES a rule-bearing concept
+  naturally — the implication selftests stop seeding the queue directly; an atomic
+  (`CCATOM`, no rule) still only lands in the label set.
+- **`apply_implication_rule` ported (`completion/u09.rs`).** The
+  `CTriggeredImplicationProcessingRestrictionSpecification` is still unported, but the
+  basic GCI/unfold is reproduced directly over the operand list: `A ⊑ B` is the
+  disjunction `¬A ⊔ B` stored as operands `[B(implied), ¬A(trigger)]`. The implied
+  concept is `opLinker->getData()` (first operand); the triggers are `opLinker->getNext()..`
+  (the rest). Each trigger is looked up in the node's reapply concept label set — by
+  the trigger concept's REAL tag (`get_concept_tag`) via `get_concept_descriptor_by_tag`,
+  because the by-concept overload's tag helper is still a W2-DEFER stub (the same
+  resolve-the-tag workaround `insert_concepts_to_individual_concept_set` uses). A
+  trigger present with the OPPOSITE polarity of its linker (positive `A` for `¬A`)
+  satisfies it; same polarity ⇒ `return` (abort); absent ⇒ the install-to-trigger
+  path stays W3-DEFER (`addConceptToReapplyQueue`). When all triggers are available,
+  `createIMPLICATIONDependency` + `addConceptToIndividual(implied)` fires. The
+  dependency accumulation (`createCONNECTIONDependency` onto the trigger spec) stays
+  W3-DEFER.
+- **SOUNDNESS NOTE.** The install-to-trigger deferral makes the unfold sound but
+  basic-unfold-incomplete: an implication whose trigger is added to the node STRICTLY
+  AFTER the IMPL concept is processed will not (yet) re-fire — closed once the
+  condensed reapply queue / trigger restriction-spec is ported. For inputs where all
+  triggers are already on the node (the canonical GCI unfold) it fires.
+- **Tests added (`completion/selftest.rs`).**
+  `implication_unfolds_a_to_b` — `A ⊑ B` (a real IMPL `CConcept`), root labelled `A`,
+  the IMPL enqueued the natural way; after `run_completion_on` the root label set
+  contains `B`. `implication_unfold_clash` — `A ⊑ B` and `A ⊑ ¬B` over `A`: both
+  unfold (B and ¬B) and the label-set polarity compare raises a CLASH ⇒ inconsistent.
+  Both PASS. **TBox unfolding WORKS.**
+
+**Verdict:** TBox unfolding via the rule engine is confirmed — `A ⊑ B`, root `A` ⇒ `B`
+is derived over the natural enqueue + drive loop, and the unfold-to-clash variant is
+detected.
 
 ## Build / validate
 

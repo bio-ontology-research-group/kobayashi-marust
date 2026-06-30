@@ -48,15 +48,19 @@
 #![allow(unused_variables)]
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::op;
 use super::super::model::op::CCFS_PROPAGATION_TYPE;
 use super::super::model::ConceptId;
+use super::super::process::descriptor::{ConceptProcessDescriptor, ConceptProcessPriority};
 use super::super::process::ls1::CondensedReapplyQueueIterator;
 use super::super::process::node::IndividualProcessNode;
+use super::super::process::queues::ConceptProcessingQueue;
 use super::super::process::stubs::ConceptProcessingQueueId;
 use super::super::process::{ConDescId, ConProcDescId, LabelSetId, NodeId, TrackPointId};
 
 use super::algorithm::{DETERMINISTIC_PROCESS_PRIORITY, IMMEDIATELY_PROCESS_PRIORITY};
 use super::context::CalculationAlgorithmContextBase;
+use super::strategy::ConcreteConceptProcessingOperatorPriorityStrategy;
 
 /// KONCLUDE-PORT-NOTE[api]: `CProcessingRestrictionSpecification*` is not yet
 /// ported; modelled as an opaque handle (`INVALID` == `nullptr`).
@@ -295,8 +299,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .get_variable_binding_concept_batch_processing_queue(true);
             // W3-DEFER[api]: varBindConBatchProcQueue->insertIndiviudalForConcept(concept,processIndi,conProDes);
         } else {
-            // W3-DEFER[api]: conceptProcessingQueue->insertConceptProcessDescriptor(conProDes);
-            let _ = concept_processing_queue;
+            // conceptProcessingQueue->insertConceptProcessDescriptor(conProDes);
+            ConceptProcessingQueue::insert_concept_process_descriptor(
+                concept_processing_queue,
+                con_pro_des,
+                calc_alg_context.process_context_mut(),
+            );
         }
     }
 
@@ -428,18 +436,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
-        // TODO: check necessary
-        let func: TableauRuleFunction;
-        // W3-DEFER[api]: opCode = conceptDescriptor->getConcept()->getOperatorCode();
-        let op_code: Cint64 = 0;
-        // W3-DEFER[api]: conNeg = conceptDescriptor->isNegated();
-        let con_neg = false;
-        if con_neg {
-            func = self.neg_tableau_rule_jump_func_vec[op_code as usize];
-        } else {
-            func = self.pos_tableau_rule_jump_func_vec[op_code as usize];
-        }
-        if func == INVALID || func == skip_function {
+        // opCode = conceptDescriptor->getConcept()->getOperatorCode(); conNeg = conceptDescriptor->isNegated();
+        let con_neg = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .is_negated();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .get_concept();
+        let op_code: Cint64 =
+            calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+
+        // func = (conNeg ? mNegJumpFuncVec : mPosJumpFuncVec)[opCode];
+        // if (!func || func == skipFunction) return;
+        // KONCLUDE-PORT-NOTE[pointer-alias]: the member-fn jump table is opaque, but its
+        // PRESENCE is exactly the operator set `tableau_rule_choice` dispatches (the table the
+        // algorithm ctor builds, cpp 238-345). `has_tableau_rule` mirrors that set 1:1; the
+        // `mConf*` gates only SWAP entries, never null them, so presence is config-invariant.
+        // `skipFunction` is a rule-slot identity the only caller passes as INVALID, so it can
+        // never match a live rule; the second guard is preserved structurally.
+        if !self.has_tableau_rule(op_code, con_neg) || skip_function != INVALID {
             return;
         }
 
@@ -448,25 +465,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             allow_preprocessing = false;
         }
 
-        // W3-DEFER[api]: concept = conceptDescriptor->getConcept(); conOperator = concept->getConceptOperator();
-        // W3-DEFER[api]: conOperator->hasPartialOperatorCodeFlag(CCFS_PROPAGATION_TYPE)
-        let has_propagation_type = false;
+        // concept = conceptDescriptor->getConcept(); conOperator = concept->getConceptOperator();
+        // if (conOperator->hasPartialOperatorCodeFlag(CCFS_PROPAGATION_TYPE)) allowPreprocessing = false;
+        let has_propagation_type = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_operator()
+            .has_partial_operator_code_flag(CCFS_PROPAGATION_TYPE);
         if has_propagation_type {
             allow_preprocessing = false;
         }
 
-        // W3-DEFER[api]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
-        // W3-DEFER[api]: conProPriority = getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor,processIndi);
-        // W3-DEFER[api]: conProDes = allocateAndConstruct(taskMemMan);
-        //                conProDes->init(conceptDescriptor,conProPriority,false,depTrackPoint);
-        let con_pro_des: ConProcDescId = Id::NONE;
-        // W3-DEFER[api]: conProPriority.getPriority()
-        let con_pro_priority_value: f64 = 0.0;
+        // W3-DEFER[macro]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
+        // conProPriority = getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor,processIndi);
+        let con_pro_priority =
+            self.priority_for_concept(concept_descriptor, process_indi, calc_alg_context);
+        let con_pro_priority_value: f64 = con_pro_priority.get_priority();
+
+        // conProDes = allocateAndConstruct(taskMemMan);
+        // conProDes->init(conceptDescriptor,conProPriority,false,depTrackPoint);
+        let mut con_pro_des_val = ConceptProcessDescriptor::new();
+        con_pro_des_val.concept_des = concept_descriptor;
+        con_pro_des_val.priority = con_pro_priority;
+        con_pro_des_val.dep_track_point = dep_track_point;
+        con_pro_des_val.reapplied = false;
+        con_pro_des_val.proc_spec = Id::NONE;
+        let con_pro_des: ConProcDescId =
+            calc_alg_context.process_context_mut().alloc_con_proc_desc(con_pro_des_val);
 
         if allow_preprocessing && con_pro_priority_value >= IMMEDIATELY_PROCESS_PRIORITY as f64 {
-            // W3-DEFER[api]: STATINC(RULEAPPLICATIONCOUNT,calcAlgContext);
-            // W3-DEFER[api]: tableauRuleChoice(processIndi,conProDes,calcAlgContext);
-            let _ = (process_indi, con_pro_des);
+            // W3-DEFER[macro]: STATINC(RULEAPPLICATIONCOUNT,calcAlgContext);
+            // tableauRuleChoice(processIndi,conProDes,calcAlgContext);
+            self.tableau_rule_choice(process_indi, con_pro_des, calc_alg_context);
         } else {
             self.insert_concept_process_descriptor_to_processing_queue(
                 con_pro_des,
@@ -476,6 +506,128 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
             //propagateIndividualUnprocessed(processIndi,calcAlgContext);
         }
+    }
+
+    /// `func = (conNeg ? mNegJumpFuncVec : mPosJumpFuncVec)[opCode]; func != nullptr`.
+    ///
+    /// KONCLUDE-PORT-NOTE[pointer-alias]: the C++ ctor (cpp 238-345) fills two
+    /// member-function-pointer jump vectors; an operator "has a tableau rule" iff its
+    /// slot is non-null. The port keeps those vectors opaque, so this predicate
+    /// reproduces the populated operator set 1:1 — the SAME arms `tableau_rule_choice`
+    /// (`u03`) dispatches, split by `neg` into the positive (`mPosJumpFuncVec`) and
+    /// negative (`mNegJumpFuncVec`) tables. The `mConfSpecializedAutomateRules` /
+    /// `mConfRepresentativePropagationRules` gates only REPLACE entries (e.g. AQAND →
+    /// applyAutomatANDRule), never null them, so rule PRESENCE is config-invariant and
+    /// this predicate takes no config argument.
+    pub fn has_tableau_rule(&self, op_code: Cint64, neg: bool) -> bool {
+        if !neg {
+            matches!(
+                op_code,
+                op::CCTOP
+                    | op::CCBOTTOM
+                    | op::CCAND
+                    | op::CCSUB
+                    | op::CCEQ
+                    | op::CCIMPLTRIG
+                    | op::CCBRANCHTRIG
+                    | op::CCAQAND
+                    | op::CCIMPLAQAND
+                    | op::CCBRANCHAQAND
+                    | op::CCDATATYPE
+                    | op::CCDATALITERAL
+                    | op::CCDATARESTRICTION
+                    | op::CCOR
+                    | op::CCALL
+                    | op::CCAQALL
+                    | op::CCIMPLAQALL
+                    | op::CCBRANCHAQALL
+                    | op::CCIMPLALL
+                    | op::CCBRANCHALL
+                    | op::CCSOME
+                    | op::CCAQSOME
+                    | op::CCAQCHOOCE
+                    | op::CCNOT
+                    | op::CCSELF
+                    | op::CCATLEAST
+                    | op::CCATMOST
+                    | op::CCNOMINAL
+                    | op::CCVALUE
+                    | op::CCIMPL
+                    | op::CCPBINDVARIABLE
+                    | op::CCPBINDTRIG
+                    | op::CCPBINDAND
+                    | op::CCPBINDAQAND
+                    | op::CCPBINDIMPL
+                    | op::CCPBINDALL
+                    | op::CCPBINDAQALL
+                    | op::CCPBINDCYCLE
+                    | op::CCPBINDGROUND
+                    | op::CCVARBINDVARIABLE
+                    | op::CCVARBINDTRIG
+                    | op::CCVARBINDAND
+                    | op::CCVARBINDAQAND
+                    | op::CCVARBINDIMPL
+                    | op::CCVARBINDALL
+                    | op::CCVARBINDAQALL
+                    | op::CCVARBINDJOIN
+                    | op::CCVARBINDGROUND
+                    | op::CCBACKACTIVTRIG
+                    | op::CCVARPBACKTRIG
+                    | op::CCVARPBACKAQAND
+                    | op::CCVARPBACKALL
+                    | op::CCVARPBACKAQALL
+                    | op::CCBACKACTIVIMPL
+                    | op::CCNOMINALIMPLI
+                    | op::CCDATATYPEIMPLI
+                    | op::CCDATALITERALIMPLI
+                    | op::CCDATARESTRICTIONIMPLI
+                    | op::CCVARBINDPREPARE
+                    | op::CCVARBINDFINALZE
+            )
+        } else {
+            matches!(
+                op_code,
+                op::CCDATATYPE
+                    | op::CCDATALITERAL
+                    | op::CCDATARESTRICTION
+                    | op::CCAND
+                    | op::CCOR
+                    | op::CCEQ
+                    | op::CCALL
+                    | op::CCNOT
+                    | op::CCSOME
+                    | op::CCAQCHOOCE
+                    | op::CCSELF
+                    | op::CCATMOST
+                    | op::CCATLEAST
+                    | op::CCNOMINAL
+                    | op::CCVALUE
+                    | op::CCPBINDGROUND
+                    | op::CCVARBINDGROUND
+            )
+        }
+    }
+
+    /// `getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor, processIndi)`.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: the algorithm's `concept_priority_strategy` slot is a
+    /// placeholder `Id::NONE` (the strategy object is not yet wired into the context).
+    /// `CConcreteConceptProcessingOperatorPriorityStrategy` is fully ported and
+    /// stateless after construction (a fixed operator → priority table), so it is
+    /// constructed on demand here; the result is identical to the wired strategy.
+    pub fn priority_for_concept(
+        &self,
+        concept_descriptor: ConDescId,
+        process_indi: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> ConceptProcessPriority {
+        let strategy = ConcreteConceptProcessingOperatorPriorityStrategy::new();
+        strategy.get_priority_for_concept(
+            calc_alg_context.process_context(),
+            calc_alg_context.ontology_arenas(),
+            concept_descriptor,
+            process_indi,
+        )
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addConceptToProcessingQueue`

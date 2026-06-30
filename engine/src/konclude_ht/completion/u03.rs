@@ -41,11 +41,15 @@
 #![allow(unused_variables, dead_code)]
 
 use super::super::model::substrate::Cint64;
-use super::super::process::{ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId};
-use super::algorithm::IndiNodeQueueType;
+use super::super::process::{
+    BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
+    TrackPointId,
+};
+use super::super::process::dependency::BranchTreeNode;
+use super::algorithm::{IndiNodeQueueType, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
-use super::super::model::substrate::{Id, INVALID};
+use super::super::model::substrate::{Id, INVALID, NegLink};
 use super::super::model::op;
 use super::super::model::ConceptId;
 
@@ -636,12 +640,109 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         planned_branching_process_restriction: RestrictionSpecId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: initializeORProcessing — needs descriptor/concept/replacement-data \
-             arena reads + concept-priority strategy + addConcept*/addConceptRestricted \
-             queue units"
-        )
+        // KONCLUDE-PORT-NOTE[branching]: the faithful `initializeORProcessing` (cpp
+        // 16396-16430) only handles the priority-DELAY / replacement-concept fast
+        // paths and returns false otherwise, letting `planORProcessing` →
+        // `executeORBranching` (u09) do the real disjunction work by FORKING one
+        // `CSatisfiableCalculationTask` per alternative and throwing a stop. That
+        // task-fork machinery + the dependency-directed `clashedBacktracking` (u29)
+        // are still unported (the Task/scheduler layer + the u29 tracking-line
+        // records). To run disjunction end-to-end the port performs the branch
+        // IN-PROCESS here: create the branch-tree node + OR dependency node, push one
+        // `OrBranchPoint`, add the FIRST unexplored alternative to the individual, and
+        // return true (so `apply_or_rule`'s u09 path does NOT also fire the deferred
+        // task-fork `execute_or_branching`). The chronological backtrack over the
+        // remaining alternatives is driven by `run_completion_on` (u02). The faithful
+        // priority-delay/replacement arms (the concept-priority strategy +
+        // `addConceptRestrictedToProcessingQueue`) stay deferred and are inert here
+        // (`disjunctionDefaultPriority` would route them to the queue); the documented
+        // gap is the per-alternative task fork + dependency-directed backjump.
+        let _ = planned_branching_process_restriction;
+
+        // conDes = conProDes->getConceptDescriptor(); concept = conDes->getConcept();
+        // depTrackPoint = conProDes->getDependencyTrackPoint();
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des)
+            .get_concept_descriptor();
+        let concept: ConceptId =
+            calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des)
+            .get_dependency_track_point();
+
+        // concept->getOperandList() — the disjunction's operands (lives in the
+        // ctx-owned concept arena; collected to an owned Vec before the &mut calls,
+        // exactly as `apply_and_rule`/`execute_or_branching` do).
+        let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+        if operands.len() < 2 {
+            // 0/1-operand disjunctions are handled upstream in `apply_or_rule`
+            // (clash / AND-rule); nothing to branch — let `plan_or_processing` fall
+            // through.
+            return false;
+        }
+
+        // --- createBranchingTreeNode / createORDependency (the ported records). ---
+        // The parent / root branch nodes chain chronologically (the topmost open
+        // branch is this one's parent), mirroring `CBranchTreeNode`'s parent/root
+        // wiring; `branching_increment` / `getDependencyTrackPointBranch` binding is
+        // W3-DEFER (the branch-tree branching counters need the unported tagger).
+        let parent_branch: BranchNodeId = self
+            .or_branch_stack
+            .last()
+            .map(|bp| bp.branch_node)
+            .unwrap_or(BranchNodeId::NONE);
+        let root_branch: BranchNodeId = self
+            .or_branch_stack
+            .first()
+            .map(|bp| bp.branch_node)
+            .unwrap_or(BranchNodeId::NONE);
+        let or_dependency_node: DependencyId =
+            calc_alg_context.process_context_mut().alloc_or_dependency_node();
+        let branch_node: BranchNodeId =
+            calc_alg_context.process_context_mut().alloc_branch_node(BranchTreeNode {
+                process_tag: 0,
+                parent_node: parent_branch,
+                // a root branch node is its own root (`CBranchTreeNode::mRootNode`).
+                root_node: root_branch,
+                branched_dep_track_point: Id::NONE,
+                sat_calc_task: INVALID,
+            });
+
+        // Push the open branch point; the FIRST alternative is added now, so the
+        // next unexplored alternative is index 1.
+        let first: NegLink<ConceptId> = operands[0];
+        self.or_branch_stack.push(OrBranchPoint {
+            node: process_indi,
+            disjuncts: operands,
+            negate,
+            next_alt: 1,
+            dep_track_point,
+            branch_node,
+            or_dependency_node,
+        });
+
+        // addConceptToIndividual(operand, opNegated, processIndi, depTrackPoint, ...).
+        // The chosen disjunct's effective negation is `operand.isNegated() ^ negate`
+        // (the `executeORBranching` `addOpNegated` rule).
+        let mut process_indi_m = process_indi;
+        let op_negated = first.negated ^ negate;
+        self.add_concept_to_individual(
+            first.target,
+            op_negated,
+            &mut process_indi_m,
+            dep_track_point,
+            true,
+            true,
+            calc_alg_context,
+        );
+
+        true
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::planORProcessing`.
@@ -699,12 +800,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         planned_branching_process_restriction: RestrictionSpecId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: planORProcessing — needs operand-list/label-set/concept-data \
-             arena reads, the OR-restriction-spec allocator+type, branch-trigger \
-             search/install, and the addConceptRestricted/clash-descriptor units"
-        )
+        // conDes/concept/depTrackPoint/procRest reads (cpp 16493-16499) collapse into
+        // the `initialize_or_processing` head; reproduced there.
+        //
+        // if (initializeORProcessing(processIndi, conProDes, negate, plannedBranchingProcessRestriction, ctx))
+        //     return true;
+        // (cpp 16500-16501.) In the faithful C++ this catches the priority-delay /
+        // replacement fast paths; in this port it ALSO performs the in-process branch
+        // (see `initialize_or_processing`'s KONCLUDE-PORT-NOTE), so a real disjunction
+        // returns true here and `apply_or_rule` (u09) never reaches the deferred
+        // task-fork `execute_or_branching`.
+        if self.initialize_or_processing(
+            process_indi,
+            con_pro_des,
+            negate,
+            planned_branching_process_restriction,
+            calc_alg_context,
+        ) {
+            return true;
+        }
+
+        // PORT-PENDING: the remainder of `planORProcessing` (cpp 16503-16664) — the
+        // operand/label-set scan that records the first/second-not-contained operands,
+        // builds a `CBranchingORProcessingRestrictionSpecification`, and installs the
+        // concept-role branch trigger / disjunction-delay queue. It runs only when
+        // `initialize_or_processing` declines (a <2-operand disjunction, handled
+        // upstream in `apply_or_rule`), so returning false here defers to that path
+        // without dropping logic. The restriction-spec allocator + branch-trigger
+        // search/install + addConceptRestricted/clash-descriptor units land with the
+        // faithful task-fork wave.
+        false
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::prepareBranchedTaskProcessing`.

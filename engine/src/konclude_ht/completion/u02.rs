@@ -19,9 +19,11 @@
 #![allow(dead_code, unused_variables, unused_mut)]
 
 use super::super::model::substrate::Cint64;
+use super::super::model::ConceptId;
 use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
 use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
 use super::algorithm::{IndiNodeQueueType, DETERMINISTIC_PROCESS_PRIORITY};
+use super::clash::CalcSignal;
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -102,23 +104,133 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        if calc_alg_context.has_pending_signal() {
+        // The outer search loop. `run_saturation_loop` drives the deterministic
+        // completion until it either reaches a fixpoint (no pending signal ⇒
+        // CONSISTENT) or a rule raises a clash/stop. On a clash with an open
+        // disjunction branch point, `try_backtrack_or_branch` restores to the topmost
+        // branch with a remaining alternative, clears the clash, and adds the next
+        // disjunct; the loop then re-drives. When no open branch remains the clash is
+        // genuine ⇒ INCONSISTENT. (Konclude does this with per-alternative task forks +
+        // `clashedBacktracking`; see the `OrBranchPoint` KONCLUDE-PORT-NOTE.)
+        loop {
+            self.run_saturation_loop(calc_alg_context);
+            if !calc_alg_context.has_pending_signal() {
+                // fixpoint reached, no clash ⇒ consistent / complete.
+                return true;
+            }
+            match calc_alg_context.pending_signal() {
+                CalcSignal::Clash(_) => {
+                    if self.try_backtrack_or_branch(calc_alg_context) {
+                        // advanced to the next alternative (signal cleared); re-drive.
+                        continue;
+                    }
+                    // no open branch point with a remaining alternative ⇒ the clash is
+                    // unrecoverable: the completion graph is INCONSISTENT.
+                    return false;
+                }
+                // a stop is the C++ `CCalculationStopProcessingException` (task forked
+                // / completed elsewhere); not consistent on this drive.
+                CalcSignal::Stop { .. } => return false,
+                CalcSignal::Continue => return true,
+            }
+        }
+    }
+
+    /// The in-process disjunction backtrack. Pops branch points whose alternatives
+    /// are all exhausted, then — if any open branch remains — restores to the topmost
+    /// one, clears the pending clash, advances to its next unexplored disjunct, adds
+    /// it to the individual, and re-seeds the node onto the immediately-processing
+    /// queue so the drive picks it up again. Returns true if it advanced a branch,
+    /// false if no branch with a remaining alternative exists (the clash is genuine).
+    ///
+    /// KONCLUDE-PORT-NOTE[branching]: this is a CHRONOLOGICAL backtrack — it relies on
+    /// the failed alternative having committed no graph mutation that needs undoing,
+    /// which holds when the disjunct clashes at insert-time (`A` added while `¬A`
+    /// present: the polarity clash fires in `insert_concept_get_clash_resolved`
+    /// BEFORE the concept enters the label set, so the set is unchanged). The faithful
+    /// dependency-directed backjump (`clashedBacktracking`, u29) with full arena /
+    /// databox watermark restore (the Arena `truncate_to` + db1 save/restore) is the
+    /// documented gap — it needs the unported Unit 28/30 tracking-line records.
+    fn try_backtrack_or_branch(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        // discard branch points whose every alternative has already clashed.
+        while let Some(bp) = self.or_branch_stack.last() {
+            if bp.next_alt < bp.disjuncts.len() {
+                break;
+            }
+            self.or_branch_stack.pop();
+        }
+        if self.or_branch_stack.is_empty() {
             return false;
+        }
+
+        // the clash is being recovered from — clear it (the C++ catch consumes the
+        // exception, then `clashedBacktracking` re-drives the chosen branch).
+        calc_alg_context.clear_pending_signal();
+
+        // advance the topmost open branch to its next unexplored alternative.
+        let (node, target, op_negated, dep_track_point) = {
+            let bp = self.or_branch_stack.last_mut().expect("checked non-empty");
+            let link = bp.disjuncts[bp.next_alt];
+            bp.next_alt += 1;
+            (bp.node, link.target, link.negated ^ bp.negate, bp.dep_track_point)
+        };
+
+        // re-seed the node onto the immediately-processing queue so
+        // `take_next_process_individual` (Probe 2) returns it on the next drive.
+        let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_unsorted_proc_queue_mut(iq)
+            .insert_indiviudal_process_node(node);
+
+        // addConceptToIndividual(nextOperand, opNegated, node, depTrackPoint, …) — the
+        // `executeORBranching` per-alternative add. May itself raise a clash (the
+        // alternative also contradicts the label set), which the outer loop catches
+        // and backtracks again.
+        let mut node_m: NodeId = node;
+        let _target: ConceptId = target;
+        self.add_concept_to_individual(
+            target,
+            op_negated,
+            &mut node_m,
+            dep_track_point,
+            true,
+            true,
+            calc_alg_context,
+        );
+        true
+    }
+
+    /// The deterministic completion main loop (`handleTask` inner loop, cpp
+    /// 1112-1236), factored out of [`Self::run_completion_on`] so the outer search
+    /// loop can re-enter it after a disjunction backtrack. Drives until the
+    /// completion graph is saturated OR a rule raises a pending clash/stop signal
+    /// (which it leaves set for the caller to inspect); it does not itself decide
+    /// the verdict.
+    fn run_saturation_loop(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if calc_alg_context.has_pending_signal() {
+            return;
         }
         let mut indi_proc_node: NodeId = self.take_next_process_individual(calc_alg_context);
         if calc_alg_context.has_pending_signal() {
-            return false;
+            return;
         }
         while indi_proc_node.is_some() {
             let initialized = self.individual_node_initializing(indi_proc_node, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
-                return false;
+                return;
             }
             if initialized {
                 let mut continue_processing_individual =
                     self.continue_individual_processing(indi_proc_node, calc_alg_context);
                 if calc_alg_context.has_pending_signal() {
-                    return false;
+                    return;
                 }
                 while continue_processing_individual {
                     // CConceptProcessingQueue* conProcQueue = indiProcNode->getConceptProcessingQueue(true);
@@ -140,14 +252,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     // The clash/stop a rule may raise unwinds HERE (the C++ throw from
                     // inside tableauRuleProcessing), before the reinsert/continue branch.
                     if calc_alg_context.has_pending_signal() {
-                        return false;
+                        return;
                     }
 
                     if continue_processing_individual {
                         continue_processing_individual =
                             self.continue_individual_processing(indi_proc_node, calc_alg_context);
                         if calc_alg_context.has_pending_signal() {
-                            return false;
+                            return;
                         }
                     } else {
                         self.add_concept_to_processing_queue_reinsert(
@@ -157,23 +269,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         );
                         if calc_alg_context.has_pending_signal() {
-                            return false;
+                            return;
                         }
                     }
                 }
 
                 self.individual_node_conclusion(indi_proc_node, calc_alg_context);
                 if calc_alg_context.has_pending_signal() {
-                    return false;
+                    return;
                 }
             }
 
             indi_proc_node = self.take_next_process_individual(calc_alg_context);
             if calc_alg_context.has_pending_signal() {
-                return false;
+                return;
             }
         }
-        true
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::takeNextProcessIndividual`.

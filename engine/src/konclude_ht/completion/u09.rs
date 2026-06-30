@@ -681,73 +681,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_operand_list()
             .to_vec();
         // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
+        let _ = (concept, op_count);
 
-        // W3-DEFER[api]: CTriggeredImplicationProcessingRestrictionSpecification* triggImpProcRes;
-        let mut trigg_imp_proc_res: Cint64 = INVALID;
-        if proc_rest == Id::NONE {
-            // W3-DEFER[memory-pool]: allocate+construct CTriggeredImplicationProcessingRestrictionSpecification
-            trigg_imp_proc_res = INVALID;
-            // W3-DEFER[api]: triggImpProcRes->setConceptImplicationTrigger(opLinker->getNext())
-        } else {
-            // W3-DEFER[memory-pool]: allocate+construct CTriggeredImplicationProcessingRestrictionSpecification
-            trigg_imp_proc_res = INVALID;
-            // W3-DEFER[api]: triggImpProcRes->initImplicationTriggeringProcessingRestriction((CTriggeredImplicationProcessingRestrictionSpecification*)procRest)
-        }
+        // KONCLUDE-PORT-NOTE[api]: `CTriggeredImplicationProcessingRestrictionSpecification` is
+        // unported. For the BASIC GCI/unfold the trigger cursor is reproduced DIRECTLY over the
+        // operand list: Konclude installs `opLinker->getNext()` (every operand AFTER the implied
+        // head) as the trigger sequence, and the implied concept is `opLinker->getData()` (the
+        // first operand). An `A ⊑ B` GCI is stored as `¬A ⊔ B`: operands `[B(implied), ¬A(trigger)]`,
+        // and the rule fires when each trigger concept is present with the OPPOSITE polarity of the
+        // trigger linker (i.e. positive A for the negated `¬A` linker).
+        //
+        // The re-triggered case (`procRest != NONE`, reached only after `addConceptToReapplyQueue`
+        // re-fires the rule once a previously-missing trigger appears) keeps the reapply-install
+        // path W3-DEFER: a trigger that is ABSENT here simply does not (yet) fire the implication.
+        // That is sound; it is incomplete only for inputs where a trigger is added to the node
+        // strictly AFTER the implication concept is processed (closed once the condensed reapply
+        // queue / `CTriggeredImplicationProcessingRestrictionSpecification` is ported). For the
+        // basic unfold (all triggers already on the node) the implication fires here.
+        let _ = proc_rest;
 
-        // search next not existing trigger
-        let mut all_triggers_available = false;
-        // W3-DEFER[api]: processIndi->getReapplyConceptLabelSet(true)
-        let con_set: LabelSetId = Id::NONE;
-        loop {
-            // W3-DEFER[api]: triggImpProcRes->hasConceptImplicationTrigger()
-            let has_concept_implication_trigger = false;
-            if !has_concept_implication_trigger {
-                break;
-            }
-            // W3-DEFER[api]: triggImpProcRes->getConceptImplicationTrigger()
-            let next_trigger: Cint64 = INVALID;
-            // W3-DEFER[api]: nextTrigger->getData()
-            let trigger_concept: ConceptId = Id::NONE;
+        // CReapplyConceptLabelSet* conSet = processIndi->getReapplyConceptLabelSet(true);
+        let con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*process_indi);
+
+        // search next not existing trigger — while (triggImpProcRes->hasConceptImplicationTrigger())
+        let mut all_triggers_available = true;
+        for trigger in op_linker.iter().skip(1) {
+            // nextTrigger->getData() / nextTrigger->isNegated()
+            let trigger_concept: ConceptId = trigger.target;
+            let trigger_link_negated: bool = trigger.negated;
             let mut trigger_con_des: ConDescId = Id::NONE;
             let mut trigger_dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: conSet->getConceptDescriptor(triggerConcept, triggerConDes, triggerDepTrackPoint)
-            let has_trigger_con_des = false;
+            // if (conSet->getConceptDescriptor(triggerConcept, triggerConDes, triggerDepTrackPoint))
+            // KONCLUDE-PORT-NOTE[api]: `getConceptDescriptor(CConcept*)` keys by the
+            // concept's tag (`CConcept::getConceptTag`); the by-concept overload's
+            // tag helper is still a W2-DEFER stub (returns the arena id), so resolve the
+            // REAL concept tag against the arena and use the by-tag lookup — exactly as
+            // `insert_concepts_to_individual_concept_set` resolves `new_con_tag`.
+            let trigger_tag: Cint64 = calc_alg_context
+                .ontology_arenas()
+                .concept(trigger_concept)
+                .get_concept_tag();
+            let has_trigger_con_des = calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .get_concept_descriptor_by_tag(
+                    trigger_tag,
+                    &mut trigger_con_des,
+                    &mut trigger_dep_track_point,
+                );
             if has_trigger_con_des {
-                // W3-DEFER[api]: triggerConDes->isNegated() == nextTrigger->isNegated()
-                let trigger_negations_equal = false;
-                if trigger_negations_equal {
+                // if (triggerConDes->isNegated() == nextTrigger->isNegated()) return;
+                let trigger_con_des_negated = calc_alg_context
+                    .process_context()
+                    .con_desc(trigger_con_des)
+                    .is_negated();
+                if trigger_con_des_negated == trigger_link_negated {
                     return;
-                } else {
-                    if trigger_dep_track_point != dep_track_point {
-                        // add dependency track point
-                        // W3-DEFER[api]: createCONNECTIONDependency(processIndi, triggerConDes, triggerDepTrackPoint, calcAlgContext)
-                        let conn_dep: Cint64 = INVALID;
-                        // W3-DEFER[api]: connDep->setNext(triggImpProcRes->getImplicationDependency())
-                        // W3-DEFER[api]: triggImpProcRes->setImplicationDependency(connDep)
-                    }
-                    // W3-DEFER[api]: triggImpProcRes->setConceptImplicationTrigger(nextTrigger->getNext())
+                }
+                // else: present with the OPPOSITE polarity ⇒ trigger satisfied; advance.
+                if trigger_dep_track_point != dep_track_point {
+                    // add dependency track point — W3-DEFER[api]: createCONNECTIONDependency(...)
+                    // accumulation onto triggImpProcRes->getImplicationDependency()
+                    // (dependency-directed backtracking; the unported trigger spec holds the chain).
                 }
             } else {
+                // not present ⇒ break to install-to-trigger (W3-DEFER addConceptToReapplyQueue).
+                all_triggers_available = false;
                 break;
             }
-        }
-        // W3-DEFER[api]: !triggImpProcRes->hasConceptImplicationTrigger()
-        let has_concept_implication_trigger = false;
-        if !has_concept_implication_trigger {
-            all_triggers_available = true;
         }
 
         if !all_triggers_available {
             // install to trigger
             // W3-DEFER[macro]: STATINC(IMPLICATIONTRIGGERINGCOUNT, calc_alg_context)
-            // W3-DEFER[api]: triggImpProcRes->getConceptImplicationTrigger()
-            let next_trigger: Cint64 = INVALID;
-            // W3-DEFER[api]: nextTrigger->getData()
-            let trigger_concept: ConceptId = Id::NONE;
-            // W3-DEFER[api]: !nextTrigger->isNegated()
-            let trigger_negation = true;
-            // W3-DEFER[api]: addConceptToReapplyQueue(conDes, triggerConcept, triggerNegation, processIndi, triggImpProcRes, depTrackPoint, calcAlgContext)
+            // W3-DEFER[api]: addConceptToReapplyQueue(conDes, triggerConcept, !nextTrigger->isNegated(),
+            //   processIndi, triggImpProcRes, depTrackPoint, calcAlgContext) — the condensed reapply
+            //   queue is unported, so a not-yet-present trigger does not re-fire the implication.
+            //   For inputs where all triggers are already on the node (the basic GCI unfold) this
+            //   branch is never taken.
         } else {
             // W3-DEFER[macro]: STATINC(IMPLICATIONEXECUTINGCOUNT, calc_alg_context)
             // W3-DEFER[api]: triggImpProcRes->getImplicationDependency() — the trigger
@@ -764,7 +777,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 trigger_deps,
                 calc_alg_context,
             );
-            // opLinker->getData() / opLinker->isNegated()
+            // CConcept* implConcept = opLinker->getData(); bool impConNeg = opLinker->isNegated();
             let impl_concept: ConceptId =
                 op_linker.first().map(|l| l.target).unwrap_or(Id::NONE);
             let imp_con_neg: bool = op_linker.first().map(|l| l.negated).unwrap_or(false);
