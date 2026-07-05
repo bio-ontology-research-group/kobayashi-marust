@@ -4,6 +4,26 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Portfolio CB arm uses the absorbed-plain path (+30 beat-Konclude WINs, −1 timeout)
+
+The certified-elc portfolio ran its CB arm via `run_engine_adaptive` on the
+ABSORBED clause set directly, while `cb_stack` (the non-portfolio default) runs
+CB via `race_absorbed_plain` — an 8 s PLAIN (un-absorbed) probe, then the
+absorbed set. On onts where absorption makes the clause set harder for CB, the
+absorbed-only run is far worse (ore_ont_1082: CB 44 s / 8.7 GB in the portfolio
+vs 2.9 s / 130 MB via absorbed-plain). The portfolio CB arm now uses
+`race_absorbed_plain`, the same path `cb_stack` uses. Same sound+complete engine
+on output-preserving clause encodings, so the CB answer is unchanged; the elc
+racing is untouched, so the portfolio's recoveries are preserved.
+
+Full IBEX panel (job 48086814, all 584 onts, KM vs Konclude wall+peak+gold) vs
+the pre-fix baseline (48085418): **WIN (faster AND less memory) 136 → 166 (+30);
+SLOWER 233 → 216; SLOW+MEM 203 → 190; FAIL 9 → 8 (ore_ont_14459, a 153 MB
+near-giant, recovered); 0 unsound, 0 regressions.** Example flips: 11502
+1.56 s/307 MB → 1.32 s/66 MB (now beats Konclude 173 MB). The remaining 8 FAILs
+(541, 3215, 7914, 9663, 9724, 10621, 12653, 14817) plus the 2 contested-correct
+(2669, 15516) are unchanged.
+
 ### SWRL DL-safe rules default-on, rule-gated (+3 ORE: 2669, 15516, 10906)
 
 Three ORE timeouts are SWRL ontologies KM already solved correctly but only
