@@ -67,6 +67,8 @@ use super::super::model::substrate::{Cint64, Id};
 use super::super::model::ConceptId;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::SatNodeId;
+use std::fs::File;
+use std::io::Write;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::writeIndividualSaturationStatistics`
@@ -170,19 +172,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             Some(&mut indi_string_list),
         );
 
-        // W6-DEFER[api]: the QFile sink —
-        //   QFile file(filename);
-        //   if (file.open(QIODevice::WriteOnly)) {
-        //     for (const QString& tmpString : indiStringList) {
-        //       write tmpString.replace("<br>","").replace("<p>","\n"); write "\r\n\r\n\r\n";
-        //     }
-        //     write remainingDebugString; file.close();
-        //   }
-        let _ = filename;
+        if let Ok(mut file) = File::create(filename) {
+            for tmp_string in &indi_string_list {
+                let tmp_replaced_string = tmp_string.replace("<br>", "").replace("<p>", "\n");
+                let _ = file.write_all(tmp_replaced_string.as_bytes());
+                let _ = file.write_all(b"\r\n\r\n\r\n");
+            }
+            let _ = file.write_all(remaining_debug_string.as_bytes());
+        }
 
         if indi_string_list.len() < 100000 {
             self.debug_indi_model_string_list = indi_string_list;
-            self.debug_indi_model_string = self.debug_indi_model_string_list.join("<br><p><br>\r\n");
+            self.debug_indi_model_string =
+                self.debug_indi_model_string_list.join("<br><p><br>\r\n");
             self.debug_indi_model_string += remaining_debug_string.as_str();
         }
 
@@ -266,8 +268,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     //   (calcAlgContext->getUsedSatisfiableCalculationTask()->getTaskDepth())
                 } else {
                     self.debug_indi_model_string_list = indi_string_list;
-                    self.debug_indi_model_string =
-                        self.debug_indi_model_string_list.join("<br>\n<p><br>\n\r\n");
+                    self.debug_indi_model_string = self
+                        .debug_indi_model_string_list
+                        .join("<br>\n<p><br>\n\r\n");
                 }
             }
             Some(out_list) => {
@@ -299,43 +302,69 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         //   fallback) is preserved; when the masks land, swap each `false` for the
         //   real `status_flags.has_*_flag()`.
         let _ = status_flags;
-        if false /* status_flags.has_clashed_flag() */ {
+        if false
+        /* status_flags.has_clashed_flag() */
+        {
             flags_string_list.push("clashed".to_string());
         }
-        if false /* status_flags.has_insufficient_flag() */ {
+        if false
+        /* status_flags.has_insufficient_flag() */
+        {
             flags_string_list.push("insufficient".to_string());
         }
-        if false /* status_flags.has_nominal_connection_flag() */ {
+        if false
+        /* status_flags.has_nominal_connection_flag() */
+        {
             flags_string_list.push("nominal connection".to_string());
         }
-        if false /* status_flags.has_critical_flag() */ {
+        if false
+        /* status_flags.has_critical_flag() */
+        {
             flags_string_list.push("critical".to_string());
         }
-        if false /* status_flags.has_cardinality_proplematic_flag() */ {
+        if false
+        /* status_flags.has_cardinality_proplematic_flag() */
+        {
             flags_string_list.push("cardinality problematic".to_string());
         }
-        if false /* status_flags.has_eq_candidate_proplematic_flag() */ {
+        if false
+        /* status_flags.has_eq_candidate_proplematic_flag() */
+        {
             flags_string_list.push("eqCandidate problematic".to_string());
         }
-        if false /* status_flags.has_missed_abox_consistency_flag() */ {
+        if false
+        /* status_flags.has_missed_abox_consistency_flag() */
+        {
             flags_string_list.push("missed ABox consistency data".to_string());
         }
-        if false /* status_flags.has_initialized_flag() */ {
+        if false
+        /* status_flags.has_initialized_flag() */
+        {
             flags_string_list.push("initialized".to_string());
         }
-        if false /* status_flags.has_completed_flag() */ {
+        if false
+        /* status_flags.has_completed_flag() */
+        {
             flags_string_list.push("completed".to_string());
         }
-        if false /* status_flags.has_unprocessed_flag() */ {
+        if false
+        /* status_flags.has_unprocessed_flag() */
+        {
             flags_string_list.push("unprocessed".to_string());
         }
-        if false /* status_flags.has_unmarked_role_assertion_flag() */ {
+        if false
+        /* status_flags.has_unmarked_role_assertion_flag() */
+        {
             flags_string_list.push("unmarked role assertion".to_string());
         }
-        if false /* status_flags.has_unregistered_propagation_flag() */ {
+        if false
+        /* status_flags.has_unregistered_propagation_flag() */
+        {
             flags_string_list.push("unregistered role assertion".to_string());
         }
-        if false /* status_flags.has_propagation_incomplete_flag() */ {
+        if false
+        /* status_flags.has_propagation_incomplete_flag() */
+        {
             flags_string_list.push("propagation incomplete".to_string());
         }
         if flags_string_list.is_empty() {

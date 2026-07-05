@@ -61,35 +61,39 @@
 //!     `CIndividualRepresentativeBackendCacheConceptSetLabelProcessingHash{,er}` and
 //!     the delayed-init / queuing linkers) — reached only through
 //!     `mBackendCacheHandler` (`self.backend_cache_handler`, a stub `Id`); W6 Cache;
-//!   * the **tracked-clashed dependency records** (`CTrackedClashedDescriptor`,
-//!     `CTrackedClashedDependencyLine`) of the unsat-cache writer — Process/Dependency
-//!     backtracking layer not yet given arena ids (units 28/29 + backtracking).
+//!   * the **tracked-clash cache/backtracking consumers** — the Unit 28/30
+//!     descriptor and tracking-line substrate is live, while the cache handlers
+//!     and Unit 29 dependency-directed backtracking integration remain pending.
 //!
-//! Following the porting convention, the ONE fully substrate-portable method —
-//! `getIndividualNodeAssociatedConceptsSetFromVariablePropagationBindingsCached`,
-//! which is just a memoising wrapper over the algorithm's own
-//! `cached_indi_associated_concept_set_hash` field + a sibling builder — is ported
-//! in full. The other nineteen are driven start-to-finish by the deferred handlers
-//! above; each keeps its faithful signature and a structural transcription of the
-//! C++ control flow under `// PORT-PENDING`, so a later wave fills the body without
-//! re-reading the source. Logic is documented, never silently dropped.
+//! The substrate-portable pieces are live: the memoising
+//! `getIndividualNodeAssociatedConceptsSetFromVariablePropagationBindingsCached`
+//! wrapper, `hasSaturatedClashedFlagForConcept`, and the two outer
+//! `writeClashDescriptorsToCache` overload wrappers plus the core overload's
+//! descriptor-validation/cache-write gate, and the root-task tested-concept
+//! unsatisfiable-cache write branch. The remaining handler-driven bodies keep
+//! faithful signatures and structural transcriptions under `// PORT-PENDING` so
+//! later waves fill them without re-reading the source. Logic is documented,
+//! never silently dropped.
 //!
 //! Deferred handler/Cache/Task/saturation pointer types that have no arena id yet
 //! are carried as an opaque `Cint64` (`INVALID` == the C++ `nullptr`) tagged
-//! `W6-DEFER[api]` (Cache/Task), `W4-DEFER[api]` (saturation extension-resolve), or
-//! `W3-DEFER[api]` (tracked-clashed dependency records). Rule/STAT counters use the
+//! `W6-DEFER[api]` (Cache/Task) or `W4-DEFER[api]` (saturation extension-resolve).
+//! Rule/STAT counters use the
 //! existing `algorithm.rs` getters; the `STATINC` statistic macro is a
 //! `W3-DEFER[macro]` no-op note.
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::Cint64;
+use super::super::model::op::CCFS_PROPAGATION_TYPE;
+use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, RoleId};
-use super::super::process::{ConDescId, NodeId, SatNodeId};
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
+use super::super::process::{ClashDescId, ConDescId, NodeId, SatNodeId};
+use super::super::task::adapters::EFEXTRACTSUBSUMERSROOTNODE;
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
-use super::super::model::substrate::Id;
+use super::u30::TrackedClashedDependencyLine;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
@@ -134,11 +138,109 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         task: Id<SatisfiableCalculationTask>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W6-DEFER[api]: the classification message adapter (Task layer) and the
-        // unsat / saturation-node-expansion / computed-consequences cache handlers
-        // (W6 Cache subtree) are unported; the constructed-node nominal type-caching
-        // tail also needs them. Body held PORT-PENDING per the outline above.
-        let _ = (task, calc_alg_context);
+        // CSatisfiableTaskClassificationMessageAdapter* adapter =
+        //     task->getClassificationMessageAdapter();
+        let adapter = calc_alg_context
+            .base
+            .try_sat_calc_task(task)
+            .map(|task| task.get_classification_message_adapter())
+            .unwrap_or(Id::NONE);
+
+        if adapter.is_some() {
+            let (concept, extract_subsumers_root_node) = {
+                let adapter_ref = calc_alg_context.classification_message_adapter(adapter);
+                (
+                    adapter_ref.get_testing_concept(),
+                    adapter_ref.has_extraction_flags(EFEXTRACTSUBSUMERSROOTNODE),
+                )
+            };
+
+            if concept.is_some() && extract_subsumers_root_node {
+                // CUnsatisfiableCacheHandler* unsatCacheHandler =
+                //     calcAlgContext->getUsedUnsatisfiableCacheHandler();
+                if self.conf_tested_concept_write_unsat_caching {
+                    if let Some(mut handler_state) =
+                        calc_alg_context.take_used_unsatisfiable_cache_handler()
+                    {
+                        handler_state.handler.write_unsatisfiable_clashed_concept(
+                            concept,
+                            calc_alg_context,
+                            &mut handler_state.cache_context,
+                        );
+                        calc_alg_context.restore_used_unsatisfiable_cache_handler(handler_state);
+                    }
+                }
+
+                // CSaturationNodeExpansionCacheHandler* satNodeExpanderCacheHandler =
+                //     calcAlgContext->getUsedSaturationNodeExpansionCacheHandler();
+                if self.conf_saturation_concept_unsatisfiability_saturated_cache_writing {
+                    if let Some(mut handler_state) =
+                        calc_alg_context.take_used_saturation_node_expansion_cache_handler()
+                    {
+                        handler_state
+                            .handler
+                            .cache_unsatisfiable_concept(concept, calc_alg_context);
+                        calc_alg_context
+                            .restore_used_saturation_node_expansion_cache_handler(handler_state);
+                    }
+                }
+            }
+        }
+
+        // CProcessingDataBox* processingDataBox = calcAlgContext->getProcessingDataBox();
+        // CIndividualProcessNode* constIndiNode = processingDataBox->getConstructedIndividualNode();
+        let const_indi_node = calc_alg_context
+            .processing_data_box()
+            .constructed_individual_node();
+        if !calc_alg_context
+            .processing_data_box()
+            .has_multiple_construction_individual_nodes()
+            && const_indi_node.is_some()
+            && calc_alg_context
+                .process_context()
+                .node(const_indi_node)
+                .is_nominal_individual_node()
+        {
+            let (init_concept, con_negation, single_init_concept, individual) = {
+                let const_node = calc_alg_context.process_context().node(const_indi_node);
+                let init_con_linker = const_node.initializing_concept_linker();
+                (
+                    init_con_linker
+                        .first()
+                        .map(|linker| linker.target)
+                        .unwrap_or(ConceptId::NONE),
+                    init_con_linker
+                        .first()
+                        .map(|linker| linker.negated)
+                        .unwrap_or(false),
+                    init_con_linker.len() == 1,
+                    const_node.nominal_individual(),
+                )
+            };
+
+            if single_init_concept
+                && init_concept.is_some()
+                && self.conf_cache_computed_consequences
+                && calc_alg_context
+                    .ontology_arenas()
+                    .concept(init_concept)
+                    .get_terminology()
+                    != INVALID
+            {
+                if let Some(mut handler_state) =
+                    calc_alg_context.take_used_computed_consequences_cache_handler()
+                {
+                    handler_state.handler.try_cache_type_concept(
+                        individual,
+                        init_concept,
+                        !con_negation,
+                        calc_alg_context,
+                    );
+                    calc_alg_context
+                        .restore_used_computed_consequences_cache_handler(handler_state);
+                }
+            }
+        }
         false
     }
 
@@ -154,22 +256,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// memory pool, init it with `indiNode`, and register it on the databox as a
     /// cache-testing linker.
     ///
-    /// PORT-PENDING: faithful transcription of cpp 7391–7396. Outline:
-    ///
-    ///   taskMemMan = ctx->getUsedProcessTaskMemoryAllocationManager();             // W6-DEFER[memory-pool]
-    ///   indiNodeLinker = CObjectAllocator<CXLinker<CIndividualProcessNode*>>::allocateAndConstruct(taskMemMan);
-    ///   indiNodeLinker->initLinker(indiNode);
-    ///   ctx->getUsedProcessingDataBox()->addIndividualNodeCacheTestingLinker(indiNodeLinker);
     pub fn add_individual_node_for_cache_unsatisfiable_retrieval(
         &mut self,
         indi_node: &mut NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W6-DEFER[memory-pool]: the pooled `CXLinker<CIndividualProcessNode*>` and
-        // the databox `addIndividualNodeCacheTestingLinker` cache-testing linker
-        // chain are not yet ported (the node-linker arena / databox cache-testing
-        // collection land with their satellite). Body PORT-PENDING per outline.
-        let _ = (indi_node, calc_alg_context);
+        calc_alg_context
+            .processing_data_box_mut()
+            .add_individual_node_cache_testing_linker(vec![*indi_node]);
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::writeClashDescriptorsToCache`
@@ -179,11 +273,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// `writeClashDescriptorsToCache`, dispatched by argument type; Rust cannot
     /// overload, so the dependency-line variant is named `*_from_line`, the
     /// additional-descriptor variant `*_with_additional`, and the core descriptor
-    /// variant keeps the base name. W3-DEFER[api]: `CTrackedClashedDependencyLine*`
-    /// and `CTrackedClashedDescriptor*` are Process/Dependency backtracking records
-    /// without an arena id yet, carried opaque as `Cint64`.
-    ///
-    /// PORT-PENDING: faithful transcription of cpp 7400–7408. Outline:
+    /// variant keeps the base name.
     ///
     ///   trackedClashedDesList = nullptr;
     ///   while trackingLine->hasMoreTrackedClashedList():
@@ -193,20 +283,49 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///   return cacheWrite;
     pub fn write_clash_descriptors_to_cache_from_line(
         &mut self,
-        tracking_line: Cint64,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[api]: tracked-clashed dependency-line / descriptor records unported.
-        let _ = (tracking_line, calc_alg_context);
-        false
+        let mut tracked_clashed_des_list = ClashDescId::NONE;
+        while tracking_line.has_more_tracked_clashed_list() {
+            let list = tracking_line.take_next_tracked_clashed_list();
+            if list.is_some() {
+                let mut tail = list;
+                while calc_alg_context
+                    .process_context()
+                    .clash_desc(tail)
+                    .get_next_descriptor()
+                    .is_some()
+                {
+                    tail = calc_alg_context
+                        .process_context()
+                        .clash_desc(tail)
+                        .get_next_descriptor();
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .clash_desc_mut(tail)
+                    .set_next(tracked_clashed_des_list);
+                tracked_clashed_des_list = list;
+            }
+        }
+        let cache_write = self.write_clash_descriptors_to_cache(
+            &mut tracked_clashed_des_list,
+            tracking_line,
+            calc_alg_context,
+        );
+        tracking_line.sort_in_tracked_clashed_descriptors(
+            tracked_clashed_des_list,
+            true,
+            calc_alg_context,
+        );
+        cache_write
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::writeClashDescriptorsToCache`
     /// (the additional-descriptor overload). cpp 7412–7423.
     /// KONCLUDE-PORT-NOTE[overload]: see `*_from_line`; `trackedClashedDes` is an
-    /// in/out `CTrackedClashedDescriptor*&` → `&mut Cint64` (W3-DEFER[api]).
-    ///
-    /// PORT-PENDING: faithful transcription of cpp 7412–7423. Outline:
+    /// in/out `CTrackedClashedDescriptor*&` → `&mut ClashDescId`.
     ///
     ///   separatTrackedClashedDes = additionalTrackedClashedDes;
     ///   trackedClashedDes = additionalTrackedClashedDes->append(trackedClashedDes);
@@ -219,19 +338,59 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///   return cacheWrite;
     pub fn write_clash_descriptors_to_cache_with_additional(
         &mut self,
-        tracked_clashed_des: &mut Cint64,
-        additional_tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: &mut ClashDescId,
+        additional_tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[api]: tracked-clashed dependency records unported.
-        let _ = (
+        let separat_tracked_clashed_des = additional_tracked_clashed_des;
+        calc_alg_context
+            .process_context_mut()
+            .clash_desc_mut(additional_tracked_clashed_des)
+            .set_next(*tracked_clashed_des);
+        *tracked_clashed_des = additional_tracked_clashed_des;
+
+        let cache_write = self.write_clash_descriptors_to_cache(
             tracked_clashed_des,
-            additional_tracked_clashed_des,
             tracking_line,
             calc_alg_context,
         );
-        false
+        if !cache_write {
+            *tracked_clashed_des = calc_alg_context
+                .process_context()
+                .clash_desc(*tracked_clashed_des)
+                .get_next_descriptor();
+        } else if *tracked_clashed_des == separat_tracked_clashed_des {
+            *tracked_clashed_des = calc_alg_context
+                .process_context()
+                .clash_desc(separat_tracked_clashed_des)
+                .get_next_descriptor();
+        } else {
+            let mut prev = *tracked_clashed_des;
+            while prev.is_some() {
+                let next = calc_alg_context
+                    .process_context()
+                    .clash_desc(prev)
+                    .get_next_descriptor();
+                if next == separat_tracked_clashed_des {
+                    let after = calc_alg_context
+                        .process_context()
+                        .clash_desc(separat_tracked_clashed_des)
+                        .get_next_descriptor();
+                    calc_alg_context
+                        .process_context_mut()
+                        .clash_desc_mut(prev)
+                        .set_next(after);
+                    break;
+                }
+                prev = next;
+            }
+        }
+        calc_alg_context
+            .process_context_mut()
+            .clash_desc_mut(additional_tracked_clashed_des)
+            .set_next(ClashDescId::NONE);
+        cache_write
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::writeClashDescriptorsToCache`
@@ -245,8 +404,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Returns whether a cache line was written.
     ///
     /// KONCLUDE-PORT-NOTE[overload]: core variant; keeps the base name.
-    /// W3-DEFER[api]: `CTrackedClashedDescriptor`/`CTrackedClashedDependencyLine` and
-    /// the unsat-cache writers are unported.
+    /// W6-DEFER[api]: the unsat-cache handler writer is still deferred; the
+    /// tracked descriptor/line substrate is live.
     ///
     /// PORT-PENDING: faithful transcription of cpp 7426–7542. Outline:
     ///
@@ -293,18 +452,146 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///   return false;
     pub fn write_clash_descriptors_to_cache(
         &mut self,
-        tracked_clashed_des: &mut Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: &mut ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[api]: the descriptor-chain validation reads
-        // `CTrackedClashedDescriptor` fields (appropriated individual id/level/
-        // nominal, concept descriptor) that have no arena id yet; the sort + the
-        // `writeUnsatisfiableClashedDescriptors` cache writer + the
-        // `addIndiNodeSignatureOfUnsatisfiableClashedDescriptors` signature recorder
-        // are unported. Body PORT-PENDING per the full outline above (the concept
-        // operator test maps to `model::op` `CCFS_PROPAGATION_TYPE`).
-        let _ = (tracked_clashed_des, tracking_line, calc_alg_context);
+        let _ = tracking_line;
+        if !self.conf_write_unsat_caching || tracked_clashed_des.is_none() {
+            return false;
+        }
+
+        let first = *tracked_clashed_des;
+        let first_desc = calc_alg_context.process_context().clash_desc(first);
+        let mut nominal_occurred = first_desc.is_appropriated_individual_nominal();
+        let min_indi_id = first_desc.get_appropriated_individual_id();
+        let min_indi_level = first_desc.get_appropriated_individual_level();
+        let mut has_other_indi_id = false;
+        let mut has_no_invalid_con_des =
+            self.is_valid_unsat_cache_tracked_concept_descriptor(first, calc_alg_context);
+
+        let mut it = calc_alg_context
+            .process_context()
+            .clash_desc(first)
+            .get_next_descriptor();
+        while it.is_some() {
+            let desc = calc_alg_context.process_context().clash_desc(it);
+            has_no_invalid_con_des &=
+                self.is_valid_unsat_cache_tracked_concept_descriptor(it, calc_alg_context);
+            nominal_occurred |= desc.is_appropriated_individual_nominal();
+            if desc.get_appropriated_individual_id() != min_indi_id {
+                has_other_indi_id = true;
+                if nominal_occurred {
+                    return false;
+                }
+            }
+            if desc.get_appropriated_individual_level() != min_indi_level {
+                return false;
+            }
+            it = desc.get_next_descriptor();
+        }
+
+        if !has_no_invalid_con_des || nominal_occurred {
+            return false;
+        }
+
+        let write_cache_line = if nominal_occurred {
+            !has_other_indi_id
+        } else {
+            true
+        };
+        if !write_cache_line
+            || self.has_unsat_cache_atomic_clash(*tracked_clashed_des, calc_alg_context)
+        {
+            return false;
+        }
+
+        if self.conf_unsat_caching_use_node_signature_set {
+            self.add_indi_node_signature_of_unsatisfiable_clashed_descriptors(
+                *tracked_clashed_des,
+                calc_alg_context,
+            );
+        }
+        *tracked_clashed_des =
+            self.get_sorted_clashed_descriptors(*tracked_clashed_des, calc_alg_context);
+        self.write_unsatisfiable_clashed_descriptors(*tracked_clashed_des, calc_alg_context)
+    }
+
+    fn is_valid_unsat_cache_tracked_concept_descriptor(
+        &self,
+        tracked_clashed_des: ClashDescId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let con_des = calc_alg_context
+            .process_context()
+            .clash_desc(tracked_clashed_des)
+            .get_concept_descriptor();
+        if con_des.is_none() {
+            return false;
+        }
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        if concept.is_none() {
+            return false;
+        }
+        let concept = calc_alg_context.ontology_arenas().concept(concept);
+        concept.get_terminology() != INVALID
+            && !concept
+                .get_concept_operator()
+                .has_partial_operator_code_flag(CCFS_PROPAGATION_TYPE)
+    }
+
+    fn has_unsat_cache_atomic_clash(
+        &self,
+        tracked_clashed_des: ClashDescId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let mut it = tracked_clashed_des;
+        while it.is_some() {
+            let con_des = calc_alg_context
+                .process_context()
+                .clash_desc(it)
+                .get_concept_descriptor();
+            let concept = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .get_concept();
+            let negated = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .is_negated();
+            let mut other_it = calc_alg_context
+                .process_context()
+                .clash_desc(it)
+                .get_next_descriptor();
+            while other_it.is_some() {
+                let other_con_des = calc_alg_context
+                    .process_context()
+                    .clash_desc(other_it)
+                    .get_concept_descriptor();
+                let other_concept = calc_alg_context
+                    .process_context()
+                    .con_desc(other_con_des)
+                    .get_concept();
+                let other_negated = calc_alg_context
+                    .process_context()
+                    .con_desc(other_con_des)
+                    .is_negated();
+                if other_concept == concept && other_negated != negated {
+                    return true;
+                }
+                other_it = calc_alg_context
+                    .process_context()
+                    .clash_desc(other_it)
+                    .get_next_descriptor();
+            }
+            it = calc_alg_context
+                .process_context()
+                .clash_desc(it)
+                .get_next_descriptor();
+        }
         false
     }
 
@@ -406,31 +693,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// polarity) to its saturation individual node and report whether that node's
     /// indirect status flags carry the clashed flag.
     ///
-    /// PORT-PENDING: faithful transcription of cpp 16438–16459. Outline:
-    ///
-    ///   conceptData = concept->getConceptData(); saturationIndiNode = nullptr;
-    ///   if conceptData:
-    ///       conRefLinking = ((CConceptProcessData*)conceptData)->getConceptReferenceLinking();
-    ///       if conRefLinking:
-    ///           satCalcRefLinkData = ((CConceptSaturationReferenceLinkingData*)conRefLinking)
-    ///               ->getConceptSaturationReferenceLinkingData(negation);
-    ///           if satCalcRefLinkData:
-    ///               saturationIndiNode = satCalcRefLinkData->getIndividualProcessNodeForConcept();
-    ///   if saturationIndiNode && saturationIndiNode->getIndirectStatusFlags()->hasClashedFlag():
-    ///       return true;
-    ///   return false;
     pub fn has_saturated_clashed_flag_for_concept(
         &mut self,
         concept: ConceptId,
         negation: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: the concept→saturation reference linking
-        // (`CConceptSaturationReferenceLinkingData`) and the saturation node status
-        // flags (`CIndividualSaturationProcessNodeStatusFlags::hasClashedFlag`) are
-        // the W4 saturation subsystem; `concept.get_concept_data()` is presently an
-        // opaque `Cint64`. Body PORT-PENDING per outline.
-        let _ = (concept, negation, calc_alg_context);
+        // conceptData = concept->getConceptData();
+        // saturationIndiNode = nullptr;
+        let concept_data = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_data();
+        let mut saturation_indi_node = SatNodeId::NONE;
+        if concept_data != INVALID {
+            // conProcData = (CConceptProcessData*)conceptData;
+            let con_proc_data = Id::new(concept_data);
+            // conRefLinking = conProcData->getConceptReferenceLinking();
+            let con_ref_linking = calc_alg_context
+                .ontology_arenas()
+                .concept_process_data(con_proc_data)
+                .get_concept_reference_linking();
+            if con_ref_linking.is_some() {
+                // confSatRefLinkingData = (CConceptSaturationReferenceLinkingData*)conRefLinking;
+                let sat_calc_ref_link_data = calc_alg_context
+                    .ontology_arenas()
+                    .concept_saturation_reference_linking_data(con_ref_linking)
+                    .get_concept_saturation_reference_linking_data(negation);
+                if sat_calc_ref_link_data.is_some() {
+                    saturation_indi_node = calc_alg_context
+                        .ontology_arenas()
+                        .saturation_concept_reference_linking(sat_calc_ref_link_data)
+                        .get_individual_process_node_for_concept();
+                }
+            }
+        }
+
+        if saturation_indi_node.is_some() {
+            if calc_alg_context
+                .process_context()
+                .sat_node(saturation_indi_node)
+                .indirect_status_flags
+                .has_flags_code(
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+                    false,
+                )
+            {
+                return true;
+            }
+        }
         false
     }
 
@@ -939,7 +1250,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W6-DEFER[api]: the concept-set-label processing hash + initialized node
         // linker (W6-DEFER[memory-pool]) + localized sync data are unported. Body
         // PORT-PENDING per outline; the C++ tail return is `true`.
-        let _ = (individual, loc_backend_sync_data, indi_ass_data, calc_alg_context);
+        let _ = (
+            individual,
+            loc_backend_sync_data,
+            indi_ass_data,
+            calc_alg_context,
+        );
         true
     }
 
@@ -987,7 +1303,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (getNeighbourCountForRole / visitNeighbourIndividualIdsForRole /
         // getIndividualAssociationData) are the W6 Cache subtree. Body PORT-PENDING
         // per outline; the C++ default is `0`.
-        let _ = (indi_node, backend_sync_data, assoc_data, role, calc_alg_context);
+        let _ = (
+            indi_node,
+            backend_sync_data,
+            assoc_data,
+            role,
+            calc_alg_context,
+        );
         0
     }
 }

@@ -42,20 +42,15 @@
 //! the databox is reached via `calc_alg_context.processing_data_box_mut()`.
 //!
 //! KONCLUDE-PORT-NOTE[api]: the blocking family is built around per-node SATELLITE
-//! extension structs that are not yet ported — the node returns their `Id<T>` (e.g.
-//! `signature_blocking_individual_node_concept_expansion_data`,
-//! `reusing_individual_node_concept_expansion_data`, `blocking_follow_set`,
-//! `analized_concept_expansion_data`) but the target types
-//! (`CSignatureBlockingIndividualNodeConceptExpansionData`,
-//! `CReusingIndividualNodeConceptExpansionData`, `CBlockingFollowSet`,
-//! `CIndividualNodeAnalizedConceptExpansionData`,
-//! `CSignatureBlockingCandidateHash`, `CSignatureBlockingReviewSet`,
-//! `CReapplyConceptLabelSet`-via-node, `CBlockingAlternativeData`) are zero-size
-//! `process::stubs` markers with no methods. Every `satelliteId->method()` is
-//! therefore marked `// W6-DEFER[api]` with a control-flow-preserving placeholder;
-//! the branch/loop structure, the node flag ops, the databox getters, and the
-//! cross-unit `self.x(...)` sibling calls are reproduced verbatim. No logic is
-//! dropped — only the unported satellite-method dereferences are stubbed.
+//! extension structs. Several are now real ports (`CSignatureBlockingCandidateHash`,
+//! `CSignatureBlockingIndividualNodeConceptExpansionData`,
+//! `CReusingIndividualNodeConceptExpansionData`, `CSignatureBlockingReviewSet`,
+//! and `CReapplyConceptLabelSet`-via-node), while others such as
+//! `CBlockingFollowSet`, `CIndividualNodeAnalizedConceptExpansionData`, and
+//! `CBlockingAlternativeData` still have control-flow-preserving `W6-DEFER[api]`
+//! placeholders. The branch/loop structure, the node flag ops, the databox
+//! getters, and the cross-unit `self.x(...)` sibling calls are reproduced
+//! verbatim; only the not-yet-ported satellite-method dereferences remain stubbed.
 //!
 //! Cross-unit sibling calls land in later units and are invoked as `self.x(...)`
 //! per the port convention (`get_localized_individual`, `get_up_to_date_individual`,
@@ -73,19 +68,90 @@
 #![allow(unused_variables)]
 
 use super::super::model::op::{CCATLEAST, CCATMOST};
-use super::super::model::substrate::{Cint64, Id};
+use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::process::blocking_hash::SignatureBlockingIndividualNodeConceptExpansionData;
 use super::super::process::node::IndividualProcessNode;
+use super::super::process::reapply_sat::{BlockingAltDataId, SignatureBlockingCandidateHash};
 use super::super::process::stubs::{AnalizedConExpDataId, SigBlockConExpDataId};
-use super::super::process::{ConDescId, DependencyId, EdgeId, NodeId, TrackPointId};
+use super::super::process::dependency::DependencyLink;
+use super::super::process::{
+    ConDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId, TrackPointId,
+};
 
 use super::context::CalculationAlgorithmContextBase;
 
-/// KONCLUDE-PORT-NOTE[api]: `CBlockingAlternativeData*` (and its
-/// `CBlockingAlternativeSignatureBlockingCandidateData` subclass) are not yet
-/// ported; modelled as an opaque handle (`INVALID` == `nullptr`).
-type BlockingAlternativeDataHandle = Cint64;
+type BlockingAlternativeDataHandle = BlockingAltDataId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    fn get_or_create_signature_blocking_candidate_hash(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> super::super::process::reapply_sat::SigBlockCandHashId {
+        calc_alg_context.signature_blocking_candidate_hash(true)
+    }
+
+    /// Localized equivalent of
+    /// `blockingIndividualNode->getSignatureBlockingIndividualNodeConceptExpansionData(true)`.
+    pub(crate) fn get_or_create_signature_blocking_concept_expansion_data(
+        &mut self,
+        blocking_individual_node: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> SigBlockConExpDataId {
+        let current = calc_alg_context
+            .process_context()
+            .node(blocking_individual_node)
+            .signature_blocking_individual_node_concept_expansion_data(true);
+        if current.is_some() {
+            return current;
+        }
+
+        let prev = calc_alg_context
+            .process_context()
+            .node(blocking_individual_node)
+            .signature_blocking_individual_node_concept_expansion_data(false);
+        let new_data = calc_alg_context
+            .process_context_mut()
+            .alloc_sig_block_con_exp_data(
+                SignatureBlockingIndividualNodeConceptExpansionData::new(),
+            );
+        if prev.is_some() {
+            let taken = std::mem::replace(
+                calc_alg_context
+                    .process_context_mut()
+                    .sig_block_con_exp_data_mut(prev),
+                SignatureBlockingIndividualNodeConceptExpansionData::new(),
+            );
+            calc_alg_context
+                .process_context_mut()
+                .sig_block_con_exp_data_mut(new_data)
+                .init_blocking_expansion_data(Some(&taken));
+            *calc_alg_context
+                .process_context_mut()
+                .sig_block_con_exp_data_mut(prev) = taken;
+        } else {
+            calc_alg_context
+                .process_context_mut()
+                .sig_block_con_exp_data_mut(new_data)
+                .init_blocking_expansion_data(None);
+        }
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(blocking_individual_node)
+            .set_signature_blocking_individual_node_concept_expansion_data(new_data);
+        new_data
+    }
+
+    fn node_reapply_concept_label_set(
+        &self,
+        node: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> LabelSetId {
+        calc_alg_context
+            .process_context()
+            .node(node)
+            .use_reapply_con_label_set
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::testCompletionGraphCachingAndBlocking`.
     ///
     /// KONCLUDE-PORT-NOTE[unclear]: this is a debug-only verifier (every branch
@@ -222,8 +288,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .additional_role_assertions_linker()
                     .is_none();
                 if has_reverse_assertion || has_assertion || has_additional {
-                    let _role_ass_queue = calc_alg_context
-                        .get_role_assertion_expansion_processing_queue(true);
+                    let _role_ass_queue =
+                        calc_alg_context.get_role_assertion_expansion_processing_queue(true);
                     // W6-DEFER[api]: roleAssertionExpansionProcessingQueue->insertIndiviudalProcessNode(individualNode);
                 }
             }
@@ -285,19 +351,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // sigBlockData = processIndi->getSignatureBlockingIndividualNodeConceptExpansionData(false);
-        let _sig_block_data = calc_alg_context
+        let sig_block_data = calc_alg_context
             .process_context()
             .node(process_indi)
             .signature_blocking_individual_node_concept_expansion_data(false);
-        // W6-DEFER[api]: reuseIndi = sigBlockData->getBlockerIndividualNode(); — stub satellite.
-        let reuse_indi: NodeId = Id::NONE;
+        let reuse_indi = if sig_block_data.is_some() {
+            calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_block_data)
+                .get_blocker_individual_node()
+        } else {
+            Id::NONE
+        };
 
         calc_alg_context
             .process_context_mut()
             .node_mut(process_indi)
             .clear_processing_restriction_flags(IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED);
-        self.reactivate_indirect_signature_blocked_successors(process_indi, false, calc_alg_context);
-        self.reapply_satisfiable_cached_absorbed_generating_concepts(process_indi, calc_alg_context);
+        self.reactivate_indirect_signature_blocked_successors(
+            process_indi,
+            false,
+            calc_alg_context,
+        );
+        self.reapply_satisfiable_cached_absorbed_generating_concepts(
+            process_indi,
+            calc_alg_context,
+        );
 
         self.establish_individual_reusing(process_indi, reuse_indi, calc_alg_context);
     }
@@ -313,20 +392,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(individual_node)
             .reusing_individual_node_concept_expansion_data(false);
         if !reusing_data.is_none() {
-            // W6-DEFER[api]: blockerIndividualNode = reusingData->getBlockerIndividualNode();
-            let blocker_individual_node: NodeId = Id::NONE;
+            let blocker_individual_node = calc_alg_context
+                .process_context()
+                .reusing_con_exp_data(reusing_data)
+                .get_blocker_individual_node();
             let loc_blocker_individual_node =
                 self.get_localized_individual(blocker_individual_node, true, calc_alg_context);
-            let _follow_set = calc_alg_context
-                .process_context_mut()
-                .node_mut(loc_blocker_individual_node)
-                .blocking_follow_set(true);
             let indi_id = calc_alg_context
                 .process_context()
                 .node(individual_node)
                 .individual_node_id();
-            // W6-DEFER[api]: followSet->insert(individualNode->getIndividualNodeID());
-            let _ = indi_id;
+            calc_alg_context
+                .process_context_mut()
+                .node_add_blocking_follower(loc_blocker_individual_node, indi_id);
             calc_alg_context
                 .process_context_mut()
                 .node_mut(individual_node)
@@ -351,20 +429,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(individual_node)
             .reusing_individual_node_concept_expansion_data(false);
         if !reusing_data.is_none() {
-            // W6-DEFER[api]: blockerIndividualNode = reusingData->getBlockerIndividualNode();
-            let blocker_individual_node: NodeId = Id::NONE;
+            let blocker_individual_node = calc_alg_context
+                .process_context()
+                .reusing_con_exp_data(reusing_data)
+                .get_blocker_individual_node();
             let loc_blocker_individual_node =
                 self.get_localized_individual(blocker_individual_node, true, calc_alg_context);
-            let _follow_set = calc_alg_context
-                .process_context_mut()
-                .node_mut(loc_blocker_individual_node)
-                .blocking_follow_set(true);
             let indi_id = calc_alg_context
                 .process_context()
                 .node(individual_node)
                 .individual_node_id();
-            // W6-DEFER[api]: followSet->remove(individualNode->getIndividualNodeID());
-            let _ = indi_id;
+            calc_alg_context
+                .process_context_mut()
+                .node_remove_blocking_follower(loc_blocker_individual_node, indi_id);
             return true;
         }
         false
@@ -377,8 +454,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let mut processing_blocked = false;
-        let sig_blocked =
-            self.detect_individual_node_signature_blocking_status(individual_node, calc_alg_context);
+        let sig_blocked = self
+            .detect_individual_node_signature_blocking_status(individual_node, calc_alg_context);
         if sig_blocked {
             // block processing only for successors of satisfiable cached nodes
             processing_blocked = calc_alg_context
@@ -400,19 +477,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let mut blocked = false;
 
-        // W6-DEFER[api]: blockAltData->getBlockingAlternativeDataType() == BADSIGNATUREBLOCKINGCANDIDATE
-        //   — CBlockingAlternativeData unported.
-        let is_signature_blocking_candidate = false;
-        let _ = block_alt_data;
+        let is_signature_blocking_candidate = block_alt_data.is_some();
         if is_signature_blocking_candidate {
             if self.conf_signature_mirroring_blocking {
-                // W6-DEFER[api]: sigBlockCandData = (CBlockingAlternativeSignatureBlockingCandidateData*)blockAltData;
-                //   blockerNode = sigBlockCandData->getSignatureBlockingCandidateNode();
-                let blocker_node: NodeId = Id::NONE;
+                let blocker_node = calc_alg_context
+                    .process_context()
+                    .blocking_alt_data(block_alt_data)
+                    .get_signature_blocking_candidate_node();
 
                 // W6-DEFER[api]: STATINC(SIGNATUREMIRRORINGBLOCKINGESTABLISHCOUNT,...)
-                // W6-DEFER[api]: prevBlockerConSetCount = blockerNode->getReapplyConceptLabelSet(false)->getConceptCount();
-                let prev_blocker_con_set_count: Cint64 = 0;
+                let prev_blocker_con_set =
+                    self.node_reapply_concept_label_set(blocker_node, calc_alg_context);
+                let prev_blocker_con_set_count = if prev_blocker_con_set.is_some() {
+                    calc_alg_context
+                        .process_context()
+                        .label_set(prev_blocker_con_set)
+                        .get_concept_count()
+                } else {
+                    0
+                };
                 if self.establish_individual_node_signature_blocking(
                     individual_node,
                     blocker_node,
@@ -432,15 +515,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         );
                     }
 
-                    // W6-DEFER[api]: blockerNode->getReapplyConceptLabelSet(false)->getConceptCount()
-                    let new_blocker_con_set_count: Cint64 = 0;
+                    let new_blocker_con_set =
+                        self.node_reapply_concept_label_set(blocker_node, calc_alg_context);
+                    let new_blocker_con_set_count = if new_blocker_con_set.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .label_set(new_blocker_con_set)
+                            .get_concept_count()
+                    } else {
+                        0
+                    };
                     if prev_blocker_con_set_count != new_blocker_con_set_count {
                         self.add_individual_to_blocking_update_review_processing_queue(
                             individual_node,
                             calc_alg_context,
                         );
                     }
-                    self.add_signature_blocking_blocker_following(individual_node, calc_alg_context);
+                    self.add_signature_blocking_blocker_following(
+                        individual_node,
+                        calc_alg_context,
+                    );
                     // W6-DEFER[api]: STATINC(SIGNATUREMIRRORINGBLOCKINGADDFOLLOWINGCOUNT,...);
                     //   calcAlgContext->getProcessTagger()->incCurrentBlockingFollowTag();
 
@@ -545,8 +639,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if was_blocking_cached {
                 // W6-DEFER[api]: STATINC(SIGNATUREMIRRORINGBLOCKINGREFRESHCOUNT,...)
                 if continue_blocker_search {
-                    new_blocking_cached = self
-                        .refresh_individual_node_signature_blocking(individual_node, calc_alg_context);
+                    new_blocking_cached = self.refresh_individual_node_signature_blocking(
+                        individual_node,
+                        calc_alg_context,
+                    );
                 }
                 if !new_blocking_cached {
                     // remove connection from blocker node
@@ -562,12 +658,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
             while continue_blocker_search && !new_blocking_cached {
                 // W6-DEFER[api]: STATINC(SIGNATUREMIRRORINGBLOCKINGSEARCHCOUNT,...)
-                let blocker_node =
-                    self.search_signature_individual_node_blocker(individual_node, calc_alg_context);
+                let blocker_node = self
+                    .search_signature_individual_node_blocker(individual_node, calc_alg_context);
                 if blocker_node != Id::NONE {
                     // W6-DEFER[api]: STATINC(SIGNATUREMIRRORINGBLOCKINGESTABLISHCOUNT,...)
-                    // W6-DEFER[api]: prevBlockerConSetCount = blockerNode->getReapplyConceptLabelSet(false)->getConceptCount();
-                    let prev_blocker_con_set_count: Cint64 = 0;
+                    let prev_blocker_con_set =
+                        self.node_reapply_concept_label_set(blocker_node, calc_alg_context);
+                    let prev_blocker_con_set_count = if prev_blocker_con_set.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .label_set(prev_blocker_con_set)
+                            .get_concept_count()
+                    } else {
+                        0
+                    };
                     if self.establish_individual_node_signature_blocking(
                         individual_node,
                         blocker_node,
@@ -588,8 +692,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         }
 
                         new_blocking_cached = true;
-                        // W6-DEFER[api]: blockerNode->getReapplyConceptLabelSet(false)->getConceptCount()
-                        let new_blocker_con_set_count: Cint64 = 0;
+                        let new_blocker_con_set =
+                            self.node_reapply_concept_label_set(blocker_node, calc_alg_context);
+                        let new_blocker_con_set_count = if new_blocker_con_set.is_some() {
+                            calc_alg_context
+                                .process_context()
+                                .label_set(new_blocker_con_set)
+                                .get_concept_count()
+                        } else {
+                            0
+                        };
                         if prev_blocker_con_set_count != new_blocker_con_set_count {
                             self.add_individual_to_blocking_update_review_processing_queue(
                                 individual_node,
@@ -608,7 +720,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
 
-            self.update_blocking_review_marking(individual_node, new_blocking_cached, calc_alg_context);
+            self.update_blocking_review_marking(
+                individual_node,
+                new_blocking_cached,
+                calc_alg_context,
+            );
 
             if new_blocking_cached && !was_blocking_cached {
                 // activate caching status
@@ -618,7 +734,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .add_processing_restriction_flags(
                         IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED,
                     );
-                self.propagate_indirect_successor_signature_blocked(individual_node, calc_alg_context);
+                self.propagate_indirect_successor_signature_blocked(
+                    individual_node,
+                    calc_alg_context,
+                );
             } else if was_blocking_cached && !new_blocking_cached {
                 // deactivate caching status
                 calc_alg_context
@@ -652,20 +771,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(blocking_individual_node)
             .signature_blocking_individual_node_concept_expansion_data(false);
         if !sig_blocking_data.is_none() {
-            // W6-DEFER[api]: blockerIndividualNode = sigBlockingData->getBlockerIndividualNode();
-            let blocker_individual_node: NodeId = Id::NONE;
+            let blocker_individual_node = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .get_blocker_individual_node();
             let loc_blocker_individual_node =
                 self.get_localized_individual(blocker_individual_node, true, calc_alg_context);
-            let _sig_follow_set = calc_alg_context
-                .process_context_mut()
-                .node_mut(loc_blocker_individual_node)
-                .blocking_follow_set(true);
             let indi_id = calc_alg_context
                 .process_context()
                 .node(blocking_individual_node)
                 .individual_node_id();
-            // W6-DEFER[api]: sigFollowSet->insert(blockingIndividualNode->getIndividualNodeID());
-            let _ = indi_id;
+            calc_alg_context
+                .process_context_mut()
+                .node_add_blocking_follower(loc_blocker_individual_node, indi_id);
             calc_alg_context
                 .process_context_mut()
                 .node_mut(blocking_individual_node)
@@ -690,20 +808,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(blocking_individual_node)
             .signature_blocking_individual_node_concept_expansion_data(false);
         if !sig_blocking_data.is_none() {
-            // W6-DEFER[api]: blockerIndividualNode = sigBlockingData->getBlockerIndividualNode();
-            let blocker_individual_node: NodeId = Id::NONE;
+            let blocker_individual_node = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .get_blocker_individual_node();
             let loc_blocker_individual_node =
                 self.get_localized_individual(blocker_individual_node, true, calc_alg_context);
-            let _sig_follow_set = calc_alg_context
-                .process_context_mut()
-                .node_mut(loc_blocker_individual_node)
-                .blocking_follow_set(true);
             let indi_id = calc_alg_context
                 .process_context()
                 .node(blocking_individual_node)
                 .individual_node_id();
-            // W6-DEFER[api]: sigFollowSet->remove(blockingIndividualNode->getIndividualNodeID());
-            let _ = indi_id;
+            calc_alg_context
+                .process_context_mut()
+                .node_remove_blocking_follower(loc_blocker_individual_node, indi_id);
             return true;
         }
         false
@@ -717,26 +834,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W6-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         //                        processContext = calcAlgContext->getUsedProcessContext();
 
-        let sig_block_cand_hash = calc_alg_context
-            .processing_data_box_mut()
-            .signature_blocking_candidate_hash(false);
+        let sig_block_cand_hash = calc_alg_context.signature_blocking_candidate_hash(false);
 
         if !sig_block_cand_hash.is_none() {
-            // W6-DEFER[api]: newSigBlockCandHash = allocateAndConstructAndParameterize(taskMemMan,processContext);
-            //   then iterate the candidate hash (CSignatureBlockingCandidateHash is a stub):
-            //   for each signature, rebuild a candidate-id linker keeping only the entries for
-            //   which isIndividualNodeValidBlocker(getUpToDateIndividual(candIndiID,...)) holds,
-            //   then newSigBlockCandHash->insertSignatureBlockingCandidates(signature,newCandidateLinker);
-            //
-            //   The validity filter is expressible (the sibling + accessor exist); only the
-            //   hash iteration/allocation is deferred:
-            let signatures: Vec<(Cint64, Vec<Cint64>)> = Vec::new();
+            let mut sig_it = calc_alg_context
+                .process_context()
+                .sig_block_cand_hash(sig_block_cand_hash)
+                .get_signature_iterator();
+            let mut signatures: Vec<(Cint64, Vec<Cint64>)> = Vec::new();
+            while sig_it.has_next() {
+                signatures.push((
+                    sig_it.get_signature(),
+                    sig_it.get_candidate_linker().to_vec(),
+                ));
+                sig_it.move_next();
+            }
+
+            let new_sig_block_cand_hash = calc_alg_context
+                .process_context_mut()
+                .alloc_sig_block_cand_hash(SignatureBlockingCandidateHash::new(INVALID));
             for (signature, candidate_linker) in signatures {
                 let mut new_candidate_linker: Vec<Cint64> = Vec::new();
                 for cand_indi_id in candidate_linker {
                     let cand_indi_node =
                         self.get_up_to_date_individual_by_id(cand_indi_id, calc_alg_context);
-                    if self.is_individual_node_valid_blocker(cand_indi_node, calc_alg_context) {
+                    if !cand_indi_node.is_none()
+                        && self.is_individual_node_valid_blocker(cand_indi_node, calc_alg_context)
+                    {
                         let cand_node_id = calc_alg_context
                             .process_context()
                             .node(cand_indi_node)
@@ -746,11 +870,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
                 if !new_candidate_linker.is_empty() {
-                    // W6-DEFER[api]: newSigBlockCandHash->insertSignatureBlockingCandidates(signature,newCandidateLinker);
-                    let _ = signature;
+                    calc_alg_context
+                        .process_context_mut()
+                        .sig_block_cand_hash_mut(new_sig_block_cand_hash)
+                        .insert_signature_blocking_candidates(signature, new_candidate_linker);
                 }
             }
-            // W6-DEFER[api]: processingDataBox->setSignatureBlockingCandidateHash(newSigBlockCandHash);
+            calc_alg_context
+                .processing_data_box_mut()
+                .set_signature_blocking_candidate_hash(new_sig_block_cand_hash);
         }
     }
 
@@ -760,15 +888,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         blocking_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        let sig_block_cand_hash = calc_alg_context
-            .processing_data_box_mut()
-            .signature_blocking_candidate_hash(false);
-        // W6-DEFER[api]: conSet = blockingNode->getReapplyConceptLabelSet(false); — node has no
-        //   reapply_concept_label_set accessor yet (the CReapplyConceptLabelSet target is a stub).
-        let con_set_present = false;
-        if !sig_block_cand_hash.is_none() && con_set_present {
-            // W6-DEFER[api]: conCount = conSet->getConceptCount();
-            let con_count: Cint64 = 0;
+        let sig_block_cand_hash = calc_alg_context.signature_blocking_candidate_hash(false);
+        // conSet = blockingNode->getReapplyConceptLabelSet(false);
+        let con_set = self.node_reapply_concept_label_set(blocking_node, calc_alg_context);
+        if !sig_block_cand_hash.is_none() && !con_set.is_none() {
+            let con_count = calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .get_concept_count();
             if !calc_alg_context
                 .process_context()
                 .node(blocking_node)
@@ -784,10 +911,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node_mut(blocking_node)
                     .set_last_concept_count_search_blocking_candidate(con_count);
 
-                // W6-DEFER[api]: conSig = conSet->getConceptSignatureValue();
-                let con_sig: Cint64 = 0;
-                // W6-DEFER[api]: newCandCount = sigBlockCandHash->getBlockingCandidatesCount(conSig);
-                let new_cand_count: Cint64 = 0;
+                let con_sig = calc_alg_context
+                    .process_context()
+                    .label_set(con_set)
+                    .get_concept_signature_value();
+                let new_cand_count = calc_alg_context
+                    .process_context()
+                    .sig_block_cand_hash(sig_block_cand_hash)
+                    .get_blocking_candidates_count(con_sig);
                 let mut last_cand_count = calc_alg_context
                     .process_context()
                     .node(blocking_node)
@@ -806,39 +937,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if new_cand_count != last_cand_count {
                     let mut cand_diff_count = new_cand_count - last_cand_count;
 
-                    // W6-DEFER[api]: candIt = sigBlockCandHash->getBlockingCandidatesIterator(conSig);
-                    //   while candIt.hasNext() && candDiffCount-- > 0 && !blockingNode->isInvalidSignatureBlocking():
-                    //     candIndiID = candIt.next(true);
-                    //     if candIndiID != blockingNode->getIndividualNodeID():
-                    //       candIndiNode = getUpToDateIndividual(candIndiID,...);
-                    //       if isIndividualNodeValidBlocker(candIndiNode,...):
-                    //         compatible = hasCompatibleConceptSetSignature(blockingNode,conSet,candIndiNode,...);
-                    //         if compatible: setLastSearchBlockerCandidateCount(newCandCount-candDiffCount); return candIndiNode;
-                    //   The candidate iteration is over the stub hash; deferred. The expressible
-                    //   sibling + count-mutation tail is preserved below.
-                    let candidate_ids: Vec<Cint64> = Vec::new();
+                    let mut cand_it = calc_alg_context
+                        .process_context()
+                        .sig_block_cand_hash(sig_block_cand_hash)
+                        .get_blocking_candidates_iterator(con_sig);
                     let blocking_node_id = calc_alg_context
                         .process_context()
                         .node(blocking_node)
                         .individual_node_id();
-                    for cand_indi_id in candidate_ids {
-                        if cand_diff_count <= 0
-                            || calc_alg_context
-                                .process_context()
-                                .node(blocking_node)
-                                .is_invalid_signature_blocking()
-                        {
-                            break;
-                        }
+                    while cand_it.has_next()
+                        && cand_diff_count > 0
+                        && !calc_alg_context
+                            .process_context()
+                            .node(blocking_node)
+                            .is_invalid_signature_blocking()
+                    {
                         cand_diff_count -= 1;
+                        let cand_indi_id = cand_it.next(true);
                         if cand_indi_id != blocking_node_id {
-                            let cand_indi_node =
-                                self.get_up_to_date_individual_by_id(cand_indi_id, calc_alg_context);
+                            let cand_indi_node = self
+                                .get_up_to_date_individual_by_id(cand_indi_id, calc_alg_context);
                             // W6-DEFER[api]: STATINC(SIGNATUREMIRRORINGBLOCKINGCANDIDATEREGARDEDCOUNT,...)
-                            if self.is_individual_node_valid_blocker(cand_indi_node, calc_alg_context)
+                            if self
+                                .is_individual_node_valid_blocker(cand_indi_node, calc_alg_context)
                             {
-                                // W6-DEFER[api]: compatible = hasCompatibleConceptSetSignature(blockingNode,conSet,candIndiNode,...);
-                                let compatible = false;
+                                let mut mutable_blocking_node = blocking_node;
+                                let compatible = self.has_compatible_concept_set_signature(
+                                    &mut mutable_blocking_node,
+                                    con_set,
+                                    cand_indi_node,
+                                    calc_alg_context,
+                                );
                                 if compatible {
                                     calc_alg_context
                                         .process_context_mut()
@@ -882,18 +1011,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .node_mut(indi_node)
                 .inc_blocking_caching_saved_candidate_count(1);
             if self.is_individual_node_valid_blocker(indi_node, calc_alg_context) {
-                // W6-DEFER[api]: conSet = indiNode->getReapplyConceptLabelSet(false); — node accessor
-                //   not yet ported (stub CReapplyConceptLabelSet). The remainder hinges on conSet:
-                //   conCount = conSet->getConceptCount();
-                //   if indiNode->getLastConceptCountCachedBlockingCandidate() != conCount:
-                //     conSig = conSet->getConceptSignatureValue();
-                //     sigBlockCandHash = processingDataBox->getSignatureBlockingCandidateHash(true);
-                //     sigBlockCandHash->insertSignatureBlockingCandidate(conSig,indiNode);
-                //     indiNode->setLastConceptCountCachedBlockingCandidate(conCount);
-                //     return true;
-                let con_set_present = false;
-                if con_set_present {
-                    let con_count: Cint64 = 0; // W6-DEFER[api]: conSet->getConceptCount()
+                // conSet = indiNode->getReapplyConceptLabelSet(false);
+                let con_set = self.node_reapply_concept_label_set(indi_node, calc_alg_context);
+                if !con_set.is_none() {
+                    let con_count = calc_alg_context
+                        .process_context()
+                        .label_set(con_set)
+                        .get_concept_count();
                     if calc_alg_context
                         .process_context()
                         .node(indi_node)
@@ -901,10 +1025,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         != con_count
                     {
                         // W6-DEFER[api]: STATINC(SIGNATURESAVINGCOUNT,...)
-                        let _sig_block_cand_hash = calc_alg_context
-                            .processing_data_box_mut()
-                            .signature_blocking_candidate_hash(true);
-                        // W6-DEFER[api]: sigBlockCandHash->insertSignatureBlockingCandidate(conSig,indiNode);
+                        let con_sig = calc_alg_context
+                            .process_context()
+                            .label_set(con_set)
+                            .get_concept_signature_value();
+                        let sig_block_cand_hash =
+                            self.get_or_create_signature_blocking_candidate_hash(calc_alg_context);
+                        let indi_cand_id = calc_alg_context
+                            .process_context()
+                            .node(indi_node)
+                            .individual_node_id();
+                        let data = calc_alg_context
+                            .process_context_mut()
+                            .sig_block_cand_hash_mut(sig_block_cand_hash)
+                            .sig_block_candidate_hash
+                            .entry(con_sig)
+                            .or_default();
+                        data.candidate_indi_linker.insert(0, indi_cand_id);
+                        data.candidate_count += 1;
                         calc_alg_context
                             .process_context_mut()
                             .node_mut(indi_node)
@@ -925,31 +1063,50 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let mut blocking_established = false;
-        self.anlyze_indiviudal_nodes_concept_expansion(&mut blocker_individual_node, calc_alg_context);
+        self.anlyze_indiviudal_nodes_concept_expansion(
+            &mut blocker_individual_node,
+            calc_alg_context,
+        );
         let blocker_analized_con_exp_data = calc_alg_context
             .process_context_mut()
             .node_mut(blocker_individual_node)
             .analized_concept_expansion_data(false);
         if !blocker_analized_con_exp_data.is_none() {
-            // W6-DEFER[api]: blockerAnalizedConExpData->isInvalidBlocker()
-            let blocker_is_invalid = false;
+            let blocker_is_invalid = calc_alg_context
+                .process_context()
+                .analized_con_exp_data(blocker_analized_con_exp_data)
+                .is_invalid_blocker();
             if !blocker_is_invalid {
-                // W6-DEFER[api]: blockingConSet = blockingIndividualNode->getReapplyConceptLabelSet(true);
-                //   blockingConSetCount = blockingConSet->getConceptCount();
-                //   blockingConSetSignature = blockingConSet->getConceptSignatureValue();
-                //   blockingLastConDes = blockingConSet->getAddingSortedConceptDescriptionLinker();
-                let loc_sig_blocking_data = calc_alg_context
+                let blocking_con_set = calc_alg_context
+                    .process_context_mut()
+                    .node_reapply_concept_label_set(blocking_individual_node);
+                let blocking_con_set_count = calc_alg_context
                     .process_context()
-                    .node(blocking_individual_node)
-                    .signature_blocking_individual_node_concept_expansion_data(true);
-                if loc_sig_blocking_data.is_none() {
-                    // W6-DEFER[api]: allocate CSignatureBlockingIndividualNodeConceptExpansionData,
-                    //   initBlockingExpansionData(prev), setSignatureBlockingIndividualNodeConceptExpansionData(loc).
-                }
-                // W6-DEFER[api]: locSigBlockingData->setBlockingConceptCount/Signature/
-                //   LastSubsetTestedConceptDescriptor/ContinuousExpandedContainedConceptCount(0)/
-                //   BlockerIndividualNode(blockerIndividualNode)/LastUpdatedConceptCount(0)/
-                //   LastUpdatedConceptExpansionCount(0).
+                    .label_set(blocking_con_set)
+                    .get_concept_count();
+                let blocking_con_set_signature = calc_alg_context
+                    .process_context()
+                    .label_set(blocking_con_set)
+                    .get_concept_signature_value();
+                let blocking_last_con_des = calc_alg_context
+                    .process_context()
+                    .label_set(blocking_con_set)
+                    .get_adding_sorted_concept_description_linker();
+                let loc_sig_blocking_data = self
+                    .get_or_create_signature_blocking_concept_expansion_data(
+                        blocking_individual_node,
+                        calc_alg_context,
+                    );
+                calc_alg_context
+                    .process_context_mut()
+                    .sig_block_con_exp_data_mut(loc_sig_blocking_data)
+                    .set_blocking_concept_count(blocking_con_set_count)
+                    .set_blocking_concept_signature(blocking_con_set_signature)
+                    .set_last_subset_tested_concept_descriptor(blocking_last_con_des)
+                    .set_continuous_expanded_contained_concept_count(0)
+                    .set_blocker_individual_node(blocker_individual_node)
+                    .set_last_updated_concept_count(0)
+                    .set_last_updated_concept_expansion_count(0);
 
                 self.update_signature_blocking_concept_expansion(
                     blocking_individual_node,
@@ -963,20 +1120,82 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 blocking_established = true;
 
                 // is still subset after added expansions concepts
-                // W6-DEFER[api]: blockerConSet = blockerIndividualNode->getReapplyConceptLabelSet(false);
-                //   if locSigBlockingData->isIdenticConceptSetRequired():
-                //     if blockingConSet->getConceptSignatureValue() != blockerConSet->getConceptSignatureValue(): return false;
-                //     if blockingConSet->getConceptCount() != blockerConSet->getConceptCount(): return false;
-                //   lastSubSetTestConDes = locSigBlockingData->getLastSubsetTestedConceptDescriptor();
-                //   addingSortedConDes = blockingConSet->getAddingSortedConceptDescriptionLinker();
-                //   if addingSortedConDes != lastSubSetTestConDes:
-                //     stillSubset = true; walk addingSortedConDes..lastSubSetTestConDes testing
-                //       blockerConSet->containsConcept(concept); if missing stillSubset=false;
-                //     if !stillSubset && mOptSignatureMirroringBlockingForceSubset: blockingEstablished=false;
-                //     locSigBlockingData->setConceptSetStillSubset(stillSubset);
-                //     if stillSubset: locSigBlockingData->setLastSubsetTestedConceptDescriptor(addingSortedConDes);
-                //   — all conSet/sigBlockingData derefs over stubs; deferred.
-                let _ = self.opt_signature_mirroring_blocking_force_subset;
+                let blocker_con_set =
+                    self.node_reapply_concept_label_set(blocker_individual_node, calc_alg_context);
+                if !blocker_con_set.is_none() {
+                    if calc_alg_context
+                        .process_context()
+                        .sig_block_con_exp_data(loc_sig_blocking_data)
+                        .is_identic_concept_set_required()
+                    {
+                        if calc_alg_context
+                            .process_context()
+                            .label_set(blocking_con_set)
+                            .get_concept_signature_value()
+                            != calc_alg_context
+                                .process_context()
+                                .label_set(blocker_con_set)
+                                .get_concept_signature_value()
+                        {
+                            return false;
+                        }
+                        if calc_alg_context
+                            .process_context()
+                            .label_set(blocking_con_set)
+                            .get_concept_count()
+                            != calc_alg_context
+                                .process_context()
+                                .label_set(blocker_con_set)
+                                .get_concept_count()
+                        {
+                            return false;
+                        }
+                    }
+                    let last_subset_test_con_des = calc_alg_context
+                        .process_context()
+                        .sig_block_con_exp_data(loc_sig_blocking_data)
+                        .get_last_subset_tested_concept_descriptor();
+                    let adding_sorted_con_des = calc_alg_context
+                        .process_context()
+                        .label_set(blocking_con_set)
+                        .get_adding_sorted_concept_description_linker();
+                    if adding_sorted_con_des != last_subset_test_con_des {
+                        let mut still_subset = true;
+                        let mut adding_sorted_con_des_it = adding_sorted_con_des;
+                        while blocking_established
+                            && adding_sorted_con_des_it != last_subset_test_con_des
+                            && still_subset
+                            && !adding_sorted_con_des_it.is_none()
+                        {
+                            let concept = calc_alg_context
+                                .process_context()
+                                .con_desc(adding_sorted_con_des_it)
+                                .get_concept();
+                            if !calc_alg_context
+                                .process_context()
+                                .label_set(blocker_con_set)
+                                .contains_concept_get_negated(concept, None)
+                            {
+                                still_subset = false;
+                            }
+                            adding_sorted_con_des_it = calc_alg_context
+                                .process_context()
+                                .con_desc(adding_sorted_con_des_it)
+                                .get_next_concept_descriptor();
+                        }
+                        if !still_subset && self.opt_signature_mirroring_blocking_force_subset {
+                            blocking_established = false;
+                        }
+                        let loc_data = calc_alg_context
+                            .process_context_mut()
+                            .sig_block_con_exp_data_mut(loc_sig_blocking_data);
+                        loc_data.set_concept_set_still_subset(still_subset);
+                        if still_subset {
+                            loc_data
+                                .set_last_subset_tested_concept_descriptor(adding_sorted_con_des);
+                        }
+                    }
+                }
             } else {
                 calc_alg_context
                     .process_context_mut()
@@ -999,8 +1218,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(blocking_individual_node)
             .signature_blocking_individual_node_concept_expansion_data(false);
         if !sig_blocking_data.is_none() {
-            // W6-DEFER[api]: blockerIndividualNode = sigBlockingData->getBlockerIndividualNode();
-            let blocker_individual_node: NodeId = Id::NONE;
+            let blocker_individual_node = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .get_blocker_individual_node();
             let mut blocker_individual_node =
                 self.get_up_to_date_individual(blocker_individual_node, calc_alg_context);
             if !self.is_individual_node_valid_blocker(blocker_individual_node, calc_alg_context) {
@@ -1015,37 +1236,194 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             {
                 return false;
             }
-            self.anlyze_indiviudal_nodes_concept_expansion(&mut blocker_individual_node, calc_alg_context);
-            // W6-DEFER[api]: blockingConSet / blockerConSet = getReapplyConceptLabelSet(false);
-            //   lastSubSetTestConDes = sigBlockingData->getLastSubsetTestedConceptDescriptor();
-            //   addingSortedConDes = blockingConSet->getAddingSortedConceptDescriptionLinker();
+            self.anlyze_indiviudal_nodes_concept_expansion(
+                &mut blocker_individual_node,
+                calc_alg_context,
+            );
+            let blocking_con_set =
+                self.node_reapply_concept_label_set(blocking_individual_node, calc_alg_context);
+            let blocker_con_set =
+                self.node_reapply_concept_label_set(blocker_individual_node, calc_alg_context);
+            if blocking_con_set.is_none() || blocker_con_set.is_none() {
+                return false;
+            }
+            let last_subset_test_con_des = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .get_last_subset_tested_concept_descriptor();
+            let adding_sorted_con_des = calc_alg_context
+                .process_context()
+                .label_set(blocking_con_set)
+                .get_adding_sorted_concept_description_linker();
             let blocker_analized_con_exp_data = calc_alg_context
                 .process_context_mut()
                 .node_mut(blocker_individual_node)
                 .analized_concept_expansion_data(false);
-            // W6-DEFER[api]: blockerAnalizedConExpData->isInvalidBlocker()
-            let blocker_is_invalid = false;
+            if blocker_analized_con_exp_data.is_none() {
+                return false;
+            }
+            let blocker_is_invalid = calc_alg_context
+                .process_context()
+                .analized_con_exp_data(blocker_analized_con_exp_data)
+                .is_invalid_blocker();
             if !blocker_is_invalid {
-                // W6-DEFER[api]: the whole still-subset re-test + updateSignatureBlockingConceptExpansion
-                //   path hinges on the sigBlockingData / conSet / analizedConExpData stub accessors:
-                //     if addingSortedConDes != lastSubSetTestConDes
-                //        || blockerAnalizedConExpData->getExpansionConceptCount() != sigBlockingData->getLastUpdatedConceptExpansionCount()
-                //        || (sigBlockingData->isIdenticConceptSetRequired() && blockingConSet->getConceptCount() != blockerConSet->getConceptCount()):
-                //       walk subset test; if !stillSubset && mOptSignatureMirroringBlockingForceSubset: return false;
-                //       loc = getSignatureBlockingIndividualNodeConceptExpansionData(true) [+alloc];
-                //       loc->setLastSubsetTestedConceptDescriptor(addingSortedConDes);
-                //       updateSignatureBlockingConceptExpansion(blockingIndividualNode,loc,blockerIndividualNode,blockerAnalizedConExpData,...);
-                //       if mConfDirectRulePreprocessing || loc->isIdenticConceptSetRequired(): re-validate subset (+identic checks);
-                //   The single expressible sub-call is preserved:
-                let _ = self.conf_direct_rule_preprocessing;
-                let _ = self.opt_signature_mirroring_blocking_force_subset;
-                self.update_signature_blocking_concept_expansion(
-                    blocking_individual_node,
-                    sig_blocking_data,
-                    blocker_individual_node,
-                    blocker_analized_con_exp_data,
-                    calc_alg_context,
-                );
+                let expansion_count_changed = calc_alg_context
+                    .process_context()
+                    .analized_con_exp_data(blocker_analized_con_exp_data)
+                    .get_expansion_concept_count()
+                    > calc_alg_context
+                        .process_context()
+                        .sig_block_con_exp_data(sig_blocking_data)
+                        .get_last_updated_concept_expansion_count();
+                let identic_count_changed = calc_alg_context
+                    .process_context()
+                    .sig_block_con_exp_data(sig_blocking_data)
+                    .is_identic_concept_set_required()
+                    && calc_alg_context
+                        .process_context()
+                        .label_set(blocking_con_set)
+                        .get_concept_count()
+                        != calc_alg_context
+                            .process_context()
+                            .label_set(blocker_con_set)
+                            .get_concept_count();
+                if adding_sorted_con_des != last_subset_test_con_des
+                    || expansion_count_changed
+                    || identic_count_changed
+                {
+                    let mut still_subset = true;
+                    let mut adding_sorted_con_des_it = adding_sorted_con_des;
+                    while adding_sorted_con_des_it != last_subset_test_con_des
+                        && still_subset
+                        && !adding_sorted_con_des_it.is_none()
+                    {
+                        let concept = calc_alg_context
+                            .process_context()
+                            .con_desc(adding_sorted_con_des_it)
+                            .get_concept();
+                        let con_negation = calc_alg_context
+                            .process_context()
+                            .con_desc(adding_sorted_con_des_it)
+                            .is_negated();
+                        if !calc_alg_context
+                            .process_context()
+                            .label_set(blocker_con_set)
+                            .contains_concept(concept, con_negation)
+                        {
+                            still_subset = false;
+                        }
+                        adding_sorted_con_des_it = calc_alg_context
+                            .process_context()
+                            .con_desc(adding_sorted_con_des_it)
+                            .get_next_concept_descriptor();
+                    }
+                    if !still_subset && self.opt_signature_mirroring_blocking_force_subset {
+                        return false;
+                    }
+                    let loc_sig_blocking_data = self
+                        .get_or_create_signature_blocking_concept_expansion_data(
+                            blocking_individual_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .sig_block_con_exp_data_mut(loc_sig_blocking_data)
+                        .set_last_subset_tested_concept_descriptor(adding_sorted_con_des);
+
+                    self.update_signature_blocking_concept_expansion(
+                        blocking_individual_node,
+                        loc_sig_blocking_data,
+                        blocker_individual_node,
+                        blocker_analized_con_exp_data,
+                        calc_alg_context,
+                    );
+
+                    if self.conf_direct_rule_preprocessing
+                        || calc_alg_context
+                            .process_context()
+                            .sig_block_con_exp_data(loc_sig_blocking_data)
+                            .is_identic_concept_set_required()
+                    {
+                        let blocking_con_set = self.node_reapply_concept_label_set(
+                            blocking_individual_node,
+                            calc_alg_context,
+                        );
+                        if calc_alg_context
+                            .process_context()
+                            .sig_block_con_exp_data(loc_sig_blocking_data)
+                            .is_identic_concept_set_required()
+                        {
+                            if calc_alg_context
+                                .process_context()
+                                .label_set(blocking_con_set)
+                                .get_concept_signature_value()
+                                != calc_alg_context
+                                    .process_context()
+                                    .label_set(blocker_con_set)
+                                    .get_concept_signature_value()
+                            {
+                                return false;
+                            }
+                            if calc_alg_context
+                                .process_context()
+                                .label_set(blocking_con_set)
+                                .get_concept_count()
+                                != calc_alg_context
+                                    .process_context()
+                                    .label_set(blocker_con_set)
+                                    .get_concept_count()
+                            {
+                                return false;
+                            }
+                        }
+                        let adding_sorted_con_des = calc_alg_context
+                            .process_context()
+                            .label_set(blocking_con_set)
+                            .get_adding_sorted_concept_description_linker();
+                        let last_subset_test_con_des = calc_alg_context
+                            .process_context()
+                            .sig_block_con_exp_data(loc_sig_blocking_data)
+                            .get_last_subset_tested_concept_descriptor();
+                        if adding_sorted_con_des != last_subset_test_con_des {
+                            let mut adding_sorted_con_des_it = adding_sorted_con_des;
+                            while adding_sorted_con_des_it != last_subset_test_con_des
+                                && still_subset
+                                && !adding_sorted_con_des_it.is_none()
+                            {
+                                let concept = calc_alg_context
+                                    .process_context()
+                                    .con_desc(adding_sorted_con_des_it)
+                                    .get_concept();
+                                let con_negation = calc_alg_context
+                                    .process_context()
+                                    .con_desc(adding_sorted_con_des_it)
+                                    .is_negated();
+                                if !calc_alg_context
+                                    .process_context()
+                                    .label_set(blocker_con_set)
+                                    .contains_concept(concept, con_negation)
+                                {
+                                    still_subset = false;
+                                }
+                                adding_sorted_con_des_it = calc_alg_context
+                                    .process_context()
+                                    .con_desc(adding_sorted_con_des_it)
+                                    .get_next_concept_descriptor();
+                            }
+                            let loc_data = calc_alg_context
+                                .process_context_mut()
+                                .sig_block_con_exp_data_mut(loc_sig_blocking_data);
+                            loc_data.set_concept_set_still_subset(still_subset);
+                            if still_subset {
+                                loc_data.set_last_subset_tested_concept_descriptor(
+                                    adding_sorted_con_des,
+                                );
+                            } else if self.opt_signature_mirroring_blocking_force_subset {
+                                return false;
+                            }
+                        }
+                    }
+                }
                 return true;
             } else {
                 calc_alg_context
@@ -1074,37 +1452,120 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(blocking_individual_node)
             .individual_node_id();
         if !sig_blocking_data.is_none() {
-            // W6-DEFER[api]: the three review-marking branches dereference the stub
-            //   CSignatureBlockingIndividualNodeConceptExpansionData (isBlockingReviewMarked /
-            //   isConceptSetStillSubset / isBlockingSubsetReviewMarked / getBlockerIndividualNode)
-            //   and the stub CSignatureBlockingReviewSet (getReviewData(...)->insert/remove), plus
-            //   blocker/blocking getReapplyConceptLabelSet(false)->getConceptCount(). Faithful flow:
-            //
-            //   if isBlocked && !sigBlockingData->isBlockingReviewMarked():
-            //     blockerNode = getUpToDateIndividual(sigBlockingData->getBlockerIndividualNode(),...);
-            //     if blockerCount != blockingCount || !isConceptSetStillSubset():
-            //       revSet = processingDataBox->getSignatureBlockingReviewSet(true);
-            //       revSet->getReviewData(isConceptSetStillSubset())->insert(getIndividualAncestorDepth(),indiID);
-            //       loc = getSignatureBlockingIndividualNodeConceptExpansionData(true) [+alloc];
-            //       loc->setBlockingReviewMarked(true); loc->setBlockingSubsetReviewMarked(isConceptSetStillSubset());
-            //       return true;
-            //   if sigBlockingData->isBlockingReviewMarked():
-            //     blockerNode = getUpToDateIndividual(...);
-            //     if !isBlocked || (blockerCount == blockingCount && isConceptSetStillSubset()):
-            //       revSet->getReviewData(isBlockingSubsetReviewMarked())->remove(indiID);
-            //       loc->setBlockingReviewMarked(false); loc->setBlockingSubsetReviewMarked(isConceptSetStillSubset());
-            //       return true;
-            //     else if isBlockingSubsetReviewMarked() != isConceptSetStillSubset():
-            //       revSet->getReviewData(isBlockingSubsetReviewMarked())->remove(indiID);
-            //       revSet->getReviewData(isConceptSetStillSubset())->insert(getIndividualAncestorDepth(),indiID);
-            //       loc->setBlockingReviewMarked(false); loc->setBlockingSubsetReviewMarked(isConceptSetStillSubset());
-            //       return true;
-            //
-            //   The review-set getter that already exists is wired so the databox dependency is real:
-            let _rev_set = calc_alg_context
-                .processing_data_box_mut()
-                .signature_blocking_review_set(true);
-            let _ = (is_blocked, indi_id);
+            let blocker_node = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .get_blocker_individual_node();
+            let blocker_node = self.get_up_to_date_individual(blocker_node, calc_alg_context);
+            let blocker_con_set =
+                self.node_reapply_concept_label_set(blocker_node, calc_alg_context);
+            let blocking_con_set =
+                self.node_reapply_concept_label_set(blocking_individual_node, calc_alg_context);
+            if blocker_con_set.is_none() || blocking_con_set.is_none() {
+                return false;
+            }
+            let blocker_count = calc_alg_context
+                .process_context()
+                .label_set(blocker_con_set)
+                .get_concept_count();
+            let blocking_count = calc_alg_context
+                .process_context()
+                .label_set(blocking_con_set)
+                .get_concept_count();
+            let still_subset = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .is_concept_set_still_subset();
+            let review_marked = calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .is_blocking_review_marked();
+            let individual_ancestor_depth = calc_alg_context
+                .process_context()
+                .node(blocking_individual_node)
+                .individual_ancestor_depth();
+            if is_blocked && !review_marked {
+                if blocker_count != blocking_count || !still_subset {
+                    let rev_set = calc_alg_context.signature_blocking_review_set(true);
+                    calc_alg_context
+                        .process_context_mut()
+                        .signature_blocking_review_set_mut(rev_set)
+                        .get_review_data(still_subset)
+                        .insert(individual_ancestor_depth, indi_id);
+                    let loc_sig_blocking_data = self
+                        .get_or_create_signature_blocking_concept_expansion_data(
+                            blocking_individual_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .sig_block_con_exp_data_mut(loc_sig_blocking_data)
+                        .set_blocking_review_marked(true)
+                        .set_blocking_subset_review_marked(still_subset);
+                    let _ = indi_id;
+                    return true;
+                }
+            }
+            if review_marked {
+                if !is_blocked || blocker_count == blocking_count && still_subset {
+                    let review_subset_marked = calc_alg_context
+                        .process_context()
+                        .sig_block_con_exp_data(sig_blocking_data)
+                        .is_blocking_subset_review_marked();
+                    let rev_set = calc_alg_context.signature_blocking_review_set(true);
+                    calc_alg_context
+                        .process_context_mut()
+                        .signature_blocking_review_set_mut(rev_set)
+                        .get_review_data(review_subset_marked)
+                        .remove(indi_id);
+                    let loc_sig_blocking_data = self
+                        .get_or_create_signature_blocking_concept_expansion_data(
+                            blocking_individual_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .sig_block_con_exp_data_mut(loc_sig_blocking_data)
+                        .set_blocking_review_marked(false)
+                        .set_blocking_subset_review_marked(still_subset);
+                    let _ = indi_id;
+                    return true;
+                } else if calc_alg_context
+                    .process_context()
+                    .sig_block_con_exp_data(sig_blocking_data)
+                    .is_blocking_subset_review_marked()
+                    != still_subset
+                {
+                    let review_subset_marked = calc_alg_context
+                        .process_context()
+                        .sig_block_con_exp_data(sig_blocking_data)
+                        .is_blocking_subset_review_marked();
+                    let rev_set = calc_alg_context.signature_blocking_review_set(true);
+                    {
+                        let rev_set_mut = calc_alg_context
+                            .process_context_mut()
+                            .signature_blocking_review_set_mut(rev_set);
+                        rev_set_mut
+                            .get_review_data(review_subset_marked)
+                            .remove(indi_id);
+                        rev_set_mut
+                            .get_review_data(still_subset)
+                            .insert(individual_ancestor_depth, indi_id);
+                    }
+                    let loc_sig_blocking_data = self
+                        .get_or_create_signature_blocking_concept_expansion_data(
+                            blocking_individual_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .sig_block_con_exp_data_mut(loc_sig_blocking_data)
+                        .set_blocking_review_marked(false)
+                        .set_blocking_subset_review_marked(still_subset);
+                    let _ = indi_id;
+                    return true;
+                }
+            }
         }
         false
     }
@@ -1127,27 +1588,47 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         blocker_analized_con_exp_data: AnalizedConExpDataId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W6-DEFER[api]: blockingConSet = blockingIndividualNode->getReapplyConceptLabelSet(true);
-        //   lastUpdatedConExpCount = sigBlockingData->getLastUpdatedConceptExpansionCount();
-        //   updateDueChangedConcepts = blockingConSet->getConceptCount() != sigBlockingData->getLastUpdatedConceptCount();
-        //   updateDueChangedExpansions = blockerAnalizedConExpData->getExpansionConceptCount() > lastUpdatedConExpCount;
-        let update_due_changed_concepts = false;
-        let update_due_changed_expansions = false;
-        let _ = (sig_blocking_data, blocker_analized_con_exp_data, blocker_individual_node);
+        let blocking_con_set = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(blocking_individual_node);
+        let blocking_concept_count = calc_alg_context
+            .process_context()
+            .label_set(blocking_con_set)
+            .get_concept_count();
+        let last_updated_con_exp_count = calc_alg_context
+            .process_context()
+            .sig_block_con_exp_data(sig_blocking_data)
+            .get_last_updated_concept_expansion_count();
+
+        let update_due_changed_concepts = blocking_concept_count
+            != calc_alg_context
+                .process_context()
+                .sig_block_con_exp_data(sig_blocking_data)
+                .get_last_updated_concept_count();
+        let blocker_expansion_concept_count = calc_alg_context
+            .process_context()
+            .analized_con_exp_data(blocker_analized_con_exp_data)
+            .get_expansion_concept_count();
+        let update_due_changed_expansions =
+            blocker_expansion_concept_count > last_updated_con_exp_count;
+        let _ = (blocker_analized_con_exp_data, blocker_individual_node);
 
         if update_due_changed_concepts || update_due_changed_expansions {
-            // W6-DEFER[api]: retestAllExpansionsConcepts / continuousExpConConceptCount /
-            //   analizedConExpLinkerIt / skipExpConCount / conExpSearchCount /
-            //   updateContinuousExpandedContainedConceptCount, then:
-            //   if sigBlockingData->isConceptSetStillSubset() && blockingConSet->getConceptCount() == blockerAnalizedConExpData->getLastConceptCount():
-            //     no expansion required; setContinuousExpandedContainedConceptCount/LastUpdatedConceptCount.
-            //   else: walk the reverse analized-concept-expansion list; for each expConDes not already
-            //     contained, collect dependencies via createCONNECTIONDependency, then
-            //     createEXPANDEDDependency + addConceptToIndividualSkipANDProcessing(expConcept,expConNegation,...).
-            //
-            //   The dependency-collection + expansion loop is reproduced over a deferred (empty)
-            //   analized-concept-expansion list; the three sibling calls are the real logic:
-            let analized_con_exp_list: Vec<(ConDescId, Vec<ConDescId>)> = Vec::new();
+            let mut analized_con_exp_list: Vec<(ConDescId, Vec<ConDescId>)> = Vec::new();
+            let mut analized_con_exp_linker = calc_alg_context
+                .process_context()
+                .analized_con_exp_data(blocker_analized_con_exp_data)
+                .get_reverse_analized_concept_expansion_linker();
+            while analized_con_exp_linker.is_some() {
+                let linker = calc_alg_context
+                    .process_context()
+                    .analized_con_exp_linker(analized_con_exp_linker);
+                analized_con_exp_list.push((
+                    linker.get_concept_descriptor(),
+                    linker.get_dependend_concept_descriptor_linker().to_vec(),
+                ));
+                analized_con_exp_linker = linker.get_next();
+            }
             for (exp_con_des, dependend_con_des_linker) in analized_con_exp_list {
                 let exp_concept = calc_alg_context
                     .process_context()
@@ -1157,12 +1638,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context()
                     .con_desc(exp_con_des)
                     .is_negated();
-                // W6-DEFER[api]: blockingConSet->containsConcept(expConcept,expConNegation)
-                let already_contained = false;
+                let already_contained = calc_alg_context
+                    .process_context()
+                    .label_set(blocking_con_set)
+                    .contains_concept_in_context(
+                        calc_alg_context.process_context(),
+                        calc_alg_context.ontology_arenas(),
+                        exp_concept,
+                        exp_con_negation,
+                    );
                 if !already_contained {
                     let mut all_dependencies_existings = true;
-                    let mut dependencies: DependencyId = Id::NONE;
-                    let mut first_dep_track_point: DependencyId = Id::NONE;
+                    let mut dependencies: DepLinkId = Id::NONE;
+                    let mut first_dep_track_point: TrackPointId = Id::NONE;
 
                     for dep_exp_con_des in dependend_con_des_linker {
                         if !all_dependencies_existings {
@@ -1182,13 +1670,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 .concept(dep_concept)
                                 .get_concept_tag()
                         };
-                        // W6-DEFER[api]: blockingConSet->getConceptDescriptor(depConTag,depConDes,depDepTrackPoint)
-                        let con_descriptor_found = false;
-                        let dep_con_des: ConDescId = Id::NONE;
-                        let dep_dep_track_point: TrackPointId = Id::NONE;
+                        let mut dep_con_des: ConDescId = Id::NONE;
+                        let mut dep_dep_track_point: TrackPointId = Id::NONE;
+                        let con_descriptor_found = calc_alg_context
+                            .process_context()
+                            .label_set(blocking_con_set)
+                            .get_concept_descriptor_by_tag_in_context(
+                                calc_alg_context.process_context(),
+                                dep_con_tag,
+                                &mut dep_con_des,
+                                &mut dep_dep_track_point,
+                            );
                         if con_descriptor_found {
-                            // W6-DEFER[api]: depConDes->isNegated() == depExpConDes->isNegated()
-                            let same_negation = false;
+                            let same_negation = calc_alg_context
+                                .process_context()
+                                .con_desc(dep_con_des)
+                                .is_negated()
+                                == calc_alg_context
+                                    .process_context()
+                                    .con_desc(dep_exp_con_des)
+                                    .is_negated();
                             if same_negation {
                                 debug_assert!(
                                     dep_dep_track_point != Id::NONE,
@@ -1200,11 +1701,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     dep_dep_track_point,
                                     calc_alg_context,
                                 );
-                                if first_dep_track_point == Id::NONE {
-                                    first_dep_track_point = conn_dep_node;
-                                } else {
-                                    // CDependency front-splice: connDepNode->append(dependencies).
-                                    dependencies = conn_dep_node;
+                                if conn_dep_node.is_some() {
+                                    let conn_dep_track_point = calc_alg_context
+                                        .process_context_mut()
+                                        .materialize_continue_dependency_track_point(conn_dep_node);
+                                    if first_dep_track_point == Id::NONE {
+                                        first_dep_track_point = conn_dep_track_point;
+                                    } else {
+                                        let dep_link = calc_alg_context
+                                            .process_context_mut()
+                                            .alloc_dep_link(DependencyLink::new());
+                                        {
+                                            let proc_ctx = calc_alg_context.process_context_mut();
+                                            proc_ctx
+                                                .dep_link_mut(dep_link)
+                                                .init_dependency(conn_dep_track_point);
+                                            proc_ctx.dep_link_mut(dep_link).next = dependencies;
+                                        }
+                                        dependencies = dep_link;
+                                    }
                                 }
                             } else {
                                 all_dependencies_existings = false;
@@ -1225,10 +1740,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         let _exp_dep_node = self.create_expanded_dependency(
                             &mut exp_dep_track_point,
                             &mut blocking_individual_node,
-                            // W3-RECONCILE[api]: stub-path locals are DependencyId; the prev
-                            // track-point / other-dependency link are not resolved here yet.
-                            Id::NONE,
-                            Id::NONE,
+                            first_dep_track_point,
+                            dependencies,
                             calc_alg_context,
                         );
                         self.add_concept_to_individual_skip_and_processing(
@@ -1244,7 +1757,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
             }
-            // W6-DEFER[api]: sigBlockingData->setContinuousExpandedContainedConceptCount/LastUpdatedConceptCount(...)
+            calc_alg_context
+                .process_context_mut()
+                .sig_block_con_exp_data_mut(sig_blocking_data)
+                .set_last_updated_concept_expansion_count(blocker_expansion_concept_count)
+                .set_last_updated_concept_count(blocking_concept_count);
             return true;
         }
         false
@@ -1279,7 +1796,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(concept)
             .get_parameter()
             + 1 * (con_neg as Cint64);
-        if cardinality > 1 && ((!con_neg && op_code == CCATMOST) || (con_neg && op_code == CCATLEAST))
+        if cardinality > 1
+            && ((!con_neg && op_code == CCATMOST) || (con_neg && op_code == CCATLEAST))
         {
             return true;
         }
@@ -1382,13 +1900,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         if calc_alg_context
             .process_context()
-            .node(indi_proc_node)
-            .has_blocking_follower()
+            .node_has_blocking_follower(indi_proc_node)
         {
-            // followerSet = indiProcNode->getBlockingFollowSet(false);
-            // W6-DEFER[api]: iterate CBlockingFollowSet (stub) for blockingIndiNodeID; the per-id
-            //   getUpToDateIndividual + addIndividualToBlockingUpdateReviewProcessingQueue is preserved.
-            let follower_set: Vec<Cint64> = Vec::new();
+            let follower_set = calc_alg_context
+                .process_context()
+                .node_blocking_followers(indi_proc_node);
             for blocking_indi_node_id in follower_set {
                 let blocking_indi_node =
                     self.get_up_to_date_individual_by_id(blocking_indi_node_id, calc_alg_context);
@@ -1405,7 +1921,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_processing_blocked_individuals_linker()
             .to_vec();
         for blocked_node in processing_blocked_node_linker {
-            let loc_blocked_node = self.get_localized_individual(blocked_node, true, calc_alg_context);
+            let loc_blocked_node =
+                self.get_localized_individual(blocked_node, true, calc_alg_context);
             calc_alg_context
                 .process_context_mut()
                 .node_mut(loc_blocked_node)

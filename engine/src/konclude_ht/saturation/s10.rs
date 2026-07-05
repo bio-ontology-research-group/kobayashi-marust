@@ -40,13 +40,10 @@
 //! and threaded through every `getResolved*` method), together with its
 //! `CSaturationIndividualNodeExtensionResolveHash`, the
 //! `CSaturationSuccessorConceptExtensionMap`, and the
-//! `CPROCESSINGHASH<cint64,CConceptNegationPair>` extension maps. NONE of these
-//! saturation satellites is ported (they have no `process::stubs` marker), so —
-//! matching `s06`'s handling of the sibling successor-extension satellites — each
-//! is carried as an opaque `Cint64` (`INVALID` == `nullptr`), and every
-//! `resolveData->...` / `resolveHash->...` / `extensionMap->...` dereference is
-//! flagged `// W4-DEFER[api]` with the C++ transcribed verbatim above it. The
-//! PORTABLE leaves ARE emitted as real code: node pool-allocation + init in
+//! `CPROCESSINGHASH<cint64,CConceptNegationPair>` extension maps. These
+//! satellites are ported in bounded form as typed arena ids, and the remaining
+//! unported dereferences are still flagged `// W4-DEFER[api]` with the C++
+//! transcribed verbatim above them. The PORTABLE leaves ARE emitted as real code: node pool-allocation + init in
 //! `createResolvedIndividualNode`, the databox resolved-node id counter, label-set
 //! creation, the completion-queue add, the model reads (assertion linkers, super
 //! roles, range concepts, operator codes, nominal individuals), and the sibling
@@ -75,8 +72,13 @@ use super::super::model::op::CCNOMINAL;
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, IndividualId, RoleId};
 use super::super::process::sat_node::IndividualSaturationProcessNode;
-use super::super::process::stubs::IndividualSaturationProcessNodeLinkerId;
 use super::super::process::SatNodeId;
+use super::satellites::{
+    ConceptNegationPair, ConceptSaturationDescriptorId,
+    ImplicationReapplyConceptSaturationDescriptorId, SaturationConceptExtensionMap,
+    SaturationConceptExtensionMapId, SaturationIndividualNodeExtensionResolveData,
+    SaturationIndividualNodeExtensionResolveDataId, SaturationSuccessorConceptExtensionMapId,
+};
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::preprocessResolvedIndividualNode`
@@ -99,8 +101,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut processed = false;
         let mut concept_saturation_process_linker = calc_alg_context
             .process_context_mut()
-            .sat_node_mut(resolved_indi_proc_sat_node)
-            .take_concept_saturation_process_linker();
+            .sat_node_take_concept_saturation_process_linker(resolved_indi_proc_sat_node);
         while concept_saturation_process_linker.is_some() {
             // STATINC(RULEAPPLICATIONCOUNT, calcAlgContext); — W4-DEFER[macro]
             // KONCLUCE_..._SATURATION_MODEL_STRING_INSTRUCTION(mRuleBeginDebugIndiModelString = ...) — W4-DEFER[macro]
@@ -116,11 +117,23 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             );
             concept_saturation_process_linker = calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(resolved_indi_proc_sat_node)
-                .take_concept_saturation_process_linker();
+                .sat_node_take_concept_saturation_process_linker(resolved_indi_proc_sat_node);
             processed = true;
         }
         processed
+    }
+
+    fn base_extension_resolve_data_for_node(
+        &mut self,
+        indi_proc_sat_node: SatNodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
+        let succ_ext = calc_alg_context
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(indi_proc_sat_node, true);
+        calc_alg_context
+            .process_context_mut()
+            .sat_successor_extension_base_extension_resolve_data(succ_ext, true)
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedIndividualNodeRepresentativeRangeAssertion`
@@ -134,10 +147,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
         let mut resolved_node = SatNodeId::NONE;
-        // W4-DEFER[api]: resolveData = indiProcSatNode->getSuccessorExtensionData(true)
-        //   ->getBaseExtensionResolveData(true) — CSaturationIndividualNodeExtensionResolveData
-        //   not ported (opaque Cint64).
-        let mut resolve_data: Cint64 = INVALID;
+        let mut resolve_data =
+            self.base_extension_resolve_data_for_node(indi_proc_sat_node, calc_alg_context);
         let mut copy_indi_proc_sat_node = indi_proc_sat_node;
         // CConceptAssertionLinker* conAssLinker = nominalIndi->getAssertionConceptLinker();
         // KONCLUDE-PORT-NOTE[ownership]: snapshot the assertion-concept chain before the
@@ -149,7 +160,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .iter()
             .map(|a| (a.target, a.negated))
             .collect();
-        let top_concept = calc_alg_context.processing_data_box().ontology_top_concept();
+        let top_concept = calc_alg_context
+            .processing_data_box()
+            .ontology_top_concept();
         let nominal_concept = calc_alg_context
             .ontology_arenas()
             .individual(nominal_indi)
@@ -168,10 +181,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     );
                 }
             } else {
-                let op_code = calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+                let op_code = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operator_code();
                 if op_code == CCNOMINAL {
-                    let nominal_individual =
-                        calc_alg_context.ontology_arenas().concept(concept).get_nominal_individual();
+                    let nominal_individual = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_nominal_individual();
                     if nominal_individual == nominal_indi {
                         if negated {
                             resolve_data = self.get_resolved_individual_node_extension(
@@ -236,18 +254,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             calc_alg_context,
         );
 
-        // W4-DEFER[api]: if (!resolveData->hasProcessingIndividualNode()) — resolveData satellite.
-        let has_processing_individual_node: bool = false;
-        if !has_processing_individual_node {
+        if !calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .has_processing_individual_node()
+        {
             // create individual
-            resolved_node =
-                self.create_resolved_individual_node(resolve_data, &mut copy_indi_proc_sat_node, true, calc_alg_context);
+            resolved_node = self.create_resolved_individual_node(
+                resolve_data,
+                &mut copy_indi_proc_sat_node,
+                true,
+                calc_alg_context,
+            );
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(resolved_node)
                 .set_abox_individual_representation_node(true);
-            let separated = calc_alg_context.process_context().sat_node(indi_proc_sat_node).is_separated();
-            calc_alg_context.process_context_mut().sat_node_mut(resolved_node).set_separated(separated);
+            let separated = calc_alg_context
+                .process_context()
+                .sat_node(indi_proc_sat_node)
+                .is_separated();
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(resolved_node)
+                .set_separated(separated);
             // CReapplyConceptSaturationLabelSet* conSet = resolvedNode->getReapplyConceptSaturationLabelSet(true);
             //   (dead local in C++ — created for side-effect only)
             let _con_set = calc_alg_context
@@ -259,23 +289,47 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             for &(concept, negated) in &con_ass_linker {
                 if concept == nominal_concept {
                     if negated {
-                        self.add_concept_filtered_to_individual(top_concept, true, &mut resolved_node, calc_alg_context);
+                        self.add_concept_filtered_to_individual(
+                            top_concept,
+                            true,
+                            &mut resolved_node,
+                            calc_alg_context,
+                        );
                     }
                 } else {
-                    let op_code =
-                        calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+                    let op_code = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code();
                     if op_code == CCNOMINAL {
-                        let nominal_individual =
-                            calc_alg_context.ontology_arenas().concept(concept).get_nominal_individual();
+                        let nominal_individual = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_nominal_individual();
                         if nominal_individual == nominal_indi {
                             if negated {
-                                self.add_concept_filtered_to_individual(top_concept, true, &mut resolved_node, calc_alg_context);
+                                self.add_concept_filtered_to_individual(
+                                    top_concept,
+                                    true,
+                                    &mut resolved_node,
+                                    calc_alg_context,
+                                );
                             }
                         } else if !negated {
-                            self.add_concept_filtered_to_individual(concept, negated, &mut resolved_node, calc_alg_context);
+                            self.add_concept_filtered_to_individual(
+                                concept,
+                                negated,
+                                &mut resolved_node,
+                                calc_alg_context,
+                            );
                         }
                     } else {
-                        self.add_concept_filtered_to_individual(concept, negated, &mut resolved_node, calc_alg_context);
+                        self.add_concept_filtered_to_individual(
+                            concept,
+                            negated,
+                            &mut resolved_node,
+                            calc_alg_context,
+                        );
                     }
                 }
             }
@@ -289,16 +343,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .map(|c| (c.target, c.negated))
                     .collect();
                 for &(range_concept, range_concept_negation) in &range_con_linker {
-                    self.add_concept_filtered_to_individual(range_concept, range_concept_negation, &mut resolved_node, calc_alg_context);
+                    self.add_concept_filtered_to_individual(
+                        range_concept,
+                        range_concept_negation,
+                        &mut resolved_node,
+                        calc_alg_context,
+                    );
                 }
             }
 
             self.preprocess_resolved_individual_node(resolved_node, calc_alg_context);
         }
-        // W4-DEFER[api]: resolvedNode = resolveData->getProcessingIndividualNode();
-        //   (resolveData satellite) — returns the freshly created node when the
-        //   create-branch ran, else the cached processing node.
-        resolved_node
+        calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .get_processing_individual_node()
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedIndividualNodeRepresentativeAssertion`
@@ -310,8 +369,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
         let mut resolved_node = SatNodeId::NONE;
-        // W4-DEFER[api]: resolveData = indiProcSatNode->getSuccessorExtensionData(true)->getBaseExtensionResolveData(true)
-        let mut resolve_data: Cint64 = INVALID;
+        let mut resolve_data =
+            self.base_extension_resolve_data_for_node(indi_proc_sat_node, calc_alg_context);
         let mut copy_indi_proc_sat_node = indi_proc_sat_node;
         let con_ass_linker: Vec<(ConceptId, bool)> = calc_alg_context
             .ontology_arenas()
@@ -320,7 +379,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .iter()
             .map(|a| (a.target, a.negated))
             .collect();
-        let top_concept = calc_alg_context.processing_data_box().ontology_top_concept();
+        let top_concept = calc_alg_context
+            .processing_data_box()
+            .ontology_top_concept();
         let nominal_concept = calc_alg_context
             .ontology_arenas()
             .individual(nominal_indi)
@@ -331,49 +392,84 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             if concept == nominal_concept {
                 if negated {
                     resolve_data = self.get_resolved_individual_node_extension(
-                        resolve_data, top_concept, true, &mut copy_indi_proc_sat_node, calc_alg_context,
+                        resolve_data,
+                        top_concept,
+                        true,
+                        &mut copy_indi_proc_sat_node,
+                        calc_alg_context,
                     );
                 }
             } else {
-                let op_code = calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+                let op_code = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operator_code();
                 if op_code == CCNOMINAL {
-                    let nominal_individual =
-                        calc_alg_context.ontology_arenas().concept(concept).get_nominal_individual();
+                    let nominal_individual = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_nominal_individual();
                     if nominal_individual == nominal_indi {
                         if negated {
                             resolve_data = self.get_resolved_individual_node_extension(
-                                resolve_data, top_concept, true, &mut copy_indi_proc_sat_node, calc_alg_context,
+                                resolve_data,
+                                top_concept,
+                                true,
+                                &mut copy_indi_proc_sat_node,
+                                calc_alg_context,
                             );
                         }
                     } else {
                         resolve_data = self.get_resolved_individual_node_extension(
-                            resolve_data, concept, negated, &mut copy_indi_proc_sat_node, calc_alg_context,
+                            resolve_data,
+                            concept,
+                            negated,
+                            &mut copy_indi_proc_sat_node,
+                            calc_alg_context,
                         );
                     }
                 } else {
                     resolve_data = self.get_resolved_individual_node_extension(
-                        resolve_data, concept, negated, &mut copy_indi_proc_sat_node, calc_alg_context,
+                        resolve_data,
+                        concept,
+                        negated,
+                        &mut copy_indi_proc_sat_node,
+                        calc_alg_context,
                     );
                 }
             }
         }
 
         resolve_data = self.get_resolved_neighbour_individual_node_extension(
-            resolve_data, &mut copy_indi_proc_sat_node, calc_alg_context,
+            resolve_data,
+            &mut copy_indi_proc_sat_node,
+            calc_alg_context,
         );
 
-        // W4-DEFER[api]: if (!resolveData->hasProcessingIndividualNode())
-        let has_processing_individual_node: bool = false;
-        if !has_processing_individual_node {
+        if !calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .has_processing_individual_node()
+        {
             // create individual
-            resolved_node =
-                self.create_resolved_individual_node(resolve_data, &mut copy_indi_proc_sat_node, true, calc_alg_context);
+            resolved_node = self.create_resolved_individual_node(
+                resolve_data,
+                &mut copy_indi_proc_sat_node,
+                true,
+                calc_alg_context,
+            );
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(resolved_node)
                 .set_abox_individual_representation_node(true);
-            let separated = calc_alg_context.process_context().sat_node(indi_proc_sat_node).is_separated();
-            calc_alg_context.process_context_mut().sat_node_mut(resolved_node).set_separated(separated);
+            let separated = calc_alg_context
+                .process_context()
+                .sat_node(indi_proc_sat_node)
+                .is_separated();
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(resolved_node)
+                .set_separated(separated);
             let _con_set = calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(resolved_node)
@@ -383,31 +479,57 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             for &(concept, negated) in &con_ass_linker {
                 if concept == nominal_concept {
                     if negated {
-                        self.add_concept_filtered_to_individual(top_concept, true, &mut resolved_node, calc_alg_context);
+                        self.add_concept_filtered_to_individual(
+                            top_concept,
+                            true,
+                            &mut resolved_node,
+                            calc_alg_context,
+                        );
                     }
                 } else {
-                    let op_code =
-                        calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+                    let op_code = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code();
                     if op_code == CCNOMINAL {
-                        let nominal_individual =
-                            calc_alg_context.ontology_arenas().concept(concept).get_nominal_individual();
+                        let nominal_individual = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_nominal_individual();
                         if nominal_individual == nominal_indi {
                             if negated {
-                                self.add_concept_filtered_to_individual(top_concept, true, &mut resolved_node, calc_alg_context);
+                                self.add_concept_filtered_to_individual(
+                                    top_concept,
+                                    true,
+                                    &mut resolved_node,
+                                    calc_alg_context,
+                                );
                             }
                         } else {
-                            self.add_concept_filtered_to_individual(concept, negated, &mut resolved_node, calc_alg_context);
+                            self.add_concept_filtered_to_individual(
+                                concept,
+                                negated,
+                                &mut resolved_node,
+                                calc_alg_context,
+                            );
                         }
                     } else {
-                        self.add_concept_filtered_to_individual(concept, negated, &mut resolved_node, calc_alg_context);
+                        self.add_concept_filtered_to_individual(
+                            concept,
+                            negated,
+                            &mut resolved_node,
+                            calc_alg_context,
+                        );
                     }
                 }
             }
 
             self.preprocess_resolved_individual_node(resolved_node, calc_alg_context);
         }
-        // W4-DEFER[api]: resolvedNode = resolveData->getProcessingIndividualNode();
-        resolved_node
+        calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .get_processing_individual_node()
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedIndividualNodeAssertion`
@@ -419,8 +541,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
         let mut resolved_node = SatNodeId::NONE;
-        // W4-DEFER[api]: resolveData = indiProcSatNode->getSuccessorExtensionData(true)->getBaseExtensionResolveData(true)
-        let mut resolve_data: Cint64 = INVALID;
+        let mut resolve_data =
+            self.base_extension_resolve_data_for_node(indi_proc_sat_node, calc_alg_context);
         let mut copy_indi_proc_sat_node = indi_proc_sat_node;
         let con_ass_linker: Vec<(ConceptId, bool)> = calc_alg_context
             .ontology_arenas()
@@ -438,19 +560,35 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         for &(concept, negated) in &con_ass_linker {
             if negated || concept != nominal_concept {
                 resolve_data = self.get_resolved_individual_node_extension(
-                    resolve_data, concept, negated, &mut copy_indi_proc_sat_node, calc_alg_context,
+                    resolve_data,
+                    concept,
+                    negated,
+                    &mut copy_indi_proc_sat_node,
+                    calc_alg_context,
                 );
             }
         }
 
-        // W4-DEFER[api]: if (!resolveData->hasProcessingIndividualNode())
-        let has_processing_individual_node: bool = false;
-        if !has_processing_individual_node {
+        if !calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .has_processing_individual_node()
+        {
             // create individual
-            resolved_node =
-                self.create_resolved_individual_node(resolve_data, &mut copy_indi_proc_sat_node, true, calc_alg_context);
-            let separated = calc_alg_context.process_context().sat_node(indi_proc_sat_node).is_separated();
-            calc_alg_context.process_context_mut().sat_node_mut(resolved_node).set_separated(separated);
+            resolved_node = self.create_resolved_individual_node(
+                resolve_data,
+                &mut copy_indi_proc_sat_node,
+                true,
+                calc_alg_context,
+            );
+            let separated = calc_alg_context
+                .process_context()
+                .sat_node(indi_proc_sat_node)
+                .is_separated();
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(resolved_node)
+                .set_separated(separated);
             let _con_set = calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(resolved_node)
@@ -459,66 +597,118 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             // add all concepts to individual
             for &(concept, negated) in &con_ass_linker {
                 if negated || concept != nominal_concept {
-                    self.add_concept_filtered_to_individual(concept, negated, &mut resolved_node, calc_alg_context);
+                    self.add_concept_filtered_to_individual(
+                        concept,
+                        negated,
+                        &mut resolved_node,
+                        calc_alg_context,
+                    );
                 }
             }
 
             self.preprocess_resolved_individual_node(resolved_node, calc_alg_context);
         }
-        // W4-DEFER[api]: resolvedNode = resolveData->getProcessingIndividualNode();
-        resolved_node
+        calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .get_processing_individual_node()
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedIndividualNodeExtensionSuccessor`
     /// (cpp 2297–2338).
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `succConExtMap`
-    /// (`CSaturationSuccessorConceptExtensionMap*`) and its
-    /// `getSuccessorConceptExtensionMap()` value-hash are unported satellites
-    /// (opaque `Cint64`); the two iterations over the map (resolve pass + add pass)
-    /// resolve when that satellite lands.
     pub fn get_resolved_individual_node_extension_successor(
         &mut self,
         indi_proc_sat_node: SatNodeId,
-        succ_con_ext_map: Cint64,
+        succ_con_ext_map: SaturationSuccessorConceptExtensionMapId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
-        let mut resolved_node = SatNodeId::NONE;
-        // W4-DEFER[api]: resolveData = indiProcSatNode->getSuccessorExtensionData(true)->getBaseExtensionResolveData(true)
-        let mut resolve_data: Cint64 = INVALID;
-        // W4-DEFER[api]: succConExtDataMap = succConExtMap->getSuccessorConceptExtensionMap()
-        //   — CSaturationSuccessorConceptExtensionMap / CSaturationSuccessorConceptExtensionMapData unported.
+        let mut resolve_data =
+            self.base_extension_resolve_data_for_node(indi_proc_sat_node, calc_alg_context);
         let mut copy_indi_proc_sat_node = indi_proc_sat_node;
 
         // resolve individual
-        // W4-DEFER[api]: for (it : succConExtDataMap) { conExtDat = it.value();
-        //   concept = conExtDat.mConcept; addPositive = conExtDat.mPositive; addNegative = conExtDat.mNegative;
-        //   if (addPositive) resolveData = getResolvedIndividualNodeExtension(resolveData, concept, false, copyIndiProcSatNode, ...);
-        //   if (addNegative) resolveData = getResolvedIndividualNodeExtension(resolveData, concept, true,  copyIndiProcSatNode, ...); }
-        //   — the resolve pass over the (unported) successor-concept-extension map; each leaf is the
-        //   ported `self.get_resolved_individual_node_extension(...)`.
+        let extension_data: Vec<_> = calc_alg_context
+            .process_context()
+            .sat_successor_concept_extension_map(succ_con_ext_map)
+            .iter()
+            .map(|(_, data)| *data)
+            .collect();
+        for con_ext_dat in &extension_data {
+            let concept = con_ext_dat.concept;
+            let add_positive = con_ext_dat.positive;
+            let add_negative = con_ext_dat.negative;
+            if add_positive {
+                resolve_data = self.get_resolved_individual_node_extension(
+                    resolve_data,
+                    concept,
+                    false,
+                    &mut copy_indi_proc_sat_node,
+                    calc_alg_context,
+                );
+            }
+            if add_negative {
+                resolve_data = self.get_resolved_individual_node_extension(
+                    resolve_data,
+                    concept,
+                    true,
+                    &mut copy_indi_proc_sat_node,
+                    calc_alg_context,
+                );
+            }
+        }
 
-        // W4-DEFER[api]: if (!resolveData->hasProcessingIndividualNode())
-        let has_processing_individual_node: bool = false;
-        if !has_processing_individual_node {
+        if !calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .has_processing_individual_node()
+        {
             // create individual
-            resolved_node =
-                self.create_resolved_individual_node(resolve_data, &mut copy_indi_proc_sat_node, true, calc_alg_context);
-            let _con_set = calc_alg_context
+            let mut resolved_node = self.create_resolved_individual_node(
+                resolve_data,
+                &mut copy_indi_proc_sat_node,
+                true,
+                calc_alg_context,
+            );
+            let con_set = calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(resolved_node)
-                .get_reapply_concept_saturation_label_set(true);
+                .sat_node_reapply_concept_saturation_label_set(resolved_node, true);
 
             // add all concepts to individual
-            // W4-DEFER[api]: for (it : succConExtDataMap) {
-            //   if (addPositive) addConceptFilteredToIndividual(concept, false, resolvedNode, ...);
-            //   if (addNegative) addConceptFilteredToIndividual(concept, true,  resolvedNode, ...); }
-            //   — the add pass; each leaf is the ported `self.add_concept_filtered_to_individual(...)`.
+            for con_ext_dat in &extension_data {
+                let concept = con_ext_dat.concept;
+                let add_positive = con_ext_dat.positive;
+                let add_negative = con_ext_dat.negative;
+                if add_positive {
+                    let mut resolved_node_ref = resolved_node;
+                    self.add_concept_filtered_to_individual_label_set(
+                        concept,
+                        false,
+                        &mut resolved_node_ref,
+                        con_set,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+                if add_negative {
+                    let mut resolved_node_ref = resolved_node;
+                    self.add_concept_filtered_to_individual_label_set(
+                        concept,
+                        true,
+                        &mut resolved_node_ref,
+                        con_set,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+            }
 
             self.preprocess_resolved_individual_node(resolved_node, calc_alg_context);
         }
-        // W4-DEFER[api]: resolvedNode = resolveData->getProcessingIndividualNode();
-        resolved_node
+        calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .get_processing_individual_node()
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::createResolvedIndividualNode`
@@ -536,7 +726,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// pool; the `CProcessContext*` ctor arg is the opaque `Cint64` the node carries).
     pub fn create_resolved_individual_node(
         &mut self,
-        resolve_data: Cint64,
+        resolve_data: SaturationIndividualNodeExtensionResolveDataId,
         copy_indi_proc_sat_node: &mut SatNodeId,
         queue_processing: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
@@ -544,46 +734,78 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut resolved_node = calc_alg_context
             .process_context_mut()
             .alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
-        // W4-DEFER[api]: resolveData->getProcessingIndividualNodeID() — resolveData satellite;
-        //   the resolved-node individual id is taken from the resolve record. Carried as the
-        //   deferred init id below (INVALID until the satellite lands).
-        let processing_individual_node_id: Cint64 = INVALID;
+        let processing_individual_node_id = calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .get_processing_individual_node_id();
         calc_alg_context
             .process_context_mut()
             .sat_node_mut(resolved_node)
-            .init_individual_saturation_process_node(processing_individual_node_id, Id::NONE, Id::NONE);
-        self.initialize_individual_node_by_coping(resolved_node, *copy_indi_proc_sat_node, false, calc_alg_context);
+            .init_individual_saturation_process_node(
+                processing_individual_node_id,
+                Id::NONE,
+                Id::NONE,
+            );
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_init_coping_individual_saturation_process_node(
+                resolved_node,
+                *copy_indi_proc_sat_node,
+                false,
+            );
+        self.initialize_individual_node_by_coping(
+            resolved_node,
+            *copy_indi_proc_sat_node,
+            false,
+            calc_alg_context,
+        );
 
-        // W4-DEFER[api]: resolveData->setProcessingIndividualNode(resolvedNode); — resolveData satellite.
-        // W4-DEFER[api]: resolvedNode->getSuccessorExtensionData(true)->setExtensionResolveData(resolveData);
-        //   — CSaturationIndividualNodeSuccessorExtensionData::setExtensionResolveData not ported.
-        calc_alg_context.process_context_mut().sat_node_mut(resolved_node).set_initialized(true);
-        calc_alg_context.process_context_mut().sat_node_mut(resolved_node).set_required_backward_propagation(true);
+        calc_alg_context
+            .process_context_mut()
+            .sat_indi_node_ext_resolve_data_mut(resolve_data)
+            .set_processing_individual_node(resolved_node);
+        let resolved_succ_ext = calc_alg_context
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(resolved_node, true);
+        calc_alg_context
+            .process_context_mut()
+            .sat_indi_node_succ_ext_data_mut(resolved_succ_ext)
+            .set_extension_resolve_data(resolve_data);
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(resolved_node)
+            .set_initialized(true);
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(resolved_node)
+            .set_required_backward_propagation(true);
         self.add_individual_to_completion_queue(&mut resolved_node, calc_alg_context);
 
         // CIndividualSaturationProcessNodeLinker* resolveNodeProcessLiner =
         //   CObjectAllocator<CIndividualSaturationProcessNodeLinker>::allocateAndConstruct(memMan);
         // resolveNodeProcessLiner->initProcessNodeLinker(resolvedNode, queueProcessing);
-        // W4-DEFER[api]: CIndividualSaturationProcessNodeLinker (process::stubs marker, no arena);
-        //   the linker alloc + initProcessNodeLinker resolve when that linker chain is ported.
-        let resolve_node_process_liner: IndividualSaturationProcessNodeLinkerId = Id::NONE;
+        let resolve_node_process_liner = calc_alg_context
+            .process_context_mut()
+            .sat_node_individual_saturation_process_node_linker(resolved_node, true);
         calc_alg_context
             .process_context_mut()
-            .sat_node_mut(resolved_node)
-            .set_individual_saturation_process_node_linker(resolve_node_process_liner);
+            .indi_sat_process_node_linker_mut(resolve_node_process_liner)
+            .set_processing_queued(queue_processing);
         if queue_processing {
-            // KONCLUDE-PORT-NOTE[api]: the C++ adds the linker; the ported databox chain tracks
-            //   by node id, so the resolved node is added.
             calc_alg_context
                 .processing_data_box_mut()
-                .add_individual_saturation_process_node_linker(resolved_node);
+                .add_individual_saturation_process_node_linker(resolve_node_process_liner);
         }
         // indiVec = ctx->getUsedProcessingDataBox()->getIndividualSaturationProcessNodeVector(true);
-        let _indi_vec = calc_alg_context
+        let resolved_node_individual_id = calc_alg_context
+            .process_context()
+            .sat_node(resolved_node)
+            .get_individual_id();
+        calc_alg_context
             .processing_data_box_mut()
-            .individual_saturation_process_node_vector(true);
-        // W4-DEFER[api]: indiVec->setData(resolvedNode->getIndividualID(), resolvedNode);
-        //   — CIndividualSaturationProcessNodeVector (process::stubs marker) has no setData yet.
+            .individual_saturation_process_node_vector(true)
+            .expect("create=true yields CIndividualSaturationProcessNodeVector")
+            .set_data(resolved_node_individual_id, resolved_node);
         resolved_node
     }
 
@@ -592,39 +814,83 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ///
     /// KONCLUDE-PORT-NOTE[api]: both label sets (`CReapplyConceptSaturationLabelSet`)
     /// and the descriptor chain (`CConceptSaturationDescriptor`) plus the extension
-    /// map (`CPROCESSINGHASH<cint64,CConceptNegationPair>`) are unported satellites
-    /// (opaque `Cint64`); the whole "for each base-not-containing descriptor, insert
-    /// into the extension map" body is transcribed and deferred. `conExtMap` is an
-    /// in/out opaque-pointer reference (`&mut Cint64`).
+    /// map (`CPROCESSINGHASH<cint64,CConceptNegationPair>`) is represented as a
+    /// typed temporary arena id. `conExtMap` is an in/out pointer reference.
     pub fn collect_resolve_individual_extendable_concept_map(
         &mut self,
         base_indi_node: SatNodeId,
         extension_indi_node: SatNodeId,
-        con_ext_map: &mut Cint64,
+        con_ext_map: &mut SaturationConceptExtensionMapId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // CReapplyConceptSaturationLabelSet* extConSet = extensionIndiNode->getReapplyConceptSaturationLabelSet(false);
-        let _ext_con_set = calc_alg_context
+        let ext_con_set = calc_alg_context
             .process_context_mut()
-            .sat_node_mut(extension_indi_node)
-            .get_reapply_concept_saturation_label_set(false);
+            .sat_node_reapply_concept_saturation_label_set(extension_indi_node, false);
         let mut extension_required = false;
-        // W4-DEFER[api]: for (conIt = extConSet->getConceptSaturationDescriptionLinker(); conIt; conIt = conIt->getNextConceptDesciptor()) {
-        //   containedConDes / containedImpReaDes = nullptr; insertionRequired = false;
-        //   baseConSet = baseIndiNode->getReapplyConceptSaturationLabelSet(false);
-        //   if (baseConSet->getConceptSaturationDescriptor(conIt->getConcept(), containedConDes, containedImpReaDes)) {
-        //     if (!containedConDes) insertionRequired = true;
-        //     else if (containedConDes->isNegated() != conIt->isNegated()) insertionRequired = true;
-        //   } else insertionRequired = true;
-        //   if (insertionRequired) {
-        //     extensionRequired = true;
-        //     if (!conExtMap) conExtMap = new CPROCESSINGHASH<cint64,CConceptNegationPair>(...);  // [memory-pool] temp-arena alloc
-        //     conExtMap->insert(conIt->getConceptTag(), CConceptNegationPair(conIt->getConcept(), conIt->isNegated()));
-        //   }
-        // }
-        //   — CReapplyConceptSaturationLabelSet (descriptor-linker iteration + getConceptSaturationDescriptor)
-        //   and the CPROCESSINGHASH extension map are unported; resolves when they land. No logic dropped.
-        let _ = (base_indi_node, con_ext_map);
+        if ext_con_set.is_none() {
+            return false;
+        }
+        let mut con_it = calc_alg_context
+            .process_context()
+            .reapply_con_sat_label_set(ext_con_set)
+            .get_concept_saturation_description_linker();
+        while con_it.is_some() {
+            let (concept, negation, con_tag, next_con_it) = {
+                let con_ref = calc_alg_context.process_context().con_sat_desc(con_it);
+                (
+                    con_ref.get_concept(),
+                    con_ref.get_negation(),
+                    con_ref.get_concept_tag(calc_alg_context.ontology_arenas()),
+                    con_ref.get_next_concept_desciptor(),
+                )
+            };
+            let mut insertion_required = false;
+            let base_con_set = calc_alg_context
+                .process_context_mut()
+                .sat_node_reapply_concept_saturation_label_set(base_indi_node, false);
+            if base_con_set.is_some() {
+                let mut contained_con_des = ConceptSaturationDescriptorId::NONE;
+                let mut contained_imp_rea_des =
+                    ImplicationReapplyConceptSaturationDescriptorId::NONE;
+                if calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(base_con_set)
+                    .get_concept_saturation_descriptor_by_tag(
+                        con_tag,
+                        &mut contained_con_des,
+                        &mut contained_imp_rea_des,
+                    )
+                {
+                    if contained_con_des.is_none()
+                        || calc_alg_context
+                            .process_context()
+                            .con_sat_desc(contained_con_des)
+                            .get_negation()
+                            != negation
+                    {
+                        insertion_required = true;
+                    }
+                } else {
+                    insertion_required = true;
+                }
+            } else {
+                insertion_required = true;
+            }
+
+            if insertion_required {
+                extension_required = true;
+                if con_ext_map.is_none() {
+                    *con_ext_map = calc_alg_context
+                        .process_context_mut()
+                        .alloc_sat_concept_extension_map(SaturationConceptExtensionMap::new());
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_concept_extension_map_mut(*con_ext_map)
+                    .insert(con_tag, ConceptNegationPair::new(concept, negation));
+            }
+            con_it = next_con_it;
+        }
         extension_required
     }
 
@@ -632,15 +898,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// (cpp 2401–2403; the `CPROCESSINGHASH` overload, forwarding wrapper).
     ///
     /// KONCLUDE-PORT-NOTE[overload]: C++ overload distinguished by the
-    /// `CPROCESSINGHASH<cint64,CConceptNegationPair>* conExtensionMap` arg (opaque
-    /// `Cint64`). Forwards to `..._for_con_map_created` with `newNodeExpansionCreated == nullptr`.
+    /// `CPROCESSINGHASH<cint64,CConceptNegationPair>* conExtensionMap` arg.
+    /// Forwards to `..._for_con_map_created` with `newNodeExpansionCreated == nullptr`.
     pub fn get_resolved_individual_node_extension_for_con_map(
         &mut self,
-        resolve_data: Cint64,
-        con_extension_map: Cint64,
+        resolve_data: SaturationIndividualNodeExtensionResolveDataId,
+        con_extension_map: SaturationConceptExtensionMapId,
         copy_indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
         self.get_resolved_individual_node_extension_for_con_map_created(
             resolve_data,
             con_extension_map,
@@ -653,36 +919,58 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedIndividualNodeExtension`
     /// (cpp 2405–2438; the `CPROCESSINGHASH` + `bool* newNodeExpansionCreated` overload).
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `conExtensionMap`
-    /// (`CPROCESSINGHASH<cint64,CConceptNegationPair>*`) is an unported temp-hash
-    /// (opaque `Cint64`); when non-null, iterates it twice (resolve pass, then —
-    /// if no processing node yet — create + add pass). `bool* newNodeExpansionCreated`
-    /// → `Option<&mut bool>`.
+    /// KONCLUDE-PORT-NOTE[ownership]: `conExtensionMap`
+    /// (`CPROCESSINGHASH<cint64,CConceptNegationPair>*`) is represented as a typed
+    /// temporary arena id; when non-null, Konclude iterates it twice (resolve pass,
+    /// then — if no processing node yet — create + add pass).
+    /// `bool* newNodeExpansionCreated` → `Option<&mut bool>`.
     pub fn get_resolved_individual_node_extension_for_con_map_created(
         &mut self,
-        mut resolve_data: Cint64,
-        con_extension_map: Cint64,
+        mut resolve_data: SaturationIndividualNodeExtensionResolveDataId,
+        con_extension_map: SaturationConceptExtensionMapId,
         copy_indi_proc_sat_node: &mut SatNodeId,
         new_node_expansion_created: Option<&mut bool>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        if con_extension_map != INVALID {
-            // W4-DEFER[api]: for (it : conExtensionMap) { conExtDat = it.value();
-            //   concept = conExtDat.first; negation = conExtDat.second;
-            //   resolveData = getResolvedIndividualNodeExtension(resolveData, concept, negation, copyIndiProcSatNode, ...); }
-            //   — resolve pass over the (unported) CPROCESSINGHASH; each leaf is the ported
-            //   `self.get_resolved_individual_node_extension(...)`.
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
+        if con_extension_map.is_some() {
+            let extension_pairs: Vec<ConceptNegationPair> = calc_alg_context
+                .process_context()
+                .sat_concept_extension_map(con_extension_map)
+                .iter()
+                .map(|(_, pair)| *pair)
+                .collect();
 
-            // W4-DEFER[api]: if (!resolveData->getProcessingIndividualNode()) — resolveData satellite.
-            let has_processing_individual_node: bool = false;
-            if !has_processing_individual_node {
-                let resolved_node =
-                    self.create_resolved_individual_node(resolve_data, copy_indi_proc_sat_node, true, calc_alg_context);
-                // W4-DEFER[api]: resolveData->setProcessingIndividualNode(resolvedNode);
+            for con_ext_dat in &extension_pairs {
+                resolve_data = self.get_resolved_individual_node_extension(
+                    resolve_data,
+                    con_ext_dat.concept,
+                    con_ext_dat.negation,
+                    copy_indi_proc_sat_node,
+                    calc_alg_context,
+                );
+            }
 
-                // W4-DEFER[api]: for (it : conExtensionMap) {
-                //   addConceptFilteredToIndividual(it.value().first, it.value().second, resolvedNode, ...); }
-                //   — add pass; each leaf is the ported `self.add_concept_filtered_to_individual(...)`.
+            if !calc_alg_context
+                .process_context()
+                .sat_indi_node_ext_resolve_data(resolve_data)
+                .has_processing_individual_node()
+            {
+                let resolved_node = self.create_resolved_individual_node(
+                    resolve_data,
+                    copy_indi_proc_sat_node,
+                    true,
+                    calc_alg_context,
+                );
+
+                let mut resolved_node_ref = resolved_node;
+                for con_ext_dat in &extension_pairs {
+                    self.add_concept_filtered_to_individual(
+                        con_ext_dat.concept,
+                        con_ext_dat.negation,
+                        &mut resolved_node_ref,
+                        calc_alg_context,
+                    );
+                }
                 self.preprocess_resolved_individual_node(resolved_node, calc_alg_context);
 
                 if let Some(flag) = new_node_expansion_created {
@@ -690,8 +978,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 }
             }
 
-            // W4-DEFER[api]: copyIndiProcSatNode = resolveData->getProcessingIndividualNode();
-            //   — rebinds the copy node to the resolve record's processing node.
+            *copy_indi_proc_sat_node = calc_alg_context
+                .process_context()
+                .sat_indi_node_ext_resolve_data(resolve_data)
+                .get_processing_individual_node();
         }
         resolve_data
     }
@@ -700,11 +990,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// (cpp 2443–2445; the extension-`CIndividualSaturationProcessNode*` overload, forwarding wrapper).
     pub fn get_resolved_individual_node_extension_for_node(
         &mut self,
-        resolve_data: Cint64,
+        resolve_data: SaturationIndividualNodeExtensionResolveDataId,
         extension_node: SatNodeId,
         copy_indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
         self.get_resolved_individual_node_extension_for_node_created(
             resolve_data,
             extension_node,
@@ -718,23 +1008,27 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// (cpp 2449–2487; the extension-node + `bool* newNodeExpansionCreated` overload).
     ///
     /// KONCLUDE-PORT-NOTE[api]: caches the result keyed by `extensionNode` in
-    /// `resolveData`'s `CSaturationIndividualNodeExtensionResolveHash` (opaque); on a
-    /// miss, builds the concept-extension map by diffing the extension node's label
+    /// `resolveData`'s `CSaturationIndividualNodeExtensionResolveHash`; on a miss,
+    /// builds the concept-extension map by diffing the extension node's label
     /// against the copy node's label, then delegates to the `..._for_con_map`
-    /// overload. The resolve-hash + the label-set descriptor diff are unported.
+    /// overload.
     pub fn get_resolved_individual_node_extension_for_node_created(
         &mut self,
-        mut resolve_data: Cint64,
+        mut resolve_data: SaturationIndividualNodeExtensionResolveDataId,
         extension_node: SatNodeId,
         copy_indi_proc_sat_node: &mut SatNodeId,
         new_node_expansion_created: Option<&mut bool>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // W4-DEFER[api]: resolveHashData = resolveData->getIndividualNodeExtensionResolveHash(true)
-        //   ->getResolvedIndividualNodeExtensionData(extensionNode);
-        //   — CSaturationIndividualNodeExtensionResolveHash / ...ResolveHashData unported (opaque).
-        let resolve_hash_data_present: bool = false; // resolveHashData.mResolveData != nullptr
-        if !resolve_hash_data_present {
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
+        let hash = calc_alg_context
+            .process_context_mut()
+            .sat_extension_resolve_hash(resolve_data, true);
+        let mut child_resolve_data = calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_hash(hash)
+            .get_non_creating_resolved_individual_node_extension_data_for_node(extension_node)
+            .resolve_data;
+        if child_resolve_data.is_none() {
             // CReapplyConceptSaturationLabelSet* extConSet = extensionNode->getReapplyConceptSaturationLabelSet(false);
             let _ext_con_set = calc_alg_context
                 .process_context_mut()
@@ -742,22 +1036,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .get_reapply_concept_saturation_label_set(false);
 
             // CPROCESSINGHASH<cint64,CConceptNegationPair>* conExtensionMap = nullptr;
-            let mut con_extension_map: Cint64 = INVALID;
-
-            // W4-DEFER[api]: for (conIt = extConSet->getConceptSaturationDescriptionLinker(); conIt; conIt = conIt->getNextConceptDesciptor()) {
-            //   containedConDes / containedImpReaDes = nullptr; insertionRequired = false;
-            //   baseConSet = copyIndiProcSatNode->getReapplyConceptSaturationLabelSet(false);
-            //   if (baseConSet->getConceptSaturationDescriptor(conIt->getConcept(), containedConDes, containedImpReaDes)) {
-            //     if (!containedConDes) insertionRequired = true;
-            //     else if (containedConDes->isNegated() != conIt->isNegated()) insertionRequired = true;
-            //   } else insertionRequired = true;
-            //   if (insertionRequired) {
-            //     if (!conExtensionMap) conExtensionMap = new CPROCESSINGHASH<...>(...);   // [memory-pool] temp-arena alloc
-            //     conExtensionMap->insert(conIt->getConceptTag(), CConceptNegationPair(conIt->getConcept(), conIt->isNegated()));
-            //   }
-            // }
-            //   — same descriptor diff as collectResolveIndividualExtendableConceptMap, here against the copy node;
-            //   resolves with CReapplyConceptSaturationLabelSet + the CPROCESSINGHASH temp map.
+            let mut con_extension_map = SaturationConceptExtensionMapId::NONE;
+            self.collect_resolve_individual_extendable_concept_map(
+                *copy_indi_proc_sat_node,
+                extension_node,
+                &mut con_extension_map,
+                calc_alg_context,
+            );
 
             resolve_data = self.get_resolved_individual_node_extension_for_con_map_created(
                 resolve_data,
@@ -767,10 +1052,24 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 calc_alg_context,
             );
 
-            // W4-DEFER[api]: resolveHashData.mResolveData = resolveData;
+            child_resolve_data = resolve_data;
+            calc_alg_context
+                .process_context_mut()
+                .sat_indi_node_ext_resolve_hash_mut(hash)
+                .get_resolved_individual_node_extension_data_for_node(extension_node)
+                .resolve_data = child_resolve_data;
         }
-        // W4-DEFER[api]: return resolveHashData.mResolveData;  — cached resolve record.
-        resolve_data
+        if calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(child_resolve_data)
+            .has_processing_individual_node()
+        {
+            *copy_indi_proc_sat_node = calc_alg_context
+                .process_context()
+                .sat_indi_node_ext_resolve_data(child_resolve_data)
+                .get_processing_individual_node();
+        }
+        child_resolve_data
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedNeighbourIndividualNodeExtension`
@@ -783,26 +1082,43 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// leaf is the databox id counter, emitted as real code.
     pub fn get_resolved_neighbour_individual_node_extension(
         &mut self,
-        resolve_data: Cint64,
+        resolve_data: SaturationIndividualNodeExtensionResolveDataId,
         copy_indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // W4-DEFER[api]: resolveHashData = resolveData->getIndividualNodeExtensionResolveHash(true)
-        //   ->getResolvedNeighbourIndividualNodeExtensionData();
-        let resolve_hash_data_present: bool = false; // resolveHashData.mResolveData != nullptr
-        if !resolve_hash_data_present {
-            // W4-DEFER[api/memory-pool]: resolveHashData.mResolveData = new CSaturationIndividualNodeExtensionResolveData(...);
-            // PORTABLE: nextResolveIndiID = ctx->getUsedProcessingDataBox()->getNextSaturationResolvedSuccessorExtensionIndividualNodeID();
-            let _next_resolve_indi_id = calc_alg_context
-                .processing_data_box_mut()
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
+        let hash = calc_alg_context
+            .process_context_mut()
+            .sat_extension_resolve_hash(resolve_data, true);
+        let mut neighbour_data = calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_hash(hash)
+            .neighbour_resolve_data
+            .resolve_data;
+        if neighbour_data.is_none() {
+            let next_resolve_indi_id = calc_alg_context
                 .next_saturation_resolved_successor_extension_individual_node_id(true);
-            // W4-DEFER[api]: resolveHashData.mResolveData->initExtensionResolveData(nextResolveIndiID);
+            let mut data = SaturationIndividualNodeExtensionResolveData::new();
+            data.init_extension_resolve_data_for_id(next_resolve_indi_id);
+            neighbour_data = calc_alg_context
+                .process_context_mut()
+                .alloc_sat_indi_node_ext_resolve_data(data);
+            calc_alg_context
+                .process_context_mut()
+                .sat_indi_node_ext_resolve_hash_mut(hash)
+                .neighbour_resolve_data
+                .resolve_data = neighbour_data;
         }
-        // W4-DEFER[api]: if (resolveHashData.mResolveData->hasProcessingIndividualNode())
-        //   copyIndiProcSatNode = resolveHashData.mResolveData->getProcessingIndividualNode();
-        let _ = copy_indi_proc_sat_node;
-        // W4-DEFER[api]: return resolveHashData.mResolveData;
-        resolve_data
+        if calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(neighbour_data)
+            .has_processing_individual_node()
+        {
+            *copy_indi_proc_sat_node = calc_alg_context
+                .process_context()
+                .sat_indi_node_ext_resolve_data(neighbour_data)
+                .get_processing_individual_node();
+        }
+        neighbour_data
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getResolvedIndividualNodeExtension`
@@ -816,41 +1132,74 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// databox resolved-node id counter on a miss.
     pub fn get_resolved_individual_node_extension(
         &mut self,
-        resolve_data: Cint64,
+        resolve_data: SaturationIndividualNodeExtensionResolveDataId,
         concept: ConceptId,
         negation: bool,
         copy_indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // CReapplyConceptSaturationLabelSet* conSet = copyIndiProcSatNode->getReapplyConceptSaturationLabelSet(false);
+    ) -> SaturationIndividualNodeExtensionResolveDataId {
         let con_set = calc_alg_context
             .process_context_mut()
-            .sat_node_mut(*copy_indi_proc_sat_node)
-            .get_reapply_concept_saturation_label_set(false);
-        // W4-DEFER[api]: if (conSet && conSet->containsConcept(concept, negation)) return resolveData;
-        //   — CReapplyConceptSaturationLabelSet::containsConcept not ported; the early-return
-        //   on an already-contained concept resolves when the label set lands.
-        let con_set_contains_concept: bool = false;
-        if con_set.is_some() && con_set_contains_concept {
-            return resolve_data;
+            .sat_node_reapply_concept_saturation_label_set(*copy_indi_proc_sat_node, false);
+        if con_set.is_some() {
+            let con_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            let mut contained_con_des = ConceptSaturationDescriptorId::NONE;
+            let mut contained_imp_rea_des = ImplicationReapplyConceptSaturationDescriptorId::NONE;
+            if calc_alg_context
+                .process_context()
+                .reapply_con_sat_label_set(con_set)
+                .get_concept_saturation_descriptor_by_tag(
+                    con_tag,
+                    &mut contained_con_des,
+                    &mut contained_imp_rea_des,
+                )
+                && contained_con_des.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .con_sat_desc(contained_con_des)
+                    .get_negation()
+                    == negation
+            {
+                return resolve_data;
+            }
         }
 
-        // W4-DEFER[api]: resolveHashData = resolveData->getIndividualNodeExtensionResolveHash(true)
-        //   ->getResolvedIndividualNodeExtensionData(concept, negation);
-        let resolve_hash_data_present: bool = false; // resolveHashData.mResolveData != nullptr
-        if !resolve_hash_data_present {
-            // W4-DEFER[api/memory-pool]: resolveHashData.mResolveData = new CSaturationIndividualNodeExtensionResolveData(...);
-            // PORTABLE: nextResolveIndiID = ctx->getUsedProcessingDataBox()->getNextSaturationResolvedSuccessorExtensionIndividualNodeID();
-            let _next_resolve_indi_id = calc_alg_context
-                .processing_data_box_mut()
+        let hash = calc_alg_context
+            .process_context_mut()
+            .sat_extension_resolve_hash(resolve_data, true);
+        let mut child_resolve_data = calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_hash(hash)
+            .get_non_creating_resolved_individual_node_extension_data(concept, negation)
+            .resolve_data;
+        if child_resolve_data.is_none() {
+            let next_resolve_indi_id = calc_alg_context
                 .next_saturation_resolved_successor_extension_individual_node_id(true);
-            // W4-DEFER[api]: resolveHashData.mResolveData->initExtensionResolveData(nextResolveIndiID);
+            let mut data = SaturationIndividualNodeExtensionResolveData::new();
+            data.init_extension_resolve_data_for_id(next_resolve_indi_id);
+            child_resolve_data = calc_alg_context
+                .process_context_mut()
+                .alloc_sat_indi_node_ext_resolve_data(data);
+            calc_alg_context
+                .process_context_mut()
+                .sat_indi_node_ext_resolve_hash_mut(hash)
+                .get_resolved_individual_node_extension_data(concept, negation)
+                .resolve_data = child_resolve_data;
         }
-        // W4-DEFER[api]: if (resolveHashData.mResolveData->hasProcessingIndividualNode())
-        //   copyIndiProcSatNode = resolveHashData.mResolveData->getProcessingIndividualNode();
-        // W4-DEFER[api]: return resolveHashData.mResolveData;
-        let _ = (concept, negation);
-        resolve_data
+        if calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(child_resolve_data)
+            .has_processing_individual_node()
+        {
+            *copy_indi_proc_sat_node = calc_alg_context
+                .process_context()
+                .sat_indi_node_ext_resolve_data(child_resolve_data)
+                .get_processing_individual_node();
+        }
+        child_resolve_data
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getSeparatedSaturationConceptAssertionResolveNode`
@@ -862,7 +1211,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
-        let top_concept = calc_alg_context.processing_data_box().ontology_top_concept();
+        let top_concept = calc_alg_context
+            .processing_data_box()
+            .ontology_top_concept();
         let mut resolve_node = calc_alg_context
             .processing_data_box()
             .separated_saturation_concept_assertion_resolve_node();
@@ -871,34 +1222,49 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context_mut()
                 .alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
             let next_resolve_indi_id = calc_alg_context
-                .processing_data_box_mut()
                 .next_saturation_resolved_successor_extension_individual_node_id(true);
 
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(resolve_node)
                 .init_individual_saturation_process_node(next_resolve_indi_id, Id::NONE, Id::NONE);
-            calc_alg_context.process_context_mut().sat_node_mut(resolve_node).set_initialized(true);
-            calc_alg_context.process_context_mut().sat_node_mut(resolve_node).set_separated(true);
-            calc_alg_context.process_context_mut().sat_node_mut(resolve_node).set_required_backward_propagation(true);
-
-            self.add_individual_to_completion_queue(&mut resolve_node, calc_alg_context);
-
-            // W4-DEFER[api]: resolveNodeProcessLiner = CObjectAllocator<CIndividualSaturationProcessNodeLinker>::...(memMan);
-            //   resolveNodeProcessLiner->initProcessNodeLinker(resolveNode, true);
-            //   — CIndividualSaturationProcessNodeLinker (process::stubs marker, no arena).
-            let resolve_node_process_liner: IndividualSaturationProcessNodeLinkerId = Id::NONE;
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(resolve_node)
-                .set_individual_saturation_process_node_linker(resolve_node_process_liner);
+                .set_initialized(true);
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(resolve_node)
+                .set_separated(true);
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(resolve_node)
+                .set_required_backward_propagation(true);
+
+            self.add_individual_to_completion_queue(&mut resolve_node, calc_alg_context);
+
+            // resolveNodeProcessLiner =
+            //   CObjectAllocator<CIndividualSaturationProcessNodeLinker>::allocateAndConstruct(memMan);
+            // resolveNodeProcessLiner->initProcessNodeLinker(resolveNode, true);
+            let resolve_node_process_liner = calc_alg_context
+                .process_context_mut()
+                .sat_node_individual_saturation_process_node_linker(resolve_node, true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_sat_process_node_linker_mut(resolve_node_process_liner)
+                .set_processing_queued(true);
             calc_alg_context
                 .processing_data_box_mut()
-                .add_individual_saturation_process_node_linker(resolve_node);
-            let _indi_vec = calc_alg_context
+                .add_individual_saturation_process_node_linker(resolve_node_process_liner);
+            let resolve_node_individual_id = calc_alg_context
+                .process_context()
+                .sat_node(resolve_node)
+                .get_individual_id();
+            calc_alg_context
                 .processing_data_box_mut()
-                .individual_saturation_process_node_vector(true);
-            // W4-DEFER[api]: indiVec->setData(resolveNode->getIndividualID(), resolveNode);
+                .individual_saturation_process_node_vector(true)
+                .expect("create=true yields CIndividualSaturationProcessNodeVector")
+                .set_data(resolve_node_individual_id, resolve_node);
 
             // CReapplyConceptSaturationLabelSet* resolveConSet = resolveNode->getReapplyConceptSaturationLabelSet(true);
             let resolve_con_set = calc_alg_context
@@ -939,7 +1305,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) -> SatNodeId {
         let node = SatNodeId::NONE;
         // CConceptData* conceptData = concept->getConceptData();
-        let concept_data = calc_alg_context.ontology_arenas().concept(concept).get_concept_data();
+        let concept_data = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_data();
         if concept_data != INVALID {
             // W4-DEFER[api]: conProcData = (CConceptProcessData*)conceptData;
             //   conRefLinking = conProcData->getConceptReferenceLinking();
@@ -969,7 +1338,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Cint64 {
         // CIndividualProcessData* indiProcData = (CIndividualProcessData*)individual->getIndividualData();
-        let indi_proc_data = calc_alg_context.ontology_arenas().individual(individual).get_individual_data();
+        let indi_proc_data = calc_alg_context
+            .ontology_arenas()
+            .individual(individual)
+            .get_individual_data();
         let mut has_ref_linking = false;
         if indi_proc_data != INVALID {
             // W4-DEFER[api]: refLinking = indiProcData->getSaturationReferenceLinkingData();
@@ -1005,7 +1377,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             node = indi_proc_sat_node;
         } else {
             // CIndividualProcessData* indiProcData = (CIndividualProcessData*)individual->getIndividualData();
-            let indi_proc_data = calc_alg_context.ontology_arenas().individual(individual).get_individual_data();
+            let indi_proc_data = calc_alg_context
+                .ontology_arenas()
+                .individual(individual)
+                .get_individual_data();
             let mut has_ref_linking = false;
             if indi_proc_data != INVALID {
                 // W4-DEFER[api]: refLinking = indiProcData->getSaturationReferenceLinkingData();
@@ -1027,5 +1402,277 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         //   //if (!hasRefLinking) { node = ctx->getProcessingDataBox()
         //   //    ->getIndividualSaturationProcessNodeVector(false)->getData(individual->getIndividualID()); }
         node
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::op::CCATOM;
+    use super::super::satellites::{
+        ConceptSaturationDescriptor, SaturationSuccessorConceptExtensionMap,
+    };
+    use super::*;
+
+    fn atom(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> ConceptId {
+        let mut concept = Concept::new();
+        concept.set_operator_code(CCATOM).set_concept_tag(tag);
+        ctx.ontology_arenas_mut().alloc_concept(concept)
+    }
+
+    fn insert_label(
+        ctx: &mut CalculationAlgorithmContextBase,
+        node: SatNodeId,
+        concept: ConceptId,
+        negated: bool,
+    ) {
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, true);
+        let mut descriptor = ConceptSaturationDescriptor::new();
+        descriptor.init_concept_saturation_descriptor(concept, negated);
+        let descriptor = ctx.process_context_mut().alloc_con_sat_desc(descriptor);
+        let con_tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_insert_concept_return_clashed(
+                label_set, descriptor, con_tag, None, None,
+            );
+    }
+
+    #[test]
+    fn s10_collect_resolve_extendable_concept_map_diffs_extension_label_set() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let base_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let extension_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_mut(base_node)
+            .init_individual_saturation_process_node(701, Id::NONE, Id::NONE);
+        ctx.process_context_mut()
+            .sat_node_mut(extension_node)
+            .init_individual_saturation_process_node(703, Id::NONE, Id::NONE);
+        let same = atom(&mut ctx, 9101);
+        let opposite = atom(&mut ctx, 9103);
+        let missing = atom(&mut ctx, 9105);
+
+        insert_label(&mut ctx, base_node, same, false);
+        insert_label(&mut ctx, base_node, opposite, false);
+        insert_label(&mut ctx, extension_node, same, false);
+        insert_label(&mut ctx, extension_node, opposite, true);
+        insert_label(&mut ctx, extension_node, missing, false);
+
+        let mut algo = super::super::algorithm::SaturationTaskHandleAlgorithm::new();
+        let mut con_ext_map = SaturationConceptExtensionMapId::NONE;
+        assert!(algo.collect_resolve_individual_extendable_concept_map(
+            base_node,
+            extension_node,
+            &mut con_ext_map,
+            &mut ctx,
+        ));
+        assert!(con_ext_map.is_some());
+
+        let map = ctx.process_context().sat_concept_extension_map(con_ext_map);
+        assert_eq!(map.iter().count(), 2);
+        assert_eq!(
+            map.concept_extension_map.get(&9103).copied(),
+            Some(ConceptNegationPair::new(opposite, true))
+        );
+        assert_eq!(
+            map.concept_extension_map.get(&9105).copied(),
+            Some(ConceptNegationPair::new(missing, false))
+        );
+        assert!(map.concept_extension_map.get(&9101).is_none());
+    }
+
+    #[test]
+    fn s10_concept_leaf_resolve_allocates_caches_and_short_circuits_existing_label() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let base_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let concept = atom(&mut ctx, 9201);
+        let other = atom(&mut ctx, 9203);
+        let resolve_data = {
+            let mut data = SaturationIndividualNodeExtensionResolveData::new();
+            data.init_extension_resolve_data_for_node(base_node, 700);
+            ctx.process_context_mut()
+                .alloc_sat_indi_node_ext_resolve_data(data)
+        };
+
+        let mut algo = super::super::algorithm::SaturationTaskHandleAlgorithm::new();
+        let mut copy_node = base_node;
+        let child = algo.get_resolved_individual_node_extension(
+            resolve_data,
+            concept,
+            false,
+            &mut copy_node,
+            &mut ctx,
+        );
+        assert!(child.is_some());
+        assert_ne!(child, resolve_data);
+        assert_eq!(copy_node, base_node);
+        assert_eq!(
+            ctx.process_context()
+                .sat_indi_node_ext_resolve_data(child)
+                .get_processing_individual_node_id(),
+            0
+        );
+
+        let child_again = algo.get_resolved_individual_node_extension(
+            resolve_data,
+            concept,
+            false,
+            &mut copy_node,
+            &mut ctx,
+        );
+        assert_eq!(child_again, child);
+
+        insert_label(&mut ctx, base_node, other, true);
+        let short_circuit = algo.get_resolved_individual_node_extension(
+            resolve_data,
+            other,
+            true,
+            &mut copy_node,
+            &mut ctx,
+        );
+        assert_eq!(short_circuit, resolve_data);
+    }
+
+    #[test]
+    fn s10_extension_node_resolve_uses_individual_hash_cache() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let base_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let extension_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let base_concept = atom(&mut ctx, 9301);
+        let extension_concept = atom(&mut ctx, 9303);
+        insert_label(&mut ctx, base_node, base_concept, false);
+        insert_label(&mut ctx, extension_node, base_concept, false);
+        insert_label(&mut ctx, extension_node, extension_concept, false);
+        let resolve_data = {
+            let mut data = SaturationIndividualNodeExtensionResolveData::new();
+            data.init_extension_resolve_data_for_node(base_node, 701);
+            ctx.process_context_mut()
+                .alloc_sat_indi_node_ext_resolve_data(data)
+        };
+
+        let mut algo = super::super::algorithm::SaturationTaskHandleAlgorithm::new();
+        let mut copy_node = base_node;
+        let mut created = false;
+        let child = algo.get_resolved_individual_node_extension_for_node_created(
+            resolve_data,
+            extension_node,
+            &mut copy_node,
+            Some(&mut created),
+            &mut ctx,
+        );
+        assert!(created);
+        assert!(child.is_some());
+        assert_ne!(child, resolve_data);
+        let resolved_node = ctx
+            .process_context()
+            .sat_indi_node_ext_resolve_data(child)
+            .get_processing_individual_node();
+        assert!(resolved_node.is_some());
+        assert_eq!(copy_node, resolved_node);
+
+        let resolve_data_count = ctx.process_context().sat_indi_node_ext_resolve_data_count();
+        let sat_node_count = ctx.process_context().sat_node_count();
+        copy_node = base_node;
+        let mut created_again = false;
+        let child_again = algo.get_resolved_individual_node_extension_for_node_created(
+            resolve_data,
+            extension_node,
+            &mut copy_node,
+            Some(&mut created_again),
+            &mut ctx,
+        );
+        assert!(!created_again);
+        assert_eq!(child_again, child);
+        assert_eq!(copy_node, resolved_node);
+        assert_eq!(
+            ctx.process_context().sat_indi_node_ext_resolve_data_count(),
+            resolve_data_count
+        );
+        assert_eq!(ctx.process_context().sat_node_count(), sat_node_count);
+
+        let hash = ctx
+            .process_context_mut()
+            .sat_extension_resolve_hash(resolve_data, false);
+        assert_eq!(
+            ctx.process_context()
+                .sat_indi_node_ext_resolve_hash(hash)
+                .get_non_creating_resolved_individual_node_extension_data_for_node(extension_node)
+                .resolve_data,
+            child
+        );
+    }
+
+    #[test]
+    fn s10_successor_concept_extension_map_tracks_polarity_by_concept_tag() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let concept = atom(&mut ctx, 9401);
+        let other = atom(&mut ctx, 9403);
+        let mut map = SaturationSuccessorConceptExtensionMap::new();
+
+        assert!(map.add_extension_concept(concept, false, 9401));
+        assert!(!map.add_extension_concept(concept, false, 9401));
+        assert!(map.add_extension_concept(concept, true, 9401));
+        assert!(map.add_extension_concept(other, true, 9403));
+
+        let first = map.concept_extension_map.get(&9401).unwrap();
+        assert_eq!(first.concept, concept);
+        assert!(first.positive);
+        assert!(first.negative);
+        let second = map.concept_extension_map.get(&9403).unwrap();
+        assert_eq!(second.concept, other);
+        assert!(!second.positive);
+        assert!(second.negative);
+
+        map.init_successor_concept_extension_map();
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn s10_successor_extension_resolver_walks_positive_and_negative_entries() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let base_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_mut(base_node)
+            .init_individual_saturation_process_node(9500, Id::NONE, Id::NONE);
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(base_node, true);
+        let positive = atom(&mut ctx, 9501);
+        let negative = atom(&mut ctx, 9503);
+
+        let succ_map = {
+            let mut map = SaturationSuccessorConceptExtensionMap::new();
+            assert!(map.add_extension_concept(positive, false, 9501));
+            assert!(map.add_extension_concept(negative, true, 9503));
+            ctx.process_context_mut()
+                .alloc_sat_successor_concept_extension_map(map)
+        };
+
+        let mut algo = super::super::algorithm::SaturationTaskHandleAlgorithm::new();
+        let resolved_node =
+            algo.get_resolved_individual_node_extension_successor(base_node, succ_map, &mut ctx);
+        assert!(resolved_node.is_some());
+        assert_ne!(resolved_node, base_node);
+
+        let label_set = ctx
+            .process_context()
+            .sat_node(resolved_node)
+            .reapply_con_sat_label_set;
+        let label_set = ctx.process_context().reapply_con_sat_label_set(label_set);
+        assert!(label_set.contains_concept_or_reaplly_queue(9501));
+        assert!(label_set.contains_concept_or_reaplly_queue(9503));
     }
 }

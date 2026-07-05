@@ -1,6 +1,6 @@
 //! `completion::u20` — port unit #20 of the completion task-handle algorithm
-//! (family: Blocking (pairwise / label-optimized / dynamic); 17 methods,
-//! cpp ranges 19326–27648).
+//! (family: Blocking (pairwise / label-optimized / dynamic); 24 methods,
+//! cpp ranges 19326–27675).
 //!
 //! Source (READ-ONLY): Konclude
 //! `Source/Reasoner/Kernel/Algorithm/CCalculationTableauCompletionTaskHandleAlgorithm.cpp`.
@@ -22,6 +22,13 @@
 //!   - `testIndividualNodeConceptBackendCacheNeighbourExpansionBlockingCritical` [26177]
 //!   - `addBlockingCoreConcept`                                          [26871]
 //!   - `addIndividualToBlockingUpdateReviewProcessingQueue`             [27643]
+//!   - `getAppliedANDRuleCount`                                         [27650]
+//!   - `getAppliedORRuleCount`                                          [27654]
+//!   - `getAppliedSOMERuleCount`                                        [27658]
+//!   - `getAppliedATLEASTRuleCount`                                     [27662]
+//!   - `getAppliedALLRuleCount`                                         [27666]
+//!   - `getAppliedATMOSTRuleCount`                                      [27670]
+//!   - `getAppliedTotalRuleCount`                                       [27674]
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: pointers become arena ids
 //! (`CIndividualProcessNode*` → `NodeId`, `CConceptDescriptor*` → `ConDescId`,
@@ -38,7 +45,6 @@
 //! `CIndividualNodeBlockingTestData` (`IndiBlockDataId`),
 //! `CBlockingAlternativeData**` (opaque handle),
 //! `CBlockingIndividualNodeLinkedCandidateHash` / `…CandidateData` / `…Linker`,
-//! `CBlockingIndividualNodeCandidateHash` / `…Iterator`, `CNodeSwitchHistory`,
 //! `CReapplyConceptLabelSet` (core-concept / adding-sorted descriptor chains),
 //! `CReapplyRoleSuccessorHash`, `CIndividualNodeRepresentativeMemoryBackendCacheSynchronisationData`
 //! and `CBackendRepresentativeMemoryCacheIndividualAssociationData` (+ their label /
@@ -75,37 +81,37 @@
 #![allow(dead_code, unused_variables, unused_mut, unused_assignments)]
 
 use super::super::model::op::{
-    CCALL, CCAND, CCAQAND, CCAQSOME, CCATLEAST, CCATMOST, CCBRANCHAQAND, CCEQ, CCF_ATLEAST,
-    CCF_ATMOST, CCF_VALUE, CCFS_ALL_AQALL_TYPE, CCFS_SOME_TYPE, CCIMPLAQAND, CCOR, CCSOME,
+    CCALL, CCAND, CCAQAND, CCAQSOME, CCATLEAST, CCATMOST, CCBRANCHAQAND, CCEQ, CCFS_ALL_AQALL_TYPE,
+    CCFS_SOME_TYPE, CCF_ATLEAST, CCF_ATMOST, CCF_VALUE, CCIMPLAQAND, CCOR, CCSOME,
 };
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
-use super::super::model::{ConceptId, RoleId};
+use super::super::model::{ConceptId, ConceptProcessDataId, RoleId};
+use super::super::process::blocking_hash::{
+    BlockingIndividualNodeCandidateData, BlockingIndividualNodeCandidateHash,
+    BlockingIndividualNodeCandidateIterator, BlockingIndividualNodeLinkedCandidateHash,
+};
 use super::super::process::node::IndividualProcessNode;
+use super::super::process::reapply_sat::{BlockingAltDataId, IndividualNodeBlockingTestData};
+use super::super::process::satellites::CoreConceptDescriptorId;
 use super::super::process::stubs::{BackendSyncDataId, IndiBlockDataId};
 use super::super::process::{ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId};
 
 use super::context::CalculationAlgorithmContextBase;
 
-/// KONCLUDE-PORT-NOTE[api]: `CBlockingAlternativeData*` / `**` is not yet ported;
-/// modelled as an opaque handle (`INVALID` == `nullptr`), matching `u18`.
-type BlockingAlternativeDataHandle = Cint64;
+type BlockingAlternativeDataHandle = BlockingAltDataId;
 
-/// KONCLUDE-PORT-NOTE[api]: `CBlockingIndividualNodeCandidateIterator` (a stack
-/// value returned by `getBlockingIndividualNodeCandidateIterator`) is not yet
-/// ported; modelled as an opaque handle (`INVALID` == an exhausted iterator).
-type BlockingIndividualNodeCandidateIteratorHandle = Cint64;
+/// Stack value returned by `getBlockingIndividualNodeCandidateIterator`.
+type BlockingIndividualNodeCandidateIteratorHandle = BlockingIndividualNodeCandidateIterator;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAnywhereBlockingIndividualNodeLinkedCanidateHashed`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the `CIndividualNodeBlockingTestData` (`locBlockData`)
-    /// core-concept-descriptor cursors and the `CBlockingIndividualNodeLinkedCandidateHash`
-    /// minimum-candidate-count search are on not-yet-ported satellites; `coreConDesLinker`
-    /// (from the unported `CReapplyConceptLabelSet::getCoreConceptDescriptorLinker`) is
-    /// `INVALID`, so the faithful translation currently takes the `!coreConDesLinker`
-    /// branch and delegates to `getAnywhereBlockingIndividualNodeCanidateHashed`. The
-    /// else-branch's per-candidate validity / descendant / blocking test is reproduced
-    /// over the (currently empty) candidate node list.
+    /// KONCLUDE-PORT-NOTE[api]: the localized `CIndividualNodeBlockingTestData`
+    /// setup/clear and `CReapplyConceptLabelSet::getCoreConceptDescriptorLinker`
+    /// are live. The `CBlockingIndividualNodeLinkedCandidateHash` minimum-candidate
+    /// search remains deferred; if a core linker exists and no linked candidate
+    /// data is available, the method records the same block-data cursors Konclude
+    /// would after an empty search and the candidate loop stays empty.
     pub fn get_anywhere_blocking_individual_node_linked_canidate_hashed(
         &mut self,
         blocking_test_indi: NodeId,
@@ -124,12 +130,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(blocking_test_indi)
             .individual_block_data(true);
         if loc_block_data == Id::NONE {
-            // W6-DEFER[memory-pool]: locBlockData = alloc CIndividualNodeBlockingTestData;
-            //   locBlockData->initBlockData(blockData);
-            calc_alg_context
-                .process_context_mut()
-                .node_mut(blocking_test_indi)
-                .set_individual_block_data(loc_block_data);
+            // locBlockData = CObjectAllocator<CIndividualNodeBlockingTestData>::allocateAndConstruct(taskMemMan);
+            // locBlockData->initBlockData(blockData); blockingTestIndi->setIndividualBlockData(locBlockData);
+            let pc = calc_alg_context.process_context_mut();
+            let new_block_data = pc.alloc_blocking_test_data(IndividualNodeBlockingTestData::new());
+            if !block_data.is_none() {
+                let taken = std::mem::replace(
+                    pc.blocking_test_data_mut(block_data),
+                    IndividualNodeBlockingTestData::new(),
+                );
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(Some(&taken));
+                *pc.blocking_test_data_mut(block_data) = taken;
+            } else {
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(None);
+            }
+            pc.node_mut(blocking_test_indi)
+                .set_individual_block_data(new_block_data);
+            loc_block_data = new_block_data;
         }
 
         let mut continue_blocking_indi_node: NodeId = Id::NONE;
@@ -142,7 +161,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         ) {
             blocker_node = continue_blocking_indi_node;
         } else {
-            // W6-DEFER[api]: locBlockData->clearBlockingIndividualNode();
+            calc_alg_context
+                .process_context_mut()
+                .blocking_test_data_mut(loc_block_data)
+                .clear_blocking_individual_node();
             if self.signature_cached_individual_node_block(
                 blocking_test_indi,
                 loc_block_data,
@@ -153,41 +175,159 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 blocker_node = continue_blocking_indi_node;
             } else {
                 let mut last_continue_tested_blocking_indi_node_id: Cint64 = -1;
-                // W6-DEFER[api]: if (locBlockData->getBlockingIndividualNode())
-                //   lastContinueTestedBlockingIndiNodeID =
-                //     locBlockData->getBlockingIndividualNode()->getIndividualNodeID();
+                let previous_blocking_node = calc_alg_context
+                    .process_context()
+                    .blocking_test_data(loc_block_data)
+                    .get_blocking_individual_node();
+                if previous_blocking_node.is_some() {
+                    last_continue_tested_blocking_indi_node_id = calc_alg_context
+                        .process_context()
+                        .node(previous_blocking_node)
+                        .individual_node_id();
+                }
 
-                // procDataBox->getBlockingIndividualNodeLinkedCandidateHash(false)
-                let _blocking_cand_hash = calc_alg_context
-                    .processing_data_box_mut()
-                    .blocking_individual_node_linked_candidate_hash(false);
+                let blocking_cand_hash =
+                    calc_alg_context.blocking_individual_node_linked_candidate_hash(false);
                 // conSet = blockingTestIndi->getReapplyConceptLabelSet(false)
-                let _con_set: LabelSetId = calc_alg_context
+                let con_set: LabelSetId = calc_alg_context
                     .process_context_mut()
                     .node_mut(blocking_test_indi)
                     .get_reapply_concept_label_set(false);
-                // W6-DEFER[api]: coreConDesLinker = conSet->getCoreConceptDescriptorLinker();
-                let core_con_des_linker: Cint64 = INVALID;
+                let core_con_des_linker = if con_set.is_some() {
+                    calc_alg_context
+                        .process_context()
+                        .label_set(con_set)
+                        .get_core_concept_descriptor_linker()
+                } else {
+                    CoreConceptDescriptorId::NONE
+                };
                 let blocking_test_indi_id = calc_alg_context
                     .process_context()
                     .node(blocking_test_indi)
                     .individual_node_id();
 
-                if core_con_des_linker == INVALID {
+                if core_con_des_linker.is_none() {
                     blocker_node = self.get_anywhere_blocking_individual_node_canidate_hashed(
                         blocking_test_indi,
                         block_alt_data,
                         calc_alg_context,
                     );
                 } else {
-                    // W6-DEFER[api]: minimum-candidate-count search over the core-concept
-                    //   descriptor chain (locBlockData last-core cursors +
-                    //   blockingCandHash->getBlockingIndividualCandidateData(conDes)->getCandidateCount());
-                    //   yields `minBlockingIndNodeCandData->getBlockingCandidatesIndividualNodeLinker()`.
-                    //   All operands are on unported satellites; the resulting candidate
-                    //   node list is currently empty. The per-candidate test below is faithful.
-                    let blocking_cand_nodes: Vec<NodeId> = Vec::new();
-                    for blocker_cand_indi_node in blocking_cand_nodes {
+                    let mut min_blocking_ind_node_cand_data = Id::NONE;
+                    let mut min_blocking_ind_node_cand_data_count: Cint64 = 0;
+                    let mut min_blocking_con_des = ConDescId::NONE;
+                    let mut last_min_blocking_ind_node_cand_data = Id::NONE;
+
+                    let last_added_core_con_des = calc_alg_context
+                        .process_context()
+                        .blocking_test_data(loc_block_data)
+                        .get_last_added_core_concept_descriptor();
+                    let mut last_con_des = calc_alg_context
+                        .process_context()
+                        .blocking_test_data(loc_block_data)
+                        .get_last_core_blocking_candidate_concept_descriptor();
+                    let last_node_diff = calc_alg_context
+                        .process_context()
+                        .blocking_test_data(loc_block_data)
+                        .get_last_core_blocking_candidate_concept_node_difference();
+                    if last_added_core_con_des != core_con_des_linker {
+                        last_con_des = ConDescId::NONE;
+                    }
+
+                    if blocking_cand_hash.is_some() && last_con_des.is_some() {
+                        let blocking_cand_data =
+                            BlockingIndividualNodeLinkedCandidateHash::get_blocking_individual_candidate_data_for_concept_descriptor(
+                                calc_alg_context.process_context_mut(),
+                                blocking_cand_hash,
+                                last_con_des,
+                                false,
+                            );
+                        if blocking_cand_data.is_some() {
+                            let blocking_ind_node_cand_data_count = calc_alg_context
+                                .process_context()
+                                .blocking_indi_node_linked_cand_data(blocking_cand_data)
+                                .get_candidate_count();
+                            if blocking_ind_node_cand_data_count <= last_node_diff {
+                                min_blocking_ind_node_cand_data = blocking_cand_data;
+                                min_blocking_ind_node_cand_data_count =
+                                    blocking_ind_node_cand_data_count;
+                            }
+                        }
+                    }
+
+                    if blocking_cand_hash.is_some() && min_blocking_ind_node_cand_data.is_none() {
+                        let mut core_con_des_linker_it = core_con_des_linker;
+                        while core_con_des_linker_it.is_some() {
+                            let con_des = calc_alg_context
+                                .process_context()
+                                .core_con_desc(core_con_des_linker_it)
+                                .get_concept_desciptor();
+                            let blocking_cand_data =
+                                BlockingIndividualNodeLinkedCandidateHash::get_blocking_individual_candidate_data_for_concept_descriptor(
+                                    calc_alg_context.process_context_mut(),
+                                    blocking_cand_hash,
+                                    con_des,
+                                    false,
+                                );
+                            if blocking_cand_data.is_some() {
+                                let blocking_ind_node_cand_data_count = calc_alg_context
+                                    .process_context()
+                                    .blocking_indi_node_linked_cand_data(blocking_cand_data)
+                                    .get_candidate_count();
+                                if min_blocking_ind_node_cand_data.is_none()
+                                    || blocking_ind_node_cand_data_count
+                                        < min_blocking_ind_node_cand_data_count
+                                {
+                                    last_min_blocking_ind_node_cand_data =
+                                        min_blocking_ind_node_cand_data;
+                                    min_blocking_ind_node_cand_data_count =
+                                        blocking_ind_node_cand_data_count;
+                                    min_blocking_ind_node_cand_data = blocking_cand_data;
+                                    min_blocking_con_des = con_des;
+                                } else if last_min_blocking_ind_node_cand_data.is_none() {
+                                    last_min_blocking_ind_node_cand_data = blocking_cand_data;
+                                }
+                            }
+                            core_con_des_linker_it = calc_alg_context
+                                .process_context()
+                                .core_con_desc(core_con_des_linker_it)
+                                .get_next();
+                        }
+                    }
+
+                    calc_alg_context
+                        .process_context_mut()
+                        .blocking_test_data_mut(loc_block_data)
+                        .set_last_added_core_concept_descriptor(core_con_des_linker)
+                        .set_last_core_blocking_candidate_concept_descriptor(min_blocking_con_des)
+                        .set_last_core_blocking_candidate_concept_node_difference(0);
+                    if last_min_blocking_ind_node_cand_data.is_some() {
+                        let diff_count = calc_alg_context
+                            .process_context()
+                            .blocking_indi_node_linked_cand_data(
+                                last_min_blocking_ind_node_cand_data,
+                            )
+                            .get_candidate_count();
+                        calc_alg_context
+                            .process_context_mut()
+                            .blocking_test_data_mut(loc_block_data)
+                            .set_last_core_blocking_candidate_concept_node_difference(diff_count);
+                    }
+
+                    let blocking_cand_data = min_blocking_ind_node_cand_data;
+                    let mut blocking_ind_node_linker = if blocking_cand_data.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .blocking_indi_node_linked_cand_data(blocking_cand_data)
+                            .get_blocking_candidates_individual_node_linker()
+                    } else {
+                        Id::NONE
+                    };
+                    while blocking_ind_node_linker.is_some() && blocker_node.is_none() {
+                        let blocker_cand_indi_node = calc_alg_context
+                            .process_context()
+                            .blocking_indi_node_linker(blocking_ind_node_linker)
+                            .get_candidate_individual_node();
                         if blocker_node != Id::NONE {
                             break;
                         }
@@ -199,8 +339,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             && blocker_cand_indi_node_id != blocking_test_indi_id
                         {
                             // W6-DEFER[macro]: STATINC(ANYWHERECORECONCEPTBLOCKINGCANDIDATEHASHSEARCHINDINODECOUNT)
-                            let up_blocker_cand_indi_node = self
-                                .get_up_to_date_individual(blocker_cand_indi_node, calc_alg_context);
+                            let up_blocker_cand_indi_node = self.get_up_to_date_individual(
+                                blocker_cand_indi_node,
+                                calc_alg_context,
+                            );
 
                             if self.is_individual_node_valid_blocker(
                                 up_blocker_cand_indi_node,
@@ -260,6 +402,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 }
                             }
                         }
+                        blocking_ind_node_linker = calc_alg_context
+                            .process_context()
+                            .blocking_indi_node_linker(blocking_ind_node_linker)
+                            .get_next();
                     }
                 }
             }
@@ -270,13 +416,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAnywhereBlockingIndividualNodeCanidateHashed`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the `CIndividualNodeBlockingTestData` (`locBlockData`)
-    /// node-switch / concept-label-modification tags and the `CNodeSwitchHistory`
-    /// minimum-ancestor lookup are on unported satellites; their reads are deferred
-    /// to the null/zero defaults. The two candidate-traversal branches (hash-iterator
-    /// vs. descending-id scan) are reproduced; the hash-iterator branch traverses a
-    /// (currently exhausted) `CBlockingIndividualNodeCandidateIterator`, while the
-    /// descending-id scan over `getUpToDateIndividual(prevIndiID)` is faithful.
+    /// KONCLUDE-PORT-NOTE[api]: the localized `CIndividualNodeBlockingTestData`
+    /// and `CNodeSwitchHistory` tag/min-bound bookkeeping are live. The
+    /// candidate-traversal branches are reproduced over the typed candidate
+    /// iterator or the descending-id scan; remaining deferrals inside the
+    /// downstream blocker predicates stay at their own call sites.
     pub fn get_anywhere_blocking_individual_node_canidate_hashed(
         &mut self,
         blocking_test_indi: NodeId,
@@ -299,17 +443,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(blocking_test_indi)
             .individual_block_data(true);
         if loc_block_data == Id::NONE {
-            // W6-DEFER[memory-pool]: locBlockData = alloc CIndividualNodeBlockingTestData;
-            //   locBlockData->initBlockData(blockData);
-            calc_alg_context
-                .process_context_mut()
-                .node_mut(blocking_test_indi)
-                .set_individual_block_data(loc_block_data);
+            // locBlockData = CObjectAllocator<CIndividualNodeBlockingTestData>::allocateAndConstruct(taskMemMan);
+            // locBlockData->initBlockData(blockData); blockingTestIndi->setIndividualBlockData(locBlockData);
+            let pc = calc_alg_context.process_context_mut();
+            let new_block_data = pc.alloc_blocking_test_data(IndividualNodeBlockingTestData::new());
+            if !block_data.is_none() {
+                let taken = std::mem::replace(
+                    pc.blocking_test_data_mut(block_data),
+                    IndividualNodeBlockingTestData::new(),
+                );
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(Some(&taken));
+                *pc.blocking_test_data_mut(block_data) = taken;
+            } else {
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(None);
+            }
+            pc.node_mut(blocking_test_indi)
+                .set_individual_block_data(new_block_data);
+            loc_block_data = new_block_data;
         }
-        // W6-DEFER[api]: prevNodeSwitchTag = locBlockData->getNodeSwitchTag();
-        let prev_node_switch_tag: Cint64 = 0;
-        // W6-DEFER[api]: prevNodeConceptLabelModTag = locBlockData->getConceptLabelSetModificationTag();
-        let prev_node_concept_label_mod_tag: Cint64 = 0;
+        let prev_node_switch_tag = calc_alg_context
+            .process_context()
+            .blocking_test_data(loc_block_data)
+            .get_node_switch_tag();
+        let prev_node_concept_label_mod_tag = calc_alg_context
+            .process_context()
+            .blocking_test_data(loc_block_data)
+            .get_concept_label_set_modification_tag();
         let mut min_test_indi_node_id: Cint64 = 0;
         let mut min_test_anc_indi_depth: Cint64 = 0;
 
@@ -324,15 +485,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             blocker_node = continue_blocking_indi_node;
         } else {
             let mut last_continue_tested_blocking_indi_node_id: Cint64 = -1;
-            // W6-DEFER[api]: if (locBlockData->getBlockingIndividualNode())
-            //   lastContinueTestedBlockingIndiNodeID =
-            //     locBlockData->getBlockingIndividualNode()->getIndividualNodeID();
-            if node_switch_history != Id::NONE && loc_block_data != Id::NONE && prev_node_switch_tag > 0
-            {
-                // W6-DEFER[api]: nodeSwitchHistory->getMinIndividualAncestorDepthAndNodeID(
-                //   prevNodeSwitchTag, minTestAncIndiDepth, minTestIndiNodeID);
-                min_test_indi_node_id = min_test_indi_node_id.max(0);
-                min_test_anc_indi_depth = min_test_anc_indi_depth.max(0);
+            let previous_blocking_node = calc_alg_context
+                .process_context()
+                .blocking_test_data(loc_block_data)
+                .get_blocking_individual_node();
+            if previous_blocking_node.is_some() {
+                last_continue_tested_blocking_indi_node_id = calc_alg_context
+                    .process_context()
+                    .node(previous_blocking_node)
+                    .individual_node_id();
+            }
+            if node_switch_history != Id::NONE && prev_node_switch_tag > 0 {
+                (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+                    .node_switch_history_min_bounds(
+                        node_switch_history,
+                        prev_node_switch_tag,
+                        0,
+                        0,
+                    );
             }
             if calc_alg_context
                 .process_context()
@@ -340,20 +510,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .individual_initialization_concept()
                 != Id::NONE
             {
-                let mut indi_node_cand_it = self
-                    .get_blocking_individual_node_candidate_iterator(blocking_test_indi, calc_alg_context);
-                // W6-DEFER[api]: while (!blockerNode && indiNodeCandIt.hasNext()) — the
-                //   CBlockingIndividualNodeCandidateIterator is unported, so it is
-                //   exhausted; the faithful per-candidate body (getUpToDateIndividual +
-                //   purged/blockable removal + valid-blocker + label-set-modified gate +
-                //   isIndividualNodeBlocking) is reproduced over the empty candidate list.
-                let cand_nodes: Vec<NodeId> = Vec::new();
-                let _ = &mut indi_node_cand_it;
-                for indi_node in cand_nodes {
-                    if blocker_node != Id::NONE {
-                        break;
-                    }
-                    let mut up_indi_node = self.get_up_to_date_individual(indi_node, calc_alg_context);
+                let mut indi_node_cand_it = self.get_blocking_individual_node_candidate_iterator(
+                    blocking_test_indi,
+                    calc_alg_context,
+                );
+                while blocker_node == Id::NONE && indi_node_cand_it.has_next() {
+                    let Some(indi_node) = indi_node_cand_it.next_individual_candidate(true) else {
+                        continue;
+                    };
+                    let mut up_indi_node =
+                        self.get_up_to_date_individual(indi_node, calc_alg_context);
                     let up_indi_node_id = calc_alg_context
                         .process_context()
                         .node(up_indi_node)
@@ -369,8 +535,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 .is_blockable_individual()
                         {
                             // W6-DEFER[macro]: STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEREMOVECOUNT)
-                            // W6-DEFER[api]: indiNodeCandIt.removeLastIndividualCandidate();
-                        } else if self.is_individual_node_valid_blocker(up_indi_node, calc_alg_context)
+                            indi_node_cand_it.remove_last_individual_candidate_in_context(
+                                calc_alg_context.process_context_mut(),
+                            );
+                        } else if self
+                            .is_individual_node_valid_blocker(up_indi_node, calc_alg_context)
                             && self.is_individual_node_concept_label_set_modified(
                                 &mut up_indi_node,
                                 prev_node_concept_label_mod_tag,
@@ -398,13 +567,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .individual_node_id()
                     - 1;
                 let mut prev_indi_node: NodeId;
-                while blocker_node == Id::NONE && prev_indi_id > 0 && prev_indi_id >= min_test_indi_node_id
+                while blocker_node == Id::NONE
+                    && prev_indi_id > 0
+                    && prev_indi_id >= min_test_indi_node_id
                 {
                     if prev_indi_id != last_continue_tested_blocking_indi_node_id {
                         prev_indi_node =
                             self.get_up_to_date_individual_by_id(prev_indi_id, calc_alg_context);
                         if prev_indi_node != Id::NONE
-                            && self.is_individual_node_valid_blocker(prev_indi_node, calc_alg_context)
+                            && self
+                                .is_individual_node_valid_blocker(prev_indi_node, calc_alg_context)
                             && self.is_individual_node_concept_label_set_modified(
                                 &mut prev_indi_node,
                                 prev_node_concept_label_mod_tag,
@@ -428,10 +600,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
-        // W6-DEFER[api]: locBlockData->setBlockingIndividualNode(blockerNode);
+        calc_alg_context
+            .process_context_mut()
+            .blocking_test_data_mut(loc_block_data)
+            .set_blocking_individual_node(blocker_node);
         if blocker_node == Id::NONE {
-            // W6-DEFER[api]: locBlockData->updateNodeSwitchTag(calcAlgContext->getUsedProcessTagger());
-            // W6-DEFER[api]: locBlockData->updateConceptLabelSetModificationTag(calcAlgContext->getUsedProcessTagger());
+            let (current_node_switch_tag, current_label_mod_tag) = {
+                let process_tagger = calc_alg_context.process_context().used_process_tagger();
+                (
+                    process_tagger.get_current_node_switch_tag(),
+                    process_tagger.get_current_concept_label_set_modification_tag(),
+                )
+            };
+            let loc_block_data_ref = calc_alg_context
+                .process_context_mut()
+                .blocking_test_data_mut(loc_block_data);
+            loc_block_data_ref.update_node_switch_tag(current_node_switch_tag);
+            loc_block_data_ref.update_concept_label_set_modification_tag(current_label_mod_tag);
         }
         blocker_node
     }
@@ -441,10 +626,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// KONCLUDE-PORT-NOTE[api]: the returned `CBlockingIndividualNodeCandidateIterator`,
     /// the `CBlockingIndividualNodeCandidateHash` / `…CandidateData` lazy-hash update
     /// (max-valid-id / tag bookkeeping + descending-id rebuild) and the
-    /// `CNodeSwitchHistory` min-ancestor lookup are unported satellites; the structure
-    /// of the lazy-exact-hashing rebuild loop is reproduced (it reads node arena +
-    /// the deferred candidate-data tags) and the method returns the opaque exhausted
-    /// iterator handle.
+    /// `CNodeSwitchHistory` min-ancestor lookup are live over the Rust arenas. The
+    /// remaining explicit deferrals in this method are statistics/memory-pool
+    /// bookkeeping and whatever downstream blocker checks still defer.
     pub fn get_blocking_individual_node_candidate_iterator(
         &mut self,
         blocking_test_indi: NodeId,
@@ -459,33 +643,41 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .node(blocking_test_indi)
             .individual_initialization_concept();
+        if initialization_concept_des.is_none() {
+            return BlockingIndividualNodeCandidateIterator::empty();
+        }
         // procDataBox->getNodeSwitchHistory(false)
-        let node_switch_history = calc_alg_context
-            .processing_data_box_mut()
-            .node_switch_history(false);
+        let node_switch_history = calc_alg_context.node_switch_history(false);
         // test whether hash has to be updated
         let mut needs_hash_update = true;
         // blockingCandHash = procDataBox->getBlockingIndividualNodeCandidateHash(true);
-        let _blocking_cand_hash = calc_alg_context
-            .processing_data_box_mut()
-            .blocking_individual_node_candidate_hash(true);
-        // W6-DEFER[api]: blockingCandData =
-        //   blockingCandHash->getBlockingIndividualCandidateData(initializationConceptDes, true);
+        let blocking_cand_hash = calc_alg_context.blocking_individual_node_candidate_hash(true);
+        let blocking_cand_data = BlockingIndividualNodeCandidateHash::get_blocking_individual_candidate_data_for_concept_descriptor(
+            calc_alg_context.process_context_mut(),
+            blocking_cand_hash,
+            initialization_concept_des,
+            true,
+        );
 
         if self.conf_anywhere_blocking_lazy_exact_hashing {
-            // W6-DEFER[api]: maxValidIndiID = blockingCandData->getMaxValidIndividualID()+1;
-            let mut max_valid_indi_id: Cint64 = 1;
-            // W6-DEFER[api]: conLabelSetModTag = blockingCandData->getConceptLabelSetModificationTag();
-            let con_label_set_mod_tag: Cint64 = 0;
-            // W6-DEFER[api]: nodeSwitchTag = blockingCandData->getNodeSwitchTag();
-            let node_switch_tag: Cint64 = 0;
+            let mut max_valid_indi_id = calc_alg_context
+                .process_context()
+                .blocking_indi_node_cand_data(blocking_cand_data)
+                .get_max_valid_individual_id()
+                + 1;
+            let con_label_set_mod_tag = calc_alg_context
+                .process_context()
+                .blocking_indi_node_cand_data(blocking_cand_data)
+                .get_concept_label_set_modification_tag();
+            let node_switch_tag = calc_alg_context
+                .process_context()
+                .blocking_indi_node_cand_data(blocking_cand_data)
+                .get_node_switch_tag();
             let mut min_test_indi_node_id: Cint64 = 1;
             let mut min_test_anc_indi_depth: Cint64 = 0;
             if node_switch_history != Id::NONE && node_switch_tag > 0 {
-                // W6-DEFER[api]: nodeSwitchHistory->getMinIndividualAncestorDepthAndNodeID(
-                //   nodeSwitchTag, minTestAncIndiDepth, minTestIndiNodeID);
-                min_test_indi_node_id = min_test_indi_node_id.max(1);
-                min_test_anc_indi_depth = min_test_anc_indi_depth.max(0);
+                (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+                    .node_switch_history_min_bounds(node_switch_history, node_switch_tag, 1, 0);
             }
             if max_valid_indi_id >= testing_indi_id && min_test_indi_node_id >= testing_indi_id {
                 needs_hash_update = false;
@@ -495,7 +687,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if max_valid_indi_id != testing_indi_id {
                     // insert testing node
                     // W6-DEFER[macro]: STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT)
-                    // W6-DEFER[api]: blockingCandData->insertBlockingCandidateIndividualNode(blockingTestIndi);
+                    calc_alg_context
+                        .process_context_mut()
+                        .blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(
+                            blocking_cand_data,
+                            blocking_test_indi,
+                        );
                 }
                 let mut dest_indi_id = max_valid_indi_id.min(min_test_indi_node_id);
                 dest_indi_id = dest_indi_id.max(0);
@@ -519,30 +716,58 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 calc_alg_context,
                             )
                         {
-                            // W6-DEFER[api]: if (indi->getReapplyConceptLabelSet(false)
-                            //     ->containsConceptDescriptor(initializationConceptDes)) {
-                            //   STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT)
-                            //   blockingCandData->insertBlockingCandidateIndividualNode(indi);
-                            // }
-                            let _label_set: LabelSetId = calc_alg_context
+                            let label_set: LabelSetId = calc_alg_context
                                 .process_context_mut()
                                 .node_mut(indi)
                                 .get_reapply_concept_label_set(false);
-                            let _ = initialization_concept_des;
+                            if label_set.is_some()
+                                && calc_alg_context
+                                    .process_context()
+                                    .label_set(label_set)
+                                    .contains_concept_descriptor_in_context(
+                                        calc_alg_context.process_context(),
+                                        calc_alg_context.ontology_arenas(),
+                                        initialization_concept_des,
+                                    )
+                            {
+                                // W6-DEFER[macro]: STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT)
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(
+                                        blocking_cand_data,
+                                        indi,
+                                    );
+                            }
                         }
                     }
                     indi_id -= 1;
                 }
-                // W3-DEFER[api]: processTagger = calcAlgContext->getUsedProcessTagger();
-                // W6-DEFER[api]: blockingCandData->updateConceptLabelSetModificationTag(processTagger);
-                // W6-DEFER[api]: blockingCandData->updateNodeSwitchTag(processTagger);
-                // W6-DEFER[api]: blockingCandData->setMaxValidIndividualID(qMax(maxValidIndiID, testingIndiID));
+                let (current_label_mod_tag, current_node_switch_tag) = {
+                    let process_tagger = calc_alg_context.process_context().used_process_tagger();
+                    (
+                        process_tagger.get_current_concept_label_set_modification_tag(),
+                        process_tagger.get_current_node_switch_tag(),
+                    )
+                };
+                {
+                    let blocking_cand_data_ref = calc_alg_context
+                        .process_context_mut()
+                        .blocking_indi_node_cand_data_mut(blocking_cand_data);
+                    blocking_cand_data_ref
+                        .update_concept_label_set_modification_tag(current_label_mod_tag);
+                    blocking_cand_data_ref.update_node_switch_tag(current_node_switch_tag);
+                    blocking_cand_data_ref
+                        .set_max_valid_individual_id(max_valid_indi_id.max(testing_indi_id));
+                }
                 max_valid_indi_id = max_valid_indi_id.max(testing_indi_id);
             }
         }
 
-        // W6-DEFER[api]: return blockingCandData->getBlockingCandidatesIndividualNodeIterator(blockingTestIndi);
-        INVALID
+        BlockingIndividualNodeCandidateData::get_blocking_candidates_individual_node_iterator_for_node_in_context(
+            calc_alg_context.process_context(),
+            blocking_cand_data,
+            blocking_test_indi,
+        )
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateIndirectSuccessorBlocking`.
@@ -576,16 +801,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while_not_contains_flags: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W6-DEFER[api]: succIt = indi->getSuccessorIterator(); — getSuccessorIterator
-        //   returns the zero-size SuccessorIterator stub; the edge list is empty until
-        //   the role-successor-link iteration API lands.
-        let succ_it: Vec<EdgeId> = Vec::new();
+        let mut succ_it = calc_alg_context
+            .process_context()
+            .node_successor_iterator(indi);
         let anc_depth = calc_alg_context
             .process_context()
             .node(indi)
             .individual_ancestor_depth();
-        for succ_link in succ_it {
-            let succ_indi = self.get_successor_individual(&mut indi, succ_link, calc_alg_context);
+        while succ_it.has_next() {
+            let succ_link = succ_it.next_link(true);
+            let mut source_indi = indi;
+            let succ_indi =
+                self.get_successor_individual(&mut source_indi, succ_link, calc_alg_context);
+            if succ_indi.is_none() {
+                continue;
+            }
             let succ_anc_depth = calc_alg_context
                 .process_context()
                 .node(succ_indi)
@@ -625,14 +855,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         let _ = recursive;
-        // W6-DEFER[api]: succIt = indi->getSuccessorIterator(); (see above)
-        let succ_it: Vec<EdgeId> = Vec::new();
+        let mut succ_it = calc_alg_context
+            .process_context()
+            .node_successor_iterator(indi);
         let anc_depth = calc_alg_context
             .process_context()
             .node(indi)
             .individual_ancestor_depth();
-        for succ_link in succ_it {
-            let succ_indi = self.get_successor_individual(&mut indi, succ_link, calc_alg_context);
+        while succ_it.has_next() {
+            let succ_link = succ_it.next_link(true);
+            let mut source_indi = indi;
+            let succ_indi =
+                self.get_successor_individual(&mut source_indi, succ_link, calc_alg_context);
+            if succ_indi.is_none() {
+                continue;
+            }
             let succ_anc_depth = calc_alg_context
                 .process_context()
                 .node(succ_indi)
@@ -753,7 +990,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if self.opt_det_exp_preporcessing {
                 return true;
             } else {
-                return self.detect_individual_node_blocked_status(blocking_test_indi, calc_alg_context);
+                return self
+                    .detect_individual_node_blocked_status(blocking_test_indi, calc_alg_context);
             }
         }
         if calc_alg_context
@@ -768,7 +1006,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     IndividualProcessNode::PRF_BLOCKINGRETESTDUEINDIRECTBLOCKERLOSS,
                 )
             {
-                return self.detect_individual_node_blocked_status(blocking_test_indi, calc_alg_context);
+                return self
+                    .detect_individual_node_blocked_status(blocking_test_indi, calc_alg_context);
             } else {
                 return true;
             }
@@ -786,7 +1025,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         | IndividualProcessNode::PRF_BLOCKINGRETESTDUEBLOCKERMODIFIED,
                 )
             {
-                return self.detect_individual_node_blocked_status(blocking_test_indi, calc_alg_context);
+                return self
+                    .detect_individual_node_blocked_status(blocking_test_indi, calc_alg_context);
             } else {
                 return true;
             }
@@ -896,12 +1136,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::tryEstablishExpansionBlockingWithBackendCacheSynchronisation`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `CBackendRepresentativeMemoryCacheIndividualAssociationData`
-    /// (`assocData`) and the backend-sync-data accessors are unported; their reads are
-    /// deferred to null/false. The `if (assocData)` body is reproduced (so the
-    /// node-flag additions and the `testIndividualNodeBackendCacheConceptsSynchronization`
-    /// sibling call are preserved); it currently short-circuits because `assocData`
-    /// is null, exactly as the faithful translation requires until the backend cache lands.
+    /// KONCLUDE-PORT-NOTE[api]: the backend-sync object is live, so the `assocData`
+    /// null gate now reads `backendSyncData->getAssocitaionData()`. The downstream
+    /// association-data completeness / label-cache tests still depend on backend
+    /// cache handler semantics and remain deferred.
     pub fn try_establish_expansion_blocking_with_backend_cache_synchronisation(
         &mut self,
         indi_node: NodeId,
@@ -913,9 +1151,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(indi_node)
             .individual_backend_cache_synchronisation_data(false);
         if backend_sync_data != Id::NONE {
-            // W6-DEFER[api]: assocData = backendSyncData->getAssocitaionData();
-            let assoc_data: Cint64 = INVALID;
-            if assoc_data != INVALID {
+            let assoc_data = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_associtaion_data();
+            if assoc_data.is_some() {
                 // W6-DEFER[api]: backendExpBlocking = assocData->isCompletelyHandled()
                 //   && !assocData->hasRepresentativeSameIndividualMerging();
                 let mut backend_exp_blocking = false;
@@ -964,15 +1204,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the backend-representative-memory synchronisation data,
-    /// its association data + full-concept-set / cardinality label-cache entries, and the
-    /// `CReapplyRoleSuccessorHash` are unported satellites. The outer control flow is
-    /// reproduced — the `!isCriticalCardinalityExpansionBlocking() && assocData` gate, the
-    /// newly-merged-deterministic visit (sets `expansionBlockingCritical`), the
-    /// per-role cardinality-data loop, and the final localized-cache write — with every
-    /// satellite read deferred to its null/false default (so the `else` arm
-    /// `expansionBlockingCritical = true` of the missing-association case is preserved).
-    /// The role-cardinality hash iteration is over a currently-empty cache and is marked.
+    /// KONCLUDE-PORT-NOTE[api]: the backend-sync data object is live. This method
+    /// now reads/writes the sync-owned criticality flags and cursors exactly at the
+    /// Konclude call sites. Backend association-label/cardinality extension lookup
+    /// and the newly-merged deterministic visitor remain deferred to the cache
+    /// handler/association-data waves.
     pub fn test_individual_node_backend_cache_expansion_blocking_critical_cardinality(
         &mut self,
         indi_node: NodeId,
@@ -989,25 +1225,47 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .individual_backend_cache_synchronisation_data(true);
 
         if backend_sync_data != Id::NONE {
-            // W6-DEFER[api]: assocData = backendSyncData->getAssocitaionData();
-            let assoc_data: Cint64 = INVALID;
-            // W6-DEFER[api]: !backendSyncData->isCriticalCardinalityExpansionBlocking() && assocData
-            let is_critical_cardinality_expansion_blocking = false;
-            if !is_critical_cardinality_expansion_blocking && assoc_data != INVALID {
+            let assoc_data = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_associtaion_data();
+            let is_critical_cardinality_expansion_blocking = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .is_critical_cardinality_expansion_blocking();
+            if !is_critical_cardinality_expansion_blocking && assoc_data.is_some() {
                 self.test_individual_node_backend_cache_new_mergings(indi_node, calc_alg_context);
                 // backendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(false);
-                let _backend_sync_data: BackendSyncDataId = calc_alg_context
+                let backend_sync_data: BackendSyncDataId = calc_alg_context
                     .process_context()
                     .node(indi_node)
                     .individual_backend_cache_synchronisation_data(false);
 
-                // W6-DEFER[api]: if (backendSyncData->getMergedIndividualNodeLinker()
-                //     != backendSyncData->getLastCriticalNeighboursTestedMergedNodeLinker()) {
-                //   visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
-                //     indiNode, ..., [&](...) { expansionBlockingCritical = true; return false; }, ...);
-                //   locBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(indiNode, ...);
-                //   locBackendSyncData->setLastCriticalNeighboursTestedMergedNodeLinker(...);
-                // }
+                let (merged_linker_changed, merged_linker_snapshot) = {
+                    let sync = calc_alg_context
+                        .process_context()
+                        .backend_sync_data(backend_sync_data);
+                    (
+                        sync.get_merged_individual_node_linker()
+                            != sync.get_last_critical_neighbours_tested_merged_node_linker(),
+                        sync.get_merged_individual_node_linker().to_vec(),
+                    )
+                };
+                if merged_linker_changed {
+                    // W6-DEFER[api]: visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
+                    //   indiNode, ..., [&](...) { expansionBlockingCritical = true; return false; }, ...);
+                    loc_backend_sync_data = self
+                        .get_localized_individual_backend_cache_snychronisation_data(
+                            indi_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .backend_sync_data_mut(loc_backend_sync_data)
+                        .set_last_critical_neighbours_tested_merged_node_linker(
+                            merged_linker_snapshot,
+                        );
+                }
 
                 // W6-DEFER[api]: fullConSetLabelCacheItem =
                 //   assocData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL);
@@ -1022,12 +1280,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         .node_mut(indi_node)
                         .get_reapply_role_successor_hash(false);
                     if role_succ_hash != Id::NONE && card_extension_data != INVALID {
-                        let _last_added_link_edge: EdgeId = calc_alg_context
+                        let last_added_link_edge: EdgeId = calc_alg_context
                             .process_context()
                             .node(indi_node)
                             .get_last_added_role_link();
-                        // W6-DEFER[api]: lastTestedLinkEdge = backendSyncData->getLastCriticalCardinalityLinkEdge();
-                        // W6-DEFER[api]: assocData = backendSyncData->getAssocitaionData();
+                        let last_tested_link_edge = calc_alg_context
+                            .process_context()
+                            .backend_sync_data(backend_sync_data)
+                            .get_last_critical_cardinality_link_edge();
+                        let _assoc_data = calc_alg_context
+                            .process_context()
+                            .backend_sync_data(backend_sync_data)
+                            .get_associtaion_data();
+                        let critical_cardinality_initially_checked = calc_alg_context
+                            .process_context()
+                            .backend_sync_data(backend_sync_data)
+                            .has_critical_cardinality_initially_checked();
+                        let _ = (
+                            last_tested_link_edge,
+                            last_added_link_edge,
+                            critical_cardinality_initially_checked,
+                        );
 
                         // W6-DEFER[api]: if (lastTestedLinkEdge != lastAddedLinkEdge
                         //     || !assocData->isCompletelyHandled() && !backendSyncData->hasCriticalCardinalityInitiallyChecked()) {
@@ -1065,6 +1338,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             {
                                 // W6-DEFER[api]: linkCount += cardData->getExistentialMaxUsedCardinality();
                             }
+                            let _all_neighbour_forced_expansion = calc_alg_context
+                                .process_context()
+                                .backend_sync_data(backend_sync_data)
+                                .has_all_neighbour_forced_expansion();
                             // W6-DEFER[api]: if (!backendSyncData->hasAllNeighbourForcedExpansion())
                             //   linkCount += getBackendCacheRoleRepresentativeNeighbourCount(...);
                             // W6-DEFER[api]: minCard = cardData->getMinimumRestrictingCardinality();
@@ -1083,7 +1360,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             indi_node,
                             calc_alg_context,
                         );
-                    // W6-DEFER[api]: locBackendSyncData->setCriticalCardinalityExpansionBlocking(expansionBlockingCritical);
+                    calc_alg_context
+                        .process_context_mut()
+                        .backend_sync_data_mut(loc_backend_sync_data)
+                        .set_critical_cardinality_expansion_blocking(expansion_blocking_critical);
                 }
             } else {
                 expansion_blocking_critical = true;
@@ -1097,12 +1377,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical`.
     ///
     /// KONCLUDE-PORT-NOTE[api]: same backend-cache satellite family as the cardinality
-    /// variant above (all reads deferred to null/false). The outer flow is reproduced —
-    /// the `assocData && !isCriticalNeighbourExpansionBlocking()` gate, the newly-merged
-    /// visit, the merged-linker short-circuit, and the adding-sorted-concept-descriptor
-    /// scan that calls `testIndividualNodeConceptBackendCacheNeighbourExpansionBlockingCritical`
-    /// per concept. The commented-out festo.com debug block in the source is omitted
-    /// (dead debug code). The concept-descriptor scan iterates the unported
+    /// variant above. The backend-sync-owned gates/cursors are now live; association
+    /// propagation and label-cache membership remain deferred. The commented-out
+    /// festo.com debug block in the source is omitted (dead debug code). The
+    /// concept-descriptor scan iterates the unported
     /// `CReapplyConceptLabelSet` adding-sorted chain (currently empty); the `hasNondeterministicDependency`
     /// and per-concept sibling calls are preserved on the skeleton.
     pub fn test_individual_node_backend_cache_neighbour_expansion_blocking_critical(
@@ -1122,27 +1400,51 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .individual_backend_cache_synchronisation_data(true);
 
         if backend_sync_data != Id::NONE {
-            // W6-DEFER[api]: assocData = backendSyncData->getAssocitaionData();
-            let assoc_data: Cint64 = INVALID;
-            // W6-DEFER[api]: assocData && !backendSyncData->isCriticalNeighbourExpansionBlocking()
-            let is_critical_neighbour_expansion_blocking = false;
-            if assoc_data != INVALID && !is_critical_neighbour_expansion_blocking {
+            let assoc_data = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_associtaion_data();
+            let is_critical_neighbour_expansion_blocking = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .is_critical_neighbour_expansion_blocking();
+            if assoc_data.is_some() && !is_critical_neighbour_expansion_blocking {
                 self.test_individual_node_backend_cache_new_mergings(indi_node, calc_alg_context);
-                let _backend_sync_data: BackendSyncDataId = calc_alg_context
+                let backend_sync_data: BackendSyncDataId = calc_alg_context
                     .process_context()
                     .node(indi_node)
                     .individual_backend_cache_synchronisation_data(false);
 
-                // W6-DEFER[api]: if (backendSyncData->getMergedIndividualNodeLinker()
-                //     != backendSyncData->getLastCriticalNeighboursTestedMergedNodeLinker()) {
-                //   visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
-                //     indiNode, ..., [&](...) { expansionBlockingCritical = true; return false; }, ...);
-                //   locBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(indiNode, ...);
-                //   locBackendSyncData->setLastCriticalNeighboursTestedMergedNodeLinker(...);
-                // }
-
-                // W6-DEFER[api]: if (backendSyncData->getMergedIndividualNodeLinker())
-                let has_merged_individual_node_linker = false;
+                let (
+                    merged_linker_changed,
+                    merged_linker_snapshot,
+                    has_merged_individual_node_linker,
+                ) = {
+                    let sync = calc_alg_context
+                        .process_context()
+                        .backend_sync_data(backend_sync_data);
+                    (
+                        sync.get_merged_individual_node_linker()
+                            != sync.get_last_critical_neighbours_tested_merged_node_linker(),
+                        sync.get_merged_individual_node_linker().to_vec(),
+                        !sync.get_merged_individual_node_linker().is_empty(),
+                    )
+                };
+                if merged_linker_changed {
+                    // W6-DEFER[api]: visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(
+                    //   indiNode, ..., [&](...) { expansionBlockingCritical = true; return false; }, ...);
+                    loc_backend_sync_data = self
+                        .get_localized_individual_backend_cache_snychronisation_data(
+                            indi_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .backend_sync_data_mut(loc_backend_sync_data)
+                        .set_last_critical_neighbours_tested_merged_node_linker(
+                            merged_linker_snapshot,
+                        );
+                }
                 if has_merged_individual_node_linker {
                     expansion_blocking_critical = true;
                 } else {
@@ -1150,10 +1452,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         indi_node,
                         calc_alg_context,
                     ) {
-                        // W6-DEFER[api]: lastTestedConDes = backendSyncData->getLastCriticalNeighbourExpansionTestedConceptDescriptor();
-                        let last_tested_con_des: ConDescId = Id::NONE;
-                        // W6-DEFER[api]: lastSynchedConDes = backendSyncData->getLastSynchedConceptDescriptor();
-                        let mut last_synched_con_des: ConDescId = Id::NONE;
+                        let last_tested_con_des: ConDescId = calc_alg_context
+                            .process_context()
+                            .backend_sync_data(backend_sync_data)
+                            .get_last_critical_neighbour_expansion_tested_concept_descriptor();
+                        let mut last_synched_con_des: ConDescId = calc_alg_context
+                            .process_context()
+                            .backend_sync_data(backend_sync_data)
+                            .get_last_synched_concept_descriptor();
                         // W6-DEFER[api]: if (!assocData->isCompletelyPropagated()) lastSynchedConDes = nullptr;
                         last_synched_con_des = Id::NONE;
                         // conSet = indiNode->getReapplyConceptLabelSet(false);
@@ -1162,16 +1468,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .node_mut(indi_node)
                             .get_reapply_concept_label_set(false);
                         if con_set != Id::NONE {
-                            // W6-DEFER[api]: conDesLinker = conSet->getAddingSortedConceptDescriptionLinker();
-                            let con_des_linker: ConDescId = Id::NONE;
+                            let con_des_linker = calc_alg_context
+                                .process_context()
+                                .label_set(con_set)
+                                .get_adding_sorted_concept_description_linker();
                             let mut new_last_tested_con_des: ConDescId = con_des_linker;
                             if con_des_linker != last_tested_con_des {
-                                // W6-DEFER[api]: the adding-sorted concept-descriptor chain is
-                                //   on the unported CReapplyConceptLabelSet; the per-concept loop
-                                //   is reproduced over the (currently empty) descriptor list.
-                                let con_des_chain: Vec<ConDescId> = Vec::new();
                                 let mut concept_expansion_blocking_critical = false;
-                                for con_des_it in con_des_chain {
+                                let mut con_des_it = con_des_linker;
+                                while con_des_it.is_some()
+                                    && con_des_it != last_tested_con_des
+                                    && con_des_it != last_synched_con_des
+                                {
                                     if con_des_it == last_tested_con_des
                                         || con_des_it == last_synched_con_des
                                     {
@@ -1190,23 +1498,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         .process_context()
                                         .con_desc(con_des_it)
                                         .get_dependency_track_point();
-                                    let nondeterministic = self
-                                        .has_nondeterministic_dependency(dep_track_point, calc_alg_context);
+                                    let nondeterministic = self.has_nondeterministic_dependency(
+                                        dep_track_point,
+                                        calc_alg_context,
+                                    );
 
-                                    if assoc_data != INVALID
+                                    if assoc_data.is_some()
                                         && self
                                             .test_individual_node_concept_backend_cache_neighbour_expansion_blocking_critical(
                                                 concept,
                                                 con_negation,
                                                 nondeterministic,
-                                                assoc_data,
+                                                assoc_data.raw,
                                                 calc_alg_context,
                                             )
                                     {
                                         concept_expansion_blocking_critical = true;
                                         new_last_tested_con_des = con_des_it;
                                     }
-                                    // conDesIt = conDesIt->getNext();
+                                    con_des_it = calc_alg_context
+                                        .process_context()
+                                        .con_desc(con_des_it)
+                                        .get_next_concept_descriptor();
                                 }
                                 loc_backend_sync_data = self
                                     .get_localized_individual_backend_cache_snychronisation_data(
@@ -1216,9 +1529,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 if concept_expansion_blocking_critical
                                     && new_last_tested_con_des != Id::NONE
                                 {
-                                    // W6-DEFER[api]: newLastTestedConDes = newLastTestedConDes->getNext();
+                                    new_last_tested_con_des = calc_alg_context
+                                        .process_context()
+                                        .con_desc(new_last_tested_con_des)
+                                        .get_next_concept_descriptor();
                                 }
-                                // W6-DEFER[api]: locBackendSyncData->setLastCriticalNeighbourExpansionTestedConceptDescriptor(newLastTestedConDes);
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .backend_sync_data_mut(loc_backend_sync_data)
+                                    .set_last_critical_neighbour_expansion_tested_concept_descriptor(
+                                        new_last_tested_con_des,
+                                    );
                                 if concept_expansion_blocking_critical {
                                     expansion_blocking_critical = true;
                                 }
@@ -1233,7 +1554,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             indi_node,
                             calc_alg_context,
                         );
-                    // W6-DEFER[api]: locBackendSyncData->setCriticalNeighbourExpansionBlocking(expansionBlockingCritical);
+                    calc_alg_context
+                        .process_context_mut()
+                        .backend_sync_data_mut(loc_backend_sync_data)
+                        .set_critical_neighbour_expansion_blocking(expansion_blocking_critical);
                 }
             } else {
                 expansion_blocking_critical = true;
@@ -1295,13 +1619,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     );
             }
         } else if !con_negation
-            && con_operator
-                .has_partial_operator_code_flag(CCFS_ALL_AQALL_TYPE | CCF_ATMOST)
+            && con_operator.has_partial_operator_code_flag(CCFS_ALL_AQALL_TYPE | CCF_ATMOST)
             || con_negation
                 && con_operator
                     .has_partial_operator_code_flag(CCFS_SOME_TYPE | CCF_ATLEAST | CCF_VALUE)
         {
-            let role: RoleId = calc_alg_context.ontology_arenas().concept(concept).get_role();
+            let role: RoleId = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_role();
             // W6-DEFER[api]: if (assocData->isCompletelyPropagated())
             let is_completely_propagated = false;
             if is_completely_propagated {
@@ -1335,13 +1661,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addBlockingCoreConcept`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `CConceptProcessData::isCoreBlockingConcept`, the
-    /// `CCoreConceptDescriptor` allocation + `CReapplyConceptLabelSet::addCoreConceptDescriptor`,
-    /// and the `CBlockingIndividualNodeLinkedCandidateHash` candidate insertion are on
-    /// unported types. The `mConfSaveCoreBlockingConceptsCandidates` gate, the concept-data
-    /// fetch, the nominal-node guard, and the databox candidate-hash getter are reproduced;
-    /// the core-blocking-concept test is deferred (false) so the body short-circuits until
-    /// the concept-process-data + candidate-hash satellites land.
+    /// KONCLUDE-PORT-NOTE[api]: `CConceptProcessData::isCoreBlockingConcept` and
+    /// `CReapplyConceptLabelSet::addCoreConceptDescriptor` are live. The
+    /// `CCoreConceptDescriptor` wrapper is folded to the original `CConceptDescriptor`
+    /// id, as in the rest of this port's core-concept linker substrate. The
+    /// `CBlockingIndividualNodeLinkedCandidateHash` candidate insertion is live.
     pub fn add_blocking_core_concept(
         &mut self,
         concept_descriptor: ConDescId,
@@ -1358,15 +1682,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .ontology_arenas()
                 .concept(concept)
                 .get_concept_data();
-            if con_data != INVALID && con_data != 0 {
+            if con_data != INVALID {
                 let is_negated: bool = calc_alg_context
                     .process_context()
                     .con_desc(concept_descriptor)
                     .is_negated();
-                // W6-DEFER[api]: conProData = (CConceptProcessData*)conData;
-                //   if (conProData->isCoreBlockingConcept(conceptDescriptor->isNegated()))
-                let is_core_blocking_concept = false;
-                let _ = is_negated;
+                let con_pro_data = ConceptProcessDataId::new(con_data);
+                let is_core_blocking_concept = calc_alg_context
+                    .ontology_arenas()
+                    .concept_process_data(con_pro_data)
+                    .is_core_blocking_concept(is_negated);
                 if is_core_blocking_concept {
                     if !calc_alg_context
                         .process_context()
@@ -1375,18 +1700,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     {
                         // W6-DEFER[macro]: STATINC(CORECONCEPTSADDEDINDINODELABELSETCOUNT)
                         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-                        // W6-DEFER[api]: coreConceptDescriptor = alloc CCoreConceptDescriptor;
-                        //   coreConceptDescriptor->initCoreConceptDescriptor(conceptDescriptor);
-                        //   conLabelSet->addCoreConceptDescriptor(coreConceptDescriptor);
-                        let _ = con_label_set;
+                        calc_alg_context
+                            .process_context_mut()
+                            .label_set_add_core_concept_descriptor(
+                                con_label_set,
+                                concept_descriptor,
+                            );
 
-                        // procDataBox->getBlockingIndividualNodeLinkedCandidateHash(true)
-                        let _blocking_cand_hash = calc_alg_context
-                            .processing_data_box_mut()
-                            .blocking_individual_node_linked_candidate_hash(true);
-                        // W6-DEFER[api]: blockingCandData =
-                        //   blockingCandHash->getBlockingIndividualCandidateData(conceptDescriptor, true);
-                        //   blockingCandData->addBlockingCandidateIndividualNode(processIndi);
+                        let blocking_cand_hash =
+                            calc_alg_context.blocking_individual_node_linked_candidate_hash(true);
+                        let blocking_cand_data =
+                            BlockingIndividualNodeLinkedCandidateHash::get_blocking_individual_candidate_data_for_concept_descriptor(
+                                calc_alg_context.process_context_mut(),
+                                blocking_cand_hash,
+                                concept_descriptor,
+                                true,
+                            );
+                        calc_alg_context
+                            .process_context_mut()
+                            .blocking_indi_node_linked_cand_data_add_blocking_candidate_individual_node(
+                                blocking_cand_data,
+                                process_indi,
+                            );
                     }
 
                     return true;
@@ -1397,19 +1732,52 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addIndividualToBlockingUpdateReviewProcessingQueue`.
-    ///
-    /// KONCLUDE-PORT-NOTE[api]: `CIndividualDepthProcessingQueue::insertProcessIndiviudal`
-    /// is not yet ported; the databox getter is reproduced and the enqueue is deferred.
     pub fn add_individual_to_blocking_update_review_processing_queue(
         &mut self,
         individual: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let _sig_block_upd_pro_queue = calc_alg_context
-            .get_blocking_update_review_processing_queue(true);
-        // W6-DEFER[api]: sigBlockUpdProQueue->insertProcessIndiviudal(individual);
-        let _ = individual;
+        let sig_block_upd_pro_queue =
+            calc_alg_context.get_blocking_update_review_processing_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_depth_queue_insert(sig_block_upd_pro_queue, individual);
         // W6-DEFER[macro]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT)
         true
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedANDRuleCount`.
+    pub fn get_applied_and_rule_count(&self) -> Cint64 {
+        self.applied_and_rule_count
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedORRuleCount`.
+    pub fn get_applied_or_rule_count(&self) -> Cint64 {
+        self.applied_or_rule_count
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedSOMERuleCount`.
+    pub fn get_applied_some_rule_count(&self) -> Cint64 {
+        self.applied_some_rule_count
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedATLEASTRuleCount`.
+    pub fn get_applied_atleast_rule_count(&self) -> Cint64 {
+        self.applied_atleast_rule_count
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedALLRuleCount`.
+    pub fn get_applied_all_rule_count(&self) -> Cint64 {
+        self.applied_all_rule_count
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedATMOSTRuleCount`.
+    pub fn get_applied_atmost_rule_count(&self) -> Cint64 {
+        self.applied_atmost_rule_count
+    }
+
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedTotalRuleCount`.
+    pub fn get_applied_total_rule_count(&self) -> Cint64 {
+        self.applied_total_rule_count
     }
 }

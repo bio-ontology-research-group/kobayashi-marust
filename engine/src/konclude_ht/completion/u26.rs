@@ -71,13 +71,284 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::{Cint64, Id};
+use std::collections::{HashSet, VecDeque};
+
+use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, IndividualId};
+use super::super::process::node::IndividualProcessNode;
 use super::super::process::varbind::{VarBindingPathId, VariableBindingPath};
-use super::super::process::{LabelSetId, NodeId};
+use super::super::process::{EdgeId, LabelSetId, NodeId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    fn incremental_data_is_directly_changed_or_connected(
+        calc_alg_context: &CalculationAlgorithmContextBase,
+        inc_exp_data: super::super::process::stubs::IncExpDataId,
+    ) -> bool {
+        inc_exp_data.is_some()
+            && (calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .has_directly_changed_neighbour_connection()
+                || calc_alg_context
+                    .process_context()
+                    .inc_exp_data(inc_exp_data)
+                    .is_directly_changed())
+    }
+
+    fn individual_has_directly_changed_or_connected_incremental_data(
+        calc_alg_context: &CalculationAlgorithmContextBase,
+        individual_node: NodeId,
+    ) -> bool {
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        Self::incremental_data_is_directly_changed_or_connected(calc_alg_context, inc_exp_data)
+    }
+
+    fn individual_can_receive_directly_changed_connection(
+        calc_alg_context: &CalculationAlgorithmContextBase,
+        individual_node: NodeId,
+    ) -> bool {
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        inc_exp_data.is_none()
+            || (!calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .has_directly_changed_neighbour_connection()
+                && !calc_alg_context
+                    .process_context()
+                    .inc_exp_data(inc_exp_data)
+                    .is_directly_changed()
+                && !calc_alg_context
+                    .process_context()
+                    .inc_exp_data(inc_exp_data)
+                    .is_previous_completion_graph_compatible())
+    }
+
+    fn is_individual_node_previous_completion_graph_compatible_from_loaded_correspondence(
+        individual_node: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        let con_set = calc_alg_context
+            .process_context()
+            .node(individual_node)
+            .use_reapply_con_label_set;
+        let last_con_des = if con_set.is_some() {
+            calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .get_adding_sorted_concept_description_linker()
+        } else {
+            Id::NONE
+        };
+        let last_checked_con_des = calc_alg_context
+            .process_context()
+            .inc_exp_data(inc_exp_data)
+            .get_last_compatible_checked_concept_descriptor();
+        let mut compatible = calc_alg_context
+            .process_context()
+            .inc_exp_data(inc_exp_data)
+            .is_previous_completion_graph_compatible();
+        if !calc_alg_context
+            .process_context()
+            .node(individual_node)
+            .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_PURGEDBLOCKED)
+            && last_checked_con_des != last_con_des
+        {
+            let prev_indi_node =
+                Self::get_previous_deterministic_completion_graph_corresponding_individual_node(
+                    individual_node,
+                    calc_alg_context,
+                );
+            if prev_indi_node.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .node(prev_indi_node)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_PURGEDBLOCKED,
+                    )
+            {
+                let prev_con_set = calc_alg_context
+                    .process_context()
+                    .node(prev_indi_node)
+                    .use_reapply_con_label_set;
+                let mut incompatible_concepts = true;
+                if con_set.is_some()
+                    && prev_con_set.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .label_set(con_set)
+                        .get_concept_signature_value()
+                        == calc_alg_context
+                            .process_context()
+                            .label_set(prev_con_set)
+                            .get_concept_signature_value()
+                    && calc_alg_context
+                        .process_context()
+                        .label_set(prev_con_set)
+                        .get_concept_count()
+                        == calc_alg_context
+                            .process_context()
+                            .label_set(con_set)
+                            .get_concept_count()
+                {
+                    incompatible_concepts = false;
+                    let mut con_set_it = calc_alg_context
+                        .process_context()
+                        .label_set_concept_label_set_iterator(con_set, true, false, false);
+                    let mut prev_con_set_it = calc_alg_context
+                        .process_context()
+                        .label_set_concept_label_set_iterator(prev_con_set, true, false, false);
+                    while con_set_it.has_next() && prev_con_set_it.has_next() {
+                        let con_des = con_set_it.get_concept_descriptor();
+                        let prev_con_des = prev_con_set_it.get_concept_descriptor();
+                        if calc_alg_context
+                            .process_context()
+                            .con_desc(con_des)
+                            .get_concept()
+                            != calc_alg_context
+                                .process_context()
+                                .con_desc(prev_con_des)
+                                .get_concept()
+                            || calc_alg_context
+                                .process_context()
+                                .con_desc(con_des)
+                                .is_negated()
+                                != calc_alg_context
+                                    .process_context()
+                                    .con_desc(prev_con_des)
+                                    .is_negated()
+                        {
+                            incompatible_concepts = true;
+                        }
+                        con_set_it.move_next(calc_alg_context.process_context());
+                        prev_con_set_it.move_next(calc_alg_context.process_context());
+                    }
+                }
+                if !incompatible_concepts {
+                    compatible = true;
+                }
+            }
+            let loc_inc_exp_data = calc_alg_context
+                .process_context_mut()
+                .node_incremental_expansion_data(individual_node, true);
+            calc_alg_context
+                .process_context_mut()
+                .inc_exp_data_mut(loc_inc_exp_data)
+                .set_previous_completion_graph_compatible(compatible)
+                .set_last_compatible_checked_concept_descriptor(last_con_des);
+        }
+        compatible
+    }
+
+    fn get_previous_deterministic_completion_graph_task(
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> super::super::task::satisfiable_task::SatTaskId {
+        let sat_calc_task = calc_alg_context.base.used_sat_calc_task;
+        if sat_calc_task.is_none() {
+            return Id::NONE;
+        }
+        let inc_adapter = calc_alg_context
+            .satisfiable_task_incremental_consistency_testing_adapter(sat_calc_task);
+        if inc_adapter.is_none() {
+            return Id::NONE;
+        }
+        let prev_cons_data = calc_alg_context
+            .inc_cons_testing_adapter(inc_adapter)
+            .get_previous_consistence_data();
+        if prev_cons_data.is_none() {
+            return Id::NONE;
+        }
+        calc_alg_context
+            .base
+            .task_data(prev_cons_data)
+            .get_deterministic_satisfiable_task()
+    }
+
+    fn get_previous_deterministic_completion_graph_corresponding_individual_node(
+        individual_node: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> NodeId {
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if inc_exp_data.is_none()
+            || !calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .is_previous_completion_graph_correspondence_individual_node_loaded()
+        {
+            let loc_inc_exp_data = calc_alg_context
+                .process_context_mut()
+                .node_incremental_expansion_data(individual_node, true);
+            let prev_comp_graph_calc_task =
+                Self::get_previous_deterministic_completion_graph_task(calc_alg_context);
+            let prev_indi_node = if prev_comp_graph_calc_task.is_some() {
+                let individual_node_id = calc_alg_context
+                    .process_context()
+                    .node(individual_node)
+                    .individual_node_id();
+                calc_alg_context
+                    .base
+                    .try_sat_calc_task(prev_comp_graph_calc_task)
+                    .and_then(|task| task.processing_data_box_state())
+                    .map(|data_box| {
+                        data_box
+                            .individual_process_node_vector()
+                            .get_data(individual_node_id)
+                    })
+                    .unwrap_or(Id::NONE)
+            } else {
+                Id::NONE
+            };
+            calc_alg_context
+                .process_context_mut()
+                .inc_exp_data_mut(loc_inc_exp_data)
+                .set_previous_completion_graph_correspondence_individual_node(prev_indi_node)
+                .set_previous_completion_graph_correspondence_individual_node_loaded(true);
+        }
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        calc_alg_context
+            .process_context()
+            .inc_exp_data(inc_exp_data)
+            .get_previous_completion_graph_correspondence_individual_node()
+    }
+
+    fn try_propagate_directly_changed_to_candidate(
+        &mut self,
+        candidate_node: NodeId,
+        prop_indi_node: NodeId,
+        queue_incremental_expansion: bool,
+        prop_node_list: &mut VecDeque<NodeId>,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        if Self::individual_can_receive_directly_changed_connection(
+            calc_alg_context,
+            candidate_node,
+        ) {
+            let loc_candidate =
+                self.get_localized_individual(candidate_node, false, calc_alg_context);
+            if self.establish_directly_changed_neighbour_connection(
+                loc_candidate,
+                prop_indi_node,
+                queue_incremental_expansion,
+                calc_alg_context,
+            ) {
+                prop_node_list.push_back(loc_candidate);
+                return true;
+            }
+        }
+        false
+    }
+
     // =======================================================================
     // Incremental individual-expansion initialization (cpp 2937–3052).
     // =======================================================================
@@ -98,67 +369,238 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 2937–3052. Outline:
-        //
-        //   incExpData = individualNode->getIncrementalExpansionData(false);
-        //   if !incExpData || !incExpData->isIncremetnalExpansionListInitialized():
-        //     incExpData = individualNode->getIncrementalExpansionData(true);
-        //     indiNodeVec = ctx->getUsedProcessingDataBox()->getIndividualProcessNodeVector();
-        //     searchingNodeSet  = alloc CPROCESSINGSET<cint64>;   // temp
-        //     searchingNodeList = alloc CPROCESSINGLIST<cint64>;  // temp
-        //     expList = nullptr;
-        //     prevCalcTask = mIncExpHandler->getPreviousDeterministicCompletionGraphTask(ctx);
-        //     prevDataBox  = prevCalcTask->getProcessingDataBox();
-        //     prevIndiNodeVec = prevDataBox->getIndividualProcessNodeVector();
-        //     prevIndiNode = incExpData->getPreviousCompletionGraphCorrespondenceIndividualNode();
-        //     if prevIndiNode:
-        //       conSet     = individualNode->getReapplyConceptLabelSet(false);
-        //       prevConSet = prevIndiNode->getReapplyConceptLabelSet(false);
-        //       if conSet && prevConSet:
-        //         // merge-walk the two sorted concept-label-set iterators by data tag:
-        //         while conSetIt.hasNext() && prevConSetIt.hasNext():
-        //           if conTag == prevConTag: advance both;
-        //           elif prevConTag < conTag:   // concept missing in current
-        //             if areAllDependentFactsUnchanged(individualNode,null,prevConDepTP,prevIndiNodeVec,15,ctx):
-        //               addConceptToIndividual(prevConDes->getConcept(),prevConDes->isNegated(),individualNode,prevConDepTP,false,false,ctx);
-        //             advance prev;
-        //           else: advance cur;
-        //         while prevConSetIt.hasNext():  // remaining missing concepts
-        //           if areAllDependentFactsUnchanged(...): addConceptToIndividual(...);
-        //           advance prev;
-        //     searchingNodeSet->insert(individualNode->getIndividualNodeID());
-        //     searchingNodeList->append(individualNode->getIndividualNodeID());
-        //     while !searchingNodeList->isEmpty():
-        //       searchIndiNodeID = searchingNodeList->takeFirst();
-        //       searchIndiNode = prevIndiNodeVec->getData(searchIndiNodeID);
-        //       if searchIndiNode:
-        //         nominalIndi = searchIndiNode->getNominalIndividual();
-        //         if searchIndiNode->getIndividualNodeID() != individualNode->getIndividualNodeID() && nominalIndi:
-        //           if !indiNodeVec->getData(-nominalIndi->getIndividualID()):
-        //             if !expList: expList = incExpData->getIncrementalExpansionList(true);
-        //             expList->append(nominalIndi);
-        //         if (!nominalIndi && searchIndiNode->hasPartialProcessingRestrictionFlags(PRFSUCCESSORNOMINALCONNECTION))
-        //            || searchIndiNodeID == individualNode->getIndividualNodeID():
-        //           for succLink in searchIndiNode->getSuccessorIterator():
-        //             succIndiID = succLink->getOppositeIndividualID(searchIndiNodeID); enqueue if unseen;
-        //           for connIndiID in searchIndiNode->getConnectionSuccessorIterator(): enqueue if unseen;
-        //           mergeHash = searchIndiNode->getIndividualMergingHash(false);
-        //           if mergeHash: for (id,data) in mergeHash: if data.isMergedWithIndividual(): enqueue if unseen;
-        //     incExpData->setIncremetnalExpansionListInitialized(true);
-        //     addIndividualToIncrementalExpansionQueue(individualNode,ctx);   // this unit
-        //     return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: `CIndividualNodeIncrementalExpansionData`
-        // (process::stubs::IncExpDataId — no method bodies / node accessor yet),
-        // `mIncExpHandler` (Algorithm-layer stub) + the previous-graph task, and the
-        // sibling helpers `areAllDependentFactsUnchanged` (dep unit) /
-        // `addConceptToIndividual` (core unit). The label-set iterators
-        // (`getConceptLabelSetIterator`), the node successor / connection-successor /
-        // merging-hash iterators, and the individual-process-node vector getter are
-        // available substrate; they go live with the satellite on the reconcile pass.
-        let _ = (individual_node, calc_alg_context);
-        false
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if inc_exp_data.is_some()
+            && calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .is_incremetnal_expansion_list_initialized()
+        {
+            return false;
+        }
+
+        let inc_exp_data = calc_alg_context
+            .process_context_mut()
+            .node_incremental_expansion_data(individual_node, true);
+
+        let prev_indi_node =
+            Self::get_previous_deterministic_completion_graph_corresponding_individual_node(
+                individual_node,
+                calc_alg_context,
+            );
+
+        let mut expansion_individuals = Vec::new();
+        let mut replay_concepts = Vec::new();
+        let current_individual_node_id = calc_alg_context
+            .process_context()
+            .node(individual_node)
+            .individual_node_id();
+        let prev_calc_task =
+            Self::get_previous_deterministic_completion_graph_task(calc_alg_context);
+        if prev_calc_task.is_some() {
+            if let Some(prev_data_box) = calc_alg_context
+                .base
+                .try_sat_calc_task(prev_calc_task)
+                .and_then(|task| task.processing_data_box_state())
+            {
+                if prev_indi_node.is_some() {
+                    let con_set = calc_alg_context
+                        .process_context()
+                        .node(individual_node)
+                        .use_reapply_con_label_set;
+                    let prev_con_set = calc_alg_context
+                        .process_context()
+                        .node(prev_indi_node)
+                        .use_reapply_con_label_set;
+                    if con_set.is_some() && prev_con_set.is_some() {
+                        let mut con_set_it = calc_alg_context
+                            .process_context()
+                            .label_set_concept_label_set_iterator(con_set, true, false, false);
+                        let mut prev_con_set_it = calc_alg_context
+                            .process_context()
+                            .label_set_concept_label_set_iterator(prev_con_set, true, false, false);
+                        while con_set_it.has_next() && prev_con_set_it.has_next() {
+                            let con_tag = con_set_it.get_data_tag(
+                                calc_alg_context.process_context(),
+                                calc_alg_context.ontology_arenas(),
+                            );
+                            let prev_con_tag = prev_con_set_it.get_data_tag(
+                                calc_alg_context.process_context(),
+                                calc_alg_context.ontology_arenas(),
+                            );
+                            if con_tag == prev_con_tag {
+                                con_set_it.move_next(calc_alg_context.process_context());
+                                prev_con_set_it.move_next(calc_alg_context.process_context());
+                            } else if prev_con_tag < con_tag {
+                                let prev_con_des = prev_con_set_it.get_concept_descriptor();
+                                let prev_con_dep_track_point = prev_con_set_it
+                                    .get_dependency_track_point(calc_alg_context.process_context());
+                                replay_concepts.push((
+                                    calc_alg_context
+                                        .process_context()
+                                        .con_desc(prev_con_des)
+                                        .get_concept(),
+                                    calc_alg_context
+                                        .process_context()
+                                        .con_desc(prev_con_des)
+                                        .is_negated(),
+                                    prev_con_dep_track_point,
+                                ));
+                                prev_con_set_it.move_next(calc_alg_context.process_context());
+                            } else {
+                                con_set_it.move_next(calc_alg_context.process_context());
+                            }
+                        }
+
+                        while prev_con_set_it.has_next() {
+                            let prev_con_des = prev_con_set_it.get_concept_descriptor();
+                            let prev_con_dep_track_point = prev_con_set_it
+                                .get_dependency_track_point(calc_alg_context.process_context());
+                            replay_concepts.push((
+                                calc_alg_context
+                                    .process_context()
+                                    .con_desc(prev_con_des)
+                                    .get_concept(),
+                                calc_alg_context
+                                    .process_context()
+                                    .con_desc(prev_con_des)
+                                    .is_negated(),
+                                prev_con_dep_track_point,
+                            ));
+                            prev_con_set_it.move_next(calc_alg_context.process_context());
+                        }
+                    }
+                }
+
+                let mut searching_node_set: HashSet<Cint64> = HashSet::new();
+                let mut searching_node_list: VecDeque<Cint64> = VecDeque::new();
+                searching_node_set.insert(current_individual_node_id);
+                searching_node_list.push_back(current_individual_node_id);
+
+                while let Some(search_indi_node_id) = searching_node_list.pop_front() {
+                    let search_indi_node = prev_data_box
+                        .individual_process_node_vector()
+                        .get_data(search_indi_node_id);
+                    if search_indi_node.is_none() {
+                        continue;
+                    }
+
+                    let search_node_ref = calc_alg_context.process_context().node(search_indi_node);
+                    let nominal_indi = search_node_ref.nominal_individual();
+                    if search_node_ref.individual_node_id() != current_individual_node_id
+                        && nominal_indi.is_some()
+                    {
+                        let nominal_indi_id = calc_alg_context
+                            .ontology_arenas()
+                            .individual(nominal_indi)
+                            .get_individual_id();
+                        if calc_alg_context
+                            .processing_data_box()
+                            .individual_process_node_vector()
+                            .get_data(-nominal_indi_id)
+                            .is_none()
+                        {
+                            expansion_individuals.push(nominal_indi);
+                        }
+                    }
+
+                    if (nominal_indi.is_none()
+                        && search_node_ref.has_partial_processing_restriction_flags(
+                            IndividualProcessNode::PRF_SUCCESSORNOMINALCONNECTION,
+                        ))
+                        || search_indi_node_id == current_individual_node_id
+                    {
+                        let mut succ_it = calc_alg_context
+                            .process_context()
+                            .node_successor_iterator(search_indi_node);
+                        while succ_it.has_next() {
+                            let succ_indi_id = succ_it.next_individual_id(true);
+                            if searching_node_set.insert(succ_indi_id) {
+                                searching_node_list.push_back(succ_indi_id);
+                            }
+                        }
+
+                        let conn_set = calc_alg_context
+                            .process_context()
+                            .node_connection_successor_set_existing(search_indi_node);
+                        if conn_set.is_some() {
+                            let mut conn_it = calc_alg_context
+                                .process_context()
+                                .conn_succ_set(conn_set)
+                                .get_connection_successor_iterator();
+                            while conn_it.has_next() {
+                                let conn_indi_id = conn_it.next(true);
+                                if searching_node_set.insert(conn_indi_id) {
+                                    searching_node_list.push_back(conn_indi_id);
+                                }
+                            }
+                        }
+
+                        let merge_hash = calc_alg_context
+                            .process_context()
+                            .node(search_indi_node)
+                            .use_individual_merging_hash;
+                        if merge_hash.is_some() {
+                            let merged_ids: Vec<Cint64> = calc_alg_context
+                                .process_context()
+                                .individual_merging_hash(merge_hash)
+                                .iter()
+                                .filter_map(|(merged_indi_id, data)| {
+                                    if data.is_merged_with_individual() {
+                                        Some(*merged_indi_id)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            for merged_indi_id in merged_ids {
+                                if searching_node_set.insert(merged_indi_id) {
+                                    searching_node_list.push_back(merged_indi_id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for (concept, negated, dep_track_point) in replay_concepts {
+            let mut rem_max_backtracking_count = 15;
+            if self.are_all_dependent_facts_unchanged(
+                individual_node,
+                Id::NONE,
+                dep_track_point,
+                INVALID,
+                &mut rem_max_backtracking_count,
+                calc_alg_context,
+            ) {
+                let mut replay_node = individual_node;
+                self.add_concept_to_individual(
+                    concept,
+                    negated,
+                    &mut replay_node,
+                    dep_track_point,
+                    false,
+                    false,
+                    calc_alg_context,
+                );
+            }
+        }
+
+        {
+            let data = calc_alg_context
+                .process_context_mut()
+                .inc_exp_data_mut(inc_exp_data);
+            if !expansion_individuals.is_empty() {
+                let exp_list = data.get_incremental_expansion_list(true).unwrap();
+                exp_list.extend(expansion_individuals);
+            }
+            data.set_incremetnal_expansion_list_initialized(true);
+        }
+        self.add_individual_to_incremental_expansion_queue(individual_node, calc_alg_context);
+        true
     }
 
     // =======================================================================
@@ -177,21 +619,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> IndividualId {
-        // PORT-PENDING: faithful transcription of cpp 3058–3071. Outline:
-        //
-        //   incExpData = individualNode->getIncrementalExpansionData(false);
-        //   if incExpData && incExpData->requiresFurtherIncrementalExpansion():
-        //     incExpData = individualNode->getIncrementalExpansionData(true);
-        //     while incExpData->requiresFurtherIncrementalExpansion():
-        //       nextIndi = incExpData->takeNextIncrementalExpansionIndividual();
-        //       indiProcNodeVec = ctx->getProcessingDataBox()->getIndividualProcessNodeVector();
-        //       if !indiProcNodeVec->getData(-nextIndi->getIndividualID()): return nextIndi;
-        //   return nullptr;
-        //
-        // Held PORT-PENDING on the `CIndividualNodeIncrementalExpansionData` satellite
-        // (`requiresFurtherIncrementalExpansion` / `takeNextIncrementalExpansionIndividual`,
-        // no bodies yet). The individual-process-node vector getter is available.
-        let _ = (individual_node, calc_alg_context);
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if inc_exp_data.is_none()
+            || !calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .requires_further_incremental_expansion()
+        {
+            return Id::NONE;
+        }
+
+        let inc_exp_data = calc_alg_context
+            .process_context_mut()
+            .node_incremental_expansion_data(individual_node, true);
+        while calc_alg_context
+            .process_context()
+            .inc_exp_data(inc_exp_data)
+            .requires_further_incremental_expansion()
+        {
+            let next_indi = calc_alg_context
+                .process_context_mut()
+                .inc_exp_data_mut(inc_exp_data)
+                .take_next_incremental_expansion_individual();
+            let next_indi_id = calc_alg_context
+                .ontology_arenas()
+                .individual(next_indi)
+                .get_individual_id();
+            if calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-next_indi_id)
+                .is_none()
+            {
+                return next_indi;
+            }
+        }
         Id::NONE
     }
 
@@ -213,13 +677,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   addIndividualToIncrementalExpansionQueue(expandNode,ctx);
         //   return expandedIndiNode;
         // return nullptr;
-        let exp_indi = self.get_next_incremental_expansion_individual(expand_node, calc_alg_context);
+        let exp_indi =
+            self.get_next_incremental_expansion_individual(expand_node, calc_alg_context);
         if exp_indi.is_some() {
-            // W3-DEFER[api]: expandedIndiNode = getUpToDateIndividual(-expIndi->getIndividualID(),ctx);
-            //   (`getUpToDateIndividual` is a neighbour/core sibling not ported in this unit.)
+            let exp_indi_id = calc_alg_context
+                .ontology_arenas()
+                .individual(exp_indi)
+                .get_individual_id();
+            let expanded_indi_node =
+                self.get_up_to_date_individual_by_id(-exp_indi_id, calc_alg_context);
             self.add_individual_to_incremental_expansion_queue(expand_node, calc_alg_context);
-            // PORT-PENDING: return the loaded up-to-date node once `getUpToDateIndividual` lands.
-            return Id::NONE;
+            return expanded_indi_node;
         }
         Id::NONE
     }
@@ -236,9 +704,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         // incExpData = individualNode->getIncrementalExpansionData(false);
         let inc_exp_data = calc_alg_context
-            .process_context_mut()
-            .node_mut(individual_node)
-            .incremental_expansion_data(false);
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
         // if !incExpData->isPreviousCompletionGraphCompatible()
         //    && (incExpData->hasDirectlyChangedNeighbourConnection() || incExpData->isDirectlyChanged()):
         //   return true;
@@ -274,48 +741,132 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// successors and ordinary successors, skipping nominals and any node already in
     /// `pruningNodeSet` / `compatibleNominalNodeSet`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `CPROCESSINGSET<cint64>*` work sets become opaque
-    /// `Cint64` handles until the temp processing-set allocator is ported.
+    /// KONCLUDE-PORT-NOTE[ownership]: the two caller-owned
+    /// `CPROCESSINGSET<cint64>*` arguments become caller-owned `HashSet<Cint64>`
+    /// values. The local `CPROCESSINGLIST<CIndividualProcessNode*>` worklist becomes
+    /// `VecDeque<NodeId>`.
     pub fn prune_incremental_removed_successors(
         &mut self,
         indi: &mut NodeId,
-        compatible_nominal_node_set: Cint64,
-        pruning_node_set: Cint64,
+        compatible_nominal_node_set: &HashSet<Cint64>,
+        pruning_node_set: &mut HashSet<Cint64>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 3384–3431. Outline:
-        //
-        //   pruningNodeList = alloc CPROCESSINGLIST<CIndividualProcessNode*>; pruningNodeList->append(indi);
-        //   while !pruningNodeList->isEmpty():
-        //     pruningNode = pruningNodeList->takeFirst();
-        //     if pruningNode != indi && !pruningNode->hasPartialProcessingRestrictionFlags(PRFPURGEDBLOCKED):
-        //       pruningNode->addProcessingRestrictionFlags(PRFPURGEDBLOCKED);
-        //       eliminiateBlockedIndividuals(pruningNode,ctx);                              // backtracking unit
-        //     connSuccSet = pruningNode->getConnectionSuccessorSet(false);
-        //     if connSuccSet && connSuccSet->getConnectionSuccessorCount() > 0:
-        //       for connID in connSuccSet->getConnectionSuccessorIterator():
-        //         if !pruningNodeSet->contains(connID) && !compatibleNominalNodeSet->contains(connID):
-        //           nomIndi = getUpToDateIndividual(connID,ctx);
-        //           if !nomIndi->getNominalIndividual() && !nomIndi->hasPartialProcessingRestrictionFlags(PRFPURGEDBLOCKED):
-        //             pruningNodeSet->insert(connID);
-        //             pruningNodeList->append(getLocalizedIndividual(nomIndi,false,ctx));
-        //     ancDepth = pruningNode->getIndividualAncestorDepth();
-        //     for succLink in pruningNode->getSuccessorIterator():
-        //       succIndi = getSuccessorIndividual(pruningNode,succLink,ctx);
-        //       if !succIndi->getNominalIndividual() && !succIndi->hasPartialProcessingRestrictionFlags(PRFPURGEDBLOCKED):
-        //         succIndiID = succIndi->getIndividualNodeID();
-        //         if !pruningNodeSet->contains(succIndiID) && !compatibleNominalNodeSet->contains(succIndiID):
-        //           pruningNodeSet->insert(succIndiID);
-        //           pruningNodeList->append(getLocalizedIndividual(succIndi,false,ctx));
-        //
-        // Held PORT-PENDING: the temp `CPROCESSINGSET`/`CPROCESSINGLIST` allocators
-        // ([api] opaque here), and the siblings `eliminiateBlockedIndividuals`
-        // (backtracking unit), `getUpToDateIndividual` / `getSuccessorIndividual` /
-        // `getLocalizedIndividual` (neighbour/core units). The node accessors
-        // (`getConnectionSuccessorSet`, `getSuccessorIterator`,
-        // `getIndividualAncestorDepth`, `addProcessingRestrictionFlags`) are available
-        // substrate; this body goes live once the sibling helpers land.
-        let _ = (indi, compatible_nominal_node_set, pruning_node_set, calc_alg_context);
+        let mut pruning_node_list = VecDeque::new();
+        pruning_node_list.push_back(*indi);
+
+        while let Some(pruning_node) = pruning_node_list.pop_front() {
+            if pruning_node != *indi
+                && !calc_alg_context
+                    .process_context()
+                    .node(pruning_node)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_PURGEDBLOCKED,
+                    )
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(pruning_node)
+                    .add_processing_restriction_flags(IndividualProcessNode::PRF_PURGEDBLOCKED);
+                self.eliminiate_blocked_individuals(pruning_node, calc_alg_context);
+            }
+
+            let conn_ids = {
+                let conn_succ_set = calc_alg_context
+                    .process_context()
+                    .node_connection_successor_set_existing(pruning_node);
+                if conn_succ_set.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .conn_succ_set(conn_succ_set)
+                        .get_connection_successor_count()
+                        > 0
+                {
+                    let mut iterator = calc_alg_context
+                        .process_context()
+                        .conn_succ_set(conn_succ_set)
+                        .get_connection_successor_iterator();
+                    let mut ids = Vec::new();
+                    while iterator.has_next() {
+                        ids.push(iterator.next(true));
+                    }
+                    ids
+                } else {
+                    Vec::new()
+                }
+            };
+
+            for conn_id in conn_ids {
+                if !pruning_node_set.contains(&conn_id)
+                    && !compatible_nominal_node_set.contains(&conn_id)
+                {
+                    let nom_indi = self.get_up_to_date_individual_by_id(conn_id, calc_alg_context);
+                    if nom_indi.is_some()
+                        && !calc_alg_context
+                            .process_context()
+                            .node(nom_indi)
+                            .is_nominal_individual_node()
+                        && !calc_alg_context
+                            .process_context()
+                            .node(nom_indi)
+                            .has_partial_processing_restriction_flags(
+                                IndividualProcessNode::PRF_PURGEDBLOCKED,
+                            )
+                    {
+                        pruning_node_set.insert(conn_id);
+                        let loc_nom_indi =
+                            self.get_localized_individual(nom_indi, false, calc_alg_context);
+                        pruning_node_list.push_back(loc_nom_indi);
+                    }
+                }
+            }
+
+            let _anc_depth = calc_alg_context
+                .process_context()
+                .node(pruning_node)
+                .individual_ancestor_depth();
+            let succ_links = {
+                let mut iterator = calc_alg_context
+                    .process_context()
+                    .node_successor_iterator(pruning_node);
+                let mut links = Vec::new();
+                while iterator.has_next() {
+                    links.push(iterator.next_link(true));
+                }
+                links
+            };
+
+            for succ_link in succ_links {
+                let mut pruning_source = pruning_node;
+                let succ_indi =
+                    self.get_successor_individual(&mut pruning_source, succ_link, calc_alg_context);
+                if succ_indi.is_some()
+                    && !calc_alg_context
+                        .process_context()
+                        .node(succ_indi)
+                        .is_nominal_individual_node()
+                    && !calc_alg_context
+                        .process_context()
+                        .node(succ_indi)
+                        .has_partial_processing_restriction_flags(
+                            IndividualProcessNode::PRF_PURGEDBLOCKED,
+                        )
+                {
+                    let succ_indi_id = calc_alg_context
+                        .process_context()
+                        .node(succ_indi)
+                        .individual_node_id();
+                    if !pruning_node_set.contains(&succ_indi_id)
+                        && !compatible_nominal_node_set.contains(&succ_indi_id)
+                    {
+                        pruning_node_set.insert(succ_indi_id);
+                        let loc_succ_indi =
+                            self.get_localized_individual(succ_indi, false, calc_alg_context);
+                        pruning_node_list.push_back(loc_succ_indi);
+                    }
+                }
+            }
+        }
     }
 
     // =======================================================================
@@ -335,24 +886,62 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // compatible = mIncExpHandler->isIndividualNodePreviousCompletionGraphCompatible(individualNode,ctx);
-        // incExpData = individualNode->getIncrementalExpansionData(false);
-        // if compatible:
-        //   clearPropagatedDirectlyChangedNeighbourConnection(individualNode,true,ctx);
-        // else:
-        //   if incExpData->isDirectlyChanged(): addIndividualToIncrementalExpansionQueue(individualNode,ctx);
-        //   if !incExpData->isDirectlyChanged() && !incExpData->hasDirectlyChangedNeighbourConnection():
-        //     directlyChangedConnNode = searchDirectlyChangedNeighbourNodeConnection(individualNode,ctx);
-        //     if directlyChangedConnNode && establishDirectlyChangedNeighbourConnection(individualNode,directlyChangedConnNode,true,ctx):
-        //       propagateDirectlyChangedNeighbourNodeConnection(individualNode,true,ctx);
-        // return compatible;
-        //
-        // Held PORT-PENDING on `mIncExpHandler`
-        // (`isIndividualNodePreviousCompletionGraphCompatible`, Algorithm-layer stub)
-        // and the `CIndividualNodeIncrementalExpansionData` satellite. The siblings it
-        // dispatches to (clear/search/establish/propagate) are this-unit PORT-PENDING.
-        let _ = (individual_node, calc_alg_context);
-        false
+        let compatible =
+            Self::is_individual_node_previous_completion_graph_compatible_from_loaded_correspondence(
+                individual_node,
+                calc_alg_context,
+            );
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if compatible {
+            self.clear_propagated_directly_changed_neighbour_connection(
+                individual_node,
+                true,
+                calc_alg_context,
+            );
+        } else {
+            if calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .is_directly_changed()
+            {
+                self.add_individual_to_incremental_expansion_queue(
+                    individual_node,
+                    calc_alg_context,
+                );
+            }
+            if !calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .is_directly_changed()
+                && !calc_alg_context
+                    .process_context()
+                    .inc_exp_data(inc_exp_data)
+                    .has_directly_changed_neighbour_connection()
+            {
+                let directly_changed_conn_node = self
+                    .search_directly_changed_neighbour_node_connection(
+                        individual_node,
+                        calc_alg_context,
+                    );
+                if directly_changed_conn_node.is_some()
+                    && self.establish_directly_changed_neighbour_connection(
+                        individual_node,
+                        directly_changed_conn_node,
+                        true,
+                        calc_alg_context,
+                    )
+                {
+                    self.propagate_directly_changed_neighbour_node_connection(
+                        individual_node,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
+        compatible
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::linkCreationDirectlyChangedNeighbourConnectionUpdate`.
@@ -431,10 +1020,61 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //     return true;
         // return false;
         //
-        // Held PORT-PENDING on the `CIndividualNodeIncrementalExpansionData` satellite
-        // (no bodies / node accessor) and the `getLocalizedIndividual` sibling
-        // (neighbour/core unit). `getNominalIndividual` is available substrate.
-        let _ = (individual_node, neighbour_node_candidate, queue_incremental_expansion, calc_alg_context);
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if inc_exp_data.is_none()
+            || (!calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .has_directly_changed_neighbour_connection()
+                && !calc_alg_context
+                    .process_context()
+                    .inc_exp_data(inc_exp_data)
+                    .is_directly_changed())
+        {
+            let cand_inc_exp_data = calc_alg_context
+                .process_context()
+                .node_incremental_expansion_data_existing(neighbour_node_candidate);
+            if Self::incremental_data_is_directly_changed_or_connected(
+                calc_alg_context,
+                cand_inc_exp_data,
+            ) {
+                let loc_inc_exp_data = calc_alg_context
+                    .process_context_mut()
+                    .node_incremental_expansion_data(individual_node, true);
+                let loc_neighbour_node_candidate = self.get_localized_individual(
+                    neighbour_node_candidate,
+                    false,
+                    calc_alg_context,
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .inc_exp_data_mut(loc_inc_exp_data)
+                    .set_directly_changed_neighbour_connection_node(loc_neighbour_node_candidate);
+
+                let loc_cand_inc_exp_data = calc_alg_context
+                    .process_context_mut()
+                    .node_incremental_expansion_data(loc_neighbour_node_candidate, true);
+                calc_alg_context
+                    .process_context_mut()
+                    .inc_exp_data_mut(loc_cand_inc_exp_data)
+                    .add_neighbour_propagated_directly_changed(individual_node);
+
+                if queue_incremental_expansion
+                    && calc_alg_context
+                        .process_context()
+                        .node(individual_node)
+                        .is_nominal_individual_node()
+                {
+                    self.add_individual_to_incremental_expansion_queue(
+                        individual_node,
+                        calc_alg_context,
+                    );
+                }
+                return true;
+            }
+        }
         false
     }
 
@@ -452,37 +1092,153 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         queue_incremental_expansion: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 3534–3634. Outline:
-        //
-        //   propNodeList(ctx); propNodeList.append(individualNode); propagatedDirectlyChanged = false;
-        //   while !propNodeList.isEmpty():
-        //     propIndiNode = propNodeList.takeFirst();
-        //     for succLink in propIndiNode->getSuccessorIterator():
-        //       succIndi = getSuccessorIndividual(propIndiNode,succLink,ctx);
-        //       incExpData = succIndi->getIncrementalExpansionData(false);
-        //       if !incExpData || (!hasDirectlyChangedNeighbourConnection && !isDirectlyChanged && !isPreviousCompletionGraphCompatible):
-        //         locSuccIndi = getLocalizedIndividual(succIndi,false,ctx);
-        //         if establishDirectlyChangedNeighbourConnection(locSuccIndi,propIndiNode,queueIncrementalExpansion,ctx):
-        //           propagatedDirectlyChanged = true; propNodeList.append(locSuccIndi);
-        //     for connID in propIndiNode->getConnectionSuccessorIterator():
-        //       connIndiNode = getUpToDateIndividual(connID,ctx);   // same guard + establish + append
-        //     if propIndiNode->hasPartialProcessingRestrictionFlags(PRFSUCCESSORNOMINALCONNECTION):
-        //       for blockedIndiNode in propIndiNode->getBlockedIndividualsLinker():           // same guard/establish/append
-        //       for blockedIndiNode in propIndiNode->getProcessingBlockedIndividualsLinker(): // same
-        //       followSet = propIndiNode->getBlockingFollowSet(false);
-        //       if followSet: for blockedIndiNodeID in followSet:                              // same
-        //       blockerIndiNode = propIndiNode->getBlockerIndividualNode();   if set: same
-        //       followingIndiNode = propIndiNode->getFollowingIndividualNode(); if set: same
-        //   return propagatedDirectlyChanged;
-        //
-        // Held PORT-PENDING: the `CIndividualNodeIncrementalExpansionData` satellite
-        // (the guard predicate on every reached node) + the temp processing list, and
-        // the siblings `getSuccessorIndividual` / `getUpToDateIndividual` /
-        // `getLocalizedIndividual` and `establishDirectlyChangedNeighbourConnection`
-        // (this unit, PORT-PENDING). The node iterators / blocked-linker / follow-set /
-        // blocker / following getters are available substrate.
-        let _ = (individual_node, queue_incremental_expansion, calc_alg_context);
-        false
+        let mut prop_node_list = VecDeque::new();
+        prop_node_list.push_back(individual_node);
+        let mut propagated_directly_changed = false;
+
+        while let Some(prop_indi_node) = prop_node_list.pop_front() {
+            let mut succ_it = calc_alg_context
+                .process_context()
+                .node_successor_iterator(prop_indi_node);
+            while succ_it.has_next() {
+                let succ_link = succ_it.next_link(true);
+                let mut prop_source = prop_indi_node;
+                let succ_indi =
+                    self.get_successor_individual(&mut prop_source, succ_link, calc_alg_context);
+                if self.try_propagate_directly_changed_to_candidate(
+                    succ_indi,
+                    prop_indi_node,
+                    queue_incremental_expansion,
+                    &mut prop_node_list,
+                    calc_alg_context,
+                ) {
+                    propagated_directly_changed = true;
+                }
+            }
+
+            let conn_set = calc_alg_context
+                .process_context()
+                .node_connection_successor_set_existing(prop_indi_node);
+            if conn_set.is_some() {
+                let mut conn_it = calc_alg_context
+                    .process_context()
+                    .conn_succ_set(conn_set)
+                    .get_connection_successor_iterator();
+                while conn_it.has_next() {
+                    let conn_id = conn_it.next(true);
+                    let conn_indi_node =
+                        self.get_up_to_date_individual_by_id(conn_id, calc_alg_context);
+                    if self.try_propagate_directly_changed_to_candidate(
+                        conn_indi_node,
+                        prop_indi_node,
+                        queue_incremental_expansion,
+                        &mut prop_node_list,
+                        calc_alg_context,
+                    ) {
+                        propagated_directly_changed = true;
+                    }
+                }
+            }
+
+            if calc_alg_context
+                .process_context()
+                .node(prop_indi_node)
+                .has_partial_processing_restriction_flags(
+                super::super::process::node::IndividualProcessNode::PRF_SUCCESSORNOMINALCONNECTION,
+            ) {
+                let blocked_nodes: Vec<NodeId> = calc_alg_context
+                    .process_context()
+                    .node(prop_indi_node)
+                    .get_blocked_individuals_linker()
+                    .to_vec();
+                for blocked_indi_node in blocked_nodes {
+                    let blocked_indi_node =
+                        self.get_up_to_date_individual(blocked_indi_node, calc_alg_context);
+                    if self.try_propagate_directly_changed_to_candidate(
+                        blocked_indi_node,
+                        prop_indi_node,
+                        queue_incremental_expansion,
+                        &mut prop_node_list,
+                        calc_alg_context,
+                    ) {
+                        propagated_directly_changed = true;
+                    }
+                }
+
+                let processing_blocked_nodes: Vec<NodeId> = calc_alg_context
+                    .process_context()
+                    .node(prop_indi_node)
+                    .get_processing_blocked_individuals_linker()
+                    .to_vec();
+                for blocked_indi_node in processing_blocked_nodes {
+                    let blocked_indi_node =
+                        self.get_up_to_date_individual(blocked_indi_node, calc_alg_context);
+                    if self.try_propagate_directly_changed_to_candidate(
+                        blocked_indi_node,
+                        prop_indi_node,
+                        queue_incremental_expansion,
+                        &mut prop_node_list,
+                        calc_alg_context,
+                    ) {
+                        propagated_directly_changed = true;
+                    }
+                }
+
+                let follow_set = calc_alg_context
+                    .process_context()
+                    .node_blocking_followers(prop_indi_node);
+                for blocked_indi_node_id in follow_set {
+                    let blocked_indi_node = self
+                        .get_up_to_date_individual_by_id(blocked_indi_node_id, calc_alg_context);
+                    if self.try_propagate_directly_changed_to_candidate(
+                        blocked_indi_node,
+                        prop_indi_node,
+                        queue_incremental_expansion,
+                        &mut prop_node_list,
+                        calc_alg_context,
+                    ) {
+                        propagated_directly_changed = true;
+                    }
+                }
+
+                let blocker_indi_node = calc_alg_context
+                    .process_context()
+                    .node(prop_indi_node)
+                    .blocker_individual_node();
+                if blocker_indi_node.is_some() {
+                    let blocker_indi_node =
+                        self.get_up_to_date_individual(blocker_indi_node, calc_alg_context);
+                    if self.try_propagate_directly_changed_to_candidate(
+                        blocker_indi_node,
+                        prop_indi_node,
+                        queue_incremental_expansion,
+                        &mut prop_node_list,
+                        calc_alg_context,
+                    ) {
+                        propagated_directly_changed = true;
+                    }
+                }
+
+                let following_indi_node = calc_alg_context
+                    .process_context()
+                    .node(prop_indi_node)
+                    .following_individual_node();
+                if following_indi_node.is_some() {
+                    let following_indi_node =
+                        self.get_up_to_date_individual(following_indi_node, calc_alg_context);
+                    if self.try_propagate_directly_changed_to_candidate(
+                        following_indi_node,
+                        prop_indi_node,
+                        queue_incremental_expansion,
+                        &mut prop_node_list,
+                        calc_alg_context,
+                    ) {
+                        propagated_directly_changed = true;
+                    }
+                }
+            }
+        }
+        propagated_directly_changed
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::searchDirectlyChangedNeighbourNodeConnection`.
@@ -497,24 +1253,125 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 3639–3702. Outline:
-        //
-        //   for succLink in individualNode->getSuccessorIterator():
-        //     succIndi = getSuccessorIndividual(individualNode,succLink,ctx);
-        //     if succIndi->getIncrementalExpansionData(false) is directly-changed/changed-connection: return succIndi;
-        //   for connID in individualNode->getConnectionSuccessorIterator():
-        //     connIndiNode = getUpToDateIndividual(connID,ctx);  if changed: return connIndiNode;
-        //   if individualNode->hasPartialProcessingRestrictionFlags(PRFSUCCESSORNOMINALCONNECTION):
-        //     scan getBlockedIndividualsLinker / getProcessingBlockedIndividualsLinker / getBlockingFollowSet(false)
-        //       / getBlockerIndividualNode() / getFollowingIndividualNode() (each via getUpToDateIndividual),
-        //       returning the first directly-changed/changed-connection node;
-        //   return nullptr;
-        //
-        // Held PORT-PENDING on the `CIndividualNodeIncrementalExpansionData` satellite
-        // (the per-candidate change predicate) + the `getSuccessorIndividual` /
-        // `getUpToDateIndividual` siblings; the node iterators and linker getters are
-        // available substrate.
-        let _ = (individual_node, calc_alg_context);
+        let mut succ_it = calc_alg_context
+            .process_context()
+            .node_successor_iterator(individual_node);
+        while succ_it.has_next() {
+            let succ_link = succ_it.next_link(true);
+            let mut source = individual_node;
+            let succ_indi = self.get_successor_individual(&mut source, succ_link, calc_alg_context);
+            if Self::individual_has_directly_changed_or_connected_incremental_data(
+                calc_alg_context,
+                succ_indi,
+            ) {
+                return succ_indi;
+            }
+        }
+
+        let conn_set = calc_alg_context
+            .process_context()
+            .node_connection_successor_set_existing(individual_node);
+        if conn_set.is_some() {
+            let mut conn_it = calc_alg_context
+                .process_context()
+                .conn_succ_set(conn_set)
+                .get_connection_successor_iterator();
+            while conn_it.has_next() {
+                let conn_id = conn_it.next(true);
+                let conn_indi_node =
+                    self.get_up_to_date_individual_by_id(conn_id, calc_alg_context);
+                if Self::individual_has_directly_changed_or_connected_incremental_data(
+                    calc_alg_context,
+                    conn_indi_node,
+                ) {
+                    return conn_indi_node;
+                }
+            }
+        }
+
+        if calc_alg_context
+            .process_context()
+            .node(individual_node)
+            .has_partial_processing_restriction_flags(
+                super::super::process::node::IndividualProcessNode::PRF_SUCCESSORNOMINALCONNECTION,
+            )
+        {
+            let blocked_nodes: Vec<NodeId> = calc_alg_context
+                .process_context()
+                .node(individual_node)
+                .get_blocked_individuals_linker()
+                .to_vec();
+            for blocked_indi_node in blocked_nodes {
+                let blocked_indi_node =
+                    self.get_up_to_date_individual(blocked_indi_node, calc_alg_context);
+                if Self::individual_has_directly_changed_or_connected_incremental_data(
+                    calc_alg_context,
+                    blocked_indi_node,
+                ) {
+                    return blocked_indi_node;
+                }
+            }
+
+            let processing_blocked_nodes: Vec<NodeId> = calc_alg_context
+                .process_context()
+                .node(individual_node)
+                .get_processing_blocked_individuals_linker()
+                .to_vec();
+            for blocked_indi_node in processing_blocked_nodes {
+                let blocked_indi_node =
+                    self.get_up_to_date_individual(blocked_indi_node, calc_alg_context);
+                if Self::individual_has_directly_changed_or_connected_incremental_data(
+                    calc_alg_context,
+                    blocked_indi_node,
+                ) {
+                    return blocked_indi_node;
+                }
+            }
+
+            let follow_set = calc_alg_context
+                .process_context()
+                .node_blocking_followers(individual_node);
+            for blocked_indi_node_id in follow_set {
+                let blocked_indi_node =
+                    self.get_up_to_date_individual_by_id(blocked_indi_node_id, calc_alg_context);
+                if Self::individual_has_directly_changed_or_connected_incremental_data(
+                    calc_alg_context,
+                    blocked_indi_node,
+                ) {
+                    return blocked_indi_node;
+                }
+            }
+
+            let blocker_indi_node = calc_alg_context
+                .process_context()
+                .node(individual_node)
+                .blocker_individual_node();
+            if blocker_indi_node.is_some() {
+                let blocker_indi_node =
+                    self.get_up_to_date_individual(blocker_indi_node, calc_alg_context);
+                if Self::individual_has_directly_changed_or_connected_incremental_data(
+                    calc_alg_context,
+                    blocker_indi_node,
+                ) {
+                    return blocker_indi_node;
+                }
+            }
+
+            let following_indi_node = calc_alg_context
+                .process_context()
+                .node(individual_node)
+                .following_individual_node();
+            if following_indi_node.is_some() {
+                let following_indi_node =
+                    self.get_up_to_date_individual(following_indi_node, calc_alg_context);
+                if Self::individual_has_directly_changed_or_connected_incremental_data(
+                    calc_alg_context,
+                    following_indi_node,
+                ) {
+                    return following_indi_node;
+                }
+            }
+        }
         Id::NONE
     }
 
@@ -530,20 +1387,40 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         queue_compatibility_checks: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // incExpData = individualNode->getIncrementalExpansionData(false);
-        // if incExpData && incExpData->hasDirectlyChangedNeighbourConnection():
-        //   locIncExpData = individualNode->getIncrementalExpansionData(true);
-        //   locIncExpData->setDirectlyChangedNeighbourConnectionNode(nullptr);
-        //   if queueCompatibilityChecks && individualNode->isNominalIndividualNode():
-        //     ctx->getUsedProcessingDataBox()->getIncrementalCompatibilityCheckingQueue(true)->insertProcessIndiviudal(individualNode);
-        //   clearPropagatedDirectlyChangedNeighbourConnection(individualNode,true,ctx);
-        //   return true;
-        // return false;
-        //
-        // Held PORT-PENDING on the `CIndividualNodeIncrementalExpansionData` satellite.
-        // The databox `getIncrementalCompatibilityCheckingQueue` getter is available
-        // substrate; `insertProcessIndiviudal` is a deferred queue method (W3-DEFER[api]).
-        let _ = (individual_node, queue_compatibility_checks, calc_alg_context);
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if inc_exp_data.is_some()
+            && calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .has_directly_changed_neighbour_connection()
+        {
+            let loc_inc_exp_data = calc_alg_context
+                .process_context_mut()
+                .node_incremental_expansion_data(individual_node, true);
+            calc_alg_context
+                .process_context_mut()
+                .inc_exp_data_mut(loc_inc_exp_data)
+                .set_directly_changed_neighbour_connection_node(Id::NONE);
+            if queue_compatibility_checks
+                && calc_alg_context
+                    .process_context()
+                    .node(individual_node)
+                    .is_nominal_individual_node()
+            {
+                self.add_individual_to_incremental_compatibility_checking_queue(
+                    individual_node,
+                    calc_alg_context,
+                );
+            }
+            self.clear_propagated_directly_changed_neighbour_connection(
+                individual_node,
+                true,
+                calc_alg_context,
+            );
+            return true;
+        }
         false
     }
 
@@ -560,40 +1437,100 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         queue_compatibility_checks: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 3722–3761. Outline:
-        //
-        //   propCleared = false;
-        //   incExpData = individualNode->getIncrementalExpansionData(false);
-        //   if incExpData && incExpData->hasNeighbourPropagatedDirectlyChanged():
-        //     clearPropNodeList(ctx); clearPropNodeList.append(individualNode);
-        //     while !clearPropNodeList.isEmpty():
-        //       clearPropIndiNode = clearPropNodeList.takeFirst();
-        //       clearIncExpData = clearPropIndiNode->getIncrementalExpansionData(false);
-        //       propIndiNodeList = clearIncExpData->getNeighbourPropagatedDirectlyChangedList(false);
-        //       if propIndiNodeList && !propIndiNodeList->isEmpty():
-        //         clearIncExpData = clearPropIndiNode->getIncrementalExpansionData(true);
-        //         propIndiNodeList = clearIncExpData->getNeighbourPropagatedDirectlyChangedList(true);
-        //         for propNode in propIndiNodeList:
-        //           propNode = getUpToDateIndividual(propNode,ctx);
-        //           propIncExpData = propNode->getIncrementalExpansionData(false);
-        //           if propIncExpData && propIncExpData->hasDirectlyChangedNeighbourConnection()
-        //              && propIncExpData->getDirectlyChangedNeighbourConnectionNode()->getIndividualNodeID() == clearPropIndiNode->getIndividualNodeID():
-        //             propCleared = true;
-        //             propNode = getLocalizedIndividual(propNode,false,ctx);
-        //             propIncExpData = propNode->getIncrementalExpansionData(true);
-        //             propIncExpData->setDirectlyChangedNeighbourConnectionNode(nullptr);
-        //             if propIncExpData->hasNeighbourPropagatedDirectlyChanged(): clearPropNodeList.append(propNode);
-        //             if queueCompatibilityChecks && individualNode->isNominalIndividualNode():
-        //               ctx->getUsedProcessingDataBox()->getIncrementalCompatibilityCheckingQueue(true)->insertProcessIndiviudal(individualNode);
-        //         clearIncExpData->clearNeighbourPropagatedDirectlyChangedList();
-        //   return false;   // C++ returns false unconditionally (propCleared is unused)
-        //
-        // Held PORT-PENDING on the `CIndividualNodeIncrementalExpansionData` satellite
-        // (the neighbour-propagated list + change accessors) and the
-        // `getUpToDateIndividual` / `getLocalizedIndividual` siblings; the databox
-        // compatibility-checking queue getter is available substrate
-        // (`insertProcessIndiviudal` is the deferred queue method).
-        let _ = (individual_node, queue_compatibility_checks, calc_alg_context);
+        let mut _prop_cleared = false;
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(individual_node);
+        if inc_exp_data.is_some()
+            && calc_alg_context
+                .process_context()
+                .inc_exp_data(inc_exp_data)
+                .has_neighbour_propagated_directly_changed()
+        {
+            let mut clear_prop_node_list = VecDeque::new();
+            clear_prop_node_list.push_back(individual_node);
+
+            while let Some(clear_prop_indi_node) = clear_prop_node_list.pop_front() {
+                let clear_inc_exp_data = calc_alg_context
+                    .process_context()
+                    .node_incremental_expansion_data_existing(clear_prop_indi_node);
+                if clear_inc_exp_data.is_none() {
+                    continue;
+                }
+                let prop_indi_node_list = calc_alg_context
+                    .process_context()
+                    .inc_exp_data(clear_inc_exp_data)
+                    .neighbour_propagated_directly_changed_snapshot();
+                if !prop_indi_node_list.is_empty() {
+                    let clear_inc_exp_data = calc_alg_context
+                        .process_context_mut()
+                        .node_incremental_expansion_data(clear_prop_indi_node, true);
+
+                    for prop_node in prop_indi_node_list {
+                        let prop_node = self.get_up_to_date_individual(prop_node, calc_alg_context);
+                        let prop_inc_exp_data = calc_alg_context
+                            .process_context()
+                            .node_incremental_expansion_data_existing(prop_node);
+                        if prop_inc_exp_data.is_some()
+                            && calc_alg_context
+                                .process_context()
+                                .inc_exp_data(prop_inc_exp_data)
+                                .has_directly_changed_neighbour_connection()
+                        {
+                            let conn_node = calc_alg_context
+                                .process_context()
+                                .inc_exp_data(prop_inc_exp_data)
+                                .get_directly_changed_neighbour_connection_node();
+                            let conn_node_id = calc_alg_context
+                                .process_context()
+                                .node(conn_node)
+                                .individual_node_id();
+                            let clear_prop_node_id = calc_alg_context
+                                .process_context()
+                                .node(clear_prop_indi_node)
+                                .individual_node_id();
+                            if conn_node_id == clear_prop_node_id {
+                                _prop_cleared = true;
+                                let prop_node = self.get_localized_individual(
+                                    prop_node,
+                                    false,
+                                    calc_alg_context,
+                                );
+                                let prop_inc_exp_data = calc_alg_context
+                                    .process_context_mut()
+                                    .node_incremental_expansion_data(prop_node, true);
+                                let has_neighbour_propagated = calc_alg_context
+                                    .process_context()
+                                    .inc_exp_data(prop_inc_exp_data)
+                                    .has_neighbour_propagated_directly_changed();
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .inc_exp_data_mut(prop_inc_exp_data)
+                                    .set_directly_changed_neighbour_connection_node(Id::NONE);
+                                if has_neighbour_propagated {
+                                    clear_prop_node_list.push_back(prop_node);
+                                }
+                                if queue_compatibility_checks
+                                    && calc_alg_context
+                                        .process_context()
+                                        .node(individual_node)
+                                        .is_nominal_individual_node()
+                                {
+                                    self.add_individual_to_incremental_compatibility_checking_queue(
+                                        individual_node,
+                                        calc_alg_context,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    calc_alg_context
+                        .process_context_mut()
+                        .inc_exp_data_mut(clear_inc_exp_data)
+                        .clear_neighbour_propagated_directly_changed_list();
+                }
+            }
+        }
         false
     }
 
@@ -614,22 +1551,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         reuse_node_cand: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // superConceptSet = reuseNodeCand->getReapplyConceptLabelSet(false);
-        // isSubset = isLabelConceptSubSet(subConceptSet,superConceptSet,nullptr,nullptr,ctx);
-        // if !isSubset: return false;
-        // for conDes in superConceptSet->getConceptLabelSetIterator(false,false,false):
-        //   if isConceptSignatureBlockingCritical(reuseNodeCand,conDes,conDes->getDependencyTrackPoint(),ctx):
-        //     indiNode->setInvalidSignatureBlocking(true);
-        //     return false;
-        // return true;
-        //
-        // Held PORT-PENDING on the siblings `isLabelConceptSubSet` (blocking/label-test
-        // unit) and `isConceptSignatureBlockingCritical` (blocking unit). The node
-        // `getReapplyConceptLabelSet` + `setInvalidSignatureBlocking` and the label-set
-        // iterator are available substrate; this body goes live once the two label/
-        // signature siblings land.
-        let _ = (indi_node, sub_concept_set, reuse_node_cand, calc_alg_context);
-        false
+        let super_concept_set = calc_alg_context
+            .process_context()
+            .node(reuse_node_cand)
+            .use_reapply_con_label_set;
+        let is_subset = self.is_label_concept_sub_set(
+            sub_concept_set,
+            super_concept_set,
+            None,
+            None,
+            calc_alg_context,
+        );
+        if !is_subset {
+            return false;
+        }
+
+        let mut super_con_set_it = calc_alg_context
+            .process_context()
+            .label_set_concept_label_set_iterator(super_concept_set, false, false, false);
+        while super_con_set_it.has_next() {
+            let con_des = super_con_set_it.next(true, calc_alg_context.process_context());
+            let dep_track_point = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .get_dependency_track_point();
+            if self.is_concept_signature_blocking_critical(
+                con_des,
+                dep_track_point,
+                calc_alg_context,
+            ) {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_node)
+                    .set_invalid_signature_blocking(true);
+                return false;
+            }
+        }
+        true
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::hasCompatibleConceptSetSignature`.
@@ -647,39 +1605,133 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         compatible_test_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 5960–6004. Outline:
-        //
-        //   compTestConSet = compatibleTestNode->getReapplyConceptLabelSet(false);
-        //   conCount = conSet->getConceptCount(); compTestConCount = compTestConSet->getConceptCount();
-        //   if conCount <= 0 || compTestConCount < conCount: return false;
-        //   diffCount = compTestConCount - conCount;
-        //   compTestConDesIt = compTestConSet->getAddingSortedConceptDescriptionLinker();
-        //   conDesIt         = conSet->getAddingSortedConceptDescriptionLinker();
-        //   while diffCount-- > 0: compTestConDesIt = compTestConDesIt->getNext();
-        //   orderingCompatible = true;
-        //   while orderingCompatible && conDesIt:
-        //     concept = conDesIt->getConcept(); conNeg = conDesIt->getNegation();
-        //     if compTestConDesIt->getData() == concept && compTestConDesIt->getNegation() == conNeg:
-        //       if isConceptSignatureBlockingCritical(blockingNode,conDesIt,conDesIt->getDependencyTrackPoint(),ctx):
-        //         blockingNode->setInvalidSignatureBlocking(true); return false;
-        //       advance both;
-        //     else: orderingCompatible = false;
-        //   if !orderingCompatible:
-        //     while conDesIt:
-        //       concept = conDesIt->getConcept(); conNeg = conDesIt->getNegation();
-        //       if isConceptSignatureBlockingCritical(blockingNode,conDesIt,conDesIt->getDependencyTrackPoint(),ctx):
-        //         blockingNode->setInvalidSignatureBlocking(true); return false;
-        //       if !conSet->containsConcept(concept,conNeg): return false;
-        //       advance conDesIt;
-        //   return true;
-        //
-        // Held PORT-PENDING on the `isConceptSignatureBlockingCritical` sibling
-        // (blocking unit). The node `getReapplyConceptLabelSet` + `setInvalidSignatureBlocking`
-        // and the label-set accessors (`getConceptCount` /
-        // `getAddingSortedConceptDescriptionLinker` / `containsConcept`) are available
-        // substrate; this body goes live once the signature-critical sibling lands.
-        let _ = (blocking_node, con_set, compatible_test_node, calc_alg_context);
-        false
+        let comp_test_con_set = calc_alg_context
+            .process_context()
+            .node(compatible_test_node)
+            .use_reapply_con_label_set;
+        let con_count = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_concept_count();
+        let comp_test_con_count = if comp_test_con_set.is_some() {
+            calc_alg_context
+                .process_context()
+                .label_set(comp_test_con_set)
+                .get_concept_count()
+        } else {
+            0
+        };
+        if con_count <= 0 || comp_test_con_count < con_count {
+            return false;
+        }
+
+        let mut diff_count = comp_test_con_count - con_count;
+        let mut comp_test_con_des_it = calc_alg_context
+            .process_context()
+            .label_set(comp_test_con_set)
+            .get_adding_sorted_concept_description_linker();
+        let mut con_des_it = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_adding_sorted_concept_description_linker();
+        while diff_count > 0 {
+            comp_test_con_des_it = calc_alg_context
+                .process_context()
+                .con_desc(comp_test_con_des_it)
+                .get_next_concept_descriptor();
+            diff_count -= 1;
+        }
+
+        let mut ordering_compatible = true;
+        while ordering_compatible && con_des_it.is_some() {
+            let concept = calc_alg_context
+                .process_context()
+                .con_desc(con_des_it)
+                .get_concept();
+            let con_neg = calc_alg_context
+                .process_context()
+                .con_desc(con_des_it)
+                .is_negated();
+            if comp_test_con_des_it.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .con_desc(comp_test_con_des_it)
+                    .get_concept()
+                    == concept
+                && calc_alg_context
+                    .process_context()
+                    .con_desc(comp_test_con_des_it)
+                    .is_negated()
+                    == con_neg
+            {
+                let dep_track_point = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des_it)
+                    .get_dependency_track_point();
+                if self.is_concept_signature_blocking_critical(
+                    con_des_it,
+                    dep_track_point,
+                    calc_alg_context,
+                ) {
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(*blocking_node)
+                        .set_invalid_signature_blocking(true);
+                    return false;
+                }
+                con_des_it = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des_it)
+                    .get_next_concept_descriptor();
+                comp_test_con_des_it = calc_alg_context
+                    .process_context()
+                    .con_desc(comp_test_con_des_it)
+                    .get_next_concept_descriptor();
+            } else {
+                ordering_compatible = false;
+            }
+        }
+
+        if !ordering_compatible {
+            while con_des_it.is_some() {
+                let concept = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des_it)
+                    .get_concept();
+                let con_neg = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des_it)
+                    .is_negated();
+                let dep_track_point = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des_it)
+                    .get_dependency_track_point();
+                if self.is_concept_signature_blocking_critical(
+                    con_des_it,
+                    dep_track_point,
+                    calc_alg_context,
+                ) {
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(*blocking_node)
+                        .set_invalid_signature_blocking(true);
+                    return false;
+                }
+                if !self.label_set_contains_concept_resolved(
+                    con_set,
+                    concept,
+                    con_neg,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+                con_des_it = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des_it)
+                    .get_next_concept_descriptor();
+            }
+        }
+        true
     }
 
     // =======================================================================
@@ -697,20 +1749,44 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> String {
-        // incExpData = indi->getIncrementalExpansionData(false);
-        // if incExpData:
-        //   collect status tokens from isPreviousCompletionGraphCompatible /
-        //     hasDirectlyChangedNeighbourConnection / isDirectlyChanged;
-        //   dirChangedNeighConnNodeID = incExpData->getDirectlyChangedNeighbourConnectionNode()?->getIndividualNodeID() ?? "-";
-        //   expansionPriority = incExpData->getExpansionPriority();
-        //   format "Incremental-Expansion-Status: … / Directly-Changed-Connection-Neighbour: … / Expansion-Priority: …";
-        // return incExpString;
-        //
-        // Held PORT-PENDING on the `CIndividualNodeIncrementalExpansionData` satellite
-        // (status / priority / changed-connection accessors). Debug-only; empty string
-        // until the satellite lands.
-        let _ = (indi, calc_alg_context);
-        String::new()
+        let inc_exp_data = calc_alg_context
+            .process_context()
+            .node_incremental_expansion_data_existing(indi);
+        if inc_exp_data.is_none() {
+            return String::new();
+        }
+
+        let inc = calc_alg_context
+            .process_context()
+            .inc_exp_data(inc_exp_data);
+        let mut status_strings = Vec::new();
+        if inc.is_previous_completion_graph_compatible() {
+            status_strings.push("compatible");
+        }
+        if inc.has_directly_changed_neighbour_connection() {
+            status_strings.push("directly-changed-connection");
+        }
+        if inc.is_directly_changed() {
+            status_strings.push("directly-changed-node");
+        }
+
+        let dir_changed_neigh_conn_node = inc.get_directly_changed_neighbour_connection_node();
+        let dir_changed_neigh_conn_node_id = if dir_changed_neigh_conn_node.is_some() {
+            calc_alg_context
+                .process_context()
+                .node(dir_changed_neigh_conn_node)
+                .individual_node_id()
+                .to_string()
+        } else {
+            "-".to_string()
+        };
+
+        format!(
+            "Incremental-Expansion-Status: {}\r\n Directly-Changed-Connection-Neighbour: {}\r\n Expansion-Priority: {}",
+            status_strings.join(", "),
+            dir_changed_neigh_conn_node_id,
+            inc.get_expansion_priority()
+        )
     }
 
     // =======================================================================
@@ -788,35 +1864,78 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// `individualNode` whose binding path is compatible (per
     /// `areVariablePropagationBindingsCompatible`) with `varBindPath`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: returns the C++ `QSet<CConcept*>` as a `Vec<ConceptId>`;
-    /// the `CConceptVariableBindingPathSetHash` / `CVariableBindingPathSet` /
-    /// `CVariableBindingPath` subsystem it walks is not yet ported (`varBindPath`
-    /// opaque `Cint64`).
+    /// KONCLUDE-PORT-NOTE[api]: returns the C++ `QSet<CConcept*>` as a
+    /// de-duplicated `Vec<ConceptId>`; iteration order is irrelevant to the callers,
+    /// which treat it as a set.
     pub fn get_concepts_for_compatible_variable_propagation_bindings(
         &mut self,
         individual_node: &mut NodeId,
-        var_bind_path: Cint64,
+        var_bind_path: VarBindingPathId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Vec<ConceptId> {
-        // conceptSet = {};
-        // conVarBindSetHash = individualNode->getConceptVariableBindingPathSetHash(false);
-        // if conVarBindSetHash:
-        //   for hashData in conVarBindSetHash:
-        //     varBindSet = hashData.mUseVariableBindingPathSet; conDes = varBindSet->getConceptDescriptor();
-        //     if varBindSet && conDes:
-        //       concept = conDes->getConcept(); conceptsVarBindsCompatible = false;
-        //       for mapData in varBindSet->getVariableBindingPathMap():
-        //         varBindDes = mapData.getVariableBindingPathDescriptor();
-        //         if varBindDes && areVariablePropagationBindingsCompatible(varBindPath, varBindDes->getVariableBindingPath(), ctx):
-        //           conceptsVarBindsCompatible = true; break;
-        //       if conceptsVarBindsCompatible: conceptSet.insert(concept);
-        // return conceptSet;
-        //
-        // Held PORT-PENDING on `CConceptVariableBindingPathSetHash` (node satellite) +
-        // the variable-binding-path subsystem; the `areVariablePropagationBindingsCompatible`
-        // sibling lives in this unit (PORT-PENDING).
-        let _ = (individual_node, var_bind_path, calc_alg_context);
-        Vec::new()
+        let candidates: Vec<(ConceptId, Vec<VarBindingPathId>)> = {
+            let pc = calc_alg_context.process_context();
+            let con_var_bind_set_hash =
+                pc.node(*individual_node).use_concept_var_bind_path_set_hash;
+            if con_var_bind_set_hash.is_none() {
+                return Vec::new();
+            }
+
+            let mut candidates = Vec::new();
+            for hash_data in pc
+                .con_var_bind_path_set_hash(con_var_bind_set_hash)
+                .map
+                .values()
+            {
+                let var_bind_set = hash_data.use_variable_binding_path_set;
+                if var_bind_set.is_none() {
+                    continue;
+                }
+                let con_des = pc.vbpath_set(var_bind_set).get_concept_descriptor();
+                if con_des.is_none() {
+                    continue;
+                }
+
+                let concept = pc.con_desc(con_des).get_concept();
+                let paths = pc
+                    .vbpath_set(var_bind_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .values()
+                    .filter_map(|map_data| {
+                        let var_bind_des = map_data.get_variable_binding_path_descriptor();
+                        if var_bind_des.is_some() {
+                            let path = pc.vbpath_des(var_bind_des).get_variable_binding_path();
+                            if path.is_some() {
+                                return Some(path);
+                            }
+                        }
+                        None
+                    })
+                    .collect::<Vec<_>>();
+                candidates.push((concept, paths));
+            }
+            candidates
+        };
+
+        let mut concept_set = Vec::new();
+        for (concept, paths) in candidates {
+            let mut concepts_var_binds_compatible = false;
+            for con_var_bind_path in paths {
+                if self.are_variable_propagation_bindings_compatible(
+                    var_bind_path,
+                    con_var_bind_path,
+                    calc_alg_context,
+                ) {
+                    concepts_var_binds_compatible = true;
+                    break;
+                }
+            }
+            if concepts_var_binds_compatible && !concept_set.contains(&concept) {
+                concept_set.push(concept);
+            }
+        }
+        concept_set
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getBindingsCompatibleConceptSetsHashValue`.
@@ -853,7 +1972,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addIndividualToIncrementalCompatibilityCheckingQueue`.
-    /// cpp 27554–27563. FULLY PORTED (bar the deferred queue-insert body + stat counter).
+    /// cpp 27554–27563.
     ///
     /// Enqueues an un-queued nominal node onto the incremental-compatibility-checking
     /// queue; returns whether it was enqueued.
@@ -875,11 +1994,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context_mut()
                 .node_mut(individual)
                 .set_incremental_compatibility_checking_queued(true);
-            let _inc_comp_checking_queue = calc_alg_context
-                .get_incremental_compatibility_checking_queue(true);
-            // W3-DEFER[api]: incCompCheckingQueue->insertProcessIndiviudal(individual);
-            //   (`CIndividualDepthProcessingQueue::insertProcessIndiviudal` is a
-            //   Process-layer queue method not yet ported.)
+            let inc_comp_checking_queue =
+                calc_alg_context.get_incremental_compatibility_checking_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_depth_queue_insert(inc_comp_checking_queue, individual);
             // W3-DEFER[api]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT,calcAlgContext);
             return true;
         }
@@ -898,11 +2017,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W2.7 reconcile: the `CIndividualNodeIncrementalExpansionData` satellite
-        // (`process::reapply_sat`) is now arena-backed, so the branch selection goes
-        // live. The terminal queue `insertProcessIndiviudal` / `insertIndiviudal`
-        // methods + `STATINC` stay `W3-DEFER` (the same accepted leaves as the ported
-        // sibling `add_individual_to_incremental_compatibility_checking_queue`).
+        // W2.7/W158/W159 reconcile: the `CIndividualNodeIncrementalExpansionData`
+        // satellite (`process::reapply_sat`) and both target queues are now
+        // arena-backed, so the branch selection and insertions are live. `STATINC`
+        // remains the only deferred leaf here.
         //
         // if !individual->isIncrementalExpansionQueued():
         if !calc_alg_context
@@ -912,9 +2030,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         {
             // incExpData = individual->getIncrementalExpansionData(false);
             let inc_exp_data = calc_alg_context
-                .process_context_mut()
-                .node_mut(individual)
-                .incremental_expansion_data(false);
+                .process_context()
+                .node_incremental_expansion_data_existing(individual);
             // if !incExpData || !incExpData->isIncremetnalExpansionListInitialized():
             let list_initialized = inc_exp_data.is_some()
                 && calc_alg_context
@@ -928,9 +2045,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node_mut(individual)
                     .set_incremental_expansion_queued(true);
                 // incExpInitQueue = ctx->getProcessingDataBox()->getIncrementalExpansionInitializingProcessingQueue(true);
-                let _inc_exp_init_queue = calc_alg_context
-                    .get_incremental_expansion_initializing_processing_queue(true);
-                // W3-DEFER[api]: incExpInitQueue->insertProcessIndiviudal(individual);
+                let inc_exp_init_queue =
+                    calc_alg_context.get_incremental_expansion_initializing_processing_queue(true);
+                calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_insert(inc_exp_init_queue, individual);
                 // W3-DEFER[macro]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, ctx);
                 return true;
             } else if calc_alg_context
@@ -944,15 +2063,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node_mut(individual)
                     .set_incremental_expansion_queued(true);
                 // nextExpPriority = incExpData->getNextIncrementalExpansionPriority();
-                let _next_exp_priority = calc_alg_context
+                let next_exp_priority = calc_alg_context
                     .process_context()
                     .inc_exp_data(inc_exp_data)
                     .get_next_incremental_expansion_priority();
                 // incExpQueue = ctx->getProcessingDataBox()->getIncrementalExpansionProcessingQueue(true);
-                let _inc_exp_queue = calc_alg_context
-                    .processing_data_box_mut()
-                    .get_incremental_expansion_processing_queue(true);
-                // W3-DEFER[api]: incExpQueue->insertIndiviudal(nextExpPriority, individual);
+                let inc_exp_queue =
+                    calc_alg_context.get_incremental_expansion_processing_queue(true);
+                calc_alg_context
+                    .process_context_mut()
+                    .indi_custom_priority_queue_insert(
+                        inc_exp_queue,
+                        next_exp_priority,
+                        individual,
+                    );
                 // W3-DEFER[macro]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, ctx);
                 return true;
             }

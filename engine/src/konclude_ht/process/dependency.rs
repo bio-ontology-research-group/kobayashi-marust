@@ -23,10 +23,10 @@
 
 #![allow(dead_code)]
 
-use super::super::model::{Cint64, ConceptId, NegLink};
-use super::{
-    BranchNodeId, ClashDescId, ConDescId, DepLinkId, DependencyId, NodeId, TrackPointId,
-};
+use super::super::model::{Cint64, ConceptId, IndividualId, NegLink, RoleId, INVALID};
+use super::representative::RepresentativePropagationMap;
+use super::varbind::{RepresentativeVariableBindingPathMap, VarBindingPathId};
+use super::{BranchNodeId, ClashDescId, ConDescId, DepLinkId, DependencyId, NodeId, TrackPointId};
 
 /// Port of `CDependencyNode::DEPENDENCNODEYTYPE` (`CDependencyNode.h` 75–97).
 ///
@@ -226,6 +226,34 @@ pub struct DepNodeBase {
     /// `CDependencyNode::mAdditionalAfterDepLinker` — head of the additional
     /// after-dependency chain (`CDependency*`).
     pub additional_after: DepLinkId,
+    /// `CRepresentativeSelectDependencyNode::mSelectedVarBindPath`.
+    ///
+    /// KONCLUDE-PORT-NOTE[ownership]: only `RepresentativeBindVariable` /
+    /// `RepresentativeGrounding` use this intermediate-base payload in C++;
+    /// folding it into the shared base keeps the enum shape stable while the
+    /// `DepKind` predicate preserves the original virtual type test.
+    pub selected_var_bind_path: VarBindingPathId,
+    /// `CRepresentativeResolveDependencyNode::mResolveVarBindPathMap`.
+    ///
+    /// KONCLUDE-PORT-NOTE[ownership]: Konclude stores a pointer to a by-value
+    /// representative variable-binding-path map. In Rust that map is itself a
+    /// by-value struct, so the dependency node carries an optional clone of the
+    /// pointed-to map (`None == nullptr`).
+    pub resolve_var_bind_path_map: Option<RepresentativeVariableBindingPathMap>,
+    /// `CRepresentativeResolveDependencyNode::mResolveRepPropMap`.
+    ///
+    /// Same ownership translation as `resolve_var_bind_path_map`.
+    pub resolve_rep_prop_map: Option<RepresentativePropagationMap>,
+    /// `CROLEASSERTIONDependencyNode::mBaseAssertionRole`.
+    ///
+    /// Only meaningful when `kind == DepKind::RoleAssertion`; `Id::NONE`
+    /// corresponds to Konclude's `nullptr`.
+    pub base_assertion_role: RoleId,
+    /// `CROLEASSERTIONDependencyNode::mBaseAssertionIndi`.
+    ///
+    /// Only meaningful when `kind == DepKind::RoleAssertion`; `Id::NONE`
+    /// corresponds to Konclude's `nullptr`.
+    pub base_assertion_individual: IndividualId,
 }
 
 /// The non-deterministic node bookkeeping, from `CNonDeterministicDependencyNode`
@@ -256,7 +284,7 @@ pub struct NonDetData {
 
 /// The `⊔`-disjunct extra data, from `CORDisjunctDependencyTrackPoint`
 /// (`CORDisjunctDependencyTrackPoint.h` 85–86). Present only on the `Or` variant.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct OrDisjunctTrackData {
     /// `mDisjunctConceptLinker` — `CSortedNegLinker<CConcept*>` → `Vec<NegLink<ConceptId>>`.
     pub disjunct_concept_linker: Vec<NegLink<ConceptId>>,
@@ -265,6 +293,15 @@ pub struct OrDisjunctTrackData {
     /// KONCLUDE-PORT-NOTE[ownership]: held as an opaque id-like `Cint64` until
     /// `CDisjunctBranchingStatistics` is ported; `INVALID` when unset.
     pub disjunct_branch_stats: Cint64,
+}
+
+impl Default for OrDisjunctTrackData {
+    fn default() -> Self {
+        Self {
+            disjunct_concept_linker: Vec::new(),
+            disjunct_branch_stats: INVALID,
+        }
+    }
 }
 
 /// Port of the `C*DependencyNode` class hierarchy, collapsed to 7 structural
@@ -298,18 +335,20 @@ pub enum DependencyNode {
     /// `CREUSEBACKENDEXPANSIONMODESDependencyNode` — non-deterministic + the
     /// `CXLinker<cint64>` involved-individual-id list outlier.
     ///
-    /// KONCLUDE-PORT-NOTE[unclear]: C++ keeps two `CXLinker<cint64>` chains
-    /// (`mAffectedIndividualIdLinker` as a `QAtomicPointer`, `mInvolvedIndividualIdLinker`)
-    /// plus two extra reuse track points (`mFixedReuseDepTrackPoint`,
-    /// `mPriorizedReuseDepTrackPoint`). The `CXLinker<cint64>` chains flatten to
-    /// `Vec<Cint64>` (insertion order preserved); the atomic-pointer concurrency
-    /// is a [threading] concern deferred to the method-body unit. `involved`
-    /// folds the involved-id list; the two reuse track points are reachable via
-    /// `nd.branch_track_points` as in the C++ accessor wiring.
+    /// KONCLUDE-PORT-NOTE[ownership]: C++ keeps two `CXLinker<cint64>` chains
+    /// (`mAffectedIndividualIdLinker` as a `QAtomicPointer`,
+    /// `mInvolvedIndividualIdLinker`) plus two extra reuse track points
+    /// (`mFixedReuseDepTrackPoint`, `mPriorizedReuseDepTrackPoint`). The linker
+    /// chains flatten to `Vec<Cint64>` (insertion order preserved); the affected
+    /// compare-and-swap API is modelled as an expected-slice comparison before
+    /// replacing the vector.
     ReuseBackendModes {
         base: DepNodeBase,
         nd: NonDetData,
+        fixed_reuse_dep_track_point: TrackPointId,
+        priorized_reuse_dep_track_point: TrackPointId,
         involved: Vec<Cint64>,
+        affected: Vec<Cint64>,
     },
 }
 
@@ -358,6 +397,23 @@ impl DependencyNode {
     #[inline]
     pub fn individual_node(&self) -> NodeId {
         self.base().individual_node
+    }
+
+    /// Port of `CRepresentativeSelectDependencyNode::getSelectedVariableBindingPath`.
+    pub fn selected_variable_binding_path(&self) -> VarBindingPathId {
+        self.base().selected_var_bind_path
+    }
+
+    /// Port of `CRepresentativeResolveDependencyNode::getResolveRepresentativeVariableBindingPathMap`.
+    pub fn resolve_representative_variable_binding_path_map(
+        &self,
+    ) -> Option<&RepresentativeVariableBindingPathMap> {
+        self.base().resolve_var_bind_path_map.as_ref()
+    }
+
+    /// Port of `CRepresentativeResolveDependencyNode::getResolveRepresentativePropagationMap`.
+    pub fn resolve_representative_propagation_map(&self) -> Option<&RepresentativePropagationMap> {
+        self.base().resolve_rep_prop_map.as_ref()
     }
 
     /// `CDependencyNode::isDeterministiDependencyNode()`.

@@ -36,6 +36,7 @@ use super::super::model::IndividualId;
 use super::context::ProcessContext;
 use super::satellites::{
     ConceptLabelSetModificationTag, ConceptSetSignature, CondensedReapplyQueue,
+    CoreConceptDescriptorId,
 };
 use super::{ConDescId, EdgeId, NodeId, TrackPointId};
 
@@ -61,6 +62,8 @@ pub type BlockingAltDataId = Id<BlockingAlternativeSignatureBlockingCandidateDat
 pub type IncrementalExpansionDataId = Id<IndividualNodeIncrementalExpansionData>;
 /// `CCondensedReapplyConceptDescriptor*` → `CondensedReapplyConceptDescriptorId`.
 pub type CondensedReapplyConceptDescriptorId = Id<CondensedReapplyConceptDescriptor>;
+/// `CReapplyConceptDescriptor*` → `ReapplyConceptDescriptorId`.
+pub type ReapplyConceptDescriptorId = Id<ReapplyConceptDescriptor>;
 
 // ===========================================================================
 // CReapplyConceptLabelSetIterator
@@ -129,7 +132,9 @@ impl ReapplyConceptLabelSetIterator {
         };
         if it.skip_empty_concept_descriptors {
             while it.con_des_dep_pos != it.con_des_dep.len()
-                && it.con_des_dep[it.con_des_dep_pos].concept_descriptor.is_none()
+                && it.con_des_dep[it.con_des_dep_pos]
+                    .concept_descriptor
+                    .is_none()
             {
                 it.con_des_dep_pos += 1;
             }
@@ -191,7 +196,9 @@ impl ReapplyConceptLabelSetIterator {
             }
             if self.skip_empty_concept_descriptors {
                 while self.con_des_dep_pos != self.con_des_dep.len()
-                    && self.con_des_dep[self.con_des_dep_pos].concept_descriptor.is_none()
+                    && self.con_des_dep[self.con_des_dep_pos]
+                        .concept_descriptor
+                        .is_none()
                 {
                     self.con_des_dep_pos += 1;
                 }
@@ -215,7 +222,8 @@ impl ReapplyConceptLabelSetIterator {
     /// `descriptor.rs`); the merged-map branches read the map key directly.
     pub fn get_data_tag(&self, ctx: &ProcessContext, onto: &OntologyArenas) -> Cint64 {
         if self.concept_des_linker_it.is_some() {
-            ctx.con_desc(self.concept_des_linker_it).get_concept_tag(onto)
+            ctx.con_desc(self.concept_des_linker_it)
+                .get_concept_tag(onto)
         } else if self.con_des_dep_pos != self.con_des_dep.len()
             && self.additional_con_des_dep_pos != self.additional_con_des_dep.len()
         {
@@ -287,7 +295,9 @@ impl ReapplyConceptLabelSetIterator {
                 Some(&main.pos_neg_reapply_queue)
             }
         } else if self.con_des_dep_pos == self.con_des_dep.len() {
-            Some(&self.additional_con_des_dep[self.additional_con_des_dep_pos].pos_neg_reapply_queue)
+            Some(
+                &self.additional_con_des_dep[self.additional_con_des_dep_pos].pos_neg_reapply_queue,
+            )
         } else {
             Some(&self.con_des_dep[self.con_des_dep_pos].pos_neg_reapply_queue)
         }
@@ -650,11 +660,10 @@ pub struct IndividualNodeBlockingTestData {
 
     // --- own fields ---
     // KONCLUDE-PORT-NOTE[ownership]: `CIndividualProcessNode* mBlockingIndiNode` → `NodeId`.
-    pub blocking_indi_node: NodeId, // mBlockingIndiNode
+    pub blocking_indi_node: NodeId,              // mBlockingIndiNode
     pub last_core_block_cand_con_des: ConDescId, // mLastCoreBlockCandConDes
-    // KONCLUDE-PORT-NOTE[ownership]: `CCoreConceptDescriptor* mLastAddedCoreConDes` → `ConDescId`.
-    pub last_added_core_con_des: ConDescId, // mLastAddedCoreConDes
-    pub last_core_block_cand_node_diff: Cint64, // mLastCoreBlockCandNodeDiff
+    pub last_added_core_con_des: CoreConceptDescriptorId, // mLastAddedCoreConDes
+    pub last_core_block_cand_node_diff: Cint64,  // mLastCoreBlockCandNodeDiff
 }
 
 impl Default for IndividualNodeBlockingTestData {
@@ -666,7 +675,7 @@ impl Default for IndividualNodeBlockingTestData {
             modification_tag: ConceptLabelSetModificationTag::default(),
             blocking_indi_node: NodeId::NONE,
             last_core_block_cand_con_des: ConDescId::NONE,
-            last_added_core_con_des: ConDescId::NONE,
+            last_added_core_con_des: CoreConceptDescriptorId::NONE,
             last_core_block_cand_node_diff: 0,
         }
     }
@@ -678,8 +687,54 @@ impl IndividualNodeBlockingTestData {
         Self::default()
     }
 
+    /// Port of `CNodeSwitchTag::getNodeSwitchTag`.
+    pub fn get_node_switch_tag(&self) -> Cint64 {
+        self.node_switch_tag
+    }
+    /// Port of `CNodeSwitchTag::setNodeSwitchTag(cint64)`.
+    pub fn set_node_switch_tag(&mut self, node_switch_tag: Cint64) -> &mut Self {
+        self.node_switch_tag = node_switch_tag;
+        self
+    }
+    /// Port of `CNodeSwitchTag::initNodeSwitchTag(cint64)`.
+    pub fn init_node_switch_tag(&mut self, node_switch_tag: Cint64) -> &mut Self {
+        self.node_switch_tag = node_switch_tag;
+        self
+    }
+    /// Port of `CNodeSwitchTag::isNodeSwitchTagUpdated(cint64)`.
+    pub fn is_node_switch_tag_updated(&self, node_switch_tag: Cint64) -> bool {
+        node_switch_tag > self.node_switch_tag
+    }
+    /// Port of `CNodeSwitchTag::isNodeSwitchTagUpToDate(cint64)`.
+    pub fn is_node_switch_tag_up_to_date(&self, node_switch_tag: Cint64) -> bool {
+        self.node_switch_tag >= node_switch_tag
+    }
+    /// Port of `CNodeSwitchTag::updateNodeSwitchTag(cint64)`.
+    pub fn update_node_switch_tag(&mut self, node_switch_tag: Cint64) -> bool {
+        let updated = self.node_switch_tag != node_switch_tag;
+        self.node_switch_tag = node_switch_tag;
+        updated
+    }
+
+    /// Port of `CConceptLabelSetModificationTag::getConceptLabelSetModificationTag`.
+    pub fn get_concept_label_set_modification_tag(&self) -> Cint64 {
+        self.modification_tag
+            .get_concept_label_set_modification_tag()
+    }
+    /// Port of `CConceptLabelSetModificationTag::updateConceptLabelSetModificationTag(cint64)`.
+    pub fn update_concept_label_set_modification_tag(
+        &mut self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> bool {
+        self.modification_tag
+            .update_concept_label_set_modification_tag(concept_label_set_modification_tag)
+    }
+
     /// Port of `initBlockData`.
-    pub fn init_block_data(&mut self, prev_block_data: Option<&IndividualNodeBlockingTestData>) -> &mut Self {
+    pub fn init_block_data(
+        &mut self,
+        prev_block_data: Option<&IndividualNodeBlockingTestData>,
+    ) -> &mut Self {
         if let Some(prev) = prev_block_data {
             self.blocking_indi_node = prev.blocking_indi_node;
             self.last_added_core_con_des = prev.last_added_core_con_des;
@@ -687,7 +742,7 @@ impl IndividualNodeBlockingTestData {
             self.last_core_block_cand_node_diff = prev.last_core_block_cand_node_diff;
         } else {
             self.blocking_indi_node = NodeId::NONE;
-            self.last_added_core_con_des = ConDescId::NONE;
+            self.last_added_core_con_des = CoreConceptDescriptorId::NONE;
             self.last_core_block_cand_con_des = ConDescId::NONE;
             self.last_core_block_cand_node_diff = 0;
         }
@@ -736,11 +791,14 @@ impl IndividualNodeBlockingTestData {
     }
 
     /// Port of `getLastAddedCoreConceptDescriptor`.
-    pub fn get_last_added_core_concept_descriptor(&self) -> ConDescId {
+    pub fn get_last_added_core_concept_descriptor(&self) -> CoreConceptDescriptorId {
         self.last_added_core_con_des
     }
     /// Port of `setLastAddedCoreConceptDescriptor`.
-    pub fn set_last_added_core_concept_descriptor(&mut self, last_core_con_des: ConDescId) -> &mut Self {
+    pub fn set_last_added_core_concept_descriptor(
+        &mut self,
+        last_core_con_des: CoreConceptDescriptorId,
+    ) -> &mut Self {
         self.last_added_core_con_des = last_core_con_des;
         self
     }
@@ -771,10 +829,10 @@ pub trait BlockingAlternativeData {
 /// (`: public CBlockingAlternativeData`).
 pub struct BlockingAlternativeSignatureBlockingCandidateData {
     // KONCLUDE-PORT-NOTE[ownership]: `CIndividualProcessNode* mBlockIndiCandi` → `NodeId`.
-    pub block_indi_candi: NodeId, // mBlockIndiCandi
-    pub violated_res_count: Cint64, // mViolatedResCount
+    pub block_indi_candi: NodeId,           // mBlockIndiCandi
+    pub violated_res_count: Cint64,         // mViolatedResCount
     pub violated_non_det_res_count: Cint64, // mViolatedNonDetResCount
-    pub diff_concept_count: Cint64, // mDiffConceptCount
+    pub diff_concept_count: Cint64,         // mDiffConceptCount
 }
 
 impl Default for BlockingAlternativeSignatureBlockingCandidateData {
@@ -953,7 +1011,8 @@ impl IndividualNodeIncrementalExpansionData {
             self.loc_neighbour_propagated_directly_changed_list = None;
             self.use_incremental_expansion_list = prev.authoritative_inc_list().cloned();
             self.loc_incremental_expansion_list = None;
-            self.incremetnal_expansion_list_initialized = prev.incremetnal_expansion_list_initialized;
+            self.incremetnal_expansion_list_initialized =
+                prev.incremetnal_expansion_list_initialized;
             self.expansion_priority = prev.expansion_priority;
         } else {
             self.directly_changed = false;
@@ -1034,7 +1093,10 @@ impl IndividualNodeIncrementalExpansionData {
         self.last_compatible_checked_link
     }
     /// Port of `setLastCompatibleCheckedConceptDescriptor`.
-    pub fn set_last_compatible_checked_concept_descriptor(&mut self, con_des: ConDescId) -> &mut Self {
+    pub fn set_last_compatible_checked_concept_descriptor(
+        &mut self,
+        con_des: ConDescId,
+    ) -> &mut Self {
         self.last_compatible_checked_con_des = con_des;
         self
     }
@@ -1049,7 +1111,10 @@ impl IndividualNodeIncrementalExpansionData {
         self.prev_comp_graph_corr_indi_node
     }
     /// Port of `setPreviousCompletionGraphCorrespondenceIndividualNode`.
-    pub fn set_previous_completion_graph_correspondence_individual_node(&mut self, node: NodeId) -> &mut Self {
+    pub fn set_previous_completion_graph_correspondence_individual_node(
+        &mut self,
+        node: NodeId,
+    ) -> &mut Self {
         self.prev_comp_graph_corr_indi_node = node;
         self
     }
@@ -1058,7 +1123,10 @@ impl IndividualNodeIncrementalExpansionData {
         self.prev_comp_graph_corr_indi_node_loaded
     }
     /// Port of `setPreviousCompletionGraphCorrespondenceIndividualNodeLoaded`.
-    pub fn set_previous_completion_graph_correspondence_individual_node_loaded(&mut self, loaded: bool) -> &mut Self {
+    pub fn set_previous_completion_graph_correspondence_individual_node_loaded(
+        &mut self,
+        loaded: bool,
+    ) -> &mut Self {
         self.prev_comp_graph_corr_indi_node_loaded = loaded;
         self
     }
@@ -1071,14 +1139,21 @@ impl IndividualNodeIncrementalExpansionData {
         &mut self,
         create: bool,
     ) -> Option<&mut Vec<NodeId>> {
-        if self.loc_neighbour_propagated_directly_changed_list.is_none() && create {
+        if self
+            .loc_neighbour_propagated_directly_changed_list
+            .is_none()
+            && create
+        {
             let mut loc = Vec::new();
             if let Some(u) = &self.use_neighbour_propagated_directly_changed_list {
                 loc = u.clone();
             }
             self.loc_neighbour_propagated_directly_changed_list = Some(loc);
         }
-        if self.loc_neighbour_propagated_directly_changed_list.is_some() {
+        if self
+            .loc_neighbour_propagated_directly_changed_list
+            .is_some()
+        {
             self.loc_neighbour_propagated_directly_changed_list.as_mut()
         } else {
             self.use_neighbour_propagated_directly_changed_list.as_mut()
@@ -1112,8 +1187,16 @@ impl IndividualNodeIncrementalExpansionData {
             .map_or(false, |l| !l.is_empty())
     }
 
+    /// Snapshot equivalent of iterating `getNeighbourPropagatedDirectlyChangedList(false)`.
+    pub fn neighbour_propagated_directly_changed_snapshot(&self) -> Vec<NodeId> {
+        self.authoritative_neigh_list().cloned().unwrap_or_default()
+    }
+
     /// Port of `getIncrementalExpansionList(bool create)`.
-    pub fn get_incremental_expansion_list(&mut self, create: bool) -> Option<&mut Vec<IndividualId>> {
+    pub fn get_incremental_expansion_list(
+        &mut self,
+        create: bool,
+    ) -> Option<&mut Vec<IndividualId>> {
         if self.loc_incremental_expansion_list.is_none() && create {
             let mut loc = Vec::new();
             if let Some(u) = &self.use_incremental_expansion_list {
@@ -1140,7 +1223,8 @@ impl IndividualNodeIncrementalExpansionData {
 
     /// Port of `requiresFurtherIncrementalExpansion`.
     pub fn requires_further_incremental_expansion(&self) -> bool {
-        self.authoritative_inc_list().map_or(false, |l| !l.is_empty())
+        self.authoritative_inc_list()
+            .map_or(false, |l| !l.is_empty())
     }
 
     /// Port of `getExpansionPriority`.
@@ -1165,7 +1249,11 @@ impl IndividualNodeIncrementalExpansionData {
     /// Port of `takeNextIncrementalExpansionIndividual` (`takeFirst` — head-front
     /// `remove(0)`, PORT.md §6).
     pub fn take_next_incremental_expansion_individual(&mut self) -> IndividualId {
-        if let Some(list) = self.loc_incremental_expansion_list.as_mut().filter(|l| !l.is_empty()) {
+        if let Some(list) = self
+            .loc_incremental_expansion_list
+            .as_mut()
+            .filter(|l| !l.is_empty())
+        {
             return list.remove(0);
         }
         if let Some(list) = self
@@ -1190,9 +1278,137 @@ impl IndividualNodeIncrementalExpansionData {
 }
 
 // ===========================================================================
+// CReapplyConceptDescriptor
+// (`CReapplyConceptDescriptor.{h,cpp}`)
+// ===========================================================================
+
+/// Port of `CReapplyConceptDescriptor`
+/// (`: public CLinkerBase<CConceptDescriptor*, CReapplyConceptDescriptor>`).
+///
+/// KONCLUDE-PORT-NOTE[ownership]: the intrusive linker becomes `next:
+/// ReapplyConceptDescriptorId`; `CProcessingRestrictionSpecification*` remains an
+/// opaque process-local handle until the restriction object family is fully wired.
+pub struct ReapplyConceptDescriptor {
+    /// `CLinkerBase::mData` (`CConceptDescriptor*`).
+    pub data: ConDescId,
+    /// `CLinkerBase::mNext`.
+    pub next: ReapplyConceptDescriptorId,
+    /// `CReapplyConceptDescriptor::mTrackPoint`.
+    pub track_point: TrackPointId,
+    /// `CReapplyConceptDescriptor::mStatic`.
+    pub static_descriptor: bool,
+    /// `CReapplyConceptDescriptor::mProcessingRestriction` (opaque).
+    pub processing_restriction: Cint64,
+}
+
+impl Default for ReapplyConceptDescriptor {
+    fn default() -> Self {
+        ReapplyConceptDescriptor {
+            data: Id::NONE,
+            next: Id::NONE,
+            track_point: Id::NONE,
+            static_descriptor: false,
+            processing_restriction: INVALID,
+        }
+    }
+}
+
+impl ReapplyConceptDescriptor {
+    /// Port of `CReapplyConceptDescriptor(CConceptDescriptor*, CDependencyTrackPoint*, bool)`.
+    pub fn new(
+        concept_descriptor: ConDescId,
+        dep_track_point: TrackPointId,
+        is_static_des: bool,
+    ) -> Self {
+        ReapplyConceptDescriptor {
+            data: concept_descriptor,
+            next: Id::NONE,
+            track_point: dep_track_point,
+            static_descriptor: is_static_des,
+            processing_restriction: INVALID,
+        }
+    }
+
+    /// Port of `initReapllyDescriptor(conceptDescriptor, depTrackPoint, isStaticDes)`.
+    pub fn init_reapply_descriptor(
+        &mut self,
+        concept_descriptor: ConDescId,
+        dep_track_point: TrackPointId,
+        is_static_des: bool,
+    ) -> &mut Self {
+        self.data = concept_descriptor;
+        self.track_point = dep_track_point;
+        self.static_descriptor = is_static_des;
+        self.processing_restriction = INVALID;
+        self
+    }
+
+    /// Port of `initReapllyDescriptor(conceptDescriptor, depTrackPoint, procRest)`.
+    pub fn init_reapply_descriptor_restricted(
+        &mut self,
+        concept_descriptor: ConDescId,
+        dep_track_point: TrackPointId,
+        proc_rest: Cint64,
+    ) -> &mut Self {
+        self.data = concept_descriptor;
+        self.track_point = dep_track_point;
+        self.static_descriptor = false;
+        self.processing_restriction = proc_rest;
+        self
+    }
+
+    /// Port of `getNext`.
+    pub fn get_next(&self) -> ReapplyConceptDescriptorId {
+        self.next
+    }
+
+    /// Port of `getConceptDescriptor`.
+    pub fn get_concept_descriptor(&self) -> ConDescId {
+        self.data
+    }
+
+    /// Port of `getDependencyTrackPoint`.
+    pub fn get_dependency_track_point(&self) -> TrackPointId {
+        self.track_point
+    }
+
+    /// Port of `isStaticDescriptor`.
+    pub fn is_static_descriptor(&self) -> bool {
+        self.static_descriptor
+    }
+
+    /// Port of `getReapplyProcessingRestriction`.
+    pub fn get_reapply_processing_restriction(&self) -> Cint64 {
+        self.processing_restriction
+    }
+
+    /// Port of `hasConceptDescriptor`.
+    pub fn has_concept_descriptor(&self, concept_descriptor: ConDescId) -> bool {
+        self.data == concept_descriptor
+    }
+
+    /// Port of `CLinkerBase::append`.
+    pub fn append(
+        ctx: &mut ProcessContext,
+        this: ReapplyConceptDescriptorId,
+        appending_list: ReapplyConceptDescriptorId,
+    ) -> ReapplyConceptDescriptorId {
+        if this.is_none() {
+            return appending_list;
+        }
+        let mut last = this;
+        while ctx.reapply_con_desc(last).next.is_some() {
+            last = ctx.reapply_con_desc(last).next;
+        }
+        ctx.reapply_con_desc_mut(last).next = appending_list;
+        this
+    }
+}
+
+// ===========================================================================
 // CCondensedReapplyConceptDescriptor  (+ CCondensedReapplyQueueIterator)
-// (`CReapplyConceptDescriptor.{h,cpp}` base + `CCondensedReapplyConceptDescriptor.{h,cpp}`
-//  + `CCondensedReapplyQueueIterator.{h,cpp}`)
+// (`CCondensedReapplyConceptDescriptor.{h,cpp}` +
+//  `CCondensedReapplyQueueIterator.{h,cpp}`)
 // ===========================================================================
 
 /// Port of `CCondensedReapplyConceptDescriptor`
@@ -1240,7 +1456,11 @@ impl Default for CondensedReapplyConceptDescriptor {
 
 impl CondensedReapplyConceptDescriptor {
     /// Port of `CCondensedReapplyConceptDescriptor(CConceptDescriptor*, CDependencyTrackPoint*, bool isPositiveDes)`.
-    pub fn new(concept_descriptor: ConDescId, dep_track_point: TrackPointId, is_positive_des: bool) -> Self {
+    pub fn new(
+        concept_descriptor: ConDescId,
+        dep_track_point: TrackPointId,
+        is_positive_des: bool,
+    ) -> Self {
         CondensedReapplyConceptDescriptor {
             data: concept_descriptor,
             next: Id::NONE,
@@ -1267,6 +1487,16 @@ impl CondensedReapplyConceptDescriptor {
         self.track_point
     }
 
+    /// Port of `CReapplyConceptDescriptor::isStaticDescriptor`.
+    pub fn is_static_descriptor(&self) -> bool {
+        self.static_descriptor
+    }
+
+    /// Port of `CReapplyConceptDescriptor::getReapplyProcessingRestriction`.
+    pub fn get_reapply_processing_restriction(&self) -> Cint64 {
+        self.processing_restriction
+    }
+
     /// Port of `isPositiveDescriptor` (`return mPositive`).
     pub fn is_positive_descriptor(&self) -> bool {
         self.positive
@@ -1287,6 +1517,22 @@ impl CondensedReapplyConceptDescriptor {
         self.data = concept_descriptor;
         self.track_point = dep_track_point;
         self.static_descriptor = false;
+        self.positive = is_positive_des;
+        self
+    }
+
+    /// Port of `initReapllyDescriptor(conceptDescriptor, depTrackPoint, isPositiveDes, procRest)`.
+    pub fn init_reapply_descriptor_restricted(
+        &mut self,
+        concept_descriptor: ConDescId,
+        dep_track_point: TrackPointId,
+        is_positive_des: bool,
+        proc_rest: Cint64,
+    ) -> &mut Self {
+        self.data = concept_descriptor;
+        self.track_point = dep_track_point;
+        self.static_descriptor = false;
+        self.processing_restriction = proc_rest;
         self.positive = is_positive_des;
         self
     }
@@ -1340,7 +1586,7 @@ impl CondensedReapplyQueueIterator {
             let positive = ctx
                 .cond_reapply_con_desc(self.dynamic_pos_neg_reapply_des_linker)
                 .is_positive_descriptor();
-            if (positive && self.pos_des) || (!positive && self.neg_des) {
+            if (positive && !self.pos_des) || (!positive && !self.neg_des) {
                 self.dynamic_pos_neg_reapply_des_linker = ctx
                     .cond_reapply_con_desc(self.dynamic_pos_neg_reapply_des_linker)
                     .get_next();
@@ -1382,7 +1628,11 @@ impl CondensedReapplyQueueIterator {
     }
 
     /// Port of `next(bool moveNext)`.
-    pub fn next(&mut self, ctx: &ProcessContext, move_next: bool) -> CondensedReapplyConceptDescriptorId {
+    pub fn next(
+        &mut self,
+        ctx: &ProcessContext,
+        move_next: bool,
+    ) -> CondensedReapplyConceptDescriptorId {
         let mut next_des = CondensedReapplyConceptDescriptorId::NONE;
         if self.dynamic_pos_neg_reapply_des_linker.is_some() {
             next_des = self.dynamic_pos_neg_reapply_des_linker;

@@ -183,8 +183,10 @@ impl ConceptVariableBindingPathSetHash {
                 let new_set = ctx.alloc_vbpath_set(VariableBindingPathSet::new(INVALID));
                 if use_.is_some() {
                     // same-arena init-from-prev: lift `use_` out, init, restore (no Clone needed).
-                    let taken =
-                        std::mem::replace(ctx.vbpath_set_mut(use_), VariableBindingPathSet::new(INVALID));
+                    let taken = std::mem::replace(
+                        ctx.vbpath_set_mut(use_),
+                        VariableBindingPathSet::new(INVALID),
+                    );
                     ctx.vbpath_set_mut(new_set)
                         .init_variable_binding_path_set(Some(&taken));
                     *ctx.vbpath_set_mut(use_) = taken;
@@ -283,7 +285,8 @@ impl ConceptPropagationBindingSetHash {
     ) -> &mut Self {
         if let Some(prev_hash) = prev_hash {
             self.map = prev_hash.map.clone();
-            self.last_propagation_binding_descriptor = prev_hash.last_propagation_binding_descriptor;
+            self.last_propagation_binding_descriptor =
+                prev_hash.last_propagation_binding_descriptor;
         } else {
             self.map.clear();
             self.last_propagation_binding_descriptor = Id::NONE;
@@ -334,14 +337,20 @@ impl ConceptPropagationBindingSetHash {
                 let new_set = ctx.alloc_prop_binding_set(PropagationBindingSet::new(INVALID));
                 if use_.is_some() {
                     // same-arena init-from-prev: lift `use_` out, init, restore (no Clone needed).
-                    let taken =
-                        std::mem::replace(ctx.prop_binding_set_mut(use_), PropagationBindingSet::new(INVALID));
-                    ctx.prop_binding_set_mut(new_set)
-                        .init_propagation_binding_set(Some(&taken));
+                    let taken = std::mem::replace(
+                        ctx.prop_binding_set_mut(use_),
+                        PropagationBindingSet::new(INVALID),
+                    );
+                    PropagationBindingSet::init_propagation_binding_set_in_context(
+                        ctx,
+                        new_set,
+                        Some(&taken),
+                    );
                     *ctx.prop_binding_set_mut(use_) = taken;
                 } else {
-                    ctx.prop_binding_set_mut(new_set)
-                        .init_propagation_binding_set(None);
+                    PropagationBindingSet::init_propagation_binding_set_in_context(
+                        ctx, new_set, None,
+                    );
                 }
                 // data.mUsePropBindingSet = data.mLocPropBindingSet = propBindSet;
                 let data = ctx

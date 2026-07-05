@@ -117,8 +117,15 @@ impl TaskData {
     /// deferred.
     pub fn overtake_data(&self) -> bool {
         match self {
-            TaskData::Consistence { det_sat_task, graph_cached_sat_task }
-            | TaskData::IncrementalConsistence { det_sat_task, graph_cached_sat_task, .. } => {
+            TaskData::Consistence {
+                det_sat_task,
+                graph_cached_sat_task,
+            }
+            | TaskData::IncrementalConsistence {
+                det_sat_task,
+                graph_cached_sat_task,
+                ..
+            } => {
                 // if (mDetSatTask) mDetSatTask->getTaskStatus()->setMemoryReleaseable(false);
                 let _ = det_sat_task;
                 // if (mGraphCachedSatTask) { for taskIt in chain { taskIt.status.setMemoryReleaseable(false); taskIt = taskIt.getParentTask(); } }
@@ -147,8 +154,14 @@ impl TaskData {
     /// (consistence variants only; `Id::NONE` for `Saturation`).
     pub fn get_completion_graph_cached_satisfiable_task(&self) -> SatTaskId {
         match self {
-            TaskData::Consistence { graph_cached_sat_task, .. }
-            | TaskData::IncrementalConsistence { graph_cached_sat_task, .. } => *graph_cached_sat_task,
+            TaskData::Consistence {
+                graph_cached_sat_task,
+                ..
+            }
+            | TaskData::IncrementalConsistence {
+                graph_cached_sat_task,
+                ..
+            } => *graph_cached_sat_task,
             TaskData::Saturation { .. } => SatTaskId::NONE,
         }
     }
@@ -164,7 +177,10 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getIndirectlyChangedNodeSet`.
     pub fn get_indirectly_changed_node_set(&self) -> Option<&HashSet<Cint64>> {
         match self {
-            TaskData::IncrementalConsistence { indirectly_changed_node_set, .. } => Some(indirectly_changed_node_set),
+            TaskData::IncrementalConsistence {
+                indirectly_changed_node_set,
+                ..
+            } => Some(indirectly_changed_node_set),
             _ => None,
         }
     }
@@ -172,7 +188,10 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getDeterministicallyChangedNodeSet`.
     pub fn get_deterministically_changed_node_set(&self) -> Option<&HashSet<Cint64>> {
         match self {
-            TaskData::IncrementalConsistence { deterministically_changed_node_set, .. } => Some(deterministically_changed_node_set),
+            TaskData::IncrementalConsistence {
+                deterministically_changed_node_set,
+                ..
+            } => Some(deterministically_changed_node_set),
             _ => None,
         }
     }
@@ -180,7 +199,10 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getChangedCompatibleNodeSet`.
     pub fn get_changed_compatible_node_set(&self) -> Option<&HashSet<Cint64>> {
         match self {
-            TaskData::IncrementalConsistence { changed_compatible_node_set, .. } => Some(changed_compatible_node_set),
+            TaskData::IncrementalConsistence {
+                changed_compatible_node_set,
+                ..
+            } => Some(changed_compatible_node_set),
             _ => None,
         }
     }
@@ -203,7 +225,10 @@ impl TaskData {
 
     /// Port of `CIncrementalConsistenceTaskData::setPreviousOntology`.
     pub fn set_previous_ontology(&mut self, prev_ontology: Cint64) -> &mut Self {
-        if let TaskData::IncrementalConsistence { prev_ontology: po, .. } = self {
+        if let TaskData::IncrementalConsistence {
+            prev_ontology: po, ..
+        } = self
+        {
             *po = prev_ontology;
         }
         self
@@ -211,7 +236,10 @@ impl TaskData {
 
     /// Port of `CIncrementalConsistenceTaskData::setPreviousConsistenceData`.
     pub fn set_previous_consistence_data(&mut self, prev_cons_data: TaskDataId) -> &mut Self {
-        if let TaskData::IncrementalConsistence { prev_cons_data: pc, .. } = self {
+        if let TaskData::IncrementalConsistence {
+            prev_cons_data: pc, ..
+        } = self
+        {
             *pc = prev_cons_data;
         }
         self
@@ -220,7 +248,9 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getAddedNodeCount`.
     pub fn get_added_node_count(&self) -> Cint64 {
         match self {
-            TaskData::IncrementalConsistence { added_node_count, .. } => *added_node_count,
+            TaskData::IncrementalConsistence {
+                added_node_count, ..
+            } => *added_node_count,
             _ => 0,
         }
     }
@@ -228,7 +258,9 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getTotalNodeCount`.
     pub fn get_total_node_count(&self) -> Cint64 {
         match self {
-            TaskData::IncrementalConsistence { total_node_count, .. } => *total_node_count,
+            TaskData::IncrementalConsistence {
+                total_node_count, ..
+            } => *total_node_count,
             _ => 0,
         }
     }
@@ -236,7 +268,10 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getPreviousNodeCount`.
     pub fn get_previous_node_count(&self) -> Cint64 {
         match self {
-            TaskData::IncrementalConsistence { previous_node_count, .. } => *previous_node_count,
+            TaskData::IncrementalConsistence {
+                previous_node_count,
+                ..
+            } => *previous_node_count,
             _ => 0,
         }
     }
@@ -245,7 +280,10 @@ impl TaskData {
     /// (`mChangedCompatibleNodeSet.count()`).
     pub fn get_changed_compatible_node_count(&self) -> Cint64 {
         match self {
-            TaskData::IncrementalConsistence { changed_compatible_node_set, .. } => changed_compatible_node_set.len() as Cint64,
+            TaskData::IncrementalConsistence {
+                changed_compatible_node_set,
+                ..
+            } => changed_compatible_node_set.len() as Cint64,
             _ => 0,
         }
     }
@@ -253,7 +291,10 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getDeterministicallyChangedNodeCount`.
     pub fn get_deterministically_changed_node_count(&self) -> Cint64 {
         match self {
-            TaskData::IncrementalConsistence { deterministically_changed_node_set, .. } => deterministically_changed_node_set.len() as Cint64,
+            TaskData::IncrementalConsistence {
+                deterministically_changed_node_set,
+                ..
+            } => deterministically_changed_node_set.len() as Cint64,
             _ => 0,
         }
     }
@@ -261,14 +302,21 @@ impl TaskData {
     /// Port of `CIncrementalConsistenceTaskData::getIndirectlyChangedCount`.
     pub fn get_indirectly_changed_count(&self) -> Cint64 {
         match self {
-            TaskData::IncrementalConsistence { indirectly_changed_node_set, .. } => indirectly_changed_node_set.len() as Cint64,
+            TaskData::IncrementalConsistence {
+                indirectly_changed_node_set,
+                ..
+            } => indirectly_changed_node_set.len() as Cint64,
             _ => 0,
         }
     }
 
     /// Port of `CIncrementalConsistenceTaskData::setAddedNodeCount`.
     pub fn set_added_node_count(&mut self, added_node_count: Cint64) -> &mut Self {
-        if let TaskData::IncrementalConsistence { added_node_count: a, .. } = self {
+        if let TaskData::IncrementalConsistence {
+            added_node_count: a,
+            ..
+        } = self
+        {
             *a = added_node_count;
         }
         self
@@ -276,7 +324,11 @@ impl TaskData {
 
     /// Port of `CIncrementalConsistenceTaskData::setTotalNodeCount`.
     pub fn set_total_node_count(&mut self, total_node_count: Cint64) -> &mut Self {
-        if let TaskData::IncrementalConsistence { total_node_count: t, .. } = self {
+        if let TaskData::IncrementalConsistence {
+            total_node_count: t,
+            ..
+        } = self
+        {
             *t = total_node_count;
         }
         self
@@ -284,7 +336,11 @@ impl TaskData {
 
     /// Port of `CIncrementalConsistenceTaskData::setPreviousNodeCount`.
     pub fn set_previous_node_count(&mut self, prev_node_count: Cint64) -> &mut Self {
-        if let TaskData::IncrementalConsistence { previous_node_count: p, .. } = self {
+        if let TaskData::IncrementalConsistence {
+            previous_node_count: p,
+            ..
+        } = self
+        {
             *p = prev_node_count;
         }
         self

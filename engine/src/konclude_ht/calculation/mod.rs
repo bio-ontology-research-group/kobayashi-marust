@@ -19,11 +19,11 @@
 
 use super::model::substrate::Id;
 
-pub mod builder;      // CTaskHandleAlgorithmBuilder (the completion/saturation seam)
-pub mod environment;  // CCalculationEnviroment + CConcurrentTaskCalculationEnvironment
-pub mod env_factory;  // CCalculationEnvironmentFactory + CConfigDependedCalculationEnvironmentFactory
-pub mod factory;      // CCalculationFactory + CConfigDependedCalculationFactory
-pub mod manager;      // CCalculationManager + CConcurrentTaskCalculationManager (the ENTRY point)
+pub mod builder; // CTaskHandleAlgorithmBuilder (the completion/saturation seam)
+pub mod env_factory; // CCalculationEnvironmentFactory + CConfigDependedCalculationEnvironmentFactory
+pub mod environment; // CCalculationEnviroment + CConcurrentTaskCalculationEnvironment
+pub mod factory; // CCalculationFactory + CConfigDependedCalculationFactory
+pub mod manager; // CCalculationManager + CConcurrentTaskCalculationManager (the ENTRY point)
 
 // --- calculation-layer ids ---
 /// `CTaskHandleAlgorithmBuilder*` → `TaskHandleAlgorithmBuilderId`.

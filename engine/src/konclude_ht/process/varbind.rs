@@ -88,8 +88,14 @@ pub type VarBindingPathDescriptorId = Id<VariableBindingPathDescriptor>;
 pub type VarBindingPathSetId = Id<VariableBindingPathSet>;
 /// `CVariableBindingPathJoiningData*`   → `VarBindingPathJoiningDataId`.
 pub type VarBindingPathJoiningDataId = Id<VariableBindingPathJoiningData>;
+/// `CVariableBindingPathJoiningHash*`   -> `VariableBindingPathJoiningHashId`.
+pub type VariableBindingPathJoiningHashId = Id<VariableBindingPathJoiningHash>;
+/// `CVariableBindingPathMergingHash*`   -> `VariableBindingPathMergingHashId`.
+pub type VariableBindingPathMergingHashId = Id<VariableBindingPathMergingHash>;
 /// `CVariableBindingTriggerLinker*`     → `VarBindingTriggerLinkerId`.
 pub type VarBindingTriggerLinkerId = Id<VariableBindingTriggerLinker>;
+/// `CVariableBindingTriggerHash*`       -> `VariableBindingTriggerHashId`.
+pub type VariableBindingTriggerHashId = Id<VariableBindingTriggerHash>;
 
 // ===========================================================================
 // CVariableBinding
@@ -112,7 +118,11 @@ pub struct VariableBinding {
 
 impl Default for VariableBinding {
     fn default() -> Self {
-        VariableBinding { dep_track_point: Id::NONE, variable: Id::NONE, indi_node: Id::NONE }
+        VariableBinding {
+            dep_track_point: Id::NONE,
+            variable: Id::NONE,
+            indi_node: Id::NONE,
+        }
     }
 }
 
@@ -195,7 +205,10 @@ pub struct VariableBindingDescriptor {
 
 impl Default for VariableBindingDescriptor {
     fn default() -> Self {
-        VariableBindingDescriptor { data: Id::NONE, next: Id::NONE }
+        VariableBindingDescriptor {
+            data: Id::NONE,
+            next: Id::NONE,
+        }
     }
 }
 
@@ -362,7 +375,10 @@ pub struct VariableBindingPath {
 
 impl Default for VariableBindingPath {
     fn default() -> Self {
-        VariableBindingPath { prop_id: 0, var_bind_des_linker: Id::NONE }
+        VariableBindingPath {
+            prop_id: 0,
+            var_bind_des_linker: Id::NONE,
+        }
     }
 }
 
@@ -441,7 +457,9 @@ pub struct VariableBindingPathMapData {
 
 impl Default for VariableBindingPathMapData {
     fn default() -> Self {
-        VariableBindingPathMapData { prop_bind_des: Id::NONE }
+        VariableBindingPathMapData {
+            prop_bind_des: Id::NONE,
+        }
     }
 }
 
@@ -491,7 +509,11 @@ pub struct VariableBindingPathDescriptor {
 
 impl Default for VariableBindingPathDescriptor {
     fn default() -> Self {
-        VariableBindingPathDescriptor { data: Id::NONE, next: Id::NONE, dep_track_point: Id::NONE }
+        VariableBindingPathDescriptor {
+            data: Id::NONE,
+            next: Id::NONE,
+            dep_track_point: Id::NONE,
+        }
     }
 }
 
@@ -589,11 +611,17 @@ pub struct VariableBindingPathMap {
 impl VariableBindingPathMap {
     /// Port of `CVariableBindingPathMap::CVariableBindingPathMap(CProcessContext*)`.
     pub fn new(process_context: Cint64) -> Self {
-        VariableBindingPathMap { process_context, map: HashMap::new() }
+        VariableBindingPathMap {
+            process_context,
+            map: HashMap::new(),
+        }
     }
 
     /// Port of `initVariableBindingPathMap` (operator= from prev, else clear).
-    pub fn init_variable_binding_path_map(&mut self, prev_map: Option<&VariableBindingPathMap>) -> &mut Self {
+    pub fn init_variable_binding_path_map(
+        &mut self,
+        prev_map: Option<&VariableBindingPathMap>,
+    ) -> &mut Self {
         if let Some(prev) = prev_map {
             self.map = prev.map.clone();
         } else {
@@ -605,6 +633,11 @@ impl VariableBindingPathMap {
     /// Port of `CPROCESSMAP::contains`.
     pub fn contains(&self, key: Cint64) -> bool {
         self.map.contains_key(&key)
+    }
+
+    /// Port of `CPROCESSMAP::count`.
+    pub fn count(&self) -> Cint64 {
+        self.map.len() as Cint64
     }
 
     /// Port of `CPROCESSMAP::value` (returns a copy; default-constructed when absent).
@@ -650,9 +683,13 @@ impl VariableBindingPathSet {
     }
 
     /// Port of `initVariableBindingPathSet`.
-    pub fn init_variable_binding_path_set(&mut self, prev_set: Option<&VariableBindingPathSet>) -> &mut Self {
+    pub fn init_variable_binding_path_set(
+        &mut self,
+        prev_set: Option<&VariableBindingPathSet>,
+    ) -> &mut Self {
         if let Some(prev) = prev_set {
-            self.var_bind_path_map.init_variable_binding_path_map(Some(&prev.var_bind_path_map));
+            self.var_bind_path_map
+                .init_variable_binding_path_map(Some(&prev.var_bind_path_map));
             self.concept_descriptor = prev.concept_descriptor;
             self.var_bind_path_des_linker = prev.var_bind_path_des_linker;
         } else {
@@ -678,7 +715,8 @@ impl VariableBindingPathSet {
         ctx: &ProcessContext,
         variable_binding_path: VarBindingPathId,
     ) -> bool {
-        self.var_bind_path_map.contains(ctx.vbpath(variable_binding_path).get_propagation_id())
+        self.var_bind_path_map
+            .contains(ctx.vbpath(variable_binding_path).get_propagation_id())
     }
 
     /// Port of `containsVariableBindingPath(cint64 bindingID)`.
@@ -708,14 +746,21 @@ impl VariableBindingPathSet {
         var_bind_path_des: VarBindingPathDescriptorId,
     ) {
         // varBindPathDes->getVariableBindingPath()->getPropagationID()
-        let path = ctx.vbpath_des(var_bind_path_des).get_variable_binding_path();
+        let path = ctx
+            .vbpath_des(var_bind_path_des)
+            .get_variable_binding_path();
         let prop_id = ctx.vbpath(path).get_propagation_id();
 
         // CVariableBindingPathMapData& data = mVarBindPathMap[propID];
-        let has_des =
-            ctx.vbpath_set(this).var_bind_path_map.value(prop_id).has_variable_binding_path_descriptor();
+        let has_des = ctx
+            .vbpath_set(this)
+            .var_bind_path_map
+            .value(prop_id)
+            .has_variable_binding_path_descriptor();
         // operator[] inserts a default if absent (so the key now exists, des == NONE).
-        ctx.vbpath_set_mut(this).var_bind_path_map.entry_mut(prop_id);
+        ctx.vbpath_set_mut(this)
+            .var_bind_path_map
+            .entry_mut(prop_id);
 
         if !has_des {
             // data.setVariableBindingPathDescriptor(varBindPathDes)
@@ -731,7 +776,10 @@ impl VariableBindingPathSet {
     }
 
     /// Port of `copyVariableBindingPaths` (`mVarBindPathMap = *varBindPathMap`).
-    pub fn copy_variable_binding_paths(&mut self, var_bind_path_map: Option<&VariableBindingPathMap>) -> &mut Self {
+    pub fn copy_variable_binding_paths(
+        &mut self,
+        var_bind_path_map: Option<&VariableBindingPathMap>,
+    ) -> &mut Self {
         if let Some(m) = var_bind_path_map {
             self.var_bind_path_map = m.clone();
         }
@@ -756,7 +804,8 @@ impl VariableBindingPathSet {
         var_bind_path_des_linker: VarBindingPathDescriptorId,
     ) {
         let old_head = ctx.vbpath_set(this).var_bind_path_des_linker;
-        let new_head = VariableBindingPathDescriptor::append(ctx, var_bind_path_des_linker, old_head);
+        let new_head =
+            VariableBindingPathDescriptor::append(ctx, var_bind_path_des_linker, old_head);
         ctx.vbpath_set_mut(this).var_bind_path_des_linker = new_head;
     }
 
@@ -810,7 +859,11 @@ impl VariableBindingPathJoiningData {
     }
 
     /// Port of `initVariableBindingPathJoiningData(CVariableBindingPathJoiningData* prevJoinData)`.
-    pub fn init_from_prev(ctx: &mut ProcessContext, this: VarBindingPathJoiningDataId, prev: VarBindingPathJoiningDataId) {
+    pub fn init_from_prev(
+        ctx: &mut ProcessContext,
+        this: VarBindingPathJoiningDataId,
+        prev: VarBindingPathJoiningDataId,
+    ) {
         if prev.is_some() {
             let p = ctx.vbpath_join_data(prev);
             let (kv, lv, rv, hc, chv, akt, nkt) = (
@@ -887,22 +940,34 @@ impl VariableBindingPathJoiningData {
     }
 
     /// Port of `setKeyVariableBindingDescriptorLinker`.
-    pub fn set_key_variable_binding_descriptor_linker(&mut self, v: VarBindingDescriptorId) -> &mut Self {
+    pub fn set_key_variable_binding_descriptor_linker(
+        &mut self,
+        v: VarBindingDescriptorId,
+    ) -> &mut Self {
         self.key_var_bind_des_linker = v;
         self
     }
     /// Port of `setLeftVariableBindingPathDescriptorLinker`.
-    pub fn set_left_variable_binding_path_descriptor_linker(&mut self, v: VarBindingPathDescriptorId) -> &mut Self {
+    pub fn set_left_variable_binding_path_descriptor_linker(
+        &mut self,
+        v: VarBindingPathDescriptorId,
+    ) -> &mut Self {
         self.left_var_bind_path_des_linker = v;
         self
     }
     /// Port of `setRightVariableBindingPathDescriptorLinker`.
-    pub fn set_right_variable_binding_path_descriptor_linker(&mut self, v: VarBindingPathDescriptorId) -> &mut Self {
+    pub fn set_right_variable_binding_path_descriptor_linker(
+        &mut self,
+        v: VarBindingPathDescriptorId,
+    ) -> &mut Self {
         self.right_var_bind_path_des_linker = v;
         self
     }
     /// Port of `setNextKeyTriggerLinker`.
-    pub fn set_next_key_trigger_linker(&mut self, next_key_trigger: VarBindingDescriptorId) -> &mut Self {
+    pub fn set_next_key_trigger_linker(
+        &mut self,
+        next_key_trigger: VarBindingDescriptorId,
+    ) -> &mut Self {
         self.next_key_trigger_linker = next_key_trigger;
         self
     }
@@ -925,7 +990,8 @@ impl VariableBindingPathJoiningData {
         left_var_bind_path_des_linker: VarBindingPathDescriptorId,
     ) {
         let old = ctx.vbpath_join_data(this).left_var_bind_path_des_linker;
-        let new_head = VariableBindingPathDescriptor::append(ctx, left_var_bind_path_des_linker, old);
+        let new_head =
+            VariableBindingPathDescriptor::append(ctx, left_var_bind_path_des_linker, old);
         ctx.vbpath_join_data_mut(this).left_var_bind_path_des_linker = new_head;
     }
     /// Port of `addRightVariableBindingPathDescriptorLinker`.
@@ -935,8 +1001,10 @@ impl VariableBindingPathJoiningData {
         right_var_bind_path_des_linker: VarBindingPathDescriptorId,
     ) {
         let old = ctx.vbpath_join_data(this).right_var_bind_path_des_linker;
-        let new_head = VariableBindingPathDescriptor::append(ctx, right_var_bind_path_des_linker, old);
-        ctx.vbpath_join_data_mut(this).right_var_bind_path_des_linker = new_head;
+        let new_head =
+            VariableBindingPathDescriptor::append(ctx, right_var_bind_path_des_linker, old);
+        ctx.vbpath_join_data_mut(this)
+            .right_var_bind_path_des_linker = new_head;
     }
 
     /// Port of `allKeyTriggersAvailable`.
@@ -972,7 +1040,10 @@ impl VariableBindingPathJoiningData {
     /// KONCLUDE-PORT-NOTE[ownership]: the C++ `const` method caches into `mutable`
     /// fields; the port takes `&mut ctx` + the data id and writes the cache via the
     /// arena (the value cached is identical).
-    pub fn get_calculated_hash_value(ctx: &mut ProcessContext, this: VarBindingPathJoiningDataId) -> Cint64 {
+    pub fn get_calculated_hash_value(
+        ctx: &mut ProcessContext,
+        this: VarBindingPathJoiningDataId,
+    ) -> Cint64 {
         if !ctx.vbpath_join_data(this).hash_value_calculated {
             let key_head = ctx.vbpath_join_data(this).key_var_bind_des_linker;
             let hash = Self::compute_key_hash(ctx, key_head);
@@ -989,7 +1060,8 @@ impl VariableBindingPathJoiningData {
         this: VarBindingPathJoiningDataId,
         data: VarBindingPathJoiningDataId,
     ) -> bool {
-        if Self::get_calculated_hash_value(ctx, this) != Self::get_calculated_hash_value(ctx, data) {
+        if Self::get_calculated_hash_value(ctx, this) != Self::get_calculated_hash_value(ctx, data)
+        {
             return false;
         }
         let mut linker_it1 = ctx.vbpath_join_data(this).key_var_bind_des_linker;
@@ -1019,7 +1091,9 @@ impl VariableBindingPathJoiningData {
         var_bind_path: VarBindingPathId,
     ) -> bool {
         let mut linker_it1 = ctx.vbpath_join_data(this).key_var_bind_des_linker;
-        let mut linker_it2 = ctx.vbpath(var_bind_path).get_variable_binding_descriptor_linker();
+        let mut linker_it2 = ctx
+            .vbpath(var_bind_path)
+            .get_variable_binding_descriptor_linker();
         while linker_it2.is_some() && linker_it1.is_some() {
             let bind2 = ctx.var_binding_des(linker_it2).get_variable_binding();
             let bind1 = ctx.var_binding_des(linker_it1).get_variable_binding();
@@ -1098,60 +1172,64 @@ pub struct VariableBindingPathJoiningHasher {
     pub joining_data: VarBindingPathJoiningDataId,
     /// `CVariableBindingPath* mVarBindPath`.
     pub var_bind_path: VarBindingPathId,
-    /// `CSortedLinker<CVariable*>* mKeyVars` (opaque; W2.7-DEFER[api]).
-    pub key_vars: Cint64,
+    /// `CSortedLinker<CVariable*>* mKeyVars`.
+    pub key_vars: Vec<VariableId>,
     /// `cint64 mHashValue`.
     pub hash_value: Cint64,
 }
 
 impl VariableBindingPathJoiningHasher {
     /// Port of `CVariableBindingPathJoiningHasher(CVariableBindingPathJoiningData* data)`.
-    pub fn new_from_joining_data(ctx: &mut ProcessContext, data: VarBindingPathJoiningDataId) -> Self {
+    pub fn new_from_joining_data(
+        ctx: &mut ProcessContext,
+        data: VarBindingPathJoiningDataId,
+    ) -> Self {
         let hash_value = VariableBindingPathJoiningData::get_calculated_hash_value(ctx, data);
         VariableBindingPathJoiningHasher {
             var_bind_path: Id::NONE,
-            key_vars: INVALID,
+            key_vars: Vec::new(),
             joining_data: data,
             hash_value,
         }
     }
 
     /// Port of `CVariableBindingPathJoiningHasher(CVariableBindingPath* varBindPath, CSortedLinker<CVariable*>* keyVars)`.
-    pub fn new_from_path(ctx: &ProcessContext, var_bind_path: VarBindingPathId, key_vars: Cint64) -> Self {
+    pub fn new_from_path(
+        ctx: &ProcessContext,
+        var_bind_path: VarBindingPathId,
+        key_vars: &[VariableId],
+    ) -> Self {
         let hash_value = Self::calculate_hash_value(ctx, var_bind_path, key_vars);
         VariableBindingPathJoiningHasher {
             joining_data: Id::NONE,
             var_bind_path,
-            key_vars,
+            key_vars: key_vars.to_vec(),
             hash_value,
         }
     }
 
     /// Port of `calculateHashValue`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the parallel walk advances `keyVarsIt` and tests
-    /// `variable == keyVariable`; `keyVars` (`CSortedLinker<CVariable*>*`) is unported,
-    /// so the key-vars side is `W2.7-DEFER[api]` (no key advance / no match) — the
-    /// var-binding-descriptor walk over the path is ported faithfully.
-    fn calculate_hash_value(ctx: &ProcessContext, var_bind_path: VarBindingPathId, key_vars: Cint64) -> Cint64 {
+    fn calculate_hash_value(
+        ctx: &ProcessContext,
+        var_bind_path: VarBindingPathId,
+        key_vars: &[VariableId],
+    ) -> Cint64 {
         let mut hash_value: Cint64 = 0;
-        // CSortedLinker<CVariable*>* keyVarsIt = keyVars;  (opaque)
-        let mut key_vars_it: Cint64 = key_vars;
+        let mut key_vars_it: usize = 0;
         let mut multiplier: Cint64 = 13;
-        let mut linker_it = ctx.vbpath(var_bind_path).get_variable_binding_descriptor_linker();
+        let mut linker_it = ctx
+            .vbpath(var_bind_path)
+            .get_variable_binding_descriptor_linker();
         // for (...; keyVarsIt && linkerIt; linkerIt = linkerIt->getNext())
-        while key_vars_it != INVALID && linker_it.is_some() {
+        while key_vars_it < key_vars.len() && linker_it.is_some() {
             let variable_binding = ctx.var_binding_des(linker_it).get_variable_binding();
             let variable = ctx.var_binding(variable_binding).get_binded_variable();
-            // W3-DEFER[api]: CVariable* keyVariable = keyVarsIt->getData();
-            // W3-DEFER[api]: if (variable == keyVariable) { hash += …; keyVarsIt = keyVarsIt->getNext(); }
-            let key_variable: VariableId = Id::NONE;
+            let key_variable: VariableId = key_vars[key_vars_it];
             if variable == key_variable {
-                hash_value =
-                    hash_value.wrapping_add(multiplier.wrapping_mul(variable_binding.raw));
+                hash_value = hash_value.wrapping_add(multiplier.wrapping_mul(variable_binding.raw));
                 multiplier = multiplier * 2 + 1;
-                // keyVarsIt = keyVarsIt->getNext();  (deferred → terminates the loop)
-                key_vars_it = INVALID;
+                key_vars_it += 1;
             }
             linker_it = ctx.var_binding_des(linker_it).get_next();
         }
@@ -1164,13 +1242,29 @@ impl VariableBindingPathJoiningHasher {
     }
 
     /// Port of `operator==`.
-    pub fn equals(&self, ctx: &mut ProcessContext, hasher: &VariableBindingPathJoiningHasher) -> bool {
+    pub fn equals(
+        &self,
+        ctx: &mut ProcessContext,
+        hasher: &VariableBindingPathJoiningHasher,
+    ) -> bool {
         if self.joining_data.is_some() && hasher.joining_data.is_some() {
-            VariableBindingPathJoiningData::is_key_equivalent_to_data(ctx, self.joining_data, hasher.joining_data)
+            VariableBindingPathJoiningData::is_key_equivalent_to_data(
+                ctx,
+                self.joining_data,
+                hasher.joining_data,
+            )
         } else if self.joining_data.is_some() && hasher.var_bind_path.is_some() {
-            VariableBindingPathJoiningData::is_key_equivalent_to_path(ctx, self.joining_data, hasher.var_bind_path)
+            VariableBindingPathJoiningData::is_key_equivalent_to_path(
+                ctx,
+                self.joining_data,
+                hasher.var_bind_path,
+            )
         } else if self.var_bind_path.is_some() && hasher.joining_data.is_some() {
-            VariableBindingPathJoiningData::is_key_equivalent_to_path(ctx, hasher.joining_data, self.var_bind_path)
+            VariableBindingPathJoiningData::is_key_equivalent_to_path(
+                ctx,
+                hasher.joining_data,
+                self.var_bind_path,
+            )
         } else {
             false
         }
@@ -1206,14 +1300,17 @@ pub fn q_hash_joining(hasher: &VariableBindingPathJoiningHasher) -> u32 {
 pub struct VariableBindingPathJoiningHash {
     /// `CProcessContext* mContext` (opaque).
     pub context: Cint64,
-    /// the `CPROCESSHASH` base storage, keyed by `getHashValue()`.
-    pub map: HashMap<Cint64, VariableBindingPathJoiningHashData>,
+    /// the `CPROCESSHASH` base storage, bucketed by `getHashValue()`.
+    pub map: HashMap<Cint64, Vec<VariableBindingPathJoiningHashData>>,
 }
 
 impl VariableBindingPathJoiningHash {
     /// Port of `CVariableBindingPathJoiningHash::CVariableBindingPathJoiningHash(CProcessContext*)`.
     pub fn new(context: Cint64) -> Self {
-        VariableBindingPathJoiningHash { context, map: HashMap::new() }
+        VariableBindingPathJoiningHash {
+            context,
+            map: HashMap::new(),
+        }
     }
 
     /// Port of `getVariableBindingPathJoiningData(hasher, localize)`.
@@ -1232,22 +1329,48 @@ impl VariableBindingPathJoiningHash {
         let mut var_bind_path_joining_data = self
             .map
             .get(&key)
-            .map(|d| d.use_var_bind_path_joining_data)
+            .and_then(|bucket| {
+                bucket
+                    .iter()
+                    .find(|d| {
+                        d.use_var_bind_path_joining_data.is_some()
+                            && VariableBindingPathJoiningHasher::new_from_joining_data(
+                                ctx,
+                                d.use_var_bind_path_joining_data,
+                            )
+                            .equals(ctx, hasher)
+                    })
+                    .map(|d| d.use_var_bind_path_joining_data)
+            })
             .unwrap_or(Id::NONE);
-        if self.map.contains_key(&key) {
+        let bucket_index = self.map.get(&key).and_then(|bucket| {
+            bucket.iter().position(|d| {
+                d.use_var_bind_path_joining_data.is_some()
+                    && VariableBindingPathJoiningHasher::new_from_joining_data(
+                        ctx,
+                        d.use_var_bind_path_joining_data,
+                    )
+                    .equals(ctx, hasher)
+            })
+        });
+        if let Some(bucket_index) = bucket_index {
             let (loc, use_) = {
-                let d = self.map.get(&key).unwrap();
-                (d.loc_var_bind_path_joining_data, d.use_var_bind_path_joining_data)
+                let d = &self.map.get(&key).unwrap()[bucket_index];
+                (
+                    d.loc_var_bind_path_joining_data,
+                    d.use_var_bind_path_joining_data,
+                )
             };
             if loc.is_none() && use_.is_some() {
                 // allocateAndConstruct + initVariableBindingPathJoiningData(use)
                 let new_data = ctx.alloc_vbpath_join_data(VariableBindingPathJoiningData::new());
                 VariableBindingPathJoiningData::init_from_prev(ctx, new_data, use_);
-                let d = self.map.get_mut(&key).unwrap();
+                let d = &mut self.map.get_mut(&key).unwrap()[bucket_index];
                 d.loc_var_bind_path_joining_data = new_data;
                 d.use_var_bind_path_joining_data = new_data;
             }
-            var_bind_path_joining_data = self.map.get(&key).unwrap().use_var_bind_path_joining_data;
+            var_bind_path_joining_data =
+                self.map.get(&key).unwrap()[bucket_index].use_var_bind_path_joining_data;
         }
         var_bind_path_joining_data
     }
@@ -1259,7 +1382,15 @@ impl VariableBindingPathJoiningHash {
         join_data: VarBindingPathJoiningDataId,
     ) -> &mut Self {
         let key = hasher.get_hash_value();
-        let d = self.map.entry(key).or_insert_with(VariableBindingPathJoiningHashData::new);
+        let bucket = self.map.entry(key).or_default();
+        let idx = bucket
+            .iter()
+            .position(|d| d.use_var_bind_path_joining_data == join_data)
+            .unwrap_or_else(|| {
+                bucket.push(VariableBindingPathJoiningHashData::new());
+                bucket.len() - 1
+            });
+        let d = &mut bucket[idx];
         d.use_var_bind_path_joining_data = join_data;
         d.loc_var_bind_path_joining_data = join_data;
         self
@@ -1298,7 +1429,10 @@ impl Default for VariableBindingTriggerLinker {
 impl VariableBindingTriggerLinker {
     /// Port of `CVariableBindingTriggerLinker::CVariableBindingTriggerLinker(varBindPath = nullptr)`.
     pub fn new(var_bind_path_des: VarBindingPathDescriptorId) -> Self {
-        VariableBindingTriggerLinker { data: var_bind_path_des, ..Default::default() }
+        VariableBindingTriggerLinker {
+            data: var_bind_path_des,
+            ..Default::default()
+        }
     }
 
     /// Port of `initTriggerLinker`.
@@ -1321,7 +1455,10 @@ impl VariableBindingTriggerLinker {
         self.data
     }
     /// Port of `setVariableBindingPathDescriptor`.
-    pub fn set_variable_binding_path_descriptor(&mut self, v: VarBindingPathDescriptorId) -> &mut Self {
+    pub fn set_variable_binding_path_descriptor(
+        &mut self,
+        v: VarBindingPathDescriptorId,
+    ) -> &mut Self {
         self.data = v;
         self
     }
@@ -1331,7 +1468,10 @@ impl VariableBindingTriggerLinker {
         self.next_trigger_variable_binding
     }
     /// Port of `setNextTriggerVariableBindingDescriptor`.
-    pub fn set_next_trigger_variable_binding_descriptor(&mut self, v: VarBindingDescriptorId) -> &mut Self {
+    pub fn set_next_trigger_variable_binding_descriptor(
+        &mut self,
+        v: VarBindingDescriptorId,
+    ) -> &mut Self {
         self.next_trigger_variable_binding = v;
         self
     }
@@ -1392,7 +1532,10 @@ pub struct VariableBindingTriggerData {
 impl VariableBindingTriggerData {
     /// Port of `CVariableBindingTriggerData::CVariableBindingTriggerData()`.
     pub fn new() -> Self {
-        VariableBindingTriggerData { triggered: false, var_bind_trigger_linker: Id::NONE }
+        VariableBindingTriggerData {
+            triggered: false,
+            var_bind_trigger_linker: Id::NONE,
+        }
     }
 
     /// Port of `isTriggered`.
@@ -1409,7 +1552,10 @@ impl VariableBindingTriggerData {
         self
     }
     /// Port of `setVariableBindingTriggerLinker`.
-    pub fn set_variable_binding_trigger_linker(&mut self, v: VarBindingTriggerLinkerId) -> &mut Self {
+    pub fn set_variable_binding_trigger_linker(
+        &mut self,
+        v: VarBindingTriggerLinkerId,
+    ) -> &mut Self {
         self.var_bind_trigger_linker = v;
         self
     }
@@ -1430,8 +1576,11 @@ impl VariableBindingTriggerData {
         ctx: &mut ProcessContext,
         var_bind_trigger_linker: VarBindingTriggerLinkerId,
     ) -> &mut Self {
-        let new_head =
-            VariableBindingTriggerLinker::append(ctx, var_bind_trigger_linker, self.var_bind_trigger_linker);
+        let new_head = VariableBindingTriggerLinker::append(
+            ctx,
+            var_bind_trigger_linker,
+            self.var_bind_trigger_linker,
+        );
         self.var_bind_trigger_linker = new_head;
         self
     }
@@ -1456,6 +1605,7 @@ impl Default for VariableBindingTriggerData {
 pub type TVariableIndividualPair = (VariableId, Cint64);
 
 /// Port of `CVariableBindingTriggerHash`.
+#[derive(Clone)]
 pub struct VariableBindingTriggerHash {
     /// `CProcessContext* mContext` (opaque).
     pub context: Cint64,
@@ -1466,11 +1616,17 @@ pub struct VariableBindingTriggerHash {
 impl VariableBindingTriggerHash {
     /// Port of `CVariableBindingTriggerHash::CVariableBindingTriggerHash(CProcessContext*)`.
     pub fn new(context: Cint64) -> Self {
-        VariableBindingTriggerHash { context, map: HashMap::new() }
+        VariableBindingTriggerHash {
+            context,
+            map: HashMap::new(),
+        }
     }
 
     /// Port of `initVariableBindingTriggerHash` (operator= from prev, else clear).
-    pub fn init_variable_binding_trigger_hash(&mut self, prev_hash: Option<&VariableBindingTriggerHash>) -> &mut Self {
+    pub fn init_variable_binding_trigger_hash(
+        &mut self,
+        prev_hash: Option<&VariableBindingTriggerHash>,
+    ) -> &mut Self {
         if let Some(prev) = prev_hash {
             self.map = prev.map.clone();
         } else {
@@ -1488,7 +1644,9 @@ impl VariableBindingTriggerHash {
         indi_node: NodeId,
     ) -> &mut VariableBindingTriggerData {
         let indi_id = ctx.node(indi_node).individual_node_id();
-        self.map.entry((variable, indi_id)).or_insert_with(VariableBindingTriggerData::new)
+        self.map
+            .entry((variable, indi_id))
+            .or_insert_with(VariableBindingTriggerData::new)
     }
 
     /// Port of `setTriggeredReturnTriggerLinker`.
@@ -1518,12 +1676,18 @@ impl VariableBindingTriggerHash {
         let indi_id = ctx.node(indi_node).individual_node_id();
         let key = (variable, indi_id);
         // CVariableBindingTriggerData& triggerData = getTriggerData(variable, indiNode);
-        if self.map.entry(key).or_insert_with(VariableBindingTriggerData::new).is_triggered() {
+        if self
+            .map
+            .entry(key)
+            .or_insert_with(VariableBindingTriggerData::new)
+            .is_triggered()
+        {
             return false;
         }
         // taskMemMan = mContext->getUsedMemoryAllocationManager();
         // triggerLinker = allocateAndConstruct<CVariableBindingTriggerLinker>(taskMemMan);
-        let trigger_linker = ctx.alloc_vbtrigger_linker(VariableBindingTriggerLinker::new(Id::NONE));
+        let trigger_linker =
+            ctx.alloc_vbtrigger_linker(VariableBindingTriggerLinker::new(Id::NONE));
         ctx.vbtrigger_linker_mut(trigger_linker)
             .init_trigger_linker(var_bind_path_des, var_bind_des, left_triggered);
         self.map
@@ -1549,14 +1713,19 @@ pub struct VariableBindingPathMergingHashData {
 impl VariableBindingPathMergingHashData {
     /// Port of `CVariableBindingPathMergingHashData::CVariableBindingPathMergingHashData()`.
     pub fn new() -> Self {
-        VariableBindingPathMergingHashData { variable_binding_path: Id::NONE }
+        VariableBindingPathMergingHashData {
+            variable_binding_path: Id::NONE,
+        }
     }
     /// Port of `getVariableBindingPath`.
     pub fn get_variable_binding_path(&self) -> VarBindingPathId {
         self.variable_binding_path
     }
     /// Port of `setVariableBindingPath`.
-    pub fn set_variable_binding_path(&mut self, variable_binding_path: VarBindingPathId) -> &mut Self {
+    pub fn set_variable_binding_path(
+        &mut self,
+        variable_binding_path: VarBindingPathId,
+    ) -> &mut Self {
         self.variable_binding_path = variable_binding_path;
         self
     }
@@ -1588,7 +1757,10 @@ pub struct VariableBindingPathMergingHash {
 impl VariableBindingPathMergingHash {
     /// Port of `CVariableBindingPathMergingHash::CVariableBindingPathMergingHash(CProcessContext*)`.
     pub fn new(process_context: Cint64) -> Self {
-        VariableBindingPathMergingHash { process_context, map: HashMap::new() }
+        VariableBindingPathMergingHash {
+            process_context,
+            map: HashMap::new(),
+        }
     }
 
     /// Port of `initVariableBindingPathMergingHash` (operator= from prev, else clear).
@@ -1634,7 +1806,7 @@ impl VariableBindingPathMergingHash {
 /// reading it needs `ctx` (the rep id lives in the SetData arena element), which the
 /// by-value ctor cannot reach — the caller supplies it via `set_resolve_…` when it has
 /// `ctx`, so the read-the-id-in-the-ctor side remains W3.5r-DEFER[api].
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct RepresentativeVariableBindingPathMapData {
     /// `CVariableBindingPath* mVarBindPath`.
     pub var_bind_path: VarBindingPathId,
@@ -1713,7 +1885,10 @@ impl RepresentativeVariableBindingPathMapData {
         self.resolve_var_bind_path.is_some()
     }
     /// Port of `setResolveVariableBindingPath`.
-    pub fn set_resolve_variable_binding_path(&mut self, var_bind_path: VarBindingPathId) -> &mut Self {
+    pub fn set_resolve_variable_binding_path(
+        &mut self,
+        var_bind_path: VarBindingPathId,
+    ) -> &mut Self {
         self.resolve_var_bind_path = var_bind_path;
         self
     }
@@ -1757,7 +1932,7 @@ impl RepresentativeVariableBindingPathMapData {
 // ===========================================================================
 
 /// Port of `CRepresentativeVariableBindingPathMap`.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct RepresentativeVariableBindingPathMap {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,
@@ -1768,7 +1943,10 @@ pub struct RepresentativeVariableBindingPathMap {
 impl RepresentativeVariableBindingPathMap {
     /// Port of `CRepresentativeVariableBindingPathMap::CRepresentativeVariableBindingPathMap(CProcessContext*)`.
     pub fn new(process_context: Cint64) -> Self {
-        RepresentativeVariableBindingPathMap { process_context, map: HashMap::new() }
+        RepresentativeVariableBindingPathMap {
+            process_context,
+            map: HashMap::new(),
+        }
     }
 
     /// Port of `initVariableBindingPathMap` (operator= from prev, else clear).

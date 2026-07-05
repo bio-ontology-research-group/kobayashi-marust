@@ -6,6 +6,9 @@
 //!   * `CBlockingIndividualNodeCandidateData.{h,cpp}`     → [`BlockingIndividualNodeCandidateData`]
 //!   * `CBlockingIndividualNodeCandidateIterator.{h,cpp}` → [`BlockingIndividualNodeCandidateIterator`]
 //!   * `CBlockingIndividualNodeCandidateHash.{h,cpp}`     → [`BlockingIndividualNodeCandidateHash`]
+//!   * `CBlockingIndividualNodeLinker.{h,cpp}`            → [`BlockingIndividualNodeLinker`]
+//!   * `CBlockingIndividualNodeLinkedCandidateData.{h,cpp}` → [`BlockingIndividualNodeLinkedCandidateData`]
+//!   * `CBlockingIndividualNodeLinkedCandidateHash.{h,cpp}` → [`BlockingIndividualNodeLinkedCandidateHash`]
 //!   * `CSignatureBlockingIndividualNodeConceptExpansionData.{h,cpp}`
 //!                                                        → [`SignatureBlockingIndividualNodeConceptExpansionData`]
 //!
@@ -25,13 +28,13 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
 use super::context::ProcessContext;
 use super::satellites::ConceptLabelSetModificationTag;
-use super::{ConDescId, NodeId};
+use super::{ConDescId, NodeId, TrackPointId};
 
 // ===========================================================================
 // id aliases
@@ -41,6 +44,16 @@ use super::{ConDescId, NodeId};
 pub type BlockingIndividualNodeCandidateHashId = Id<BlockingIndividualNodeCandidateHash>;
 /// `CBlockingIndividualNodeCandidateData*` → `BlockingIndividualNodeCandidateDataId`.
 pub type BlockingIndividualNodeCandidateDataId = Id<BlockingIndividualNodeCandidateData>;
+/// `CBlockingIndividualNodeLinker*` → `BlockingIndividualNodeLinkerId`.
+pub type BlockingIndividualNodeLinkerId = Id<BlockingIndividualNodeLinker>;
+/// `CBlockingIndividualNodeLinkedCandidateData*` →
+/// `BlockingIndividualNodeLinkedCandidateDataId`.
+pub type BlockingIndividualNodeLinkedCandidateDataId =
+    Id<BlockingIndividualNodeLinkedCandidateData>;
+/// `CBlockingIndividualNodeLinkedCandidateHash*` →
+/// `BlockingIndividualNodeLinkedCandidateHashId`.
+pub type BlockingIndividualNodeLinkedCandidateHashId =
+    Id<BlockingIndividualNodeLinkedCandidateHash>;
 /// `CSignatureBlockingIndividualNodeConceptExpansionData*` →
 /// `SignatureBlockingIndividualNodeConceptExpansionDataId`.
 /// KONCLUDE-PORT-NOTE[ownership]: reconciles the W2 `process::stubs`
@@ -49,6 +62,630 @@ pub type BlockingIndividualNodeCandidateDataId = Id<BlockingIndividualNodeCandid
 /// fields point here once the stub re-aliases below).
 pub type SignatureBlockingIndividualNodeConceptExpansionDataId =
     Id<SignatureBlockingIndividualNodeConceptExpansionData>;
+/// `CSignatureBlockingReviewSet*` → `SignatureBlockingReviewSetId`.
+pub type SignatureBlockingReviewSetId = Id<SignatureBlockingReviewSet>;
+/// `CReusingReviewData*` → `ReusingReviewDataId`.
+pub type ReusingReviewDataId = Id<ReusingReviewData>;
+/// `CReusingIndividualNodeConceptExpansionData*` →
+/// `ReusingIndividualNodeConceptExpansionDataId`.
+pub type ReusingIndividualNodeConceptExpansionDataId =
+    Id<ReusingIndividualNodeConceptExpansionData>;
+
+// ===========================================================================
+// CBlockingIndividualNodeLinker / LinkedCandidateData / LinkedCandidateHash
+// ===========================================================================
+
+/// Port of `CBlockingIndividualNodeLinker`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct BlockingIndividualNodeLinker {
+    /// `CLinkerBase::mData`.
+    pub candidate_individual_node: NodeId,
+    /// `CLinkerBase::mNext`.
+    pub next: BlockingIndividualNodeLinkerId,
+    /// `CBlockingIndividualNodeLinker::mLastFailedSubsetConDes`.
+    pub last_failed_subset_con_des: ConDescId,
+}
+
+impl Default for BlockingIndividualNodeLinker {
+    fn default() -> Self {
+        Self {
+            candidate_individual_node: NodeId::NONE,
+            next: BlockingIndividualNodeLinkerId::NONE,
+            last_failed_subset_con_des: ConDescId::NONE,
+        }
+    }
+}
+
+impl BlockingIndividualNodeLinker {
+    /// Port of `CBlockingIndividualNodeLinker()`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Port of `initBlockingIndividualNodeLinker(CBlockingIndividualNodeLinker*)`.
+    pub fn init_blocking_individual_node_linker_from(
+        &mut self,
+        prev: Option<&BlockingIndividualNodeLinker>,
+    ) -> &mut Self {
+        if let Some(prev) = prev {
+            self.candidate_individual_node = prev.candidate_individual_node;
+            self.last_failed_subset_con_des = prev.last_failed_subset_con_des;
+            self.next = BlockingIndividualNodeLinkerId::NONE;
+        } else {
+            self.candidate_individual_node = NodeId::NONE;
+            self.last_failed_subset_con_des = ConDescId::NONE;
+            self.next = BlockingIndividualNodeLinkerId::NONE;
+        }
+        self
+    }
+
+    /// Port of `initBlockingIndividualNodeLinker(CIndividualProcessNode*)`.
+    pub fn init_blocking_individual_node_linker(&mut self, indi_node: NodeId) -> &mut Self {
+        self.last_failed_subset_con_des = ConDescId::NONE;
+        self.candidate_individual_node = indi_node;
+        self.next = BlockingIndividualNodeLinkerId::NONE;
+        self
+    }
+
+    /// Port of `getLastFailedSubsetConceptDescriptor`.
+    pub fn get_last_failed_subset_concept_descriptor(&self) -> ConDescId {
+        self.last_failed_subset_con_des
+    }
+
+    /// Port of `setLastFailedSubsetConceptDescriptor`.
+    pub fn set_last_failed_subset_concept_descriptor(&mut self, con_des: ConDescId) -> &mut Self {
+        self.last_failed_subset_con_des = con_des;
+        self
+    }
+
+    /// Port of `getCandidateIndividualNode`.
+    pub fn get_candidate_individual_node(&self) -> NodeId {
+        self.candidate_individual_node
+    }
+
+    /// Port of `setCandidateIndividualNode`.
+    pub fn set_candidate_individual_node(&mut self, indi_node: NodeId) -> &mut Self {
+        self.candidate_individual_node = indi_node;
+        self
+    }
+
+    /// Port of `CLinkerBase::getNext`.
+    pub fn get_next(&self) -> BlockingIndividualNodeLinkerId {
+        self.next
+    }
+
+    /// Port-facing equivalent of `linker->append(next)`.
+    pub fn append(&mut self, next: BlockingIndividualNodeLinkerId) -> &mut Self {
+        self.next = next;
+        self
+    }
+}
+
+/// Port of `CBlockingIndividualNodeLinkedCandidateData`.
+#[derive(Clone, Debug)]
+pub struct BlockingIndividualNodeLinkedCandidateData {
+    /// `CBlockingIndividualNodeLinker* mCandLinker`.
+    pub cand_linker: BlockingIndividualNodeLinkerId,
+    /// `cint64 mCandidateCount`.
+    pub candidate_count: Cint64,
+    // KONCLUDE-PORT-NOTE[memory-pool]: ambient `CProcessContext* mContext` /
+    // `CMemoryAllocationManager* mMemMan` (opaque).
+    pub context: Cint64,
+    pub mem_man: Cint64,
+}
+
+impl Default for BlockingIndividualNodeLinkedCandidateData {
+    fn default() -> Self {
+        Self {
+            cand_linker: BlockingIndividualNodeLinkerId::NONE,
+            candidate_count: 0,
+            context: INVALID,
+            mem_man: INVALID,
+        }
+    }
+}
+
+impl BlockingIndividualNodeLinkedCandidateData {
+    /// Port of `CBlockingIndividualNodeLinkedCandidateData(CProcessContext*)`.
+    pub fn new(context: Cint64) -> Self {
+        Self {
+            context,
+            ..Self::default()
+        }
+    }
+
+    /// Port of `initBlockingCandidateData`.
+    pub fn init_blocking_candidate_data(
+        &mut self,
+        prev: Option<&BlockingIndividualNodeLinkedCandidateData>,
+    ) -> &mut Self {
+        if let Some(prev) = prev {
+            self.candidate_count = prev.candidate_count;
+            self.cand_linker = prev.cand_linker;
+        } else {
+            self.candidate_count = 0;
+            self.cand_linker = BlockingIndividualNodeLinkerId::NONE;
+        }
+        self
+    }
+
+    /// Port of `getBlockingCandidatesIndividualNodeLinker`.
+    pub fn get_blocking_candidates_individual_node_linker(&self) -> BlockingIndividualNodeLinkerId {
+        self.cand_linker
+    }
+
+    /// Port of `getCandidateCount`.
+    pub fn get_candidate_count(&self) -> Cint64 {
+        self.candidate_count
+    }
+
+    /// Port of `setCandidateCount`.
+    pub fn set_candidate_count(&mut self, cand_count: Cint64) -> &mut Self {
+        self.candidate_count = cand_count;
+        self
+    }
+}
+
+/// Per-key value for `CBlockingIndividualNodeLinkedCandidateHash`.
+#[derive(Copy, Clone, Debug)]
+pub struct BlockingLinkedCandidateHashData {
+    /// `mCandidateIndiData`.
+    pub candidate_indi_data: BlockingIndividualNodeLinkedCandidateDataId,
+    /// `mPrevCandidateIndiData`.
+    pub prev_candidate_indi_data: BlockingIndividualNodeLinkedCandidateDataId,
+}
+
+impl Default for BlockingLinkedCandidateHashData {
+    fn default() -> Self {
+        Self {
+            candidate_indi_data: BlockingIndividualNodeLinkedCandidateDataId::NONE,
+            prev_candidate_indi_data: BlockingIndividualNodeLinkedCandidateDataId::NONE,
+        }
+    }
+}
+
+/// Port of `CBlockingIndividualNodeLinkedCandidateHash`.
+#[derive(Clone, Debug)]
+pub struct BlockingIndividualNodeLinkedCandidateHash {
+    pub context: Cint64,
+    pub mem_man: Cint64,
+    /// `CPROCESSHASH<QPair<CConcept*,bool>,CBlockingLinkedCandidateHashData>`.
+    pub block_candidate_hash: HashMap<(ConceptId, bool), BlockingLinkedCandidateHashData>,
+}
+
+impl Default for BlockingIndividualNodeLinkedCandidateHash {
+    fn default() -> Self {
+        Self {
+            context: INVALID,
+            mem_man: INVALID,
+            block_candidate_hash: HashMap::new(),
+        }
+    }
+}
+
+impl BlockingIndividualNodeLinkedCandidateHash {
+    /// Port of `CBlockingIndividualNodeLinkedCandidateHash(CProcessContext*)`.
+    pub fn new(context: Cint64) -> Self {
+        Self {
+            context,
+            ..Self::default()
+        }
+    }
+
+    /// Port of `initBlockingIndividualNodeCandidateHash`.
+    pub fn init_blocking_individual_node_candidate_hash(
+        &mut self,
+        prev: Option<&BlockingIndividualNodeLinkedCandidateHash>,
+    ) -> &mut Self {
+        if let Some(prev) = prev {
+            self.block_candidate_hash = prev
+                .block_candidate_hash
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        *k,
+                        BlockingLinkedCandidateHashData {
+                            candidate_indi_data: Id::NONE,
+                            prev_candidate_indi_data: v.prev_candidate_indi_data,
+                        },
+                    )
+                })
+                .collect();
+        } else {
+            self.block_candidate_hash.clear();
+        }
+        self
+    }
+
+    /// Port of `getBlockingIndividualCandidateData(CConcept*, bool, bool create)`.
+    pub fn get_blocking_individual_candidate_data(
+        ctx: &mut ProcessContext,
+        this: BlockingIndividualNodeLinkedCandidateHashId,
+        initialization_concept: ConceptId,
+        concept_negation: bool,
+        create: bool,
+    ) -> BlockingIndividualNodeLinkedCandidateDataId {
+        let key = (initialization_concept, concept_negation);
+        if create {
+            let (candidate, prev) = {
+                let hash = ctx.blocking_indi_node_linked_cand_hash_mut(this);
+                let data = hash.block_candidate_hash.entry(key).or_default();
+                (data.candidate_indi_data, data.prev_candidate_indi_data)
+            };
+            if candidate.is_none() {
+                let new_data = ctx.alloc_blocking_indi_node_linked_cand_data(
+                    BlockingIndividualNodeLinkedCandidateData::new(INVALID),
+                );
+                if prev.is_some() {
+                    let taken = std::mem::replace(
+                        ctx.blocking_indi_node_linked_cand_data_mut(prev),
+                        BlockingIndividualNodeLinkedCandidateData::new(INVALID),
+                    );
+                    ctx.blocking_indi_node_linked_cand_data_mut(new_data)
+                        .init_blocking_candidate_data(Some(&taken));
+                    *ctx.blocking_indi_node_linked_cand_data_mut(prev) = taken;
+                } else {
+                    ctx.blocking_indi_node_linked_cand_data_mut(new_data)
+                        .init_blocking_candidate_data(None);
+                }
+                let data = ctx
+                    .blocking_indi_node_linked_cand_hash_mut(this)
+                    .block_candidate_hash
+                    .get_mut(&key)
+                    .unwrap();
+                data.candidate_indi_data = new_data;
+                data.prev_candidate_indi_data = new_data;
+                new_data
+            } else {
+                prev
+            }
+        } else {
+            ctx.blocking_indi_node_linked_cand_hash(this)
+                .block_candidate_hash
+                .get(&key)
+                .map(|d| d.prev_candidate_indi_data)
+                .unwrap_or(BlockingIndividualNodeLinkedCandidateDataId::NONE)
+        }
+    }
+
+    /// Port of `getBlockingIndividualCandidateData(CConceptDescriptor*, bool create)`.
+    pub fn get_blocking_individual_candidate_data_for_concept_descriptor(
+        ctx: &mut ProcessContext,
+        this: BlockingIndividualNodeLinkedCandidateHashId,
+        initialization_con_des: ConDescId,
+        create: bool,
+    ) -> BlockingIndividualNodeLinkedCandidateDataId {
+        let concept = ctx.con_desc(initialization_con_des).get_concept();
+        let negation = ctx.con_desc(initialization_con_des).is_negated();
+        Self::get_blocking_individual_candidate_data(ctx, this, concept, negation, create)
+    }
+}
+
+// ===========================================================================
+// CSignatureBlockingReviewData / Iterator / Set
+// ===========================================================================
+
+/// Port of `CSignatureBlockingReviewData`.
+#[derive(Clone, Debug, Default)]
+pub struct SignatureBlockingReviewData {
+    /// `mIndividualSet`.
+    pub individual_set: BTreeSet<Cint64>,
+    /// `mDepthIndividualMap`.
+    pub depth_individual_map: BTreeMap<Cint64, Vec<Cint64>>,
+}
+
+impl SignatureBlockingReviewData {
+    /// Port of `CSignatureBlockingReviewData::CSignatureBlockingReviewData`.
+    pub fn new() -> Self {
+        SignatureBlockingReviewData::default()
+    }
+
+    /// Port of `initSignatureBlockingReviewData`.
+    pub fn init_signature_blocking_review_data(
+        &mut self,
+        prev: Option<&SignatureBlockingReviewData>,
+    ) -> &mut Self {
+        if let Some(prev) = prev {
+            self.individual_set = prev.individual_set.clone();
+            self.depth_individual_map = prev.depth_individual_map.clone();
+        } else {
+            self.individual_set.clear();
+            self.depth_individual_map.clear();
+        }
+        self
+    }
+
+    /// Port of `insert`.
+    pub fn insert(&mut self, depth: Cint64, indi_id: Cint64) -> &mut Self {
+        if !self.individual_set.contains(&indi_id) {
+            self.individual_set.insert(indi_id);
+            self.depth_individual_map
+                .entry(depth)
+                .or_default()
+                .push(indi_id);
+        }
+        self
+    }
+
+    /// Port of `contains`.
+    pub fn contains(&self, indi_id: Cint64) -> bool {
+        self.individual_set.contains(&indi_id)
+    }
+
+    /// Port of `remove`.
+    pub fn remove(&mut self, indi_id: Cint64) -> &mut Self {
+        self.individual_set.remove(&indi_id);
+        self
+    }
+
+    /// Port of `isEmpty`.
+    pub fn is_empty(&self) -> bool {
+        self.individual_set.is_empty()
+    }
+
+    /// Port of `getIterator`.
+    pub fn get_iterator(&mut self) -> SignatureBlockingReviewDataIterator<'_> {
+        SignatureBlockingReviewDataIterator::new(self)
+    }
+
+    fn front_valid_id(&mut self) -> Option<Cint64> {
+        loop {
+            let depth = *self.depth_individual_map.keys().next()?;
+            let mut remove_depth = false;
+            let mut current = None;
+            if let Some(ids) = self.depth_individual_map.get_mut(&depth) {
+                while let Some(first) = ids.first().copied() {
+                    if self.individual_set.contains(&first) {
+                        current = Some(first);
+                        break;
+                    }
+                    ids.remove(0);
+                }
+                remove_depth = ids.is_empty();
+            }
+            if remove_depth {
+                self.depth_individual_map.remove(&depth);
+            } else {
+                return current;
+            }
+        }
+    }
+
+    fn pop_front_current(&mut self) {
+        let Some(depth) = self.depth_individual_map.keys().next().copied() else {
+            return;
+        };
+        let mut remove_depth = false;
+        if let Some(ids) = self.depth_individual_map.get_mut(&depth) {
+            if !ids.is_empty() {
+                ids.remove(0);
+            }
+            remove_depth = ids.is_empty();
+        }
+        if remove_depth {
+            self.depth_individual_map.remove(&depth);
+        }
+    }
+}
+
+/// Port of `CSignatureBlockingReviewDataIterator`.
+pub struct SignatureBlockingReviewDataIterator<'a> {
+    data: &'a mut SignatureBlockingReviewData,
+    current: Option<Cint64>,
+}
+
+impl<'a> SignatureBlockingReviewDataIterator<'a> {
+    /// Port of `CSignatureBlockingReviewDataIterator`.
+    pub fn new(data: &'a mut SignatureBlockingReviewData) -> Self {
+        let current = data.front_valid_id();
+        SignatureBlockingReviewDataIterator { data, current }
+    }
+
+    /// Port of `hasNext`.
+    pub fn has_next(&self) -> bool {
+        self.current.is_some()
+    }
+
+    /// Port of `next`.
+    pub fn next(&mut self, move_next: bool) -> Cint64 {
+        let indi_id = self.current.unwrap_or(-1);
+        if move_next {
+            self.current = self.data.front_valid_id();
+        }
+        indi_id
+    }
+
+    /// Port of `removeAndMoveNext`.
+    pub fn remove_and_move_next(&mut self) -> bool {
+        let Some(indi_id) = self.current else {
+            return false;
+        };
+        self.data.individual_set.remove(&indi_id);
+        self.data.pop_front_current();
+        self.current = self.data.front_valid_id();
+        true
+    }
+}
+
+/// Port of `CSignatureBlockingReviewSet`.
+#[derive(Clone, Debug, Default)]
+pub struct SignatureBlockingReviewSet {
+    /// `mSubsetReviews`.
+    pub subset_reviews: SignatureBlockingReviewData,
+    /// `mNonSubsetReviews`.
+    pub non_subset_reviews: SignatureBlockingReviewData,
+}
+
+impl SignatureBlockingReviewSet {
+    /// Port of `CSignatureBlockingReviewSet::CSignatureBlockingReviewSet`.
+    pub fn new() -> Self {
+        SignatureBlockingReviewSet::default()
+    }
+
+    /// Port of `initSignatureBlockingReviewSet`.
+    pub fn init_signature_blocking_review_set(
+        &mut self,
+        prev: Option<&SignatureBlockingReviewSet>,
+    ) -> &mut Self {
+        if let Some(prev) = prev {
+            self.subset_reviews
+                .init_signature_blocking_review_data(Some(&prev.subset_reviews));
+            self.non_subset_reviews
+                .init_signature_blocking_review_data(Some(&prev.non_subset_reviews));
+        } else {
+            self.subset_reviews
+                .init_signature_blocking_review_data(None);
+            self.non_subset_reviews
+                .init_signature_blocking_review_data(None);
+        }
+        self
+    }
+
+    /// Port of `getSubsetReviewData`.
+    pub fn get_subset_review_data(&mut self) -> &mut SignatureBlockingReviewData {
+        &mut self.subset_reviews
+    }
+
+    /// Port of `getReviewData`.
+    pub fn get_review_data(&mut self, subset: bool) -> &mut SignatureBlockingReviewData {
+        if subset {
+            &mut self.subset_reviews
+        } else {
+            &mut self.non_subset_reviews
+        }
+    }
+
+    /// Port of `getNonSubsetReviewData`.
+    pub fn get_non_subset_review_data(&mut self) -> &mut SignatureBlockingReviewData {
+        &mut self.non_subset_reviews
+    }
+
+    /// Port of `isEmpty`.
+    pub fn is_empty(&self) -> bool {
+        self.subset_reviews.is_empty() && self.non_subset_reviews.is_empty()
+    }
+
+    /// Driver helper for the upstream `getNonSubsetReviewData`/fallback
+    /// `getSubsetReviewData` iterator sequence. Returns `(individual_id,
+    /// is_non_subset_data)`.
+    pub fn take_next_review_individual(&mut self) -> Option<(Cint64, bool)> {
+        if !self.non_subset_reviews.is_empty() {
+            let mut it = self.non_subset_reviews.get_iterator();
+            if it.has_next() {
+                let indi_id = it.next(false);
+                it.remove_and_move_next();
+                return Some((indi_id, true));
+            }
+        }
+        if !self.subset_reviews.is_empty() {
+            let mut it = self.subset_reviews.get_iterator();
+            if it.has_next() {
+                let indi_id = it.next(false);
+                it.remove_and_move_next();
+                return Some((indi_id, false));
+            }
+        }
+        None
+    }
+}
+
+// ===========================================================================
+// CReusingReviewData
+// ===========================================================================
+
+/// Port of `CReusingReviewData`.
+#[derive(Clone, Debug, Default)]
+pub struct ReusingReviewData {
+    /// `mIndividualSet`.
+    pub individual_set: BTreeSet<Cint64>,
+    /// `mDepthIndividualMap`.
+    pub depth_individual_map: BTreeMap<Cint64, Vec<Cint64>>,
+}
+
+impl ReusingReviewData {
+    /// Port of `CReusingReviewData::CReusingReviewData`.
+    pub fn new() -> Self {
+        ReusingReviewData::default()
+    }
+
+    /// Port of `initReviewData`.
+    pub fn init_review_data(&mut self, prev: Option<&ReusingReviewData>) -> &mut Self {
+        if let Some(prev) = prev {
+            self.individual_set = prev.individual_set.clone();
+            self.depth_individual_map = prev.depth_individual_map.clone();
+        } else {
+            self.individual_set.clear();
+            self.depth_individual_map.clear();
+        }
+        self
+    }
+
+    /// Port of `insert`.
+    pub fn insert(&mut self, depth: Cint64, indi_id: Cint64) -> &mut Self {
+        if !self.individual_set.contains(&indi_id) {
+            self.individual_set.insert(indi_id);
+            self.depth_individual_map
+                .entry(depth)
+                .or_default()
+                .push(indi_id);
+        }
+        self
+    }
+
+    /// Port of `contains`.
+    pub fn contains(&self, indi_id: Cint64) -> bool {
+        self.individual_set.contains(&indi_id)
+    }
+
+    /// Port of `remove`.
+    pub fn remove(&mut self, indi_id: Cint64) -> &mut Self {
+        self.individual_set.remove(&indi_id);
+        self
+    }
+
+    /// Port of `isEmpty`.
+    pub fn is_empty(&self) -> bool {
+        self.individual_set.is_empty()
+    }
+
+    /// Port of `hasNextIndividualID`.
+    ///
+    /// KONCLUDE-PORT-NOTE[fidelity]: upstream returns `mIndividualSet.isEmpty()`
+    /// (not `!isEmpty()`), so the driver loop only enters when the set is empty.
+    pub fn has_next_individual_id(&self) -> bool {
+        self.individual_set.is_empty()
+    }
+
+    /// Port of `takeNextIndividualID`.
+    pub fn take_next_individual_id(&mut self) -> Cint64 {
+        let mut indi_id = 0;
+        loop {
+            let Some(depth) = self.depth_individual_map.keys().next().copied() else {
+                break;
+            };
+            let mut remove_depth = false;
+            if let Some(ids) = self.depth_individual_map.get_mut(&depth) {
+                if let Some(id) = ids.first().copied() {
+                    indi_id = id;
+                    ids.remove(0);
+                    if self.individual_set.contains(&indi_id) {
+                        self.individual_set.remove(&indi_id);
+                        remove_depth = ids.is_empty();
+                        if remove_depth {
+                            self.depth_individual_map.remove(&depth);
+                        }
+                        break;
+                    }
+                }
+                remove_depth = ids.is_empty();
+            }
+            if remove_depth {
+                self.depth_individual_map.remove(&depth);
+            }
+        }
+        indi_id
+    }
+}
 
 // ===========================================================================
 // CBlockingIndividualNodeCandidateData
@@ -107,6 +744,49 @@ impl BlockingIndividualNodeCandidateData {
         }
     }
 
+    /// Port of `CNodeSwitchTag::getNodeSwitchTag`.
+    pub fn get_node_switch_tag(&self) -> Cint64 {
+        self.node_switch_tag
+    }
+    /// Port of `CNodeSwitchTag::setNodeSwitchTag(cint64)`.
+    pub fn set_node_switch_tag(&mut self, node_switch_tag: Cint64) -> &mut Self {
+        self.node_switch_tag = node_switch_tag;
+        self
+    }
+    /// Port of `CNodeSwitchTag::initNodeSwitchTag(cint64)`.
+    pub fn init_node_switch_tag(&mut self, node_switch_tag: Cint64) -> &mut Self {
+        self.node_switch_tag = node_switch_tag;
+        self
+    }
+    /// Port of `CNodeSwitchTag::isNodeSwitchTagUpdated(cint64)`.
+    pub fn is_node_switch_tag_updated(&self, node_switch_tag: Cint64) -> bool {
+        node_switch_tag > self.node_switch_tag
+    }
+    /// Port of `CNodeSwitchTag::isNodeSwitchTagUpToDate(cint64)`.
+    pub fn is_node_switch_tag_up_to_date(&self, node_switch_tag: Cint64) -> bool {
+        self.node_switch_tag >= node_switch_tag
+    }
+    /// Port of `CNodeSwitchTag::updateNodeSwitchTag(cint64)`.
+    pub fn update_node_switch_tag(&mut self, node_switch_tag: Cint64) -> bool {
+        let updated = self.node_switch_tag != node_switch_tag;
+        self.node_switch_tag = node_switch_tag;
+        updated
+    }
+
+    /// Port of `CConceptLabelSetModificationTag::getConceptLabelSetModificationTag`.
+    pub fn get_concept_label_set_modification_tag(&self) -> Cint64 {
+        self.modification_tag
+            .get_concept_label_set_modification_tag()
+    }
+    /// Port of `CConceptLabelSetModificationTag::updateConceptLabelSetModificationTag(cint64)`.
+    pub fn update_concept_label_set_modification_tag(
+        &mut self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> bool {
+        self.modification_tag
+            .update_concept_label_set_modification_tag(concept_label_set_modification_tag)
+    }
+
     /// Port of `initBlockingCandidateData`.
     pub fn init_blocking_candidate_data(
         &mut self,
@@ -141,7 +821,10 @@ impl BlockingIndividualNodeCandidateData {
         &self,
         candidate_individual_id: Cint64,
     ) -> BlockingIndividualNodeCandidateIterator {
-        BlockingIndividualNodeCandidateIterator::new(&self.candidate_indi_map, candidate_individual_id)
+        BlockingIndividualNodeCandidateIterator::new(
+            &self.candidate_indi_map,
+            candidate_individual_id,
+        )
     }
 
     /// Port of `getBlockingCandidatesIndividualNodeIterator(CIndividualProcessNode*)`.
@@ -150,7 +833,22 @@ impl BlockingIndividualNodeCandidateData {
         candidate_indi: NodeId,
         ctx: &ProcessContext,
     ) -> BlockingIndividualNodeCandidateIterator {
-        self.get_blocking_candidates_individual_node_iterator(ctx.node(candidate_indi).individual_node_id())
+        self.get_blocking_candidates_individual_node_iterator(
+            ctx.node(candidate_indi).individual_node_id(),
+        )
+    }
+
+    /// Context-threaded port of `getBlockingCandidatesIndividualNodeIterator(CIndividualProcessNode*)`.
+    pub fn get_blocking_candidates_individual_node_iterator_for_node_in_context(
+        ctx: &ProcessContext,
+        this: BlockingIndividualNodeCandidateDataId,
+        candidate_indi: NodeId,
+    ) -> BlockingIndividualNodeCandidateIterator {
+        BlockingIndividualNodeCandidateIterator::new_in_context(
+            ctx,
+            this,
+            ctx.node(candidate_indi).individual_node_id(),
+        )
     }
 
     /// Port of `getMaxValidIndividualID`.
@@ -175,11 +873,9 @@ impl BlockingIndividualNodeCandidateData {
 /// `CPROCESSMAP` plus `begin/end/last` const_iterators. The port snapshots the
 /// FULL ordered `(key,node)` set (cheap; the candidate map is small) and keeps the
 /// three cursors as `usize` indices, so `next` / `hasNext` / `hasIndividualCandidate`
-/// / `removeLast` are faithful over the snapshot. `removeLastIndividualCandidate`
-/// drops from the snapshot and reports the removed key; propagating the erase to
-/// the owning arena map is `W3.5b-DEFER[api]` (the C++ `mCandidateMap->erase(it)`
-/// mutates the shared map; the arena map is reached via `&mut ctx`, which the
-/// snapshot iterator does not hold — the un-defer wave threads it).
+/// stay faithful for read-only callers. When the iterator is constructed through
+/// the context-threaded route it also stores the owning candidate-data id, allowing
+/// `removeLastIndividualCandidate` to erase from the real arena-owned map.
 pub struct BlockingIndividualNodeCandidateIterator {
     /// the full ordered `(key, node)` snapshot (`key == -individualNodeID`).
     entries: Vec<(Cint64, NodeId)>,
@@ -191,9 +887,23 @@ pub struct BlockingIndividualNodeCandidateIterator {
     it_last: usize,
     /// whether the underlying map was non-empty at construction (`mCandidateMap`).
     map_present: bool,
+    /// Arena owner for context-threaded `removeLastIndividualCandidate`.
+    owner_data: BlockingIndividualNodeCandidateDataId,
 }
 
 impl BlockingIndividualNodeCandidateIterator {
+    /// Empty iterator equivalent to a null/empty candidate map.
+    pub fn empty() -> Self {
+        BlockingIndividualNodeCandidateIterator {
+            entries: Vec::new(),
+            it_begin: 0,
+            it_end: 0,
+            it_last: 0,
+            map_present: false,
+            owner_data: Id::NONE,
+        }
+    }
+
     /// Port of the `CBlockingIndividualNodeCandidateIterator(map, candidateIndividualID)`
     /// ctor (`mItBegin = upperBound(-candidateIndividualID); mItEnd = end(); mItLast = mItBegin`).
     pub fn new(candidate_map: &BTreeMap<Cint64, NodeId>, candidate_individual_id: Cint64) -> Self {
@@ -208,7 +918,23 @@ impl BlockingIndividualNodeCandidateIterator {
             it_end,
             it_last: it_begin,
             map_present: true,
+            owner_data: Id::NONE,
         }
+    }
+
+    /// Context-threaded constructor for an arena-owned candidate-data map.
+    pub fn new_in_context(
+        ctx: &ProcessContext,
+        owner_data: BlockingIndividualNodeCandidateDataId,
+        candidate_individual_id: Cint64,
+    ) -> Self {
+        let mut iterator = Self::new(
+            &ctx.blocking_indi_node_cand_data(owner_data)
+                .candidate_indi_map,
+            candidate_individual_id,
+        );
+        iterator.owner_data = owner_data;
+        iterator
     }
 
     /// Port of `hasNext` (`mCandidateMap && mItBegin != mItEnd`).
@@ -253,8 +979,11 @@ impl BlockingIndividualNodeCandidateIterator {
         }
     }
 
-    /// Port of `removeLastIndividualCandidate` (over the snapshot; arena-map erase
-    /// propagation is `W3.5b-DEFER[api]`). Returns `true` if a candidate was removed.
+    /// Snapshot-only compatibility fallback for `removeLastIndividualCandidate`.
+    ///
+    /// KONCLUDE-PORT-NOTE[ownership]: call `remove_last_individual_candidate_in_context`
+    /// when the iterator was built from an arena-owned candidate-data id and the
+    /// C++ backing-map erase side effect is required.
     pub fn remove_last_individual_candidate(&mut self) -> bool {
         if self.it_last != self.it_end {
             // erase the last-yielded entry; the next cursor resumes at that slot
@@ -267,6 +996,92 @@ impl BlockingIndividualNodeCandidateIterator {
         } else {
             false
         }
+    }
+
+    /// Context-threaded port of `removeLastIndividualCandidate`.
+    pub fn remove_last_individual_candidate_in_context(
+        &mut self,
+        ctx: &mut ProcessContext,
+    ) -> bool {
+        if self.it_last != self.it_end {
+            let removed_key = self.entries[self.it_last].0;
+            self.entries.remove(self.it_last);
+            self.it_end = self.entries.len();
+            self.it_begin = self.it_last;
+            self.it_last = self.it_begin;
+            if self.owner_data.is_some() {
+                ctx.blocking_indi_node_cand_data_mut(self.owner_data)
+                    .candidate_indi_map
+                    .remove(&removed_key);
+            }
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::node::IndividualProcessNode;
+    use super::*;
+
+    #[test]
+    fn blocking_candidate_iterator_context_remove_erases_backing_map() {
+        let mut ctx = ProcessContext::new();
+        let data = ctx
+            .alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));
+        let first = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(first).set_individual_node_id(3);
+        let second = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(second).set_individual_node_id(7);
+        let third = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(third).set_individual_node_id(11);
+
+        ctx.blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(data, first);
+        ctx.blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(data, second);
+        ctx.blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(data, third);
+
+        let mut iterator = BlockingIndividualNodeCandidateIterator::new_in_context(&ctx, data, 12);
+        assert_eq!(iterator.next_individual_candidate(true), Some(third));
+        assert!(iterator.remove_last_individual_candidate_in_context(&mut ctx));
+        assert!(!ctx
+            .blocking_indi_node_cand_data(data)
+            .candidate_indi_map
+            .contains_key(&-11));
+        assert_eq!(iterator.next_individual_candidate(true), Some(second));
+        assert!(iterator.remove_last_individual_candidate_in_context(&mut ctx));
+        assert!(!ctx
+            .blocking_indi_node_cand_data(data)
+            .candidate_indi_map
+            .contains_key(&-7));
+        assert_eq!(iterator.next_individual_candidate(true), Some(first));
+        assert!(ctx
+            .blocking_indi_node_cand_data(data)
+            .candidate_indi_map
+            .contains_key(&-3));
+    }
+
+    #[test]
+    fn blocking_candidate_iterator_snapshot_remove_is_local_fallback() {
+        let mut ctx = ProcessContext::new();
+        let data = ctx
+            .alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));
+        let candidate = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(candidate).set_individual_node_id(5);
+        ctx.blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(data, candidate);
+
+        let mut iterator = ctx
+            .blocking_indi_node_cand_data(data)
+            .get_blocking_candidates_individual_node_iterator(6);
+        assert_eq!(iterator.next_individual_candidate(true), Some(candidate));
+        assert!(iterator.remove_last_individual_candidate());
+        assert!(
+            ctx.blocking_indi_node_cand_data(data)
+                .candidate_indi_map
+                .contains_key(&-5),
+            "snapshot-only compatibility fallback must not mutate the arena map"
+        );
     }
 }
 
@@ -398,8 +1213,9 @@ impl BlockingIndividualNodeCandidateHash {
                 (data.candidate_indi_data, data.prev_candidate_indi_data)
             };
             if candidate.is_none() {
-                let new_data =
-                    ctx.alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));
+                let new_data = ctx.alloc_blocking_indi_node_cand_data(
+                    BlockingIndividualNodeCandidateData::new(INVALID),
+                );
                 if prev.is_some() {
                     let taken = std::mem::replace(
                         ctx.blocking_indi_node_cand_data_mut(prev),
@@ -454,7 +1270,7 @@ impl BlockingIndividualNodeCandidateHash {
 /// signature-blocking concept-expansion bookkeeping (the blocker, the cached
 /// concept-set signature/counts, and the review/subset markers the dynamic
 /// signature-blocking test reads).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SignatureBlockingIndividualNodeConceptExpansionData {
     /// `CConceptDescriptor* mSubsetTestedConDes`.
     pub subset_tested_con_des: ConDescId,
@@ -601,7 +1417,10 @@ impl SignatureBlockingIndividualNodeConceptExpansionData {
         self
     }
     /// Port of `setContinuousExpandedContainedConceptCount`.
-    pub fn set_continuous_expanded_contained_concept_count(&mut self, con_count: Cint64) -> &mut Self {
+    pub fn set_continuous_expanded_contained_concept_count(
+        &mut self,
+        con_count: Cint64,
+    ) -> &mut Self {
         self.expanded_contained_concept_count = con_count;
         self
     }
@@ -631,13 +1450,174 @@ impl SignatureBlockingIndividualNodeConceptExpansionData {
         self
     }
     /// Port of `setIdenticConceptSetRequired`.
-    pub fn set_identic_concept_set_required(&mut self, identic_concept_set_required: bool) -> &mut Self {
+    pub fn set_identic_concept_set_required(
+        &mut self,
+        identic_concept_set_required: bool,
+    ) -> &mut Self {
         self.identic_concept_set_required = identic_concept_set_required;
         self
     }
     /// Port of `setConceptSetStillSubset`.
     pub fn set_concept_set_still_subset(&mut self, still_subset: bool) -> &mut Self {
         self.still_concept_set_subset = still_subset;
+        self
+    }
+}
+
+/// Port of `CReusingIndividualNodeConceptExpansionData`.
+///
+/// KONCLUDE-PORT-NOTE[inheritance]: the C++ class derives from
+/// `CSignatureBlockingIndividualNodeConceptExpansionData`; the Rust port folds
+/// the base object into `blocking_expansion_data` and forwards the base methods
+/// needed by existing call sites.
+#[derive(Clone, Debug)]
+pub struct ReusingIndividualNodeConceptExpansionData {
+    pub blocking_expansion_data: SignatureBlockingIndividualNodeConceptExpansionData,
+    pub reusing_tried_count: Cint64,
+    pub reusing_failed_count: Cint64,
+    pub reused_individuals: BTreeSet<Cint64>,
+    pub reused_concept_set_signatures: BTreeSet<Cint64>,
+    pub reuse_concepts_dependency_track_point: TrackPointId,
+    pub last_non_det_expansion_linker: Vec<ConDescId>,
+}
+
+impl Default for ReusingIndividualNodeConceptExpansionData {
+    fn default() -> Self {
+        Self {
+            blocking_expansion_data: SignatureBlockingIndividualNodeConceptExpansionData::default(),
+            reusing_tried_count: 0,
+            reusing_failed_count: 0,
+            reused_individuals: BTreeSet::new(),
+            reused_concept_set_signatures: BTreeSet::new(),
+            reuse_concepts_dependency_track_point: TrackPointId::NONE,
+            last_non_det_expansion_linker: Vec::new(),
+        }
+    }
+}
+
+impl ReusingIndividualNodeConceptExpansionData {
+    /// Port of `CReusingIndividualNodeConceptExpansionData()`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Port of `initReusingExpansionData`.
+    pub fn init_reusing_expansion_data(
+        &mut self,
+        prev: Option<&ReusingIndividualNodeConceptExpansionData>,
+    ) -> &mut Self {
+        if let Some(prev) = prev {
+            self.blocking_expansion_data
+                .init_blocking_expansion_data(Some(&prev.blocking_expansion_data));
+            self.reusing_tried_count = prev.reusing_tried_count;
+            self.reusing_failed_count = prev.reusing_failed_count;
+            self.reuse_concepts_dependency_track_point = prev.reuse_concepts_dependency_track_point;
+            self.last_non_det_expansion_linker = prev.last_non_det_expansion_linker.clone();
+        } else {
+            self.blocking_expansion_data
+                .init_blocking_expansion_data(None);
+            self.reusing_tried_count = 0;
+            self.reusing_failed_count = 0;
+            self.reuse_concepts_dependency_track_point = TrackPointId::NONE;
+            self.last_non_det_expansion_linker.clear();
+        }
+        self
+    }
+
+    /// Port of `getReusingTriedCount`.
+    pub fn get_reusing_tried_count(&self) -> Cint64 {
+        self.reusing_tried_count
+    }
+
+    /// Port of `getReusingFailedCount`.
+    pub fn get_reusing_failed_count(&self) -> Cint64 {
+        self.reusing_failed_count
+    }
+
+    /// Port of `setReusingTriedCount`.
+    pub fn set_reusing_tried_count(&mut self, tried_count: Cint64) -> &mut Self {
+        self.reusing_tried_count = tried_count;
+        self
+    }
+
+    /// Port of `setReusingFailedCount`.
+    pub fn set_reusing_failed_count(&mut self, failed_count: Cint64) -> &mut Self {
+        self.reusing_failed_count = failed_count;
+        self
+    }
+
+    /// Port of `incReusingTriedCount`.
+    pub fn inc_reusing_tried_count(&mut self, inc_count: Cint64) -> &mut Self {
+        self.reusing_tried_count += inc_count;
+        self
+    }
+
+    /// Port of `incReusingFailedCount`.
+    pub fn inc_reusing_failed_count(&mut self, inc_count: Cint64) -> &mut Self {
+        self.reusing_failed_count += inc_count;
+        self
+    }
+
+    /// Port of `addReusingFailedSignatureAndIndividual`.
+    pub fn add_reusing_failed_signature_and_individual(
+        &mut self,
+        con_set_signature: Cint64,
+        individual_id: Cint64,
+    ) -> &mut Self {
+        self.reused_individuals.insert(individual_id);
+        self.reused_concept_set_signatures.insert(con_set_signature);
+        self
+    }
+
+    /// Port of `getReuseConceptsDependencyTrackPoint`.
+    pub fn get_reuse_concepts_dependency_track_point(&self) -> TrackPointId {
+        self.reuse_concepts_dependency_track_point
+    }
+
+    /// Port of `setReuseConceptsDependencyTrackPoint`.
+    pub fn set_reuse_concepts_dependency_track_point(
+        &mut self,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
+        self.reuse_concepts_dependency_track_point = dep_track_point;
+        self
+    }
+
+    /// Port of `getLastNonDeterministicExpansionLinker`.
+    pub fn get_last_non_deterministic_expansion_linker(&self) -> &[ConDescId] {
+        &self.last_non_det_expansion_linker
+    }
+
+    /// Port of `setLastNonDeterministicExpansionLinker`.
+    pub fn set_last_non_deterministic_expansion_linker(
+        &mut self,
+        exp_linker: Vec<ConDescId>,
+    ) -> &mut Self {
+        self.last_non_det_expansion_linker = exp_linker;
+        self
+    }
+
+    /// Base-class forwarder for `getBlockerIndividualNode`.
+    pub fn get_blocker_individual_node(&self) -> NodeId {
+        self.blocking_expansion_data.get_blocker_individual_node()
+    }
+
+    /// Base-class forwarder for `setBlockerIndividualNode`.
+    pub fn set_blocker_individual_node(&mut self, node: NodeId) -> &mut Self {
+        self.blocking_expansion_data
+            .set_blocker_individual_node(node);
+        self
+    }
+
+    /// Base-class forwarder for `isConceptSetStillSubset`.
+    pub fn is_concept_set_still_subset(&self) -> bool {
+        self.blocking_expansion_data.is_concept_set_still_subset()
+    }
+
+    /// Base-class forwarder for `setConceptSetStillSubset`.
+    pub fn set_concept_set_still_subset(&mut self, still_subset: bool) -> &mut Self {
+        self.blocking_expansion_data
+            .set_concept_set_still_subset(still_subset);
         self
     }
 }

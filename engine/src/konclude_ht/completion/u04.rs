@@ -47,20 +47,23 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::op;
-use super::super::model::op::CCFS_PROPAGATION_TYPE;
+use super::super::model::op::{
+    CCFS_PROPAGATION_ALL_TYPE, CCFS_PROPAGATION_AND_TYPE, CCFS_PROPAGATION_TYPE,
+};
+use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
 use super::super::process::descriptor::{ConceptProcessDescriptor, ConceptProcessPriority};
-use super::super::process::ls1::CondensedReapplyQueueIterator;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::queues::ConceptProcessingQueue;
+use super::super::process::reapply_sat::CondensedReapplyQueueIterator;
 use super::super::process::stubs::ConceptProcessingQueueId;
-use super::super::process::{ConDescId, ConProcDescId, LabelSetId, NodeId, TrackPointId};
+use super::super::process::{
+    ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+};
 
 use super::algorithm::{DETERMINISTIC_PROCESS_PRIORITY, IMMEDIATELY_PROCESS_PRIORITY};
 use super::context::CalculationAlgorithmContextBase;
-use super::strategy::ConcreteConceptProcessingOperatorPriorityStrategy;
 
 /// KONCLUDE-PORT-NOTE[api]: `CProcessingRestrictionSpecification*` is not yet
 /// ported; modelled as an opaque handle (`INVALID` == `nullptr`).
@@ -76,52 +79,94 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[api]: processingBlockedNodeLinker = indi->getProcessingBlockedIndividualsLinker();
-        let processing_blocked_node_linker: Vec<NodeId> = Vec::new();
+        let processing_blocked_node_linker: Vec<NodeId> = calc_alg_context
+            .process_context()
+            .node(indi)
+            .get_processing_blocked_individuals_linker()
+            .to_vec();
         for blocked_node in processing_blocked_node_linker {
-            // W3-DEFER[api]: locBlockedNode = getLocalizedIndividual(blockedNode,true,calcAlgContext);
-            let loc_blocked_node = blocked_node;
-            // W3-DEFER[api]: locBlockedNode->addProcessingRestrictionFlags(PRFBLOCKINGRETESTDUEPROCESSINGCOMPLETED);
-            let _ = IndividualProcessNode::PRF_BLOCKINGRETESTDUEPROCESSINGCOMPLETED;
+            let loc_blocked_node =
+                self.get_localized_individual(blocked_node, true, calc_alg_context);
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(loc_blocked_node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_BLOCKINGRETESTDUEPROCESSINGCOMPLETED,
+                );
             self.add_individual_to_processing_queue(loc_blocked_node, calc_alg_context);
             // set blocking retest flag, clear processing blocked flag
         }
-        // W3-DEFER[api]: indi->clearBlockedIndividualsLinker();
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(indi)
+            .clear_processing_blocked_individuals_linker();
 
-        // W3-DEFER[api]: indiID = indi->getIndividualNodeID();
-        let indi_id: Cint64 = INVALID;
+        let indi_id = calc_alg_context
+            .process_context()
+            .node(indi)
+            .individual_node_id();
 
         // TODO: check multiple not processed ancestors
-        // W3-DEFER[api]: succIt = indi->getSuccessorIterator(); ancDepth = indi->getIndividualAncestorDepth();
-        let succ_it: Vec<NodeId> = Vec::new();
-        let anc_depth: Cint64 = 0;
-        for succ_link in succ_it {
-            // W3-DEFER[api]: succIndi = getSuccessorIndividual(indi,succLink,calcAlgContext);
-            let succ_indi = succ_link;
-            // W3-DEFER[api]: succAncDepth = succIndi->getIndividualAncestorDepth();
-            let succ_anc_depth: Cint64 = 0;
+        let mut succ_it = calc_alg_context
+            .process_context()
+            .node_successor_iterator(indi);
+        let mut succ_links: Vec<EdgeId> = Vec::new();
+        while succ_it.has_next() {
+            succ_links.push(succ_it.next_link(true));
+        }
+        let anc_depth = calc_alg_context
+            .process_context()
+            .node(indi)
+            .individual_ancestor_depth();
+        for succ_link in succ_links {
+            let mut source_indi = indi;
+            let succ_indi =
+                self.get_successor_individual(&mut source_indi, succ_link, calc_alg_context);
+            let succ_anc_depth = calc_alg_context
+                .process_context()
+                .node(succ_indi)
+                .individual_ancestor_depth();
             if succ_anc_depth > anc_depth {
-                // W3-DEFER[api]: !succIndi->hasPartialProcessingRestrictionFlags(PRFANCESTORALLPROCESSED)
-                let succ_ancestor_all_processed = false;
+                let succ_ancestor_all_processed = calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                    );
                 if !succ_ancestor_all_processed {
                     // test whether have unprocessed nominals or ancestor
                     let mut all_processed_ancestor = true;
-                    // W3-DEFER[api]: connIt = succIndi->getConnectionSuccessorIterator();
-                    let conn_it: Vec<Cint64> = Vec::new();
-                    let mut conn_iter = conn_it.into_iter();
+                    let mut conn_it = calc_alg_context
+                        .process_context()
+                        .node_connection_successor_iterator(succ_indi);
+                    let mut conn_ids: Vec<Cint64> = Vec::new();
+                    while conn_it.has_next() {
+                        conn_ids.push(conn_it.next(true));
+                    }
+                    let mut conn_iter = conn_ids.into_iter();
                     while all_processed_ancestor {
                         let conn_indi_node_id = match conn_iter.next() {
                             Some(v) => v,
                             None => break,
                         };
                         if conn_indi_node_id != indi_id {
-                            // W3-DEFER[api]: ancNomIndi = getUpToDateIndividual(connIndiNodeID,calcAlgContext);
-                            // W3-DEFER[api]: ancNomIndi->getIndividualAncestorDepth() / isNominalIndividualNode()
-                            let anc_nom_ancestor_depth: Cint64 = 0;
-                            let anc_nom_is_nominal = false;
+                            let anc_nom_indi = self.get_up_to_date_individual_by_id(
+                                conn_indi_node_id,
+                                calc_alg_context,
+                            );
+                            if anc_nom_indi.is_none() {
+                                all_processed_ancestor = false;
+                                continue;
+                            }
+                            let anc_nom = calc_alg_context.process_context().node(anc_nom_indi);
+                            let anc_nom_ancestor_depth = anc_nom.individual_ancestor_depth();
+                            let anc_nom_is_nominal = anc_nom.is_nominal_individual_node();
                             if anc_nom_ancestor_depth >= anc_depth || anc_nom_is_nominal {
-                                // W3-DEFER[api]: !ancNomIndi->hasPartialProcessingRestrictionFlags(PRFPROCESSINGCOMPLETED | PRFANCESTORALLPROCESSED)
-                                let anc_nom_processed_or_all = false;
+                                let anc_nom_processed_or_all = anc_nom
+                                    .has_partial_processing_restriction_flags(
+                                        IndividualProcessNode::PRF_PROCESSINGCOMPLETED
+                                            | IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                                    );
                                 if !anc_nom_processed_or_all {
                                     all_processed_ancestor = false;
                                 }
@@ -129,17 +174,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         }
                     }
                     if all_processed_ancestor {
-                        // W3-DEFER[api]: locSuccIndi = getLocalizedIndividual(succIndi,false,calcAlgContext);
-                        let loc_succ_indi = succ_indi;
-                        // W3-DEFER[api]: locSuccIndi->addProcessingRestrictionFlags(PRFANCESTORALLPROCESSED);
-                        // W3-DEFER[api]: !locSuccIndi->hasPartialProcessingRestrictionFlags(PRFPROCESSINGCOMPLETED)
-                        let loc_succ_processing_completed = false;
+                        let loc_succ_indi =
+                            self.get_localized_individual(succ_indi, false, calc_alg_context);
+                        calc_alg_context
+                            .process_context_mut()
+                            .node_mut(loc_succ_indi)
+                            .add_processing_restriction_flags(
+                                IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                            );
+                        let loc_succ_processing_completed = calc_alg_context
+                            .process_context()
+                            .node(loc_succ_indi)
+                            .has_partial_processing_restriction_flags(
+                                IndividualProcessNode::PRF_PROCESSINGCOMPLETED,
+                            );
                         if !loc_succ_processing_completed {
-                            // W3-DEFER[api]: locSuccIndi->hasPartialProcessingRestrictionFlags(PRFPROCESSINGBLOCKED)
-                            let loc_succ_processing_blocked = false;
+                            let loc_succ_processing_blocked = calc_alg_context
+                                .process_context()
+                                .node(loc_succ_indi)
+                                .has_partial_processing_restriction_flags(
+                                    IndividualProcessNode::PRF_PROCESSINGBLOCKED,
+                                );
                             if loc_succ_processing_blocked {
-                                // W3-DEFER[api]: locSuccIndi->addProcessingRestrictionFlags(PRFBLOCKINGRETESTDUEPROCESSINGCOMPLETED);
-                                self.add_individual_to_processing_queue(loc_succ_indi, calc_alg_context);
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .node_mut(loc_succ_indi)
+                                    .add_processing_restriction_flags(
+                                        IndividualProcessNode::PRF_BLOCKINGRETESTDUEPROCESSINGCOMPLETED,
+                                    );
+                                self.add_individual_to_processing_queue(
+                                    loc_succ_indi,
+                                    calc_alg_context,
+                                );
                             }
                         } else {
                             // search recursive all nodes which has to be reactivated
@@ -175,31 +241,74 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         requires_cons_flag: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[api]: indi->hasPartialProcessingRestrictionFlags(PRFCONSNODEPREPARATIONINDINODE)
-        let indi_cons_node_preparation = false;
+        let indi_cons_node_preparation = calc_alg_context
+            .process_context()
+            .node(indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_CONSNODEPREPARATIONINDINODE,
+            );
         if !requires_cons_flag || indi_cons_node_preparation {
-            // W3-DEFER[api]: indi->hasPartialProcessingRestrictionFlags(PRFPROCESSINGCOMPLETED)
-            let indi_processing_completed = false;
+            let indi_processing_completed = calc_alg_context
+                .process_context()
+                .node(indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_PROCESSINGCOMPLETED,
+                );
             if indi_processing_completed {
-                // W3-DEFER[api]: indi->clearProcessingRestrictionFlags(PRFPROCESSINGCOMPLETED);
-                // W3-DEFER[api]: indi->hasPartialProcessingRestrictionFlags(PRFANCESTORALLPROCESSED)
-                let indi_ancestor_all_processed = false;
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi)
+                    .clear_processing_restriction_flags(
+                        IndividualProcessNode::PRF_PROCESSINGCOMPLETED,
+                    );
+                let indi_ancestor_all_processed = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                    );
                 if indi_ancestor_all_processed {
-                    // W3-DEFER[api]: succIt = indi->getSuccessorIterator(); ancDepth = indi->getIndividualAncestorDepth();
-                    let succ_it: Vec<NodeId> = Vec::new();
-                    let anc_depth: Cint64 = 0;
-                    for succ_link in succ_it {
-                        // W3-DEFER[api]: succIndi = getSuccessorIndividual(indi,succLink,calcAlgContext);
-                        let succ_indi = succ_link;
-                        // W3-DEFER[api]: succAncDepth = succIndi->getIndividualAncestorDepth();
-                        let succ_anc_depth: Cint64 = 0;
+                    let mut succ_it = calc_alg_context
+                        .process_context()
+                        .node_successor_iterator(indi);
+                    let mut succ_links: Vec<EdgeId> = Vec::new();
+                    while succ_it.has_next() {
+                        succ_links.push(succ_it.next_link(true));
+                    }
+                    let anc_depth = calc_alg_context
+                        .process_context()
+                        .node(indi)
+                        .individual_ancestor_depth();
+                    for succ_link in succ_links {
+                        let mut source_indi = indi;
+                        let succ_indi = self.get_successor_individual(
+                            &mut source_indi,
+                            succ_link,
+                            calc_alg_context,
+                        );
+                        let succ_anc_depth = calc_alg_context
+                            .process_context()
+                            .node(succ_indi)
+                            .individual_ancestor_depth();
                         if succ_anc_depth > anc_depth {
-                            // W3-DEFER[api]: !succIndi->hasPartialProcessingRestrictionFlags(PRFANCESTORALLPROCESSED)
-                            let succ_ancestor_all_processed = false;
+                            let succ_ancestor_all_processed = calc_alg_context
+                                .process_context()
+                                .node(succ_indi)
+                                .has_partial_processing_restriction_flags(
+                                    IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                                );
                             if !succ_ancestor_all_processed {
-                                // W3-DEFER[api]: locSuccIndi = getLocalizedIndividual(succIndi,false,calcAlgContext);
-                                let loc_succ_indi = succ_indi;
-                                // W3-DEFER[api]: locSuccIndi->clearProcessingRestrictionFlags(PRFANCESTORALLPROCESSED);
+                                let loc_succ_indi = self.get_localized_individual(
+                                    succ_indi,
+                                    false,
+                                    calc_alg_context,
+                                );
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .node_mut(loc_succ_indi)
+                                    .clear_processing_restriction_flags(
+                                        IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                                    );
                                 self.propagate_individual_unprocessed_cons(
                                     loc_succ_indi,
                                     // KONCLUDE-PORT-NOTE[overload]: C++ passes the flag value
@@ -230,10 +339,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
-        // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-        let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
-        // W3-DEFER[api]: conLabelSet = processIndi->getReapplyConceptLabelSet(true);
-        let con_label_set: LabelSetId = Id::NONE;
+        let con_pro_queue = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(process_indi, true);
+        let con_label_set = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(process_indi);
 
         debug_assert!(
             dependency_track_point != Id::NONE,
@@ -244,20 +355,40 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             "adding concept to individual: concept missing"
         );
 
-        // W3-DEFER[api]: conceptDescriptor = createConceptDescriptor(calcAlgContext);
-        //                conceptDescriptor->initConceptDescriptor(addingConcept,negate,dependencyTrackPoint);
-        let concept_descriptor: ConDescId = Id::NONE;
-        // CCondensedReapplyQueueIterator reapplyIt;
-        // W3-DEFER[api]: contained = insertConceptsToIndividualConceptSet(conceptDescriptor,
-        //                  dependencyTrackPoint,processIndi,conLabelSet,&reapplyIt,allowInitalization,calcAlgContext);
-        let contained = false;
-        let reapply_it_has_next = false; // reapplyIt.hasNext()
+        let concept_descriptor = self.create_concept_descriptor(calc_alg_context);
+        self.init_concept_descriptor_fields(
+            concept_descriptor,
+            adding_concept,
+            negate,
+            dependency_track_point,
+            calc_alg_context,
+        );
+        let mut reapply_it = CondensedReapplyQueueIterator::new();
+        let mut process_indi_ref = process_indi;
+        let contained = self.insert_concepts_to_individual_concept_set(
+            concept_descriptor,
+            dependency_track_point,
+            &mut process_indi_ref,
+            con_label_set,
+            Some(&mut reapply_it),
+            allow_initalization,
+            calc_alg_context,
+        );
         if !contained {
             self.stat_con_des_insertion_count += 1;
             // W3-DEFER[api]: STATINC(CONCEPTSADDEDINDINODELABELSETCOUNT,calcAlgContext);
-            // W3-DEFER[api]: addBlockingCoreConcept(conceptDescriptor,processIndi,conLabelSet,calcAlgContext);
+            self.add_blocking_core_concept(
+                concept_descriptor,
+                process_indi,
+                con_label_set,
+                calc_alg_context,
+            );
             if mark_modification {
-                // W3-DEFER[api]: setIndividualNodeConceptLabelSetModified(processIndi, calcAlgContext);
+                let mut process_indi_mut = process_indi;
+                self.set_individual_node_concept_label_set_modified(
+                    &mut process_indi_mut,
+                    calc_alg_context,
+                );
             }
             // KONCLUDE-PORT-NOTE[pointer-alias]: skipFunction = &applyANDRule (rule-slot handle).
             self.add_concept_preprocessed_to_processing_queue_skip(
@@ -269,13 +400,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
                 INVALID, // W3-DEFER[api]: &CCalculationTableauCompletionTaskHandleAlgorithm::applyANDRule
             );
-            if reapply_it_has_next {
+            if reapply_it.has_next() {
                 // reapply reapplying concept
-                // W3-DEFER[api]: applyReapplyQueueConcepts(processIndi,&reapplyIt,calcAlgContext);
+                self.apply_reapply_queue_concepts_condensed_iterator(
+                    process_indi,
+                    reapply_it,
+                    calc_alg_context,
+                );
             }
         } else {
             self.stat_con_des_contained_count += 1;
-            // W3-DEFER[api]: releaseConceptDescriptor(conceptDescriptor,calcAlgContext);
+            self.release_concept_descriptor(concept_descriptor, calc_alg_context);
         }
     }
 
@@ -287,17 +422,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[api]: concept = conProDes->getConceptDescriptor()->getConcept();
-        let concept: ConceptId = Id::NONE;
-        // W3-DEFER[api]: conOperator = concept->getConceptOperator();
+        let concept_descriptor = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des)
+            .get_concept_descriptor();
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .get_concept();
 
-        // W3-DEFER[api]: conOperator->hasPartialOperatorCodeFlag(CCFS_PROPAGATION_TYPE)
-        let has_propagation_type = false;
+        let has_propagation_type = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_operator()
+            .has_partial_operator_code_flag(CCFS_PROPAGATION_TYPE);
         if has_propagation_type {
-            let _var_bind_con_batch_proc_queue = calc_alg_context
-                .processing_data_box_mut()
-                .get_variable_binding_concept_batch_processing_queue(true);
-            // W3-DEFER[api]: varBindConBatchProcQueue->insertIndiviudalForConcept(concept,processIndi,conProDes);
+            let var_bind_con_batch_proc_queue =
+                calc_alg_context.get_variable_binding_concept_batch_processing_queue(true);
+            let base = &mut calc_alg_context.base;
+            base.used_process_context
+                .indi_concept_batch_queue_insert_indiviudal_for_concept(
+                    var_bind_con_batch_proc_queue,
+                    &base.ontology_arenas,
+                    concept,
+                    process_indi,
+                    con_pro_des,
+                );
         } else {
             // conceptProcessingQueue->insertConceptProcessDescriptor(conProDes);
             ConceptProcessingQueue::insert_concept_process_descriptor(
@@ -318,27 +468,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[api]: concept = conProDes->getConceptDescriptor()->getConcept();
-        let concept: ConceptId = Id::NONE;
-        // W3-DEFER[api]: conOperator = concept->getConceptOperator();
+        let concept_descriptor = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des)
+            .get_concept_descriptor();
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .get_concept();
+        let con_operator = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_operator();
 
-        // W3-DEFER[api]: conOperator->hasPartialOperatorCodeFlag(CCFS_PROPAGATION_ALL_TYPE | CCFS_PROPAGATION_AND_TYPE)
-        let has_propagation_all_and_type = false;
-        // W3-DEFER[api]: conOperator->hasPartialOperatorCodeFlag(CCFS_PROPAGATION_TYPE)
-        let has_propagation_type = false;
+        let has_propagation_all_and_type = con_operator
+            .has_partial_operator_code_flag(CCFS_PROPAGATION_ALL_TYPE | CCFS_PROPAGATION_AND_TYPE);
+        let has_propagation_type =
+            con_operator.has_partial_operator_code_flag(CCFS_PROPAGATION_TYPE);
         if has_propagation_all_and_type {
-            let _var_bind_con_batch_proc_queue = calc_alg_context
-                .processing_data_box_mut()
-                .get_variable_binding_concept_batch_processing_queue(true);
-            // W3-DEFER[api]: varBindConBatchProcQueue->insertIndiviudalForBindingCount(concept,bindingCount,processIndi,conProDes);
+            let var_bind_con_batch_proc_queue =
+                calc_alg_context.get_variable_binding_concept_batch_processing_queue(true);
+            let base = &mut calc_alg_context.base;
+            base.used_process_context
+                .indi_concept_batch_queue_insert_indiviudal_for_binding_count(
+                    var_bind_con_batch_proc_queue,
+                    &base.ontology_arenas,
+                    concept,
+                    binding_count,
+                    process_indi,
+                    con_pro_des,
+                );
         } else if has_propagation_type {
-            let _var_bind_con_batch_proc_queue = calc_alg_context
-                .processing_data_box_mut()
-                .get_variable_binding_concept_batch_processing_queue(true);
-            // W3-DEFER[api]: varBindConBatchProcQueue->insertIndiviudalForConcept(concept,processIndi,conProDes);
+            let var_bind_con_batch_proc_queue =
+                calc_alg_context.get_variable_binding_concept_batch_processing_queue(true);
+            let base = &mut calc_alg_context.base;
+            base.used_process_context
+                .indi_concept_batch_queue_insert_indiviudal_for_concept(
+                    var_bind_con_batch_proc_queue,
+                    &base.ontology_arenas,
+                    concept,
+                    process_indi,
+                    con_pro_des,
+                );
         } else {
-            // W3-DEFER[api]: conceptProcessingQueue->insertConceptProcessDescriptor(conProDes);
-            let _ = concept_processing_queue;
+            // conceptProcessingQueue->insertConceptProcessDescriptor(conProDes);
+            ConceptProcessingQueue::insert_concept_process_descriptor(
+                concept_processing_queue,
+                con_pro_des,
+                calc_alg_context.process_context_mut(),
+            );
         }
     }
 
@@ -355,13 +533,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
-        if self.needs_processing_for_concept(concept_descriptor, dep_track_point, process_indi, calc_alg_context)
-        {
+        if self.needs_processing_for_concept(
+            concept_descriptor,
+            dep_track_point,
+            process_indi,
+            calc_alg_context,
+        ) {
             // W3-DEFER[api]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
             // W3-DEFER[api]: conProDes = allocateAndConstruct(taskMemMan);
             //                conProPriority = getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor,processIndi);
             //                conProDes->init(conceptDescriptor,conProPriority,reapplied,depTrackPoint);
-            let con_pro_des: ConProcDescId = Id::NONE;
+            let mut con_pro_des_val = ConceptProcessDescriptor::new();
+            con_pro_des_val.concept_des = concept_descriptor;
+            con_pro_des_val.priority =
+                self.priority_for_concept(concept_descriptor, process_indi, calc_alg_context);
+            con_pro_des_val.reapplied = reapplied;
+            con_pro_des_val.dep_track_point = dep_track_point;
+            con_pro_des_val.proc_spec = Id::NONE;
+            let con_pro_des = calc_alg_context
+                .process_context_mut()
+                .alloc_con_proc_desc(con_pro_des_val);
 
             self.insert_concept_process_descriptor_to_processing_queue(
                 con_pro_des,
@@ -382,17 +573,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let func: TableauRuleFunction;
-        // W3-DEFER[api]: opCode = conceptDescriptor->getConcept()->getOperatorCode();
-        let op_code: Cint64 = 0;
-        // W3-DEFER[api]: conNeg = conceptDescriptor->isNegated();
-        let con_neg = false;
-        if con_neg {
-            func = self.neg_tableau_rule_jump_func_vec[op_code as usize];
-        } else {
-            func = self.pos_tableau_rule_jump_func_vec[op_code as usize];
-        }
-        func != INVALID
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .get_concept();
+        let op_code = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operator_code();
+        let con_neg = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .is_negated();
+        self.has_tableau_rule(op_code, con_neg)
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addConceptPreprocessedToProcessingQueue`
@@ -409,10 +602,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
         // W3-DEFER[api]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
-        // W3-DEFER[api]: conProPriority = getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor,processIndi);
-        // W3-DEFER[api]: conProDes = allocateAndConstruct(taskMemMan);
-        //                conProDes->init(conceptDescriptor,conProPriority,false,depTrackPoint);
-        let con_pro_des: ConProcDescId = Id::NONE;
+        // conProPriority = getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor,processIndi);
+        // conProDes = allocateAndConstruct(taskMemMan);
+        // conProDes->init(conceptDescriptor,conProPriority,false,depTrackPoint);
+        let mut con_pro_des_val = ConceptProcessDescriptor::new();
+        con_pro_des_val.concept_des = concept_descriptor;
+        con_pro_des_val.priority =
+            self.priority_for_concept(concept_descriptor, process_indi, calc_alg_context);
+        con_pro_des_val.dep_track_point = dep_track_point;
+        con_pro_des_val.reapplied = false;
+        con_pro_des_val.proc_spec = Id::NONE;
+        let con_pro_des: ConProcDescId = calc_alg_context
+            .process_context_mut()
+            .alloc_con_proc_desc(con_pro_des_val);
         self.insert_concept_process_descriptor_to_processing_queue_binding(
             con_pro_des,
             concept_processing_queue,
@@ -445,8 +647,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_desc(concept_descriptor)
             .get_concept();
-        let op_code: Cint64 =
-            calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+        let op_code: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operator_code();
 
         // func = (conNeg ? mNegJumpFuncVec : mPosJumpFuncVec)[opCode];
         // if (!func || func == skipFunction) return;
@@ -490,8 +694,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_pro_des_val.dep_track_point = dep_track_point;
         con_pro_des_val.reapplied = false;
         con_pro_des_val.proc_spec = Id::NONE;
-        let con_pro_des: ConProcDescId =
-            calc_alg_context.process_context_mut().alloc_con_proc_desc(con_pro_des_val);
+        let con_pro_des: ConProcDescId = calc_alg_context
+            .process_context_mut()
+            .alloc_con_proc_desc(con_pro_des_val);
 
         if allow_preprocessing && con_pro_priority_value >= IMMEDIATELY_PROCESS_PRIORITY as f64 {
             // W3-DEFER[macro]: STATINC(RULEAPPLICATIONCOUNT,calcAlgContext);
@@ -609,19 +814,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     }
 
     /// `getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor, processIndi)`.
-    ///
-    /// KONCLUDE-PORT-NOTE[api]: the algorithm's `concept_priority_strategy` slot is a
-    /// placeholder `Id::NONE` (the strategy object is not yet wired into the context).
-    /// `CConcreteConceptProcessingOperatorPriorityStrategy` is fully ported and
-    /// stateless after construction (a fixed operator → priority table), so it is
-    /// constructed on demand here; the result is identical to the wired strategy.
     pub fn priority_for_concept(
         &self,
         concept_descriptor: ConDescId,
         process_indi: NodeId,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> ConceptProcessPriority {
-        let strategy = ConcreteConceptProcessingOperatorPriorityStrategy::new();
+        let strategy = calc_alg_context
+            .base
+            .used_concept_priority_strategy()
+            .expect(
+            "calculation algorithm context must be initialized with a concept priority strategy",
+        );
         strategy.get_priority_for_concept(
             calc_alg_context.process_context(),
             calc_alg_context.ontology_arenas(),
@@ -639,9 +843,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[api]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
-        // W3-DEFER[api]: conceptProcessingQueue->reinsertConceptProcessDescriptor(reinsertConProDes);
-        let _ = (reinsert_con_pro_des, concept_processing_queue);
+        // W3-DEFER[macro]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
+        let _ = process_indi;
+        ConceptProcessingQueue::reinsert_concept_process_descriptor(
+            concept_processing_queue,
+            reinsert_con_pro_des,
+            calc_alg_context.process_context_mut(),
+        );
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addCopiedConceptToProcessingQueue`.
@@ -666,8 +874,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if !localization_tag_up_to_date2 {
                 // W3-DEFER[api]: STATINC(INDINODELOCALIZEDLOADCOUNT,calcAlgContext);
                 // W3-DEFER[api]: indiProcNodeVec = calcAlgContext->getProcessingDataBox()->getIndividualProcessNodeVector();
-                let _indi_proc_node_vec =
-                    calc_alg_context.processing_data_box_mut().individual_process_node_vector();
+                let _indi_proc_node_vec = calc_alg_context
+                    .processing_data_box_mut()
+                    .individual_process_node_vector();
                 // W3-DEFER[api]: localicedIndi = allocateAndConstructAndParameterize(taskMemMan, getUsedProcessContext());
                 //                localicedIndi->initIndividualProcessNode(processIndi);
                 //                indiProcNodeVec->setLocalData(localicedIndi->getIndividualNodeID(),localicedIndi);
@@ -747,14 +956,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
-        if self.needs_processing_for_concept(concept_descriptor, dep_track_point, process_indi, calc_alg_context)
-        {
+        if self.needs_processing_for_concept(
+            concept_descriptor,
+            dep_track_point,
+            process_indi,
+            calc_alg_context,
+        ) {
             // W3-DEFER[api]: STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT,calcAlgContext);
             // W3-DEFER[api]: conProDes = allocateAndConstruct(taskMemMan);
             //                conProPriority = getUsedConceptPriorityStrategy()->getPriorityForConcept(conceptDescriptor,processIndi);
             //                conProPriority.addPriorityOffset(priorityOffset);
             //                conProDes->init(conceptDescriptor,conProPriority,reapplied,depTrackPoint,procRestriction);
-            let con_pro_des: ConProcDescId = Id::NONE;
+            let mut con_pro_priority =
+                self.priority_for_concept(concept_descriptor, process_indi, calc_alg_context);
+            con_pro_priority.add_priority_offset(priority_offset);
+            let mut con_pro_des_val = ConceptProcessDescriptor::new();
+            con_pro_des_val.concept_des = concept_descriptor;
+            con_pro_des_val.priority = con_pro_priority;
+            con_pro_des_val.reapplied = reapplied;
+            con_pro_des_val.dep_track_point = dep_track_point;
+            con_pro_des_val.proc_spec = if proc_restriction != INVALID {
+                RestrictionSpecId::new(proc_restriction)
+            } else {
+                Id::NONE
+            };
+            let con_pro_des = calc_alg_context
+                .process_context_mut()
+                .alloc_con_proc_desc(con_pro_des_val);
             self.insert_concept_process_descriptor_to_processing_queue(
                 con_pro_des,
                 concept_processing_queue,
@@ -784,8 +1012,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W3-DEFER[api]: conProDes = allocateAndConstruct(taskMemMan);
         //                CConceptProcessPriority conProPriority(priority);
         //                conProDes->init(conceptDescriptor,conProPriority,reapplied,depTrackPoint,procRestriction);
-        let con_pro_des: ConProcDescId = Id::NONE;
-        let _ = priority;
+        let mut con_pro_des_val = ConceptProcessDescriptor::new();
+        con_pro_des_val.concept_des = concept_descriptor;
+        con_pro_des_val.priority = ConceptProcessPriority::new(priority);
+        con_pro_des_val.reapplied = reapplied;
+        con_pro_des_val.dep_track_point = dep_track_point;
+        con_pro_des_val.proc_spec = if proc_restriction != INVALID {
+            RestrictionSpecId::new(proc_restriction)
+        } else {
+            Id::NONE
+        };
+        let con_pro_des = calc_alg_context
+            .process_context_mut()
+            .alloc_con_proc_desc(con_pro_des_val);
         self.insert_concept_process_descriptor_to_processing_queue(
             con_pro_des,
             concept_processing_queue,
@@ -805,8 +1044,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut individual_inserted = false;
         let current_individual_node = calc_alg_context.base.current_individual_node();
 
-        // W3-DEFER[api]: conProQueue = individual->getConceptProcessingQueue(false);
-        let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
+        let con_pro_queue: ConceptProcessingQueueId = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(individual, false);
         // W3-DEFER[api]: individual->getLastAssertedDataLiteralLinker() / getAssertedDataLiteralLinker()
         //                getAssertionDataLinker() / getLastProcessedAssertionDataLinker()
         //                getAdditionalDataAssertionsLinker() / getLastProcessedAdditionalDataAssertionLinker()
@@ -824,66 +1064,109 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if !self.conf_current_individual_queuing && current_individual_node == individual {
                 individual_inserted = true;
             } else {
-                // W3-DEFER[api]: individual->isImmediatelyProcessingQueued()
-                let is_immediately_processing_queued = false;
+                let is_immediately_processing_queued = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .is_immediately_processing_queued();
                 if !is_immediately_processing_queued {
-                    // W3-DEFER[api]: individual->setImmediatelyProcessingQueued(true);
-                    let _un_pr_queue = calc_alg_context
-                        .get_individual_immediately_processing_queue(true);
-                    // W3-DEFER[api]: unPrQueue->insertIndiviudalProcessNode(individual);
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(individual)
+                        .set_immediately_processing_queued(true);
+                    let un_pr_queue =
+                        calc_alg_context.get_individual_immediately_processing_queue(true);
+                    calc_alg_context
+                        .process_context_mut()
+                        .indi_unsorted_proc_queue_mut(un_pr_queue)
+                        .insert_indiviudal_process_node(individual);
                     individual_inserted = true;
                 }
             }
         } else {
-            // W3-DEFER[api]: !conProQueue->isEmpty()
-            let con_pro_queue_empty = true;
+            let con_pro_queue_empty = calc_alg_context
+                .process_context()
+                .concept_proc_queue(con_pro_queue)
+                .is_empty();
             if !con_pro_queue_empty {
-                // W3-DEFER[api]: conProQueue->getNextConceptProcessPriority(&conProPri)
-                let has_next_concept_process_priority = false;
-                // W3-DEFER[api]: conProPri.getPriority()
-                let priority: f64 = 0.0;
-                if has_next_concept_process_priority {
+                let next_priority = ConceptProcessingQueue::get_next_concept_process_priority(
+                    con_pro_queue,
+                    calc_alg_context.process_context_mut(),
+                );
+                if let Some(con_pro_pri) = next_priority {
+                    let priority: f64 = con_pro_pri.get_priority();
                     if priority >= IMMEDIATELY_PROCESS_PRIORITY as f64 {
-                        if !self.conf_current_individual_queuing && current_individual_node == individual {
+                        if !self.conf_current_individual_queuing
+                            && current_individual_node == individual
+                        {
                             individual_inserted = true;
                         } else {
-                            // W3-DEFER[api]: individual->isImmediatelyProcessingQueued()
-                            let is_immediately_processing_queued = false;
+                            let is_immediately_processing_queued = calc_alg_context
+                                .process_context()
+                                .node(individual)
+                                .is_immediately_processing_queued();
                             if !is_immediately_processing_queued {
-                                // W3-DEFER[api]: individual->setImmediatelyProcessingQueued(true);
-                                let _un_pr_queue = calc_alg_context
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .node_mut(individual)
+                                    .set_immediately_processing_queued(true);
+                                let un_pr_queue = calc_alg_context
                                     .get_individual_immediately_processing_queue(true);
-                                // W3-DEFER[api]: unPrQueue->insertIndiviudalProcessNode(individual);
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .indi_unsorted_proc_queue_mut(un_pr_queue)
+                                    .insert_indiviudal_process_node(individual);
                                 individual_inserted = true;
                             }
                         }
                     } else if {
-                        // W3-DEFER[api]: individual->isNominalIndividualNode()
-                        let is_nominal = false;
-                        // W3-DEFER[api]: individual->getIndividualNominalLevelOrAncestorDepth()
-                        let nominal_level_or_anc_depth: Cint64 = 0;
-                        (self.opt_det_exp_preporcessing || (is_nominal && nominal_level_or_anc_depth <= 0))
+                        let is_nominal = calc_alg_context
+                            .process_context()
+                            .node(individual)
+                            .is_nominal_individual_node();
+                        let nominal_level_or_anc_depth = calc_alg_context
+                            .process_context()
+                            .node(individual)
+                            .individual_nominal_level_or_ancestor_depth();
+                        (self.opt_det_exp_preporcessing
+                            || (is_nominal && nominal_level_or_anc_depth <= 0))
                             && priority >= DETERMINISTIC_PROCESS_PRIORITY as f64
                     } {
-                        // W3-DEFER[api]: individual->isDeterministicExpandingProcessingQueued()
-                        let is_deterministic_expanding_queued = false;
+                        let is_deterministic_expanding_queued = calc_alg_context
+                            .process_context()
+                            .node(individual)
+                            .is_deterministic_expanding_processing_queued();
                         if !is_deterministic_expanding_queued {
-                            // W3-DEFER[api]: individual->setDeterministicExpandingProcessingQueued(true);
-                            let _un_pr_queue = calc_alg_context
-                                .get_individual_depth_deterministic_expansion_preprocessing_queue(true);
-                            // W3-DEFER[api]: unPrQueue->insertProcessIndiviudal(individual);
+                            calc_alg_context
+                                .process_context_mut()
+                                .node_mut(individual)
+                                .set_deterministic_expanding_processing_queued(true);
+                            let un_pr_queue = calc_alg_context
+                                .get_individual_depth_deterministic_expansion_preprocessing_queue(
+                                    true,
+                                );
+                            calc_alg_context
+                                .process_context_mut()
+                                .indi_depth_queue_insert(un_pr_queue, individual);
                             individual_inserted = true;
                         }
                     } else {
-                        // W3-DEFER[api]: individual->isRegularDepthProcessingQueued()
-                        let is_regular_depth_queued = false;
+                        let is_regular_depth_queued = calc_alg_context
+                            .process_context()
+                            .node(individual)
+                            .is_regular_depth_processing_queued();
                         if !is_regular_depth_queued {
-                            // W3-DEFER[api]: individual->setRegularDepthProcessingQueued(true);
-
-                            // W3-DEFER[api]: individual->isNominalIndividualNode()
-                            let is_nominal = false;
-                            // W3-DEFER[api]: individual->getIndividualNominalLevelOrAncestorDepth()
-                            let nominal_level_or_anc_depth: Cint64 = 0;
+                            calc_alg_context
+                                .process_context_mut()
+                                .node_mut(individual)
+                                .set_regular_depth_processing_queued(true);
+                            let is_nominal = calc_alg_context
+                                .process_context()
+                                .node(individual)
+                                .is_nominal_individual_node();
+                            let nominal_level_or_anc_depth = calc_alg_context
+                                .process_context()
+                                .node(individual)
+                                .individual_nominal_level_or_ancestor_depth();
                             if is_nominal && nominal_level_or_anc_depth <= 0 {
                                 if !calc_alg_context
                                     .processing_data_box_mut()
@@ -893,14 +1176,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     // W3-DEFER[api]: linker = allocateAndConstruct(taskMemMan); linker->initLinker(individual);
                                     //                processingDataBox->addSortedNominalNonDeterministicProcessingNodeLinker(linker);
                                 } else {
-                                    let _nominal_pro_queue = calc_alg_context
-                                        .get_nominal_processing_queue(true);
+                                    let _nominal_pro_queue =
+                                        calc_alg_context.get_nominal_processing_queue(true);
                                     // W3-DEFER[api]: nominalProQueue->insertProcessIndiviudal(individual);
                                 }
                             } else {
-                                let _in_depth_pro_queue = calc_alg_context
-                                    .get_individual_depth_processing_queue(true);
-                                // W3-DEFER[api]: inDepthProQueue->insertProcessIndiviudal(individual);
+                                let in_depth_pro_queue =
+                                    calc_alg_context.get_individual_depth_processing_queue(true);
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .indi_depth_queue_insert(in_depth_pro_queue, individual);
                             }
                             individual_inserted = true;
                         }
@@ -920,25 +1205,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         let mut individual_inserted = false;
 
-        // W3-DEFER[api]: individual->isNominalIndividualNode() / isExtendedQueueProcessing()
-        let is_nominal = false;
-        let is_extended_queue_processing = false;
+        let (is_nominal, is_extended_queue_processing) = {
+            let node = calc_alg_context.process_context().node(individual);
+            (
+                node.is_nominal_individual_node(),
+                node.is_extended_queue_processing(),
+            )
+        };
 
         if self.conf_depth_orientated_processing && !is_nominal && !is_extended_queue_processing {
-            // W3-DEFER[api]: individual->isProcessingQueued()
-            let is_processing_queued = false;
+            let is_processing_queued = calc_alg_context
+                .process_context()
+                .node(individual)
+                .is_processing_queued();
             if !is_processing_queued {
                 let mut deterministic_preprocessing_queued = false;
                 if self.opt_det_exp_preporcessing {
                     deterministic_preprocessing_queued = true;
-                    // W3-DEFER[api]: conProQueue = individual->getConceptProcessingQueue(false);
-                    let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
-                    if con_pro_queue == Id::NONE {
-                        // W3-DEFER[api]: conProQueue->getNextConceptProcessPriority(&conProPri)
-                        let has_next_concept_process_priority = false;
-                        // W3-DEFER[api]: conProPri.getPriority()
-                        let priority: f64 = 0.0;
-                        if has_next_concept_process_priority {
+                    let con_pro_queue: ConceptProcessingQueueId = calc_alg_context
+                        .process_context_mut()
+                        .node_concept_processing_queue(individual, false);
+                    if con_pro_queue.is_some() {
+                        if let Some(con_pro_pri) =
+                            ConceptProcessingQueue::get_next_concept_process_priority(
+                                con_pro_queue,
+                                calc_alg_context.process_context_mut(),
+                            )
+                        {
+                            let priority: f64 = con_pro_pri.get_priority();
                             if priority < DETERMINISTIC_PROCESS_PRIORITY as f64 {
                                 deterministic_preprocessing_queued = false;
                             }
@@ -954,90 +1248,149 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         .indi_unsorted_proc_queue_mut(un_pr_queue)
                         .insert_indiviudal_process_node(individual);
                 } else {
-                    let depth_processing_queue = calc_alg_context
-                        .get_individual_depth_first_processing_queue(true);
+                    let depth_processing_queue =
+                        calc_alg_context.get_individual_depth_first_processing_queue(true);
                     // depthProcessingQueue->insertIndiviudalProcessNode(individual);
                     calc_alg_context
                         .process_context_mut()
                         .indi_unsorted_proc_queue_mut(depth_processing_queue)
                         .insert_indiviudal_process_node(individual);
                 }
-                // W3-DEFER[api]: individual->setProcessingQueued(true);
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(individual)
+                    .set_processing_queued(true);
                 individual_inserted = true;
             }
         } else {
             let mut insert_individual = true;
             let mut individual_blocked = false;
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFDIRECTBLOCKED)
-            let has_direct_blocked = false;
+            let has_direct_blocked = calc_alg_context
+                .process_context()
+                .node(individual)
+                .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_DIRECTBLOCKED);
             if insert_individual && has_direct_blocked {
                 individual_blocked = true;
-                // W3-DEFER[api]: !individual->hasPartialProcessingRestrictionFlags(PRFBLOCKINGRETESTDUEDIRECTMODIFIED | PRFBLOCKINGRETESTDUEBLOCKERMODIFIED)
-                let has_retest_direct_or_blocker_modified = false;
+                let has_retest_direct_or_blocker_modified = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_BLOCKINGRETESTDUEDIRECTMODIFIED
+                            | IndividualProcessNode::PRF_BLOCKINGRETESTDUEBLOCKERMODIFIED,
+                    );
                 if !has_retest_direct_or_blocker_modified {
                     insert_individual = false;
                 }
             }
             // (commented-out SATISFIABLECACHED / SIGNATUREBLOCKINGCACHED blocks omitted as in source)
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFCOMPLETIONGRAPHCACHED)
-            let has_completion_graph_cached = false;
+            let has_completion_graph_cached = calc_alg_context
+                .process_context()
+                .node(individual)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED,
+                );
             if insert_individual && has_completion_graph_cached {
                 individual_blocked = true;
-                // W3-DEFER[api]: !individual->hasPartialProcessingRestrictionFlags(PRFRETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED | PRFCOMPLETIONGRAPHCACHINGINVALIDATED | PRFCOMPLETIONGRAPHCACHINGINVALID)
-                let has_completion_graph_retest_or_invalid = false;
+                let has_completion_graph_retest_or_invalid = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_RETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED
+                            | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHINGINVALIDATED
+                            | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHINGINVALID,
+                    );
                 if !has_completion_graph_retest_or_invalid {
                     insert_individual = false;
                 }
             }
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFINDIRECTBLOCKED)
-            let has_indirect_blocked = false;
+            let has_indirect_blocked = calc_alg_context
+                .process_context()
+                .node(individual)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_INDIRECTBLOCKED,
+                );
             if insert_individual && has_indirect_blocked {
                 individual_blocked = true;
-                // W3-DEFER[api]: !individual->hasPartialProcessingRestrictionFlags(PRFBLOCKINGRETESTDUEINDIRECTBLOCKERLOSS)
-                let has_retest_indirect_blocker_loss = false;
+                let has_retest_indirect_blocker_loss = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_BLOCKINGRETESTDUEINDIRECTBLOCKERLOSS,
+                    );
                 if !has_retest_indirect_blocker_loss {
                     insert_individual = false;
                 }
             }
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFANCESTORSATISFIABLECACHED)
-            let has_ancestor_satisfiable_cached = false;
+            let has_ancestor_satisfiable_cached = calc_alg_context
+                .process_context()
+                .node(individual)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED,
+                );
             if insert_individual && has_ancestor_satisfiable_cached {
                 individual_blocked = true;
-                // W3-DEFER[api]: !individual->hasPartialProcessingRestrictionFlags(PRFANCESTORSATISFIABLECACHEDABOLISHED)
-                let has_ancestor_satisfiable_cached_abolished = false;
+                let has_ancestor_satisfiable_cached_abolished = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHEDABOLISHED,
+                    );
                 if !has_ancestor_satisfiable_cached_abolished {
                     insert_individual = false;
                 }
             }
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFANCESTORSIGNATUREBLOCKINGCACHED)
-            let has_ancestor_signature_blocking_cached = false;
+            let has_ancestor_signature_blocking_cached = calc_alg_context
+                .process_context()
+                .node(individual)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED,
+                );
             if insert_individual && has_ancestor_signature_blocking_cached {
                 individual_blocked = true;
-                // W3-DEFER[api]: !individual->hasPartialProcessingRestrictionFlags(PRFANCESTORSIGNATUREBLOCKINGCACHEDABOLISHED)
-                let has_ancestor_signature_blocking_cached_abolished = false;
+                let has_ancestor_signature_blocking_cached_abolished = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHEDABOLISHED,
+                    );
                 if !has_ancestor_signature_blocking_cached_abolished {
                     insert_individual = false;
                 }
             }
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFANCESTORSATURATIONBLOCKINGCACHED)
-            let has_ancestor_saturation_blocking_cached = false;
+            let has_ancestor_saturation_blocking_cached = calc_alg_context
+                .process_context()
+                .node(individual)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
+                );
             if insert_individual && has_ancestor_saturation_blocking_cached {
                 individual_blocked = true;
-                // W3-DEFER[api]: !individual->hasPartialProcessingRestrictionFlags(PRFANCESTORSATURATIONBLOCKINGCACHEDABOLISHED)
-                let has_ancestor_saturation_blocking_cached_abolished = false;
+                let has_ancestor_saturation_blocking_cached_abolished = calc_alg_context
+                    .process_context()
+                    .node(individual)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHEDABOLISHED,
+                    );
                 if !has_ancestor_saturation_blocking_cached_abolished {
                     insert_individual = false;
                 }
             }
-            // W3-DEFER[api]: individual->hasPartialProcessingRestrictionFlags(PRFSYNCHRONIZEDBACKEND)
-            //                && individual->hasPartialProcessingRestrictionFlags(PRFSYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED)
-            let has_synchronized_backend_succ_expansion_blocked = false;
+            let has_synchronized_backend_succ_expansion_blocked = {
+                let node = calc_alg_context.process_context().node(individual);
+                node.has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND,
+                ) && node.has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED,
+                )
+            };
             if insert_individual && has_synchronized_backend_succ_expansion_blocked {
                 individual_blocked = true;
                 insert_individual = false;
             }
-            // W3-DEFER[api]: individual->isDelayedNominalProcessingQueued()
-            let is_delayed_nominal_processing_queued = false;
+            let is_delayed_nominal_processing_queued = calc_alg_context
+                .process_context()
+                .node(individual)
+                .is_delayed_nominal_processing_queued();
             if insert_individual && is_delayed_nominal_processing_queued {
                 individual_blocked = true;
                 insert_individual = false;
@@ -1045,12 +1398,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
             if individual_blocked && insert_individual {
                 if self.conf_late_blocking_resolving {
-                    // W3-DEFER[api]: individual->isBlockedReactivationProcessingQueued()
-                    let is_blocked_reactivation_processing_queued = false;
+                    let is_blocked_reactivation_processing_queued = calc_alg_context
+                        .process_context()
+                        .node(individual)
+                        .is_blocked_reactivation_processing_queued();
                     if !is_blocked_reactivation_processing_queued {
-                        // W3-DEFER[api]: individual->setBlockedReactivationProcessingQueued(true);
-                        let block_react_pro_queue = calc_alg_context
-                            .get_blocked_reactivation_processing_queue(true);
+                        calc_alg_context
+                            .process_context_mut()
+                            .node_mut(individual)
+                            .set_blocked_reactivation_processing_queued(true);
+                        let block_react_pro_queue =
+                            calc_alg_context.get_blocked_reactivation_processing_queue(true);
                         // blockReactProQueue->insertProcessIndiviudal(individual);
                         calc_alg_context
                             .process_context_mut()
@@ -1059,14 +1417,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 } else {
                     individual_inserted = self
-                        .add_individual_to_processing_queue_based_on_processing_concepts(individual, calc_alg_context);
+                        .add_individual_to_processing_queue_based_on_processing_concepts(
+                            individual,
+                            calc_alg_context,
+                        );
                     if !individual_inserted {
-                        // W3-DEFER[api]: individual->isRegularDepthProcessingQueued()
-                        let is_regular_depth_processing_queued = false;
+                        let is_regular_depth_processing_queued = calc_alg_context
+                            .process_context()
+                            .node(individual)
+                            .is_regular_depth_processing_queued();
                         if !is_regular_depth_processing_queued {
-                            // W3-DEFER[api]: individual->setRegularDepthProcessingQueued(true);
-                            let in_depth_pro_queue = calc_alg_context
-                                .get_individual_depth_processing_queue(true);
+                            calc_alg_context
+                                .process_context_mut()
+                                .node_mut(individual)
+                                .set_regular_depth_processing_queued(true);
+                            let in_depth_pro_queue =
+                                calc_alg_context.get_individual_depth_processing_queue(true);
                             // inDepthProQueue->insertProcessIndiviudal(individual);
                             calc_alg_context
                                 .process_context_mut()
@@ -1079,7 +1445,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
             if !individual_blocked {
                 individual_inserted = self
-                    .add_individual_to_processing_queue_based_on_processing_concepts(individual, calc_alg_context);
+                    .add_individual_to_processing_queue_based_on_processing_concepts(
+                        individual,
+                        calc_alg_context,
+                    );
             }
         }
         if individual_inserted {

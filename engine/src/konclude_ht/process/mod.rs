@@ -9,45 +9,66 @@
 
 use super::model::substrate::Id;
 
-pub mod stubs;       // W2: shared not-yet-ported `Process/` placeholder markers + ids
-pub mod edge;        // SD-1: CIndividualLinkEdge + distinct/disjoint edges
-pub mod descriptor;  // SD-1: CConceptDescriptor / CConceptProcessDescriptor / clash
-pub mod queues;      // processing-queue subsystem: individual (unsorted/rotation/depth) + per-node concept queue
-pub mod node;        // SD-3: CIndividualProcessNode (the completion-graph node)
-pub mod pn1;         // PN-1: CIndividualProcessNode init/ctor/buffer-handoff method bodies
-pub mod sat_node;    // SD-4: CIndividualSaturationProcessNode
-pub mod sat1;        // SAT-1: CIndividualSaturationProcessNode method bodies
-pub mod satellites;  // SD-4: reapply label set, role-succ hash, branching-merging spec
-pub mod rs1;         // RS-1: CReapplyRoleSuccessorHash method bodies (over `satellites`)
-pub mod ls1;         // LS-1: CReapplyConceptLabelSet method bodies (over `satellites`)
-pub mod bm1;         // BM-1: CBranchingMergingProcessingRestrictionSpecification method bodies (over `satellites`)
-pub mod databox;     // SD-2: CProcessingDataBox (ambient per-test state; not an Id)
-pub mod db1;         // DB-1: CProcessingDataBox lifecycle / save-restore methods
-pub mod db2;         // DB-2: CProcessingDataBox method bodies (Wave-B)
-pub mod db3;         // DB-3: CProcessingDataBox method bodies (Wave-B)
-pub mod db4;         // DB-4: CProcessingDataBox method bodies (Wave-B)
-pub mod db5;         // DB-5: CProcessingDataBox method bodies (Wave-B)
-pub mod db6;         // DB-6: CProcessingDataBox method bodies (Wave-B)
-pub mod pn2;         // PN-2: CIndividualProcessNode method bodies (Wave-B)
-pub mod pn3;         // PN-3: CIndividualProcessNode method bodies (Wave-B)
-pub mod pn4;         // PN-4: CIndividualProcessNode method bodies (Wave-B)
-pub mod pn5;         // PN-5: CIndividualProcessNode method bodies (Wave-B)
-pub mod pn6;         // PN-6: CIndividualProcessNode method bodies (Wave-B)
-pub mod dependency;  // SD-5: the DependencyNode tagged enum + track points / branch tree
-pub mod dep1;        // DEP-1: CDependencyNode ctors/accessors + DependencyLink chain ops + track-point accessors
-pub mod dep2;        // DEP-2: track-point / branch-tree-node / branching-instruction / dependency-link methods
-pub mod context;     // W3.5: CProcessContext — the per-test arena-owning container (the id-resolution root)
-pub mod varbind;     // W2.7: variable-binding-path satellite subsystem (7 arenas)
+pub mod analized_concept_expansion; // PN-4 W2: CIndividualNodeAnalizedConceptExpansionData + linker
+pub mod backend_control; // W168: CBackendNeighbourExpansionControllingData
+pub mod backend_sync; // W319: CIndividualNodeRepresentativeMemoryBackendCacheSynchronisationData
 pub mod binding_hash; // W3b: node-owned concept→binding-set container hashes (varbind-path + propagation)
-pub mod propagation_binding; // W3c: propagation-binding subsystem (set/map/descriptor/binding; 4 arenas)
-pub mod distinct;    // W2.7: distinct / connection-successor / disjoint-role satellites (4 arenas)
-pub mod reapply_sat; // W2.7: reapply label-set iterator / signature blocking-candidate / incremental-expansion (4 arenas)
-pub mod node_resolution; // node-resolution keystone: CProcessTagger + CIndividualProcessNodeVector + getUpToDate/Localized/Successor/Ancestor resolvers (ctx-level)
+pub mod blocking_follow; // W144: CBlockingFollowSet + CBlockingFollowUpdateTag
 pub mod blocking_hash; // W3.5b: blocking-individual-node candidate hash/data/iterator + signature-blocking concept-expansion data (3 arenas)
-pub mod representative; // W3.5r: representative variable-binding-path-set subsystem (set-data/migrate-data/propagation-set/descriptor; 4 arenas)
+pub mod bm1; // BM-1: CBranchingMergingProcessingRestrictionSpecification method bodies (over `satellites`)
+pub mod branching_tree; // W307: CBranchingTree
+pub mod concept_process_linker; // CConceptProcessLinker
 pub mod condensed_reapply; // u15: CCondensedReapplyQueue (dynamic reapply-queue head + descriptor linker, feeds the reapply_sat iterator)
+pub mod context; // W3.5: CProcessContext — the per-test arena-owning container (the id-resolution root)
+pub mod databox; // SD-2: CProcessingDataBox (ambient per-test state; not an Id)
+pub mod db1; // DB-1: CProcessingDataBox lifecycle / save-restore methods
+pub mod db2; // DB-2: CProcessingDataBox method bodies (Wave-B)
+pub mod db3; // DB-3: CProcessingDataBox method bodies (Wave-B)
+pub mod db4; // DB-4: CProcessingDataBox method bodies (Wave-B)
+pub mod db5; // DB-5: CProcessingDataBox method bodies (Wave-B)
+pub mod db6; // DB-6: CProcessingDataBox method bodies (Wave-B)
+pub mod dep1; // DEP-1: CDependencyNode ctors/accessors + DependencyLink chain ops + track-point accessors
+pub mod dep2; // DEP-2: track-point / branch-tree-node / branching-instruction / dependency-link methods
+pub mod dependency; // SD-5: the DependencyNode tagged enum + track points / branch tree
+pub mod descriptor; // SD-1: CConceptDescriptor / CConceptProcessDescriptor / clash
+pub mod distinct; // W2.7: distinct / connection-successor / disjoint-role satellites (4 arenas)
+pub mod edge; // SD-1: CIndividualLinkEdge + distinct/disjoint edges
+pub mod grounding_hash; // W43: CConceptNominalSchemaGroundingData/Hasher/Hash
+pub mod individual_process_linker; // CIndividualProcessNodeLinker
+pub mod ls1; // LS-1: CReapplyConceptLabelSet method bodies (over `satellites`)
+pub mod marker_hash; // marker individual-node hash/data for CCMARKER labels
 pub mod merging_hash; // u15/nominal: CIndividualMergingHash + CIndividualMergingHashData (per-node merge hash; 1 arena)
-pub mod succ_role_hash; // u15: CSuccessorRoleHash backend + CSuccessorRoleIterator / CSuccessorIterator (so pn3 relocation iterators iterate; 1 arena)
+pub mod node; // SD-3: CIndividualProcessNode (the completion-graph node)
+pub mod node_resolution; // node-resolution keystone: CProcessTagger + CIndividualProcessNodeVector + getUpToDate/Localized/Successor/Ancestor resolvers (ctx-level)
+pub mod node_switch_history; // W306: CNodeSwitchHistory
+pub mod nominal_conn; // W139: CSuccessorConnectedNominalSet (successor-dependent nominal ids)
+pub mod pn1; // PN-1: CIndividualProcessNode init/ctor/buffer-handoff method bodies
+pub mod pn2; // PN-2: CIndividualProcessNode method bodies (Wave-B)
+pub mod pn3; // PN-3: CIndividualProcessNode method bodies (Wave-B)
+pub mod pn4; // PN-4: CIndividualProcessNode method bodies (Wave-B)
+pub mod pn5; // PN-5: CIndividualProcessNode method bodies (Wave-B)
+pub mod pn6; // PN-6: CIndividualProcessNode method bodies (Wave-B)
+pub mod propagation_binding; // W3c: propagation-binding subsystem (set/map/descriptor/binding; 4 arenas)
+pub mod queues; // processing-queue subsystem: individual (unsorted/rotation/depth) + per-node concept queue
+pub mod reactivation; // W142: CNominalCachingLossReactivationData
+pub mod reapply_sat; // W2.7: reapply label-set iterator / signature blocking-candidate / incremental-expansion (4 arenas)
+pub mod referred_tracking; // W194: CReferredIndividualTrackingData/Vector
+pub mod representative; // W3.5r: representative variable-binding-path-set subsystem (set-data/migrate-data/propagation-set/descriptor; 4 arenas)
+pub mod role_backward_prop; // CRoleBackwardPropagationHash + CBackwardPropagationLink/ReapplyDescriptor
+pub mod rs1; // RS-1: CReapplyRoleSuccessorHash method bodies (over `satellites`)
+pub mod sat1; // SAT-1: CIndividualSaturationProcessNode method bodies
+pub mod sat_block; // W136: CIndividualNodeSaturationBlockingData
+pub mod sat_linker; // CIndividualSaturationProcessNodeLinker
+pub mod sat_node; // SD-4: CIndividualSaturationProcessNode
+pub mod sat_node_vector; // CIndividualSaturationProcessNodeVector
+pub mod sat_nominal; // CSaturationInfluencedNominalSet
+pub mod sat_queue; // CSaturationSuccessorExtensionIndividualNodeProcessingQueue
+pub mod sat_ref; // W137: CExtendedConceptReferenceLinkingData / CSaturationConceptDataItem slice
+pub mod satellites; // SD-4: reapply label set, role-succ hash, branching-merging spec
+pub mod stubs; // W2: shared not-yet-ported `Process/` placeholder markers + ids
+pub mod succ_role_hash;
+pub mod unsat_retrieval; // W118: CIndividualNodeUnsatisfiableOccurenceCacheRetrievalData
+pub mod varbind; // W2.7: variable-binding-path satellite subsystem (7 arenas) // u15: CSuccessorRoleHash backend + CSuccessorRoleIterator / CSuccessorIterator (so pn3 relocation iterators iterate; 1 arena)
 
 // --- the 16 process-layer ids (manifest/05) ---
 /// `CIndividualProcessNode*`           → `NodeId`.

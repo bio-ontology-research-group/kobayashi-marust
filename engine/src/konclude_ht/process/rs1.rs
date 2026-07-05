@@ -40,34 +40,264 @@
 
 use std::collections::HashMap;
 
-use super::super::model::substrate::{Arena, Cint64, INVALID};
+use super::super::model::substrate::{Arena, Cint64};
 use super::super::model::RoleId;
+use super::context::ProcessContext;
 use super::edge::IndividualLinkEdge;
+use super::node::IndividualProcessNode;
+use super::reapply_sat::{ReapplyConceptDescriptor, ReapplyConceptDescriptorId};
 use super::satellites::{ReapplyQueue, ReapplyRoleSuccessorData, ReapplyRoleSuccessorHash};
-use super::EdgeId;
+use super::{ConDescId, EdgeId};
 
 // ===========================================================================
-// W2-DEFER[api]: not-yet-ported iterator/queue-iterator return types.
 // CRoleSuccessorLinkIterator / CRoleSuccessorIterator / CReapplyQueueIterator
-// each have their own `Process/` unit (`CRoleSuccessorLinkIterator.{h,cpp}`,
-// `CRoleSuccessorIterator.h`, `CReapplyQueue.h`). They wrap raw `CPROCESSHASH`
-// iterators + the intrusive `CIndividualLinkEdge*` chain, neither of which has a
-// stable ported form yet. Placeholder zero-size structs so the RS-1 method
-// signatures below stay shaped like the original; they relocate when those units
-// land.
 // ===========================================================================
 
-/// W2-DEFER[api]: Port of `CRoleSuccessorLinkIterator` (placeholder).
-#[derive(Default)]
-pub struct RoleSuccessorLinkIterator;
+/// Port of `CRoleSuccessorLinkIterator`.
+///
+/// KONCLUDE-PORT-NOTE[ownership]: C++ holds live `CPROCESSHASH` iterators or an
+/// intrusive `CIndividualLinkEdge*` chain cursor. The port snapshots the selected
+/// hash ranges or edge chain into `EdgeId`s so the iterator can be returned by
+/// value without borrowing the process arenas.
+#[derive(Clone, Default)]
+pub struct RoleSuccessorLinkIterator {
+    links: Vec<EdgeId>,
+    pos: usize,
+}
 
-/// W2-DEFER[api]: Port of `CRoleSuccessorIterator` (placeholder).
-#[derive(Default)]
-pub struct RoleSuccessorIterator;
+impl RoleSuccessorLinkIterator {
+    /// Port of `CRoleSuccessorLinkIterator()`.
+    pub fn empty() -> Self {
+        Self::default()
+    }
 
-/// W2-DEFER[api]: Port of `CReapplyQueueIterator` (placeholder).
-#[derive(Default)]
-pub struct ReapplyQueueIterator;
+    fn from_links(links: Vec<EdgeId>) -> Self {
+        RoleSuccessorLinkIterator { links, pos: 0 }
+    }
+
+    fn from_chain(edges: &Arena<IndividualLinkEdge>, head: EdgeId, last_link: EdgeId) -> Self {
+        let mut links = Vec::new();
+        let mut link_it = head;
+        while link_it.is_some() && link_it != last_link {
+            links.push(link_it);
+            link_it = edges.get(link_it).get_next();
+        }
+        RoleSuccessorLinkIterator::from_links(links)
+    }
+
+    fn from_data(edges: &Arena<IndividualLinkEdge>, data: &ReapplyRoleSuccessorData) -> Self {
+        if let Some(prev_link_set) = data.prev_link_set.as_ref() {
+            let mut links = Vec::new();
+            if let Some(link_set) = data.link_set.as_ref() {
+                links.extend(link_set.values().copied());
+            }
+            links.extend(prev_link_set.values().copied());
+            RoleSuccessorLinkIterator::from_links(links)
+        } else if let Some(link_set) = data.link_set.as_ref() {
+            RoleSuccessorLinkIterator::from_links(link_set.values().copied().collect())
+        } else {
+            RoleSuccessorLinkIterator::from_chain(edges, data.link_linker, EdgeId::NONE)
+        }
+    }
+
+    /// Port of `hasNext`.
+    pub fn has_next(&self) -> bool {
+        self.pos != self.links.len()
+    }
+
+    /// Port of `next(bool moveNext)`.
+    pub fn next(&mut self, move_next: bool) -> EdgeId {
+        let mut link = EdgeId::NONE;
+        if self.pos != self.links.len() {
+            link = self.links[self.pos];
+            if move_next {
+                self.pos += 1;
+            }
+        }
+        link
+    }
+}
+
+/// Port of `CRoleSuccessorIterator`.
+///
+/// C++ skips roles whose `mLinkCount <= 0` at construction and after every
+/// advance. The snapshot applies the same filter.
+#[derive(Clone, Default)]
+pub struct RoleSuccessorIterator {
+    roles: Vec<RoleId>,
+    pos: usize,
+}
+
+impl RoleSuccessorIterator {
+    /// Port of `CRoleSuccessorIterator()`.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    fn from_roles(roles: Vec<RoleId>) -> Self {
+        RoleSuccessorIterator { roles, pos: 0 }
+    }
+
+    /// Port of `hasNext`.
+    pub fn has_next(&self) -> bool {
+        self.pos != self.roles.len()
+    }
+
+    /// Port of `next(bool moveNext)`.
+    pub fn next(&mut self, move_next: bool) -> RoleId {
+        let mut role = RoleId::NONE;
+        if self.pos != self.roles.len() {
+            role = self.roles[self.pos];
+            if move_next {
+                self.pos += 1;
+            }
+        }
+        role
+    }
+}
+
+/// Port of `CReapplyQueueIterator`.
+///
+/// Walks dynamic descriptors first, then static descriptors, matching
+/// `CReapplyQueueIterator::next`.
+#[derive(Copy, Clone)]
+pub struct ReapplyQueueIterator {
+    static_reapply_des_linker: ReapplyConceptDescriptorId,
+    dynamic_reapply_des_linker: ReapplyConceptDescriptorId,
+}
+
+impl Default for ReapplyQueueIterator {
+    fn default() -> Self {
+        ReapplyQueueIterator {
+            static_reapply_des_linker: ReapplyConceptDescriptorId::NONE,
+            dynamic_reapply_des_linker: ReapplyConceptDescriptorId::NONE,
+        }
+    }
+}
+
+impl ReapplyQueueIterator {
+    /// Port of `CReapplyQueueIterator()`.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Port of `CReapplyQueueIterator(staticReapplyDesLinker, dynamicReapplyDesLinker)`.
+    pub fn new(
+        static_reapply_des_linker: ReapplyConceptDescriptorId,
+        dynamic_reapply_des_linker: ReapplyConceptDescriptorId,
+    ) -> Self {
+        ReapplyQueueIterator {
+            static_reapply_des_linker,
+            dynamic_reapply_des_linker,
+        }
+    }
+
+    /// Port of `next(bool moveNext)`.
+    pub fn next(&mut self, ctx: &ProcessContext, move_next: bool) -> ReapplyConceptDescriptorId {
+        let mut next_des = ReapplyConceptDescriptorId::NONE;
+        if self.dynamic_reapply_des_linker.is_some() {
+            next_des = self.dynamic_reapply_des_linker;
+            if move_next {
+                self.dynamic_reapply_des_linker = ctx
+                    .reapply_con_desc(self.dynamic_reapply_des_linker)
+                    .get_next();
+            }
+        } else if self.static_reapply_des_linker.is_some() {
+            next_des = self.static_reapply_des_linker;
+            if move_next {
+                self.static_reapply_des_linker = ctx
+                    .reapply_con_desc(self.static_reapply_des_linker)
+                    .get_next();
+            }
+        }
+        next_des
+    }
+
+    /// Port of `hasNext`.
+    pub fn has_next(&self) -> bool {
+        self.dynamic_reapply_des_linker.is_some() || self.static_reapply_des_linker.is_some()
+    }
+}
+
+impl ReapplyQueue {
+    /// Port of `initReapplyQueue(CReapplyQueue*)`.
+    pub fn init_reapply_queue(&mut self, prev_reapply_queue: Option<&ReapplyQueue>) -> &mut Self {
+        if let Some(prev) = prev_reapply_queue {
+            self.static_reapply_des_linker = prev.static_reapply_des_linker;
+            self.dynamic_reapply_des_linker = prev.dynamic_reapply_des_linker;
+        } else {
+            self.static_reapply_des_linker = ReapplyConceptDescriptorId::NONE;
+            self.dynamic_reapply_des_linker = ReapplyConceptDescriptorId::NONE;
+        }
+        self
+    }
+
+    /// Port of `isEmpty`.
+    pub fn is_empty(&self) -> bool {
+        self.static_reapply_des_linker.is_none() && self.dynamic_reapply_des_linker.is_none()
+    }
+
+    /// Port of `hasConceptDescriptor`.
+    pub fn has_concept_descriptor(
+        &self,
+        ctx: &ProcessContext,
+        concept_descriptor: ConDescId,
+    ) -> bool {
+        let mut des_linker = self.static_reapply_des_linker;
+        while des_linker.is_some() {
+            let d = ctx.reapply_con_desc(des_linker);
+            if d.has_concept_descriptor(concept_descriptor) {
+                return true;
+            }
+            des_linker = d.get_next();
+        }
+        des_linker = self.dynamic_reapply_des_linker;
+        while des_linker.is_some() {
+            let d = ctx.reapply_con_desc(des_linker);
+            if d.has_concept_descriptor(concept_descriptor) {
+                return true;
+            }
+            des_linker = d.get_next();
+        }
+        false
+    }
+
+    /// Port of `addReapplyConceptDescriptor`.
+    pub fn add_reapply_concept_descriptor(
+        &mut self,
+        ctx: &mut ProcessContext,
+        con_pro_des: ReapplyConceptDescriptorId,
+    ) -> &mut Self {
+        if con_pro_des.is_some() {
+            if ctx.reapply_con_desc(con_pro_des).is_static_descriptor() {
+                self.static_reapply_des_linker = ReapplyConceptDescriptor::append(
+                    ctx,
+                    con_pro_des,
+                    self.static_reapply_des_linker,
+                );
+            } else {
+                self.dynamic_reapply_des_linker = ReapplyConceptDescriptor::append(
+                    ctx,
+                    con_pro_des,
+                    self.dynamic_reapply_des_linker,
+                );
+            }
+        }
+        self
+    }
+
+    /// Port of `getIterator(bool clearDynamicReapplyQueue)`.
+    pub fn get_iterator(&mut self, clear_dynamic_reapply_queue: bool) -> ReapplyQueueIterator {
+        let it = ReapplyQueueIterator::new(
+            self.static_reapply_des_linker,
+            self.dynamic_reapply_des_linker,
+        );
+        if clear_dynamic_reapply_queue {
+            self.dynamic_reapply_des_linker = ReapplyConceptDescriptorId::NONE;
+        }
+        it
+    }
+}
 
 // ===========================================================================
 // CReapplyRoleSuccessorData copy constructor (the COW heart of the value type).
@@ -97,9 +327,7 @@ impl Clone for ReapplyRoleSuccessorData {
             // mLinkCount = roleSuccData.mLinkCount
             link_count: self.link_count,
             // mReapplyQueue(roleSuccData.mReapplyQueue)
-            // W2-DEFER[api]: CReapplyQueue is a stateless placeholder; the real
-            // port copies the queue here.
-            reapply_queue: ReapplyQueue,
+            reapply_queue: self.reapply_queue,
         }
     }
 }
@@ -136,6 +364,7 @@ impl ReapplyRoleSuccessorHash {
     /// `CReapplyQueueIterator*` out-param becomes an `Option<&mut …>`.
     pub fn insert_role_successor_link(
         &mut self,
+        nodes: &Arena<IndividualProcessNode>,
         edges: &mut Arena<IndividualLinkEdge>,
         role: RoleId,
         link: EdgeId,
@@ -144,10 +373,14 @@ impl ReapplyRoleSuccessorHash {
         let context = self.context;
         let role_succ_data = self.role_successor_data_hash.entry(role).or_default();
         if role_succ_data.link_set.is_some() {
-            let coup_id = Self::get_coupled_individual_id_link(edges, link);
+            let coup_id = Self::get_coupled_individual_id_link(nodes, edges, link);
             Self::ensure_role_successor_data_localated(context, role_succ_data);
             Self::eliminate_role_successor_previous_share_data(role_succ_data, coup_id);
-            role_succ_data.link_set.as_mut().unwrap().insert(coup_id, link);
+            role_succ_data
+                .link_set
+                .as_mut()
+                .unwrap()
+                .insert(coup_id, link);
         }
         // mLinkLinker = link->append(mLinkLinker)  (CLinker::append = link to tail
         // of `link`'s chain, then the old head appended after it → prepend `link`).
@@ -161,9 +394,8 @@ impl ReapplyRoleSuccessorHash {
         role_succ_data.link_count += 1;
         self.link_count += 1;
         let ret = role_succ_data.link_count;
-        if let Some(_reapply_queue_iterator) = reapply_queue_iterator {
-            // W2-DEFER[api]: CReapplyQueue::getIterator not yet ported.
-            // *reapply_queue_iterator = role_succ_data.reapply_queue.get_iterator(true);
+        if let Some(reapply_queue_iterator) = reapply_queue_iterator {
+            *reapply_queue_iterator = role_succ_data.reapply_queue.get_iterator(true);
         }
         ret
     }
@@ -256,6 +488,7 @@ impl ReapplyRoleSuccessorHash {
     /// *excluding* `link` but does **not** unlink `link` from `link_linker`.
     pub fn remove_role_successor_link_by_link(
         &mut self,
+        nodes: &Arena<IndividualProcessNode>,
         edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
         link: EdgeId,
@@ -263,7 +496,7 @@ impl ReapplyRoleSuccessorHash {
         let context = self.context;
         let role_succ_data = self.role_successor_data_hash.entry(role).or_default();
         if role_succ_data.link_set.is_some() {
-            let coup_id = Self::get_coupled_individual_id_link(edges, link);
+            let coup_id = Self::get_coupled_individual_id_link(nodes, edges, link);
             Self::ensure_role_successor_data_localated(context, role_succ_data);
             Self::eliminate_role_successor_previous_share_data(role_succ_data, coup_id);
             role_succ_data.link_set.as_mut().unwrap().remove(&coup_id);
@@ -274,7 +507,7 @@ impl ReapplyRoleSuccessorHash {
             let mut link_it = role_succ_data.link_linker;
             while link_it.is_some() {
                 if link_it != link {
-                    let coup = Self::get_coupled_individual_id_link(edges, link_it);
+                    let coup = Self::get_coupled_individual_id_link(nodes, edges, link_it);
                     new_link_set.insert(coup, link_it);
                 }
                 link_it = edges.get(link_it).get_next();
@@ -292,25 +525,31 @@ impl ReapplyRoleSuccessorHash {
     /// overload — locates the link by its coupled id (`source + destination`).
     pub fn remove_role_successor_link_by_ids(
         &mut self,
+        nodes: &Arena<IndividualProcessNode>,
         edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
         source_indi_id: Cint64,
         destination_indi_id: Cint64,
     ) -> &mut Self {
         let context = self.context;
-        let searched_coupled_id = self.get_coupled_individual_id(source_indi_id, destination_indi_id);
+        let searched_coupled_id =
+            self.get_coupled_individual_id(source_indi_id, destination_indi_id);
         let role_succ_data = self.role_successor_data_hash.entry(role).or_default();
         if role_succ_data.link_set.is_some() {
             Self::ensure_role_successor_data_localated(context, role_succ_data);
             Self::eliminate_role_successor_previous_share_data(role_succ_data, searched_coupled_id);
-            role_succ_data.link_set.as_mut().unwrap().remove(&searched_coupled_id);
+            role_succ_data
+                .link_set
+                .as_mut()
+                .unwrap()
+                .remove(&searched_coupled_id);
         } else if role_succ_data.link_linker.is_some() {
             // replace by set
             let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::new();
             role_succ_data.located_link_set = true;
             let mut link_it = role_succ_data.link_linker;
             while link_it.is_some() {
-                let coupled_id = Self::get_coupled_individual_id_link(edges, link_it);
+                let coupled_id = Self::get_coupled_individual_id_link(nodes, edges, link_it);
                 if coupled_id != searched_coupled_id {
                     new_link_set.insert(coupled_id, link_it);
                 }
@@ -332,21 +571,25 @@ impl ReapplyRoleSuccessorHash {
     /// faithfully reproduced via `get_mut`).
     pub fn get_role_successor_to_individual_link(
         &mut self,
+        nodes: &Arena<IndividualProcessNode>,
         edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
         source_indi_id: Cint64,
         destination_indi_id: Cint64,
         locateable: bool,
     ) -> EdgeId {
-        let searched_coupled_id = self.get_coupled_individual_id(source_indi_id, destination_indi_id);
+        let searched_coupled_id =
+            self.get_coupled_individual_id(source_indi_id, destination_indi_id);
         if let Some(role_succ_data) = self.role_successor_data_hash.get_mut(&role) {
             if role_succ_data.link_linker.is_some() {
-                if locateable && role_succ_data.link_set.is_none() && role_succ_data.link_count >= 5 {
+                if locateable && role_succ_data.link_set.is_none() && role_succ_data.link_count >= 5
+                {
                     let mut new_link_set: HashMap<Cint64, EdgeId> = HashMap::new();
                     let mut link_it = role_succ_data.link_linker;
                     let mut searched_link = EdgeId::NONE;
                     while link_it.is_some() {
-                        let coupled_id = Self::get_coupled_individual_id_link(edges, link_it);
+                        let coupled_id =
+                            Self::get_coupled_individual_id_link(nodes, edges, link_it);
                         new_link_set.insert(coupled_id, link_it);
                         if coupled_id == searched_coupled_id {
                             searched_link = link_it;
@@ -359,7 +602,8 @@ impl ReapplyRoleSuccessorHash {
                 } else if role_succ_data.link_set.is_none() {
                     let mut link_it = role_succ_data.link_linker;
                     while link_it.is_some() {
-                        let coupled_id = Self::get_coupled_individual_id_link(edges, link_it);
+                        let coupled_id =
+                            Self::get_coupled_individual_id_link(nodes, edges, link_it);
                         if coupled_id == searched_coupled_id {
                             return link_it;
                         }
@@ -391,6 +635,7 @@ impl ReapplyRoleSuccessorHash {
     /// Port of `CReapplyRoleSuccessorHash::hasRoleSuccessorToIndividual`.
     pub fn has_role_successor_to_individual(
         &mut self,
+        nodes: &Arena<IndividualProcessNode>,
         edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
         source_indi_id: Cint64,
@@ -398,6 +643,7 @@ impl ReapplyRoleSuccessorHash {
         locateable: bool,
     ) -> bool {
         let searched_link = self.get_role_successor_to_individual_link(
+            nodes,
             edges,
             role,
             source_indi_id,
@@ -436,7 +682,11 @@ impl ReapplyRoleSuccessorHash {
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: returns a borrow of the in-data
     /// `CReapplyQueue` (`CReapplyQueue*` → `Option<&mut ReapplyQueue>`).
-    pub fn get_role_reapply_queue(&mut self, role: RoleId, create: bool) -> Option<&mut ReapplyQueue> {
+    pub fn get_role_reapply_queue(
+        &mut self,
+        role: RoleId,
+        create: bool,
+    ) -> Option<&mut ReapplyQueue> {
         if create {
             let role_succ_data = self.role_successor_data_hash.entry(role).or_default();
             Some(&mut role_succ_data.reapply_queue)
@@ -449,45 +699,50 @@ impl ReapplyRoleSuccessorHash {
 
     /// Port of `CReapplyRoleSuccessorHash::containsRoleReapplyQueue`.
     pub fn contains_role_reapply_queue(&self, role: RoleId) -> bool {
-        if let Some(_role_succ_data) = self.role_successor_data_hash.get(&role) {
-            // W2-DEFER[api]: CReapplyQueue::isEmpty not yet ported.
-            // return !_role_succ_data.reapply_queue.is_empty();
-            return false;
+        if let Some(role_succ_data) = self.role_successor_data_hash.get(&role) {
+            return !role_succ_data.reapply_queue.is_empty();
         }
         false
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleReapplyIterator`.
     ///
-    /// W2-DEFER[api]: needs `CReapplyQueue::getIterator` + `CReapplyQueueIterator`.
-    /// The faithful body is
-    /// `tryGetValuePointer(role) ? roleSuccData->mReapplyQueue.getIterator(clearDynamicReapplyQueue)
-    ///  : CReapplyQueueIterator(nullptr, nullptr)`.
     pub fn get_role_reapply_iterator(
         &mut self,
-        _role: RoleId,
-        _clear_dynamic_reapply_queue: bool,
+        role: RoleId,
+        clear_dynamic_reapply_queue: bool,
     ) -> ReapplyQueueIterator {
-        // W2-DEFER[api]
-        ReapplyQueueIterator
+        if let Some(role_succ_data) = self.role_successor_data_hash.get_mut(&role) {
+            return role_succ_data
+                .reapply_queue
+                .get_iterator(clear_dynamic_reapply_queue);
+        }
+        ReapplyQueueIterator::new(
+            ReapplyConceptDescriptorId::NONE,
+            ReapplyConceptDescriptorId::NONE,
+        )
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleSuccessorLinkIterator(CRole*)`.
     ///
-    /// W2-DEFER[api]: needs `CRoleSuccessorLinkIterator`. Faithful body selects one
-    /// of three iterator constructions on the per-role data: `(linkSet, prevLinkSet)`
-    /// when `prev_link_set` is present, `(linkSet)` when only `link_set` is present,
-    /// else `(link_linker)` over the intrusive chain; `nullptr` when the role is absent.
-    pub fn get_role_successor_link_iterator(&self, _role: RoleId) -> RoleSuccessorLinkIterator {
-        // W2-DEFER[api]
-        RoleSuccessorLinkIterator
+    /// KONCLUDE-PORT-NOTE[ownership]: the C++ iterator can follow
+    /// `mLinkLinker->getNext()` directly. The Rust snapshot needs the edge arena
+    /// to resolve that chain, hence the additional `edges` parameter.
+    pub fn get_role_successor_link_iterator(
+        &self,
+        edges: &Arena<IndividualLinkEdge>,
+        role: RoleId,
+    ) -> RoleSuccessorLinkIterator {
+        if let Some(role_succ_data) = self.role_successor_data_hash.get(&role) {
+            return RoleSuccessorLinkIterator::from_data(edges, role_succ_data);
+        }
+        RoleSuccessorLinkIterator::empty()
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleSuccessorLinkIterator(CRole*, cint64* linkCount)`.
-    ///
-    /// W2-DEFER[api]: as above; additionally writes `*linkCount = roleSuccData->mLinkCount`.
     pub fn get_role_successor_link_iterator_count(
         &self,
+        edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
         link_count: Option<&mut Cint64>,
     ) -> RoleSuccessorLinkIterator {
@@ -495,16 +750,15 @@ impl ReapplyRoleSuccessorHash {
             if let Some(link_count) = link_count {
                 *link_count = role_succ_data.link_count;
             }
+            return RoleSuccessorLinkIterator::from_data(edges, role_succ_data);
         }
-        // W2-DEFER[api]: iterator construction over the selected representation.
-        RoleSuccessorLinkIterator
+        RoleSuccessorLinkIterator::empty()
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleSuccessorLinkIterator(CRole*, cint64*, CIndividualLinkEdge*&)`.
-    ///
-    /// W2-DEFER[api]: as above; additionally writes `lastLink = roleSuccData->mLinkLinker`.
     pub fn get_role_successor_link_iterator_count_last(
         &self,
+        edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
         link_count: Option<&mut Cint64>,
         last_link: &mut EdgeId,
@@ -514,62 +768,138 @@ impl ReapplyRoleSuccessorHash {
             if let Some(link_count) = link_count {
                 *link_count = role_succ_data.link_count;
             }
+            return RoleSuccessorLinkIterator::from_data(edges, role_succ_data);
         }
-        // W2-DEFER[api]: iterator construction over the selected representation.
-        RoleSuccessorLinkIterator
+        RoleSuccessorLinkIterator::empty()
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleSuccessorHistoryLinkIterator(CRole*, CIndividualLinkEdge* lastLink)`.
     ///
-    /// W2-DEFER[api]: needs `CRoleSuccessorLinkIterator`. Faithful body is
-    /// `CRoleSuccessorLinkIterator(roleSuccData->mLinkLinker, lastLink)` (the chain
-    /// from the head up to `lastLink`), `nullptr` when the role is absent.
     pub fn get_role_successor_history_link_iterator(
         &self,
-        _role: RoleId,
-        _last_link: EdgeId,
+        edges: &Arena<IndividualLinkEdge>,
+        role: RoleId,
+        last_link: EdgeId,
     ) -> RoleSuccessorLinkIterator {
-        // W2-DEFER[api]
-        RoleSuccessorLinkIterator
+        if let Some(role_succ_data) = self.role_successor_data_hash.get(&role) {
+            return RoleSuccessorLinkIterator::from_chain(
+                edges,
+                role_succ_data.link_linker,
+                last_link,
+            );
+        }
+        RoleSuccessorLinkIterator::empty()
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleSuccessorHistoryLinkIterator(CRole*, CIndividualLinkEdge*, cint64*)`.
-    ///
-    /// W2-DEFER[api]: as above; additionally writes `*linkCount = roleSuccData->mLinkCount`.
     pub fn get_role_successor_history_link_iterator_count(
         &self,
+        edges: &Arena<IndividualLinkEdge>,
         role: RoleId,
-        _last_link: EdgeId,
+        last_link: EdgeId,
         link_count: Option<&mut Cint64>,
     ) -> RoleSuccessorLinkIterator {
         if let Some(role_succ_data) = self.role_successor_data_hash.get(&role) {
             if let Some(link_count) = link_count {
                 *link_count = role_succ_data.link_count;
             }
+            return RoleSuccessorLinkIterator::from_chain(
+                edges,
+                role_succ_data.link_linker,
+                last_link,
+            );
         }
-        // W2-DEFER[api]: iterator construction over the chain.
-        RoleSuccessorLinkIterator
+        RoleSuccessorLinkIterator::empty()
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getRoleIterator`.
-    ///
-    /// W2-DEFER[api]: needs `CRoleSuccessorIterator` over
-    /// `mRoleSuccessorDataHash.begin()/end()`.
     pub fn get_role_iterator(&self) -> RoleSuccessorIterator {
-        // W2-DEFER[api]
-        RoleSuccessorIterator
+        RoleSuccessorIterator::from_roles(
+            self.role_successor_data_hash
+                .iter()
+                .filter_map(|(role, data)| {
+                    if data.link_count > 0 {
+                        Some(*role)
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        )
     }
 
     /// Port of `CReapplyRoleSuccessorHash::getCoupledIndividualID(CIndividualLinkEdge*)`.
     ///
-    /// W2-DEFER[api]: dispatches to `CNodeEdge::getCoupledIndividualID`, which sums
-    /// the edge's `source`/`destination` node ids (`mSourceIndividual->getIndividualNodeID()
-    /// + mDestinationIndividual->getIndividualNodeID()`) — that dereference needs the
-    /// node arena, which `edge.rs` defers. Associated (no-`self`) so callers can use
-    /// it while holding a `&mut` into `role_successor_data_hash`.
-    fn get_coupled_individual_id_link(_edges: &Arena<IndividualLinkEdge>, _link: EdgeId) -> Cint64 {
-        // W2-DEFER[api]: `_edges.get(_link).get_coupled_individual_id(nodes)` once the
-        // CNodeEdge id accessors land (need the node arena).
-        INVALID
+    fn get_coupled_individual_id_link(
+        nodes: &Arena<IndividualProcessNode>,
+        edges: &Arena<IndividualLinkEdge>,
+        link: EdgeId,
+    ) -> Cint64 {
+        let edge = edges.get(link);
+        nodes.get(edge.get_source_individual()).individual_node_id()
+            + nodes
+                .get(edge.get_destination_individual())
+                .individual_node_id()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::konclude_ht::model::substrate::Id;
+    use crate::konclude_ht::process::stubs::ProcessContextId;
+
+    #[test]
+    fn rs1_role_successor_iterator_overloads_write_count_and_last_link() {
+        let mut nodes = Arena::new();
+        let mut src = IndividualProcessNode::new(ProcessContextId::NONE);
+        src.set_individual_node_id(10);
+        let src = nodes.push(src);
+        let mut dst = IndividualProcessNode::new(ProcessContextId::NONE);
+        dst.set_individual_node_id(20);
+        let dst = nodes.push(dst);
+
+        let role = RoleId::new(3);
+        let mut edges = Arena::new();
+        let mut first = IndividualLinkEdge::new();
+        first.init_individual_link_edge(src, src, dst, role, Id::NONE);
+        let first = edges.push(first);
+        let mut second = IndividualLinkEdge::new();
+        second.init_individual_link_edge(src, src, dst, role, Id::NONE);
+        let second = edges.push(second);
+
+        let mut hash = ReapplyRoleSuccessorHash::new(0);
+        hash.insert_role_successor_link(&nodes, &mut edges, role, first, None);
+        hash.insert_role_successor_link(&nodes, &mut edges, role, second, None);
+
+        let mut count = 0;
+        let mut it = hash.get_role_successor_link_iterator_count(&edges, role, Some(&mut count));
+        assert_eq!(count, 2);
+        assert_eq!(it.next(true), second);
+        assert_eq!(it.next(true), first);
+        assert_eq!(it.next(true), EdgeId::NONE);
+
+        let mut count = 0;
+        let mut last_link = EdgeId::NONE;
+        let mut it = hash.get_role_successor_link_iterator_count_last(
+            &edges,
+            role,
+            Some(&mut count),
+            &mut last_link,
+        );
+        assert_eq!(count, 2);
+        assert_eq!(last_link, second);
+        assert_eq!(it.next(true), second);
+
+        let mut count = 0;
+        let mut history = hash.get_role_successor_history_link_iterator_count(
+            &edges,
+            role,
+            first,
+            Some(&mut count),
+        );
+        assert_eq!(count, 2);
+        assert_eq!(history.next(true), second);
+        assert_eq!(history.next(true), EdgeId::NONE);
     }
 }

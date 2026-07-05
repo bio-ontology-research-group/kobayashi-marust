@@ -37,6 +37,7 @@ use std::collections::HashSet;
 use super::algorithm::{CompletionTaskHandleAlgorithm, IMMEDIATELY_PROCESS_PRIORITY};
 use super::context::CalculationAlgorithmContextBase;
 
+use super::super::model::individual::Individual;
 use super::super::model::op::CCNOMINAL;
 use super::super::model::substrate::{Cint64, NegLink};
 use super::super::model::{ConceptId, IndividualId, RoleId};
@@ -77,32 +78,33 @@ impl CompletionTaskHandleAlgorithm {
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let mut nodes_reactivated = false;
-        // CProcessingDataBox* processingDataBox = calcAlgContext->getUsedProcessingDataBox();
-        // (the single owned databox; reached as ctx.processing_data_box_mut())
         let nominal_reactivation_data = ctx
             .process_context_mut()
-            .node_mut(nominal_proc_node)
-            .nominal_caching_loss_reactivation_data(false);
-        // CIndividualUnsortedProcessingQueue* reactivationQueue = nullptr;
-        if nominal_reactivation_data.is_some() {
-            // W6-DEFER[api]: CNominalCachingLossReactivationData is an unported satellite
-            // (process::stubs marker, always Id::NONE here), and
-            // CIndividualUnsortedProcessingQueue::insertIndiviudalProcessNode is unported.
-            // Faithful logic:
-            //   if !reactData.has_reactivated() {
-            //       reactData = node.nominal_caching_loss_reactivation_data(true);
-            //       reactData.set_reactivated(true);
-            //       for linker in reactData.take_reactivation_individual_node_linker() {
-            //           reactivationIndiNode = linker.get_data();
-            //           if reactivationQueue.is_none() {
-            //               reactivationQueue =
-            //                   processingDataBox.get_nominal_caching_loss_reactivation_processing_queue(true);
-            //           }
-            //           reactivationQueue.insert_indiviudal_process_node(reactivationIndiNode);
-            //           nodes_reactivated = true;
-            //       }
-            //   }
-            let _ = &mut nodes_reactivated;
+            .node_nominal_caching_loss_reactivation_data(nominal_proc_node, false);
+        if nominal_reactivation_data.is_some()
+            && !ctx
+                .process_context()
+                .nominal_caching_loss_reactivation_data(nominal_reactivation_data)
+                .has_reactivated()
+        {
+            let nominal_reactivation_data = ctx
+                .process_context_mut()
+                .node_nominal_caching_loss_reactivation_data(nominal_proc_node, true);
+            let reactivation_individuals = {
+                let process_context = ctx.process_context_mut();
+                let reactivation_data = process_context
+                    .nominal_caching_loss_reactivation_data_mut(nominal_reactivation_data);
+                reactivation_data.set_reactivated(true);
+                reactivation_data.take_reactivation_individual_node_linker()
+            };
+            for reactivation_indi_node in reactivation_individuals {
+                let reactivation_queue =
+                    ctx.get_nominal_caching_loss_reactivation_processing_queue(true);
+                ctx.process_context_mut()
+                    .indi_unsorted_proc_queue_mut(reactivation_queue)
+                    .insert_indiviudal_process_node(reactivation_indi_node);
+                nodes_reactivated = true;
+            }
         }
         nodes_reactivated
     }
@@ -158,18 +160,12 @@ impl CompletionTaskHandleAlgorithm {
         indi: NodeId,
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> String {
-        let nominal_dependent_string_list: Vec<String> = Vec::new();
-        let conn_nom_set = ctx
-            .process_context_mut()
-            .node_mut(indi)
-            .successor_nominal_connection_set(false);
-        if conn_nom_set.is_some() {
-            // W6-DEFER[api]: CSuccessorConnectedNominalSet iteration is unported.
-            // Faithful logic:
-            //   for nominalID in connNomSet {
-            //       nominal_dependent_string_list.push(format!("{}", nominalID));
-            //   }
-        }
+        let nominal_dependent_string_list: Vec<String> = ctx
+            .process_context()
+            .node_successor_connected_nominals(indi)
+            .into_iter()
+            .map(|nominal_id| nominal_id.to_string())
+            .collect();
         nominal_dependent_string_list.join(", ")
     }
 
@@ -185,9 +181,7 @@ impl CompletionTaskHandleAlgorithm {
     ) -> NodeId {
         let nominal_blocker_individual: NodeId = NodeId::NONE;
         // CProcessingDataBox* processingDataBox = calcAlgContext->getProcessingDataBox();
-        let sig_nom_del_cand_hash = ctx
-            .processing_data_box_mut()
-            .signature_nominal_delaying_candidate_hash(false);
+        let sig_nom_del_cand_hash = ctx.signature_nominal_delaying_candidate_hash(false);
 
         let con_set = ctx
             .process_context_mut()
@@ -233,7 +227,10 @@ impl CompletionTaskHandleAlgorithm {
 
             let mut not_connected_nominal = false;
             // CSuccessorIterator succIt(testIndi->getSuccessorIterator());
-            let _succ_it = ctx.process_context().node(test_indi).get_successor_iterator();
+            let _succ_it = ctx
+                .process_context()
+                .node(test_indi)
+                .get_successor_iterator();
             // W6-DEFER[api]: CSuccessorIterator::hasNext is unported (zero-size stub).
             // Faithful logic: if !succIt.has_next() { not_connected_nominal = true; }
             let _ = &mut not_connected_nominal;
@@ -243,8 +240,8 @@ impl CompletionTaskHandleAlgorithm {
                     self.get_delay_processing_blocking_nominal_node(test_indi, ctx);
                 if blocker_nominal_indi_node.is_some() {
                     // CProcessingDataBox* processingDataBox = calcAlgContext->getProcessingDataBox();
-                    let _delaying_nominal_processing_queue = ctx
-                        .get_delaying_nominal_processing_queue(true);
+                    let _delaying_nominal_processing_queue =
+                        ctx.get_delaying_nominal_processing_queue(true);
                     // W6-DEFER[api]: CIndividualUnsortedProcessingQueue::insertIndiviudalProcessNode
                     // is unported. Faithful: delayingNominalProcessingQueu.insert_indiviudal_process_node(test_indi);
                     ctx.process_context_mut()
@@ -384,38 +381,122 @@ impl CompletionTaskHandleAlgorithm {
 
     /// Port of `isLabelConceptSubSetIgnoreNominals`. `.cpp` 17396–17460.
     ///
-    /// The branch selection (direct-lookup vs merge-walk) is ported faithfully; the
-    /// two inner walks iterate `CReapplyConceptLabelSetIterator`, an unported stub,
-    /// so the per-concept comparisons are `W6-DEFER[api]` with logic in-comment.
     pub fn is_label_concept_sub_set_ignore_nominals(
         &mut self,
         sub_concept_set: LabelSetId,
         super_concept_set: LabelSetId,
-        clash_flag: Option<&mut bool>,
+        mut clash_flag: Option<&mut bool>,
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // STATINC(LABELCONCEPTSUBSETTESTCOUNT, calcAlgContext);
-        let sub_con_set_count = ctx.process_context().label_set(sub_concept_set).get_concept_count();
-        let super_con_set_count =
-            ctx.process_context().label_set(super_concept_set).get_concept_count();
+        let sub_con_set_count = ctx
+            .process_context()
+            .label_set(sub_concept_set)
+            .get_concept_count();
+        let super_con_set_count = ctx
+            .process_context()
+            .label_set(super_concept_set)
+            .get_concept_count();
         let threshold_factor = self.map_comparison_direct_lookup_factor;
         if sub_con_set_count * threshold_factor < super_con_set_count {
-            // W6-DEFER[api]: direct-lookup branch. Faithful logic:
-            //   subConSetIt = subConceptSet.get_concept_label_set_iterator(true,false,false);
-            //   while subConSetIt.has_value() {
-            //       subConDes = subConSetIt.get_concept_descriptor();
-            //       if superConceptSet.contains_concept_get_negated(subConDes.get_concept(), &mut containedNeg) {
-            //           if containedNeg != subConDes.get_negation() { *clashFlag = true; return false; }
-            //       } else if subConDes.get_concept().operator_code() != CCNOMINAL { return false; }
-            //       subConSetIt.move_next();
-            //   }
+            let mut sub_con_set_it = ctx.process_context().label_set_concept_label_set_iterator(
+                sub_concept_set,
+                true,
+                false,
+                false,
+            );
+            while sub_con_set_it.has_value() {
+                let sub_con_des = sub_con_set_it.get_concept_descriptor();
+                let sub_concept = ctx.process_context().con_desc(sub_con_des).get_concept();
+                let mut contained_negation = false;
+                if self.label_set_contains_concept_get_negated_resolved(
+                    super_concept_set,
+                    sub_concept,
+                    Some(&mut contained_negation),
+                    ctx,
+                ) {
+                    if contained_negation
+                        != ctx.process_context().con_desc(sub_con_des).is_negated()
+                    {
+                        if let Some(out) = clash_flag.as_deref_mut() {
+                            *out = true;
+                        }
+                        return false;
+                    }
+                } else if ctx
+                    .ontology_arenas()
+                    .concept(sub_concept)
+                    .get_operator_code()
+                    != CCNOMINAL
+                {
+                    return false;
+                }
+                sub_con_set_it.move_next(ctx.process_context());
+            }
         } else {
-            // W6-DEFER[api]: merge-walk branch over both sorted iterators (by concept tag).
-            // Faithful logic mirrors the C++ tag-merge: advance superConSetIt while
-            // superConTag < subConTag, compare tags/negations, treat CCNOMINAL-only
-            // misses as ignorable; on negation mismatch set *clashFlag and return false.
+            let mut sub_con_set_it = ctx.process_context().label_set_concept_label_set_iterator(
+                sub_concept_set,
+                true,
+                false,
+                false,
+            );
+            let mut super_con_set_it = ctx.process_context().label_set_concept_label_set_iterator(
+                super_concept_set,
+                true,
+                false,
+                false,
+            );
+            let mut super_con_des = super_con_set_it.get_concept_descriptor();
+            let mut super_con_tag = if super_con_set_it.has_value() {
+                super_con_set_it.get_data_tag(ctx.process_context(), ctx.ontology_arenas())
+            } else {
+                Cint64::MAX
+            };
+            if super_con_set_it.has_value() {
+                super_con_set_it.move_next(ctx.process_context());
+            }
+            while sub_con_set_it.has_value() {
+                let sub_con_des = sub_con_set_it.get_concept_descriptor();
+                let sub_con_tag =
+                    sub_con_set_it.get_data_tag(ctx.process_context(), ctx.ontology_arenas());
+
+                let mut concept_in_super_con_set = true;
+                while super_con_tag < sub_con_tag {
+                    if !super_con_set_it.has_value() {
+                        concept_in_super_con_set = false;
+                        break;
+                    }
+                    super_con_des = super_con_set_it.get_concept_descriptor();
+                    super_con_tag =
+                        super_con_set_it.get_data_tag(ctx.process_context(), ctx.ontology_arenas());
+                    super_con_set_it.move_next(ctx.process_context());
+                }
+                if sub_con_tag != super_con_tag {
+                    concept_in_super_con_set = false;
+                } else if ctx.process_context().con_desc(sub_con_des).is_negated()
+                    != ctx.process_context().con_desc(super_con_des).is_negated()
+                {
+                    if let Some(out) = clash_flag.as_deref_mut() {
+                        *out = true;
+                    }
+                    return false;
+                }
+
+                if !concept_in_super_con_set {
+                    let sub_concept = ctx.process_context().con_desc(sub_con_des).get_concept();
+                    if ctx
+                        .ontology_arenas()
+                        .concept(sub_concept)
+                        .get_operator_code()
+                        != CCNOMINAL
+                    {
+                        return false;
+                    }
+                }
+
+                sub_con_set_it.move_next(ctx.process_context());
+            }
         }
-        let _ = clash_flag;
         true
     }
 
@@ -424,19 +505,82 @@ impl CompletionTaskHandleAlgorithm {
         &mut self,
         concept_set1: LabelSetId,
         concept_set2: LabelSetId,
-        clash_flag: Option<&mut bool>,
+        mut clash_flag: Option<&mut bool>,
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // STATINC(LABELCONCEPTEQUALSETTESTCOUNT, calcAlgContext);
-        if let Some(out) = clash_flag {
+        if let Some(out) = clash_flag.as_deref_mut() {
             *out = false;
         }
-        // W6-DEFER[api]: both walks use CReapplyConceptLabelSetIterator (unported stub).
-        // Faithful logic: walk conSet1It/conSet2It in lockstep; skip nominal-tagged
-        // descriptors on either side (CCNOMINAL); for the remaining concepts require
-        // identical (concept, negation) pairs, else return false; on a nominal/nominal
-        // pair of the same concept with differing negation set *clashFlag and return false.
-        let _ = (concept_set1, concept_set2, &*ctx, CCNOMINAL);
+        let mut con_set1_it = ctx.process_context().label_set_concept_label_set_iterator(
+            concept_set1,
+            true,
+            false,
+            false,
+        );
+        let mut con_set2_it = ctx.process_context().label_set_concept_label_set_iterator(
+            concept_set2,
+            true,
+            false,
+            false,
+        );
+        while con_set1_it.has_value() || con_set2_it.has_value() {
+            if con_set1_it.has_value() && con_set2_it.has_value() {
+                let con_des1 = con_set1_it.get_concept_descriptor();
+                let con_des2 = con_set2_it.get_concept_descriptor();
+                let concept1 = ctx.process_context().con_desc(con_des1).get_concept();
+                let concept2 = ctx.process_context().con_desc(con_des2).get_concept();
+                let nominal1 =
+                    ctx.ontology_arenas().concept(concept1).get_operator_code() == CCNOMINAL;
+                let nominal2 =
+                    ctx.ontology_arenas().concept(concept2).get_operator_code() == CCNOMINAL;
+                if nominal1 && nominal2 {
+                    if concept1 == concept2
+                        && ctx.process_context().con_desc(con_des1).is_negated()
+                            != ctx.process_context().con_desc(con_des2).is_negated()
+                    {
+                        if let Some(out) = clash_flag.as_deref_mut() {
+                            *out = true;
+                        }
+                        return false;
+                    }
+                    con_set1_it.move_next(ctx.process_context());
+                    con_set2_it.move_next(ctx.process_context());
+                } else if nominal1 {
+                    con_set1_it.move_next(ctx.process_context());
+                } else if nominal2 {
+                    con_set2_it.move_next(ctx.process_context());
+                } else {
+                    if concept1 != concept2 {
+                        return false;
+                    }
+                    if ctx.process_context().con_desc(con_des1).is_negated()
+                        != ctx.process_context().con_desc(con_des2).is_negated()
+                    {
+                        if let Some(out) = clash_flag.as_deref_mut() {
+                            *out = true;
+                        }
+                        return false;
+                    }
+                    con_set1_it.move_next(ctx.process_context());
+                    con_set2_it.move_next(ctx.process_context());
+                }
+            } else if con_set1_it.has_value() {
+                let con_des1 = con_set1_it.get_concept_descriptor();
+                let concept1 = ctx.process_context().con_desc(con_des1).get_concept();
+                if ctx.ontology_arenas().concept(concept1).get_operator_code() != CCNOMINAL {
+                    return false;
+                }
+                con_set1_it.move_next(ctx.process_context());
+            } else {
+                let con_des2 = con_set2_it.get_concept_descriptor();
+                let concept2 = ctx.process_context().con_desc(con_des2).get_concept();
+                if ctx.ontology_arenas().concept(concept2).get_operator_code() != CCNOMINAL {
+                    return false;
+                }
+                con_set2_it.move_next(ctx.process_context());
+            }
+        }
         true
     }
 
@@ -574,16 +718,15 @@ impl CompletionTaskHandleAlgorithm {
                 }
             }
 
-            // CBlockingFollowSet* followSet = ancIndi->getBlockingFollowSet(false);
-            let _follow_set = ctx
-                .process_context_mut()
-                .node_mut(anc_indi)
-                .blocking_follow_set(false);
-            // W6-DEFER[api]: CBlockingFollowSet const-iterator is unported. Faithful:
-            //   if followSet { for blockedIndiNodeID in followSet {
-            //       locBlocked = self.get_localized_individual_by_id(blockedIndiNodeID, ctx);
-            //       self.propagate_individual_node_nominal_connection_flags_to_ancestors(locBlocked, flags, ctx);
-            //   } }
+            let follow_set = ctx.process_context().node_blocking_followers(anc_indi);
+            for blocked_indi_node_id in follow_set {
+                let loc_blocked = self.get_localized_individual_by_id(blocked_indi_node_id, ctx);
+                self.propagate_individual_node_nominal_connection_flags_to_ancestors(
+                    loc_blocked,
+                    nominal_propagation_flags,
+                    ctx,
+                );
+            }
 
             if ctx
                 .process_context()
@@ -598,8 +741,11 @@ impl CompletionTaskHandleAlgorithm {
                 for succ_indi_node_backward_dep in succ_back {
                     let has_succ = {
                         let pc = ctx.process_context();
-                        pc.node(anc_indi)
-                            .has_successor_individual_node(pc.node(succ_indi_node_backward_dep))
+                        IndividualProcessNode::has_successor_individual_node_in_context(
+                            pc,
+                            anc_indi,
+                            succ_indi_node_backward_dep,
+                        )
                     };
                     if has_succ
                         && !ctx
@@ -618,7 +764,11 @@ impl CompletionTaskHandleAlgorithm {
                 }
             }
 
-            if ctx.process_context().node(anc_indi).has_individual_ancestor() {
+            if ctx
+                .process_context()
+                .node(anc_indi)
+                .has_individual_ancestor()
+            {
                 anc_indi = self.get_ancestor_individual(&mut anc_indi, ctx);
                 let loc_anc_indi = self.get_localized_individual(anc_indi, false, ctx);
                 anc_indi = loc_anc_indi;
@@ -649,16 +799,17 @@ impl CompletionTaskHandleAlgorithm {
         {
             if self.conf_exact_nominal_dependency_tracking {
                 let copy_succ_conn_nom_set = ctx
-                    .process_context_mut()
-                    .node_mut(copy_from_indi_node)
-                    .successor_nominal_connection_set(false);
-                if copy_succ_conn_nom_set.is_some() {
-                    // W6-DEFER[api]: CSuccessorConnectedNominalSet iteration unported. Faithful:
-                    //   for nominalID in copySuccConnNomSet {
-                    //       if !indi.has_successor_connection_to_nominal(nominalID) {
-                    //           self.propagate_individual_node_connected_nominal_to_ancestors(indi, nominalID, ctx);
-                    //       }
-                    //   }
+                    .process_context()
+                    .node_successor_connected_nominals(copy_from_indi_node);
+                for nominal_id in copy_succ_conn_nom_set {
+                    if !ctx
+                        .process_context()
+                        .node_has_successor_connection_to_nominal(indi, nominal_id)
+                    {
+                        self.propagate_individual_node_connected_nominal_to_ancestors(
+                            indi, nominal_id, ctx,
+                        );
+                    }
                 }
             }
             if copy_is_nominal {
@@ -667,12 +818,13 @@ impl CompletionTaskHandleAlgorithm {
                     .node(copy_from_indi_node)
                     .nominal_individual();
                 if self.conf_exact_nominal_dependency_tracking && nominal_indi.is_some() {
-                    let nominal_id =
-                        -ctx.ontology_arenas().individual(nominal_indi).get_individual_id();
+                    let nominal_id = -ctx
+                        .ontology_arenas()
+                        .individual(nominal_indi)
+                        .get_individual_id();
                     if !ctx
-                        .process_context_mut()
-                        .node_mut(indi)
-                        .has_successor_connection_to_nominal(nominal_id)
+                        .process_context()
+                        .node_has_successor_connection_to_nominal(indi, nominal_id)
                     {
                         self.propagate_individual_node_connected_nominal_to_ancestors(
                             indi, nominal_id, ctx,
@@ -720,17 +872,15 @@ impl CompletionTaskHandleAlgorithm {
         let mut anc_indi = indi;
         while anc_indi.is_some()
             && !ctx
-                .process_context_mut()
-                .node_mut(anc_indi)
-                .has_successor_connection_to_nominal(nominal_id)
+                .process_context()
+                .node_has_successor_connection_to_nominal(anc_indi, nominal_id)
         {
             self.mark_individual_node_backend_non_concept_set_related_processing(anc_indi, ctx);
             ctx.process_context_mut()
                 .node_mut(anc_indi)
                 .add_processing_restriction_flags(nominal_propagation_flags);
             ctx.process_context_mut()
-                .node_mut(anc_indi)
-                .add_successor_connection_to_nominal(nominal_id);
+                .node_add_successor_connection_to_nominal(anc_indi, nominal_id);
 
             let proc_block_linker: Vec<NodeId> = ctx
                 .process_context()
@@ -739,9 +889,8 @@ impl CompletionTaskHandleAlgorithm {
                 .to_vec();
             for blocked_indi_node in proc_block_linker {
                 if !ctx
-                    .process_context_mut()
-                    .node_mut(blocked_indi_node)
-                    .has_successor_connection_to_nominal(nominal_id)
+                    .process_context()
+                    .node_has_successor_connection_to_nominal(blocked_indi_node, nominal_id)
                 {
                     let loc_blocked = self.get_localized_individual(blocked_indi_node, true, ctx);
                     self.propagate_individual_node_connected_nominal_to_ancestors(
@@ -759,9 +908,8 @@ impl CompletionTaskHandleAlgorithm {
                 .to_vec();
             for blocked_indi_node in blocked_linker {
                 if !ctx
-                    .process_context_mut()
-                    .node_mut(blocked_indi_node)
-                    .has_successor_connection_to_nominal(nominal_id)
+                    .process_context()
+                    .node_has_successor_connection_to_nominal(blocked_indi_node, nominal_id)
                 {
                     let loc_blocked = self.get_localized_individual(blocked_indi_node, true, ctx);
                     self.propagate_individual_node_connected_nominal_to_ancestors(
@@ -772,16 +920,15 @@ impl CompletionTaskHandleAlgorithm {
                 }
             }
 
-            // CBlockingFollowSet* followSet = ancIndi->getBlockingFollowSet(false);
-            let _follow_set = ctx
-                .process_context_mut()
-                .node_mut(anc_indi)
-                .blocking_follow_set(false);
-            // W6-DEFER[api]: CBlockingFollowSet const-iterator unported. Faithful:
-            //   if followSet { for blockedIndiNodeID in followSet {
-            //       locBlocked = self.get_localized_individual_by_id(blockedIndiNodeID, ctx);
-            //       self.propagate_individual_node_connected_nominal_to_ancestors(locBlocked, nominal_id, ctx);
-            //   } }
+            let follow_set = ctx.process_context().node_blocking_followers(anc_indi);
+            for blocked_indi_node_id in follow_set {
+                let loc_blocked = self.get_localized_individual_by_id(blocked_indi_node_id, ctx);
+                self.propagate_individual_node_connected_nominal_to_ancestors(
+                    loc_blocked,
+                    nominal_id,
+                    ctx,
+                );
+            }
 
             if ctx
                 .process_context()
@@ -796,14 +943,19 @@ impl CompletionTaskHandleAlgorithm {
                 for succ_indi_node_backward_dep in succ_back {
                     let has_succ = {
                         let pc = ctx.process_context();
-                        pc.node(anc_indi)
-                            .has_successor_individual_node(pc.node(succ_indi_node_backward_dep))
+                        IndividualProcessNode::has_successor_individual_node_in_context(
+                            pc,
+                            anc_indi,
+                            succ_indi_node_backward_dep,
+                        )
                     };
                     if has_succ
                         && !ctx
-                            .process_context_mut()
-                            .node_mut(succ_indi_node_backward_dep)
-                            .has_successor_connection_to_nominal(nominal_id)
+                            .process_context()
+                            .node_has_successor_connection_to_nominal(
+                                succ_indi_node_backward_dep,
+                                nominal_id,
+                            )
                     {
                         let loc_succ =
                             self.get_localized_individual(succ_indi_node_backward_dep, true, ctx);
@@ -814,7 +966,11 @@ impl CompletionTaskHandleAlgorithm {
                 }
             }
 
-            if ctx.process_context().node(anc_indi).has_individual_ancestor() {
+            if ctx
+                .process_context()
+                .node(anc_indi)
+                .has_individual_ancestor()
+            {
                 anc_indi = self.get_ancestor_individual(&mut anc_indi, ctx);
                 let loc_anc_indi = self.get_localized_individual(anc_indi, false, ctx);
                 anc_indi = loc_anc_indi;
@@ -848,8 +1004,7 @@ impl CompletionTaskHandleAlgorithm {
                 .get_connection_successor_iterator();
             while con_succ_it.has_next() {
                 let neighbour_id = con_succ_it.next_successor_connection_id(true);
-                let neighbour_indi_node =
-                    self.get_up_to_date_individual_by_id(neighbour_id, ctx);
+                let neighbour_indi_node = self.get_up_to_date_individual_by_id(neighbour_id, ctx);
                 if !ctx
                     .process_context()
                     .node(neighbour_indi_node)
@@ -914,21 +1069,18 @@ impl CompletionTaskHandleAlgorithm {
 
     /// Port of `createNewTemporaryNominalIndividual`. `.cpp` 22497–22504.
     ///
-    /// W6-DEFER[api]: allocates a `CIndividual` from the task memory pool and registers
-    /// it in the databox `CIndividualVector` (`setLocalData`) — both unported.
+    /// KONCLUDE-PORT-NOTE[ownership]: the port's ontology arena is the live
+    /// `CIndividualVector` analogue. The C++ id-keyed `setLocalData(indiId,newIndi)`
+    /// becomes allocation of an arena individual whose `getIndividualID()` is
+    /// `indi_id`; users resolve it by scanning the arena for the matching id.
     pub fn create_new_temporary_nominal_individual(
         &mut self,
         indi_id: Cint64,
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> IndividualId {
-        // CIndividualVector* indiVector = calcAlgContext->getProcessingDataBox()->getIndividualVector(true);
-        // newIndi = CObjectAllocator<CIndividual>::allocateAndConstruct(taskMemMan);
-        // newIndi.init_individual(indi_id);
-        // newIndi.set_temporary_individual(true);
-        // indiVector.set_local_data(indi_id, newIndi);
-        // return newIndi;
-        let _ = (indi_id, &*ctx);
-        IndividualId::NONE
+        let mut individual = Individual::new(indi_id);
+        individual.set_temporary_individual(true);
+        ctx.ontology_arenas_mut().alloc_individual(individual)
     }
 
     /// Port of `getLocalizedForcedBackendInitializedNominalIndividualNode(cint64, ...)`. `.cpp` 25468–25471.
@@ -938,7 +1090,10 @@ impl CompletionTaskHandleAlgorithm {
         ctx: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
         let different_indi_node = self.get_corrected_nominal_individual_node(-nominal_id, ctx);
-        self.get_localized_forced_backend_initialized_nominal_individual_node(different_indi_node, ctx)
+        self.get_localized_forced_backend_initialized_nominal_individual_node(
+            different_indi_node,
+            ctx,
+        )
     }
 
     /// Port of `getLocalizedForcedBackendInitializedNominalIndividualNode(CIndividualProcessNode*, ...)`. `.cpp` 25473–25490.

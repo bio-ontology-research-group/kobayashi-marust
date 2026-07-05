@@ -25,8 +25,11 @@
 #![allow(dead_code)]
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::ConceptId;
+use super::context::ProcessContext;
 use super::databox::ProcessingDataBox;
 use super::node_resolution::IndividualProcessNodeVector;
+use super::stubs::{ConceptVector, IndividualVector};
 
 impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::CProcessingDataBox`.
@@ -41,11 +44,10 @@ impl ProcessingDataBox {
         let mut b = Self::new();
         // `.cpp` 33: mProcessContext(processContext)
         b.process_context = process_context;
-        // W2-DEFER[api]: mIndiProcessVector =
-        //   CObjectParameterizingAllocator<CIndividualProcessNodeVector,...>::
-        //   allocateAndConstructAndParameterize(... , mProcessContext);
-        // (the per-test arena allocation of the node vector is owned by the
-        // not-yet-ported CProcessContext) — left as `Id::NONE`.
+        // `.cpp` 34: mIndiProcessVector = allocate CIndividualProcessNodeVector.
+        // The port stores `mIndiProcessVector` by value; `ProcessingDataBox::new`
+        // already constructs the empty vector that C++ allocates from the process
+        // context pool.
         // `.cpp` 141: mNextSatResSuccExtIndividualNodeID = -1
         b.next_sat_res_succ_ext_individual_node_id = -1;
         // `.cpp` 142: mNextPropagationID = 1
@@ -68,20 +70,50 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::initProcessingDataBox(CConcreteOntology*)`.
     /// `.cpp` 268–275.
     pub fn init_processing_data_box_ontology(&mut self, ontology: Cint64) -> &mut Self {
+        // KONCLUDE-PORT-NOTE[api]: `CConcreteOntology` is still opaque in this
+        // layer, so this compatibility entry point cannot dereference TBox/ABox.
+        // `init_processing_data_box_ontology_resolved` below is the exact port
+        // target once the caller has the four getter results.
+        self.init_processing_data_box_ontology_resolved(
+            ontology,
+            ConceptId::NONE,
+            ConceptId::NONE,
+            Id::NONE,
+            Id::NONE,
+        )
+    }
+
+    /// Port-facing resolved form of
+    /// `CProcessingDataBox::initProcessingDataBox(CConcreteOntology*)`.
+    ///
+    /// The C++ body dereferences `ontology` immediately:
+    /// `.cpp` 269–273 assign `mOntology`, `mOntologyTopConcept`,
+    /// `mOntologyTopDataRangeConcept`, `mUseExtendedConceptVector`, and
+    /// `mUseIndiVector`. The current Rust layer still carries
+    /// `CConcreteOntology*` as an opaque `Cint64`, so this method receives the
+    /// four already-resolved getter results and performs the exact DB-1 field
+    /// updates without manufacturing ids.
+    pub fn init_processing_data_box_ontology_resolved(
+        &mut self,
+        ontology: Cint64,
+        top_concept: ConceptId,
+        top_data_range_concept: ConceptId,
+        concept_vector: Id<ConceptVector>,
+        individual_vector: Id<IndividualVector>,
+    ) -> &mut Self {
         // `.cpp` 269: mOntology = ontology;
         self.ontology = ontology;
-        // W2-DEFER[api]: mOntologyTopConcept = mOntology->getTBox()->getTopConcept();
-        // (CConcreteOntology / CTBox not yet ported) — left as `Id::NONE`.
-        self.ontology_top_concept = Id::NONE;
-        // W2-DEFER[api]: mOntologyTopDataRangeConcept =
+        // `.cpp` 270: mOntologyTopConcept = mOntology->getTBox()->getTopConcept();
+        self.ontology_top_concept = top_concept;
+        // `.cpp` 271: mOntologyTopDataRangeConcept =
         //   mOntology->getTBox()->getTopDataRangeConcept();
-        self.ontology_top_data_range_concept = Id::NONE;
-        // W2-DEFER[api]: mUseExtendedConceptVector =
+        self.ontology_top_data_range_concept = top_data_range_concept;
+        // `.cpp` 272: mUseExtendedConceptVector =
         //   mOntology->getTBox()->getConceptVector(false);
-        self.use_extended_concept_vector = Id::NONE;
-        // W2-DEFER[api]: mUseIndiVector =
+        self.use_extended_concept_vector = concept_vector;
+        // `.cpp` 273: mUseIndiVector =
         //   mOntology->getABox()->getIndividualVector(false);
-        self.use_indi_vector = Id::NONE;
+        self.use_indi_vector = individual_vector;
         self
     }
 
@@ -100,12 +132,39 @@ impl ProcessingDataBox {
     /// `Option<&ProcessingDataBox>`. The reset block (`.cpp` 286–369) runs
     /// unconditionally; the copy block (`.cpp` 370–538) runs only when a parent is
     /// present.
-    pub fn init_processing_data_box_parent(&mut self, parent: Option<&ProcessingDataBox>) -> &mut Self {
+    pub fn init_processing_data_box_parent(
+        &mut self,
+        parent: Option<&ProcessingDataBox>,
+    ) -> &mut Self {
+        self.init_processing_data_box_parent_internal(parent, None)
+    }
+
+    /// Context-threaded port of
+    /// `CProcessingDataBox::initProcessingDataBox(CProcessingDataBox*)`.
+    ///
+    /// Konclude allocates DB-5 saturation satellites from `mProcessContext` when
+    /// the parent owns one, then initializes the child satellite from the parent
+    /// object. Rust keeps those satellites in `ProcessContext` arenas, so this
+    /// entry point is the exact parent-copy path for arena-backed satellites.
+    pub fn init_processing_data_box_parent_with_process_context(
+        &mut self,
+        parent: Option<&ProcessingDataBox>,
+        process_context: &mut ProcessContext,
+    ) -> &mut Self {
+        self.init_processing_data_box_parent_internal(parent, Some(process_context))
+    }
+
+    fn init_processing_data_box_parent_internal(
+        &mut self,
+        parent: Option<&ProcessingDataBox>,
+        mut process_context: Option<&mut ProcessContext>,
+    ) -> &mut Self {
         // `.cpp` 285: CIndividualProcessNodeVector* prevIndiProcVec = nullptr;
         // KONCLUDE-PORT-NOTE[ownership]: the node vector is now a real ported type held
         // BY VALUE on the databox (node-resolution keystone); this save-local captures a
         // clone of the parent's, preserving the existing (deferred) save/restore body.
-        let mut prev_indi_proc_vec: IndividualProcessNodeVector = IndividualProcessNodeVector::new();
+        let mut prev_indi_proc_vec: IndividualProcessNodeVector =
+            IndividualProcessNodeVector::new();
 
         // --- unconditional reset (`.cpp` 286–369) ---
         self.use_indi_process_queue = Id::NONE; // 286
@@ -118,10 +177,10 @@ impl ProcessingDataBox {
         self.individual_node_resolve_linker.clear(); // 293
         self.blockable_individual_node_updated_linker.clear(); // 294
         self.last_con_des_indi_reapplication = false; // 295
-        self.indi_process_node_linker.clear(); // 296
+        self.indi_process_node_linker = Id::NONE; // 296
         self.rem_sat_update_linker.clear(); // 297
         self.rem_sat_indi_node_linker.clear(); // 298
-        self.rem_sat_indi_succ_link_data_linker.clear(); // 299
+        self.rem_sat_indi_succ_link_data_linker = Id::NONE; // 299
         self.rem_con_sat_des.clear(); // 300
         self.rem_con_des.clear(); // 301
         self.rem_role_sat_process_linker.clear(); // 302
@@ -130,11 +189,13 @@ impl ProcessingDataBox {
         self.indi_saturation_completion_node_linker.clear(); // 305
         self.indi_saturation_completed_node_linker.clear(); // 306
         self.indi_saturation_analysing_node_linker.clear(); // 307
-        self.saturation_atmost_merging_process_linker.clear(); // 308
-        self.nominal_delayed_indi_saturation_process_node_linker.clear(); // 309
-        self.disjunct_common_concept_extract_processing_linker.clear(); // 310
+        self.saturation_atmost_merging_process_linker = Id::NONE; // 308
+        self.nominal_delayed_indi_saturation_process_node_linker
+            .clear(); // 309
+        self.disjunct_common_concept_extract_processing_linker
+            .clear(); // 310
         self.rem_con_sat_process_linker.clear(); // 311
-        self.indi_saturation_process_vector = Id::NONE; // 312
+        self.indi_saturation_process_vector = None; // 312
         self.sat_critical_indi_node_proc_queue = Id::NONE; // 313
         self.sat_succ_ext_ind_node_proc_queue = Id::NONE; // 314
         self.sat_critical_indi_node_con_test_set = Id::NONE; // 315
@@ -185,13 +246,15 @@ impl ProcessingDataBox {
         self.possible_instance_individual_merged_count = 0; // 360
         self.possible_instance_individual_current_merging_count = 0; // 361
         self.last_merged_possible_instance_individual_linker.clear(); // 362
-        self.current_merged_possible_instance_individual_linkers_linker.clear(); // 363
+        self.current_merged_possible_instance_individual_linkers_linker
+            .clear(); // 363
         self.last_backend_cache_integrated_indi_node_linker.clear(); // 364
         self.backend_cache_integrated_individual_node_count = 0; // 365
         self.backend_cache_integrated_same_individual_node_count = 0; // 366
         self.local_indi_vector = Id::NONE; // 367
         self.backend_cache_update_individuals_initialized = false; // 368
-        self.representative_neighbour_expansion_individual_node_linker.clear(); // 369
+        self.representative_neighbour_expansion_individual_node_linker
+            .clear(); // 369
 
         // --- copy block: parent → child (`.cpp` 370–538) ---
         if let Some(parent) = parent {
@@ -205,12 +268,15 @@ impl ProcessingDataBox {
                 parent.possible_instance_individual_current_merging_count; // 374
             self.remaining_possible_instance_individual_merging_limit =
                 parent.remaining_possible_instance_individual_merging_limit; // 375
-            self.last_merged_possible_instance_individual_linker =
-                parent.last_merged_possible_instance_individual_linker.clone(); // 376
-            self.current_merged_possible_instance_individual_linkers_linker =
-                parent.current_merged_possible_instance_individual_linkers_linker.clone(); // 377
-            self.last_backend_cache_integrated_indi_node_linker =
-                parent.last_backend_cache_integrated_indi_node_linker.clone(); // 378
+            self.last_merged_possible_instance_individual_linker = parent
+                .last_merged_possible_instance_individual_linker
+                .clone(); // 376
+            self.current_merged_possible_instance_individual_linkers_linker = parent
+                .current_merged_possible_instance_individual_linkers_linker
+                .clone(); // 377
+            self.last_backend_cache_integrated_indi_node_linker = parent
+                .last_backend_cache_integrated_indi_node_linker
+                .clone(); // 378
             self.backend_cache_integrated_individual_node_count =
                 parent.backend_cache_integrated_individual_node_count; // 379
             self.backend_cache_integrated_same_individual_node_count =
@@ -279,10 +345,8 @@ impl ProcessingDataBox {
                 parent.use_blocking_indi_node_linked_candidate_hash; // 415
             self.use_blocking_indi_node_linked_candidate_hash =
                 self.prev_blocking_indi_node_linked_candidate_hash; // 416
-            self.prev_signature_blocking_review_set =
-                parent.use_signature_blocking_review_set; // 417
-            self.use_signature_blocking_review_set =
-                self.prev_signature_blocking_review_set; // 418
+            self.prev_signature_blocking_review_set = parent.use_signature_blocking_review_set; // 417
+            self.use_signature_blocking_review_set = self.prev_signature_blocking_review_set; // 418
             self.prev_early_indi_react_pro_queue = parent.use_early_indi_react_pro_queue; // 419
             self.use_early_indi_react_pro_queue = self.prev_early_indi_react_pro_queue; // 420
             self.prev_late_indi_react_pro_queue = parent.use_late_indi_react_pro_queue; // 421
@@ -355,7 +419,7 @@ impl ProcessingDataBox {
             self.constructed_indi_node = parent.constructed_indi_node; // 469
             self.last_processing_indi_node = parent.last_processing_indi_node; // 470
             self.last_processing_con_des = parent.last_processing_con_des; // 471
-            self.indi_process_node_linker = parent.indi_process_node_linker.clone(); // 472
+            self.indi_process_node_linker = parent.indi_process_node_linker; // 472
             self.multiple_construction_indi_nodes = parent.multiple_construction_indi_nodes; // 473
             self.constructed_indi_node_initialized = parent.constructed_indi_node_initialized; // 474
             self.maximum_deterministic_branch_tag = parent.maximum_deterministic_branch_tag; // 475
@@ -403,52 +467,367 @@ impl ProcessingDataBox {
                 parent.indi_saturation_completed_node_linker.clone(); // 509
             self.indi_saturation_analysing_node_linker =
                 parent.indi_saturation_analysing_node_linker.clone(); // 510
-            self.disjunct_common_concept_extract_processing_linker =
-                parent.disjunct_common_concept_extract_processing_linker.clone(); // 511
-            self.nominal_delayed_indi_saturation_process_node_linker =
-                parent.nominal_delayed_indi_saturation_process_node_linker.clone(); // 512
+            self.disjunct_common_concept_extract_processing_linker = parent
+                .disjunct_common_concept_extract_processing_linker
+                .clone(); // 511
+            self.nominal_delayed_indi_saturation_process_node_linker = parent
+                .nominal_delayed_indi_saturation_process_node_linker
+                .clone(); // 512
             self.saturation_atmost_merging_process_linker =
                 parent.saturation_atmost_merging_process_linker.clone(); // 513
             self.use_indi_vector = parent.use_indi_vector; // 514
 
             self.backend_cache_update_individuals_initialized =
                 parent.backend_cache_update_individuals_initialized; // 516
-            self.representative_neighbour_expansion_individual_node_linker =
-                parent.representative_neighbour_expansion_individual_node_linker.clone(); // 517
+            self.representative_neighbour_expansion_individual_node_linker = parent
+                .representative_neighbour_expansion_individual_node_linker
+                .clone(); // 517
 
             // `.cpp` 519–536: lazy-init the saturation satellites from the parent's.
-            // W2-DEFER[api]: the `getX(true)` localised getters (DB-2/DB-5) and the
-            // `referenceVector`/`init*` methods on the not-yet-ported saturation
-            // container classes. Guards preserved; bodies are no-ops for now.
-            if parent.indi_saturation_process_vector.is_some() {
-                // W2-DEFER[api]: getIndividualSaturationProcessNodeVector(true)
-                //   ->referenceVector(parent.mIndiSaturationProcessVector);
+            if let Some(parent_vec) = parent.indi_saturation_process_vector.as_ref() {
+                self.individual_saturation_process_node_vector(true)
+                    .expect("create=true yields CIndividualSaturationProcessNodeVector")
+                    .reference_vector(parent_vec);
             }
-            if parent.sat_influenced_nominal_set.is_some() {
-                // W2-DEFER[api]: getSaturationInfluencedNominalSet(true)
-                //   ->initInfluencedNominalSet(parent.mSatInfluencedNominalSet);
-            }
-            if parent.sat_nominal_dependent_node_hash.is_some() {
-                // W2-DEFER[api]: getSaturationNominalDependentNodeHash(true)
-                //   ->initNominalDependentNodeHash(parent.mSatNominalDependentNodeHash);
-            }
-            if parent.sat_critical_indi_node_con_test_set.is_some() {
-                // W2-DEFER[api]: getSaturationCriticalIndividualNodeConceptTestSet(true)
-                //   ->initIndividualNodeConceptTestSet(parent.mSatCriticalIndiNodeConTestSet);
-            }
-            if parent.sat_succ_ext_ind_node_proc_queue.is_some() {
-                // W2-DEFER[api]: getSaturationSucessorExtensionIndividualNodeProcessingQueue(true)
-                //   ->initProcessingQueue(parent.mSatSuccExtIndNodeProcQueue);
-            }
-            if parent.sat_critical_indi_node_proc_queue.is_some() {
-                // W2-DEFER[api]: getSaturationCriticalIndividualNodeProcessingQueue(true)
-                //   ->initProcessingQueue(parent.mSatCriticalIndiNodeProcQueue);
+            if let Some(ctx) = process_context.as_deref_mut() {
+                self.copy_parent_saturation_satellites(parent, ctx);
             }
         }
-        // `.cpp` 539: mIndiProcessVector->referenceVector(prevIndiProcVec);
-        // W2-DEFER[api]: `referenceVector` on the not-yet-ported
-        // CIndividualProcessNodeVector; the prev-vector handle is captured above.
-        let _ = prev_indi_proc_vec;
+        // `.cpp` 539: mIndiProcessVector->referenceVector(prevIndiProcVec).
+        // The vector is owned by value in Rust, so reference-vector handoff is a
+        // content clone from the saved parent vector.
+        self.indi_process_vector = prev_indi_proc_vec;
         self
+    }
+
+    fn copy_parent_saturation_satellites(
+        &mut self,
+        parent: &ProcessingDataBox,
+        process_context: &mut ProcessContext,
+    ) {
+        if parent.sat_influenced_nominal_set.is_some() {
+            let parent_set = process_context
+                .sat_influenced_nominal_set(parent.sat_influenced_nominal_set)
+                .clone();
+            let child_set =
+                process_context.processing_data_box_saturation_influenced_nominal_set(self, true);
+            process_context
+                .sat_influenced_nominal_set_mut(child_set)
+                .init_influenced_nominal_set(Some(&parent_set));
+        }
+        if parent.sat_nominal_dependent_node_hash.is_some() {
+            let parent_hash = process_context
+                .sat_nominal_dependent_node_hash(parent.sat_nominal_dependent_node_hash)
+                .clone();
+            let child_hash = process_context
+                .processing_data_box_saturation_nominal_dependent_node_hash(self, true);
+            process_context
+                .sat_nominal_dependent_node_hash_mut(child_hash)
+                .init_nominal_dependent_node_hash(Some(&parent_hash));
+        }
+        if parent.sat_critical_indi_node_con_test_set.is_some() {
+            let parent_set = process_context
+                .sat_critical_ind_node_con_test_set(parent.sat_critical_indi_node_con_test_set)
+                .clone();
+            let child_set = process_context
+                .processing_data_box_saturation_critical_individual_node_concept_test_set(
+                    self, true,
+                );
+            process_context
+                .sat_critical_ind_node_con_test_set_mut(child_set)
+                .init_individual_node_concept_test_set(Some(&parent_set));
+        }
+        if parent.sat_succ_ext_ind_node_proc_queue.is_some() {
+            let parent_queue = process_context
+                .sat_succ_ext_ind_node_proc_queue(parent.sat_succ_ext_ind_node_proc_queue)
+                .clone();
+            let child_queue = process_context
+                .processing_data_box_saturation_successor_extension_individual_node_processing_queue(
+                    self, true,
+                );
+            process_context
+                .sat_succ_ext_ind_node_proc_queue_mut(child_queue)
+                .init_processing_queue(Some(&parent_queue));
+        }
+        if parent.sat_critical_indi_node_proc_queue.is_some() {
+            let parent_queue = process_context
+                .sat_critical_ind_node_proc_queue(parent.sat_critical_indi_node_proc_queue)
+                .clone();
+            let child_queue = process_context
+                .processing_data_box_saturation_critical_individual_node_processing_queue(
+                    self, true,
+                );
+            process_context
+                .sat_critical_ind_node_proc_queue_mut(child_queue)
+                .init_processing_queue(Some(&parent_queue));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{NodeId, SatNodeId};
+    use super::*;
+
+    #[test]
+    fn db1_parent_init_references_parent_individual_process_vector() {
+        let mut parent = ProcessingDataBox::new();
+        let pos_node = NodeId::new(11);
+        let neg_node = NodeId::new(12);
+        parent
+            .individual_process_node_vector_mut()
+            .set_local_data(5, pos_node)
+            .set_local_data(-3, neg_node);
+
+        let mut child = ProcessingDataBox::new();
+        child.init_processing_data_box_parent(Some(&parent));
+
+        assert_eq!(child.individual_process_node_vector().get_data(5), pos_node);
+        assert_eq!(
+            child.individual_process_node_vector().get_data(-3),
+            neg_node
+        );
+
+        child
+            .individual_process_node_vector_mut()
+            .set_local_data(5, NodeId::new(99));
+        assert_eq!(
+            parent.individual_process_node_vector().get_data(5),
+            pos_node
+        );
+        assert_eq!(
+            child.individual_process_node_vector().get_data(5),
+            NodeId::new(99)
+        );
+    }
+
+    #[test]
+    fn db1_parent_init_references_parent_individual_saturation_vector() {
+        let mut parent = ProcessingDataBox::new();
+        let parent_node = SatNodeId::new(17);
+        parent
+            .individual_saturation_process_node_vector(true)
+            .expect("create=true yields CIndividualSaturationProcessNodeVector")
+            .set_data(9, parent_node);
+
+        let mut child = ProcessingDataBox::new();
+        child.init_processing_data_box_parent(Some(&parent));
+
+        assert_eq!(
+            child
+                .individual_saturation_process_node_vector_ref()
+                .expect("parent vector is referenced")
+                .get_data(9),
+            parent_node
+        );
+        assert_eq!(
+            child
+                .individual_saturation_process_node_vector_ref()
+                .expect("parent vector is referenced")
+                .get_item_count(),
+            10
+        );
+
+        child
+            .individual_saturation_process_node_vector(true)
+            .expect("create=true yields CIndividualSaturationProcessNodeVector")
+            .set_data(9, SatNodeId::new(99));
+        assert_eq!(
+            parent
+                .individual_saturation_process_node_vector_ref()
+                .expect("parent keeps its own vector")
+                .get_data(9),
+            parent_node
+        );
+    }
+
+    #[test]
+    fn db1_parent_init_with_context_copies_real_saturation_satellites() {
+        let mut context = ProcessContext::new();
+        let mut parent = ProcessingDataBox::new();
+
+        let influenced =
+            context.processing_data_box_saturation_influenced_nominal_set(&mut parent, true);
+        context
+            .sat_influenced_nominal_set_mut(influenced)
+            .set_nominal_influenced(41);
+
+        let nominal_hash =
+            context.processing_data_box_saturation_nominal_dependent_node_hash(&mut parent, true);
+        let nominal_data = context.sat_nominal_dependent_node_hash_add_nominal_dependent_node(
+            nominal_hash,
+            17,
+            SatNodeId::new(21),
+            super::super::stubs::SaturationNominalConnectionType::NominalConnection,
+        );
+
+        let concept_set = context
+            .processing_data_box_saturation_critical_individual_node_concept_test_set(
+                &mut parent,
+                true,
+            );
+        context
+            .sat_critical_ind_node_con_test_set_mut(concept_set)
+            .insert_concept_tested_for_individual(ConceptId::new(7), SatNodeId::new(8));
+
+        let succ_queue = context
+            .processing_data_box_saturation_successor_extension_individual_node_processing_queue(
+                &mut parent,
+                true,
+            );
+        context
+            .sat_succ_ext_ind_node_proc_queue_mut(succ_queue)
+            .insert_process_individual(SatNodeId::new(31), 31)
+            .insert_process_individual(SatNodeId::new(32), 32)
+            .take_next_to_current_process_individual();
+
+        let critical_queue = context
+            .processing_data_box_saturation_critical_individual_node_processing_queue(
+                &mut parent,
+                true,
+            );
+        context
+            .sat_critical_ind_node_proc_queue_mut(critical_queue)
+            .insert_process_individual(SatNodeId::new(43), 43);
+
+        let mut child = ProcessingDataBox::new();
+        child.init_processing_data_box_parent_with_process_context(Some(&parent), &mut context);
+
+        assert!(child.sat_influenced_nominal_set.is_some());
+        assert_ne!(
+            child.sat_influenced_nominal_set,
+            parent.sat_influenced_nominal_set
+        );
+        assert!(context
+            .sat_influenced_nominal_set(child.sat_influenced_nominal_set)
+            .is_nominal_influenced(41));
+
+        assert!(child.sat_nominal_dependent_node_hash.is_some());
+        assert_ne!(
+            child.sat_nominal_dependent_node_hash,
+            parent.sat_nominal_dependent_node_hash
+        );
+        assert_eq!(
+            context
+                .sat_nominal_dependent_node_hash(child.sat_nominal_dependent_node_hash)
+                .get_nominal_dependent_node_data(17),
+            nominal_data
+        );
+
+        assert!(child.sat_critical_indi_node_con_test_set.is_some());
+        assert_ne!(
+            child.sat_critical_indi_node_con_test_set,
+            parent.sat_critical_indi_node_con_test_set
+        );
+        assert!(context
+            .sat_critical_ind_node_con_test_set(child.sat_critical_indi_node_con_test_set)
+            .is_concept_tested_for_individual(ConceptId::new(7), SatNodeId::new(8)));
+
+        assert!(child.sat_succ_ext_ind_node_proc_queue.is_some());
+        assert_ne!(
+            child.sat_succ_ext_ind_node_proc_queue,
+            parent.sat_succ_ext_ind_node_proc_queue
+        );
+        assert_eq!(
+            context
+                .sat_succ_ext_ind_node_proc_queue(child.sat_succ_ext_ind_node_proc_queue)
+                .get_current_process_individual(),
+            SatNodeId::new(32)
+        );
+        assert!(context
+            .sat_succ_ext_ind_node_proc_queue(child.sat_succ_ext_ind_node_proc_queue)
+            .is_individual_queued(SatNodeId::new(31), 31));
+
+        assert!(child.sat_critical_indi_node_proc_queue.is_some());
+        assert_ne!(
+            child.sat_critical_indi_node_proc_queue,
+            parent.sat_critical_indi_node_proc_queue
+        );
+        assert!(context
+            .sat_critical_ind_node_proc_queue(child.sat_critical_indi_node_proc_queue)
+            .is_individual_queued(43));
+    }
+
+    #[test]
+    fn db1_parent_init_with_context_leaves_absent_parent_satellites_absent() {
+        let mut context = ProcessContext::new();
+        let parent = ProcessingDataBox::new();
+        let mut child = ProcessingDataBox::new();
+
+        context.processing_data_box_saturation_influenced_nominal_set(&mut child, true);
+        context.processing_data_box_saturation_nominal_dependent_node_hash(&mut child, true);
+        context.processing_data_box_saturation_critical_individual_node_concept_test_set(
+            &mut child, true,
+        );
+        context
+            .processing_data_box_saturation_successor_extension_individual_node_processing_queue(
+                &mut child, true,
+            );
+        context.processing_data_box_saturation_critical_individual_node_processing_queue(
+            &mut child, true,
+        );
+
+        child.init_processing_data_box_parent_with_process_context(Some(&parent), &mut context);
+
+        assert!(child.sat_influenced_nominal_set.is_none());
+        assert!(child.sat_nominal_dependent_node_hash.is_none());
+        assert!(child.sat_critical_indi_node_con_test_set.is_none());
+        assert!(child.sat_succ_ext_ind_node_proc_queue.is_none());
+        assert!(child.sat_critical_indi_node_proc_queue.is_none());
+    }
+
+    #[test]
+    fn db1_constructor_initializes_individual_process_vector() {
+        let data_box = ProcessingDataBox::with_process_context(42);
+
+        assert_eq!(data_box.process_context, 42);
+        assert_eq!(
+            data_box.individual_process_node_vector().get_data(0),
+            NodeId::NONE
+        );
+    }
+
+    #[test]
+    fn db1_resolved_ontology_init_assigns_available_getter_results() {
+        let mut data_box = ProcessingDataBox::new();
+        let top_concept = ConceptId::new(17);
+        let top_data_range_concept = ConceptId::new(23);
+
+        data_box.init_processing_data_box_ontology_resolved(
+            101,
+            top_concept,
+            top_data_range_concept,
+            Id::NONE,
+            Id::NONE,
+        );
+
+        assert_eq!(data_box.ontology, 101);
+        assert_eq!(data_box.ontology_top_concept, top_concept);
+        assert_eq!(
+            data_box.ontology_top_data_range_concept,
+            top_data_range_concept
+        );
+        assert!(data_box.use_extended_concept_vector.is_none());
+        assert!(data_box.use_indi_vector.is_none());
+    }
+
+    #[test]
+    fn db1_parent_init_without_parent_resets_individual_process_vector() {
+        let mut data_box = ProcessingDataBox::new();
+        data_box
+            .individual_process_node_vector_mut()
+            .set_local_data(4, NodeId::new(21))
+            .set_local_data(-2, NodeId::new(22));
+
+        data_box.init_processing_data_box_parent(None);
+
+        assert_eq!(
+            data_box.individual_process_node_vector().get_data(4),
+            NodeId::NONE
+        );
+        assert_eq!(
+            data_box.individual_process_node_vector().get_data(-2),
+            NodeId::NONE
+        );
     }
 }

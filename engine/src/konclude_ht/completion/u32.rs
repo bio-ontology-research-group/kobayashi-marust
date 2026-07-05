@@ -103,12 +103,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // reuseDepNode = createREUSEINDIVIDUALDependency(processIndi, nullptr, nullptr, ctx)
-        let reuse_dep_node =
-            self.create_reuse_individual_dependency(process_indi, Id::NONE, Id::NONE, calc_alg_context);
+        let reuse_dep_node = self.create_reuse_individual_dependency(
+            process_indi,
+            Id::NONE,
+            Id::NONE,
+            calc_alg_context,
+        );
 
         // newTaskList = createDependendBranchingTaskList(2, ctx)
         // W6-DEFER[api]: the branching-task list is created via the Task subsystem.
-        let new_task_list: SatTaskId = self.create_dependend_branching_task_list(2, calc_alg_context);
+        let new_task_list: SatTaskId =
+            self.create_dependend_branching_task_list(2, calc_alg_context);
         // processorContext = calcAlgContext->getUsedTaskProcessorContext()
         // W6-DEFER[api]: the task-processor context is the scheduler handle.
         let processor_context: Cint64 = INVALID;
@@ -508,11 +513,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context()
                     .con_desc(last_con_des)
                     .get_concept();
-                calc_alg_context.ontology_arenas().concept(concept).get_concept_tag()
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag()
             } else {
                 0
             };
-            status_string_list.push(format!("direct-blocked by {} ({})", blocker_indi_id, last_con_tag));
+            status_string_list.push(format!(
+                "direct-blocked by {} ({})",
+                blocker_indi_id, last_con_tag
+            ));
         }
         if node.has_partial_processing_restriction_flags(IndividualProcessNode::PRF_INDIRECTBLOCKED)
         {
@@ -602,7 +613,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if node.has_partial_processing_restriction_flags(
             IndividualProcessNode::PRF_RETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED,
         ) {
-            status_string_list.push("completion-graph-caching-retest-due-to-modification".to_string());
+            status_string_list
+                .push("completion-graph-caching-retest-due-to-modification".to_string());
         }
         if node.has_partial_processing_restriction_flags(
             IndividualProcessNode::PRF_SUCCESSORNOMINALCONNECTION,
@@ -614,21 +626,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         ) {
             status_string_list.push("successor-new-nominal-connection".to_string());
         }
-        if node
-            .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_CONCRETEDATAINDINODE)
-        {
+        if node.has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_CONCRETEDATAINDINODE,
+        ) {
             status_string_list.push("data-node".to_string());
         }
-        if node
-            .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND)
-        {
+        if node.has_partial_processing_restriction_flags(
+            IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND,
+        ) {
             status_string_list.push("backend-synchronization".to_string());
         }
         if node.has_partial_processing_restriction_flags(
             IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
         ) {
-            status_string_list
-                .push("backend-synchronized-nominal-indirect-connections-expansion-blocked".to_string());
+            status_string_list.push(
+                "backend-synchronized-nominal-indirect-connections-expansion-blocked".to_string(),
+            );
         }
         if node.has_partial_processing_restriction_flags(
             IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED,
@@ -658,8 +671,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if node.has_partial_processing_restriction_flags(
             IndividualProcessNode::PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED,
         ) {
-            status_string_list
-                .push("incremental-expansion-compatibility-checking-due-to-modification".to_string());
+            status_string_list.push(
+                "incremental-expansion-compatibility-checking-due-to-modification".to_string(),
+            );
         }
         if node
             .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_REUSINGINDIVIDUAL)
@@ -734,13 +748,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let con_set_descriptors: &[ConDescId] = &[];
         for &con_des in con_set_descriptors.iter() {
             // concept = conDes->getConcept(); conTag = conDes->getConceptTag()
-            let concept = calc_alg_context.process_context().con_desc(con_des).get_concept();
-            let con_tag = calc_alg_context.ontology_arenas().concept(concept).get_concept_tag();
+            let concept = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .get_concept();
+            let con_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
             if con_tag != 1 {
                 // conceptString = conDes ? CConceptTextFormater::getConceptString(conDes->getConcept(), conDes->isNegated()) : "null"
                 // W6-DEFER[api]: CConceptTextFormater renders the concept term; the
                 // negation flag is the ported `is_negated()`.
-                let negated = calc_alg_context.process_context().con_desc(con_des).is_negated();
+                let negated = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des)
+                    .is_negated();
                 let mut concept_string = String::from("null");
                 let _ = negated;
 
@@ -817,12 +840,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // mDebugIndiModelStringList = indiStringList
             self.debug_indi_model_string_list = indi_string_list.clone();
             // mDebugIndiModelString = mDebugIndiModelStringList.join("<br><p><br>\r\n")
-            self.debug_indi_model_string = self.debug_indi_model_string_list.join("<br><p><br>\r\n");
+            self.debug_indi_model_string =
+                self.debug_indi_model_string_list.join("<br><p><br>\r\n");
             // mDebugIndiModelString += remainingDebugString
             self.debug_indi_model_string += &remaining_debug_string;
         }
 
         self.debug_indi_model_string.clone()
+    }
+
+    /// Port of the propagation-cut individual id collection inside
+    /// `generateExtendedDebugIndiModelStringList`.
+    pub(crate) fn collect_backend_neighbour_expansion_cut_individual_ids(
+        &self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> std::collections::HashSet<Cint64> {
+        let mut prop_cut_indi_nodes_ids = std::collections::HashSet::new();
+        let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(false);
+        if exp_cont_data.is_some() {
+            for &prop_cut_indi_node in calc_alg_context
+                .process_context()
+                .backend_neighbour_expansion_controlling_data(exp_cont_data)
+                .get_cut_backend_neighbour_expansion_individual_linker()
+            {
+                if prop_cut_indi_node.is_some() {
+                    let indi_id = calc_alg_context
+                        .process_context()
+                        .node(prop_cut_indi_node)
+                        .individual_node_id();
+                    prop_cut_indi_nodes_ids.insert(indi_id);
+                }
+            }
+        }
+        prop_cut_indi_nodes_ids
     }
 
     // =======================================================================
@@ -855,7 +905,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> String {
         // procDataBox = calcAlgContext->getUsedProcessingDataBox()
         // indiVec = procDataBox->getIndividualProcessNodeVector()
-        let _indi_vec = calc_alg_context.processing_data_box().individual_process_node_vector();
+        let _indi_vec = calc_alg_context
+            .processing_data_box()
+            .individual_process_node_vector();
         // indiStart = indiVec->getItemMinIndex(); indiCount = indiVec->getItemCount()
         // W6-DEFER[api]: CIndividualProcessNodeVector bounds are unported; both default
         // to 0 so the (empty) deferred range is walked faithfully.
@@ -866,14 +918,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             indi_start = 0;
         }
 
-        // propCutIndiNodesIds from the backend-neighbour-expansion controlling data's
-        // cut individual linker.
-        let mut prop_cut_indi_nodes_ids: std::collections::HashSet<Cint64> =
-            std::collections::HashSet::new();
-        // expContData = calcAlgContext->getUsedProcessingDataBox()->getBackendNeighbourExpansionControllingData(false)
-        // W6-DEFER[api]: CBackendNeighbourExpansionControllingData + its cut-individual
-        // linker are unported; the cut-id set stays empty until they land.
-        let _ = &mut prop_cut_indi_nodes_ids;
+        // propCutIndiNodesIds from the backend-neighbour-expansion controlling
+        // data's cut individual linker.
+        let prop_cut_indi_nodes_ids =
+            self.collect_backend_neighbour_expansion_cut_individual_ids(calc_alg_context);
 
         let indi_replace_offset: Cint64 = -indi_start;
         // Pass 1: render each available node.
@@ -906,12 +954,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let anc_id_prefix = if anc_indi != Id::NONE {
                         format!(
                             "{}->",
-                            calc_alg_context.process_context().node(anc_indi).individual_node_id()
+                            calc_alg_context
+                                .process_context()
+                                .node(anc_indi)
+                                .individual_node_id()
                         )
                     } else {
                         String::new()
                     };
-                    let indi_id = calc_alg_context.process_context().node(indi).individual_node_id();
+                    let indi_id = calc_alg_context
+                        .process_context()
+                        .node(indi)
+                        .individual_node_id();
                     let mut indi_string =
                         format!("[ {}{}{} ] = <br>", anc_id_prefix, indi_id, nominal_string);
 
@@ -940,7 +994,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let dep_nom_string =
                         self.generate_debug_dependent_nominals_string(indi, calc_alg_context);
                     if !dep_nom_string.is_empty() {
-                        indi_string += &format!("SuccessorDependentNominals: {}<br>\r\n", dep_nom_string);
+                        indi_string +=
+                            &format!("SuccessorDependentNominals: {}<br>\r\n", dep_nom_string);
                     }
 
                     // incExpString = generateDebugIncrementalExpansionString(indi, ctx)
@@ -978,12 +1033,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let anc_id_prefix = if anc_indi != Id::NONE {
                         format!(
                             "{}->",
-                            calc_alg_context.process_context().node(anc_indi).individual_node_id()
+                            calc_alg_context
+                                .process_context()
+                                .node(anc_indi)
+                                .individual_node_id()
                         )
                     } else {
                         String::new()
                     };
-                    let indi_id = calc_alg_context.process_context().node(indi).individual_node_id();
+                    let indi_id = calc_alg_context
+                        .process_context()
+                        .node(indi)
+                        .individual_node_id();
                     let indi_string = format!(
                         "[ {}{}{} ] = concept set missing<br>",
                         anc_id_prefix, indi_id, nominal_string
@@ -1002,10 +1063,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while i < indi_count {
             let indi = self.get_available_up_to_date_individual(i, calc_alg_context);
             if indi != Id::NONE
-                && calc_alg_context.process_context().node(indi).has_merged_into_individual_node_id()
+                && calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_merged_into_individual_node_id()
             {
-                let merged_into_id =
-                    calc_alg_context.process_context().node(indi).merged_into_individual_node_id();
+                let merged_into_id = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .merged_into_individual_node_id();
                 let idx = indi_replace_offset + merged_into_id;
                 if idx >= 0 && (idx as usize) < indi_string_list.len() {
                     let mut me_indi_string = indi_string_list[idx as usize].clone();
@@ -1023,10 +1089,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while i < indi_count {
             let indi = self.get_available_up_to_date_individual(i, calc_alg_context);
             if indi != Id::NONE
-                && calc_alg_context.process_context().node(indi).has_merged_into_individual_node_id()
+                && calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_merged_into_individual_node_id()
             {
-                let merged_into_id =
-                    calc_alg_context.process_context().node(indi).merged_into_individual_node_id();
+                let merged_into_id = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .merged_into_individual_node_id();
                 let idx = indi_replace_offset + i;
                 if idx >= 0 && (idx as usize) < indi_string_list.len() {
                     let mut indi_string = indi_string_list[idx as usize].clone();
@@ -1062,8 +1133,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         // filteredIndiStringList: drop the empty placeholders.
-        let filtered_indi_string_list: Vec<String> =
-            indi_string_list.into_iter().filter(|s| !s.is_empty()).collect();
+        let filtered_indi_string_list: Vec<String> = indi_string_list
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect();
 
         if let Some(list_ref) = list {
             // mDebugIndiModelString.clear(); *list = filteredIndiStringList
@@ -1081,16 +1154,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         // Trailing clash summary, when the databox has a clashed descriptor linker.
-        if calc_alg_context.processing_data_box().has_clashed_descriptor_linker() {
+        if calc_alg_context
+            .processing_data_box()
+            .has_clashed_descriptor_linker()
+        {
             // trackedClashDescriptors = createTrackedClashesDescriptors(getClashedDescriptorLinker(), ctx)
-            let clashed_descriptor_linker =
-                calc_alg_context.processing_data_box().clashed_descriptor_linker();
-            let tracked_clash_descriptors =
-                self.create_tracked_clashes_descriptors(clashed_descriptor_linker, calc_alg_context, INVALID, false);
+            let clashed_descriptor_linker = calc_alg_context
+                .processing_data_box()
+                .clashed_descriptor_linker();
+            let tracked_clash_descriptors = self.create_tracked_clashes_descriptors(
+                clashed_descriptor_linker,
+                calc_alg_context,
+                INVALID,
+                false,
+            );
 
             // clashedSet / trackingLine over the tracked-clash machinery.
-            // W6-DEFER[api]: CPROCESSINGSET<CTrackedClashedDescriptorHasher> +
-            // CTrackedClashedDependencyLine are unported tracking containers.
+            // W6-DEFER[api]: integrate Unit 30 CTrackedClashedDescriptorHasher +
+            // CTrackedClashedDependencyLine with the cache-writing flow.
             // clashedString = generateDebugTrackedClashedDescriptorSummaryString(trackedClashDescriptors, ctx)
             let mut clashed_string = self.generate_debug_tracked_clashed_descriptor_summary_string(
                 tracked_clash_descriptors,
@@ -1133,7 +1214,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> String {
         // procDataBox / indiVec bounds (deferred 0).
-        let _indi_vec = calc_alg_context.processing_data_box().individual_process_node_vector();
+        let _indi_vec = calc_alg_context
+            .processing_data_box()
+            .individual_process_node_vector();
         let indi_count: Cint64 = 0; // W6-DEFER[api]: indiVec->getItemCount()
         let mut indi_start: Cint64 = 0; // W6-DEFER[api]: indiVec->getItemMinIndex()
         let mut indi_string_list: Vec<String> = Vec::new();
@@ -1148,19 +1231,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut indi = self.get_available_up_to_date_individual(i, calc_alg_context);
             if indi != Id::NONE {
                 let anc_indi = self.get_ancestor_individual(&mut indi, calc_alg_context);
-                let con_set: LabelSetId =
-                    calc_alg_context.process_context().node(indi).reapply_con_label_set;
+                let con_set: LabelSetId = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .reapply_con_label_set;
                 if con_set != Id::NONE {
                     let nominal_string = String::new(); // W6-DEFER[api]: CIRIName of nominal individual.
                     let anc_id_prefix = if anc_indi != Id::NONE {
                         format!(
                             "{}->",
-                            calc_alg_context.process_context().node(anc_indi).individual_node_id()
+                            calc_alg_context
+                                .process_context()
+                                .node(anc_indi)
+                                .individual_node_id()
                         )
                     } else {
                         String::new()
                     };
-                    let indi_id = calc_alg_context.process_context().node(indi).individual_node_id();
+                    let indi_id = calc_alg_context
+                        .process_context()
+                        .node(indi)
+                        .individual_node_id();
                     let mut indi_string =
                         format!("[ {}{}{} ] = ", anc_id_prefix, indi_id, nominal_string);
 
@@ -1172,13 +1263,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let con_set_descriptors: &[ConDescId] = &[];
                     let mut con_set_string = String::new();
                     for &con_des in con_set_descriptors.iter() {
-                        let concept =
-                            calc_alg_context.process_context().con_desc(con_des).get_concept();
-                        let con_tag =
-                            calc_alg_context.ontology_arenas().concept(concept).get_concept_tag();
+                        let concept = calc_alg_context
+                            .process_context()
+                            .con_desc(con_des)
+                            .get_concept();
+                        let con_tag = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag();
                         if con_tag != 1 {
-                            let negated =
-                                calc_alg_context.process_context().con_desc(con_des).is_negated();
+                            let negated = calc_alg_context
+                                .process_context()
+                                .con_desc(con_des)
+                                .is_negated();
                             let mut con_string =
                                 format!("{}{}", if negated { "-" } else { "" }, con_tag);
                             // if (concept->hasClassName()) conString += CIRIName::getRecentIRIName(...)
@@ -1205,10 +1302,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while i < indi_count {
             let indi = self.get_available_up_to_date_individual(i, calc_alg_context);
             if indi != Id::NONE
-                && calc_alg_context.process_context().node(indi).has_merged_into_individual_node_id()
+                && calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_merged_into_individual_node_id()
             {
-                let merged_into_id =
-                    calc_alg_context.process_context().node(indi).merged_into_individual_node_id();
+                let merged_into_id = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .merged_into_individual_node_id();
                 // meIndiString = indiStringList.value(mergedIntoID)
                 let read_idx = merged_into_id;
                 if read_idx >= 0 && (read_idx as usize) < indi_string_list.len() {
@@ -1229,10 +1331,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while i < indi_count {
             let indi = self.get_available_up_to_date_individual(i, calc_alg_context);
             if indi != Id::NONE
-                && calc_alg_context.process_context().node(indi).has_merged_into_individual_node_id()
+                && calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_merged_into_individual_node_id()
             {
-                let merged_into_id =
-                    calc_alg_context.process_context().node(indi).merged_into_individual_node_id();
+                let merged_into_id = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .merged_into_individual_node_id();
                 // indiString = indiStringList.value(i)
                 if i >= 0 && (i as usize) < indi_string_list.len() {
                     let mut indi_string = indi_string_list[i as usize].clone();

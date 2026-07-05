@@ -62,10 +62,12 @@ use std::collections::{HashMap, HashSet};
 use super::super::model::substrate::{Cint64, Id};
 use super::backend::BackendRepresentativeMemoryCache;
 use super::backend_data::{
-    BackendTempWriteRecordId, IndividualAssociationDataId, LabelCacheItemExtensionDataId,
-    LabelCacheItemId, LabelCacheItemType, OntologyDataId,
+    BackendTempWriteRecordId, IndividualAssociationDataId, LabelCacheItemExtensionData,
+    LabelCacheItemExtensionDataId, LabelCacheItemExtensionType, LabelCacheItemId,
+    LabelCacheItemType, OntologyDataId,
 };
-use super::value;
+use super::context::CacheContext;
+use super::value::{self, CacheValueIdentifier};
 
 impl BackendRepresentativeMemoryCache {
     /// Port of `CBackendRepresentativeMemoryCache::updateIndexedAssociationCount`
@@ -81,29 +83,58 @@ impl BackendRepresentativeMemoryCache {
         prev_label_item: LabelCacheItemId,
         i: Cint64,
         ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
     ) -> bool {
-        let mut updated = false;
         let exact_indi_assoc_tracking = self.requires_individual_associations(i);
-
-        // W6-DEFER[api]: newLabelItem = ctx.assoc(loc_association_data).get_label_cache_entry(i);
-        //   if prevLabelItem != newLabelItem {
-        //     if prevLabelItem {
-        //       updated = true; ctx.label(prevLabelItem).dec_individual_association_count();
-        //       if exactIndiAssocTracking && !mConfLateIndividualLabelAssociationIndexing {
-        //         indiAssoExtData = self.get_individual_associations_extension_data(prevLabelItem, ontologyData);
-        //         indiAssoExtData.remove_individual_id_association(loc_association_data);
-        //       }
-        //     }
-        //     if newLabelItem {
-        //       updated = true; ctx.label(newLabelItem).inc_individual_association_count();
-        //       if exactIndiAssocTracking && !mConfLateIndividualLabelAssociationIndexing {
-        //         indiAssoExtData = self.get_individual_associations_extension_data(newLabelItem, ontologyData);
-        //         indiAssoExtData.add_individual_id_association(loc_association_data);
-        //       }
-        //     }
-        //   }
-        let _ = (loc_association_data, prev_label_item, ontology_data, exact_indi_assoc_tracking);
-        let _ = &mut updated;
+        let new_label_item = if loc_association_data.is_some() {
+            cache_context
+                .individual_assoc_data(loc_association_data)
+                .get_label_cache_entry(i)
+        } else {
+            LabelCacheItemId::NONE
+        };
+        if prev_label_item != new_label_item {
+            if prev_label_item.is_some() {
+                cache_context
+                    .label_cache_item_mut(prev_label_item)
+                    .dec_individual_association_count(1);
+                if exact_indi_assoc_tracking
+                    && !self.conf_late_individual_label_association_indexing
+                {
+                    let extension_data = self.get_individual_associations_extension_data(
+                        prev_label_item,
+                        ontology_data,
+                        cache_context,
+                    );
+                    let association_data = cache_context
+                        .individual_assoc_data(loc_association_data)
+                        .clone();
+                    cache_context
+                        .label_cache_item_ext_data_mut(extension_data)
+                        .remove_individual_id_association_data(&association_data);
+                }
+            }
+            if new_label_item.is_some() {
+                cache_context
+                    .label_cache_item_mut(new_label_item)
+                    .inc_individual_association_count(1);
+                if exact_indi_assoc_tracking
+                    && !self.conf_late_individual_label_association_indexing
+                {
+                    let extension_data = self.get_individual_associations_extension_data(
+                        new_label_item,
+                        ontology_data,
+                        cache_context,
+                    );
+                    let association_data = cache_context
+                        .individual_assoc_data(loc_association_data)
+                        .clone();
+                    cache_context
+                        .label_cache_item_ext_data_mut(extension_data)
+                        .add_individual_id_association_data(&association_data);
+                }
+            }
+        }
         true
     }
 
@@ -120,26 +151,72 @@ impl BackendRepresentativeMemoryCache {
         association_data: IndividualAssociationDataId,
         i: Cint64,
         ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
     ) -> bool {
-        let mut updated = false;
         let exact_indi_assoc_tracking = self.requires_individual_associations(i);
+        let loc_representative_same_id = cache_context
+            .individual_assoc_data(loc_association_data)
+            .get_representative_same_individual_id();
+        let same_indi_merged_changed = association_data.is_none()
+            || cache_context
+                .individual_assoc_data(association_data)
+                .get_representative_same_individual_id()
+                != loc_representative_same_id;
+        let prev_label_item = if association_data.is_some() {
+            cache_context
+                .individual_assoc_data(association_data)
+                .get_label_cache_entry(i)
+        } else {
+            LabelCacheItemId::NONE
+        };
+        let new_label_item = cache_context
+            .individual_assoc_data(loc_association_data)
+            .get_label_cache_entry(i);
 
-        // W6-DEFER[api]: faithful body:
-        //   sameIndiMergedChanged = !associationData
-        //       || ctx.assoc(associationData).get_representative_same_individual_id()
-        //          != ctx.assoc(loc_association_data).get_representative_same_individual_id();
-        //   prevLabelItem = associationData ? ctx.assoc(associationData).get_label_cache_entry(i) : NONE;
-        //   newLabelItem  = ctx.assoc(loc_association_data).get_label_cache_entry(i);
-        //   if prevLabelItem != newLabelItem || sameIndiMergedChanged {
-        //     if prevLabelItem { updated; ctx.label(prevLabelItem).dec_individual_association_count();
-        //       if exact && !mConfLate { self.get_individual_associations_extension_data(prevLabelItem, ontologyData)
-        //         .remove_individual_id_association(associationData); } }
-        //     if newLabelItem { updated; ctx.label(newLabelItem).inc_individual_association_count();
-        //       if exact && !mConfLate { self.get_individual_associations_extension_data(newLabelItem, ontologyData)
-        //         .add_individual_id_association(loc_association_data); } }
-        //   }
-        let _ = (loc_association_data, association_data, ontology_data, exact_indi_assoc_tracking);
-        let _ = &mut updated;
+        if prev_label_item != new_label_item || same_indi_merged_changed {
+            if prev_label_item.is_some() {
+                cache_context
+                    .label_cache_item_mut(prev_label_item)
+                    .dec_individual_association_count(1);
+                if exact_indi_assoc_tracking
+                    && !self.conf_late_individual_label_association_indexing
+                {
+                    let extension_data = self.get_individual_associations_extension_data(
+                        prev_label_item,
+                        ontology_data,
+                        cache_context,
+                    );
+                    if association_data.is_some() {
+                        let prev_association_data = cache_context
+                            .individual_assoc_data(association_data)
+                            .clone();
+                        cache_context
+                            .label_cache_item_ext_data_mut(extension_data)
+                            .remove_individual_id_association_data(&prev_association_data);
+                    }
+                }
+            }
+            if new_label_item.is_some() {
+                cache_context
+                    .label_cache_item_mut(new_label_item)
+                    .inc_individual_association_count(1);
+                if exact_indi_assoc_tracking
+                    && !self.conf_late_individual_label_association_indexing
+                {
+                    let extension_data = self.get_individual_associations_extension_data(
+                        new_label_item,
+                        ontology_data,
+                        cache_context,
+                    );
+                    let loc_association_data = cache_context
+                        .individual_assoc_data(loc_association_data)
+                        .clone();
+                    cache_context
+                        .label_cache_item_ext_data_mut(extension_data)
+                        .add_individual_id_association_data(&loc_association_data);
+                }
+            }
+        }
         true
     }
 
@@ -412,7 +489,10 @@ impl BackendRepresentativeMemoryCache {
         //     updated |= self.udate_deterministic_same_associations(locNeighbourAssociationData, ontologyData);
         //   }
         //   LOG(...completed_neighbour_links / completed_neighbours / set.size() / checking_neighbours...);
-        let _ = (&mut *tmp_complete_neighbour_same_indi_merging_set, ontology_data);
+        let _ = (
+            &mut *tmp_complete_neighbour_same_indi_merging_set,
+            ontology_data,
+        );
         let _ = (
             &mut updated,
             &mut checking_neighbours,
@@ -462,8 +542,90 @@ impl BackendRepresentativeMemoryCache {
         //       }
         //     }
         //   }
-        let _ = (loc_association_data, mark_incompletely_handled, ontology_data);
+        let _ = (
+            loc_association_data,
+            mark_incompletely_handled,
+            ontology_data,
+        );
         let _ = &mut associations_updated;
+        associations_updated
+    }
+
+    /// Context-threaded port of
+    /// `CBackendRepresentativeMemoryCache::storeIndividualIncompletelyMarked`.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: the legacy wrapper above is kept until the older
+    /// facade stubs thread `CacheContext`; this method contains the live C++ body.
+    pub fn store_individual_incompletely_marked_in_context(
+        &mut self,
+        loc_association_data: IndividualAssociationDataId,
+        mark_incompletely_handled: bool,
+        ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
+    ) -> bool {
+        let mut associations_updated = false;
+        let individual_id = cache_context
+            .individual_assoc_data(loc_association_data)
+            .get_associated_individual_id();
+
+        if !mark_incompletely_handled {
+            if cache_context
+                .individual_assoc_data(loc_association_data)
+                .is_incompletely_marked()
+            {
+                cache_context
+                    .ontology_data_mut(ontology_data)
+                    .dec_incompletely_handled_individual_id_count(1);
+                cache_context
+                    .individual_assoc_data_mut(loc_association_data)
+                    .set_incompletely_marked(false);
+                associations_updated = true;
+
+                if cache_context
+                    .individual_assoc_data(loc_association_data)
+                    .has_problematic_level()
+                {
+                    cache_context
+                        .ontology_data_mut(ontology_data)
+                        .get_problematic_incompletely_handled_individual_set()
+                        .retain(|id| *id != individual_id);
+                }
+            }
+        } else {
+            let min_id = cache_context
+                .ontology_data(ontology_data)
+                .get_last_min_incompletely_handled_indvidual_id()
+                .min(individual_id);
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .set_last_min_incompletely_handled_indvidual_id(min_id);
+
+            if !cache_context
+                .individual_assoc_data(loc_association_data)
+                .is_incompletely_marked()
+            {
+                cache_context
+                    .ontology_data_mut(ontology_data)
+                    .inc_incompletely_handled_individual_id_count(1);
+                cache_context
+                    .individual_assoc_data_mut(loc_association_data)
+                    .set_incompletely_marked(true);
+                associations_updated = true;
+
+                if cache_context
+                    .individual_assoc_data(loc_association_data)
+                    .has_problematic_level()
+                {
+                    let problematic_set = cache_context
+                        .ontology_data_mut(ontology_data)
+                        .get_problematic_incompletely_handled_individual_set();
+                    if !problematic_set.contains(&individual_id) {
+                        problematic_set.push(individual_id);
+                    }
+                }
+            }
+        }
+
         associations_updated
     }
 
@@ -553,6 +715,74 @@ impl BackendRepresentativeMemoryCache {
         //   }
         //   indiIdAssoDataVector[individual_id] = loc_association_data;
         let _ = (individual_id, loc_association_data, ontology_data);
+    }
+
+    /// Context-threaded port of
+    /// `CBackendRepresentativeMemoryCache::setUpdatedIndividualAssociationData`.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: the legacy wrapper above is kept until older facade
+    /// stubs thread `CacheContext`; this method contains the live C++ body.
+    /// KONCLUDE-PORT-NOTE[memory-pool]: C++ grows by
+    /// `qMax(size * 10, individualID)` and immediately indexes `individualID`.
+    /// Rust keeps the growth rule but allocates at least `individualID + 1`.
+    pub fn set_updated_individual_association_data_in_context(
+        &mut self,
+        individual_id: Cint64,
+        loc_association_data: IndividualAssociationDataId,
+        ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
+    ) {
+        let mut vector = cache_context
+            .ontology_data(ontology_data)
+            .get_individual_id_assoiation_data_vector()
+            .to_vec();
+        let mut vector_size = cache_context
+            .ontology_data(ontology_data)
+            .get_individual_id_assoiation_data_vector_size();
+
+        if individual_id >= vector_size {
+            let grown_size = (vector_size * 10).max(individual_id + 1);
+            vector.resize(grown_size as usize, Id::NONE);
+            vector_size = grown_size;
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .set_individual_id_assoiation_data_vector(vector_size, vector);
+        }
+
+        cache_context
+            .ontology_data_mut(ontology_data)
+            .update_max_stored_indvidual_id(individual_id);
+
+        let slot_empty = cache_context
+            .ontology_data(ontology_data)
+            .get_individual_id_assoiation_data_vector()
+            .get(individual_id as usize)
+            .copied()
+            .unwrap_or(Id::NONE)
+            .is_none();
+        if slot_empty {
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .inc_individual_associations_count(1);
+        }
+
+        let previous_data = cache_context
+            .individual_assoc_data(loc_association_data)
+            .get_previous_data();
+        if previous_data.is_some()
+            && cache_context
+                .individual_assoc_data(previous_data)
+                .get_previous_data()
+                .is_none()
+        {
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .inc_individual_association_data_update_count(1);
+        }
+
+        cache_context
+            .ontology_data_mut(ontology_data)
+            .indi_id_asso_data_vector[individual_id as usize] = loc_association_data;
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::getIncompletlyAssociationCachedIndividuals`
@@ -673,16 +903,21 @@ impl BackendRepresentativeMemoryCache {
     /// individual-association tracking. Fully ported (no arena dereference).
     pub fn requires_individual_associations(&self, label_type: Cint64) -> bool {
         if label_type == LabelCacheItemType::FullConceptSetLabel as Cint64
-            || label_type == LabelCacheItemType::NeighbourInstantiatedRoleSetCombinationLabel as Cint64
             || label_type
-                == LabelCacheItemType::DeterministicCombinedExistentialInstantiatedRoleSetLabel as Cint64
+                == LabelCacheItemType::NeighbourInstantiatedRoleSetCombinationLabel as Cint64
             || label_type
-                == LabelCacheItemType::NondeterministicCombinedExistentialInstantiatedRoleSetLabel as Cint64
+                == LabelCacheItemType::DeterministicCombinedExistentialInstantiatedRoleSetLabel
+                    as Cint64
+            || label_type
+                == LabelCacheItemType::NondeterministicCombinedExistentialInstantiatedRoleSetLabel
+                    as Cint64
             || label_type == LabelCacheItemType::DeterministicSameIndividualSetLabel as Cint64
             || label_type == LabelCacheItemType::NondeterministicSameIndividualSetLabel as Cint64
-            || label_type == LabelCacheItemType::DeterministicCombinedDataInstantiatedRoleSetLabel as Cint64
             || label_type
-                == LabelCacheItemType::NondeterministicCombinedDataInstantiatedRoleSetLabel as Cint64
+                == LabelCacheItemType::DeterministicCombinedDataInstantiatedRoleSetLabel as Cint64
+            || label_type
+                == LabelCacheItemType::NondeterministicCombinedDataInstantiatedRoleSetLabel
+                    as Cint64
         {
             return true;
         }
@@ -698,17 +933,35 @@ impl BackendRepresentativeMemoryCache {
         &mut self,
         label_item: LabelCacheItemId,
         ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
     ) -> LabelCacheItemExtensionDataId {
-        // W6-DEFER[api]: faithful body:
-        //   context = ctx.ontology(ontologyData).get_ontology_context();
-        //   extensionData = ctx.label(label_item).get_extension_data(INDIVIDUAL_ASSOCIATION_MAP);
-        //   if !extensionData {
-        //     extensionData = ctx.alloc_extension_data(IndividualAssociationMap{ context });
-        //     ctx.label(label_item).set_extension_data(INDIVIDUAL_ASSOCIATION_MAP, extensionData);
-        //   }
-        //   return extensionData;
-        let _ = (label_item, ontology_data);
-        Id::NONE
+        if label_item.is_none() {
+            return Id::NONE;
+        }
+        let context = if ontology_data.is_some() {
+            cache_context
+                .ontology_data(ontology_data)
+                .get_ontology_context()
+        } else {
+            Id::NONE
+        };
+        let extension_type = LabelCacheItemExtensionType::IndividualAssociationMap as Cint64;
+        let mut extension_data = cache_context
+            .label_cache_item(label_item)
+            .get_extension_data(extension_type);
+        if extension_data.is_none() {
+            extension_data = cache_context.alloc_label_cache_item_ext_data(
+                LabelCacheItemExtensionData::IndividualAssociationMap {
+                    context: context.raw,
+                    base_indi_asso_map: Vec::new(),
+                    same_indi_merged_asso_map: Vec::new(),
+                },
+            );
+            cache_context
+                .label_cache_item_mut(label_item)
+                .set_extension_data(extension_type, extension_data);
+        }
+        extension_data
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::getIndividualNeighbourArrayIndexExtensionData`
@@ -720,18 +973,42 @@ impl BackendRepresentativeMemoryCache {
         &mut self,
         label_item: LabelCacheItemId,
         ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
     ) -> LabelCacheItemExtensionDataId {
-        // W6-DEFER[api]: faithful body:
-        //   context = ctx.ontology(ontologyData).get_ontology_context();
-        //   extensionData = ctx.label(label_item).get_extension_data(INDIVIDUAL_NEIGHBOUR_ARRAY_INDEX);
-        //   if !extensionData {
-        //     extensionData = ctx.alloc_extension_data(NeighbourArrayIndex{ context, .. });
-        //     ctx.label(label_item).set_extension_data(INDIVIDUAL_NEIGHBOUR_ARRAY_INDEX, extensionData);
-        //     extensionData.init_neighbour_array_index_data(label_item);
-        //   }
-        //   return extensionData;
-        let _ = (label_item, ontology_data);
-        Id::NONE
+        if label_item.is_none() {
+            return Id::NONE;
+        }
+        let context = if ontology_data.is_some() {
+            cache_context
+                .ontology_data(ontology_data)
+                .get_ontology_context()
+        } else {
+            Id::NONE
+        };
+        let extension_type = LabelCacheItemExtensionType::IndividualNeighbourArrayIndex as Cint64;
+        let mut extension_data = cache_context
+            .label_cache_item(label_item)
+            .get_extension_data(extension_type);
+        if extension_data.is_none() {
+            extension_data = cache_context.alloc_label_cache_item_ext_data(
+                LabelCacheItemExtensionData::NeighbourArrayIndex {
+                    context: context.raw,
+                    combined_neighbour_role_set_label: Id::NONE,
+                    array_size: 0,
+                    index_neighbour_role_set_label_array: Vec::new(),
+                    neighbour_role_set_label_index_hash: HashMap::new(),
+                },
+            );
+            cache_context
+                .label_cache_item_mut(label_item)
+                .set_extension_data(extension_type, extension_data);
+            let mut initialized_extension = cache_context
+                .label_cache_item_ext_data(extension_data)
+                .clone();
+            initialized_extension.init_neighbour_array_index_data(label_item, cache_context);
+            *cache_context.label_cache_item_ext_data_mut(extension_data) = initialized_extension;
+        }
+        extension_data
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::getNeighbourArrayRoleTagResolvingLabelExtensionData`
@@ -745,34 +1022,91 @@ impl BackendRepresentativeMemoryCache {
         &mut self,
         label_item: LabelCacheItemId,
         ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
     ) -> LabelCacheItemExtensionDataId {
-        // W6-DEFER[api]: faithful body (≈30 lines):
-        //   context = ctx.ontology(ontologyData).get_ontology_context();
-        //   extensionData = ctx.label(label_item).get_extension_data(TAG_RESOLVING_HASH);
-        //   if !extensionData {
-        //     extensionData = ctx.alloc_extension_data(TagLabelResolving{ context, .. });
-        //     ctx.label(label_item).set_extension_data(TAG_RESOLVING_HASH, extensionData);
-        //     extensionData.init_tag_label_resolving_extension_data();
-        //     indexExtensionData = self.get_individual_neighbour_array_index_extension_data(label_item, ontologyData);
-        //     for i in 0..indexExtensionData.get_array_size() {
-        //       neighbourRoleSetLabelItem = indexExtensionData.get_neighbour_role_set_label(i);
-        //       for labelValueLinker in neighbourRoleSetLabelItem.cache_value_linkers() {
-        //         cacheValue = labelValueLinker.get_data();
-        //         identifier = cacheValue.get_cache_value_identifier();
-        //         nondeterministc = identifier in {
-        //             CacheValTagAndNondeterministicRole, CacheValTagAndNondeterministicInversedRole,
-        //             CacheValTagAndNondeterministicAssertedRole, CacheValTagAndNondeterministicInversedAssertedRole,
-        //             CacheValTagAndNondeterministicNominalConnectedRole,
-        //             CacheValTagAndNondeterministicInversedNominalConnectedRole };
-        //         linker = ctx.alloc_tag_label_resolving_data_linker();
-        //         linker.init_tag_label_resolving_data(neighbourRoleSetLabelItem, i, !nondeterministc);
-        //         extensionData.append_tag_label_resolving_data_linker(cacheValue.get_tag(), linker);
-        //       }
-        //     }
-        //   }
-        //   return extensionData;
-        let _ = (label_item, ontology_data);
-        Id::NONE
+        if label_item.is_none() {
+            return Id::NONE;
+        }
+        let context = if ontology_data.is_some() {
+            cache_context
+                .ontology_data(ontology_data)
+                .get_ontology_context()
+        } else {
+            Id::NONE
+        };
+        let extension_type = LabelCacheItemExtensionType::TagResolvingHash as Cint64;
+        let mut extension_data = cache_context
+            .label_cache_item(label_item)
+            .get_extension_data(extension_type);
+        if extension_data.is_none() {
+            extension_data = cache_context.alloc_label_cache_item_ext_data(
+                LabelCacheItemExtensionData::TagLabelResolving {
+                    context: context.raw,
+                    tag_label_resolving_data_linker_hash: HashMap::new(),
+                },
+            );
+            cache_context
+                .label_cache_item_mut(label_item)
+                .set_extension_data(extension_type, extension_data);
+            cache_context
+                .label_cache_item_ext_data_mut(extension_data)
+                .init_tag_label_resolving_extension_data();
+
+            let index_extension_data = self.get_individual_neighbour_array_index_extension_data(
+                label_item,
+                ontology_data,
+                cache_context,
+            );
+            let array_size = cache_context
+                .label_cache_item_ext_data(index_extension_data)
+                .get_array_size();
+            for i in 0..array_size {
+                let neighbour_role_set_label_item = cache_context
+                    .label_cache_item_ext_data(index_extension_data)
+                    .get_neighbour_role_set_label(i);
+                if neighbour_role_set_label_item.is_none() {
+                    continue;
+                }
+
+                let value_linkers = cache_context
+                    .label_cache_item(neighbour_role_set_label_item)
+                    .get_cache_value_linker()
+                    .to_vec();
+                for label_value_linker in value_linkers {
+                    let cache_value = *cache_context
+                        .label_value_linker(label_value_linker)
+                        .get_cache_value();
+                    let identifier = cache_value.get_cache_value_identifier();
+                    let nondeterministic = matches!(
+                        identifier,
+                        x if x == CacheValueIdentifier::CacheValTagAndNondeterministicRole as Cint64
+                            || x == CacheValueIdentifier::CacheValTagAndNondeterministicInversedRole as Cint64
+                            || x == CacheValueIdentifier::CacheValTagAndNondeterministicAssertedRole as Cint64
+                            || x == CacheValueIdentifier::CacheValTagAndNondeterministicInversedAssertedRole as Cint64
+                            || x == CacheValueIdentifier::CacheValTagAndNondeterministicNominalConnectedRole as Cint64
+                            || x == CacheValueIdentifier::CacheValTagAndNondeterministicInversedNominalConnectedRole as Cint64
+                    );
+                    let mut linker =
+                        super::backend_data::LabelCacheItemTagLabelResolvingDataLinker::new();
+                    linker.init_tag_label_resolving_data(
+                        neighbour_role_set_label_item,
+                        i,
+                        !nondeterministic,
+                    );
+                    let linker = cache_context.alloc_tag_label_resolving_data_linker(linker);
+                    let mut extension = cache_context
+                        .label_cache_item_ext_data(extension_data)
+                        .clone();
+                    extension.append_tag_label_resolving_data_linker(
+                        cache_value.get_tag(),
+                        linker,
+                        cache_context,
+                    );
+                    *cache_context.label_cache_item_ext_data_mut(extension_data) = extension;
+                }
+            }
+        }
+        extension_data
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::getMinimumSlotReferreringInstalledValidRecomputationId`
@@ -785,16 +1119,26 @@ impl BackendRepresentativeMemoryCache {
     pub fn get_minimum_slot_referrering_installed_valid_recomputation_id(
         &self,
         ontology_data: OntologyDataId,
+        cache_context: &CacheContext,
     ) -> Cint64 {
         let mut min_installed_valid_rec_id: Cint64 = Cint64::MAX; // CINT64_MAX
-        // W6-DEFER[api]: ontology_identifier = ctx.ontology(ontology_data).get_ontology_identifer();
-        for _slot_linker_it in &self.slot_linker {
-            // W6-DEFER[api]:
-            //   referredOntologyData = ctx.slot(_slot_linker_it).get_ontology_data(ontology_identifier);
-            //   minValidRecId = ctx.ontology(referredOntologyData).get_minimum_valid_recomputation_id();
-            //   min_installed_valid_rec_id = min(min_installed_valid_rec_id, minValidRecId);
+        if ontology_data.is_none() {
+            return min_installed_valid_rec_id;
         }
-        let _ = ontology_data;
+        let ontology_identifier = cache_context
+            .ontology_data(ontology_data)
+            .get_ontology_identifer();
+        for &slot_linker_it in &self.slot_linker {
+            let referred_ontology_data = cache_context
+                .backend_slot_item(slot_linker_it)
+                .get_ontology_data(ontology_identifier);
+            if referred_ontology_data.is_some() {
+                let min_valid_rec_id = cache_context
+                    .ontology_data(referred_ontology_data)
+                    .get_minimum_valid_recomputation_id();
+                min_installed_valid_rec_id = min_installed_valid_rec_id.min(min_valid_rec_id);
+            }
+        }
         min_installed_valid_rec_id
     }
 
@@ -918,5 +1262,151 @@ impl BackendRepresentativeMemoryCache {
             return true;
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::backend_data::{IndividualAssociationData, OntologyData};
+    use super::*;
+
+    fn association_data(
+        cache_context: &mut CacheContext,
+        individual_id: Cint64,
+        problematic_level: Cint64,
+    ) -> IndividualAssociationDataId {
+        let mut data = IndividualAssociationData::new();
+        data.init_association_data_for_id(individual_id);
+        data.set_problematic_level(problematic_level);
+        cache_context.alloc_individual_assoc_data(data)
+    }
+
+    fn localized_association_from(
+        cache_context: &mut CacheContext,
+        source: IndividualAssociationDataId,
+    ) -> IndividualAssociationDataId {
+        let source_ref = cache_context.individual_assoc_data(source).clone();
+        let mut data = IndividualAssociationData::new();
+        data.init_association_data(&source_ref, source, true);
+        cache_context.alloc_individual_assoc_data(data)
+    }
+
+    #[test]
+    fn store_individual_incompletely_marked_marks_and_clears_problematic_entries() {
+        let mut cache = BackendRepresentativeMemoryCache::new(0, "test", 0);
+        let mut cache_context = CacheContext::new();
+        let mut ontology = OntologyData::new();
+        ontology.set_last_min_incompletely_handled_indvidual_id(i64::MAX);
+        let ontology = cache_context.alloc_ontology_data(ontology);
+        let association = association_data(&mut cache_context, 42, 3);
+
+        assert!(cache.store_individual_incompletely_marked_in_context(
+            association,
+            true,
+            ontology,
+            &mut cache_context,
+        ));
+        assert!(cache_context
+            .individual_assoc_data(association)
+            .is_incompletely_marked());
+        assert_eq!(
+            cache_context
+                .ontology_data(ontology)
+                .get_incompletely_handled_individual_id_count(),
+            1
+        );
+        assert_eq!(
+            cache_context
+                .ontology_data(ontology)
+                .get_last_min_incompletely_handled_indvidual_id(),
+            42
+        );
+        assert_eq!(
+            cache_context
+                .ontology_data_mut(ontology)
+                .get_problematic_incompletely_handled_individual_set(),
+            &mut vec![42]
+        );
+
+        assert!(!cache.store_individual_incompletely_marked_in_context(
+            association,
+            true,
+            ontology,
+            &mut cache_context,
+        ));
+        assert_eq!(
+            cache_context
+                .ontology_data_mut(ontology)
+                .get_problematic_incompletely_handled_individual_set(),
+            &mut vec![42]
+        );
+
+        assert!(cache.store_individual_incompletely_marked_in_context(
+            association,
+            false,
+            ontology,
+            &mut cache_context,
+        ));
+        assert!(!cache_context
+            .individual_assoc_data(association)
+            .is_incompletely_marked());
+        assert_eq!(
+            cache_context
+                .ontology_data(ontology)
+                .get_incompletely_handled_individual_id_count(),
+            0
+        );
+        assert!(cache_context
+            .ontology_data_mut(ontology)
+            .get_problematic_incompletely_handled_individual_set()
+            .is_empty());
+    }
+
+    #[test]
+    fn set_updated_individual_association_data_grows_vector_and_counts_first_store() {
+        let mut cache = BackendRepresentativeMemoryCache::new(0, "test", 0);
+        let mut cache_context = CacheContext::new();
+        let ontology = cache_context.alloc_ontology_data(OntologyData::new());
+        let base = association_data(&mut cache_context, 7, 0);
+        let localized = localized_association_from(&mut cache_context, base);
+
+        cache.set_updated_individual_association_data_in_context(
+            7,
+            localized,
+            ontology,
+            &mut cache_context,
+        );
+
+        let ontology_ref = cache_context.ontology_data(ontology);
+        assert!(ontology_ref.get_individual_id_assoiation_data_vector_size() >= 8);
+        assert_eq!(
+            ontology_ref.get_individual_id_assoiation_data_vector()[7],
+            localized
+        );
+        assert_eq!(ontology_ref.get_max_stored_indvidual_id(), 7);
+        assert_eq!(ontology_ref.get_individual_associations_count(), 1);
+        assert_eq!(
+            ontology_ref.get_individual_association_data_update_count(),
+            1
+        );
+
+        let replacement = localized_association_from(&mut cache_context, base);
+        cache.set_updated_individual_association_data_in_context(
+            7,
+            replacement,
+            ontology,
+            &mut cache_context,
+        );
+
+        let ontology_ref = cache_context.ontology_data(ontology);
+        assert_eq!(
+            ontology_ref.get_individual_id_assoiation_data_vector()[7],
+            replacement
+        );
+        assert_eq!(ontology_ref.get_individual_associations_count(), 1);
+        assert_eq!(
+            ontology_ref.get_individual_association_data_update_count(),
+            2
+        );
     }
 }

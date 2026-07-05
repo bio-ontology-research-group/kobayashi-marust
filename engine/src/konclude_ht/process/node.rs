@@ -26,6 +26,9 @@
 
 #![allow(dead_code)]
 
+use super::super::model::individual::{
+    ConceptAssertion, DataAssertion, ReverseRoleAssertion, RoleAssertion,
+};
 use super::super::model::{Cint64, ConceptId, Id, IndividualId, NegLink};
 use super::{ConDescId, EdgeId, LabelSetId, NodeId, RoleSuccHashId, TrackPointId};
 
@@ -33,18 +36,20 @@ use super::{ConDescId, EdgeId, LabelSetId, NodeId, RoleSuccHashId, TrackPointId}
 // `CIndividualProcessNode` fields point at (the `CIndividualNode*Data`/hash/queue/
 // linker classes + assertion linker chain heads) live as shared marker stubs in
 // `process::stubs`; the node fields stay strongly typed via their `Id<T>` aliases.
+use super::concept_process_linker::ConceptProcessLinkerId;
+use super::individual_process_linker::IndividualProcessNodeLinkerId;
+use super::reapply_sat::ReapplyConceptDescriptorId as ReapplyConDescId;
+use super::role_backward_prop::RoleBackwardPropagationHashId as RoleBackPropHashId;
 use super::stubs::{
     ATMOSTReactivationDataId, AdditionalDataAssertionsLinkerId, AdditionalRoleAssertionsLinkerId,
     AnalizedConExpDataId, BackendSyncDataId, BlockingFollowSetId, ConceptAssertionLinkerId,
-    ConceptProcessLinkerId, ConceptProcessingQueueId, ConceptPropBindingSetHashId,
-    ConceptRepPropSetHashId, ConceptVarBindPathSetHashId, ConnSuccSetId, DataAssertionLinkerId,
-    DatatypesValueSpaceDataId, DisjointSuccRoleHashId, DistinctHashId, IncExpDataId,
-    IndiBlockDataId, IndiSatBlockDataId, IndividualMergingHashId, IndividualNodeModelDataId,
-    IndividualProcessNodeLinkerId, MemAllocId, NominalConnectionSetId, ProcessAssertedDataLiteralLinkerId,
-    ProcessContextId, ReactivationDataId, ReapplyConDescId, ReusingConExpDataId,
-    ReverseRoleAssertionLinkerId, RoleAssertionLinkerId, RoleBackPropHashId, SatCacheRetDataId,
-    SatCacheStoringDataId, SigBlockConExpDataId, SuccRoleHashId, UnsatCacheRetId,
-    VarPropBlockDataId,
+    ConceptProcessingQueueId, ConceptPropBindingSetHashId, ConceptRepPropSetHashId,
+    ConceptVarBindPathSetHashId, ConnSuccSetId, DataAssertionLinkerId, DatatypesValueSpaceDataId,
+    DisjointSuccRoleHashId, DistinctHashId, IncExpDataId, IndiBlockDataId, IndiSatBlockDataId,
+    IndividualMergingHashId, IndividualNodeModelDataId, MemAllocId, NominalConnectionSetId,
+    ProcessAssertedDataLiteralLinkerId, ProcessContextId, ReactivationDataId, ReusingConExpDataId,
+    ReverseRoleAssertionLinkerId, RoleAssertionLinkerId, SatCacheRetDataId, SatCacheStoringDataId,
+    SigBlockConExpDataId, SuccRoleHashId, UnsatCacheRetId, VarPropBlockDataId,
 };
 
 /// Port of `CIndividualProcessNode::CIndividualType`.
@@ -57,7 +62,9 @@ pub enum IndividualType {
 }
 
 impl Default for IndividualType {
-    fn default() -> Self { IndividualType::Blockable }
+    fn default() -> Self {
+        IndividualType::Blockable
+    }
 }
 
 /// Port of `CIndividualProcessNodePriority` (value type; held inline by the node).
@@ -73,7 +80,103 @@ pub struct IndividualProcessNodePriority {
 impl Default for IndividualProcessNodePriority {
     /// Mirrors `CIndividualProcessNodePriority(0., 0., true)`.
     fn default() -> Self {
-        IndividualProcessNodePriority { priority_con: 0.0, priority_ind: 0.0, strict_order: true }
+        IndividualProcessNodePriority {
+            priority_con: 0.0,
+            priority_ind: 0.0,
+            strict_order: true,
+        }
+    }
+}
+
+impl IndividualProcessNodePriority {
+    /// Port of `CIndividualProcessNodePriority::isNullPriority`.
+    pub fn is_null_priority(&self) -> bool {
+        self.priority_con == 0.0 && self.priority_ind == 0.0
+    }
+
+    /// Port of `CIndividualProcessNodePriority::getConceptPriority`.
+    pub fn get_concept_priority(&self) -> f64 {
+        self.priority_con
+    }
+
+    /// Port of `CIndividualProcessNodePriority::getIndividualPriority`.
+    pub fn get_individual_priority(&self) -> f64 {
+        self.priority_ind
+    }
+
+    /// Port of `CIndividualProcessNodePriority::setPriority`.
+    pub fn set_priority(&mut self, con_priority: f64, indi_priority: f64) -> &mut Self {
+        self.priority_con = con_priority;
+        self.priority_ind = indi_priority;
+        self
+    }
+
+    /// Port of `CIndividualProcessNodePriority::setPriorityToNull`.
+    pub fn set_priority_to_null(&mut self) -> &mut Self {
+        self.priority_con = 0.0;
+        self.priority_ind = 0.0;
+        self.strict_order = true;
+        self
+    }
+
+    /// Port of `operator<=`.
+    pub fn le_priority(&self, indi_priority: &Self) -> bool {
+        let strict_order = self.strict_order || indi_priority.strict_order;
+        if strict_order {
+            if self.priority_ind < indi_priority.priority_ind {
+                true
+            } else if self.priority_ind > indi_priority.priority_ind {
+                false
+            } else {
+                self.priority_con <= indi_priority.priority_con
+            }
+        } else {
+            let same_concept_priority = self.priority_con == indi_priority.priority_con;
+            (same_concept_priority && self.priority_ind <= indi_priority.priority_ind)
+                || (!same_concept_priority && self.priority_con >= indi_priority.priority_con)
+        }
+    }
+
+    /// Port of `operator>=`.
+    pub fn ge_priority(&self, indi_priority: &Self) -> bool {
+        let strict_order = self.strict_order || indi_priority.strict_order;
+        if strict_order {
+            if self.priority_ind > indi_priority.priority_ind {
+                true
+            } else if self.priority_ind < indi_priority.priority_ind {
+                false
+            } else {
+                self.priority_con >= indi_priority.priority_con
+            }
+        } else {
+            let same_concept_priority = self.priority_con == indi_priority.priority_con;
+            (same_concept_priority && self.priority_ind >= indi_priority.priority_ind)
+                || (!same_concept_priority && self.priority_con <= indi_priority.priority_con)
+        }
+    }
+
+    /// Port of `operator<`.
+    pub fn lt_priority(&self, indi_priority: &Self) -> bool {
+        let strict_order = self.strict_order || indi_priority.strict_order;
+        if strict_order {
+            self.priority_ind < indi_priority.priority_ind
+        } else {
+            let same_concept_priority = self.priority_con == indi_priority.priority_con;
+            (same_concept_priority && self.priority_ind < indi_priority.priority_ind)
+                || (!same_concept_priority && self.priority_con > indi_priority.priority_con)
+        }
+    }
+
+    /// Port of `operator>`.
+    pub fn gt_priority(&self, indi_priority: &Self) -> bool {
+        let strict_order = self.strict_order || indi_priority.strict_order;
+        if strict_order {
+            self.priority_ind > indi_priority.priority_ind
+        } else {
+            let same_concept_priority = self.priority_con == indi_priority.priority_con;
+            (same_concept_priority && self.priority_ind > indi_priority.priority_ind)
+                || (!same_concept_priority && self.priority_con < indi_priority.priority_con)
+        }
     }
 }
 
@@ -100,40 +203,40 @@ pub struct IndividualProcessNode {
     pub debug_blocker_last_concept_des: ConDescId,
 
     // === D. identity / topology ===========================================
-    pub indi_id: Cint64,                       // mIndiID
-    pub indi_type: IndividualType,             // mIndiType
-    pub nom_indi: IndividualId,                // mNomIndi (CIndividual*)
+    pub indi_id: Cint64,           // mIndiID
+    pub indi_type: IndividualType, // mIndiType
+    pub nom_indi: IndividualId,    // mNomIndi (CIndividual*)
     /// `mProcessingRestrictionFlags` — bitset over the `PRF_*` masks below.
     pub processing_restriction_flags: Cint64,
-    pub indi_anc_depth: Cint64,                // indiAncDepth
-    pub nominal_level: Cint64,                 // mNominalLevel
-    pub ancestor_link: EdgeId,                 // mAncestorLink (CIndividualLinkEdge*)
-    pub merge_into_id: Cint64,                 // mMergeIntoID
-    pub process_context: ProcessContextId,     // mProcessContext
-    pub mem_alloc_man: MemAllocId,             // mMemAllocMan
-    pub prev_individual: NodeId,               // mPrevIndividual
+    pub indi_anc_depth: Cint64,            // indiAncDepth
+    pub nominal_level: Cint64,             // mNominalLevel
+    pub ancestor_link: EdgeId,             // mAncestorLink (CIndividualLinkEdge*)
+    pub merge_into_id: Cint64,             // mMergeIntoID
+    pub process_context: ProcessContextId, // mProcessContext
+    pub mem_alloc_man: MemAllocId,         // mMemAllocMan
+    pub prev_individual: NodeId,           // mPrevIndividual
 
     // === A. triple-buffers (mX / mUseX / mPrevX) ==========================
     // 1. concept-processing queue
-    pub concept_processing_queue: ConceptProcessingQueueId,      // mConceptProcessingQueue
-    pub use_concept_processing_queue: ConceptProcessingQueueId,  // mUseConceptProcessingQueue
+    pub concept_processing_queue: ConceptProcessingQueueId, // mConceptProcessingQueue
+    pub use_concept_processing_queue: ConceptProcessingQueueId, // mUseConceptProcessingQueue
     pub prev_concept_processing_queue: ConceptProcessingQueueId, // mPrevConceptProcessingQueue
     // 2. reapply concept-label set
-    pub reapply_con_label_set: LabelSetId,      // mReapplyConLabelSet
-    pub use_reapply_con_label_set: LabelSetId,  // mUseReapplyConLabelSet
+    pub reapply_con_label_set: LabelSetId, // mReapplyConLabelSet
+    pub use_reapply_con_label_set: LabelSetId, // mUseReapplyConLabelSet
     pub prev_reapply_con_label_set: LabelSetId, // mPrevReapplyConLabelSet
     // 3. reapply role-successor hash
-    pub reapply_role_succ_hash: RoleSuccHashId,      // mReapplyRoleSuccHash
-    pub use_reapply_role_succ_hash: RoleSuccHashId,  // mUseReapplyRoleSuccHash
+    pub reapply_role_succ_hash: RoleSuccHashId, // mReapplyRoleSuccHash
+    pub use_reapply_role_succ_hash: RoleSuccHashId, // mUseReapplyRoleSuccHash
     pub prev_reapply_role_succ_hash: RoleSuccHashId, // mPrevReapplyRoleSuccHash
     // 4. successor-role hash
     pub succ_role_hash: SuccRoleHashId,      // mSuccRoleHash
     pub use_succ_role_hash: SuccRoleHashId,  // mUseSuccRoleHash
     pub prev_succ_role_hash: SuccRoleHashId, // mPrevSuccRoleHash
 
-    pub last_added_link: EdgeId,        // mLastAddedLink (CIndividualLinkEdge*)
-    pub blocker_indi_node: NodeId,      // mBlockerIndiNode
-    pub following_indi_node: NodeId,    // mFollowingIndiNode
+    pub last_added_link: EdgeId, // mLastAddedLink (CIndividualLinkEdge*)
+    pub blocker_indi_node: NodeId, // mBlockerIndiNode
+    pub following_indi_node: NodeId, // mFollowingIndiNode
 
     // 5. connection-successor set
     pub conn_succ_set: ConnSuccSetId,      // mConnSuccSet
@@ -144,54 +247,54 @@ pub struct IndividualProcessNode {
     pub use_distinct_hash: DistinctHashId,  // mUseDistinctHash
     pub prev_distinct_hash: DistinctHashId, // mPrevDistinctHash
 
-    pub disjoint_role_connections: bool,    // mDisjointRoleConnections
+    pub disjoint_role_connections: bool, // mDisjointRoleConnections
     // 7. disjoint-successor-role hash
-    pub disjoint_succ_role_hash: DisjointSuccRoleHashId,      // mDisjointSuccRoleHash
-    pub use_disjoint_succ_role_hash: DisjointSuccRoleHashId,  // mUseDisjointSuccRoleHash
+    pub disjoint_succ_role_hash: DisjointSuccRoleHashId, // mDisjointSuccRoleHash
+    pub use_disjoint_succ_role_hash: DisjointSuccRoleHashId, // mUseDisjointSuccRoleHash
     pub prev_disjoint_succ_role_hash: DisjointSuccRoleHashId, // mPrevDisjointSuccRoleHash
 
     // === B. double-buffers (mX / mPrevX) (interleaved, C++ order) =========
     // 1. saturation-blocking data
-    pub indi_sat_block_data: IndiSatBlockDataId,      // mIndiSatBlockData
+    pub indi_sat_block_data: IndiSatBlockDataId, // mIndiSatBlockData
     pub prev_indi_sat_block_data: IndiSatBlockDataId, // mPrevIndiSatBlockData
     // 2. block data
     pub indi_block: IndiBlockDataId,      // mIndiBlock
     pub prev_indi_block: IndiBlockDataId, // mPrevIndiBlock
     // 3. variable-bindings propagation block data
-    pub indi_var_prop_block_data: VarPropBlockDataId,      // mIndiVarPropBlockData
+    pub indi_var_prop_block_data: VarPropBlockDataId, // mIndiVarPropBlockData
     pub prev_indi_var_prop_block_data: VarPropBlockDataId, // mPrevIndiVarPropBlockData
     // 4. unsat-cache retrieval data
-    pub indi_unsat_cache_ret: UnsatCacheRetId,      // mIndiUnsatCacheRet
+    pub indi_unsat_cache_ret: UnsatCacheRetId, // mIndiUnsatCacheRet
     pub prev_indi_unsat_cache_ret: UnsatCacheRetId, // mPrevIndiUnsatCacheRet
 
     // === A. triple (8) sig-block analyzed-expansion data ==================
-    pub sig_block_ind_expl_data: AnalizedConExpDataId,      // mSigBlockIndExplData
-    pub use_sig_block_ind_expl_data: AnalizedConExpDataId,  // mUseSigBlockIndExplData
+    pub sig_block_ind_expl_data: AnalizedConExpDataId, // mSigBlockIndExplData
+    pub use_sig_block_ind_expl_data: AnalizedConExpDataId, // mUseSigBlockIndExplData
     pub prev_sig_block_ind_expl_data: AnalizedConExpDataId, // mPrevSigBlockIndExplData
 
     // === B. double (5) sig-block concept-expansion data ===================
-    pub sig_block_con_exp_data: SigBlockConExpDataId,      // mSigBlockConExpData
+    pub sig_block_con_exp_data: SigBlockConExpDataId, // mSigBlockConExpData
     pub prev_sig_block_con_exp_data: SigBlockConExpDataId, // mPrevSigBlockConExpData
     // === B. double (6) reusing-expansion data =============================
-    pub reusing_con_exp_data: ReusingConExpDataId,      // mReusingConExpData
+    pub reusing_con_exp_data: ReusingConExpDataId, // mReusingConExpData
     pub prev_reusing_con_exp_data: ReusingConExpDataId, // mPrevReusingConExpData
 
     // === A. triple (9) sig-block follow set ===============================
-    pub sig_block_follow_set: BlockingFollowSetId,      // mSigBlockFollowSet
-    pub use_sig_block_follow_set: BlockingFollowSetId,  // mUseSigBlockFollowSet
+    pub sig_block_follow_set: BlockingFollowSetId, // mSigBlockFollowSet
+    pub use_sig_block_follow_set: BlockingFollowSetId, // mUseSigBlockFollowSet
     pub prev_sig_block_follow_set: BlockingFollowSetId, // mPrevSigBlockFollowSet
 
     // === A. triples (10/11/12) concept prop/var-bind-path/rep-prop hashes ==
-    pub concept_prop_binding_set_hash: ConceptPropBindingSetHashId,      // mConceptPropBindingSetHash
-    pub use_concept_prop_binding_set_hash: ConceptPropBindingSetHashId,  // mUseConceptPropBindingSetHash
+    pub concept_prop_binding_set_hash: ConceptPropBindingSetHashId, // mConceptPropBindingSetHash
+    pub use_concept_prop_binding_set_hash: ConceptPropBindingSetHashId, // mUseConceptPropBindingSetHash
     pub prev_concept_prop_binding_set_hash: ConceptPropBindingSetHashId, // mPrevConceptPropBindingSetHash
 
-    pub concept_var_bind_path_set_hash: ConceptVarBindPathSetHashId,      // mConceptVarBindPathSetHash
-    pub use_concept_var_bind_path_set_hash: ConceptVarBindPathSetHashId,  // mUseConceptVarBindPathSetHash
+    pub concept_var_bind_path_set_hash: ConceptVarBindPathSetHashId, // mConceptVarBindPathSetHash
+    pub use_concept_var_bind_path_set_hash: ConceptVarBindPathSetHashId, // mUseConceptVarBindPathSetHash
     pub prev_concept_var_bind_path_set_hash: ConceptVarBindPathSetHashId, // mPrevConceptVarBindPathSetHash
 
-    pub concept_rep_prop_set_hash: ConceptRepPropSetHashId,      // mConceptRepPropSetHash
-    pub use_concept_rep_prop_set_hash: ConceptRepPropSetHashId,  // mUseConceptRepPropSetHash
+    pub concept_rep_prop_set_hash: ConceptRepPropSetHashId, // mConceptRepPropSetHash
+    pub use_concept_rep_prop_set_hash: ConceptRepPropSetHashId, // mUseConceptRepPropSetHash
     pub prev_concept_rep_prop_set_hash: ConceptRepPropSetHashId, // mPrevConceptRepPropSetHash
 
     // === E. blocking / sig-blocking =======================================
@@ -203,24 +306,33 @@ pub struct IndividualProcessNode {
     pub initializing_concept_linker: Vec<NegLink<ConceptId>>,
     /// `mProcessInitializingConceptLinkerIt`.
     pub process_initializing_concept_linker: Vec<NegLink<ConceptId>>,
-    pub assertion_concept_linker: ConceptAssertionLinkerId,    // mAssertionConceptLinkerIt
-    pub assertion_data_linker: DataAssertionLinkerId,          // mAssertionDataLinkerIt
+    pub assertion_concept_linker: ConceptAssertionLinkerId, // mAssertionConceptLinkerIt
+    /// Rust-owned bridge for `mAssertionConceptLinkerIt` while the pointer
+    /// linker class remains an opaque id.
+    pub assertion_concept_assertions: Vec<ConceptAssertion>,
+    pub assertion_data_linker: DataAssertionLinkerId, // mAssertionDataLinkerIt
+    /// Rust-owned bridge for `mAssertionDataLinkerIt`.
+    pub assertion_data_assertions: Vec<DataAssertion>,
     pub last_processed_assertion_data_linker: DataAssertionLinkerId, // mLastProcessedAssertionDataLinker
-    pub assertion_role_linker: RoleAssertionLinkerId,          // mAssertionRoleLinkerIt
+    pub assertion_role_linker: RoleAssertionLinkerId,                // mAssertionRoleLinkerIt
+    /// Rust-owned bridge for `mAssertionRoleLinkerIt`.
+    pub assertion_role_assertions: Vec<RoleAssertion>,
     pub reverse_assertion_role_linker: ReverseRoleAssertionLinkerId, // mReverseAssertionRoleLinkerIt
+    /// Rust-owned bridge for `mReverseAssertionRoleLinkerIt`.
+    pub reverse_assertion_role_assertions: Vec<ReverseRoleAssertion>,
     pub additional_role_assertions_linker: AdditionalRoleAssertionsLinkerId, // mAdditionalRoleAssertionsLinker
     pub additional_data_assertions_linker: AdditionalDataAssertionsLinkerId, // mAdditionalDataAssertionsLinker
     pub last_processed_additional_data_assertions_linker: AdditionalDataAssertionsLinkerId, // mLastProcessedAdditionalDataAssertionsLinker
 
     // === G. assertion-init bool flags + creation id =======================
-    pub role_assertions_initialized: bool,         // mRoleAssertionsInitialized
+    pub role_assertions_initialized: bool, // mRoleAssertionsInitialized
     pub reverse_role_assertions_initialized: bool, // mReverseRoleAssertionsInitialized
-    pub role_assertion_creation_id: Cint64,        // mRoleAssertionCreationID
+    pub role_assertion_creation_id: Cint64, // mRoleAssertionCreationID
 
-    pub asserted_data_literal_linker: ProcessAssertedDataLiteralLinkerId,      // mAssertedDataLiteralLinker
+    pub asserted_data_literal_linker: ProcessAssertedDataLiteralLinkerId, // mAssertedDataLiteralLinker
     pub last_asserted_data_literal_linker: ProcessAssertedDataLiteralLinkerId, // mLastAssertedDataLiteralLinker
 
-    pub base_concepts_initialized: bool,                     // mBaseConceptsInitialized
+    pub base_concepts_initialized: bool, // mBaseConceptsInitialized
     pub universally_connection_individual_initialized: bool, // mUniversallyConnectionIndividualInitialized
     pub nominal_indi_triples_assertions: bool,               // mNominalIndiTriplesAssertions
     pub loaded_nominal_indi_triples_assertions: bool,        // mLoadedNominalIndiTriplesAssertions
@@ -244,11 +356,11 @@ pub struct IndividualProcessNode {
     // === H. caching / model ===============================================
     pub indi_model: IndividualNodeModelDataId, // indiModel
     // === B. doubles (7/8/9) sat-cache retrieval/storing + backend sync =====
-    pub sat_cache_ret_data: SatCacheRetDataId,      // mSatCacheRetData
+    pub sat_cache_ret_data: SatCacheRetDataId, // mSatCacheRetData
     pub prev_sat_cache_ret_data: SatCacheRetDataId, // mPrevSatCacheRetData
-    pub sat_cache_storing_data: SatCacheStoringDataId,      // mSatCacheStoringData
+    pub sat_cache_storing_data: SatCacheStoringDataId, // mSatCacheStoringData
     pub prev_sat_cache_storing_data: SatCacheStoringDataId, // mPrevSatCacheStoringData
-    pub backend_sync_data: BackendSyncDataId,      // mBackendSyncData
+    pub backend_sync_data: BackendSyncDataId,  // mBackendSyncData
     pub prev_backend_sync_data: BackendSyncDataId, // mPrevBackendSyncData
 
     pub processing_blocked_indi: NodeId, // mProcessingBlockedIndi
@@ -256,32 +368,32 @@ pub struct IndividualProcessNode {
     pub processing_blocked_individuals_linker: Vec<NodeId>,
 
     pub sat_cached_absorbed_disjunctions_reapply_con_des: ReapplyConDescId, // mSatCachedAbsorbedDisjunctionsReapplyConDes
-    pub sat_cached_absorbed_successor_reapply_con_des: ReapplyConDescId,     // mSatCachedAbsorbedSuccessorReapplyConDes
+    pub sat_cached_absorbed_successor_reapply_con_des: ReapplyConDescId, // mSatCachedAbsorbedSuccessorReapplyConDes
 
-    pub role_back_prop_hash: RoleBackPropHashId,       // mRoleBackPropHash
+    pub role_back_prop_hash: RoleBackPropHashId, // mRoleBackPropHash
     pub indi_process_linker: IndividualProcessNodeLinkerId, // mIndiProcessLinker
     pub concept_process_linker: ConceptProcessLinkerId, // mConceptProcessLinker
-    pub required_back_prop: bool,                      // mRequiredBackProp
-    pub substitute_indi_node: NodeId,                  // mSubstituteIndiNode
+    pub required_back_prop: bool,                // mRequiredBackProp
+    pub substitute_indi_node: NodeId,            // mSubstituteIndiNode
 
     // === J. queue-membership bools + priority =============================
-    pub extended_queue_processing: bool,                       // mExtendedQueueProcessing
-    pub immediately_processing_queued: bool,                   // mImmediatelyProcessingQueued
-    pub det_exp_processing_queued: bool,                       // mDetExpProcessingQueued
-    pub depth_processing_queued: bool,                         // mDepthProcessingQueued
-    pub blocked_react_processing_queued: bool,                 // mBlockedReactProcessingQueued
-    pub backend_synchron_retest_processing_queued: bool,       // mBackendSynchronRetestProcessingQueued
+    pub extended_queue_processing: bool, // mExtendedQueueProcessing
+    pub immediately_processing_queued: bool, // mImmediatelyProcessingQueued
+    pub det_exp_processing_queued: bool, // mDetExpProcessingQueued
+    pub depth_processing_queued: bool,   // mDepthProcessingQueued
+    pub blocked_react_processing_queued: bool, // mBlockedReactProcessingQueued
+    pub backend_synchron_retest_processing_queued: bool, // mBackendSynchronRetestProcessingQueued
     pub backend_indirect_compatibility_expansion_queued: bool, // mBackendIndirectCompatibilityExpansionQueued
-    pub backend_direct_influence_expansion_queued: bool,       // mBackendDirectInfluenceExpansionQueued
-    pub incremental_compatibility_checking_queued: bool,       // mIncrementalCompatibilityCheckingQueued
-    pub incremental_expansion_queued: bool,                    // mIncrementalExpansionQueued
-    pub processing_queued: bool,                               // mProcessingQueued
-    pub backend_reuse_expansion_queued: bool,                  // mBackendReuseExpansionQueued
-    pub backend_neighbour_expansion_queued: bool,              // mBackendNeighbourExpansionQueued
+    pub backend_direct_influence_expansion_queued: bool, // mBackendDirectInfluenceExpansionQueued
+    pub incremental_compatibility_checking_queued: bool, // mIncrementalCompatibilityCheckingQueued
+    pub incremental_expansion_queued: bool,              // mIncrementalExpansionQueued
+    pub processing_queued: bool,                         // mProcessingQueued
+    pub backend_reuse_expansion_queued: bool,            // mBackendReuseExpansionQueued
+    pub backend_neighbour_expansion_queued: bool,        // mBackendNeighbourExpansionQueued
     pub last_processing_priority: IndividualProcessNodePriority, // mLastProcessingPriority
 
-    pub delayed_nominal_processing_queued: bool,      // mDelayedNominalProcessingQueued
-    pub nominal_processing_delaying_checked: bool,    // mNominalProcessingDelayingChecked
+    pub delayed_nominal_processing_queued: bool, // mDelayedNominalProcessingQueued
+    pub nominal_processing_delaying_checked: bool, // mNominalProcessingDelayingChecked
     pub assertion_initialisation_signature_value: Cint64, // mAssertionInitialisationSignatureValue
 
     // === K. reactivation / nominal-conn / datatype / incremental + merge ===
@@ -417,7 +529,10 @@ impl IndividualProcessNode {
     /// from `processContext->getUsedProcessTagger()`; both depend on the ambient
     /// context and are DEFERRED to PN-1 (the tagger is not yet ported).
     pub fn new(process_context: ProcessContextId) -> Self {
-        IndividualProcessNode { process_context, ..Default::default() }
+        IndividualProcessNode {
+            process_context,
+            ..Default::default()
+        }
     }
 
     // W2 method-batch: PN-1 — init/clone (ctor body, initIndividualProcessNode,
@@ -523,10 +638,14 @@ impl Default for IndividualProcessNode {
             initializing_concept_linker: Vec::new(),
             process_initializing_concept_linker: Vec::new(),
             assertion_concept_linker: Id::NONE,
+            assertion_concept_assertions: Vec::new(),
             assertion_data_linker: Id::NONE,
+            assertion_data_assertions: Vec::new(),
             last_processed_assertion_data_linker: Id::NONE,
             assertion_role_linker: Id::NONE,
+            assertion_role_assertions: Vec::new(),
             reverse_assertion_role_linker: Id::NONE,
+            reverse_assertion_role_assertions: Vec::new(),
             additional_role_assertions_linker: Id::NONE,
             additional_data_assertions_linker: Id::NONE,
             last_processed_additional_data_assertions_linker: Id::NONE,
@@ -619,7 +738,9 @@ impl IndividualProcessNode {
     // ---- SIMPLE accessors (trivial getters/setters; complex logic deferred) --
 
     /// Port of `getIndividualNodeID`.
-    pub fn individual_node_id(&self) -> Cint64 { self.indi_id }
+    pub fn individual_node_id(&self) -> Cint64 {
+        self.indi_id
+    }
     /// Port of `setIndividualNodeID`.
     // KONCLUDE-PORT-NOTE[unclear→resolved]: C++ guards the merge-into id so it
     // follows the node id when they were equal: `if (mMergeIntoID == mIndiID)
@@ -634,7 +755,9 @@ impl IndividualProcessNode {
     }
 
     /// Port of `getIndividualType`.
-    pub fn individual_type(&self) -> IndividualType { self.indi_type }
+    pub fn individual_type(&self) -> IndividualType {
+        self.indi_type
+    }
     /// Port of `setIndividualType`.
     pub fn set_individual_type(&mut self, indi_type: IndividualType) -> &mut Self {
         self.indi_type = indi_type;
@@ -651,7 +774,9 @@ impl IndividualProcessNode {
     }
 
     /// Port of `getNominalIndividual`.
-    pub fn nominal_individual(&self) -> IndividualId { self.nom_indi }
+    pub fn nominal_individual(&self) -> IndividualId {
+        self.nom_indi
+    }
     /// Port of `setNominalIndividual`.
     pub fn set_nominal_individual(&mut self, indi: IndividualId) -> &mut Self {
         self.nom_indi = indi;
@@ -659,7 +784,9 @@ impl IndividualProcessNode {
     }
 
     /// Port of `getIndividualAncestorDepth`.
-    pub fn individual_ancestor_depth(&self) -> Cint64 { self.indi_anc_depth }
+    pub fn individual_ancestor_depth(&self) -> Cint64 {
+        self.indi_anc_depth
+    }
     /// Port of `setIndividualAncestorDepth`.
     pub fn set_individual_ancestor_depth(&mut self, depth: Cint64) -> &mut Self {
         self.indi_anc_depth = depth;
@@ -667,7 +794,9 @@ impl IndividualProcessNode {
     }
 
     /// Port of `getIndividualNominalLevel`.
-    pub fn individual_nominal_level(&self) -> Cint64 { self.nominal_level }
+    pub fn individual_nominal_level(&self) -> Cint64 {
+        self.nominal_level
+    }
     /// Port of `setIndividualNominalLevel`.
     pub fn set_individual_nominal_level(&mut self, level: Cint64) -> &mut Self {
         self.nominal_level = level;
@@ -675,11 +804,15 @@ impl IndividualProcessNode {
     }
 
     /// Port of `getMergedIntoIndividualNodeID`.
-    pub fn merged_into_individual_node_id(&self) -> Cint64 { self.merge_into_id }
+    pub fn merged_into_individual_node_id(&self) -> Cint64 {
+        self.merge_into_id
+    }
     /// Port of `hasMergedIntoIndividualNodeID`.
     // KONCLUDE-PORT-NOTE[unclear→resolved]: C++ (CIndividualProcessNode.cpp
     // ~1483) returns `mMergeIntoID != mIndiID`, NOT `!= 0`.
-    pub fn has_merged_into_individual_node_id(&self) -> bool { self.merge_into_id != self.indi_id }
+    pub fn has_merged_into_individual_node_id(&self) -> bool {
+        self.merge_into_id != self.indi_id
+    }
     /// Port of `setMergedIntoIndividualNodeID`.
     pub fn set_merged_into_individual_node_id(&mut self, indi_node_id: Cint64) -> &mut Self {
         self.merge_into_id = indi_node_id;
@@ -687,7 +820,9 @@ impl IndividualProcessNode {
     }
 
     /// Port of `getProcessingRestrictionFlags`.
-    pub fn processing_restriction_flags(&self) -> Cint64 { self.processing_restriction_flags }
+    pub fn processing_restriction_flags(&self) -> Cint64 {
+        self.processing_restriction_flags
+    }
     /// Port of `hasProcessingRestrictionFlags` (all `test_flags` set).
     pub fn has_processing_restriction_flags(&self, test_flags: Cint64) -> bool {
         (self.processing_restriction_flags & test_flags) == test_flags
@@ -698,10 +833,14 @@ impl IndividualProcessNode {
     }
 
     /// Port of `isRelocalized` (`CLocalizationTag`).
-    pub fn is_relocalized(&self) -> bool { self.relocalized }
+    pub fn is_relocalized(&self) -> bool {
+        self.relocalized
+    }
 
     /// Port of `getDependencyTrackPoint` (`CDependencyTracker`).
-    pub fn dependency_track_point(&self) -> TrackPointId { self.dep_track_point }
+    pub fn dependency_track_point(&self) -> TrackPointId {
+        self.dep_track_point
+    }
     /// Port of `setDependencyTrackPoint` (`CDependencyTracker`).
     pub fn set_dependency_track_point(&mut self, dep_track_point: TrackPointId) -> &mut Self {
         self.dep_track_point = dep_track_point;

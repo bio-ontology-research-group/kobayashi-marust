@@ -55,27 +55,32 @@
 )]
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
-use super::super::model::ConceptId;
-use super::super::process::{ConDescId, EdgeId, NodeId, TrackPointId};
+use super::super::model::{ConceptId, VariableId};
+use super::super::process::binding_hash::{
+    ConceptVariableBindingPathSetHash, ConceptVariableBindingPathSetHashId,
+};
+use super::super::process::varbind::{
+    RepresentativeVariableBindingPathMap, VarBindingDescriptorId, VarBindingPathDescriptorId,
+    VarBindingPathId, VarBindingPathSetId, VariableBindingDescriptor, VariableBindingPath,
+    VariableBindingPathDescriptor, VariableBindingPathJoiningData, VariableBindingPathJoiningHash,
+    VariableBindingPathJoiningHashId, VariableBindingPathJoiningHasher,
+    VariableBindingPathMergingHash, VariableBindingPathSet, VariableBindingTriggerHash,
+    VariableBindingTriggerHashId,
+};
+use super::super::process::{ConDescId, DepLinkId, EdgeId, LabelSetId, NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::hasCommonVariableBindings`.
-    ///
-    /// KONCLUDE-PORT-NOTE[api]: `CRepresentativeVariableBindingPathMap*` is unported
-    /// → opaque `Cint64`. Its `count()`/`contains(key)`/sorted-key dual-cursor walk
-    /// are deferred; only `mMapComparisonDirectLookupFactor` is ported state.
     pub fn has_common_variable_bindings(
         &mut self,
         process_indi: &mut NodeId,
-        left_rep_var_bind_map: Cint64,
-        right_rep_var_bind_map: Cint64,
+        left_rep_var_bind_map: &RepresentativeVariableBindingPathMap,
+        right_rep_var_bind_map: &RepresentativeVariableBindingPathMap,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[api]: rightRepVarBindMap->count()
-        let right_count: Cint64 = 0;
-        // W3-DEFER[api]: leftRepVarBindMap->count()
-        let left_count: Cint64 = 0;
+        let right_count = right_rep_var_bind_map.count();
+        let left_count = left_rep_var_bind_map.count();
         if right_count < left_count {
             return self.has_common_variable_bindings(
                 process_indi,
@@ -86,23 +91,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         if left_count * self.map_comparison_direct_lookup_factor < right_count {
-            // W3-DEFER[api]: for it1 in leftRepVarBindMap: if rightRepVarBindMap->contains(it1.key()) return true
-            // (empty deferred iteration — CRepresentativeVariableBindingPathMap unported)
-            let left_map_iter: &[Cint64] = &[];
-            for _it1 in left_map_iter.iter() {
-                // W3-DEFER[api]: rightRepVarBindMap->contains(it1.key())
-                let contained = false;
-                if contained {
+            for key in left_rep_var_bind_map.map.keys() {
+                if right_rep_var_bind_map.contains(*key) {
                     return true;
                 }
             }
             false
         } else {
-            // W3-DEFER[api]: the sorted dual-cursor merge-walk of leftRepVarBindMap /
-            // rightRepVarBindMap (advance the smaller key; return true on a shared
-            // key1 == key2). Reproduced structurally over empty deferred iterators.
-            let left_map_iter: &[Cint64] = &[];
-            let right_map_iter: &[Cint64] = &[];
+            let mut left_map_iter = left_rep_var_bind_map
+                .map
+                .keys()
+                .copied()
+                .collect::<Vec<_>>();
+            let mut right_map_iter = right_rep_var_bind_map
+                .map
+                .keys()
+                .copied()
+                .collect::<Vec<_>>();
+            left_map_iter.sort_unstable();
+            right_map_iter.sort_unstable();
             let mut i1 = 0usize;
             let mut i2 = 0usize;
             while i1 < left_map_iter.len() && i2 < right_map_iter.len() {
@@ -126,42 +133,107 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         process_indi: &mut NodeId,
         con_des: ConDescId,
-        new_var_binding_set: Cint64,
-        prev_var_binding_set: Cint64,
-        other_dependencies: Cint64,
-        con_var_binding_set_hash: Cint64,
+        new_var_binding_set: VarBindingPathSetId,
+        prev_var_binding_set: VarBindingPathSetId,
+        other_dependencies: DepLinkId,
+        con_var_binding_set_hash: ConceptVariableBindingPathSetHashId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
         let mut propagations = false;
-        // CVariableBindingPathDescriptor* newVarBindPathDesLinker = nullptr;
-        let mut new_var_bind_path_des_linker: Cint64 = INVALID;
-        if prev_var_binding_set != INVALID {
-            // W3-DEFER[api]: newVarBindingSet->copyVariableBindingPaths(prevVarBindingSet->getVariableBindingPathMap())
-            // W3-DEFER[api]: CVariableBindingPathMap* varBindMap = newVarBindingSet->getVariableBindingPathMap()
-            // Reproduced structurally over an empty deferred iterator (map unported).
-            let var_bind_map_iter: &[Cint64] = &[];
-            for _it in var_bind_map_iter.iter() {
+        let mut new_var_bind_path_des_linker: VarBindingPathDescriptorId = Id::NONE;
+        if prev_var_binding_set.is_some() {
+            let prev_map = {
+                let pc = calc_alg_context.process_context();
+                pc.vbpath_set(prev_var_binding_set)
+                    .get_variable_binding_path_map()
+                    .clone()
+            };
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_set_mut(new_var_binding_set)
+                .copy_variable_binding_paths(Some(&prev_map));
+
+            let mut path_keys: Vec<Cint64> = {
+                let pc = calc_alg_context.process_context();
+                pc.vbpath_set(new_var_binding_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .keys()
+                    .copied()
+                    .collect()
+            };
+            path_keys.sort();
+
+            for prop_id in path_keys {
                 self.stat_var_binding_propagate_count += 1;
                 self.stat_var_binding_propagate_initial_count += 1;
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDCOUNT, calcAlgContext)
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDINITIALCOUNT, calcAlgContext)
-                // W3-DEFER[api]: CVariableBindingPathMapData& varBindPathMapData = it.value()
-                // W3-DEFER[api]: prevVarBindPathDes = varBindPathMapData.getVariableBindingPathDescriptor()
-                // W3-DEFER[memory-pool]: newVarBindPathDes = allocateAndConstruct<CVariableBindingPathDescriptor>(taskMemMan)
-                let new_var_bind_path_des: Cint64 = INVALID;
+
+                let prev_var_bind_path_des = calc_alg_context
+                    .process_context()
+                    .vbpath_set(new_var_binding_set)
+                    .get_variable_binding_path_map()
+                    .value(prop_id)
+                    .get_variable_binding_path_descriptor();
+                let (var_binding_path, prev_dep_track_point) = {
+                    let pc = calc_alg_context.process_context();
+                    let prev_des = pc.vbpath_des(prev_var_bind_path_des);
+                    (
+                        prev_des.get_variable_binding_path(),
+                        prev_des.get_dependency_track_point(),
+                    )
+                };
+                let new_var_bind_path_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_vbpath_des(VariableBindingPathDescriptor::new());
                 let mut new_dep_track_point: TrackPointId = Id::NONE;
-                // W3-DEFER[api]: createPROPAGATEVARIABLEBINDINGDependency(newDepTrackPoint, processIndi, conDes, prevVarBindPathDes->getDependencyTrackPoint(), otherDependencies, calcAlgContext)
-                // W3-DEFER[api]: newVarBindPathDes->initVariableBindingPathDescriptor(prevVarBindPathDes->getVariableBindingPath(), newDepTrackPoint)
-                // W3-DEFER[api]: varBindPathMapData.setVariableBindingPathDescriptor(newVarBindPathDes)
-                // W3-DEFER[api]: newVarBindPathDesLinker = newVarBindPathDes->append(newVarBindPathDesLinker)
-                new_var_bind_path_des_linker = new_var_bind_path_des;
+                let _bind_dep_node = self.create_propagate_variable_binding_dependency(
+                    &mut new_dep_track_point,
+                    process_indi,
+                    con_des,
+                    prev_dep_track_point,
+                    other_dependencies,
+                    calc_alg_context,
+                );
+                if new_dep_track_point.is_none() {
+                    // W6-DEFER[api]: createPROPAGATEVARIABLEBINDINGDependency is
+                    // called at the C++ point, but dependency-base materialization
+                    // still returns no track point; carry the previous dependency.
+                    new_dep_track_point = prev_dep_track_point;
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_des_mut(new_var_bind_path_des)
+                    .init_variable_binding_path_descriptor(var_binding_path, new_dep_track_point);
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_set_mut(new_var_binding_set)
+                    .get_variable_binding_path_map_mut()
+                    .entry_mut(prop_id)
+                    .set_variable_binding_path_descriptor(new_var_bind_path_des);
+                if new_var_bind_path_des_linker.is_none() {
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                } else {
+                    VariableBindingPathDescriptor::append(
+                        calc_alg_context.process_context_mut(),
+                        new_var_bind_path_des,
+                        new_var_bind_path_des_linker,
+                    );
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                }
                 propagations = true;
             }
-            if new_var_bind_path_des_linker != INVALID {
-                // W3-DEFER[api]: newVarBindingSet->addVariableBindingPathDescriptorLinker(newVarBindPathDesLinker)
-                // W3-DEFER[api]: conVarBindingSetHash->setLastVariableBindingDescriptionLinker(newVarBindPathDesLinker)
+            if new_var_bind_path_des_linker.is_some() {
+                VariableBindingPathSet::add_variable_binding_path_descriptor_linker(
+                    calc_alg_context.process_context_mut(),
+                    new_var_binding_set,
+                    new_var_bind_path_des_linker,
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .con_var_bind_path_set_hash_mut(con_var_binding_set_hash)
+                    .set_last_variable_binding_description_linker(new_var_bind_path_des_linker);
             }
         }
         propagations
@@ -172,44 +244,119 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         process_indi: &mut NodeId,
         con_des: ConDescId,
-        new_var_binding_set: Cint64,
-        prev_var_binding_set: Cint64,
-        other_dependencies: Cint64,
-        con_var_binding_set_hash: Cint64,
+        new_var_binding_set: VarBindingPathSetId,
+        prev_var_binding_set: VarBindingPathSetId,
+        other_dependencies: DepLinkId,
+        con_var_binding_set_hash: ConceptVariableBindingPathSetHashId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
         let mut propagations = false;
-        if prev_var_binding_set != INVALID {
-            // W3-DEFER[api]: prevVarBindPathMap = prevVarBindingSet->getVariableBindingPathMap()
-            // W3-DEFER[api]: newVarBindPathMap = newVarBindingSet->getVariableBindingPathMap()
-            // The sorted merge-walk advances itNew while (newPropID < prevPropID),
-            // skips equal keys, and propagates each prev-only key (doPropagation).
-            // Reproduced structurally over the prev-only key set (empty deferred).
-            let mut new_var_bind_path_des_linker: Cint64 = INVALID;
-            let prev_only_iter: &[Cint64] = &[];
-            for _it_prev in prev_only_iter.iter() {
-                // doPropagation == true for these prev-only keys.
+        if prev_var_binding_set.is_some() {
+            let mut new_var_bind_path_des_linker: VarBindingPathDescriptorId = Id::NONE;
+            let (prev_keys, new_keys): (Vec<Cint64>, Vec<Cint64>) = {
+                let pc = calc_alg_context.process_context();
+                let mut prev_keys: Vec<Cint64> = pc
+                    .vbpath_set(prev_var_binding_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .keys()
+                    .copied()
+                    .collect();
+                let mut new_keys: Vec<Cint64> = pc
+                    .vbpath_set(new_var_binding_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .keys()
+                    .copied()
+                    .collect();
+                prev_keys.sort();
+                new_keys.sort();
+                (prev_keys, new_keys)
+            };
+            let mut i_prev = 0;
+            let mut i_new = 0;
+            while i_prev < prev_keys.len() {
+                let prop_id = prev_keys[i_prev];
+                let mut do_propagation = true;
+                while i_new < new_keys.len() && new_keys[i_new] < prop_id {
+                    i_new += 1;
+                }
+                if i_new < new_keys.len() && new_keys[i_new] == prop_id {
+                    do_propagation = false;
+                    i_new += 1;
+                }
+                i_prev += 1;
+                if !do_propagation {
+                    continue;
+                }
                 self.stat_var_binding_propagate_count += 1;
                 self.stat_var_binding_propagate_fresh_count += 1;
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDCOUNT, calcAlgContext)
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDFRESHCOUNT, calcAlgContext)
-                // W3-DEFER[api]: prevVarBindPathDes = itPrev.value().getVariableBindingPathDescriptor()
-                // W3-DEFER[memory-pool]: newVarBindPathDes = allocateAndConstruct<CVariableBindingPathDescriptor>(taskMemMan)
-                let new_var_bind_path_des: Cint64 = INVALID;
+
+                let prev_var_bind_path_des = calc_alg_context
+                    .process_context()
+                    .vbpath_set(prev_var_binding_set)
+                    .get_variable_binding_path_map()
+                    .value(prop_id)
+                    .get_variable_binding_path_descriptor();
+                let (var_binding_path, prev_dep_track_point) = {
+                    let pc = calc_alg_context.process_context();
+                    let prev_des = pc.vbpath_des(prev_var_bind_path_des);
+                    (
+                        prev_des.get_variable_binding_path(),
+                        prev_des.get_dependency_track_point(),
+                    )
+                };
+                let new_var_bind_path_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_vbpath_des(VariableBindingPathDescriptor::new());
                 let mut new_dep_track_point: TrackPointId = Id::NONE;
-                // W3-DEFER[api]: createPROPAGATEVARIABLEBINDINGDependency(newDepTrackPoint, processIndi, conDes, prevVarBindPathDes->getDependencyTrackPoint(), otherDependencies, calcAlgContext)
-                // W3-DEFER[api]: varBindingPath = prevVarBindPathDes->getVariableBindingPath()
-                // W3-DEFER[api]: newVarBindPathDes->initVariableBindingPathDescriptor(varBindingPath, newDepTrackPoint)
-                // W3-DEFER[api]: itNew = newVarBindPathMap->insert(varBindingPath->getPropagationID(), CVariableBindingPathMapData(newVarBindPathDes))
-                // W3-DEFER[api]: newVarBindPathDesLinker = newVarBindPathDes->append(newVarBindPathDesLinker)
-                new_var_bind_path_des_linker = new_var_bind_path_des;
+                let _bind_dep_node = self.create_propagate_variable_binding_dependency(
+                    &mut new_dep_track_point,
+                    process_indi,
+                    con_des,
+                    prev_dep_track_point,
+                    other_dependencies,
+                    calc_alg_context,
+                );
+                if new_dep_track_point.is_none() {
+                    // W6-DEFER[api]: dependency-base backend is not materialized
+                    // yet; carry the previous dependency track point.
+                    new_dep_track_point = prev_dep_track_point;
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_des_mut(new_var_bind_path_des)
+                    .init_variable_binding_path_descriptor(var_binding_path, new_dep_track_point);
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_set_mut(new_var_binding_set)
+                    .get_variable_binding_path_map_mut()
+                    .entry_mut(prop_id)
+                    .set_variable_binding_path_descriptor(new_var_bind_path_des);
+                if new_var_bind_path_des_linker.is_none() {
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                } else {
+                    VariableBindingPathDescriptor::append(
+                        calc_alg_context.process_context_mut(),
+                        new_var_bind_path_des,
+                        new_var_bind_path_des_linker,
+                    );
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                }
                 propagations = true;
             }
-            if new_var_bind_path_des_linker != INVALID {
-                // W3-DEFER[api]: newVarBindingSet->addVariableBindingPathDescriptorLinker(newVarBindPathDesLinker)
-                // W3-DEFER[api]: conVarBindingSetHash->setLastVariableBindingDescriptionLinker(newVarBindPathDesLinker)
+            if new_var_bind_path_des_linker.is_some() {
+                VariableBindingPathSet::add_variable_binding_path_descriptor_linker(
+                    calc_alg_context.process_context_mut(),
+                    new_var_binding_set,
+                    new_var_bind_path_des_linker,
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .con_var_bind_path_set_hash_mut(con_var_binding_set_hash)
+                    .set_last_variable_binding_description_linker(new_var_bind_path_des_linker);
             }
         }
         propagations
@@ -230,19 +377,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         rest_link: EdgeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
-        // W3-DEFER[api]: conDes->getDependencyTrackPoint()
-        let dep_track_point: TrackPointId = Id::NONE;
-        // W3-DEFER[api]: conDes->getConcept()
-        let concept: ConceptId = Id::NONE;
+        let dep_track_point = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_dependency_track_point();
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
 
-        // W3-DEFER[api]: succIndi = getLocalizedIndividual(succIndi, false, calcAlgContext)  [sibling]
-        // (deferred — leaves succIndi unchanged)
-        // W3-DEFER[api]: CReapplyConceptLabelSet* conSet = succIndi->getReapplyConceptLabelSet(false)
-        let mut con_set: Cint64 = INVALID;
+        *succ_indi = self.get_localized_individual(*succ_indi, false, calc_alg_context);
+        let mut con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*succ_indi);
 
-        // create dependency
         let mut next_dep_track_point: TrackPointId = Id::NONE;
         let mut continue_propagation = false;
 
@@ -252,29 +400,85 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
             let mut binding_con_des: ConDescId = Id::NONE;
             let mut binding_dep_track_point: TrackPointId = Id::NONE;
-            let mut reapply_queue: Cint64 = INVALID;
-            // W3-DEFER[api]: conSet->getConceptDescriptorAndReapplyQueue(opConcept, bindingConDes, bindingDepTrackPoint, reapplyQueue)
-            let has_con_des_and_queue = false;
+            let op_concept_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(op_concept)
+                .get_concept_tag();
+            let mut binding_con_des: ConDescId = Id::NONE;
+            let mut binding_dep_track_point: TrackPointId = Id::NONE;
+            let has_con_des_and_queue = calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .get_concept_descriptor_and_reapply_queue_by_tag(
+                    op_concept_tag,
+                    &mut binding_con_des,
+                    &mut binding_dep_track_point,
+                );
 
             if !has_con_des_and_queue {
                 if next_dep_track_point == Id::NONE {
-                    // W3-DEFER[api]: conSet = succIndi->getReapplyConceptLabelSet(true)
-                    con_set = INVALID;
-                    // W3-DEFER[api]: createVARBINDPROPAGATEALLDependency(nextDepTrackPoint, processIndi, conDes, depTrackPoint, restLink->getDependencyTrackPoint(), calcAlgContext)
-                    next_dep_track_point = Id::NONE;
+                    con_set = calc_alg_context
+                        .process_context_mut()
+                        .node_reapply_concept_label_set(*succ_indi);
+                    let link_dep_track_point = calc_alg_context
+                        .process_context()
+                        .edge(rest_link)
+                        .get_dependency_track_point();
+                    let mut process_indi_ref = process_indi;
+                    let _bind_dep_node = self.create_varbind_propagate_all_dependency(
+                        &mut next_dep_track_point,
+                        &mut process_indi_ref,
+                        con_des,
+                        dep_track_point,
+                        link_dep_track_point,
+                        calc_alg_context,
+                    );
+                    if next_dep_track_point.is_none() {
+                        // W6-DEFER[api]: the dependency factory call is present at
+                        // the C++ point, but the dependency-base backend is still
+                        // not materialized; carry the premise dependency meanwhile.
+                        next_dep_track_point = dep_track_point;
+                    }
                 }
-                // W3-DEFER[api]: bindingConDes = addConceptToIndividualReturnConceptDescriptor(opConcept, opConNeg, succIndi, nextDepTrackPoint, false, false, calcAlgContext)
-                binding_con_des = Id::NONE;
 
-                // W3-DEFER[api]: conVarBindingPathSetHash = processIndi->getConceptVariableBindingPathSetHash(true)
-                let con_var_binding_path_set_hash: Cint64 = INVALID;
-                // W3-DEFER[api]: prevVarBindingPathSet = conVarBindingPathSetHash->getVariableBindingPathSet(concept, false)
-                let prev_var_binding_path_set: Cint64 = INVALID;
-                // W3-DEFER[api]: succConVarBindingPathSetHash = succIndi->getConceptVariableBindingPathSetHash(true)
-                let succ_con_var_binding_path_set_hash: Cint64 = INVALID;
-                // W3-DEFER[api]: succVarBindingPathSet = succConVarBindingPathSetHash->getVariableBindingPathSet(opConcept, true)
-                let succ_var_binding_path_set: Cint64 = INVALID;
-                // W3-DEFER[api]: succVarBindingPathSet->setConceptDescriptor(bindingConDes)
+                binding_con_des = self.add_concept_to_individual_return_concept_descriptor(
+                    op_concept,
+                    op_con_neg,
+                    succ_indi,
+                    next_dep_track_point,
+                    false,
+                    false,
+                    calc_alg_context,
+                );
+
+                let con_var_binding_path_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_variable_binding_path_set_hash(process_indi);
+                let concept_tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag();
+                let prev_var_binding_path_set =
+                    ConceptVariableBindingPathSetHash::get_variable_binding_path_set(
+                        calc_alg_context.process_context_mut(),
+                        con_var_binding_path_set_hash,
+                        concept_tag,
+                        false,
+                    );
+                let succ_con_var_binding_path_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_variable_binding_path_set_hash(*succ_indi);
+                let succ_var_binding_path_set =
+                    ConceptVariableBindingPathSetHash::get_variable_binding_path_set(
+                        calc_alg_context.process_context_mut(),
+                        succ_con_var_binding_path_set_hash,
+                        op_concept_tag,
+                        true,
+                    );
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_set_mut(succ_var_binding_path_set)
+                    .set_concept_descriptor(binding_con_des);
 
                 self.propagate_initial_variable_bindings_to_successor(
                     &mut process_indi,
@@ -288,14 +492,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 );
                 continue_propagation = true;
             } else {
-                // W3-DEFER[api]: conVarBindingPathSetHash = processIndi->getConceptVariableBindingPathSetHash(true)
-                let con_var_binding_path_set_hash: Cint64 = INVALID;
-                // W3-DEFER[api]: prevVarBindingPathSet = conVarBindingPathSetHash->getVariableBindingPathSet(concept, false)
-                let prev_var_binding_path_set: Cint64 = INVALID;
-                // W3-DEFER[api]: succConVarBindingPathSetHash = succIndi->getConceptVariableBindingPathSetHash(true)
-                let succ_con_var_binding_path_set_hash: Cint64 = INVALID;
-                // W3-DEFER[api]: succVarBindingPathSet = succConVarBindingPathSetHash->getVariableBindingPathSet(opConcept, true)
-                let succ_var_binding_path_set: Cint64 = INVALID;
+                let con_var_binding_path_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_variable_binding_path_set_hash(process_indi);
+                let concept_tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag();
+                let prev_var_binding_path_set =
+                    ConceptVariableBindingPathSetHash::get_variable_binding_path_set(
+                        calc_alg_context.process_context_mut(),
+                        con_var_binding_path_set_hash,
+                        concept_tag,
+                        false,
+                    );
+                let succ_con_var_binding_path_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_variable_binding_path_set_hash(*succ_indi);
+                let succ_var_binding_path_set =
+                    ConceptVariableBindingPathSetHash::get_variable_binding_path_set(
+                        calc_alg_context.process_context_mut(),
+                        succ_con_var_binding_path_set_hash,
+                        op_concept_tag,
+                        true,
+                    );
 
                 if self.propagate_fresh_variable_bindings_to_successor(
                     &mut process_indi,
@@ -307,29 +527,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     succ_con_var_binding_path_set_hash,
                     calc_alg_context,
                 ) {
-                    // W3-DEFER[api]: setIndividualNodeConceptLabelSetModified(succIndi, calcAlgContext)
-                    // W3-DEFER[api]: CConceptProcessingQueue* conProQueue = succIndi->getConceptProcessingQueue(true)
-                    let con_pro_queue: Cint64 = INVALID;
-                    // W3-DEFER[api]: cint64 bindingCount = succVarBindingPathSet->getVariableBindingPathMap()->count()
-                    let binding_count: Cint64 = 0;
-                    // W3-DEFER[api]: addConceptPreprocessedToProcessingQueue(bindingConDes, bindingDepTrackPoint, conProQueue, succIndi, true, calcAlgContext)
-                    if reapply_queue != INVALID {
-                        // W3-DEFER[api]: reapplyQueue->isEmpty()
-                        let reapply_queue_empty = true;
-                        if !reapply_queue_empty {
-                            // W3-DEFER[api]: conSet = succIndi->getReapplyConceptLabelSet(true)
-                            con_set = INVALID;
-                            // W3-DEFER[api]: CCondensedReapplyQueueIterator reapplyQueueIt(conSet->getConceptReapplyIterator(bindingConDes))
-                            // W3-DEFER[api]: applyReapplyQueueConcepts(succIndi, &reapplyQueueIt, calcAlgContext)
-                        }
-                    }
+                    self.set_individual_node_concept_label_set_modified(
+                        succ_indi,
+                        calc_alg_context,
+                    );
+                    let con_pro_queue = calc_alg_context
+                        .process_context_mut()
+                        .node_concept_processing_queue(*succ_indi, true);
+                    self.add_concept_preprocessed_to_processing_queue_skip(
+                        binding_con_des,
+                        binding_dep_track_point,
+                        con_pro_queue,
+                        *succ_indi,
+                        true,
+                        calc_alg_context,
+                        INVALID,
+                    );
+                    // W3-DEFER[api]: the concrete `CCondensedReapplyQueue*`
+                    // out-param from getConceptDescriptorAndReapplyQueue is not
+                    // exposed by the label-set API yet, so the guarded
+                    // reapplyQueue->isEmpty() / iterator drain remains deferred.
                     continue_propagation = true;
                 }
             }
         }
 
         if continue_propagation {
-            // W3-DEFER[api]: addIndividualToProcessingQueue(succIndi, calcAlgContext)  [sibling, core queue mgmt]
+            self.add_individual_to_processing_queue(*succ_indi, calc_alg_context);
         }
     }
 
@@ -339,41 +563,111 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: &mut NodeId,
         succ_indi: NodeId,
         con_des: ConDescId,
-        new_var_binding_path_set: Cint64,
-        prev_var_binding_path_set: Cint64,
+        new_var_binding_path_set: VarBindingPathSetId,
+        prev_var_binding_path_set: VarBindingPathSetId,
         rest_link: EdgeId,
-        con_var_binding_set_hash: Cint64,
+        con_var_binding_set_hash: ConceptVariableBindingPathSetHashId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
         let mut propagations = false;
-        let mut new_var_bind_path_des_linker: Cint64 = INVALID;
-        if prev_var_binding_path_set != INVALID {
-            // W3-DEFER[api]: newVarBindingPathSet->copyVariableBindingPaths(prevVarBindingPathSet->getVariableBindingPathMap())
-            // W3-DEFER[api]: CVariableBindingPathMap* varBindPathMap = newVarBindingPathSet->getVariableBindingPathMap()
-            // Reproduced structurally over an empty deferred iterator (map unported).
-            let var_bind_path_map_iter: &[Cint64] = &[];
-            for _it in var_bind_path_map_iter.iter() {
+        let mut new_var_bind_path_des_linker: VarBindingPathDescriptorId = Id::NONE;
+        if prev_var_binding_path_set.is_some() {
+            let prev_map = {
+                let pc = calc_alg_context.process_context();
+                pc.vbpath_set(prev_var_binding_path_set)
+                    .get_variable_binding_path_map()
+                    .clone()
+            };
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_set_mut(new_var_binding_path_set)
+                .copy_variable_binding_paths(Some(&prev_map));
+
+            let mut path_keys: Vec<Cint64> = {
+                let pc = calc_alg_context.process_context();
+                pc.vbpath_set(new_var_binding_path_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .keys()
+                    .copied()
+                    .collect()
+            };
+            path_keys.sort();
+
+            for prop_id in path_keys {
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDCOUNT, calcAlgContext)
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDINITIALCOUNT, calcAlgContext)
                 self.stat_var_binding_propagate_succ_count += 1;
                 self.stat_var_binding_propagate_succ_initial_count += 1;
-                // W3-DEFER[api]: CVariableBindingPathMapData& varBindPathMapData = it.value()
-                // W3-DEFER[api]: prevVarBindPathDes = varBindPathMapData.getVariableBindingPathDescriptor()
-                // W3-DEFER[memory-pool]: newVarBindPathDes = allocateAndConstruct<CVariableBindingPathDescriptor>(taskMemMan)
-                let new_var_bind_path_des: Cint64 = INVALID;
+
+                let prev_var_bind_path_des = calc_alg_context
+                    .process_context()
+                    .vbpath_set(new_var_binding_path_set)
+                    .get_variable_binding_path_map()
+                    .value(prop_id)
+                    .get_variable_binding_path_descriptor();
+                let (var_binding_path, prev_dep_track_point) = {
+                    let pc = calc_alg_context.process_context();
+                    let prev_des = pc.vbpath_des(prev_var_bind_path_des);
+                    (
+                        prev_des.get_variable_binding_path(),
+                        prev_des.get_dependency_track_point(),
+                    )
+                };
+                let link_dep_track_point = calc_alg_context
+                    .process_context()
+                    .edge(rest_link)
+                    .get_dependency_track_point();
+                let new_var_bind_path_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_vbpath_des(VariableBindingPathDescriptor::new());
                 let mut new_dep_track_point: TrackPointId = Id::NONE;
-                // W3-DEFER[api]: createPROPAGATEVARIABLEBINDINGSSUCCESSORDependency(newDepTrackPoint, processIndi, conDes, prevVarBindPathDes->getDependencyTrackPoint(), restLink->getDependencyTrackPoint(), calcAlgContext)
-                // W3-DEFER[api]: newVarBindPathDes->initVariableBindingPathDescriptor(prevVarBindPathDes->getVariableBindingPath(), newDepTrackPoint)
-                // W3-DEFER[api]: varBindPathMapData.setVariableBindingPathDescriptor(newVarBindPathDes)
-                // W3-DEFER[api]: newVarBindPathDesLinker = newVarBindPathDes->append(newVarBindPathDesLinker)
-                new_var_bind_path_des_linker = new_var_bind_path_des;
+                let _bind_dep_node = self.create_propagate_variable_bindings_successor_dependency(
+                    &mut new_dep_track_point,
+                    process_indi,
+                    con_des,
+                    prev_dep_track_point,
+                    link_dep_track_point,
+                    calc_alg_context,
+                );
+                if new_dep_track_point.is_none() {
+                    // W6-DEFER[api]: createPROPAGATEVARIABLEBINDINGSSUCCESSORDependency
+                    // is called at the C++ point; carry the previous dependency
+                    // track point until the dependency-base backend lands.
+                    new_dep_track_point = prev_dep_track_point;
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_des_mut(new_var_bind_path_des)
+                    .init_variable_binding_path_descriptor(var_binding_path, new_dep_track_point);
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_set_mut(new_var_binding_path_set)
+                    .get_variable_binding_path_map_mut()
+                    .entry_mut(prop_id)
+                    .set_variable_binding_path_descriptor(new_var_bind_path_des);
+                if new_var_bind_path_des_linker.is_none() {
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                } else {
+                    VariableBindingPathDescriptor::append(
+                        calc_alg_context.process_context_mut(),
+                        new_var_bind_path_des,
+                        new_var_bind_path_des_linker,
+                    );
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                }
                 propagations = true;
             }
-            if new_var_bind_path_des_linker != INVALID {
-                // W3-DEFER[api]: newVarBindingPathSet->addVariableBindingPathDescriptorLinker(newVarBindPathDesLinker)
-                // W3-DEFER[api]: conVarBindingSetHash->setLastVariableBindingDescriptionLinker(newVarBindPathDesLinker)
+            if new_var_bind_path_des_linker.is_some() {
+                VariableBindingPathSet::add_variable_binding_path_descriptor_linker(
+                    calc_alg_context.process_context_mut(),
+                    new_var_binding_path_set,
+                    new_var_bind_path_des_linker,
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .con_var_bind_path_set_hash_mut(con_var_binding_set_hash)
+                    .set_last_variable_binding_description_linker(new_var_bind_path_des_linker);
             }
         }
         propagations
@@ -385,43 +679,123 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: &mut NodeId,
         succ_indi: NodeId,
         con_des: ConDescId,
-        new_var_binding_path_set: Cint64,
-        prev_var_binding_path_set: Cint64,
+        new_var_binding_path_set: VarBindingPathSetId,
+        prev_var_binding_path_set: VarBindingPathSetId,
         rest_link: EdgeId,
-        con_var_binding_set_hash: Cint64,
+        con_var_binding_set_hash: ConceptVariableBindingPathSetHashId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
         let mut propagations = false;
-        if prev_var_binding_path_set != INVALID {
-            // W3-DEFER[api]: prevVarBindPathMap = prevVarBindingPathSet->getVariableBindingPathMap()
-            // W3-DEFER[api]: newVarBindPathMap = newVarBindingPathSet->getVariableBindingPathMap()
-            // The sorted merge-walk advances itNew while (newPropID < prevPropID),
-            // skips equal keys, and propagates each prev-only key (doPropagation).
-            // Reproduced structurally over the prev-only key set (empty deferred).
-            let mut new_var_bind_path_des_linker: Cint64 = INVALID;
-            let prev_only_iter: &[Cint64] = &[];
-            for _it_prev in prev_only_iter.iter() {
+        if prev_var_binding_path_set.is_some() {
+            let mut new_var_bind_path_des_linker: VarBindingPathDescriptorId = Id::NONE;
+            let (prev_keys, new_keys): (Vec<Cint64>, Vec<Cint64>) = {
+                let pc = calc_alg_context.process_context();
+                let mut prev_keys: Vec<Cint64> = pc
+                    .vbpath_set(prev_var_binding_path_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .keys()
+                    .copied()
+                    .collect();
+                let mut new_keys: Vec<Cint64> = pc
+                    .vbpath_set(new_var_binding_path_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .keys()
+                    .copied()
+                    .collect();
+                prev_keys.sort();
+                new_keys.sort();
+                (prev_keys, new_keys)
+            };
+            let mut i_prev = 0;
+            let mut i_new = 0;
+            while i_prev < prev_keys.len() {
+                let prop_id = prev_keys[i_prev];
+                let mut do_propagation = true;
+                while i_new < new_keys.len() && new_keys[i_new] < prop_id {
+                    i_new += 1;
+                }
+                if i_new < new_keys.len() && new_keys[i_new] == prop_id {
+                    do_propagation = false;
+                    i_new += 1;
+                }
+                i_prev += 1;
+                if !do_propagation {
+                    continue;
+                }
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDCOUNT, calcAlgContext)
                 // W3-DEFER[macro]: STATINC(VARBINDPROPAGATEDFRESHCOUNT, calcAlgContext)
                 self.stat_var_binding_propagate_succ_count += 1;
                 self.stat_var_binding_propagate_succ_fresh_count += 1;
-                // W3-DEFER[api]: prevVarBindPathDes = itPrev.value().getVariableBindingPathDescriptor()
-                // W3-DEFER[memory-pool]: newVarBindPathDes = allocateAndConstruct<CVariableBindingPathDescriptor>(taskMemMan)
-                let new_var_bind_path_des: Cint64 = INVALID;
+
+                let prev_var_bind_path_des = calc_alg_context
+                    .process_context()
+                    .vbpath_set(prev_var_binding_path_set)
+                    .get_variable_binding_path_map()
+                    .value(prop_id)
+                    .get_variable_binding_path_descriptor();
+                let (var_binding_path, prev_dep_track_point) = {
+                    let pc = calc_alg_context.process_context();
+                    let prev_des = pc.vbpath_des(prev_var_bind_path_des);
+                    (
+                        prev_des.get_variable_binding_path(),
+                        prev_des.get_dependency_track_point(),
+                    )
+                };
+                let link_dep_track_point = calc_alg_context
+                    .process_context()
+                    .edge(rest_link)
+                    .get_dependency_track_point();
+                let new_var_bind_path_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_vbpath_des(VariableBindingPathDescriptor::new());
                 let mut new_dep_track_point: TrackPointId = Id::NONE;
-                // W3-DEFER[api]: createPROPAGATEVARIABLEBINDINGSSUCCESSORDependency(newDepTrackPoint, processIndi, conDes, prevVarBindPathDes->getDependencyTrackPoint(), restLink->getDependencyTrackPoint(), calcAlgContext)
-                // W3-DEFER[api]: varBindingPath = prevVarBindPathDes->getVariableBindingPath()
-                // W3-DEFER[api]: newVarBindPathDes->initVariableBindingPathDescriptor(varBindingPath, newDepTrackPoint)
-                // W3-DEFER[api]: itNew = newVarBindPathMap->insert(varBindingPath->getPropagationID(), CVariableBindingPathMapData(newVarBindPathDes))
-                // W3-DEFER[api]: newVarBindPathDesLinker = newVarBindPathDes->append(newVarBindPathDesLinker)
-                new_var_bind_path_des_linker = new_var_bind_path_des;
+                let _bind_dep_node = self.create_propagate_variable_bindings_successor_dependency(
+                    &mut new_dep_track_point,
+                    process_indi,
+                    con_des,
+                    prev_dep_track_point,
+                    link_dep_track_point,
+                    calc_alg_context,
+                );
+                if new_dep_track_point.is_none() {
+                    // W6-DEFER[api]: dependency-base backend is not materialized
+                    // yet; carry the previous dependency track point.
+                    new_dep_track_point = prev_dep_track_point;
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_des_mut(new_var_bind_path_des)
+                    .init_variable_binding_path_descriptor(var_binding_path, new_dep_track_point);
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_set_mut(new_var_binding_path_set)
+                    .get_variable_binding_path_map_mut()
+                    .entry_mut(prop_id)
+                    .set_variable_binding_path_descriptor(new_var_bind_path_des);
+                if new_var_bind_path_des_linker.is_none() {
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                } else {
+                    VariableBindingPathDescriptor::append(
+                        calc_alg_context.process_context_mut(),
+                        new_var_bind_path_des,
+                        new_var_bind_path_des_linker,
+                    );
+                    new_var_bind_path_des_linker = new_var_bind_path_des;
+                }
                 propagations = true;
             }
-            if new_var_bind_path_des_linker != INVALID {
-                // W3-DEFER[api]: newVarBindingPathSet->addVariableBindingPathDescriptorLinker(newVarBindPathDesLinker)
-                // W3-DEFER[api]: conVarBindingSetHash->setLastVariableBindingDescriptionLinker(newVarBindPathDesLinker)
+            if new_var_bind_path_des_linker.is_some() {
+                VariableBindingPathSet::add_variable_binding_path_descriptor_linker(
+                    calc_alg_context.process_context_mut(),
+                    new_var_binding_path_set,
+                    new_var_bind_path_des_linker,
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .con_var_bind_path_set_hash_mut(con_var_binding_set_hash)
+                    .set_last_variable_binding_description_linker(new_var_bind_path_des_linker);
             }
         }
         propagations
@@ -431,72 +805,150 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: `joinConDes` (`CConceptDescriptor*&`) →
     /// `&mut ConDescId`; `varBindingPathSet` (`CVariableBindingPathSet*&`) →
-    /// `&mut Cint64`. `processIndi` is by-value (`NodeId`).
+    /// `&mut VarBindingPathSetId`. `processIndi` is by-value (`NodeId`).
     pub fn propagate_variable_bindings_joins(
         &mut self,
         process_indi: NodeId,
         joining_con_des: ConDescId,
         join_concept: ConceptId,
-        var_bind_path_des: Cint64,
+        var_bind_path_des: VarBindingPathDescriptorId,
         left_trigger_path: bool,
-        var_bind_path_join_hash: Cint64,
-        var_binding_path_set_hash: Cint64,
+        var_bind_path_join_hash: VariableBindingPathJoiningHashId,
+        var_binding_path_set_hash: ConceptVariableBindingPathSetHashId,
         join_con_des: &mut ConDescId,
-        var_binding_path_set: &mut Cint64,
+        var_binding_path_set: &mut VarBindingPathSetId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
-        // W3-DEFER[api]: joiningConcept = joiningConDes->getConcept()
-        let joining_concept: ConceptId = Id::NONE;
-        // W3-DEFER[api]: varLinker = joiningConcept->getVariableLinker()
-        let var_linker: Cint64 = INVALID;
+        let joining_concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(joining_con_des)
+            .get_concept();
+        let var_linker: Vec<VariableId> = calc_alg_context
+            .ontology_arenas()
+            .concept(joining_concept)
+            .get_variable_linker()
+            .to_vec();
 
-        // W3-DEFER[api]: varBindPath = varBindPathDes->getVariableBindingPath()
-        let var_bind_path: Cint64 = INVALID;
-        // W3-DEFER[api]: varBindPathJoinData = varBindPathJoinHash->getVariableBindingPathJoiningData(CVariableBindingPathJoiningHasher(varBindPath, varLinker), true)
-        let mut var_bind_path_join_data: Cint64 = INVALID;
-        // W3-DEFER[api]: varBindDes = varBindPath->getVariableBindingDescriptorLinker()
-        let var_bind_des: Cint64 = INVALID;
+        let var_bind_path: VarBindingPathId = calc_alg_context
+            .process_context()
+            .vbpath_des(var_bind_path_des)
+            .get_variable_binding_path();
+        let hasher = VariableBindingPathJoiningHasher::new_from_path(
+            calc_alg_context.process_context(),
+            var_bind_path,
+            &var_linker,
+        );
+        let mut hash = std::mem::replace(
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_join_hash_mut(var_bind_path_join_hash),
+            VariableBindingPathJoiningHash::new(INVALID),
+        );
+        let mut var_bind_path_join_data = hash.get_variable_binding_path_joining_data(
+            calc_alg_context.process_context_mut(),
+            &hasher,
+            true,
+        );
+        *calc_alg_context
+            .process_context_mut()
+            .vbpath_join_hash_mut(var_bind_path_join_hash) = hash;
+        let var_bind_des: VarBindingDescriptorId = calc_alg_context
+            .process_context()
+            .vbpath(var_bind_path)
+            .get_variable_binding_descriptor_linker();
 
-        if var_bind_path_join_data == INVALID {
-            // W3-DEFER[memory-pool]: varBindPathJoinData = allocateAndConstruct<CVariableBindingPathJoiningData>(taskMemMan)
-            var_bind_path_join_data = INVALID;
-            let key_var_bind_des_linker: Cint64 =
-                self.create_variable_binding_path_key(process_indi, var_linker, var_bind_des, calc_alg_context);
-            // W3-DEFER[api]: varBindPathJoinData->initVariableBindingPathJoiningData(keyVarBindDesLinker, nullptr, nullptr)
-            // W3-DEFER[api]: varBindPathJoinHash->insertVariableBindingPathJoiningData(CVariableBindingPathJoiningHasher(varBindPathJoinData), varBindPathJoinData)
+        if var_bind_path_join_data.is_none() {
+            var_bind_path_join_data = calc_alg_context
+                .process_context_mut()
+                .alloc_vbpath_join_data(VariableBindingPathJoiningData::new());
+            let key_var_bind_des_linker: VarBindingDescriptorId = self
+                .create_variable_binding_path_key(
+                    process_indi,
+                    &var_linker,
+                    var_bind_des,
+                    calc_alg_context,
+                );
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_join_data_mut(var_bind_path_join_data)
+                .init_variable_binding_path_joining_data(
+                    key_var_bind_des_linker,
+                    Id::NONE,
+                    Id::NONE,
+                );
+            let data_hasher = VariableBindingPathJoiningHasher::new_from_joining_data(
+                calc_alg_context.process_context_mut(),
+                var_bind_path_join_data,
+            );
+            let mut hash = std::mem::replace(
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_join_hash_mut(var_bind_path_join_hash),
+                VariableBindingPathJoiningHash::new(INVALID),
+            );
+            hash.insert_variable_binding_path_joining_data(&data_hasher, var_bind_path_join_data);
+            *calc_alg_context
+                .process_context_mut()
+                .vbpath_join_hash_mut(var_bind_path_join_hash) = hash;
         }
 
         // CVariableBindingPathDescriptor* otherVarBindPathDes
-        let mut other_var_bind_path_des: Cint64 = INVALID;
-        if left_trigger_path {
-            // W3-DEFER[api]: otherVarBindPathDes = varBindPathJoinData->getRightVariableBindingPathDescriptorLinker()
-            other_var_bind_path_des = INVALID;
+        let other_var_bind_path_des: VarBindingPathDescriptorId = if left_trigger_path {
+            calc_alg_context
+                .process_context()
+                .vbpath_join_data(var_bind_path_join_data)
+                .get_right_variable_binding_path_descriptor_linker()
         } else {
-            // W3-DEFER[api]: otherVarBindPathDes = varBindPathJoinData->getLeftVariableBindingPathDescriptorLinker()
-            other_var_bind_path_des = INVALID;
-        }
+            calc_alg_context
+                .process_context()
+                .vbpath_join_data(var_bind_path_join_data)
+                .get_left_variable_binding_path_descriptor_linker()
+        };
 
         let mut added_var_bind_path = false;
-        // for (otherVarBindPathDesIt = otherVarBindPathDes; it; it = it->getNext())
-        // Reproduced structurally over the (empty, deferred) other-side linker chain.
-        let other_linker_iter: &[Cint64] = &[];
-        for _other_var_bind_path_des_it in other_linker_iter.iter() {
+        let mut other_var_bind_path_des_it = other_var_bind_path_des;
+        while other_var_bind_path_des_it.is_some() {
             // W3-DEFER[macro]: STATINC(VARBINDJOINCOMBINECOUNT, calcAlgContext)
             self.stat_var_binding_join_combines_count += 1;
 
-            // W3-DEFER[api]: otherVarBindPathDesIt->getVariableBindingPath()
-            let other_var_bind_path: Cint64 = INVALID;
-            // W3-DEFER[api]: varBindPathDes->getVariableBindingPath()
-            let left_var_bind_path: Cint64 = INVALID;
-            let merged_var_bind_path: Cint64 =
-                self.get_joined_variable_binding_path(left_var_bind_path, other_var_bind_path, calc_alg_context);
-            // W3-DEFER[memory-pool]: mergedVarBindPathDes = allocateAndConstruct<CVariableBindingPathDescriptor>(...)
-            let merged_var_bind_path_des: Cint64 = INVALID;
+            let other_var_bind_path: VarBindingPathId = calc_alg_context
+                .process_context()
+                .vbpath_des(other_var_bind_path_des_it)
+                .get_variable_binding_path();
+            let left_var_bind_path: VarBindingPathId = calc_alg_context
+                .process_context()
+                .vbpath_des(var_bind_path_des)
+                .get_variable_binding_path();
+            let merged_var_bind_path: VarBindingPathId = self.get_joined_variable_binding_path(
+                left_var_bind_path,
+                other_var_bind_path,
+                calc_alg_context,
+            );
+            let merged_var_bind_path_des = calc_alg_context
+                .process_context_mut()
+                .alloc_vbpath_des(VariableBindingPathDescriptor::new());
 
             let mut merged_dependency_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: createVARBINDPROPAGATEJOINDependency(mergedDependencyTrackPoint, processIndi, joiningConDes, varBindPathDes->getDependencyTrackPoint(), otherVarBindPathDesIt->getDependencyTrackPoint(), calcAlgContext)
+            let mut dep_process_indi = process_indi;
+            let prev_dep = calc_alg_context
+                .process_context()
+                .vbpath_des(var_bind_path_des)
+                .get_dependency_track_point();
+            let other_dep = calc_alg_context
+                .process_context()
+                .vbpath_des(other_var_bind_path_des_it)
+                .get_dependency_track_point();
+            let _bind_join_dep_node = self.create_varbind_propagate_join_dependency(
+                &mut merged_dependency_track_point,
+                &mut dep_process_indi,
+                joining_con_des,
+                prev_dep,
+                other_dep,
+                calc_alg_context,
+            );
+            if merged_dependency_track_point.is_none() {
+                merged_dependency_track_point = prev_dep;
+            }
 
             self.force_variable_binding_join_created(
                 process_indi,
@@ -509,21 +961,57 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             );
 
-            // W3-DEFER[api]: mergedVarBindPathDes->initVariableBindingPathDescriptor(mergedVarBindPath, mergedDependencyTrackPoint)
-            // W3-DEFER[api]: varBindingPathSet->addVariableBindingPath(mergedVarBindPathDes)
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_des_mut(merged_var_bind_path_des)
+                .init_variable_binding_path_descriptor(
+                    merged_var_bind_path,
+                    merged_dependency_track_point,
+                );
+            VariableBindingPathSet::add_variable_binding_path(
+                calc_alg_context.process_context_mut(),
+                *var_binding_path_set,
+                merged_var_bind_path_des,
+            );
             added_var_bind_path = true;
+            other_var_bind_path_des_it = calc_alg_context
+                .process_context()
+                .vbpath_des(other_var_bind_path_des_it)
+                .get_next();
         }
 
-        // W3-DEFER[memory-pool]: newVarBindPathDes = allocateAndConstruct<CVariableBindingPathDescriptor>(taskMemMan)
-        let new_var_bind_path_des: Cint64 = INVALID;
-        // W3-DEFER[api]: newVarBindPathDes->initVariableBindingPathDescriptor(varBindPath, varBindPathDes->getDependencyTrackPoint())
+        let new_var_bind_path_des = calc_alg_context
+            .process_context_mut()
+            .alloc_vbpath_des(VariableBindingPathDescriptor::new());
+        let dep = calc_alg_context
+            .process_context()
+            .vbpath_des(var_bind_path_des)
+            .get_dependency_track_point();
+        calc_alg_context
+            .process_context_mut()
+            .vbpath_des_mut(new_var_bind_path_des)
+            .init_variable_binding_path_descriptor(var_bind_path, dep);
 
         if left_trigger_path {
-            // W3-DEFER[api]: varBindingPathSetHash->setLastVariableBindingDescriptionLinker(newVarBindPathDes)
-            // W3-DEFER[api]: varBindPathJoinData->addLeftVariableBindingPathDescriptorLinker(newVarBindPathDes)
+            calc_alg_context
+                .process_context_mut()
+                .con_var_bind_path_set_hash_mut(var_binding_path_set_hash)
+                .set_last_variable_binding_description_linker(new_var_bind_path_des);
+            VariableBindingPathJoiningData::add_left_variable_binding_path_descriptor_linker(
+                calc_alg_context.process_context_mut(),
+                var_bind_path_join_data,
+                new_var_bind_path_des,
+            );
         } else {
-            // W3-DEFER[api]: varBindingPathSetHash->setLastVariableBindingDescriptionLinker(newVarBindPathDes)
-            // W3-DEFER[api]: varBindPathJoinData->addRightVariableBindingPathDescriptorLinker(newVarBindPathDes)
+            calc_alg_context
+                .process_context_mut()
+                .con_var_bind_path_set_hash_mut(var_binding_path_set_hash)
+                .set_last_variable_binding_description_linker(new_var_bind_path_des);
+            VariableBindingPathJoiningData::add_right_variable_binding_path_descriptor_linker(
+                calc_alg_context.process_context_mut(),
+                var_bind_path_join_data,
+                new_var_bind_path_des,
+            );
         }
 
         added_var_bind_path
@@ -531,48 +1019,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::createVariableBindingPathKey`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `varLinker` (`CSortedLinker<CVariable*>*`) and the
-    /// `CVariableBindingDescriptor*` chain are unported → opaque `Cint64`; the
-    /// parallel walk (advance both on a variable match, else advance only the
-    /// binding-descriptor cursor) is reproduced structurally over empty iterators.
     pub fn create_variable_binding_path_key(
         &mut self,
         process_indi: NodeId,
-        var_linker: Cint64,
-        var_bind_des: Cint64,
+        var_linker: &[VariableId],
+        var_bind_des: VarBindingDescriptorId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
-
-        let mut key_var_bind_des_linker: Cint64 = INVALID;
-        let mut last_key_var_bind_des_linker: Cint64 = INVALID;
-        let mut var_linker_it: Cint64 = var_linker;
-        let mut var_bind_des_it: Cint64 = var_bind_des;
-        // while (varLinkerIt) { ... }  — the CSortedLinker / descriptor chains are
-        // unported; the walk is deferred (varLinkerIt starts INVALID ⇒ no iterations).
-        while var_linker_it != INVALID {
-            // W3-DEFER[api]: varBind = varBindDesIt->getVariableBinding()
-            // W3-DEFER[api]: if (varBind->getBindedVariable() == varLinkerIt->getData())
-            let variable_matches = false;
+    ) -> VarBindingDescriptorId {
+        let mut key_var_bind_des_linker: VarBindingDescriptorId = Id::NONE;
+        let mut last_key_var_bind_des_linker: VarBindingDescriptorId = Id::NONE;
+        let mut var_linker_it: usize = 0;
+        let mut var_bind_des_it: VarBindingDescriptorId = var_bind_des;
+        while var_linker_it < var_linker.len() && var_bind_des_it.is_some() {
+            let var_bind = calc_alg_context
+                .process_context()
+                .var_binding_des(var_bind_des_it)
+                .get_variable_binding();
+            let variable_matches = calc_alg_context
+                .process_context()
+                .var_binding(var_bind)
+                .get_binded_variable()
+                == var_linker[var_linker_it];
             if variable_matches {
-                // W3-DEFER[memory-pool]: nextKeyVarBindDesLinker = allocateAndConstruct<CVariableBindingDescriptor>(taskMemMan)
-                let next_key_var_bind_des_linker: Cint64 = INVALID;
-                // W3-DEFER[api]: nextKeyVarBindDesLinker->initVariableBindingDescriptor(varBind)
-                if last_key_var_bind_des_linker != INVALID {
-                    // W3-DEFER[api]: lastKeyVarBindDesLinker->setNext(nextKeyVarBindDesLinker)
+                let next_key_var_bind_des_linker = calc_alg_context
+                    .process_context_mut()
+                    .alloc_var_binding_des(VariableBindingDescriptor::new());
+                calc_alg_context
+                    .process_context_mut()
+                    .var_binding_des_mut(next_key_var_bind_des_linker)
+                    .init_variable_binding_descriptor(var_bind);
+                if last_key_var_bind_des_linker.is_some() {
+                    calc_alg_context
+                        .process_context_mut()
+                        .var_binding_des_mut(last_key_var_bind_des_linker)
+                        .set_next(next_key_var_bind_des_linker);
                     last_key_var_bind_des_linker = next_key_var_bind_des_linker;
                 } else {
                     key_var_bind_des_linker = next_key_var_bind_des_linker;
                     last_key_var_bind_des_linker = next_key_var_bind_des_linker;
                 }
-                // W3-DEFER[api]: varLinkerIt = varLinkerIt->getNext()
-                var_linker_it = INVALID;
-                // W3-DEFER[api]: varBindDesIt = varBindDesIt->getNext()
-                var_bind_des_it = INVALID;
+                var_linker_it += 1;
+                var_bind_des_it = calc_alg_context
+                    .process_context()
+                    .var_binding_des(var_bind_des_it)
+                    .get_next();
             } else {
-                // W3-DEFER[api]: varBindDesIt = varBindDesIt->getNext()
-                var_bind_des_it = INVALID;
+                var_bind_des_it = calc_alg_context
+                    .process_context()
+                    .var_binding_des(var_bind_des_it)
+                    .get_next();
             }
         }
         key_var_bind_des_linker
@@ -582,22 +1077,48 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub fn trigger_variable_binding_path_joining(
         &mut self,
         process_indi: NodeId,
-        var_bind_path_des: Cint64,
-        var_bind_des: Cint64,
+        var_bind_path_des: VarBindingPathDescriptorId,
+        var_bind_des: VarBindingDescriptorId,
         left_triggered: bool,
-        var_bind_trigger_hash: Cint64,
+        var_bind_trigger_hash: VariableBindingTriggerHashId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let mut next_var_bind_des_trigger: Cint64 = var_bind_des;
-        if next_var_bind_des_trigger != INVALID {
-            // while (nextVarBindDesTrigger) { ... }  — unported descriptor chain,
-            // deferred (starts INVALID once we follow getNext ⇒ structural only).
-            while next_var_bind_des_trigger != INVALID {
-                // W3-DEFER[api]: varBind = nextVarBindDesTrigger->getVariableBinding()
-                // W3-DEFER[api]: nextVarBindDesTrigger = nextVarBindDesTrigger->getNext()
-                next_var_bind_des_trigger = INVALID;
-                // W3-DEFER[api]: varBindTriggerHash->tryInsertVariableBindingTrigger(varBind->getBindedVariable(), varBind->getBindedIndividual(), varBindPathDes, nextVarBindDesTrigger, leftTriggered)
-                let inserted = false;
+        let mut next_var_bind_des_trigger: VarBindingDescriptorId = var_bind_des;
+        if next_var_bind_des_trigger.is_some() {
+            while next_var_bind_des_trigger.is_some() {
+                let var_bind = calc_alg_context
+                    .process_context()
+                    .var_binding_des(next_var_bind_des_trigger)
+                    .get_variable_binding();
+                next_var_bind_des_trigger = calc_alg_context
+                    .process_context()
+                    .var_binding_des(next_var_bind_des_trigger)
+                    .get_next();
+                let variable = calc_alg_context
+                    .process_context()
+                    .var_binding(var_bind)
+                    .get_binded_variable();
+                let indi_node = calc_alg_context
+                    .process_context()
+                    .var_binding(var_bind)
+                    .get_binded_individual();
+                let mut trigger_hash = std::mem::replace(
+                    calc_alg_context
+                        .process_context_mut()
+                        .vbtrigger_hash_mut(var_bind_trigger_hash),
+                    VariableBindingTriggerHash::new(INVALID),
+                );
+                let inserted = trigger_hash.try_insert_variable_binding_trigger(
+                    calc_alg_context.process_context_mut(),
+                    variable,
+                    indi_node,
+                    var_bind_path_des,
+                    next_var_bind_des_trigger,
+                    left_triggered,
+                );
+                *calc_alg_context
+                    .process_context_mut()
+                    .vbtrigger_hash_mut(var_bind_trigger_hash) = trigger_hash;
                 if !inserted {
                     // already present — continue walking
                 } else {
@@ -617,92 +1138,188 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         join_concept: ConceptId,
         join_con_des: &mut ConDescId,
         merged_dependency_track_point: TrackPointId,
-        var_binding_path_set: &mut Cint64,
-        var_binding_path_set_hash: Cint64,
+        var_binding_path_set: &mut VarBindingPathSetId,
+        var_binding_path_set_hash: ConceptVariableBindingPathSetHashId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         if *join_con_des == Id::NONE {
-            // W3-DEFER[api]: joinConDes = addConceptToIndividualReturnConceptDescriptor(joinConcept, false, processIndi, mergedDependencyTrackPoint, false, false, calcAlgContext)
-            *join_con_des = Id::NONE;
+            let mut process_indi_mut = process_indi;
+            *join_con_des = self.add_concept_to_individual_return_concept_descriptor(
+                join_concept,
+                false,
+                &mut process_indi_mut,
+                merged_dependency_track_point,
+                false,
+                false,
+                calc_alg_context,
+            );
         }
-        if *var_binding_path_set == INVALID {
-            // W3-DEFER[api]: varBindingPathSet = varBindingPathSetHash->getVariableBindingPathSet(joinConcept, true)
-            *var_binding_path_set = INVALID;
-            // W3-DEFER[api]: varBindingPathSet->setConceptDescriptor(joinConDes)
+        if var_binding_path_set.is_none() {
+            let join_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(join_concept)
+                .get_concept_tag();
+            *var_binding_path_set =
+                ConceptVariableBindingPathSetHash::get_variable_binding_path_set(
+                    calc_alg_context.process_context_mut(),
+                    var_binding_path_set_hash,
+                    join_tag,
+                    true,
+                );
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_set_mut(*var_binding_path_set)
+                .set_concept_descriptor(*join_con_des);
         }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getJoinedVariableBindingPath`.
     pub fn get_joined_variable_binding_path(
         &mut self,
-        left_var_bind_path: Cint64,
-        right_var_bind_path: Cint64,
+        left_var_bind_path: VarBindingPathId,
+        right_var_bind_path: VarBindingPathId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // W3-DEFER[memory-pool]: calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
-        let task_mem_man: Cint64 = INVALID;
-        // W3-DEFER[api]: processingDataBox = calcAlgContext->getUsedProcessingDataBox()
-        // W3-DEFER[api]: varBindPathMergingHash = processingDataBox->getVariableBindingPathMergingHash(true)
-        let var_bind_path_merging_hash: Cint64 = INVALID;
-
-        // W3-DEFER[api]: mergeHashData = varBindPathMergingHash->getMergedVariableBindingPathData(leftVarBindPath, rightVarBindPath)
-        let merge_hash_data: Cint64 = INVALID;
-        // W3-DEFER[api]: mergedVarBindPath = mergeHashData->getVariableBindingPath()
-        let mut merged_var_bind_path: Cint64 = INVALID;
-        if merged_var_bind_path == INVALID {
+    ) -> VarBindingPathId {
+        let var_bind_path_merging_hash = {
+            let current = calc_alg_context
+                .processing_data_box()
+                .use_var_binding_path_merging_hash;
+            let loc = calc_alg_context
+                .processing_data_box()
+                .loc_var_binding_path_merging_hash;
+            if loc.is_none() {
+                let new_hash = calc_alg_context
+                    .process_context_mut()
+                    .alloc_vbpath_merging_hash(VariableBindingPathMergingHash::new(INVALID));
+                if current.is_some() {
+                    let prev_map = calc_alg_context
+                        .process_context()
+                        .vbpath_merging_hash(current)
+                        .map
+                        .clone();
+                    calc_alg_context
+                        .process_context_mut()
+                        .vbpath_merging_hash_mut(new_hash)
+                        .map = prev_map;
+                }
+                calc_alg_context
+                    .processing_data_box_mut()
+                    .loc_var_binding_path_merging_hash = new_hash;
+                calc_alg_context
+                    .processing_data_box_mut()
+                    .use_var_binding_path_merging_hash = new_hash;
+                new_hash
+            } else {
+                current
+            }
+        };
+        let mut merge_hash = std::mem::replace(
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_merging_hash_mut(var_bind_path_merging_hash),
+            VariableBindingPathMergingHash::new(INVALID),
+        );
+        let mut merged_var_bind_path = merge_hash
+            .get_merged_variable_binding_path_data(
+                calc_alg_context.process_context(),
+                left_var_bind_path,
+                right_var_bind_path,
+            )
+            .get_variable_binding_path();
+        if merged_var_bind_path.is_none() {
             // W3-DEFER[macro]: STATINC(VARBINDJOINCREATENEWCOUNT, calcAlgContext)
 
-            // W3-DEFER[api]: leftVarBindDesIt = leftVarBindPath->getVariableBindingDescriptorLinker()
-            let mut left_var_bind_des_it: Cint64 = INVALID;
-            // W3-DEFER[api]: rightVarBindDesIt = rightVarBindPath->getVariableBindingDescriptorLinker()
-            let mut right_var_bind_des_it: Cint64 = INVALID;
+            let mut left_var_bind_des_it = calc_alg_context
+                .process_context()
+                .vbpath(left_var_bind_path)
+                .get_variable_binding_descriptor_linker();
+            let mut right_var_bind_des_it = calc_alg_context
+                .process_context()
+                .vbpath(right_var_bind_path)
+                .get_variable_binding_descriptor_linker();
 
-            let mut merged_var_bind_des: Cint64 = INVALID;
-            let mut last_merged_var_bind_des: Cint64 = INVALID;
+            let mut merged_var_bind_des: VarBindingDescriptorId = Id::NONE;
+            let mut last_merged_var_bind_des: VarBindingDescriptorId = Id::NONE;
 
-            // The sorted merge of the two descriptor chains (advance the <= side,
-            // both on equality). Unported chains ⇒ both start INVALID ⇒ no iterations.
-            while left_var_bind_des_it != INVALID || right_var_bind_des_it != INVALID {
-                let mut next_merged_var_bind_des: Cint64 = INVALID;
-                if left_var_bind_des_it != INVALID && right_var_bind_des_it != INVALID {
-                    // W3-DEFER[api]: leftLE = *leftVarBindDesIt->getVariableBinding() <= *rightVarBindDesIt->getVariableBinding()
-                    let left_le = false;
-                    // W3-DEFER[api]: rightLE = *rightVarBindDesIt->getVariableBinding() <= *leftVarBindDesIt->getVariableBinding()
-                    let right_le = false;
+            while left_var_bind_des_it.is_some() || right_var_bind_des_it.is_some() {
+                let mut next_binding = Id::NONE;
+                if left_var_bind_des_it.is_some() && right_var_bind_des_it.is_some() {
+                    let left_binding = calc_alg_context
+                        .process_context()
+                        .var_binding_des(left_var_bind_des_it)
+                        .get_variable_binding();
+                    let right_binding = calc_alg_context
+                        .process_context()
+                        .var_binding_des(right_var_bind_des_it)
+                        .get_variable_binding();
+                    let left_le = calc_alg_context
+                        .process_context()
+                        .var_binding(left_binding)
+                        .le_binding(
+                            calc_alg_context
+                                .process_context()
+                                .var_binding(right_binding),
+                        );
+                    let right_le = calc_alg_context
+                        .process_context()
+                        .var_binding(right_binding)
+                        .le_binding(calc_alg_context.process_context().var_binding(left_binding));
                     if left_le && right_le {
-                        // W3-DEFER[memory-pool]: allocateAndConstruct<CVariableBindingDescriptor>(taskMemMan)
-                        // W3-DEFER[api]: nextMergedVarBindDes->initVariableBindingDescriptor(leftVarBindDesIt->getVariableBinding())
-                        next_merged_var_bind_des = INVALID;
-                        // W3-DEFER[api]: leftVarBindDesIt = leftVarBindDesIt->getNext()
-                        left_var_bind_des_it = INVALID;
-                        // W3-DEFER[api]: rightVarBindDesIt = rightVarBindDesIt->getNext()
-                        right_var_bind_des_it = INVALID;
+                        next_binding = left_binding;
+                        left_var_bind_des_it = calc_alg_context
+                            .process_context()
+                            .var_binding_des(left_var_bind_des_it)
+                            .get_next();
+                        right_var_bind_des_it = calc_alg_context
+                            .process_context()
+                            .var_binding_des(right_var_bind_des_it)
+                            .get_next();
                     } else if right_le {
-                        // W3-DEFER[memory-pool]: allocateAndConstruct + init from rightVarBindDesIt
-                        next_merged_var_bind_des = INVALID;
-                        // W3-DEFER[api]: rightVarBindDesIt = rightVarBindDesIt->getNext()
-                        right_var_bind_des_it = INVALID;
+                        next_binding = right_binding;
+                        right_var_bind_des_it = calc_alg_context
+                            .process_context()
+                            .var_binding_des(right_var_bind_des_it)
+                            .get_next();
                     } else if left_le {
-                        // W3-DEFER[memory-pool]: allocateAndConstruct + init from leftVarBindDesIt
-                        next_merged_var_bind_des = INVALID;
-                        // W3-DEFER[api]: leftVarBindDesIt = leftVarBindDesIt->getNext()
-                        left_var_bind_des_it = INVALID;
+                        next_binding = left_binding;
+                        left_var_bind_des_it = calc_alg_context
+                            .process_context()
+                            .var_binding_des(left_var_bind_des_it)
+                            .get_next();
                     }
-                } else if left_var_bind_des_it != INVALID {
-                    // W3-DEFER[memory-pool]: allocateAndConstruct + init from leftVarBindDesIt
-                    next_merged_var_bind_des = INVALID;
-                    // W3-DEFER[api]: leftVarBindDesIt = leftVarBindDesIt->getNext()
-                    left_var_bind_des_it = INVALID;
-                } else if right_var_bind_des_it != INVALID {
-                    // W3-DEFER[memory-pool]: allocateAndConstruct + init from rightVarBindDesIt
-                    next_merged_var_bind_des = INVALID;
-                    // W3-DEFER[api]: rightVarBindDesIt = rightVarBindDesIt->getNext()
-                    right_var_bind_des_it = INVALID;
+                } else if left_var_bind_des_it.is_some() {
+                    next_binding = calc_alg_context
+                        .process_context()
+                        .var_binding_des(left_var_bind_des_it)
+                        .get_variable_binding();
+                    left_var_bind_des_it = calc_alg_context
+                        .process_context()
+                        .var_binding_des(left_var_bind_des_it)
+                        .get_next();
+                } else if right_var_bind_des_it.is_some() {
+                    next_binding = calc_alg_context
+                        .process_context()
+                        .var_binding_des(right_var_bind_des_it)
+                        .get_variable_binding();
+                    right_var_bind_des_it = calc_alg_context
+                        .process_context()
+                        .var_binding_des(right_var_bind_des_it)
+                        .get_next();
                 }
 
-                if next_merged_var_bind_des != INVALID {
-                    if last_merged_var_bind_des != INVALID {
-                        // W3-DEFER[api]: lastMergedVarBindDes->setNext(nextMergedVarBindDes)
+                if next_binding.is_some() {
+                    let next_merged_var_bind_des = calc_alg_context
+                        .process_context_mut()
+                        .alloc_var_binding_des(VariableBindingDescriptor::new());
+                    calc_alg_context
+                        .process_context_mut()
+                        .var_binding_des_mut(next_merged_var_bind_des)
+                        .init_variable_binding_descriptor(next_binding);
+                    if last_merged_var_bind_des.is_some() {
+                        calc_alg_context
+                            .process_context_mut()
+                            .var_binding_des_mut(last_merged_var_bind_des)
+                            .set_next(next_merged_var_bind_des);
                         last_merged_var_bind_des = next_merged_var_bind_des;
                     } else {
                         merged_var_bind_des = next_merged_var_bind_des;
@@ -711,11 +1328,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
 
-            // W3-DEFER[memory-pool]: mergedVarBindPath = allocateAndConstruct<CVariableBindingPath>(taskMemMan)
-            // W3-DEFER[api]: mergedVarBindPath->initVariableBindingPath(processingDataBox->getNextVariableBindingPathID(true), mergedVarBindDes)
-            merged_var_bind_path = INVALID;
-            // W3-DEFER[api]: mergeHashData->setVariableBindingPath(mergedVarBindPath)
+            merged_var_bind_path = calc_alg_context
+                .process_context_mut()
+                .alloc_vbpath(VariableBindingPath::new());
+            let next_path_id = calc_alg_context
+                .processing_data_box_mut()
+                .next_variable_binding_path_id(true);
+            calc_alg_context
+                .process_context_mut()
+                .vbpath_mut(merged_var_bind_path)
+                .init_variable_binding_path(next_path_id, merged_var_bind_des);
+            merge_hash
+                .get_merged_variable_binding_path_data(
+                    calc_alg_context.process_context(),
+                    left_var_bind_path,
+                    right_var_bind_path,
+                )
+                .set_variable_binding_path(merged_var_bind_path);
         }
+        *calc_alg_context
+            .process_context_mut()
+            .vbpath_merging_hash_mut(var_bind_path_merging_hash) = merge_hash;
         merged_var_bind_path
     }
 }

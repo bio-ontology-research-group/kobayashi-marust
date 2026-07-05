@@ -31,6 +31,7 @@
 #![allow(dead_code)]
 
 use super::super::model::{Cint64, Id};
+use super::context::ProcessContext;
 use super::node::IndividualProcessNode;
 use super::stubs::ProcessContextId;
 use super::NodeId;
@@ -96,12 +97,17 @@ impl IndividualProcessNode {
     /// struct-def time in `node.rs` (whose doc explicitly deferred the tagger /
     /// mem-alloc seeding to PN-1).
     pub fn construct(process_context: ProcessContextId) -> Self {
-        let mut node = IndividualProcessNode { process_context, ..Default::default() };
+        let mut node = IndividualProcessNode {
+            process_context,
+            ..Default::default()
+        };
         // mMemAllocMan = CContext::getMemoryAllocationManager(mProcessContext);
-        // W2-DEFER[api]: CContext::get_memory_allocation_manager(process_context)
+        // KONCLUDE-PORT-NOTE[memory-pool]: typed arenas are the memory pool; the
+        // retained handle has no runtime allocator object in the Rust port.
         node.mem_alloc_man = Id::NONE;
-        // setLocalizationTag(mProcessContext->getUsedProcessTagger());
-        // W2-DEFER[api]: process_context.get_used_process_tagger().get_current_localization_tag()
+        // KONCLUDE-PORT-NOTE[api]: compatibility shim for older no-context tests.
+        // The exact context-backed constructor is
+        // `ProcessContext::alloc_individual_process_node_constructed`.
         node.set_localization_tag(0);
         node
     }
@@ -162,10 +168,14 @@ impl IndividualProcessNode {
         self.assertion_role_linker = prev.assertion_role_linker;
         self.assertion_concept_linker = prev.assertion_concept_linker;
         self.assertion_data_linker = prev.assertion_data_linker;
+        self.assertion_concept_assertions = prev.assertion_concept_assertions.clone();
+        self.assertion_data_assertions = prev.assertion_data_assertions.clone();
+        self.assertion_role_assertions = prev.assertion_role_assertions.clone();
         self.asserted_data_literal_linker = prev.asserted_data_literal_linker;
         self.last_processed_assertion_data_linker = prev.last_processed_assertion_data_linker;
         self.last_asserted_data_literal_linker = prev.last_asserted_data_literal_linker;
         self.reverse_assertion_role_linker = prev.reverse_assertion_role_linker;
+        self.reverse_assertion_role_assertions = prev.reverse_assertion_role_assertions.clone();
         self.additional_role_assertions_linker = prev.additional_role_assertions_linker;
         self.additional_data_assertions_linker = prev.additional_data_assertions_linker;
         self.last_processed_additional_data_assertions_linker =
@@ -435,5 +445,45 @@ impl IndividualProcessNode {
         self.nominal_level = prev.nominal_level;
         self.indi_type = prev.indi_type;
         self
+    }
+}
+
+impl ProcessContext {
+    /// Context-threaded port of
+    /// `CIndividualProcessNode::CIndividualProcessNode(CProcessContext*)`.
+    pub fn alloc_individual_process_node_constructed(
+        &mut self,
+        process_context: ProcessContextId,
+    ) -> NodeId {
+        let mut node = IndividualProcessNode {
+            process_context,
+            ..Default::default()
+        };
+        // mMemAllocMan = CContext::getMemoryAllocationManager(mProcessContext);
+        // KONCLUDE-PORT-NOTE[memory-pool]: typed arenas are the memory pool; the
+        // retained handle has no runtime allocator object in the Rust port.
+        node.mem_alloc_man = Id::NONE;
+        let loc_tag = self.used_process_tagger().get_current_localization_tag();
+        node.set_localization_tag(loc_tag);
+        self.alloc_node(node)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pn1_constructed_node_uses_current_process_localization_tag() {
+        let mut ctx = ProcessContext::new();
+        ctx.used_process_tagger_mut()
+            .set_current_localization_tag(17);
+
+        let node = ctx.alloc_individual_process_node_constructed(ProcessContextId::NONE);
+
+        assert_eq!(ctx.node_count(), 1);
+        assert_eq!(ctx.node(node).localization_tag(), 17);
+        assert_eq!(ctx.node(node).process_context, ProcessContextId::NONE);
+        assert!(ctx.node(node).mem_alloc_man.is_none());
     }
 }

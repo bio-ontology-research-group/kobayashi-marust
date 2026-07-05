@@ -70,7 +70,9 @@ use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{op, ConceptId, RoleId};
 use super::super::process::edge::{DistinctEdge, IndividualLinkEdge};
 use super::super::process::node::IndividualProcessNode;
-use super::super::process::{ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId};
+use super::super::process::{
+    ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId,
+};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -95,16 +97,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let datatype: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_datatype();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let datatype: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_datatype();
         if datatype != INVALID {
             let dep_track_point: TrackPointId = calc_alg_context
                 .process_context()
                 .con_proc_desc(*con_pro_des)
                 .get_dependency_track_point();
             // triggerConcept = concept->getOperandList()->getData() (head operand).
-            let trigger_concept: ConceptId =
-                calc_alg_context.ontology_arenas().concept(concept).get_operand_list()[0].target;
+            let trigger_concept: ConceptId = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()[0]
+                .target;
             let mut triggered_concepts: ConDescId = Id::NONE;
             if self.datatype_handler != Id::NONE && self.conf_datatype_reasoning {
                 // W6-DEFER[api]: mDatatypeHandler->triggerDatatypeConcept(processIndi, datatype,
@@ -135,14 +146,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_dependency_track_point();
         // triggerConcept = concept->getOperandList()->getData() (head operand).
-        let trigger_concept: ConceptId =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list()[0].target;
+        let trigger_concept: ConceptId = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()[0]
+            .target;
         let mut triggered_concepts: ConDescId = Id::NONE;
         if self.datatype_handler != Id::NONE && self.conf_datatype_reasoning {
             // W6-DEFER[api]: mDatatypeHandler->triggerDataRestrictionConcept(processIndi, concept,
@@ -180,14 +197,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_dependency_track_point();
 
-        let top_concept: ConceptId =
-            calc_alg_context.processing_data_box().ontology_top_concept();
+        let top_concept: ConceptId = calc_alg_context
+            .processing_data_box()
+            .ontology_top_concept();
 
         // create dependency
         let mut next_dep_track_point: TrackPointId = Id::NONE;
@@ -224,7 +245,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let concept_negation: bool = negate;
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
@@ -245,8 +269,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // directly; the operand list lives in the (ctx-owned) concept arena, so the
         // borrow is collected to an owned `Vec<NegLink<ConceptId>>` before the
         // `&mut self`/`&mut ctx` call. Contents and order are identical.
-        let op_con_linker_it: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let op_con_linker_it: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
 
         self.add_concepts_to_individual(
             &op_con_linker_it,
@@ -339,9 +366,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role: RoleId = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role: RoleId = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
@@ -380,8 +412,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // succ-role-hash install, `add_concept_to_individual`) faithful to that method's
             // body (cpp 21635–21670): create the node, install the R link-edge, set the
             // ancestor link/depth, add the qualifier concepts.
-            let is_data_role: bool =
-                calc_alg_context.ontology_arenas().role(role).is_data_role();
+            let is_data_role: bool = calc_alg_context.ontology_arenas().role(role).is_data_role();
             let mut succ_indi: NodeId =
                 self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
             // createNewIndividualsLinksReapplyed → the directed R link-edge + succ-role-hash.
@@ -565,22 +596,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         e.set_dependency_track_point(dep_track_point);
         e.creator = source;
         let link: EdgeId = calc_alg_context.process_context_mut().alloc_edge(e);
-        // installIndividualNodeRoleLink → succRoleHash.insertSuccessorRoleLink(oppIndiID, link).
-        let dest_id: Cint64 = calc_alg_context
-            .process_context()
-            .node(destination)
-            .individual_node_id();
-        let hash = calc_alg_context
-            .process_context_mut()
-            .node_successor_role_hash(source);
+        // installIndividualNodeRoleLink → reapply-role hash + successor-role hash.
+        let mut reapply_queue_it = super::super::process::rs1::ReapplyQueueIterator::empty();
         calc_alg_context
             .process_context_mut()
-            .succ_role_hash_mut(hash)
-            .insert_successor_role_link(dest_id, link);
-        calc_alg_context
-            .process_context_mut()
-            .node_mut(source)
-            .last_added_link = link;
+            .node_install_individual_link(source, link, &mut reapply_queue_it);
         link
     }
 
@@ -676,14 +696,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             for j in (i + 1)..indis.len() {
                 let a = indis[i];
                 let b = indis[j];
-                let a_id = calc_alg_context.process_context().node(a).individual_node_id();
-                let b_id = calc_alg_context.process_context().node(b).individual_node_id();
+                let a_id = calc_alg_context
+                    .process_context()
+                    .node(a)
+                    .individual_node_id();
+                let b_id = calc_alg_context
+                    .process_context()
+                    .node(b)
+                    .individual_node_id();
                 // new CDistinctEdge; initDistinctEdge(a, b, depTrackPoint).
                 let mut e = DistinctEdge::new();
                 e.set_source_individual(a);
                 e.set_destination_individual(b);
                 e.set_dependency_track_point(dep_track_point);
-                let edge = calc_alg_context.process_context_mut().alloc_distinct_edge(e);
+                let edge = calc_alg_context
+                    .process_context_mut()
+                    .alloc_distinct_edge(e);
                 // disHash1->insertDistinctIndividual(b_id, edge); disHash2->insert…(a_id, edge).
                 let dh_a = calc_alg_context.process_context_mut().node_distinct_hash(a);
                 calc_alg_context
@@ -714,8 +742,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         cardinality: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let is_data_role: bool =
-            calc_alg_context.ontology_arenas().role(role).is_data_role();
+        let is_data_role: bool = calc_alg_context.ontology_arenas().role(role).is_data_role();
         let depth: Cint64 = calc_alg_context
             .process_context()
             .node(source)
@@ -800,7 +827,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let _ = negate;
         let tags: Vec<Cint64> = concept_linker
             .iter()
-            .map(|nl| calc_alg_context.ontology_arenas().concept(nl.target).get_concept_tag())
+            .map(|nl| {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(nl.target)
+                    .get_concept_tag()
+            })
             .collect();
         let mut out: Vec<NodeId> = Vec::new();
         for (_link, succ) in self.ht_role_successor_links(source, role, calc_alg_context) {
@@ -847,11 +879,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> bool {
         // disHash = indi1->getDistinctHash(false) (the active mUseDistinctHash).
-        let dh = calc_alg_context.process_context().node(indi1).use_distinct_hash;
+        let dh = calc_alg_context
+            .process_context()
+            .node(indi1)
+            .use_distinct_hash;
         if dh.is_none() {
             return true;
         }
-        let id2 = calc_alg_context.process_context().node(indi2).individual_node_id();
+        let id2 = calc_alg_context
+            .process_context()
+            .node(indi2)
+            .individual_node_id();
         !calc_alg_context
             .process_context()
             .distinct_hash(dh)
@@ -968,9 +1006,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let indi = calc_alg_context
             .ontology_arenas()
             .concept(concept)
@@ -1048,9 +1091,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
@@ -1113,9 +1161,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
@@ -1130,8 +1183,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_processing_restriction_specification();
-        let mut cardinality: Cint64 =
-            calc_alg_context.ontology_arenas().concept(concept).get_parameter();
+        let mut cardinality: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_parameter();
         if negate {
             cardinality -= 1;
         }
@@ -1233,15 +1288,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_dependency_track_point();
-        let mut cardinality: Cint64 =
-            calc_alg_context.ontology_arenas().concept(concept).get_parameter();
+        let mut cardinality: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_parameter();
         if negate {
             cardinality += 1;
         }
@@ -1348,8 +1410,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let indi = calc_alg_context
             .ontology_arenas()
             .concept(concept)

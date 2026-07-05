@@ -11,7 +11,7 @@
 #![allow(dead_code)]
 
 use super::op::{
-    ConceptOperator, CCAND, CCATLEAST, CCATMOST, CCALL, CCBOTTOM, CCEQ, CCNONE, CCSOME, CCSUB,
+    ConceptOperator, CCALL, CCAND, CCATLEAST, CCATMOST, CCBOTTOM, CCEQ, CCNONE, CCSOME, CCSUB,
     CCTOP,
 };
 use super::stubs::NameId;
@@ -380,7 +380,10 @@ impl Concept {
     // and relies on callers adding operands in sorted order (see substrate note).
     // The original takes a pre-built linker; the port takes its data `(id, negated)`.
     pub fn add_operand_linker(&mut self, concept_id: ConceptId, negation: bool) -> &mut Self {
-        self.operands.push(NegLink { target: concept_id, negated: negation });
+        self.operands.push(NegLink {
+            target: concept_id,
+            negated: negation,
+        });
         self
     }
 
@@ -525,7 +528,11 @@ impl Concept {
     }
 
     /// Port of `CConcept::hasOperandConceptTag(qint64 conTag)`.
-    pub fn has_operand_concept_tag_for_tag(&self, con_tag: Cint64, concepts: &Arena<Concept>) -> bool {
+    pub fn has_operand_concept_tag_for_tag(
+        &self,
+        con_tag: Cint64,
+        concepts: &Arena<Concept>,
+    ) -> bool {
         for op in self.operands.iter() {
             let op_con_tag = concepts.get(op.target).get_concept_tag();
             if op_con_tag == con_tag {

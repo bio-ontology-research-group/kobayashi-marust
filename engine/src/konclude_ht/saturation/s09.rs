@@ -83,7 +83,10 @@
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::substrate::{Cint64, INVALID};
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
-use super::super::process::stubs::ConceptSaturationDescriptorId;
+use super::super::process::sat_queue::CriticalSaturationConceptQueueType;
+use super::super::process::stubs::{
+    ConceptSaturationDescriptorId, ConceptSaturationProcessLinkerId,
+};
 use super::super::process::SatNodeId;
 
 // ---------------------------------------------------------------------------
@@ -93,10 +96,10 @@ use super::super::process::SatNodeId;
 // ---------------------------------------------------------------------------
 const CCT_FORALL: Cint64 = 0;
 const CCT_ATMOST: Cint64 = 1;
-const CCT_VALUE: Cint64 = 2;
-const CCT_NOMINAL: Cint64 = 3;
-const CCT_DISJUNCTION: Cint64 = 4;
-const CCT_EQCANDIDATE: Cint64 = 5;
+const CCT_DISJUNCTION: Cint64 = 2;
+const CCT_EQCANDIDATE: Cint64 = 3;
+const CCT_VALUE: Cint64 = 4;
+const CCT_NOMINAL: Cint64 = 5;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================
@@ -112,13 +115,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // CProcessingDataBox* procDataBox = calcAlgContext->getUsedProcessingDataBox();
         // CCriticalIndividualNodeProcessingQueue* critIndNodeProcQueue =
         //     procDataBox->getSaturationCriticalIndividualNodeProcessingQueue(false);
-        let crit_ind_node_proc_queue = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_critical_individual_node_processing_queue(false);
+        let crit_ind_node_proc_queue =
+            calc_alg_context.saturation_critical_individual_node_processing_queue(false);
         if !crit_ind_node_proc_queue.is_none() {
-            // W4-DEFER[api]: if (!critIndNodeProcQueue->isEmpty()) return true;
-            //   CCriticalIndividualNodeProcessingQueue (process::stubs marker) has no
-            //   isEmpty() yet; the non-empty test lands when the queue class is ported.
+            if !calc_alg_context
+                .process_context()
+                .sat_critical_ind_node_proc_queue(crit_ind_node_proc_queue)
+                .is_empty()
+            {
+                return true;
+            }
         }
         false
     }
@@ -132,9 +138,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // CProcessingDataBox* procDataBox = calcAlgContext->getUsedProcessingDataBox();
         // CCriticalIndividualNodeProcessingQueue* critIndNodeProcQueue =
         //     procDataBox->getSaturationCriticalIndividualNodeProcessingQueue(false);
-        let crit_ind_node_proc_queue = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_critical_individual_node_processing_queue(false);
+        let crit_ind_node_proc_queue =
+            calc_alg_context.saturation_critical_individual_node_processing_queue(false);
         if !crit_ind_node_proc_queue.is_none() {
             // W4-DEFER[api]: the body iterates the unported processing queue +
             //   per-node critical-queue / status-flag satellites; transcribed:
@@ -209,9 +214,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // (group L/B) and the `self.insufficient_all_count` counter — they fire per descriptor
         // once the label-set linker yields concrete `(ConceptSaturationDescriptorId, SatNodeId)`
         // pairs and the status-flag predicates land.
-        let _ = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_critical_individual_node_concept_test_set(true);
+        let _ = calc_alg_context.saturation_critical_individual_node_concept_test_set(true);
     }
 
     // =======================================================================
@@ -293,23 +296,36 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         check_flags: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: iterates indiProcSatNode->getCopyDependingIndividualNodeLinker()
-        //   (CXNegLinker<CIndividualSaturationProcessNode*>) and per dependent node tests
-        //   its direct/indirect CIndividualSaturationProcessNodeStatusFlags against
-        //   `checkFlags`, then enqueues via the sibling addCriticalConceptDescriptor.
-        //   The copy-depending chain getter `getCopyDependingIndividualNodeLinker()`
-        //   resolves on the sat-node (it returns `&[NegLink<SatNodeId>]`), but the
-        //   status-flag `hasFlags` predicate is the unported mask unit, so the per-node
-        //   gate + the addCriticalConceptDescriptor enqueue are deferred. Faithful body:
-        //
-        //   for (depIndiIt : indiProcSatNode->getCopyDependingIndividualNodeLinker()) {
-        //       dependingIndiNode = depIndiIt->getData();
-        //       statusFlag = directFlagsCheck ? dependingIndiNode->getDirectStatusFlags()
-        //                                      : dependingIndiNode->getIndirectStatusFlags();
-        //       if (checkFlags == 0 || !statusFlag->hasFlags(checkFlags, false)) {
-        //           addCriticalConceptDescriptor(conDes, conceptType, dependingIndiNode, calcAlgContext);
-        //       }
-        //   }
+        let depending_nodes: Vec<SatNodeId> = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_copy_depending_individual_node_linker()
+            .iter()
+            .map(|link| link.target)
+            .collect();
+        for mut depending_indi_node in depending_nodes {
+            let has_check_flags = if check_flags == 0 {
+                false
+            } else {
+                let depending_node_ref = calc_alg_context
+                    .process_context()
+                    .sat_node(depending_indi_node);
+                let status_flags = if direct_flags_check {
+                    &depending_node_ref.direct_status_flags
+                } else {
+                    &depending_node_ref.indirect_status_flags
+                };
+                status_flags.has_flags_code(check_flags, false)
+            };
+            if check_flags == 0 || !has_check_flags {
+                self.add_critical_concept_descriptor(
+                    con_des,
+                    concept_type,
+                    &mut depending_indi_node,
+                    calc_alg_context,
+                );
+            }
+        }
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::checkCriticalConceptsForNode`
@@ -335,9 +351,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context_mut()
             .sat_node_mut(*indi_proc_sat_node)
             .get_critical_concept_type_queues(false);
-        let _ = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_critical_individual_node_concept_test_set(true);
+        let _ = calc_alg_context.saturation_critical_individual_node_concept_test_set(true);
         //
         // W4-DEFER[api]: the six per-type queue-drain blocks all iterate the unported
         //   CCriticalSaturationConceptQueue (CConceptSaturationProcessLinker linkers) under
@@ -409,25 +423,52 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) {
         if self.conf_add_critical_concepts_to_queues {
             // STATINC(SATURATIONCRITICALADDCOUNT, calcAlgContext);
-            // W4-DEFER[api]: enqueue conDes onto the node's per-type critical-concept queue
-            //   and, if not already queued, onto the databox processing queue — all unported
-            //   satellites (CConceptSaturationProcessLinker pool, CCriticalSaturationConceptTypeQueues,
-            //   CCriticalSaturationConceptQueue, CCriticalIndividualNodeProcessingQueue):
-            //   CConceptSaturationProcessLinker* conDesProLinker = createConceptSaturationProcessLinker(calcAlgContext);
-            //   conDesProLinker->initConceptSaturationProcessLinker(conDes);
-            //   CCriticalSaturationConceptTypeQueues* queues = indiProcSatNode->getCriticalConceptTypeQueues(true);
-            //   CCriticalSaturationConceptQueue* criticalConceptQueue = queues->getCriticalSaturationConceptQueue(conceptType, true);
-            //   criticalConceptQueue->addCriticalConceptDescriptorLinker(conDesProLinker);
-            //   if (!queues->isProcessNodeQueued()) {
-            //       CCriticalIndividualNodeProcessingQueue* criticalIndNodProcQueue =
-            //           calcAlgContext->getUsedProcessingDataBox()->getSaturationCriticalIndividualNodeProcessingQueue(true);
-            //       criticalIndNodProcQueue->insertProcessIndiviudal(indiProcSatNode);
-            //       queues->setProcessNodeQueued(true);
-            //   }
-            let _ = calc_alg_context
-                .process_context_mut()
-                .sat_node_mut(*indi_proc_sat_node)
-                .get_critical_concept_type_queues(true);
+            if let Some(queue_type) = Self::critical_concept_queue_type(concept_type) {
+                let con_des_pro_linker_payload =
+                    self.create_concept_saturation_process_linker(calc_alg_context);
+                let con_des_pro_linker =
+                    ConceptSaturationProcessLinkerId::new(con_des_pro_linker_payload.raw);
+                calc_alg_context
+                    .process_context_mut()
+                    .con_sat_proc_linker_mut(con_des_pro_linker)
+                    .init_concept_saturation_process_linker(con_des);
+
+                let queues = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_ext_critical_concept_type_queues(*indi_proc_sat_node, true);
+                let critical_concept_queue = calc_alg_context
+                    .process_context_mut()
+                    .critical_sat_concept_type_queues_get_critical_saturation_concept_queue(
+                        queues, queue_type, true,
+                    );
+                calc_alg_context
+                    .process_context_mut()
+                    .critical_sat_concept_queue_add_critical_concept_descriptor_linker(
+                        critical_concept_queue,
+                        con_des_pro_linker,
+                    );
+
+                let process_node_queued = calc_alg_context
+                    .process_context()
+                    .critical_sat_concept_type_queues(queues)
+                    .is_process_node_queued();
+                if !process_node_queued {
+                    let critical_ind_node_proc_queue =
+                        calc_alg_context.saturation_critical_individual_node_processing_queue(true);
+                    let individual_id = calc_alg_context
+                        .process_context()
+                        .sat_node(*indi_proc_sat_node)
+                        .get_individual_id();
+                    calc_alg_context
+                        .process_context_mut()
+                        .sat_critical_ind_node_proc_queue_mut(critical_ind_node_proc_queue)
+                        .insert_process_individual(*indi_proc_sat_node, individual_id);
+                    calc_alg_context
+                        .process_context_mut()
+                        .critical_sat_concept_type_queues_mut(queues)
+                        .set_process_node_queued(true);
+                }
+            }
         }
         if self.conf_directly_critical_to_insufficient {
             // KONCLUDE-PORT-NOTE[api]: C++ passes the member `mCalcAlgContext` here (an
@@ -439,6 +480,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 calc_alg_context,
             );
             self.set_insufficient_node_occured(calc_alg_context);
+        }
+    }
+
+    fn critical_concept_queue_type(
+        concept_type: Cint64,
+    ) -> Option<CriticalSaturationConceptQueueType> {
+        match concept_type {
+            CCT_FORALL => Some(CriticalSaturationConceptQueueType::Forall),
+            CCT_ATMOST => Some(CriticalSaturationConceptQueueType::Atmost),
+            CCT_DISJUNCTION => Some(CriticalSaturationConceptQueueType::Disjunction),
+            CCT_EQCANDIDATE => Some(CriticalSaturationConceptQueueType::EqCandidate),
+            CCT_VALUE => Some(CriticalSaturationConceptQueueType::Value),
+            CCT_NOMINAL => Some(CriticalSaturationConceptQueueType::Nominal),
+            _ => None,
         }
     }
 
@@ -788,9 +843,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // CSaturationDisjunctCommonConceptExtractionData* extractionData = indiProcSatNode->getDisjunctCommonConceptExtractionData(false);
         let extraction_data = calc_alg_context
             .process_context_mut()
-            .sat_node_mut(*indi_proc_sat_node)
-            .get_disjunct_common_concept_extraction_data(false);
-        if extraction_data != INVALID {
+            .sat_node_ext_disjunct_common_concept_extraction_data(*indi_proc_sat_node, false);
+        if extraction_data.is_some() {
             // W4-DEFER[api]: walks the unported CSaturationDisjunctCommonConceptExtractionData
             //   (its CSaturationDisjunctCommonConceptCountHash + CSaturationDisjunctExtractionLinker
             //   chain) and, per disjunct node, the newly-added CConceptSaturationDescriptor span,
@@ -830,15 +884,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // CSaturationDisjunctCommonConceptExtractionData* extractionData = indiProcSatNode->getDisjunctCommonConceptExtractionData(true);
         let _extraction_data = calc_alg_context
             .process_context_mut()
-            .sat_node_mut(*indi_proc_sat_node)
-            .get_disjunct_common_concept_extraction_data(true);
+            .sat_node_ext_disjunct_common_concept_extraction_data(*indi_proc_sat_node, true);
         // W4-DEFER[api]: resolves the node's disjunction concept (CSaturationConceptDataItem
         //   ->getSaturationConcept()/getSaturationNegation()) and, per disjunct operand, the
         //   per-disjunct saturation node via the concept-reference linking (getConceptSaturationReferenceLinkingData
         //   ->getIndividualProcessNodeForConcept), then wires the extraction satellites.
         //   The `CConcept`/`CSaturationConceptDataItem`/reference-linking derefs and the
-        //   CSaturationDisjunctExtractionLinker / CSaturationModifiedProcessUpdateLinker pools
-        //   are unported. Faithful body (per disjunct):
+        //   CSaturationDisjunctExtractionLinker allocation is ported, and the
+        //   CSaturationModifiedProcessUpdateLinker pool is live. The remaining
+        //   unresolved concept/reference-linking derefs keep this body deferred.
+        //   Faithful body (per disjunct):
         //
         //   for (disjunctConceptLinkerIt : disjunctionConcept->getOperandList()) { ++disjCount;
         //       disjunctConcept = disjunctConceptLinkerIt->getData();
@@ -875,22 +930,346 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // CSaturationDisjunctCommonConceptExtractionData* extractionData = indiProcSatNode->getDisjunctCommonConceptExtractionData(false);
         let extraction_data = calc_alg_context
             .process_context_mut()
-            .sat_node_mut(*indi_proc_sat_node)
-            .get_disjunct_common_concept_extraction_data(false);
-        if extraction_data != INVALID {
-            // W4-DEFER[api]: the CSaturationDisjunctCommonConceptExtractionData
-            //   ->getExtractionContinueProcessLinker() (a CIndividualSaturationProcessNodeLinker)
-            //   and its isProcessingQueued/setProcessingQueued flag are unported; on first
-            //   enqueue it is pushed to the databox via the live
-            //   `addIndividualDisjunctCommonConceptExtractProcessLinker`. Faithful body:
-            //
-            //   processNodeLinker = extractionData->getExtractionContinueProcessLinker();
-            //   if (!processNodeLinker->isProcessingQueued()) {
-            //       processNodeLinker->setProcessingQueued();
-            //       calcAlgContext->getUsedProcessingDataBox()->addIndividualDisjunctCommonConceptExtractProcessLinker(processNodeLinker);
-            //   }
-            //   The databox sink `add_individual_disjunct_common_concept_extract_process_linker`
-            //   (db5) takes a concrete `SatNodeId`; it fires once the continuation linker resolves.
+            .sat_node_ext_disjunct_common_concept_extraction_data(*indi_proc_sat_node, false);
+        if extraction_data.is_some() {
+            let process_node_linker = calc_alg_context
+                .process_context()
+                .sat_disjunct_common_concept_extraction_data(extraction_data)
+                .get_extraction_continue_process_linker();
+            if process_node_linker.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_sat_process_node_linker(process_node_linker)
+                    .is_processing_queued()
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .indi_sat_process_node_linker_mut(process_node_linker)
+                    .set_processing_queued(true);
+                calc_alg_context
+                    .processing_data_box_mut()
+                    .add_individual_disjunct_common_concept_extract_process_linker(
+                        process_node_linker,
+                    );
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::substrate::NegLink;
+    use super::super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::*;
+
+    fn queued_descriptor(
+        ctx: &mut CalculationAlgorithmContextBase,
+        node: SatNodeId,
+        queue_type: CriticalSaturationConceptQueueType,
+    ) -> ConceptSaturationDescriptorId {
+        let queues = ctx
+            .process_context_mut()
+            .sat_node_ext_critical_concept_type_queues(node, false);
+        if queues.is_none() {
+            return ConceptSaturationDescriptorId::NONE;
+        }
+        let queue = ctx
+            .process_context_mut()
+            .critical_sat_concept_type_queues_get_critical_saturation_concept_queue(
+                queues, queue_type, false,
+            );
+        if queue.is_none() {
+            return ConceptSaturationDescriptorId::NONE;
+        }
+        let linker = ctx
+            .process_context()
+            .critical_sat_concept_queue(queue)
+            .get_critical_concept_descriptor_linker();
+        if linker.is_none() {
+            return ConceptSaturationDescriptorId::NONE;
+        }
+        ctx.process_context()
+            .con_sat_proc_linker(linker)
+            .get_concept_saturation_descriptor()
+    }
+
+    #[test]
+    fn s09_has_next_critical_concepts_reads_critical_queue() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(31));
+        let queue = ctx.saturation_critical_individual_node_processing_queue(true);
+
+        assert!(!algo.has_next_critical_concepts(&mut ctx));
+
+        ctx.process_context_mut()
+            .sat_critical_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 31);
+
+        assert!(algo.has_next_critical_concepts(&mut ctx));
+    }
+
+    #[test]
+    fn s09_add_critical_concept_descriptor_enqueues_typed_queue_and_node_once() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_add_critical_concepts_to_queues = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(47));
+        let first = ConceptSaturationDescriptorId::new(701);
+        let second = ConceptSaturationDescriptorId::new(703);
+
+        algo.add_critical_concept_descriptor(first, CCT_VALUE, &mut node, &mut ctx);
+
+        let queues = ctx
+            .process_context_mut()
+            .sat_node_ext_critical_concept_type_queues(node, false);
+        assert!(ctx
+            .process_context()
+            .critical_sat_concept_type_queues(queues)
+            .is_process_node_queued());
+        let value_queue = ctx
+            .process_context_mut()
+            .critical_sat_concept_type_queues_get_critical_saturation_concept_queue(
+                queues,
+                CriticalSaturationConceptQueueType::Value,
+                false,
+            );
+        let value_linker = ctx
+            .process_context()
+            .critical_sat_concept_queue(value_queue)
+            .get_critical_concept_descriptor_linker();
+        assert_eq!(
+            ctx.process_context()
+                .con_sat_proc_linker(value_linker)
+                .get_concept_saturation_descriptor(),
+            first
+        );
+
+        let critical_node_queue = ctx.saturation_critical_individual_node_processing_queue(false);
+        assert_eq!(
+            ctx.process_context()
+                .sat_critical_ind_node_proc_queue(critical_node_queue)
+                .get_queued_individual_count(),
+            1
+        );
+        assert_eq!(
+            ctx.process_context()
+                .sat_critical_ind_node_proc_queue(critical_node_queue)
+                .get_next_process_individual(),
+            node
+        );
+
+        algo.add_critical_concept_descriptor(second, CCT_DISJUNCTION, &mut node, &mut ctx);
+
+        let disjunction_queue = ctx
+            .process_context_mut()
+            .critical_sat_concept_type_queues_get_critical_saturation_concept_queue(
+                queues,
+                CriticalSaturationConceptQueueType::Disjunction,
+                false,
+            );
+        let disjunction_linker = ctx
+            .process_context()
+            .critical_sat_concept_queue(disjunction_queue)
+            .get_critical_concept_descriptor_linker();
+        assert_eq!(
+            ctx.process_context()
+                .con_sat_proc_linker(disjunction_linker)
+                .get_concept_saturation_descriptor(),
+            second
+        );
+        assert_eq!(
+            ctx.process_context()
+                .sat_critical_ind_node_proc_queue(critical_node_queue)
+                .get_queued_individual_count(),
+            1
+        );
+    }
+
+    #[test]
+    fn s09_add_critical_concept_descriptor_directly_marks_insufficient() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_directly_critical_to_insufficient = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(53));
+
+        algo.add_critical_concept_descriptor(
+            ConceptSaturationDescriptorId::new(709),
+            CCT_FORALL,
+            &mut node,
+            &mut ctx,
+        );
+
+        assert!(ctx
+            .process_context()
+            .sat_node(node)
+            .direct_status_flags
+            .has_flags_code(
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                false
+            ));
+        assert!(ctx.processing_data_box().is_insufficient_node_occured());
+        assert!(ctx
+            .saturation_critical_individual_node_processing_queue(false)
+            .is_none());
+    }
+
+    #[test]
+    fn s09_add_critical_concept_for_dependent_nodes_enqueues_all_without_flag_check() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_add_critical_concepts_to_queues = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(61));
+        let dep_a = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(63));
+        let dep_b = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(65));
+        ctx.process_context_mut()
+            .sat_node_mut(dep_a)
+            .set_individual_id(63);
+        ctx.process_context_mut()
+            .sat_node_mut(dep_b)
+            .set_individual_id(65);
+        ctx.process_context_mut()
+            .sat_node_mut(source)
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: dep_a,
+                negated: false,
+            })
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: dep_b,
+                negated: true,
+            });
+        let descriptor = ConceptSaturationDescriptorId::new(711);
+
+        algo.add_critical_concept_for_dependent_nodes(
+            descriptor,
+            CCT_ATMOST,
+            &mut source,
+            false,
+            0,
+            &mut ctx,
+        );
+
+        assert_eq!(
+            queued_descriptor(&mut ctx, dep_a, CriticalSaturationConceptQueueType::Atmost),
+            descriptor
+        );
+        assert_eq!(
+            queued_descriptor(&mut ctx, dep_b, CriticalSaturationConceptQueueType::Atmost),
+            descriptor
+        );
+        let critical_node_queue = ctx.saturation_critical_individual_node_processing_queue(false);
+        assert_eq!(
+            ctx.process_context()
+                .sat_critical_ind_node_proc_queue(critical_node_queue)
+                .get_queued_individual_count(),
+            2
+        );
+    }
+
+    #[test]
+    fn s09_add_critical_concept_for_dependent_nodes_respects_direct_or_indirect_flags() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_add_critical_concepts_to_queues = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(67));
+        let direct_blocked = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(69));
+        let indirect_blocked = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(71));
+        ctx.process_context_mut()
+            .sat_node_mut(direct_blocked)
+            .set_individual_id(69);
+        ctx.process_context_mut()
+            .sat_node_mut(indirect_blocked)
+            .set_individual_id(71);
+        ctx.process_context_mut()
+            .sat_node_mut(source)
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: direct_blocked,
+                negated: false,
+            })
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: indirect_blocked,
+                negated: false,
+            });
+        ctx.process_context_mut()
+            .sat_node_mut(direct_blocked)
+            .direct_status_flags
+            .add_flags_code(IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT);
+        ctx.process_context_mut()
+            .sat_node_mut(indirect_blocked)
+            .indirect_status_flags
+            .add_flags_code(IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT);
+        let direct_descriptor = ConceptSaturationDescriptorId::new(713);
+        let indirect_descriptor = ConceptSaturationDescriptorId::new(715);
+
+        algo.add_critical_concept_for_dependent_nodes(
+            direct_descriptor,
+            CCT_VALUE,
+            &mut source,
+            true,
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+            &mut ctx,
+        );
+
+        assert_eq!(
+            queued_descriptor(
+                &mut ctx,
+                direct_blocked,
+                CriticalSaturationConceptQueueType::Value
+            ),
+            ConceptSaturationDescriptorId::NONE
+        );
+        assert_eq!(
+            queued_descriptor(
+                &mut ctx,
+                indirect_blocked,
+                CriticalSaturationConceptQueueType::Value
+            ),
+            direct_descriptor
+        );
+
+        algo.add_critical_concept_for_dependent_nodes(
+            indirect_descriptor,
+            CCT_NOMINAL,
+            &mut source,
+            false,
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+            &mut ctx,
+        );
+
+        assert_eq!(
+            queued_descriptor(
+                &mut ctx,
+                direct_blocked,
+                CriticalSaturationConceptQueueType::Nominal
+            ),
+            indirect_descriptor
+        );
+        assert_eq!(
+            queued_descriptor(
+                &mut ctx,
+                indirect_blocked,
+                CriticalSaturationConceptQueueType::Nominal
+            ),
+            ConceptSaturationDescriptorId::NONE
+        );
     }
 }

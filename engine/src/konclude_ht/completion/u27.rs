@@ -85,7 +85,7 @@
 )]
 
 use super::super::model::op::{
-    CCAQAND, CCBRANCHAQAND, CCF_ATLEAST, CCF_ATMOST, CCFS_ALL_AQALL_TYPE, CCFS_SOME_TYPE,
+    CCAQAND, CCBRANCHAQAND, CCFS_ALL_AQALL_TYPE, CCFS_SOME_TYPE, CCF_ATLEAST, CCF_ATMOST,
     CCIMPLAQAND,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
@@ -287,7 +287,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .concept(concept)
             .get_concept_operator();
-        let role: RoleId = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let role: RoleId = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let op_code: Cint64 = calc_alg_context
             .ontology_arenas()
             .concept(concept)

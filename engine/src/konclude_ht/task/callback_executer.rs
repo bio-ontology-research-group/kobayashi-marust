@@ -45,12 +45,21 @@ impl SatisfiableCalculationTaskJobCallbackExecuter {
     /// `setCalculationError` / `setSatisfiable`, and `doCallback()` are opaque until
     /// the Query + callback subtrees are ported, so only their target reads are
     /// resolved here.
-    pub fn execute_callback(&self, sat_calc_task: &mut SatisfiableCalculationTask, _callback_data: Cint64) -> bool {
+    pub fn execute_callback(
+        &self,
+        sat_calc_task: &mut SatisfiableCalculationTask,
+        _callback_data: Cint64,
+    ) -> bool {
         if sat_calc_task.is_calculation_tableau_completion_task() {
             // CJobSatisfiableCallbackContextData* satCallbackData = (...)callbackData->getCallbackDataContext();
-            if sat_calc_task.get_satisfiable_calculation_task_result().has_result() {
+            if sat_calc_task
+                .get_satisfiable_calculation_task_result()
+                .has_result()
+            {
                 // satCallbackData->setCalculationError(false,0);
-                let _result_value = sat_calc_task.get_satisfiable_calculation_task_result().get_result_value();
+                let _result_value = sat_calc_task
+                    .get_satisfiable_calculation_task_result()
+                    .get_result_value();
                 // satCallbackData->setSatisfiable(_result_value);
             } else {
                 let _error_code = sat_calc_task.default_task_result.get_error_code();

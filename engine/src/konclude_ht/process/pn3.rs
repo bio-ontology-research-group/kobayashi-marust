@@ -19,9 +19,9 @@
 //! `if (create && !mX)` pointer tests map 1:1 to `self.use_x.is_some()` /
 //! `create && self.x.is_none()`, since `Id::NONE` == `nullptr` — but every body
 //! step that dereferences a satellite or the allocator is marked
-//! `// W2-DEFER[api]` with a minimal stub (return the C++ null/empty/0 result, or
-//! a no-op) until the satellite arenas are threaded through a process context and
-//! their methods land. The deferred steps are the only behavioural gap; the
+//! `// KONCLUDE-PORT-NOTE[ownership]` and routed through context-threaded
+//! companions where the satellite arenas are already threaded through
+//! `ProcessContext`. Remaining deferred steps are explicit local gaps; the
 //! control flow is faithful.
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: the overloads that take a sibling
@@ -34,13 +34,17 @@
 #![allow(dead_code)]
 
 use super::super::model::{Cint64, ConceptId, RoleId};
+use super::context::ProcessContext;
+use super::distinct::{ConnectionSuccessorSetIterator, DisjointSuccessorRoleIterator};
 use super::node::IndividualProcessNode;
-use super::{DisjointEdgeId, EdgeId, LabelSetId, NodeId, RoleSuccHashId};
+use super::rs1::{ReapplyQueueIterator, RoleSuccessorIterator, RoleSuccessorLinkIterator};
 use super::stubs::{
     ConceptProcessingQueueId, ConceptPropBindingSetHashId, ConceptRepPropSetHashId,
     ConceptVarBindPathSetHashId, ConnSuccSetId, DisjointSuccRoleHashId, DistinctHashId,
     SuccRoleHashId,
 };
+use super::succ_role_hash::{SuccessorIterator, SuccessorRoleIterator};
+use super::{DisjointEdgeId, EdgeId, LabelSetId, NodeId, RoleSuccHashId};
 
 // ===========================================================================
 // Placeholder return types (not-yet-ported `Process/` iterator / queue classes).
@@ -51,28 +55,6 @@ use super::stubs::{
 // land these reconcile to them.
 // ===========================================================================
 
-/// Port of `CRoleSuccessorLinkIterator` (placeholder).
-#[derive(Default)]
-pub struct RoleSuccessorLinkIterator;
-/// Port of `CRoleSuccessorIterator` (placeholder).
-#[derive(Default)]
-pub struct RoleSuccessorIterator;
-/// Port of `CSuccessorRoleIterator` (placeholder).
-#[derive(Default)]
-pub struct SuccessorRoleIterator;
-/// Port of `CDisjointSuccessorRoleIterator` (placeholder).
-#[derive(Default)]
-pub struct DisjointSuccessorRoleIterator;
-/// Port of `CSuccessorIterator` (placeholder).
-#[derive(Default)]
-pub struct SuccessorIterator;
-/// Port of `CConnectionSuccessorSetIterator` (placeholder).
-#[derive(Default)]
-pub struct ConnectionSuccessorSetIterator;
-/// Port of `CReapplyQueueIterator` (placeholder; C++ else branch is
-/// `CReapplyQueueIterator(nullptr,nullptr)`).
-#[derive(Default)]
-pub struct ReapplyQueueIterator;
 /// Port of `CCondensedReapplyQueueIterator` (placeholder; the C++ ctor carries the
 /// `conceptNegation` flag — `CCondensedReapplyQueueIterator(nullptr,conceptNegation)`).
 #[derive(Default)]
@@ -90,56 +72,17 @@ pub struct CondensedReapplyQueuePtr;
 // KONCLUDE-PORT-NOTE[api]: the C++ `getSuccessorRoleIterator` /
 // `getDisjointSuccessorRoleIterator` (and the sibling role/link/successor
 // iterators) return an iterator over the node's `mUseSuccRoleHash` /
-// `mUseDisjointSuccRoleHash` process-hash. Those hash backends are W2-DEFER
-// (their arenas are not threaded through the process context yet), so the
-// `else` branch of each getter yields the *empty* iterator — exactly the
-// default-constructed C++ iterator with `mIterator1 == mIterator2 == false`,
-// whose `hasNext()` is `false` and whose `next()` is `nullptr`/`0`.
+// `mUseDisjointSuccRoleHash` process-hash. Those backends now exist as
+// `ProcessContext` arena objects, so the arena-threaded `ctx.node_*` accessors
+// return the real iterators. The `&self` node methods below cannot resolve an
+// arena id by themselves; their fallback branches yield the same
+// default-constructed empty iterator that C++ returns when the hash pointer is
+// null.
 //
-// These `has_next`/`next` bodies port that empty-iterator behaviour faithfully
-// so the phase-5 link-relocation loops in `completion/u15.rs` (and any other
-// caller) COMPILE and run zero iterations until the real hash backend lands.
-// They are the `(no has_next/next)` gap the `RECONCILE-NEED` flags called out.
+// The imported real iterator types port that empty-iterator behaviour faithfully
+// and are the types seeded by the context-threaded route once the backing hash is
+// present.
 // ===========================================================================
-
-impl SuccessorRoleIterator {
-    /// Port of `CSuccessorRoleIterator::hasNext` (empty-iterator surface).
-    pub fn has_next(&self) -> bool { false }
-    /// Port of `CSuccessorRoleIterator::next` → `CIndividualLinkEdge*` (empty → NONE).
-    pub fn next(&mut self, _move_next: bool) -> EdgeId { EdgeId::NONE }
-}
-
-impl DisjointSuccessorRoleIterator {
-    /// Port of `CDisjointSuccessorRoleIterator::hasNext` (empty-iterator surface).
-    pub fn has_next(&self) -> bool { false }
-    /// Port of `CDisjointSuccessorRoleIterator::next` → `CNegationDisjointEdge*`
-    /// (empty → NONE).
-    pub fn next(&mut self, _move_next: bool) -> DisjointEdgeId { DisjointEdgeId::NONE }
-}
-
-impl RoleSuccessorIterator {
-    /// Port of `CRoleSuccessorIterator::hasNext` (empty-iterator surface).
-    pub fn has_next(&self) -> bool { false }
-    /// Port of `CRoleSuccessorIterator::next` → `CRole*` (empty → NONE).
-    pub fn next(&mut self, _move_next: bool) -> RoleId { RoleId::NONE }
-}
-
-impl RoleSuccessorLinkIterator {
-    /// Port of `CRoleSuccessorLinkIterator::hasNext` (empty-iterator surface).
-    pub fn has_next(&self) -> bool { false }
-    /// Port of `CRoleSuccessorLinkIterator::next` → `CIndividualLinkEdge*`
-    /// (empty → NONE).
-    pub fn next(&mut self, _move_next: bool) -> EdgeId { EdgeId::NONE }
-}
-
-impl SuccessorIterator {
-    /// Port of `CSuccessorIterator::hasNext` (empty-iterator surface).
-    pub fn has_next(&self) -> bool { false }
-    /// Port of `CSuccessorIterator::nextLink` → `CIndividualLinkEdge*` (empty → NONE).
-    pub fn next_link(&mut self, _move_next: bool) -> EdgeId { EdgeId::NONE }
-    /// Port of `CSuccessorIterator::nextIndividualID` → `cint64` (empty → 0).
-    pub fn next_individual_id(&mut self, _move_next: bool) -> Cint64 { 0 }
-}
 
 impl IndividualProcessNode {
     // ===================================================================
@@ -160,30 +103,68 @@ impl IndividualProcessNode {
     // wave calls `ctx.node_reapply_concept_label_set(node)` for `create == true`.
     pub fn get_reapply_concept_label_set(&mut self, create: bool) -> LabelSetId {
         if create && self.reapply_con_label_set.is_none() {
-            // W2-DEFER[api]: allocate CReapplyConceptLabelSet from mMemAllocMan +
-            // mReapplyConLabelSet.initConceptLabelSet(mPrevReapplyConLabelSet);
-            // mUseReapplyConLabelSet = mReapplyConLabelSet; (needs the label-set arena)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_reapply_concept_label_set_in_context`.
         }
         self.use_reapply_con_label_set
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getReapplyConceptLabelSet`.
+    pub fn get_reapply_concept_label_set_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> LabelSetId {
+        if create {
+            process_context.node_reapply_concept_label_set(node)
+        } else {
+            process_context.node(node).use_reapply_con_label_set
+        }
     }
 
     /// Port of `CIndividualProcessNode::getConnectionSuccessorSet`.
     // superseded by ctx.node_connection_successor_set (W3b context-threaded lazy-getter).
     pub fn get_connection_successor_set(&mut self, create: bool) -> ConnSuccSetId {
         if create && self.conn_succ_set.is_none() {
-            // W2-DEFER[api]: allocate CConnectionSuccessorSet +
-            // initConnectionSuccessorSet(mPrevConnSuccSet); mUseConnSuccSet = mConnSuccSet;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_connection_successor_set_in_context`.
         }
         self.use_conn_succ_set
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getConnectionSuccessorSet`.
+    pub fn get_connection_successor_set_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> ConnSuccSetId {
+        if create {
+            process_context.node_connection_successor_set(node)
+        } else {
+            process_context.node_connection_successor_set_existing(node)
+        }
     }
 
     /// Port of `CIndividualProcessNode::getReapplyRoleSuccessorHash`.
     pub fn get_reapply_role_successor_hash(&mut self, create: bool) -> RoleSuccHashId {
         if create && self.reapply_role_succ_hash.is_none() {
-            // W2-DEFER[api]: allocate CReapplyRoleSuccessorHash +
-            // initRoleSuccessorHash(mPrevReapplyRoleSuccHash); mUseReapplyRoleSuccHash = mReapplyRoleSuccHash;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_reapply_role_successor_hash_in_context`.
         }
         self.use_reapply_role_succ_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getReapplyRoleSuccessorHash`.
+    pub fn get_reapply_role_successor_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> RoleSuccHashId {
+        if create {
+            process_context.node_reapply_role_successor_hash(node)
+        } else {
+            process_context.node_reapply_role_successor_hash_existing(node)
+        }
     }
 
     /// Port of `CIndividualProcessNode::getConceptPropagationBindingSetHash`.
@@ -193,11 +174,23 @@ impl IndividualProcessNode {
         create: bool,
     ) -> ConceptPropBindingSetHashId {
         if create && self.concept_prop_binding_set_hash.is_none() {
-            // W2-DEFER[api]: allocate CConceptPropagationBindingSetHash +
-            // initConceptPropagationBindingSetHash(mPrevConceptPropBindingSetHash);
-            // mUseConceptPropBindingSetHash = mConceptPropBindingSetHash;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_concept_propagation_binding_set_hash_in_context`.
         }
         self.use_concept_prop_binding_set_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getConceptPropagationBindingSetHash`.
+    pub fn get_concept_propagation_binding_set_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> ConceptPropBindingSetHashId {
+        if create {
+            process_context.node_concept_propagation_binding_set_hash(node)
+        } else {
+            process_context.node(node).use_concept_prop_binding_set_hash
+        }
     }
 
     /// Port of `CIndividualProcessNode::getConceptVariableBindingPathSetHash`.
@@ -207,11 +200,25 @@ impl IndividualProcessNode {
         create: bool,
     ) -> ConceptVarBindPathSetHashId {
         if create && self.concept_var_bind_path_set_hash.is_none() {
-            // W2-DEFER[api]: allocate CConceptVariableBindingPathSetHash +
-            // initConceptVariableBindingPathSetHash(mPrevConceptVarBindPathSetHash);
-            // mUseConceptVarBindPathSetHash = mConceptVarBindPathSetHash;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_concept_variable_binding_path_set_hash_in_context`.
         }
         self.use_concept_var_bind_path_set_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getConceptVariableBindingPathSetHash`.
+    pub fn get_concept_variable_binding_path_set_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> ConceptVarBindPathSetHashId {
+        if create {
+            process_context.node_concept_variable_binding_path_set_hash(node)
+        } else {
+            process_context
+                .node(node)
+                .use_concept_var_bind_path_set_hash
+        }
     }
 
     /// Port of `CIndividualProcessNode::getConceptRepresentativePropagationSetHash`.
@@ -220,11 +227,23 @@ impl IndividualProcessNode {
         create: bool,
     ) -> ConceptRepPropSetHashId {
         if create && self.concept_rep_prop_set_hash.is_none() {
-            // W2-DEFER[api]: allocate CConceptRepresentativePropagationSetHash +
-            // initConceptRepresentativePropagationSetHash(mPrevConceptRepPropSetHash);
-            // mUseConceptRepPropSetHash = mConceptRepPropSetHash;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_concept_representative_propagation_set_hash_in_context`.
         }
         self.use_concept_rep_prop_set_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getConceptRepresentativePropagationSetHash`.
+    pub fn get_concept_representative_propagation_set_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> ConceptRepPropSetHashId {
+        if create {
+            process_context.node_concept_representative_propagation_set_hash(node)
+        } else {
+            process_context.node(node).use_concept_rep_prop_set_hash
+        }
     }
 
     // ===================================================================
@@ -234,17 +253,19 @@ impl IndividualProcessNode {
     /// Port of `CIndividualProcessNode::getRoleSuccessorLinkIterator`.
     pub fn get_role_successor_link_iterator(&self, _role: RoleId) -> RoleSuccessorLinkIterator {
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.getRoleSuccessorLinkIterator(role)
-            RoleSuccessorLinkIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_role_successor_link_iterator`.
+            RoleSuccessorLinkIterator::empty()
         } else {
-            RoleSuccessorLinkIterator
+            RoleSuccessorLinkIterator::empty()
         }
     }
 
     /// Port of `CIndividualProcessNode::getRoleSuccessorCount`.
     pub fn get_role_successor_count(&self, _role: RoleId) -> Cint64 {
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.getRoleSuccessorCount(role)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_role_successor_count`.
             0
         } else {
             0
@@ -258,10 +279,11 @@ impl IndividualProcessNode {
         _last_link: EdgeId,
     ) -> RoleSuccessorLinkIterator {
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.getRoleSuccessorHistoryLinkIterator(role,lastLink)
-            RoleSuccessorLinkIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_role_successor_history_link_iterator`.
+            RoleSuccessorLinkIterator::empty()
         } else {
-            RoleSuccessorLinkIterator
+            RoleSuccessorLinkIterator::empty()
         }
     }
 
@@ -273,9 +295,8 @@ impl IndividualProcessNode {
         _locateable: bool,
     ) -> bool {
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.hasRoleSuccessorToIndividual(
-            //     role, getIndividualNodeID(), destinationIndiID,
-            //     _locateable && self.reapply_role_succ_hash.is_some())
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_has_role_successor_to_individual_id`.
             return false;
         }
         false
@@ -299,9 +320,8 @@ impl IndividualProcessNode {
         _locateable: bool,
     ) -> EdgeId {
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.getRoleSuccessorToIndividualLink(
-            //     role, getIndividualNodeID(), destinationIndiID,
-            //     _locateable && self.reapply_role_succ_hash.is_some())
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_get_role_successor_to_individual_link_id`.
             return EdgeId::NONE;
         }
         EdgeId::NONE
@@ -314,7 +334,11 @@ impl IndividualProcessNode {
         des_indi: &IndividualProcessNode,
         locateable: bool,
     ) -> EdgeId {
-        self.get_role_successor_to_individual_link_id(role, des_indi.individual_node_id(), locateable)
+        self.get_role_successor_to_individual_link_id(
+            role,
+            des_indi.individual_node_id(),
+            locateable,
+        )
     }
 
     // ===================================================================
@@ -328,10 +352,37 @@ impl IndividualProcessNode {
         _destination_indi_id: Cint64,
     ) -> bool {
         if self.use_disjoint_succ_role_hash.is_some() {
-            // W2-DEFER[api]: return mUseDisjointSuccRoleHash.hasDisjointSuccessorRoleLink(destinationIndiID,role)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `has_negation_disjoint_to_individual_id_in_context`.
             return false;
         }
         false
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::hasNegationDisjointToIndividual(CRole*, cint64)`.
+    pub fn has_negation_disjoint_to_individual_id_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        role: RoleId,
+        destination_indi_id: Cint64,
+    ) -> bool {
+        process_context.node_has_negation_disjoint_to_individual_id(node, role, destination_indi_id)
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::hasNegationDisjointToIndividual(CRole*, CIndividualProcessNode*)`.
+    pub fn has_negation_disjoint_to_individual_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        des_indi: NodeId,
+        role: RoleId,
+    ) -> bool {
+        let destination_indi_id = process_context.node(des_indi).individual_node_id();
+        Self::has_negation_disjoint_to_individual_id_in_context(
+            process_context,
+            node,
+            role,
+            destination_indi_id,
+        )
     }
 
     /// Port of `CIndividualProcessNode::hasNegationDisjointToIndividual(CRole*, CIndividualProcessNode*)`.
@@ -358,11 +409,23 @@ impl IndividualProcessNode {
     // superseded by ctx.node_disjoint_successor_role_hash (W3b context-threaded lazy-getter).
     pub fn get_disjoint_successor_role_hash(&mut self, create: bool) -> DisjointSuccRoleHashId {
         if create && self.disjoint_succ_role_hash.is_none() {
-            // W2-DEFER[api]: allocate CDisjointSuccessorRoleHash +
-            // initDisjointSuccessorRoleHash(mPrevDisjointSuccRoleHash);
-            // mUseDisjointSuccRoleHash = mDisjointSuccRoleHash;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_disjoint_successor_role_hash_in_context`.
         }
         self.use_disjoint_succ_role_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getDisjointSuccessorRoleHash`.
+    pub fn get_disjoint_successor_role_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> DisjointSuccRoleHashId {
+        if create {
+            process_context.node_disjoint_successor_role_hash(node)
+        } else {
+            process_context.node(node).use_disjoint_succ_role_hash
+        }
     }
 
     /// Port of `CIndividualProcessNode::installDisjointLink`.
@@ -370,9 +433,18 @@ impl IndividualProcessNode {
         if self.disjoint_succ_role_hash.is_none() {
             self.get_disjoint_successor_role_hash(true);
         }
-        // W2-DEFER[api]: mUseDisjointSuccRoleHash.insertDisjointSuccessorRoleLink(
-        //     link.getOppositeIndividualID(mIndiID), link)
+        // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+        // `install_disjoint_link_in_context`.
         self
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::installDisjointLink`.
+    pub fn install_disjoint_link_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        link: DisjointEdgeId,
+    ) {
+        process_context.node_install_disjoint_link(node, link);
     }
 
     /// Port of `CIndividualProcessNode::removeDisjointLinks`.
@@ -381,9 +453,19 @@ impl IndividualProcessNode {
             if self.disjoint_succ_role_hash.is_none() {
                 self.get_disjoint_successor_role_hash(true);
             }
-            // W2-DEFER[api]: mUseDisjointSuccRoleHash.removeDisjointSuccessorRoleLinks(succIndiID)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `remove_disjoint_links_in_context`.
         }
         self
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::removeDisjointLinks`.
+    pub fn remove_disjoint_links_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        succ_indi_id: Cint64,
+    ) {
+        process_context.node_remove_disjoint_links(node, succ_indi_id);
     }
 
     /// Port of `CIndividualProcessNode::getDisjointSuccessorRoleIterator(cint64)`.
@@ -394,11 +476,35 @@ impl IndividualProcessNode {
         _succ_indi_id: Cint64,
     ) -> DisjointSuccessorRoleIterator {
         if self.use_disjoint_succ_role_hash.is_some() {
-            // W2-DEFER[api]: return mUseDisjointSuccRoleHash.getDisjointRoleIterator(succIndiId)
-            DisjointSuccessorRoleIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_disjoint_successor_role_iterator_id_in_context`.
+            DisjointSuccessorRoleIterator::new()
         } else {
-            DisjointSuccessorRoleIterator
+            DisjointSuccessorRoleIterator::new()
         }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getDisjointSuccessorRoleIterator(cint64)`.
+    pub fn get_disjoint_successor_role_iterator_id_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        succ_indi_id: Cint64,
+    ) -> DisjointSuccessorRoleIterator {
+        process_context.node_disjoint_successor_role_iterator(node, succ_indi_id)
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getDisjointSuccessorRoleIterator(CIndividualProcessNode*)`.
+    pub fn get_disjoint_successor_role_iterator_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        indi_node: NodeId,
+    ) -> DisjointSuccessorRoleIterator {
+        let succ_indi_id = process_context.node(indi_node).individual_node_id();
+        Self::get_disjoint_successor_role_iterator_id_in_context(
+            process_context,
+            node,
+            succ_indi_id,
+        )
     }
 
     /// Port of `CIndividualProcessNode::getDisjointSuccessorRoleIterator(CIndividualProcessNode*)`.
@@ -412,10 +518,11 @@ impl IndividualProcessNode {
     /// Port of `CIndividualProcessNode::getRoleIterator`.
     pub fn get_role_iterator(&self) -> RoleSuccessorIterator {
         if self.use_reapply_role_succ_hash.is_none() {
-            RoleSuccessorIterator
+            RoleSuccessorIterator::empty()
         } else {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.getRoleIterator()
-            RoleSuccessorIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_role_iterator`.
+            RoleSuccessorIterator::empty()
         }
     }
 
@@ -426,10 +533,24 @@ impl IndividualProcessNode {
     /// Port of `CIndividualProcessNode::getSuccessorRoleHash`.
     pub fn get_successor_role_hash(&mut self, create: bool) -> SuccRoleHashId {
         if create && self.succ_role_hash.is_none() {
-            // W2-DEFER[api]: allocate CSuccessorRoleHash + initSuccessorRoleHash(mPrevSuccRoleHash);
-            // mUseSuccRoleHash = mSuccRoleHash;
+            // KONCLUDE-PORT-NOTE[ownership]: the faithful arena-backed route is
+            // `get_successor_role_hash_in_context`; this `&mut self` compatibility
+            // method cannot allocate the context-owned successor-role hash.
         }
         self.use_succ_role_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getSuccessorRoleHash`.
+    pub fn get_successor_role_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> SuccRoleHashId {
+        if create {
+            process_context.node_successor_role_hash(node)
+        } else {
+            process_context.node(node).use_succ_role_hash
+        }
     }
 
     /// Port of `CIndividualProcessNode::getSuccessorRoleIterator(CIndividualProcessNode*)`.
@@ -446,11 +567,31 @@ impl IndividualProcessNode {
     // empty placeholder because it cannot resolve the hash id against the arena.
     pub fn get_successor_role_iterator_id(&self, _indi_id: Cint64) -> SuccessorRoleIterator {
         if self.use_succ_role_hash.is_none() {
-            SuccessorRoleIterator
+            SuccessorRoleIterator::empty()
         } else {
-            // W2-DEFER[api]: return mUseSuccRoleHash.getSuccessorRoleIterator(indiID)
-            SuccessorRoleIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_successor_role_iterator`.
+            SuccessorRoleIterator::empty()
         }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getSuccessorRoleIterator(cint64)`.
+    pub fn get_successor_role_iterator_id_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        indi_id: Cint64,
+    ) -> SuccessorRoleIterator {
+        process_context.node_successor_role_iterator(node, indi_id)
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getSuccessorRoleIterator(CIndividualProcessNode*)`.
+    pub fn get_successor_role_iterator_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        indi_node: NodeId,
+    ) -> SuccessorRoleIterator {
+        let indi_id = process_context.node(indi_node).individual_node_id();
+        Self::get_successor_role_iterator_id_in_context(process_context, node, indi_id)
     }
 
     /// Port of `CIndividualProcessNode::hasSuccessorIndividualNode(CIndividualProcessNode*)`.
@@ -463,9 +604,29 @@ impl IndividualProcessNode {
         if self.use_succ_role_hash.is_none() {
             false
         } else {
-            // W2-DEFER[api]: return mUseSuccRoleHash.hasSuccessorIndividualNode(indiID)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `has_successor_individual_node_id_in_context`.
             false
         }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::hasSuccessorIndividualNode(cint64)`.
+    pub fn has_successor_individual_node_id_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        indi_id: Cint64,
+    ) -> bool {
+        process_context.node_has_successor_individual_node(node, indi_id)
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::hasSuccessorIndividualNode(CIndividualProcessNode*)`.
+    pub fn has_successor_individual_node_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        indi_node: NodeId,
+    ) -> bool {
+        let indi_id = process_context.node(indi_node).individual_node_id();
+        Self::has_successor_individual_node_id_in_context(process_context, node, indi_id)
     }
 
     // ===================================================================
@@ -475,21 +636,35 @@ impl IndividualProcessNode {
     /// Port of `CIndividualProcessNode::getConceptProcessingQueue`.
     pub fn get_concept_processing_queue(&mut self, create: bool) -> ConceptProcessingQueueId {
         if create && self.concept_processing_queue.is_none() {
-            // W2-DEFER[api]: allocate CConceptProcessingQueue +
-            // initProcessingQueue(mPrevConceptProcessingQueue);
-            // mUseConceptProcessingQueue = mConceptProcessingQueue;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_concept_processing_queue_in_context`.
         }
         self.use_concept_processing_queue
     }
 
+    /// Context-threaded port of `CIndividualProcessNode::getConceptProcessingQueue`.
+    pub fn get_concept_processing_queue_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> ConceptProcessingQueueId {
+        process_context.node_concept_processing_queue(node, create)
+    }
+
     /// Port of `CIndividualProcessNode::getRoleReapplyQueue`.
-    pub fn get_role_reapply_queue(&mut self, _role: RoleId, create: bool) -> Option<ReapplyQueuePtr> {
+    pub fn get_role_reapply_queue(
+        &mut self,
+        _role: RoleId,
+        create: bool,
+    ) -> Option<ReapplyQueuePtr> {
         let reapply_queue: Option<ReapplyQueuePtr> = None;
         if create && self.reapply_role_succ_hash.is_none() {
             self.get_reapply_role_successor_hash(true);
         }
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: reapplyQueue = mUseReapplyRoleSuccHash.getRoleReapplyQueue(role,create)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_add_role_reapply_concept_descriptor` /
+            // `node_role_reapply_iterator`.
         }
         reapply_queue
     }
@@ -504,12 +679,28 @@ impl IndividualProcessNode {
             self.get_reapply_role_successor_hash(true);
         }
         if self.use_reapply_role_succ_hash.is_some() {
-            // W2-DEFER[api]: return mUseReapplyRoleSuccHash.getRoleReapplyIterator(role,clearDynamicReapllyQueue)
-            ReapplyQueueIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_role_reapply_iterator_in_context`.
+            ReapplyQueueIterator::empty()
         } else {
             // CReapplyQueueIterator(nullptr,nullptr)
-            ReapplyQueueIterator
+            ReapplyQueueIterator::empty()
         }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getRoleReapplyIterator`.
+    pub fn get_role_reapply_iterator_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        role: RoleId,
+        clear_dynamic_reapply_queue: bool,
+    ) -> ReapplyQueueIterator {
+        if clear_dynamic_reapply_queue
+            && process_context.node(node).reapply_role_succ_hash.is_none()
+        {
+            process_context.node_reapply_role_successor_hash(node);
+        }
+        process_context.node_role_reapply_iterator(node, role, clear_dynamic_reapply_queue)
     }
 
     /// Port of `CIndividualProcessNode::getConceptReapplyQueue`.
@@ -524,7 +715,9 @@ impl IndividualProcessNode {
             self.get_reapply_concept_label_set(true);
         }
         if self.use_reapply_con_label_set.is_some() {
-            // W2-DEFER[api]: reapplyQueue = mUseReapplyConLabelSet.getConceptReapplyQueue(concept,conceptNegation,create)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_add_concept_reapply_concept_descriptor` /
+            // `node_concept_reapply_iterator`.
         }
         reapply_queue
     }
@@ -540,7 +733,8 @@ impl IndividualProcessNode {
             self.get_reapply_concept_label_set(true);
         }
         if self.use_reapply_con_label_set.is_some() {
-            // W2-DEFER[api]: return mUseReapplyConLabelSet.getConceptReapplyIterator(concept,conceptNegation,clearDynamicReapllyQueue)
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_concept_reapply_iterator_in_context`.
             CondensedReapplyQueueIterator { concept_negation }
         } else {
             // CCondensedReapplyQueueIterator(nullptr,conceptNegation)
@@ -548,14 +742,47 @@ impl IndividualProcessNode {
         }
     }
 
+    /// Context-threaded port of `CIndividualProcessNode::getConceptReapplyIterator`.
+    pub fn get_concept_reapply_iterator_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        concept: ConceptId,
+        concept_negation: bool,
+        clear_dynamic_reapply_queue: bool,
+    ) -> super::reapply_sat::CondensedReapplyQueueIterator {
+        if clear_dynamic_reapply_queue && process_context.node(node).reapply_con_label_set.is_none()
+        {
+            process_context.node_reapply_concept_label_set(node);
+        }
+        process_context.node_concept_reapply_iterator(
+            node,
+            concept,
+            concept_negation,
+            clear_dynamic_reapply_queue,
+        )
+    }
+
     /// Port of `CIndividualProcessNode::getDistinctHash`.
     // superseded by ctx.node_distinct_hash (W3b context-threaded lazy-getter).
     pub fn get_distinct_hash(&mut self, create: bool) -> DistinctHashId {
         if create && self.distinct_hash.is_none() {
-            // W2-DEFER[api]: allocate CDistinctHash + initDistinctHash(mPrevDistinctHash);
-            // mUseDistinctHash = mDistinctHash;
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `get_distinct_hash_in_context`.
         }
         self.use_distinct_hash
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getDistinctHash`.
+    pub fn get_distinct_hash_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        create: bool,
+    ) -> DistinctHashId {
+        if create {
+            process_context.node_distinct_hash(node)
+        } else {
+            process_context.node_distinct_hash_existing(node)
+        }
     }
 
     // ===================================================================
@@ -619,10 +846,33 @@ impl IndividualProcessNode {
     /// Port of `CIndividualProcessNode::isIndividualAncestor`.
     pub fn is_individual_ancestor(&self, _individual: &IndividualProcessNode) -> bool {
         if self.ancestor_link.is_some() {
-            // W2-DEFER[api]: return edges[mAncestorLink].isSourceIndividualID(individual)
+            // KONCLUDE-PORT-NOTE[api]: exact edge-arena lookup is
+            // `is_individual_ancestor_in_context`. This compatibility accessor
+            // cannot dereference `mAncestorLink` without the process context.
             return false;
         }
         false
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::isIndividualAncestor`.
+    pub fn is_individual_ancestor_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+        individual: NodeId,
+    ) -> bool {
+        if node.is_none() || individual.is_none() {
+            return false;
+        }
+        let ancestor_link = process_context.node(node).ancestor_link;
+        if ancestor_link.is_none() {
+            return false;
+        }
+        let source = process_context.edge(ancestor_link).get_source_individual();
+        if source.is_none() {
+            return false;
+        }
+        process_context.node(source).individual_node_id()
+            == process_context.node(individual).individual_node_id()
     }
 
     /// Port of `CIndividualProcessNode::hasIndividualAncestor`.
@@ -656,13 +906,22 @@ impl IndividualProcessNode {
         if self.succ_role_hash.is_none() {
             self.get_successor_role_hash(true);
         }
-        // W2-DEFER[api]: linkCount = mUseReapplyRoleSuccHash.insertRoleSuccessorLink(
-        //     link.getLinkRole(), link, reapplyQueueIt)
+        // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+        // `install_individual_link_in_context`; this compatibility method cannot
+        // dereference context-owned role/successor hashes.
         let link_count: Cint64 = 0;
-        // W2-DEFER[api]: oppIndiID = link.getOppositeIndividualID(mIndiID)
-        // W2-DEFER[api]: mUseSuccRoleHash.insertSuccessorRoleLink(oppIndiID, link)
         self.last_added_link = link;
         link_count
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::installIndividualLink`.
+    pub fn install_individual_link_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        link: EdgeId,
+        reapply_queue_it: &mut ReapplyQueueIterator,
+    ) -> Cint64 {
+        process_context.node_install_individual_link(node, link, reapply_queue_it)
     }
 
     /// Port of `CIndividualProcessNode::removeIndividualLink`.
@@ -670,8 +929,18 @@ impl IndividualProcessNode {
         if self.reapply_role_succ_hash.is_none() {
             self.get_reapply_role_successor_hash(true);
         }
-        // W2-DEFER[api]: mUseReapplyRoleSuccHash.removeRoleSuccessorLink(link.getLinkRole(), link)
+        // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+        // `remove_individual_link_in_context`.
         self
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::removeIndividualLink`.
+    pub fn remove_individual_link_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        link: EdgeId,
+    ) {
+        process_context.node_remove_individual_link(node, link);
     }
 
     /// Port of `CIndividualProcessNode::removeIndividualConnection`.
@@ -679,14 +948,23 @@ impl IndividualProcessNode {
         if self.succ_role_hash.is_none() {
             self.get_successor_role_hash(true);
         }
-        // W2-DEFER[api]: mSuccRoleHash.removeSuccessor(indi.getIndividualNodeID())
         if self.use_conn_succ_set.is_some() {
             if self.conn_succ_set.is_none() {
                 self.get_connection_successor_set(true);
             }
-            // W2-DEFER[api]: mConnSuccSet.removeConnection(indi.getIndividualNodeID())
         }
+        // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+        // `remove_individual_connection_in_context`.
         self
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::removeIndividualConnection`.
+    pub fn remove_individual_connection_in_context(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        indi: NodeId,
+    ) {
+        process_context.node_remove_individual_connection(node, indi);
     }
 
     /// Port of `CIndividualProcessNode::getSuccessorIterator`.
@@ -694,19 +972,460 @@ impl IndividualProcessNode {
     // succ_role_hash::SuccessorIterator).
     pub fn get_successor_iterator(&self) -> SuccessorIterator {
         if self.use_succ_role_hash.is_none() {
-            return SuccessorIterator;
+            return SuccessorIterator::empty();
         }
-        // W2-DEFER[api]: return mUseSuccRoleHash.getSuccessorIterator()
-        SuccessorIterator
+        // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+        // `ProcessContext::node_successor_iterator`.
+        SuccessorIterator::empty()
     }
 
     /// Port of `CIndividualProcessNode::getConnectionSuccessorIterator`.
     pub fn get_connection_successor_iterator(&self) -> ConnectionSuccessorSetIterator {
-        if self.use_conn_succ_set.is_some() {
-            // W2-DEFER[api]: return mUseConnSuccSet.getConnectionSuccessorIterator()
-            ConnectionSuccessorSetIterator
+        if self.use_conn_succ_set.is_none() {
+            ConnectionSuccessorSetIterator::from_single(Cint64::MIN)
         } else {
-            ConnectionSuccessorSetIterator
+            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
+            // `ProcessContext::node_connection_successor_iterator`.
+            ConnectionSuccessorSetIterator::from_single(Cint64::MIN)
         }
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getConnectionSuccessorIterator`.
+    pub fn get_connection_successor_iterator_in_context(
+        process_context: &ProcessContext,
+        node: NodeId,
+    ) -> ConnectionSuccessorSetIterator {
+        process_context.node_connection_successor_iterator(node)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::edge::{DisjointEdge, IndividualLinkEdge};
+    use super::super::TrackPointId;
+    use super::*;
+
+    #[test]
+    fn connection_successor_iterator_without_hash_is_empty() {
+        let node = IndividualProcessNode::default();
+
+        let mut it = node.get_connection_successor_iterator();
+
+        assert!(!it.has_next());
+        assert_eq!(it.next_successor_connection_id(true), 0);
+    }
+
+    #[test]
+    fn connection_successor_iterator_with_hash_uses_context_threaded_fallback() {
+        let mut node = IndividualProcessNode::default();
+        node.use_conn_succ_set = ConnSuccSetId::new(7);
+
+        let mut it = node.get_connection_successor_iterator();
+
+        assert!(!it.has_next());
+        assert_eq!(it.next_successor_connection_id(true), 0);
+    }
+
+    #[test]
+    fn pn3_connection_successor_iterator_in_context_empty_is_empty() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+
+        let mut it =
+            IndividualProcessNode::get_connection_successor_iterator_in_context(&ctx, node);
+
+        assert!(!it.has_next());
+        assert_eq!(it.next_successor_connection_id(true), 0);
+    }
+
+    #[test]
+    fn pn3_connection_successor_iterator_in_context_returns_single_ancestor_id() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+        let conn_set =
+            IndividualProcessNode::get_connection_successor_set_in_context(&mut ctx, node, true);
+        ctx.conn_succ_set_mut(conn_set)
+            .insert_connection_successor(17);
+
+        let mut it =
+            IndividualProcessNode::get_connection_successor_iterator_in_context(&ctx, node);
+
+        assert!(it.has_next());
+        assert_eq!(it.next_successor_connection_id(true), 17);
+        assert!(!it.has_next());
+    }
+
+    #[test]
+    fn pn3_connection_successor_iterator_in_context_returns_set_ids() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+        let conn_set =
+            IndividualProcessNode::get_connection_successor_set_in_context(&mut ctx, node, true);
+        ctx.conn_succ_set_mut(conn_set)
+            .insert_connection_successor(17)
+            .insert_connection_successor(23);
+
+        let mut it =
+            IndividualProcessNode::get_connection_successor_iterator_in_context(&ctx, node);
+        let mut ids = Vec::new();
+        while it.has_next() {
+            ids.push(it.next_successor_connection_id(true));
+        }
+        ids.sort_unstable();
+
+        assert_eq!(ids, vec![17, 23]);
+    }
+
+    #[test]
+    fn pn3_successor_role_hash_in_context_allocates_once() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+
+        assert!(
+            IndividualProcessNode::get_successor_role_hash_in_context(&mut ctx, node, false)
+                .is_none()
+        );
+        let hash = IndividualProcessNode::get_successor_role_hash_in_context(&mut ctx, node, true);
+        assert!(hash.is_some());
+        assert_eq!(ctx.node(node).succ_role_hash, hash);
+        assert_eq!(ctx.node(node).use_succ_role_hash, hash);
+        assert_eq!(
+            IndividualProcessNode::get_successor_role_hash_in_context(&mut ctx, node, true),
+            hash
+        );
+    }
+
+    #[test]
+    fn pn3_disjoint_successor_role_hash_in_context_allocates_once() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+
+        assert!(
+            IndividualProcessNode::get_disjoint_successor_role_hash_in_context(
+                &mut ctx, node, false
+            )
+            .is_none()
+        );
+        let hash = IndividualProcessNode::get_disjoint_successor_role_hash_in_context(
+            &mut ctx, node, true,
+        );
+        assert!(hash.is_some());
+        assert_eq!(ctx.node(node).disjoint_succ_role_hash, hash);
+        assert_eq!(ctx.node(node).use_disjoint_succ_role_hash, hash);
+        assert_eq!(
+            IndividualProcessNode::get_disjoint_successor_role_hash_in_context(
+                &mut ctx, node, true,
+            ),
+            hash
+        );
+    }
+
+    #[test]
+    fn pn3_individual_ancestor_in_context_checks_edge_source_individual_id() {
+        let mut ctx = ProcessContext::new();
+        let source = ctx.alloc_node(IndividualProcessNode::default());
+        let same_source_id = ctx.alloc_node(IndividualProcessNode::default());
+        let other = ctx.alloc_node(IndividualProcessNode::default());
+        let child = ctx.alloc_node(IndividualProcessNode::default());
+        let role = RoleId::new(29);
+        ctx.node_mut(source).set_individual_node_id(17);
+        ctx.node_mut(same_source_id).set_individual_node_id(17);
+        ctx.node_mut(other).set_individual_node_id(19);
+        ctx.node_mut(child).set_individual_node_id(23);
+
+        let mut edge = IndividualLinkEdge::new();
+        edge.init_individual_link_edge(child, source, child, role, TrackPointId::NONE);
+        let edge = ctx.alloc_edge(edge);
+        ctx.node_mut(child).set_ancestor_link(edge);
+
+        assert!(IndividualProcessNode::is_individual_ancestor_in_context(
+            &ctx, child, source
+        ));
+        assert!(IndividualProcessNode::is_individual_ancestor_in_context(
+            &ctx,
+            child,
+            same_source_id
+        ));
+        assert!(!IndividualProcessNode::is_individual_ancestor_in_context(
+            &ctx, child, other
+        ));
+    }
+
+    #[test]
+    fn pn3_context_threaded_lazy_getters_allocate_once() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+
+        assert!(
+            IndividualProcessNode::get_reapply_concept_label_set_in_context(&mut ctx, node, false)
+                .is_none()
+        );
+        let label_set =
+            IndividualProcessNode::get_reapply_concept_label_set_in_context(&mut ctx, node, true);
+        assert!(label_set.is_some());
+        assert_eq!(ctx.node(node).reapply_con_label_set, label_set);
+        assert_eq!(ctx.node(node).use_reapply_con_label_set, label_set);
+        assert_eq!(
+            IndividualProcessNode::get_reapply_concept_label_set_in_context(&mut ctx, node, true),
+            label_set
+        );
+
+        assert!(
+            IndividualProcessNode::get_connection_successor_set_in_context(&mut ctx, node, false)
+                .is_none()
+        );
+        let conn_set =
+            IndividualProcessNode::get_connection_successor_set_in_context(&mut ctx, node, true);
+        assert!(conn_set.is_some());
+        assert_eq!(ctx.node(node).conn_succ_set, conn_set);
+        assert_eq!(ctx.node(node).use_conn_succ_set, conn_set);
+        assert_eq!(
+            IndividualProcessNode::get_connection_successor_set_in_context(&mut ctx, node, true),
+            conn_set
+        );
+
+        assert!(
+            IndividualProcessNode::get_reapply_role_successor_hash_in_context(
+                &mut ctx, node, false
+            )
+            .is_none()
+        );
+        let role_hash =
+            IndividualProcessNode::get_reapply_role_successor_hash_in_context(&mut ctx, node, true);
+        assert!(role_hash.is_some());
+        assert_eq!(ctx.node(node).reapply_role_succ_hash, role_hash);
+        assert_eq!(ctx.node(node).use_reapply_role_succ_hash, role_hash);
+        assert_eq!(
+            IndividualProcessNode::get_reapply_role_successor_hash_in_context(&mut ctx, node, true),
+            role_hash
+        );
+
+        assert!(
+            IndividualProcessNode::get_concept_propagation_binding_set_hash_in_context(
+                &mut ctx, node, false
+            )
+            .is_none()
+        );
+        let prop_hash = IndividualProcessNode::get_concept_propagation_binding_set_hash_in_context(
+            &mut ctx, node, true,
+        );
+        assert!(prop_hash.is_some());
+        assert_eq!(ctx.node(node).concept_prop_binding_set_hash, prop_hash);
+        assert_eq!(ctx.node(node).use_concept_prop_binding_set_hash, prop_hash);
+
+        assert!(
+            IndividualProcessNode::get_concept_variable_binding_path_set_hash_in_context(
+                &mut ctx, node, false
+            )
+            .is_none()
+        );
+        let var_hash = IndividualProcessNode::get_concept_variable_binding_path_set_hash_in_context(
+            &mut ctx, node, true,
+        );
+        assert!(var_hash.is_some());
+        assert_eq!(ctx.node(node).concept_var_bind_path_set_hash, var_hash);
+        assert_eq!(ctx.node(node).use_concept_var_bind_path_set_hash, var_hash);
+
+        assert!(
+            IndividualProcessNode::get_concept_representative_propagation_set_hash_in_context(
+                &mut ctx, node, false
+            )
+            .is_none()
+        );
+        let rep_hash =
+            IndividualProcessNode::get_concept_representative_propagation_set_hash_in_context(
+                &mut ctx, node, true,
+            );
+        assert!(rep_hash.is_some());
+        assert_eq!(ctx.node(node).concept_rep_prop_set_hash, rep_hash);
+        assert_eq!(ctx.node(node).use_concept_rep_prop_set_hash, rep_hash);
+
+        assert!(
+            IndividualProcessNode::get_concept_processing_queue_in_context(&mut ctx, node, false)
+                .is_none()
+        );
+        let queue =
+            IndividualProcessNode::get_concept_processing_queue_in_context(&mut ctx, node, true);
+        assert!(queue.is_some());
+        assert_eq!(ctx.node(node).concept_processing_queue, queue);
+        assert_eq!(ctx.node(node).use_concept_processing_queue, queue);
+
+        assert!(
+            IndividualProcessNode::get_distinct_hash_in_context(&mut ctx, node, false).is_none()
+        );
+        let distinct_hash =
+            IndividualProcessNode::get_distinct_hash_in_context(&mut ctx, node, true);
+        assert!(distinct_hash.is_some());
+        assert_eq!(ctx.node(node).distinct_hash, distinct_hash);
+        assert_eq!(ctx.node(node).use_distinct_hash, distinct_hash);
+        assert_eq!(
+            IndividualProcessNode::get_distinct_hash_in_context(&mut ctx, node, true),
+            distinct_hash
+        );
+    }
+
+    #[test]
+    fn pn3_reapply_iterators_create_storage_on_clear() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::default());
+        let role = RoleId::new(43);
+        let concept = ConceptId::new(47);
+
+        assert!(ctx.node(node).reapply_role_succ_hash.is_none());
+        let role_it =
+            IndividualProcessNode::get_role_reapply_iterator_in_context(&mut ctx, node, role, true);
+        assert!(!role_it.has_next());
+        assert!(ctx.node(node).reapply_role_succ_hash.is_some());
+        assert_eq!(
+            ctx.node(node).reapply_role_succ_hash,
+            ctx.node(node).use_reapply_role_succ_hash
+        );
+
+        assert!(ctx.node(node).reapply_con_label_set.is_none());
+        let concept_it = IndividualProcessNode::get_concept_reapply_iterator_in_context(
+            &mut ctx, node, concept, false, true,
+        );
+        assert!(!concept_it.has_next());
+        assert!(ctx.node(node).reapply_con_label_set.is_some());
+        assert_eq!(
+            ctx.node(node).reapply_con_label_set,
+            ctx.node(node).use_reapply_con_label_set
+        );
+    }
+
+    #[test]
+    fn pn3_successor_role_iterator_and_has_in_context_read_hash() {
+        let mut ctx = ProcessContext::new();
+        let role = RoleId::new(23);
+        let source = ctx.alloc_node(IndividualProcessNode::default());
+        let dest = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(source).set_individual_node_id(101);
+        ctx.node_mut(dest).set_individual_node_id(202);
+        let mut edge = IndividualLinkEdge::new();
+        edge.init_individual_link_edge(source, source, dest, role, TrackPointId::NONE);
+        let edge = ctx.alloc_edge(edge);
+        let mut reapply_it = ReapplyQueueIterator::default();
+
+        assert_eq!(
+            ctx.node_install_individual_link(source, edge, &mut reapply_it),
+            1
+        );
+        assert!(
+            IndividualProcessNode::has_successor_individual_node_id_in_context(&ctx, source, 202)
+        );
+        assert!(
+            IndividualProcessNode::has_successor_individual_node_in_context(&ctx, source, dest)
+        );
+        assert!(
+            !IndividualProcessNode::has_successor_individual_node_id_in_context(&ctx, source, 303)
+        );
+
+        let mut it =
+            IndividualProcessNode::get_successor_role_iterator_id_in_context(&ctx, source, 202);
+        assert_eq!(it.next(true), edge);
+        assert_eq!(it.next(true), EdgeId::NONE);
+
+        let mut it =
+            IndividualProcessNode::get_successor_role_iterator_in_context(&ctx, source, dest);
+        assert_eq!(it.next(true), edge);
+        assert_eq!(it.next(true), EdgeId::NONE);
+    }
+
+    #[test]
+    fn pn3_install_and_remove_individual_link_in_context_follow_topology() {
+        let mut ctx = ProcessContext::new();
+        let role = RoleId::new(29);
+        let source = ctx.alloc_node(IndividualProcessNode::default());
+        let dest = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(source).set_individual_node_id(111);
+        ctx.node_mut(dest).set_individual_node_id(222);
+        let mut edge = IndividualLinkEdge::new();
+        edge.init_individual_link_edge(source, source, dest, role, TrackPointId::NONE);
+        let edge = ctx.alloc_edge(edge);
+        let mut reapply_it = ReapplyQueueIterator::default();
+
+        assert_eq!(
+            IndividualProcessNode::install_individual_link_in_context(
+                &mut ctx,
+                source,
+                edge,
+                &mut reapply_it,
+            ),
+            1
+        );
+        assert_eq!(ctx.node(source).last_added_link, edge);
+        assert_eq!(ctx.node_role_successor_count(source, role), 1);
+        assert!(
+            IndividualProcessNode::has_successor_individual_node_in_context(&ctx, source, dest)
+        );
+
+        IndividualProcessNode::remove_individual_link_in_context(&mut ctx, source, edge);
+        assert_eq!(ctx.node_role_successor_count(source, role), 0);
+        assert!(
+            IndividualProcessNode::has_successor_individual_node_in_context(&ctx, source, dest),
+            "Konclude removeIndividualLink does not remove the successor-role hash entry"
+        );
+
+        IndividualProcessNode::remove_individual_connection_in_context(&mut ctx, source, dest);
+        assert!(
+            !IndividualProcessNode::has_successor_individual_node_in_context(&ctx, source, dest)
+        );
+    }
+
+    #[test]
+    fn pn3_disjoint_link_wrappers_install_read_iterate_and_remove() {
+        let mut ctx = ProcessContext::new();
+        let role = RoleId::new(31);
+        let source = ctx.alloc_node(IndividualProcessNode::default());
+        let dest = ctx.alloc_node(IndividualProcessNode::default());
+        ctx.node_mut(source).set_individual_node_id(301);
+        ctx.node_mut(dest).set_individual_node_id(402);
+
+        assert!(
+            !IndividualProcessNode::has_negation_disjoint_to_individual_id_in_context(
+                &ctx, source, role, 402
+            )
+        );
+
+        let mut disjoint_edge = DisjointEdge::new();
+        disjoint_edge.init_negation_disjoint_edge(source, dest, role, TrackPointId::NONE);
+        let disjoint_edge = ctx.alloc_disjoint_edge(disjoint_edge);
+        IndividualProcessNode::install_disjoint_link_in_context(&mut ctx, source, disjoint_edge);
+
+        assert!(
+            IndividualProcessNode::has_negation_disjoint_to_individual_id_in_context(
+                &ctx, source, role, 402
+            )
+        );
+        assert!(
+            IndividualProcessNode::has_negation_disjoint_to_individual_in_context(
+                &ctx, source, dest, role
+            )
+        );
+        let mut it = IndividualProcessNode::get_disjoint_successor_role_iterator_id_in_context(
+            &ctx, source, 402,
+        );
+        assert_eq!(it.get_successor_individual_id(), 402);
+        assert_eq!(it.next(true), disjoint_edge);
+        assert_eq!(it.next(true), DisjointEdgeId::NONE);
+
+        let mut it = IndividualProcessNode::get_disjoint_successor_role_iterator_in_context(
+            &ctx, source, dest,
+        );
+        assert_eq!(it.next(true), disjoint_edge);
+        assert_eq!(it.next(true), DisjointEdgeId::NONE);
+
+        IndividualProcessNode::remove_disjoint_links_in_context(&mut ctx, source, 402);
+        assert!(
+            !IndividualProcessNode::has_negation_disjoint_to_individual_in_context(
+                &ctx, source, dest, role
+            )
+        );
+        assert!(
+            !IndividualProcessNode::get_disjoint_successor_role_iterator_id_in_context(
+                &ctx, source, 402
+            )
+            .has_next()
+        );
     }
 }

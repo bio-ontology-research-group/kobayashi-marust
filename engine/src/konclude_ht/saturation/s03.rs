@@ -37,14 +37,12 @@
 //! per-test process context ARE wired, so every rule whose body is pure
 //! concept/role logic + sibling-method delegation is ported LIVE
 //! (`applyNONERule`, `applySOMERule`, `applyELSERule`, `applyBOTTOMRule`,
-//! `getDisjunctCheckingConcept`, `addAutomateTransitionOperands`). The remaining
+//! `applyIMPLICATIONRule`, `getDisjunctCheckingConcept`, `addAutomateTransitionOperands`). The remaining
 //! rules each open with `conDes = conSatProLinker->getConceptSaturationDescriptor()`
 //! and then drive their control flow through the not-yet-ported saturation SATELLITE
-//! classes (`CConceptSaturationDescriptor`, `CReapplyConceptSaturationLabelSet`,
-//! `CRoleBackwardSaturationPropagationHash`, `CBackwardSaturationPropagation*`,
-//! `CSaturationConceptDataItem`, `CConceptSaturationReferenceLinkingData`, the
-//! `CImplicationReapplyConceptSaturationDescriptor`), whose accessors land with the
-//! `process` saturation method units (SAT-1 …). Those bodies keep the faithful
+//! classes (`CRoleBackwardSaturationPropagationHash`,
+//! `CBackwardSaturationPropagation*`, `CSaturationConceptDataItem`, and
+//! `CConceptSaturationReferenceLinkingData`). Those bodies keep the faithful
 //! signature + a full structural transcription of the C++ and defer with
 //! `todo!("W4-DEFER[api]: …")`; logic is documented, never dropped.
 
@@ -52,12 +50,21 @@
 #![allow(unused_variables)]
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
-use super::super::model::op::{CCAQCHOOCE, CCFS_AQALL_TYPE, CCFS_AQAND_TYPE};
+use super::super::model::op::{
+    CCALL, CCAND, CCAQALL, CCAQAND, CCAQCHOOCE, CCAQSOME, CCATLEAST, CCATMOST, CCATOM, CCBOTTOM,
+    CCBRANCHALL, CCBRANCHAQALL, CCBRANCHAQAND, CCBRANCHIMPL, CCBRANCHTRIG, CCDATALITERAL,
+    CCDATATYPE, CCEQ, CCEQCAND, CCFS_AQALL_TYPE, CCFS_AQAND_TYPE, CCIMPL, CCIMPLALL, CCIMPLAQALL,
+    CCIMPLAQAND, CCIMPLTRIG, CCNOMINAL, CCOR, CCSELF, CCSOME, CCSUB, CCTOP, CCVALUE,
+};
 use super::super::model::substrate::Cint64;
 use super::super::model::{ConceptId, NegLink, RoleId};
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::SatNodeId;
+use super::satellites::{
+    ConceptSaturationDescriptorId, ImplicationReapplyConceptSaturationDescriptor,
+    ImplicationReapplyConceptSaturationDescriptorId,
+};
 
 // `CCriticalConceptType` enum tags used by `addCriticalConceptDescriptor`.
 // File-local mirror of the (file-private) `CCT_*` copy in `s09.rs` — same C++
@@ -92,20 +99,97 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // The descriptor read (conDes / getNegation / getConcept) + concept
-        // getOperatorCode now resolve (W4.5 satellites + W1 concept arena), but the
-        // dispatch itself is still blocked:
-        // W4-DEFER[pointer-alias]: mPos/NegJumpFuncVec[conOpCode] + `(this->*func)(...)`
-        //   — the `TableauRuleFunction` member-fn-pointer jump tables are opaque
-        //   `[Cint64; RULE_FUNC_COUNT]` until the rule slots are wired (the operator-code
-        //   → `apply*Rule` mapping is populated by the jump-table init, not yet ported).
-        //   The matched slot dispatches to the sibling `apply*Rule` methods, else
-        //   `applyELSERule`. Faithful match lands when the jump-table init unit ports.
-        let _ = (process_indi, con_sat_pro_linker, calc_alg_context);
-        todo!(
-            "W4-DEFER[pointer-alias]: applyTableauSaturationRule needs the resolved rule \
-             jump tables (operator-code → apply*Rule mapping) — unported"
-        );
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let con_op_code = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operator_code();
+
+        if !con_negation {
+            match con_op_code {
+                CCDATATYPE => {
+                    self.apply_datatype_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCBOTTOM => {
+                    self.apply_bottom_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCATOM => self.apply_none_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+                CCTOP | CCAND | CCAQAND | CCIMPLAQAND | CCBRANCHAQAND | CCSUB | CCIMPLTRIG
+                | CCBRANCHTRIG | CCEQ => {
+                    self.apply_and_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCALL | CCAQALL | CCIMPLALL | CCBRANCHALL | CCBRANCHAQALL | CCIMPLAQALL => {
+                    self.apply_all_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCSOME | CCAQSOME => {
+                    self.apply_some_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCAQCHOOCE => self.apply_automat_choose_rule(
+                    process_indi,
+                    con_sat_pro_linker,
+                    calc_alg_context,
+                ),
+                CCOR => self.apply_or_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+                CCIMPL | CCBRANCHIMPL => {
+                    self.apply_implication_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCEQCAND => {
+                    self.apply_eqcand_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCSELF => self.apply_self_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+                CCATLEAST => {
+                    self.apply_atleast_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCATMOST => {
+                    self.apply_atmost_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCVALUE => {
+                    self.apply_value_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCNOMINAL => {
+                    self.apply_nominal_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCDATALITERAL => {
+                    self.apply_data_literal_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                _ => self.apply_else_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+            }
+        } else {
+            match con_op_code {
+                CCATMOST => {
+                    self.apply_atleast_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCATLEAST => {
+                    self.apply_atmost_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCOR => self.apply_and_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+                CCALL => self.apply_some_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+                CCSOME => self.apply_all_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+                CCAQCHOOCE => self.apply_automat_choose_rule(
+                    process_indi,
+                    con_sat_pro_linker,
+                    calc_alg_context,
+                ),
+                CCAND | CCEQ => {
+                    self.apply_or_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                CCSUB | CCATOM => {
+                    self.apply_none_rule(process_indi, con_sat_pro_linker, calc_alg_context)
+                }
+                _ => self.apply_else_rule(process_indi, con_sat_pro_linker, calc_alg_context),
+            }
+        }
     }
 
     // =======================================================================
@@ -136,12 +220,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .con_sat_proc_linker(con_sat_pro_linker)
             .get_concept_saturation_descriptor();
-        let con_negation = calc_alg_context.process_context().con_sat_desc(con_des).get_negation();
-        let concept = calc_alg_context.process_context().con_sat_desc(con_des).get_concept();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
         // KONCLUDE-PORT-NOTE[ownership]: snapshot the operand slice so the read borrow
         // of the terminology arena is released before the `&mut self` leaf calls.
-        let operands: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
         for op_link in operands {
             let op_concept = op_link.target; // getData()
             let op_negation = op_link.negated; // isNegated()
@@ -149,7 +242,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 // C++: addConceptFilteredToIndividual(opConcept, false, processIndi, false, mCalcAlgContext)
                 //   — the choose rule adds the operand with negation `false`; the 4-arg
                 //   sibling overload elides the (false) updateCopyDepended flag.
-                self.add_concept_filtered_to_individual(op_concept, false, process_indi, calc_alg_context);
+                self.add_concept_filtered_to_individual(
+                    op_concept,
+                    false,
+                    process_indi,
+                    calc_alg_context,
+                );
             }
         }
     }
@@ -180,12 +278,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .con_sat_proc_linker(con_sat_pro_linker)
             .get_concept_saturation_descriptor();
-        let con_negation = calc_alg_context.process_context().con_sat_desc(con_des).get_negation();
-        let concept = calc_alg_context.process_context().con_sat_desc(con_des).get_concept();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
         // KONCLUDE-PORT-NOTE[ownership]: snapshot the operand-linker list before the
         // `&mut self` add so the terminology-arena read borrow is released first.
-        let concept_op_linker: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
         self.add_concepts_filtered_to_individual(
             &concept_op_linker,
             con_negation,
@@ -234,18 +341,37 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // The descriptor read (conDes / getConcept) now resolves, but the body is
-        // still blocked on two still-missing pieces:
-        // W4.5-DEFER[api]: the `CImplicationReapplyConceptSaturationDescriptor` stack
-        //   temp + `initImplicationReapllyConceptSaturationDescriptor` (the C++ name
-        //   really is misspelled "Reaplly") is one of the deferred W4.5 sub-structs;
-        //   the node's `getReapplyConceptSaturationLabelSet(true)` lazy CREATE-alloc is
-        //   W2-DEFER (the create path does not yet allocate, process/sat1.rs); and the
-        //   sibling `updateImplicationReapplyConceptSaturationDescriptor` (group K,
-        //   PU-SAT-11) walks the implication-reapply descriptor. Faithful body lands
-        //   with the implication-reapply descriptor port + the label-set create-alloc.
-        let _ = (process_indi, con_sat_pro_linker, calc_alg_context);
-        todo!("W4.5-DEFER: applyIMPLICATIONRule — implication-reapply descriptor + label-set create-alloc unported");
+        // STATINC(ANDRULEAPPLICATIONCOUNT) — profiling stat, elided.
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let impl_concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let next_trigger_concept: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(impl_concept)
+            .get_operand_list()
+            .to_vec();
+        let mut tmp_reapply = ImplicationReapplyConceptSaturationDescriptor::new();
+        tmp_reapply.init_implication_reaplly_concept_saturation_descriptor(
+            impl_concept,
+            Some(&next_trigger_concept),
+        );
+        let tmp_reapply = calc_alg_context
+            .process_context_mut()
+            .alloc_imp_reapply_con_sat_desc(tmp_reapply);
+        let label_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
+        self.update_implication_reapply_concept_saturation_descriptor(
+            tmp_reapply,
+            process_indi,
+            label_set,
+            calc_alg_context,
+        );
     }
 
     // =======================================================================
@@ -266,14 +392,22 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         checking_negation: Option<&mut bool>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> ConceptId {
-        if calc_alg_context.ontology_arenas().concept(op_concept).get_operator_code() == CCAQCHOOCE {
+        if calc_alg_context
+            .ontology_arenas()
+            .concept(op_concept)
+            .get_operator_code()
+            == CCAQCHOOCE
+        {
             let mut replace_count: i64 = 0;
             // KONCLUDE-PORT-NOTE[ownership]: C++ `replaceCheckingConcept = nullptr`.
             let mut replace_checking_concept: ConceptId = ConceptId::NONE;
             // KONCLUDE-PORT-NOTE[ownership]: snapshot the operand slice so the read
             // borrow of the terminology arena does not outlive the loop.
-            let op_concept_op_linker: Vec<NegLink<ConceptId>> =
-                calc_alg_context.ontology_arenas().concept(op_concept).get_operand_list().to_vec();
+            let op_concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(op_concept)
+                .get_operand_list()
+                .to_vec();
             for op_op_linker in op_concept_op_linker {
                 let op_op_concept = op_op_linker.target; // getData()
                 let op_op_negation = op_op_linker.negated; // isNegated()
@@ -359,9 +493,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .con_sat_proc_linker(con_sat_pro_linker)
             .get_concept_saturation_descriptor();
-        let con_negation = calc_alg_context.process_context().con_sat_desc(con_des).get_negation();
-        let concept = calc_alg_context.process_context().con_sat_desc(con_des).get_concept();
-        let operand_count = calc_alg_context.ontology_arenas().concept(concept).get_operand_count();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let operand_count = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_count();
         if operand_count == 0 {
             // Empty disjunction ⇒ clash.
             self.update_direct_adding_individual_status_flags(
@@ -371,8 +514,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             );
         } else if operand_count == 1 {
             // STATINC(ANDRULEAPPLICATIONCOUNT) — singleton degenerates to AND-add.
-            let concept_op_linker: Vec<NegLink<ConceptId>> =
-                calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+            let concept_op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
             self.add_concepts_filtered_to_individual(
                 &concept_op_linker,
                 con_negation,
@@ -387,7 +533,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL,
                 calc_alg_context,
             );
-            self.add_critical_concept_descriptor(con_des, CCT_DISJUNCTION, process_indi, calc_alg_context);
+            self.add_critical_concept_descriptor(
+                con_des,
+                CCT_DISJUNCTION,
+                process_indi,
+                calc_alg_context,
+            );
             // W4.5-DEFER[api]: the disjunction-node-wiring tail (.cpp 6044–6098) —
             //   conceptSatItem = processIndi->getSaturationConceptReferenceLinking();
             //   conceptSatItem->getSaturationConcept()/getSaturationNegation();
@@ -457,7 +608,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .con_sat_proc_linker(con_sat_pro_linker)
             .get_concept_saturation_descriptor();
-        self.add_critical_concept_descriptor(con_des, CCT_EQCANDIDATE, process_indi, calc_alg_context);
+        self.add_critical_concept_descriptor(
+            con_des,
+            CCT_EQCANDIDATE,
+            process_indi,
+            calc_alg_context,
+        );
     }
 
     // =======================================================================
@@ -501,13 +657,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let automat_concept_operator =
-            calc_alg_context.ontology_arenas().concept(automat_concept).get_concept_operator();
+        let automat_concept_operator = calc_alg_context
+            .ontology_arenas()
+            .concept(automat_concept)
+            .get_concept_operator();
         if automat_concept_operator.has_partial_operator_code_flag(CCFS_AQAND_TYPE) {
             // KONCLUDE-PORT-NOTE[ownership]: snapshot operands before the recursive
             // `&mut` calls so the terminology-arena read borrow is released first.
-            let operands: Vec<NegLink<ConceptId>> =
-                calc_alg_context.ontology_arenas().concept(automat_concept).get_operand_list().to_vec();
+            let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(automat_concept)
+                .get_operand_list()
+                .to_vec();
             for op_link in operands {
                 let automate_operand_concept = op_link.target;
                 self.add_automate_transition_operands(
@@ -518,7 +679,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
             }
         } else if automat_concept_operator.has_partial_operator_code_flag(CCFS_AQALL_TYPE) {
-            let automate_role = calc_alg_context.ontology_arenas().concept(automat_concept).get_role();
+            let automate_role = calc_alg_context
+                .ontology_arenas()
+                .concept(automat_concept)
+                .get_role();
             if automate_role == role {
                 let operands: Vec<NegLink<ConceptId>> = calc_alg_context
                     .ontology_arenas()
@@ -566,16 +730,70 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: see structural transcription above. The CCFS_AQAND_TYPE
-        // recursion is pure concept-arena logic, but the decisive CCFS_AQALL_TYPE
-        // branch reads `processIndi->getReapplyConceptSaturationLabelSet(false)` and
-        // `conSet->containsConcept(...)` — the node's saturation label set, whose
-        // lazy getter + `containsConcept` land with the saturation label-set unit
-        // (SAT-1). Deferring the whole method avoids a spuriously conservative
-        // `false` from the unported ALL-branch.
-        // W4-DEFER[api]: CReapplyConceptSaturationLabelSet getter + containsConcept.
-        let _ = (process_indi, automat_concept, role, calc_alg_context);
-        todo!("W4-DEFER: testAutomateTransitionOperandsAddable — ALL-branch gated by unported saturation label set");
+        let automat_concept_operator = calc_alg_context
+            .ontology_arenas()
+            .concept(automat_concept)
+            .get_concept_operator();
+        if automat_concept_operator.has_partial_operator_code_flag(CCFS_AQAND_TYPE) {
+            let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(automat_concept)
+                .get_operand_list()
+                .to_vec();
+            for op_link in operands {
+                if self.test_automate_transition_operands_addable(
+                    process_indi,
+                    op_link.target,
+                    role,
+                    calc_alg_context,
+                ) {
+                    return true;
+                }
+            }
+        } else if automat_concept_operator.has_partial_operator_code_flag(CCFS_AQALL_TYPE) {
+            let automate_role = calc_alg_context
+                .ontology_arenas()
+                .concept(automat_concept)
+                .get_role();
+            if automate_role == role {
+                let label_set = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_reapply_concept_saturation_label_set(*process_indi, false);
+                let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+                    .ontology_arenas()
+                    .concept(automat_concept)
+                    .get_operand_list()
+                    .to_vec();
+                for op_link in operands {
+                    let operand_tag = calc_alg_context
+                        .ontology_arenas()
+                        .concept(op_link.target)
+                        .get_concept_tag();
+                    let mut con_sat_des = ConceptSaturationDescriptorId::NONE;
+                    let mut imp_reapply_con_sat_des =
+                        ImplicationReapplyConceptSaturationDescriptorId::NONE;
+                    let contained = label_set.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .reapply_con_sat_label_set(label_set)
+                            .get_concept_saturation_descriptor_by_tag(
+                                operand_tag,
+                                &mut con_sat_des,
+                                &mut imp_reapply_con_sat_des,
+                            )
+                        && con_sat_des.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .con_sat_desc(con_sat_des)
+                            .get_negation()
+                            == op_link.negated;
+                    if !contained {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 
     // =======================================================================
@@ -646,5 +864,348 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // `createSuccessorForConcept` is a sibling (group C, PU-SAT-2); the call is
         // the whole rule.
         self.create_successor_for_concept(process_indi, con_sat_pro_linker, 1, calc_alg_context);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::op::CCATOM;
+    use super::super::super::model::role::Role;
+    use super::super::super::model::Id;
+    use super::super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::super::satellites::{ConceptSaturationDescriptor, ConceptSaturationProcessLinker};
+    use super::*;
+
+    fn concept_process_linker(
+        ctx: &mut CalculationAlgorithmContextBase,
+        concept: ConceptId,
+        negated: bool,
+    ) -> ConceptSaturationProcessLinkerId {
+        let mut descriptor = ConceptSaturationDescriptor::new();
+        descriptor.init_concept_saturation_descriptor(concept, negated);
+        let descriptor = ctx.process_context_mut().alloc_con_sat_desc(descriptor);
+        let mut linker = ConceptSaturationProcessLinker::new();
+        linker.init_concept_saturation_process_linker(descriptor);
+        ctx.process_context_mut().alloc_con_sat_proc_linker(linker)
+    }
+
+    fn role(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> RoleId {
+        let mut role = Role::new();
+        role.set_role_tag(tag);
+        ctx.ontology_arenas_mut().alloc_role(role)
+    }
+
+    #[test]
+    fn s03_apply_implication_rule_executes_single_operand() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let conclusion = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(301);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATOM)
+                .set_concept_tag(303)
+                .add_operand_linker(conclusion, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let linker = concept_process_linker(&mut ctx, implication, false);
+
+        algo.apply_implication_rule(&mut node, linker, &mut ctx);
+
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, false);
+        let conclusion_tag = ctx.ontology_arenas().concept(conclusion).get_concept_tag();
+        let mut conclusion_descriptor = Id::NONE;
+        let mut imp_reapply = Id::NONE;
+        assert!(ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .get_concept_saturation_descriptor_by_tag(
+                conclusion_tag,
+                &mut conclusion_descriptor,
+                &mut imp_reapply,
+            ));
+        assert!(conclusion_descriptor.is_some());
+    }
+
+    #[test]
+    fn s03_apply_implication_rule_queues_next_trigger() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let conclusion = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(311);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let trigger = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(313);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATOM)
+                .set_concept_tag(315)
+                .add_operand_linker(conclusion, false)
+                .add_operand_linker(trigger, false)
+                .set_operand_count(2);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let linker = concept_process_linker(&mut ctx, implication, false);
+
+        algo.apply_implication_rule(&mut node, linker, &mut ctx);
+
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, false);
+        let trigger_tag = ctx.ontology_arenas().concept(trigger).get_concept_tag();
+        let trigger_data = ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .concept_des_dep_hash
+            .get(&trigger_tag)
+            .copied()
+            .expect("trigger tag should receive an implication reapply entry");
+        assert!(trigger_data.con_sat_des.is_none());
+        assert!(trigger_data.imp_reapply_con_sat_des.is_some());
+    }
+
+    #[test]
+    fn s03_tableau_dispatch_positive_bottom_flags_clash() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let bottom = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCBOTTOM).set_concept_tag(321);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let linker = concept_process_linker(&mut ctx, bottom, false);
+
+        algo.apply_tableau_saturation_rule(&mut node, linker, &mut ctx);
+
+        assert!(ctx
+            .process_context()
+            .sat_node(node)
+            .direct_status_flags
+            .has_clashed_flag());
+    }
+
+    #[test]
+    fn s03_tableau_dispatch_unknown_operator_uses_else_rule() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let unknown = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(999).set_concept_tag(323);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let linker = concept_process_linker(&mut ctx, unknown, false);
+
+        algo.apply_tableau_saturation_rule(&mut node, linker, &mut ctx);
+
+        assert!(ctx
+            .process_context()
+            .sat_node(node)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(ctx.processing_data_box().is_insufficient_node_occured());
+    }
+
+    #[test]
+    fn s03_tableau_dispatch_positive_implication_executes_rule() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let conclusion = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(331);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCIMPL)
+                .set_concept_tag(333)
+                .add_operand_linker(conclusion, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let linker = concept_process_linker(&mut ctx, implication, false);
+
+        algo.apply_tableau_saturation_rule(&mut node, linker, &mut ctx);
+
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, false);
+        let conclusion_tag = ctx.ontology_arenas().concept(conclusion).get_concept_tag();
+        let mut conclusion_descriptor = Id::NONE;
+        let mut imp_reapply = Id::NONE;
+        assert!(ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .get_concept_saturation_descriptor_by_tag(
+                conclusion_tag,
+                &mut conclusion_descriptor,
+                &mut imp_reapply,
+            ));
+        assert!(conclusion_descriptor.is_some());
+    }
+
+    #[test]
+    fn s03_test_automate_transition_operands_addable_missing_aqall_operand() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 401);
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(403);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let aqall = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCAQALL)
+                .set_concept_tag(405)
+                .set_role(role)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        assert!(algo.test_automate_transition_operands_addable(&mut node, aqall, role, &mut ctx));
+    }
+
+    #[test]
+    fn s03_test_automate_transition_operands_addable_existing_operand_not_addable() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 411);
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(413);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let aqall = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCAQALL)
+                .set_concept_tag(415)
+                .set_role(role)
+                .add_operand_linker(operand, true)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, true);
+        algo.add_concept_filtered_to_individual(operand, true, &mut node, &mut ctx);
+
+        assert!(!algo.test_automate_transition_operands_addable(&mut node, aqall, role, &mut ctx));
+    }
+
+    #[test]
+    fn s03_test_automate_transition_operands_addable_role_mismatch_is_false() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let transition_role = role(&mut ctx, 421);
+        let other_role = role(&mut ctx, 423);
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(425);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let aqall = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCAQALL)
+                .set_concept_tag(427)
+                .set_role(other_role)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        assert!(!algo.test_automate_transition_operands_addable(
+            &mut node,
+            aqall,
+            transition_role,
+            &mut ctx
+        ));
+    }
+
+    #[test]
+    fn s03_test_automate_transition_operands_addable_recurses_through_aqand() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 431);
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(433);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let aqall = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCAQALL)
+                .set_concept_tag(435)
+                .set_role(role)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let aqand = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCAQAND)
+                .set_concept_tag(437)
+                .add_operand_linker(aqall, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        assert!(algo.test_automate_transition_operands_addable(&mut node, aqand, role, &mut ctx));
     }
 }

@@ -56,10 +56,14 @@ impl SatisfiableCalculationTaskStatusPropagator {
         more_down_propagation: &mut bool,
         more_up_propagation: &mut bool,
     ) -> bool {
-        if sat_calc_task.default_task_result.is_processable() || sat_calc_task.default_task_result.is_error() {
+        if sat_calc_task.default_task_result.is_processable()
+            || sat_calc_task.default_task_result.is_error()
+        {
             let mut cancel_tasks = false;
 
-            if sat_calc_task.bool_task_result.has_result() && !sat_calc_task.bool_task_result.get_result_value() {
+            if sat_calc_task.bool_task_result.has_result()
+                && !sat_calc_task.bool_task_result.get_result_value()
+            {
                 cancel_tasks = true;
             }
 
@@ -67,7 +71,8 @@ impl SatisfiableCalculationTaskStatusPropagator {
                 if let Some(parent) = &parent_task {
                     if parent.default_task_result.is_error()
                         || parent.default_task_result.is_canceled()
-                        || (parent.bool_task_result.has_result() && parent.bool_task_result.get_result_value())
+                        || (parent.bool_task_result.has_result()
+                            && parent.bool_task_result.get_result_value())
                     {
                         cancel_tasks = true;
                     }
@@ -86,7 +91,9 @@ impl SatisfiableCalculationTaskStatusPropagator {
                     }
                     *more_down_propagation = true;
                     return true;
-                } else if sat_calc_task.bool_task_result.has_result() && sat_calc_task.bool_task_result.get_result_value() {
+                } else if sat_calc_task.bool_task_result.has_result()
+                    && sat_calc_task.bool_task_result.get_result_value()
+                {
                     sat_calc_task.default_task_result.set_finished(true);
 
                     if let Some(parent) = &mut parent_task {
@@ -117,7 +124,9 @@ impl SatisfiableCalculationTaskStatusPropagator {
         mut parent_task: Option<&mut SatisfiableCalculationTask>,
         more_up_propagation: &mut bool,
     ) -> bool {
-        if sat_calc_task.default_task_result.is_processable() || sat_calc_task.default_task_result.is_error() {
+        if sat_calc_task.default_task_result.is_processable()
+            || sat_calc_task.default_task_result.is_error()
+        {
             if sat_calc_task.default_task_result.is_error() {
                 let error_code = sat_calc_task.default_task_result.get_error_code();
                 if let Some(parent) = &mut parent_task {

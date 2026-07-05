@@ -23,8 +23,10 @@
 #![allow(dead_code)]
 
 use super::super::model::{Arena, Cint64, ConceptId, NegLink};
+use super::context::ProcessContext;
 use super::dependency::{
-    BranchTreeNode, BranchingInstruction, BranchingInstructionType, DependencyLink, DependencyTrackPoint,
+    BranchTreeNode, BranchingInstruction, BranchingInstructionType, DependencyLink,
+    DependencyTrackPoint,
 };
 use super::{BranchNodeId, ClashDescId, DepLinkId, DependencyId, NodeId, TrackPointId};
 
@@ -94,13 +96,14 @@ impl DependencyTrackPoint {
 
     /// Port of `CNonDeterministicDependencyTrackPoint::addClashes(CClashedDependencyDescriptor*, bool)`.
     /// `if (clashes) { mClashes = clashes->append(mClashes); mClashedIrelevant |= setClashed; }`
-    pub fn add_clashes(&mut self, clashes: ClashDescId, set_clashed: bool) {
+    pub fn add_clashes(
+        &mut self,
+        process_context: &mut ProcessContext,
+        clashes: ClashDescId,
+        set_clashed: bool,
+    ) {
         if clashes.is_some() {
-            // W2-DEFER[api]: CClashedDependencyDescriptor::append (prepend onto the
-            // mClashes chain) is not yet ported (ClashDescId is still a stub). C++:
-            //   mClashes = clashes->append(mClashes);
-            // Chain-head assignment stands in until the clash-descriptor linker lands.
-            self.clashes = clashes;
+            self.clashes = process_context.append_clash_descriptor_chain(clashes, self.clashes);
             self.clashed_irrelevant |= set_clashed;
         }
     }
@@ -367,5 +370,41 @@ impl BranchingInstruction {
 impl Default for BranchingInstruction {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::descriptor::ClashDescriptor;
+    use super::*;
+
+    #[test]
+    fn dep2_add_clashes_prepends_chain_and_preserves_old_head() {
+        let mut ctx = ProcessContext::new();
+        let old_head = ctx.alloc_clash_desc(ClashDescriptor::new());
+        let new_head = ctx.alloc_clash_desc(ClashDescriptor::new());
+        let new_tail = ctx.alloc_clash_desc(ClashDescriptor::new());
+        ctx.clash_desc_mut(new_head).set_next(new_tail);
+
+        let mut track_point = DependencyTrackPoint::new(DependencyId::NONE);
+        track_point.set_clashes(old_head, false);
+        track_point.add_clashes(&mut ctx, new_head, true);
+
+        assert_eq!(track_point.get_clashes(), new_head);
+        assert_eq!(ctx.clash_desc(new_head).get_next(), new_tail);
+        assert_eq!(ctx.clash_desc(new_tail).get_next(), old_head);
+        assert_eq!(ctx.clash_desc(old_head).get_next(), ClashDescId::NONE);
+        assert!(track_point.is_clashed_or_irelevant_branch());
+    }
+
+    #[test]
+    fn dep2_add_clashes_ignores_none_without_setting_flag() {
+        let mut ctx = ProcessContext::new();
+        let mut track_point = DependencyTrackPoint::new(DependencyId::NONE);
+
+        track_point.add_clashes(&mut ctx, ClashDescId::NONE, true);
+
+        assert_eq!(track_point.get_clashes(), ClashDescId::NONE);
+        assert!(!track_point.is_clashed_or_irelevant_branch());
     }
 }

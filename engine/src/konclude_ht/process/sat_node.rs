@@ -84,8 +84,8 @@ pub struct IndividualSaturationProcessNode {
     pub indirect_status_flags: IndividualSaturationProcessNodeStatusFlags, // mIndirectStatusFlags
 
     // --- scalar / bool state -------------------------------------------------
-    pub required_back_prop: bool,  // mRequiredBackProp
-    pub data_value_applied: bool,  // mDataValueApplied
+    pub required_back_prop: bool, // mRequiredBackProp
+    pub data_value_applied: bool, // mDataValueApplied
     pub clashed_con_sat_des_linker: ConceptSaturationDescriptorId, // mClashedConSatDesLinker (chain head)
 
     // --- dependency / connection linkers (intrusive chains → Vec) ------------
@@ -97,13 +97,13 @@ pub struct IndividualSaturationProcessNode {
     pub non_inverse_connected_indi_node_linker: Vec<SatNodeId>, // mNonInverseConnectedIndiNodeLinker
     pub multiple_cardinality_ancestor_nodes_linker: Vec<SatNodeId>, // mMultipleCardinalityAncestorNodesLinker
 
-    pub dep_saturation_indi_node: SatNodeId,    // mDepSaturationIndiNode
+    pub dep_saturation_indi_node: SatNodeId, // mDepSaturationIndiNode
     pub direct_saturation_indi_node: SatNodeId, // mDirectSaturationIndiNode
 
-    pub indi_id: Cint64, // mIndiID
+    pub indi_id: Cint64,                                               // mIndiID
     pub init_backward_prop_links: BackwardSaturationPropagationLinkId, // mInitBackwardPropLinks (chain head)
 
-    pub nominal_indi_triples_assertions: bool,        // mNominalIndiTriplesAssertions
+    pub nominal_indi_triples_assertions: bool, // mNominalIndiTriplesAssertions
     pub loaded_nominal_indi_triples_assertions: bool, // mLoadedNominalIndiTriplesAssertions
     pub nominal_indi: IndividualId,            // mNominalIndi
     pub integrated_nominal_indi: IndividualId, // mIntegratedNominalIndi
@@ -113,7 +113,7 @@ pub struct IndividualSaturationProcessNode {
     pub reference_indi_node: SatNodeId, // mReferenceIndiNode
     pub reference_mode: Cint64,         // mReferenceMode
 
-    pub separated_saturation: bool,             // mSeparatedSaturation
+    pub separated_saturation: bool, // mSeparatedSaturation
     pub abox_individual_representation_node: bool, // mABoxIndividualRepresentationNode
 
     pub occurrence_statistics_collecting_required: bool, // mOccurrenceStatisticsCollectingRequired

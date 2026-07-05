@@ -19,12 +19,15 @@
 
 #![allow(dead_code)]
 
-use super::super::completion::stubs::{CalculationConfigurationExtension, SatisfiableCalculationTask};
+use super::super::completion::stubs::{
+    CalculationConfigurationExtension, SatisfiableCalculationTask,
+};
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::process::node_resolution::IndividualProcessNodeVector;
 use super::stubs::{
-    SaturationNodeBackendAssociationCacheHandler, SatisfiableTaskSaturationIndividualsAnalyser,
-    SatisfiableTaskSaturationOccurrenceStatisticsCollector, SatisfiableTaskSaturationPreyingAnalyser,
+    SatisfiableTaskSaturationIndividualsAnalyser,
+    SatisfiableTaskSaturationOccurrenceStatisticsCollector,
+    SatisfiableTaskSaturationPreyingAnalyser, SaturationNodeBackendAssociationCacheHandler,
 };
 
 /// KONCLUDE-PORT-NOTE[pointer-alias]: `typedef void (...::*TableauRuleFunction)(...)`
@@ -278,21 +281,37 @@ impl SaturationTaskHandleAlgorithm {
     // ----------------------------------------------------------------------
 
     /// Port of `getAppliedANDRuleCount`.
-    pub fn applied_and_rule_count(&self) -> Cint64 { self.applied_and_rule_count }
+    pub fn applied_and_rule_count(&self) -> Cint64 {
+        self.applied_and_rule_count
+    }
     /// Port of `getAppliedORRuleCount`.
-    pub fn applied_or_rule_count(&self) -> Cint64 { self.applied_or_rule_count }
+    pub fn applied_or_rule_count(&self) -> Cint64 {
+        self.applied_or_rule_count
+    }
     /// Port of `getAppliedSOMERuleCount`.
-    pub fn applied_some_rule_count(&self) -> Cint64 { self.applied_some_rule_count }
+    pub fn applied_some_rule_count(&self) -> Cint64 {
+        self.applied_some_rule_count
+    }
     /// Port of `getAppliedATLEASTRuleCount`.
-    pub fn applied_atleast_rule_count(&self) -> Cint64 { self.applied_atleast_rule_count }
+    pub fn applied_atleast_rule_count(&self) -> Cint64 {
+        self.applied_atleast_rule_count
+    }
     /// Port of `getAppliedALLRuleCount`.
-    pub fn applied_all_rule_count(&self) -> Cint64 { self.applied_all_rule_count }
+    pub fn applied_all_rule_count(&self) -> Cint64 {
+        self.applied_all_rule_count
+    }
     /// Port of `getAppliedATMOSTRuleCount`.
-    pub fn applied_atmost_rule_count(&self) -> Cint64 { self.applied_atmost_rule_count }
+    pub fn applied_atmost_rule_count(&self) -> Cint64 {
+        self.applied_atmost_rule_count
+    }
     /// Port of `getAppliedTotalRuleCount`.
-    pub fn applied_total_rule_count(&self) -> Cint64 { self.applied_total_rule_count }
+    pub fn applied_total_rule_count(&self) -> Cint64 {
+        self.applied_total_rule_count
+    }
 }
 
 impl Default for SaturationTaskHandleAlgorithm {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

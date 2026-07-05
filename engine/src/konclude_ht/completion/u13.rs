@@ -81,7 +81,7 @@ use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, RoleId};
 use super::super::process::stubs::CandidateLinkerId;
 use super::super::process::{
-    ClashDescId, ConDescId, DependencyId, EdgeId, NodeId, ConProcDescId, RestrictionSpecId,
+    ClashDescId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
     RoleSuccHashId, TrackPointId,
 };
 use super::context::CalculationAlgorithmContextBase;
@@ -133,7 +133,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         // W3-DEFER[api]: branchingMergingProcRest->getRemainingLinkerMergingCandidateIndividualNodeCount()
         let remaining_linker_merging_candidate_count: Cint64 = 0;
-        let link_and_candidate_count: Cint64 = remaining_linker_merging_candidate_count + distinct_count;
+        let link_and_candidate_count: Cint64 =
+            remaining_linker_merging_candidate_count + distinct_count;
         if link_count != link_and_candidate_count {
             // update
             // W3-DEFER[api]: branchingMergingProcRest->setRemainingValidMergingCandidateIndividualNodeCount(linkCount-distinctCount)
@@ -668,8 +669,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // W3-DEFER[api]: conProDes->getConceptDescriptor()
         let con_des: ConDescId = Id::NONE;
-        // W6-DEFER[api]: createDependendBranchingTaskList(1,calcAlgContext)
-        let new_sat_calc_task: Id<SatisfiableCalculationTask> = Id::NONE;
+        let new_sat_calc_task = self.create_dependend_branching_task_list(1, calc_alg_context);
 
         // W6-DEFER[api]: processorContext = calcAlgContext->getUsedTaskProcessorContext();
         //   newProcessContext = newSatCalcTask->getProcessContext(processorContext);
@@ -727,9 +727,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // W3-DEFER[api]: prepareBranchedTaskProcessing(locProcessIndiNode,newSatCalcTask,newCalcAlgContext)  [unit 1/driver]
 
-        // W6-DEFER[api]: newTaskPriority = calcAlgContext->getUsedTaskPriorityStrategy()
-        //   ->getPriorityForTaskMerging(newSatCalcTask,calcAlgContext->getUsedSatisfiableCalculationTask());
-        //   newSatCalcTask->setTaskPriority(newTaskPriority);
+        if let Some(task_priority_strategy) = calc_alg_context.base.used_task_priority_strategy() {
+            let used_sat_calc_task = calc_alg_context.base.used_sat_calc_task;
+            let new_task_priority = task_priority_strategy.get_priority_for_task_merging(
+                &calc_alg_context.base.sat_calc_task_arena,
+                new_sat_calc_task,
+                used_sat_calc_task,
+            );
+            calc_alg_context
+                .base
+                .sat_calc_task_mut(new_sat_calc_task)
+                .base
+                .set_task_priority(new_task_priority);
+        }
 
         new_sat_calc_task
     }
@@ -829,8 +839,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
                         qualifing = true;
 
-                        // W6-DEFER[api]: createDependendBranchingTaskList(2,calcAlgContext)
-                        let new_task_list: Id<SatisfiableCalculationTask> = Id::NONE;
+                        let new_task_list =
+                            self.create_dependend_branching_task_list(2, calc_alg_context);
                         // W6-DEFER[api]: processorContext = calcAlgContext->getUsedTaskProcessorContext();
 
                         // iterate the two created tasks (pos / neg qualifier branch)
@@ -886,14 +896,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
                             // W3-DEFER[api]: prepareBranchedTaskProcessing(newLocIndiNode,newTaskIt,newCalcAlgContext)
 
-                            // W6-DEFER[api]: newTaskPriority = calcAlgContext->getUsedTaskPriorityStrategy()
-                            //   ->getPriorityForTaskQualifing(newSatCalcTask,...,qualNeg);
-                            //   newSatCalcTask->setTaskPriority(newTaskPriority);
+                            if let Some(task_priority_strategy) =
+                                calc_alg_context.base.used_task_priority_strategy()
+                            {
+                                let used_sat_calc_task = calc_alg_context.base.used_sat_calc_task;
+                                let new_task_priority = task_priority_strategy
+                                    .get_priority_for_task_qualifing(
+                                        &calc_alg_context.base.sat_calc_task_arena,
+                                        new_task_it,
+                                        used_sat_calc_task,
+                                        qual_neg,
+                                    );
+                                calc_alg_context
+                                    .base
+                                    .sat_calc_task_mut(new_task_it)
+                                    .base
+                                    .set_task_priority(new_task_priority);
+                            }
 
                             branch_number += 1;
                             qual_neg = !qual_neg;
-                            // W6-DEFER[api]: newTaskIt = (CSatisfiableCalculationTask*)newTaskIt->getNext()
-                            new_task_it = Id::NONE;
+                            new_task_it =
+                                calc_alg_context.base.sat_calc_task(new_task_it).get_next();
                         }
 
                         // W6-DEFER[api]: processorContext->getTaskProcessorCommunicator()->communicateTaskCreation(newTaskList)

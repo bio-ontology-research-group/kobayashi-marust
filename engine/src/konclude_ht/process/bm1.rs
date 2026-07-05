@@ -12,12 +12,10 @@
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: the intrusive
 //! `CBranchingMergingIndividualNodeCandidateLinker*` chains become
-//! `CandidateLinkerId` head ids. The linker class itself, plus the edge/node
-//! accessors it forwards to (`getNext`/`clearNext`/`append`/
-//! `isCandidateBlockableAndCreator`/`getMergingIndividualLink`/
-//! `getMergingIndividualNodeCandidate` and the edge `getDependencyTrackPoint` /
-//! node `isNominalIndividualNode`), are not yet ported — every such call site is
-//! marked `// W2-DEFER[api]` and routed through the stub helpers at the bottom.
+//! `CandidateLinkerId` head ids. The linker class is arena-owned by
+//! `ProcessContext`, so the candidate-chain methods take the ambient context
+//! when they need to follow or mutate `next` links, read edge dependencies, or
+//! distinguish nominal/blockable candidate nodes.
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: the distinct-merged-nodes copy-on-write pair
 //! (`mDistinctMergedNodesSet` + `mLastDistinctMergedNodesSet`) is a shared
@@ -35,6 +33,7 @@
 use std::collections::HashSet;
 
 use super::super::model::substrate::Cint64;
+use super::context::ProcessContext;
 use super::stubs::CandidateLinkerId;
 use super::{ClashDescId, DependencyId, EdgeId, NodeId, TrackPointId};
 
@@ -44,9 +43,7 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
         &mut self,
         prev_rest: Option<&Self>,
     ) -> &mut Self {
-        // W2-DEFER[api]: CProcessingRestrictionSpecification::initProcessingRestriction(prev_rest)
-        // (the `CProcessingRestrictionSpecification` base init — priority offset /
-        // next-restriction chain — is a separate not-yet-ported unit).
+        self.init_processing_restriction(prev_rest);
         if let Some(prev_rest) = prev_rest {
             self.distinct_merged_nodes_set = None;
             self.last_distinct_merged_nodes_set = None;
@@ -74,7 +71,8 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
             self.dependency_track_point = prev_rest.dependency_track_point;
             self.merging_dependency_node = prev_rest.merging_dependency_node;
             self.init_merging_nodes_clashes = prev_rest.init_merging_nodes_clashes;
-            self.multiple_init_merging_nodes_clashes = prev_rest.multiple_init_merging_nodes_clashes;
+            self.multiple_init_merging_nodes_clashes =
+                prev_rest.multiple_init_merging_nodes_clashes;
             self.distinct_set_node_relocated = prev_rest.distinct_set_node_relocated;
             self.succ_choice_triggering_installed = prev_rest.succ_choice_triggering_installed;
             self.succ_choice_triggering_installed_count =
@@ -163,25 +161,28 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     }
 
     /// Port of `takeNextMergingCandidateNodeLinker`.
-    pub fn take_next_merging_candidate_node_linker(&mut self) -> CandidateLinkerId {
+    pub fn take_next_merging_candidate_node_linker(
+        &mut self,
+        process_context: &ProcessContext,
+    ) -> CandidateLinkerId {
         let mut tmp_merging_node_linker;
-        tmp_merging_node_linker = self.take_next_merging_initialization_candidate_node_linker();
+        tmp_merging_node_linker =
+            self.take_next_merging_initialization_candidate_node_linker(process_context);
         if tmp_merging_node_linker.is_none() {
             tmp_merging_node_linker = self.nominal_merging_nodes_linker;
             if self.nominal_merging_nodes_linker.is_some() {
                 self.remaining_linker_merging_candidate_indi_node_count -= 1;
                 self.remaining_valid_merging_candidate_indi_node_count -= 1;
-                // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::getNext
                 self.nominal_merging_nodes_linker =
-                    self.cl_get_next(self.nominal_merging_nodes_linker);
+                    Self::cl_get_next(process_context, self.nominal_merging_nodes_linker);
             }
             if tmp_merging_node_linker.is_none() {
                 tmp_merging_node_linker = self.merging_nodes_linker;
                 if self.merging_nodes_linker.is_some() {
                     self.remaining_linker_merging_candidate_indi_node_count -= 1;
                     self.remaining_valid_merging_candidate_indi_node_count -= 1;
-                    // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::getNext
-                    self.merging_nodes_linker = self.cl_get_next(self.merging_nodes_linker);
+                    self.merging_nodes_linker =
+                        Self::cl_get_next(process_context, self.merging_nodes_linker);
                 }
             }
         }
@@ -192,34 +193,34 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     pub fn add_merging_candidate_node_linker(
         &mut self,
         mut linker: CandidateLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         while linker.is_some() {
             let linker_it = linker;
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::getNext
-            linker = self.cl_get_next(linker);
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::clearNext
-            self.cl_clear_next(linker_it);
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::isCandidateBlockableAndCreator
+            linker = Self::cl_get_next(process_context, linker);
+            Self::cl_clear_next(process_context, linker_it);
             if !self.added_blockable_pred_merging_node_candidate
-                && self.cl_is_candidate_blockable_and_creator(linker_it)
+                && Self::cl_is_candidate_blockable_and_creator(process_context, linker_it)
             {
-                // W2-DEFER[api]: linkerIt->getMergingIndividualLink()->getDependencyTrackPoint()
-                let merging_individual_link = self.cl_get_merging_individual_link(linker_it);
+                let merging_individual_link =
+                    Self::cl_get_merging_individual_link(process_context, linker_it);
                 self.added_blockable_pred_dep_track_point =
-                    self.edge_get_dependency_track_point(merging_individual_link);
+                    Self::edge_get_dependency_track_point(process_context, merging_individual_link);
                 self.added_blockable_pred_merging_node_candidate = true;
             }
             self.remaining_linker_merging_candidate_indi_node_count += 1;
             self.remaining_valid_merging_candidate_indi_node_count += 1;
-            // W2-DEFER[api]: linkerIt->getMergingIndividualNodeCandidate()->isNominalIndividualNode()
-            let merging_candidate = self.cl_get_merging_individual_node_candidate(linker_it);
-            if self.node_is_nominal_individual_node(merging_candidate) {
-                // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::append
-                self.nominal_merging_nodes_linker =
-                    self.cl_append(linker_it, self.nominal_merging_nodes_linker);
+            let merging_candidate =
+                Self::cl_get_merging_individual_node_candidate(process_context, linker_it);
+            if Self::node_is_nominal_individual_node(process_context, merging_candidate) {
+                self.nominal_merging_nodes_linker = Self::cl_append(
+                    process_context,
+                    linker_it,
+                    self.nominal_merging_nodes_linker,
+                );
             } else {
-                // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::append
-                self.merging_nodes_linker = self.cl_append(linker_it, self.merging_nodes_linker);
+                self.merging_nodes_linker =
+                    Self::cl_append(process_context, linker_it, self.merging_nodes_linker);
             }
         }
         self
@@ -231,13 +232,16 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     }
 
     /// Port of `takeNextMergingInitializationCandidateNodeLinker`.
-    pub fn take_next_merging_initialization_candidate_node_linker(&mut self) -> CandidateLinkerId {
+    pub fn take_next_merging_initialization_candidate_node_linker(
+        &mut self,
+        process_context: &ProcessContext,
+    ) -> CandidateLinkerId {
         let tmp_merging_node_linker = self.merging_init_nodes_linker;
         if self.merging_init_nodes_linker.is_some() {
             self.remaining_linker_merging_candidate_indi_node_count -= 1;
             self.remaining_valid_merging_candidate_indi_node_count -= 1;
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::getNext
-            self.merging_init_nodes_linker = self.cl_get_next(self.merging_init_nodes_linker);
+            self.merging_init_nodes_linker =
+                Self::cl_get_next(process_context, self.merging_init_nodes_linker);
         }
         tmp_merging_node_linker
     }
@@ -246,28 +250,30 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     pub fn add_merging_initialization_candidate_node_linker(
         &mut self,
         linker: CandidateLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         if linker.is_some() {
             self.has_merging_init_candidates = true;
             let mut linker_it = linker;
             while linker_it.is_some() {
-                // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::isCandidateBlockableAndCreator
                 if !self.added_blockable_pred_merging_node_candidate
-                    && self.cl_is_candidate_blockable_and_creator(linker_it)
+                    && Self::cl_is_candidate_blockable_and_creator(process_context, linker_it)
                 {
-                    // W2-DEFER[api]: linkerIt->getMergingIndividualLink()->getDependencyTrackPoint()
-                    let merging_individual_link = self.cl_get_merging_individual_link(linker_it);
+                    let merging_individual_link =
+                        Self::cl_get_merging_individual_link(process_context, linker_it);
                     self.added_blockable_pred_dep_track_point =
-                        self.edge_get_dependency_track_point(merging_individual_link);
+                        Self::edge_get_dependency_track_point(
+                            process_context,
+                            merging_individual_link,
+                        );
                     self.added_blockable_pred_merging_node_candidate = true;
                 }
                 self.remaining_linker_merging_candidate_indi_node_count += 1;
                 self.remaining_valid_merging_candidate_indi_node_count += 1;
-                // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::getNext
-                linker_it = self.cl_get_next(linker_it);
+                linker_it = Self::cl_get_next(process_context, linker_it);
             }
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::append
-            self.merging_init_nodes_linker = self.cl_append(linker, self.merging_init_nodes_linker);
+            self.merging_init_nodes_linker =
+                Self::cl_append(process_context, linker, self.merging_init_nodes_linker);
         }
         self
     }
@@ -281,11 +287,11 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     pub fn add_only_pos_qualify_candidate_node_linker(
         &mut self,
         linker: CandidateLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         if linker.is_some() {
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::append
             self.only_pos_qualify_nodes_linker =
-                self.cl_append(linker, self.only_pos_qualify_nodes_linker);
+                Self::cl_append(process_context, linker, self.only_pos_qualify_nodes_linker);
         }
         self
     }
@@ -305,11 +311,11 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     pub fn add_only_neg_qualify_candidate_node_linker(
         &mut self,
         linker: CandidateLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         if linker.is_some() {
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::append
             self.only_neg_qualify_nodes_linker =
-                self.cl_append(linker, self.only_neg_qualify_nodes_linker);
+                Self::cl_append(process_context, linker, self.only_neg_qualify_nodes_linker);
         }
         self
     }
@@ -329,11 +335,11 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
     pub fn add_both_qualify_candidate_node_linker(
         &mut self,
         linker: CandidateLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         if linker.is_some() {
-            // W2-DEFER[api]: CBranchingMergingIndividualNodeCandidateLinker::append
             self.both_qualify_nodes_linker =
-                self.cl_append(linker, self.both_qualify_nodes_linker);
+                Self::cl_append(process_context, linker, self.both_qualify_nodes_linker);
         }
         self
     }
@@ -530,56 +536,247 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
         self
     }
 
-    // =======================================================================
-    // W2-DEFER[api] stub helpers for the not-yet-ported candidate-linker class
-    // (`CBranchingMergingIndividualNodeCandidateLinker`) and the edge/node
-    // accessors it forwards to. These reproduce the exact call sites above; the
-    // real bodies land when the candidate-linker arena + edge/node access are
-    // threaded through a process context (units SD-1 / SD-3 + the linker unit).
-    // =======================================================================
-
-    /// W2-DEFER[api]: `CBranchingMergingIndividualNodeCandidateLinker::getNext()`.
-    fn cl_get_next(&self, _linker: CandidateLinkerId) -> CandidateLinkerId {
-        todo!("W2-DEFER[api]: candidate-linker getNext (arena not yet ported)")
-    }
-
-    /// W2-DEFER[api]: `CBranchingMergingIndividualNodeCandidateLinker::clearNext()`.
-    fn cl_clear_next(&mut self, _linker: CandidateLinkerId) {
-        todo!("W2-DEFER[api]: candidate-linker clearNext (arena not yet ported)")
-    }
-
-    /// W2-DEFER[api]: `CBranchingMergingIndividualNodeCandidateLinker::append(list)`
-    /// — appends `list` after `linker` and returns the new head (`linker`).
-    fn cl_append(
-        &mut self,
-        _linker: CandidateLinkerId,
-        _list: CandidateLinkerId,
+    fn cl_get_next(
+        process_context: &ProcessContext,
+        linker: CandidateLinkerId,
     ) -> CandidateLinkerId {
-        todo!("W2-DEFER[api]: candidate-linker append (arena not yet ported)")
+        process_context
+            .branching_merging_candidate_linker(linker)
+            .get_next()
     }
 
-    /// W2-DEFER[api]: `CBranchingMergingIndividualNodeCandidateLinker::isCandidateBlockableAndCreator()`.
-    fn cl_is_candidate_blockable_and_creator(&self, _linker: CandidateLinkerId) -> bool {
-        todo!("W2-DEFER[api]: candidate-linker isCandidateBlockableAndCreator")
+    fn cl_clear_next(process_context: &mut ProcessContext, linker: CandidateLinkerId) {
+        process_context
+            .branching_merging_candidate_linker_mut(linker)
+            .clear_next();
     }
 
-    /// W2-DEFER[api]: `CBranchingMergingIndividualNodeCandidateLinker::getMergingIndividualLink()`.
-    fn cl_get_merging_individual_link(&self, _linker: CandidateLinkerId) -> EdgeId {
-        todo!("W2-DEFER[api]: candidate-linker getMergingIndividualLink")
+    fn cl_append(
+        process_context: &mut ProcessContext,
+        linker: CandidateLinkerId,
+        list: CandidateLinkerId,
+    ) -> CandidateLinkerId {
+        if linker.is_none() {
+            return list;
+        }
+        let mut last = linker;
+        loop {
+            let next = process_context
+                .branching_merging_candidate_linker(last)
+                .get_next();
+            if next.is_none() {
+                break;
+            }
+            last = next;
+        }
+        process_context
+            .branching_merging_candidate_linker_mut(last)
+            .next = list;
+        linker
     }
 
-    /// W2-DEFER[api]: `CBranchingMergingIndividualNodeCandidateLinker::getMergingIndividualNodeCandidate()`.
-    fn cl_get_merging_individual_node_candidate(&self, _linker: CandidateLinkerId) -> NodeId {
-        todo!("W2-DEFER[api]: candidate-linker getMergingIndividualNodeCandidate")
+    fn cl_is_candidate_blockable_and_creator(
+        process_context: &ProcessContext,
+        linker: CandidateLinkerId,
+    ) -> bool {
+        let linker = process_context.branching_merging_candidate_linker(linker);
+        let merging_candidate = linker.get_merging_individual_node_candidate();
+        let merging_link = linker.get_merging_individual_link();
+        merging_candidate.is_some()
+            && merging_link.is_some()
+            && process_context
+                .node(merging_candidate)
+                .is_blockable_individual()
+            && process_context.edge(merging_link).get_creator_individual() == merging_candidate
     }
 
-    /// W2-DEFER[api]: `CIndividualLinkEdge::getDependencyTrackPoint()`.
-    fn edge_get_dependency_track_point(&self, _edge: EdgeId) -> TrackPointId {
-        todo!("W2-DEFER[api]: edge getDependencyTrackPoint (edge arena not threaded here)")
+    fn cl_get_merging_individual_link(
+        process_context: &ProcessContext,
+        linker: CandidateLinkerId,
+    ) -> EdgeId {
+        process_context
+            .branching_merging_candidate_linker(linker)
+            .get_merging_individual_link()
     }
 
-    /// W2-DEFER[api]: `CIndividualProcessNode::isNominalIndividualNode()`.
-    fn node_is_nominal_individual_node(&self, _node: NodeId) -> bool {
-        todo!("W2-DEFER[api]: node isNominalIndividualNode (node arena not threaded here)")
+    fn cl_get_merging_individual_node_candidate(
+        process_context: &ProcessContext,
+        linker: CandidateLinkerId,
+    ) -> NodeId {
+        process_context
+            .branching_merging_candidate_linker(linker)
+            .get_merging_individual_node_candidate()
+    }
+
+    fn edge_get_dependency_track_point(
+        process_context: &ProcessContext,
+        edge: EdgeId,
+    ) -> TrackPointId {
+        process_context.edge(edge).get_dependency_track_point()
+    }
+
+    fn node_is_nominal_individual_node(process_context: &ProcessContext, node: NodeId) -> bool {
+        process_context.node(node).is_nominal_individual_node()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::konclude_ht::model::RoleId;
+    use crate::konclude_ht::process::edge::IndividualLinkEdge;
+    use crate::konclude_ht::process::node::{IndividualProcessNode, IndividualType};
+    use crate::konclude_ht::process::satellites::BranchingMergingProcessingRestrictionSpecification;
+    use crate::konclude_ht::process::stubs::{
+        BranchingMergingIndividualNodeCandidateLinker, ProcessContextId,
+    };
+
+    fn alloc_node(process_context: &mut ProcessContext, individual_type: IndividualType) -> NodeId {
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+        node.set_individual_type(individual_type);
+        process_context.alloc_node(node)
+    }
+
+    fn alloc_edge(
+        process_context: &mut ProcessContext,
+        creator: NodeId,
+        dep_track_point: TrackPointId,
+    ) -> EdgeId {
+        let mut edge = IndividualLinkEdge::new();
+        edge.init_individual_link_edge(
+            creator,
+            creator,
+            NodeId::NONE,
+            RoleId::NONE,
+            dep_track_point,
+        );
+        process_context.alloc_edge(edge)
+    }
+
+    fn alloc_candidate(
+        process_context: &mut ProcessContext,
+        node: NodeId,
+        edge: EdgeId,
+    ) -> CandidateLinkerId {
+        let mut linker = BranchingMergingIndividualNodeCandidateLinker::new();
+        linker.init_branching_merging_individual_node_candidate(node, edge);
+        process_context.alloc_branching_merging_candidate_linker(linker)
+    }
+
+    #[test]
+    fn bm_candidate_linkers_split_nominal_and_take_in_konclude_order() {
+        let mut ctx = ProcessContext::new();
+        let blockable_node = alloc_node(&mut ctx, IndividualType::Blockable);
+        let nominal_node = alloc_node(&mut ctx, IndividualType::Nominal);
+        let init_node = alloc_node(&mut ctx, IndividualType::Blockable);
+        let dep = TrackPointId::new(77);
+        let blockable_edge = alloc_edge(&mut ctx, blockable_node, dep);
+        let nominal_edge = alloc_edge(&mut ctx, nominal_node, TrackPointId::new(78));
+        let init_edge = alloc_edge(&mut ctx, init_node, TrackPointId::new(79));
+
+        let blockable_candidate = alloc_candidate(&mut ctx, blockable_node, blockable_edge);
+        let nominal_candidate = alloc_candidate(&mut ctx, nominal_node, nominal_edge);
+        ctx.branching_merging_candidate_linker_mut(blockable_candidate)
+            .next = nominal_candidate;
+        let init_candidate = alloc_candidate(&mut ctx, init_node, init_edge);
+
+        let mut rest = BranchingMergingProcessingRestrictionSpecification::default();
+        rest.add_merging_candidate_node_linker(blockable_candidate, &mut ctx);
+        rest.add_merging_initialization_candidate_node_linker(init_candidate, &mut ctx);
+
+        assert_eq!(
+            rest.get_merging_candidate_node_linker(),
+            blockable_candidate
+        );
+        assert_eq!(
+            rest.get_merging_initialization_candidate_node_linker(),
+            init_candidate
+        );
+        assert_eq!(rest.nominal_merging_nodes_linker, nominal_candidate);
+        assert!(rest.has_added_blockable_predecessor_merging_node_candidate());
+        assert_eq!(
+            rest.get_added_blockable_predecessor_dependency_track_point(),
+            dep
+        );
+        assert_eq!(
+            rest.get_remaining_linker_merging_candidate_individual_node_count(),
+            3
+        );
+
+        assert_eq!(
+            rest.take_next_merging_candidate_node_linker(&ctx),
+            init_candidate
+        );
+        assert_eq!(
+            rest.take_next_merging_candidate_node_linker(&ctx),
+            nominal_candidate
+        );
+        assert_eq!(
+            rest.take_next_merging_candidate_node_linker(&ctx),
+            blockable_candidate
+        );
+        assert_eq!(
+            rest.take_next_merging_candidate_node_linker(&ctx),
+            CandidateLinkerId::NONE
+        );
+        assert_eq!(
+            rest.get_remaining_linker_merging_candidate_individual_node_count(),
+            0
+        );
+        assert_eq!(
+            rest.get_remaining_valid_merging_candidate_individual_node_count(),
+            0
+        );
+    }
+
+    #[test]
+    fn bm_qualify_candidate_linkers_append_chain_to_existing_head() {
+        let mut ctx = ProcessContext::new();
+        let node = alloc_node(&mut ctx, IndividualType::Blockable);
+        let edge = alloc_edge(&mut ctx, node, TrackPointId::new(81));
+        let first = alloc_candidate(&mut ctx, node, edge);
+        let second = alloc_candidate(&mut ctx, node, edge);
+        let old_head = alloc_candidate(&mut ctx, node, edge);
+        ctx.branching_merging_candidate_linker_mut(first).next = second;
+
+        let mut rest = BranchingMergingProcessingRestrictionSpecification::default();
+        rest.set_both_qualify_candidate_node_linker(old_head);
+        rest.add_both_qualify_candidate_node_linker(first, &mut ctx);
+
+        assert_eq!(rest.get_both_qualify_candidate_node_linker(), first);
+        assert_eq!(
+            ctx.branching_merging_candidate_linker(first).get_next(),
+            second
+        );
+        assert_eq!(
+            ctx.branching_merging_candidate_linker(second).get_next(),
+            old_head
+        );
+    }
+
+    #[test]
+    fn bm_init_processing_restriction_copies_and_resets_priority_offset() {
+        let mut prev = BranchingMergingProcessingRestrictionSpecification::default();
+        prev.set_priority_offset(12.5);
+        prev.next_restriction = crate::konclude_ht::process::RestrictionSpecId::new(99);
+        prev.remaining_nominal_creation_count = 3;
+
+        let mut copied = BranchingMergingProcessingRestrictionSpecification::default();
+        copied.next_restriction = crate::konclude_ht::process::RestrictionSpecId::new(7);
+        copied.init_branching_merging_processing_restriction(Some(&prev));
+        assert_eq!(copied.get_priority_offset(), 12.5);
+        assert_eq!(
+            copied.get_next_processing_restriction_specification(),
+            crate::konclude_ht::process::RestrictionSpecId::new(7)
+        );
+        assert_eq!(copied.remaining_nominal_creation_count, 3);
+
+        copied.set_priority_offset(4.0);
+        copied.init_branching_merging_processing_restriction(None);
+        assert_eq!(copied.get_priority_offset(), 0.0);
+        assert_eq!(
+            copied.get_next_processing_restriction_specification(),
+            crate::konclude_ht::process::RestrictionSpecId::new(7)
+        );
     }
 }

@@ -53,7 +53,10 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::model::substrate::{Arena, Cint64, Id};
+use super::super::model::concept_process::UnsatisfiableCachingTags;
+use super::super::model::ontology::OntologyArenas;
+use super::super::model::substrate::{Arena, Cint64, Id, INVALID};
+use super::super::model::{ConceptId, ConceptProcessDataId};
 use super::value::{CacheValue, CacheValueIdentifier};
 
 // ===========================================================================
@@ -105,7 +108,9 @@ pub struct UnsatisfiableCache;
 
 impl UnsatisfiableCache {
     /// Port of `CUnsatisfiableCache::CUnsatisfiableCache`.
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 /// Port of `CUnsatisfiableCacheReader`. Abstract base (pure-virtual
@@ -115,7 +120,9 @@ pub struct UnsatisfiableCacheReader;
 
 impl UnsatisfiableCacheReader {
     /// Port of `CUnsatisfiableCacheReader::CUnsatisfiableCacheReader`.
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 /// Port of `CUnsatisfiableCacheWriter`. Abstract base (pure-virtual
@@ -125,7 +132,9 @@ pub struct UnsatisfiableCacheWriter;
 
 impl UnsatisfiableCacheWriter {
     /// Port of `CUnsatisfiableCacheWriter::CUnsatisfiableCacheWriter`.
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 /// Port of `CIncrementalUnsatisfiableCacheReader` (`: public CUnsatisfiableCacheReader`).
@@ -139,7 +148,9 @@ pub struct IncrementalUnsatisfiableCacheReader;
 
 impl IncrementalUnsatisfiableCacheReader {
     /// Port of `CIncrementalUnsatisfiableCacheReader::CIncrementalUnsatisfiableCacheReader`.
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 }
 
 // ===========================================================================
@@ -731,7 +742,12 @@ impl OccurrenceUnsatisfiableCacheReader {
     ) -> (bool, bool) {
         let linker = std::mem::take(&mut self.inc_cache_entries_linker);
         let (new_linker, unsat, continue_useful) = self.incremental_unsatisfiable_test(
-            cache_value, linker, cache, entry_arena, hash_arena, slot_arena,
+            cache_value,
+            linker,
+            cache,
+            entry_arena,
+            hash_arena,
+            slot_arena,
         );
         self.inc_cache_entries_linker = new_linker;
         (unsat, continue_useful)
@@ -834,7 +850,13 @@ impl OccurrenceUnsatisfiableCacheReader {
         slot_arena: &mut Arena<OccurrenceUnsatisfiableCacheUpdateSlotItem>,
     ) -> bool {
         self.is_unsatisfiable_with_list(
-            item_vec, count, None, cache, entry_arena, hash_arena, slot_arena,
+            item_vec,
+            count,
+            None,
+            cache,
+            entry_arena,
+            hash_arena,
+            slot_arena,
         )
     }
 
@@ -882,8 +904,7 @@ impl OccurrenceUnsatisfiableCacheReader {
                     if self.next_cache_slot_item_pointer >= 0 {
                         self.move_to_next_slot(slot_arena);
                         if self.cache_slot_item.is_some() {
-                            update_slot =
-                                slot_arena.get(self.cache_slot_item).get_slot_index();
+                            update_slot = slot_arena.get(self.cache_slot_item).get_slot_index();
                         }
                     }
 
@@ -1358,8 +1379,7 @@ impl OccurrenceUnsatisfiableCache {
             vec![UpdateSlotItemId::NONE; self.update_slot_count as usize];
         let mut idx: Cint64 = 0;
         while idx < self.update_slot_count {
-            let slot =
-                slot_arena.push(OccurrenceUnsatisfiableCacheUpdateSlotItem::new(idx));
+            let slot = slot_arena.push(OccurrenceUnsatisfiableCacheUpdateSlotItem::new(idx));
             self.updates_slot_item_vector[idx as usize] = slot;
             self.notused_updates_slots_list.push(slot);
             idx += 1;
@@ -1384,7 +1404,9 @@ impl OccurrenceUnsatisfiableCache {
         while i > 0 {
             let slot_item = self.used_updates_slots_list.remove(0); // takeFirst
             if !slot_arena.get(slot_item).has_cache_readers() {
-                slot_arena.get_mut(slot_item).clean_slot_update_items(hash_arena);
+                slot_arena
+                    .get_mut(slot_item)
+                    .clean_slot_update_items(hash_arena);
                 self.notused_updates_slots_list.push(slot_item);
             } else {
                 self.used_updates_slots_list.push(slot_item);
@@ -1404,7 +1426,9 @@ impl OccurrenceUnsatisfiableCache {
             while j > 0 {
                 let slot_item = self.used_updates_slots_list.remove(0);
                 if !slot_arena.get(slot_item).has_cache_readers() {
-                    slot_arena.get_mut(slot_item).clean_slot_update_items(hash_arena);
+                    slot_arena
+                        .get_mut(slot_item)
+                        .clean_slot_update_items(hash_arena);
                     self.notused_updates_slots_list.push(slot_item);
                 } else {
                     self.used_updates_slots_list.push(slot_item);
@@ -1427,7 +1451,9 @@ impl OccurrenceUnsatisfiableCache {
     ) -> bool {
         let slot_index = slot_arena.get(update_slot).get_slot_index();
 
-        slot_arena.get(update_slot).activate_slot_update_items(entry_arena);
+        slot_arena
+            .get(update_slot)
+            .activate_slot_update_items(entry_arena);
         self.used_updates_slots_list.push(update_slot);
 
         // foreach entry in container
@@ -1439,7 +1465,9 @@ impl OccurrenceUnsatisfiableCache {
                 .get_mut(entry)
                 .update_slot_cache_hash_get_previous(slot_index, hash_arena);
             if prev_del_hash.is_some() {
-                slot_arena.get_mut(update_slot).add_cache_entries_hash(prev_del_hash);
+                slot_arena
+                    .get_mut(update_slot)
+                    .add_cache_entries_hash(prev_del_hash);
             }
         }
 
@@ -1461,31 +1489,44 @@ impl OccurrenceUnsatisfiableCache {
     pub fn write_cache_tags(
         &mut self,
         cache_value: &CCacheValue,
-        _caching_tag: Cint64,
-        _cached_tag: Cint64,
-        _caching_size: Cint64,
+        caching_tag: Cint64,
+        cached_tag: Cint64,
+        caching_size: Cint64,
+        ontology: &mut OntologyArenas,
     ) -> bool {
-        let val_id = cache_value.third;
+        let val_id = cache_value.get_cache_value_identifier();
         let mut has_concept = false;
-        let mut _concept_neg = false;
-        if val_id == CacheValueIdentifier::CacheValTagAndConcept as i64 {
+        let mut concept_neg = false;
+        if val_id == CacheValueIdentifier::CacheValTagAndConcept as Cint64 {
             has_concept = true;
-            _concept_neg = false;
-        } else if val_id == CacheValueIdentifier::CacheValTagAndNegatedConcept as i64 {
+            concept_neg = false;
+        } else if val_id == CacheValueIdentifier::CacheValTagAndNegatedConcept as Cint64 {
             has_concept = true;
-            _concept_neg = true;
+            concept_neg = true;
         }
         if has_concept {
-            let _identification = cache_value.second;
-            // W6-DEFER[api]: `identification` is a `CConcept*` (cross-subtree:
-            // `model`/`process`). Resolving it to `CConcept::getConceptData()` →
-            // `CConceptProcessData::getUnsatisfiableCachingTags(conceptNeg)` and
-            // calling `updateCachingTags(cachedTag, cachingTag, cachingSize)`
-            // (allocating a `CUnsatisfiableCachingTags` if absent) needs the
-            // ontology + process arenas not reachable from the cache facade. The
-            // polarity branch structure is preserved; the concept-data mutation is
-            // deferred and the no-data path's `false` is returned faithfully.
-            return false;
+            let identification = cache_value.get_identification();
+            let concept = ConceptId::new(identification);
+            if concept.is_some() && concept.raw < ontology.concept_count() {
+                let concept_data = ontology.concept(concept).get_concept_data();
+                if concept_data != INVALID {
+                    let con_proc_data = ConceptProcessDataId::new(concept_data);
+                    let mut unsat_caching_tags = ontology
+                        .concept_process_data(con_proc_data)
+                        .get_unsatisfiable_caching_tags(concept_neg);
+                    if unsat_caching_tags.is_none() {
+                        unsat_caching_tags = ontology
+                            .alloc_unsatisfiable_caching_tags(UnsatisfiableCachingTags::new());
+                        ontology
+                            .concept_process_data_mut(con_proc_data)
+                            .set_unsatisfiable_caching_tags(concept_neg, unsat_caching_tags);
+                    }
+                    ontology
+                        .unsatisfiable_caching_tags_mut(unsat_caching_tags)
+                        .update_caching_tags(cached_tag, caching_tag, caching_size);
+                    return true;
+                }
+            }
         }
         false
     }
@@ -1499,6 +1540,7 @@ impl OccurrenceUnsatisfiableCache {
         entry_arena: &mut Arena<OccurrenceUnsatisfiableCacheEntry>,
         hash_arena: &mut Arena<OccurrenceUnsatisfiableCacheEntriesHash>,
         slot_arena: &mut Arena<OccurrenceUnsatisfiableCacheUpdateSlotItem>,
+        ontology: &mut OntologyArenas,
     ) -> bool {
         let slot_index = slot_arena.get(update_slot).get_slot_index();
         let mut cache = self.primar_cache_entry;
@@ -1515,7 +1557,10 @@ impl OccurrenceUnsatisfiableCache {
         for &cache_value in cache_value_list {
             let cache_hash_id = entry_arena.get(cache).get_cache_entries_hash();
             let contains = cache_hash_id.is_some()
-                && hash_arena.get(cache_hash_id).entries.contains_key(&cache_value);
+                && hash_arena
+                    .get(cache_hash_id)
+                    .entries
+                    .contains_key(&cache_value);
 
             if cache_hash_id.is_none() || !contains {
                 // build updatedCacheHash (copy of the existing hash, or a fresh one)
@@ -1550,7 +1595,9 @@ impl OccurrenceUnsatisfiableCache {
                     .get_mut(cache)
                     .set_cache_entries_hash_slot_get_previous(slot_index, updated_cache_hash);
                 if prev_del_hash.is_some() {
-                    slot_arena.get_mut(update_slot).add_cache_entries_hash(prev_del_hash);
+                    slot_arena
+                        .get_mut(update_slot)
+                        .add_cache_entries_hash(prev_del_hash);
                 }
 
                 cache = next_cache;
@@ -1558,7 +1605,13 @@ impl OccurrenceUnsatisfiableCache {
                 cache = hash_arena.get(cache_hash_id).entries[&cache_value];
             }
 
-            self.write_cache_tags(&cache_value, caching_tag, cached_tag, caching_size);
+            self.write_cache_tags(
+                &cache_value,
+                caching_tag,
+                cached_tag,
+                caching_size,
+                ontology,
+            );
         }
         if cache.is_some() {
             entry_arena
@@ -1630,6 +1683,7 @@ impl OccurrenceUnsatisfiableCache {
         hash_arena: &mut Arena<OccurrenceUnsatisfiableCacheEntriesHash>,
         slot_arena: &mut Arena<OccurrenceUnsatisfiableCacheUpdateSlotItem>,
         reader_arena: &mut Arena<OccurrenceUnsatisfiableCacheReader>,
+        ontology: &mut OntologyArenas,
     ) -> bool {
         if self.last_update_slot.is_none()
             || !self.test_already_cached(self.last_update_slot, cel, entry_arena, hash_arena)
@@ -1641,7 +1695,14 @@ impl OccurrenceUnsatisfiableCache {
 
                 self.write_operations_count += 1;
 
-                self.write_cache_values(update_slot, cel, entry_arena, hash_arena, slot_arena);
+                self.write_cache_values(
+                    update_slot,
+                    cel,
+                    entry_arena,
+                    hash_arena,
+                    slot_arena,
+                    ontology,
+                );
                 // mCachStat.incCacheEntriesCount(); — [api] cross-family CacheStatistics, deferred.
 
                 self.activate_cache_update(
@@ -1656,7 +1717,9 @@ impl OccurrenceUnsatisfiableCache {
                 while i > 0 {
                     let slot_item = self.used_updates_slots_list.remove(0);
                     if !slot_arena.get(slot_item).has_cache_readers() {
-                        slot_arena.get_mut(slot_item).clean_slot_update_items(hash_arena);
+                        slot_arena
+                            .get_mut(slot_item)
+                            .clean_slot_update_items(hash_arena);
                         self.notused_updates_slots_list.push(slot_item);
                     } else {
                         self.used_updates_slots_list.push(slot_item);
@@ -1668,5 +1731,107 @@ impl OccurrenceUnsatisfiableCache {
             self.cache_writing_requested = false;
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::concept_process::ConceptProcessData;
+    use super::*;
+
+    #[test]
+    fn occurrence_unsat_write_cache_tags_allocates_and_updates_concept_process_tags() {
+        let mut ontology = OntologyArenas::new();
+        let con_proc = ontology.alloc_concept_process_data(ConceptProcessData::new());
+
+        let mut concept = Concept::new();
+        concept.set_concept_data(con_proc.raw);
+        let concept_id = ontology.alloc_concept(concept);
+
+        let mut cache = OccurrenceUnsatisfiableCache::new(1, "", INVALID);
+        let pos_cache_value = CacheValue::new_value(
+            11,
+            concept_id.raw,
+            CacheValueIdentifier::CacheValTagAndConcept,
+        );
+        assert!(cache.write_cache_tags(&pos_cache_value, 3, 7, 2, &mut ontology));
+
+        let pos_tags = ontology
+            .concept_process_data(con_proc)
+            .get_unsatisfiable_caching_tags(false);
+        assert!(pos_tags.is_some());
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(pos_tags)
+                .get_last_caching_tag(),
+            3
+        );
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(pos_tags)
+                .get_min_cached_tag(),
+            7
+        );
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(pos_tags)
+                .get_max_cached_tag(),
+            7
+        );
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(pos_tags)
+                .get_min_unsatisfiable_cached_size(),
+            2
+        );
+        assert!(ontology
+            .concept_process_data(con_proc)
+            .get_unsatisfiable_caching_tags(true)
+            .is_none());
+
+        let neg_cache_value = CacheValue::new_value(
+            13,
+            concept_id.raw,
+            CacheValueIdentifier::CacheValTagAndNegatedConcept,
+        );
+        assert!(cache.write_cache_tags(&neg_cache_value, 4, 9, 5, &mut ontology));
+        let neg_tags = ontology
+            .concept_process_data(con_proc)
+            .get_unsatisfiable_caching_tags(true);
+        assert!(neg_tags.is_some());
+        assert_ne!(pos_tags, neg_tags);
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(neg_tags)
+                .get_last_caching_tag(),
+            4
+        );
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(neg_tags)
+                .get_min_cached_tag(),
+            9
+        );
+        assert_eq!(
+            ontology
+                .unsatisfiable_caching_tags(neg_tags)
+                .get_min_unsatisfiable_cached_size(),
+            5
+        );
+    }
+
+    #[test]
+    fn occurrence_unsat_write_cache_tags_returns_false_without_concept_process_data() {
+        let mut ontology = OntologyArenas::new();
+        let concept_id = ontology.alloc_concept(Concept::new());
+        let mut cache = OccurrenceUnsatisfiableCache::new(1, "", INVALID);
+        let cache_value = CacheValue::new_value(
+            11,
+            concept_id.raw,
+            CacheValueIdentifier::CacheValTagAndConcept,
+        );
+
+        assert!(!cache.write_cache_tags(&cache_value, 3, 7, 2, &mut ontology));
     }
 }

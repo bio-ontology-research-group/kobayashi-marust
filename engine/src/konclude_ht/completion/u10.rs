@@ -75,7 +75,15 @@ use std::collections::HashMap;
 use super::super::model::op;
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
+use super::super::process::edge::IndividualLinkEdge;
 use super::super::process::node::IndividualProcessNode;
+use super::super::process::propagation_binding::PropagationBindingReapplyConceptDescriptorId;
+use super::super::process::reapply_sat::{
+    CondensedReapplyConceptDescriptor, CondensedReapplyQueueIterator, ReapplyConceptDescriptor,
+    ReapplyConceptDescriptorId,
+};
+use super::super::process::rs1::ReapplyQueueIterator;
+use super::super::process::satellites::BranchingMergingProcessingRestrictionSpecification;
 use super::super::process::stubs::ConceptProcessingQueueId;
 use super::super::process::{ConDescId, EdgeId, LabelSetId, NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
@@ -87,17 +95,16 @@ type ProcRestrictionHandle = Cint64;
 type CondensedReapplyQueueHandle = Cint64;
 /// KONCLUDE-PORT-NOTE[api]: `CReapplyQueue*` — not yet ported.
 type ReapplyQueueHandle = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CCondensedReapplyQueueIterator` (by-value iterator) —
-/// not yet ported; an opaque cursor handle.
-type CondensedReapplyQueueIteratorHandle = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CReapplyQueueIterator` (by-value iterator).
-type ReapplyQueueIteratorHandle = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CReapplyConceptDescriptor*` linker payload.
-type ReapplyConDescHandle = Cint64;
+/// `CCondensedReapplyQueueIterator` (by-value iterator).
+type CondensedReapplyQueueIteratorHandle = CondensedReapplyQueueIterator;
+/// `CReapplyQueueIterator` (by-value iterator).
+type ReapplyQueueIteratorHandle = ReapplyQueueIterator;
+/// `CReapplyConceptDescriptor*` linker payload.
+type ReapplyConDescHandle = ReapplyConceptDescriptorId;
 /// KONCLUDE-PORT-NOTE[api]: `CCondensedReapplyConceptDescriptor*` linker payload.
 type CondensedReapplyConDescHandle = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CPropagationBindingReapplyConceptDescriptor*` linker.
-type PropagationBindingReapplyConDescHandle = Cint64;
+/// `CPropagationBindingReapplyConceptDescriptor*` linker.
+type PropagationBindingReapplyConDescHandle = PropagationBindingReapplyConceptDescriptorId;
 /// KONCLUDE-PORT-NOTE[api]: `CReapplyConceptSaturationLabelSet*` — saturation
 /// label-set satellite, not yet ported.
 type ReapplyConceptSaturationLabelSetHandle = Cint64;
@@ -179,8 +186,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let pred: NodeId = e.get_source_individual();
             if edge_role.is_some() && pred.is_some() {
                 let inv: RoleId = onto.role(edge_role).get_inverse_role();
-                let inv_matches = inv == role
-                    || (inv.is_some() && onto.role(inv).has_indirect_super_role(role));
+                let inv_matches =
+                    inv == role || (inv.is_some() && onto.role(inv).has_indirect_super_role(role));
                 if inv_matches && !out.contains(&pred) {
                     out.push(pred);
                 }
@@ -201,22 +208,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let mut concepts_reapplyed = false;
 
-        // W3-DEFER[api]: conProQueue = individualNode->getConceptProcessingQueue(true);
-        let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
-        // W3-DEFER[api]: absorbedReapplyConDesLinker = individualNode->getSatisfiableCachedAbsorbedDisjunctionsLinker();
-        //               (intrusive CReapplyConceptDescriptor chain; modelled as a Vec until node getter is surfaced).
-        let absorbed_reapply_con_des_linker: Vec<ReapplyConDescHandle> = Vec::new();
-        for absorbed_reapply_con_des in absorbed_reapply_con_des_linker {
+        let con_pro_queue = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(individual_node, true);
+        let mut absorbed_reapply_con_des = calc_alg_context
+            .process_context()
+            .node(individual_node)
+            .satisfiable_cached_absorbed_disjunctions_linker();
+        while absorbed_reapply_con_des.is_some() {
             concepts_reapplyed = true;
 
-            // W3-DEFER[api]: conDes = absorbedReapplyConDesLinker->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = absorbedReapplyConDesLinker->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: procRest = absorbedReapplyConDesLinker->getReapplyProcessingRestriction();
-            let proc_rest: ProcRestrictionHandle = INVALID;
-            // W3-DEFER[api]: absorbedReapplyConDesLinker->isStaticDescriptor()
-            let is_static_descriptor = false;
+            let (con_des, dep_track_point, proc_rest, is_static_descriptor, next) = {
+                let reapply = calc_alg_context
+                    .process_context()
+                    .reapply_con_desc(absorbed_reapply_con_des);
+                (
+                    reapply.get_concept_descriptor(),
+                    reapply.get_dependency_track_point(),
+                    reapply.get_reapply_processing_restriction(),
+                    reapply.is_static_descriptor(),
+                    reapply.get_next(),
+                )
+            };
 
             self.add_concept_restricted_to_processing_queue(
                 con_des,
@@ -227,9 +240,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 proc_rest,
                 calc_alg_context,
             );
-            let _ = absorbed_reapply_con_des;
+            absorbed_reapply_con_des = next;
         }
-        // W3-DEFER[api]: individualNode->clearSatisfiableCachedAbsorbedDisjunctionsLinker();
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(individual_node)
+            .clear_satisfiable_cached_absorbed_disjunctions_linker();
 
         concepts_reapplyed
     }
@@ -242,17 +258,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let mut concepts_reapplyed = false;
 
-        // W3-DEFER[api]: conProQueue = individualNode->getConceptProcessingQueue(true);
-        let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
-        // W3-DEFER[api]: absorbedReapplyConDesLinker = individualNode->getSatisfiableCachedAbsorbedGeneratingLinker();
-        let absorbed_reapply_con_des_linker: Vec<ReapplyConDescHandle> = Vec::new();
-        for absorbed_reapply_con_des in absorbed_reapply_con_des_linker {
+        let con_pro_queue = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(individual_node, true);
+        let mut absorbed_reapply_con_des = calc_alg_context
+            .process_context()
+            .node(individual_node)
+            .satisfiable_cached_absorbed_generating_linker();
+        while absorbed_reapply_con_des.is_some() {
             concepts_reapplyed = true;
 
-            // W3-DEFER[api]: conDes = absorbedReapplyConDesLinker->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = absorbedReapplyConDesLinker->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
+            let (con_des, dep_track_point, next) = {
+                let reapply = calc_alg_context
+                    .process_context()
+                    .reapply_con_desc(absorbed_reapply_con_des);
+                (
+                    reapply.get_concept_descriptor(),
+                    reapply.get_dependency_track_point(),
+                    reapply.get_next(),
+                )
+            };
 
             self.add_concept_to_processing_queue(
                 con_des,
@@ -262,9 +287,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 false,
                 calc_alg_context,
             );
-            let _ = absorbed_reapply_con_des;
+            absorbed_reapply_con_des = next;
         }
-        // W3-DEFER[api]: individualNode->clearSatisfiableCachedAbsorbedGeneratingLinker();
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(individual_node)
+            .clear_satisfiable_cached_absorbed_generating_linker();
 
         concepts_reapplyed
     }
@@ -285,8 +313,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // W3-DEFER[api]: setIndividualNodeConceptLabelSetModified(processIndi,calcAlgContext); — helper, later unit.
-        // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-        let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
+        let con_pro_queue: ConceptProcessingQueueId = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(process_indi, true);
         // addConceptPreprocessedToProcessingQueue(bindingConDes,bindingDepTrackPoint,conProQueue,processIndi,true,calcAlgContext);
         // (the `allowPreprocessing` overload — skipFunction defaults to nullptr == INVALID).
         self.add_concept_preprocessed_to_processing_queue_skip(
@@ -305,7 +334,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // W3-DEFER[api]: conSet = processIndi->getReapplyConceptLabelSet(true);
             con_set = Id::NONE;
             // W3-DEFER[api]: CCondensedReapplyQueueIterator reapplyQueueIt(conSet->getConceptReapplyIterator(bindingConDes));
-            let reapply_queue_it: CondensedReapplyQueueIteratorHandle = INVALID;
+            let reapply_queue_it = CondensedReapplyQueueIterator::new();
             self.apply_reapply_queue_concepts_condensed_iterator(
                 process_indi,
                 reapply_queue_it,
@@ -328,8 +357,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // W3-DEFER[api]: setIndividualNodeConceptLabelSetModified(processIndi,calcAlgContext);
-        // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-        let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
+        let con_pro_queue: ConceptProcessingQueueId = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(process_indi, true);
         // addConceptPreprocessedToProcessingQueue(bindingConDes,bindingDepTrackPoint,conProQueue,processIndi,bindingCount,calcAlgContext);
         self.add_concept_preprocessed_to_processing_queue(
             binding_con_des,
@@ -346,7 +376,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // W3-DEFER[api]: conSet = processIndi->getReapplyConceptLabelSet(true);
             con_set = Id::NONE;
             // W3-DEFER[api]: CCondensedReapplyQueueIterator reapplyQueueIt(conSet->getConceptReapplyIterator(bindingConDes));
-            let reapply_queue_it: CondensedReapplyQueueIteratorHandle = INVALID;
+            let reapply_queue_it = CondensedReapplyQueueIterator::new();
             self.apply_reapply_queue_concepts_condensed_iterator(
                 process_indi,
                 reapply_queue_it,
@@ -368,35 +398,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         reapply_des_linker: PropagationBindingReapplyConDescHandle,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // CProcessingRestrictionSpecification* procRest = nullptr;
-        // for (reapplyDesLinkerIt = reapplyDesLinker; it; it = it->getNext()) { ... }
-        // W3-DEFER[api]: linker-chain traversal (CPropagationBindingReapplyConceptDescriptor not ported).
-        let _ = reapply_des_linker;
-        let reapply_des_chain: Vec<PropagationBindingReapplyConDescHandle> = Vec::new();
         // process_indi node id (real accessor) is the localisation discriminator below.
         let process_indi_id = calc_alg_context
             .process_context()
             .node(process_indi)
             .individual_node_id();
-        for reapply_des in reapply_des_chain {
+        let mut reapply_des_linker_it = reapply_des_linker;
+        while reapply_des_linker_it.is_some() {
             // W3-DEFER[api]: STATINC(PBINDREAPPLICATIONCOUNT,calcAlgContext);
-            // W3-DEFER[api]: conDes = reapplyDes->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = conDes->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: indiNode = reapplyDes->getReapllyIndividualNode();
-            let indi_node: NodeId = Id::NONE;
+            let (con_des, indi_node, next_reapply_des) = {
+                let reapply_des_ref = calc_alg_context
+                    .process_context()
+                    .prop_binding_reapply_con_des(reapply_des_linker_it);
+                (
+                    reapply_des_ref.get_concept_descriptor(),
+                    reapply_des_ref.get_reapply_individual_node(),
+                    reapply_des_ref.get_next(),
+                )
+            };
+            let dep_track_point = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .get_dependency_track_point();
             let mut loc_indi_node = indi_node;
 
-            // W3-DEFER[api]: indiNode->getIndividualNodeID()
-            let indi_node_id: Cint64 = INVALID;
+            let indi_node_id = calc_alg_context
+                .process_context()
+                .node(indi_node)
+                .individual_node_id();
             if process_indi_id != indi_node_id {
                 // locIndiNode = getLocalizedIndividual(indiNode,true,calcAlgContext);
                 loc_indi_node = self.get_localized_individual(indi_node, true, calc_alg_context);
             }
 
-            // W3-DEFER[api]: conProQueue = locIndiNode->getConceptProcessingQueue(true);
-            let con_pro_queue: ConceptProcessingQueueId = Id::NONE;
+            let con_pro_queue = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(loc_indi_node, true);
             self.add_concept_restricted_to_processing_queue(
                 con_des,
                 dep_track_point,
@@ -410,7 +447,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if process_indi_id != indi_node_id {
                 self.add_individual_to_processing_queue(loc_indi_node, calc_alg_context);
             }
-            let _ = reapply_des;
+            reapply_des_linker_it = next_reapply_des;
         }
     }
 
@@ -424,36 +461,45 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-        // W3-DEFER[api]: reapplyQueueIt = processIndi->getConceptReapplyIterator(concept,negation,true);
-        let reapply_queue_chain: Vec<CondensedReapplyConDescHandle> = Vec::new();
+        let concept_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        let mut reapply_queue_it = calc_alg_context
+            .process_context_mut()
+            .node_concept_reapply_iterator_by_tag(process_indi, concept_tag, negation, true);
         let mut con_pro_queue: ConceptProcessingQueueId = Id::NONE;
         let mut con_pro_queue_set = false;
-        for reapply_concept_des in reapply_queue_chain {
+        while reapply_queue_it.has_next() {
+            let reapply_concept_des =
+                reapply_queue_it.next(calc_alg_context.process_context(), true);
+            if reapply_concept_des.is_none() {
+                continue;
+            }
             // W3-DEFER[api]: STATINC(REAPPLIEDCONCEPTSCOUNT,calcAlgContext);
-            // W3-DEFER[api]: conDes = reapplyConceptDes->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = reapplyConceptDes->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: procRest = reapplyConceptDes->getReapplyProcessingRestriction();
-            let proc_rest: ProcRestrictionHandle = INVALID;
-            // W3-DEFER[api]: reapplyConceptDes->isExtended()
-            let is_extended = false;
+            let (con_des, dep_track_point, proc_rest, is_static_descriptor, is_extended) = {
+                let reapply_concept_des_ref = calc_alg_context
+                    .process_context()
+                    .cond_reapply_con_desc(reapply_concept_des);
+                (
+                    reapply_concept_des_ref.get_concept_descriptor(),
+                    reapply_concept_des_ref.get_dependency_track_point(),
+                    reapply_concept_des_ref.get_reapply_processing_restriction(),
+                    reapply_concept_des_ref.is_static_descriptor(),
+                    reapply_concept_des_ref.is_extended(),
+                )
+            };
             if is_extended {
-                self.apply_extended_reapply_concept_descriptor(
-                    process_indi,
-                    concept,
-                    negation,
-                    reapply_concept_des,
-                    calc_alg_context,
-                );
+                // W3-DEFER[api]: extended condensed descriptors are ATMOST
+                // reactivation records; the extension payload is not ported yet.
+                let _ = (process_indi, concept, negation, reapply_concept_des);
             } else {
                 if !con_pro_queue_set {
-                    // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-                    con_pro_queue = Id::NONE;
+                    con_pro_queue = calc_alg_context
+                        .process_context_mut()
+                        .node_concept_processing_queue(process_indi, true);
                     con_pro_queue_set = true;
                 }
-                // W3-DEFER[api]: reapplyConceptDes->isStaticDescriptor()
-                let is_static_descriptor = false;
                 self.add_concept_restricted_to_processing_queue(
                     con_des,
                     dep_track_point,
@@ -479,26 +525,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-        // W3-DEFER[api]: reapplyQueueIt = processIndi->getRoleReapplyIterator(role,true);
-        let _ = role;
-        let reapply_queue_chain: Vec<ReapplyConDescHandle> = Vec::new();
+        let mut reapply_queue_it = calc_alg_context
+            .process_context_mut()
+            .node_role_reapply_iterator(process_indi, role, true);
         let mut con_pro_queue: ConceptProcessingQueueId = Id::NONE;
         let mut con_pro_queue_set = false;
-        for reapply_concept_des in reapply_queue_chain {
+        while reapply_queue_it.has_next() {
+            let reapply_concept_des =
+                reapply_queue_it.next(calc_alg_context.process_context(), true);
+            if reapply_concept_des.is_none() {
+                continue;
+            }
             // W3-DEFER[api]: STATINC(REAPPLIEDCONCEPTSCOUNT,calcAlgContext);
-            // W3-DEFER[api]: conDes = reapplyConceptDes->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = reapplyConceptDes->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: procRest = reapplyConceptDes->getReapplyProcessingRestriction();
-            let proc_rest: ProcRestrictionHandle = INVALID;
+            let (con_des, dep_track_point, proc_rest, is_static_descriptor) = {
+                let reapply_concept_des_ref = calc_alg_context
+                    .process_context()
+                    .reapply_con_desc(reapply_concept_des);
+                (
+                    reapply_concept_des_ref.get_concept_descriptor(),
+                    reapply_concept_des_ref.get_dependency_track_point(),
+                    reapply_concept_des_ref.get_reapply_processing_restriction(),
+                    reapply_concept_des_ref.is_static_descriptor(),
+                )
+            };
             if !con_pro_queue_set {
-                // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-                con_pro_queue = Id::NONE;
+                con_pro_queue = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_processing_queue(process_indi, true);
                 con_pro_queue_set = true;
             }
-            // W3-DEFER[api]: reapplyConceptDes->isStaticDescriptor()
-            let is_static_descriptor = false;
             self.add_concept_restricted_to_processing_queue(
                 con_des,
                 dep_track_point,
@@ -508,7 +563,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 proc_rest,
                 calc_alg_context,
             );
-            let _ = reapply_concept_des;
         }
         if con_pro_queue_set {
             self.add_individual_to_processing_queue(process_indi, calc_alg_context);
@@ -520,41 +574,51 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub fn apply_reapply_queue_concepts_restricted(
         &mut self,
         process_indi: NodeId,
-        reapply_queue_it: ReapplyQueueIteratorHandle,
+        mut reapply_queue_it: ReapplyQueueIteratorHandle,
         restricted_link: EdgeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-        let _ = (reapply_queue_it, restricted_link);
         let mut con_pro_queue: ConceptProcessingQueueId = Id::NONE;
         let mut con_pro_queue_set = false;
         // CLinkProcessingRestrictionSpecification* linkProcRest = nullptr;
         let mut link_proc_rest: ProcRestrictionHandle = INVALID;
-        // W3-DEFER[api]: iterate reapplyQueueIt->hasNext()/next() (CReapplyQueueIterator not ported).
-        let reapply_queue_chain: Vec<ReapplyConDescHandle> = Vec::new();
-        for reapply_concept_des in reapply_queue_chain {
+        while reapply_queue_it.has_next() {
             // W3-DEFER[api]: STATINC(REAPPLIEDCONCEPTSCOUNT,calcAlgContext);
-            // W3-DEFER[api]: conDes = reapplyConceptDes->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = reapplyConceptDes->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: procRest = reapplyConceptDes->getReapplyProcessingRestriction();
-            let mut proc_rest: ProcRestrictionHandle = INVALID;
+            let reapply_concept_des =
+                reapply_queue_it.next(calc_alg_context.process_context(), true);
+            if reapply_concept_des.is_none() {
+                continue;
+            }
+            let (con_des, dep_track_point, mut proc_rest, is_static_descriptor) = {
+                let reapply_concept_des_ref = calc_alg_context
+                    .process_context()
+                    .reapply_con_desc(reapply_concept_des);
+                (
+                    reapply_concept_des_ref.get_concept_descriptor(),
+                    reapply_concept_des_ref.get_dependency_track_point(),
+                    reapply_concept_des_ref.get_reapply_processing_restriction(),
+                    reapply_concept_des_ref.is_static_descriptor(),
+                )
+            };
             if !con_pro_queue_set {
-                // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-                con_pro_queue = Id::NONE;
+                con_pro_queue = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_processing_queue(process_indi, true);
                 con_pro_queue_set = true;
             }
             if proc_rest == INVALID {
                 if link_proc_rest == INVALID {
-                    // W3-DEFER[memory-pool/api]: linkProcRest = allocateAndConstruct(taskMemMan);
-                    //                            linkProcRest->initLinkRestriction(restrictedLink);
-                    link_proc_rest = INVALID;
+                    let mut link_rest =
+                        BranchingMergingProcessingRestrictionSpecification::new(INVALID);
+                    link_rest.init_link_restriction(restricted_link);
+                    link_proc_rest = calc_alg_context
+                        .process_context_mut()
+                        .alloc_restriction_spec(link_rest)
+                        .raw;
                 }
                 proc_rest = link_proc_rest;
             }
-            // W3-DEFER[api]: reapplyConceptDes->isStaticDescriptor()
-            let is_static_descriptor = false;
             self.add_concept_restricted_to_processing_queue(
                 con_des,
                 dep_track_point,
@@ -564,7 +628,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 proc_rest,
                 calc_alg_context,
             );
-            let _ = reapply_concept_des;
         }
         if con_pro_queue_set {
             self.add_individual_to_processing_queue(process_indi, calc_alg_context);
@@ -576,30 +639,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub fn apply_reapply_queue_concepts_condensed_iterator(
         &mut self,
         process_indi: NodeId,
-        reapply_queue_it: CondensedReapplyQueueIteratorHandle,
+        mut reapply_queue_it: CondensedReapplyQueueIteratorHandle,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-        let _ = reapply_queue_it;
         let mut con_pro_queue: ConceptProcessingQueueId = Id::NONE;
         let mut con_pro_queue_set = false;
-        // W3-DEFER[api]: iterate reapplyQueueIt->hasNext()/next() (CCondensedReapplyQueueIterator not ported).
-        let reapply_queue_chain: Vec<CondensedReapplyConDescHandle> = Vec::new();
-        for reapply_concept_des in reapply_queue_chain {
+        while reapply_queue_it.has_next() {
             // W3-DEFER[api]: STATINC(REAPPLIEDCONCEPTSCOUNT,calcAlgContext);
-            // W3-DEFER[api]: conDes = reapplyConceptDes->getConceptDescriptor();
-            let con_des: ConDescId = Id::NONE;
-            // W3-DEFER[api]: depTrackPoint = reapplyConceptDes->getDependencyTrackPoint();
-            let dep_track_point: TrackPointId = Id::NONE;
-            // W3-DEFER[api]: procRest = reapplyConceptDes->getReapplyProcessingRestriction();
-            let proc_rest: ProcRestrictionHandle = INVALID;
+            let reapply_concept_des =
+                reapply_queue_it.next(calc_alg_context.process_context(), true);
+            if reapply_concept_des.is_none() {
+                continue;
+            }
+            let (con_des, dep_track_point, proc_rest, is_static_descriptor) = {
+                let reapply_concept_des_ref = calc_alg_context
+                    .process_context()
+                    .cond_reapply_con_desc(reapply_concept_des);
+                (
+                    reapply_concept_des_ref.get_concept_descriptor(),
+                    reapply_concept_des_ref.get_dependency_track_point(),
+                    reapply_concept_des_ref.get_reapply_processing_restriction(),
+                    reapply_concept_des_ref.is_static_descriptor(),
+                )
+            };
             if !con_pro_queue_set {
-                // W3-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true);
-                con_pro_queue = Id::NONE;
+                con_pro_queue = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_processing_queue(process_indi, true);
                 con_pro_queue_set = true;
             }
-            // W3-DEFER[api]: reapplyConceptDes->isStaticDescriptor()
-            let is_static_descriptor = false;
             self.add_concept_restricted_to_processing_queue(
                 con_des,
                 dep_track_point,
@@ -609,7 +678,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 proc_rest,
                 calc_alg_context,
             );
-            let _ = reapply_concept_des;
         }
         if con_pro_queue_set {
             self.add_individual_to_processing_queue(process_indi, calc_alg_context);
@@ -712,7 +780,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(concept)
             .get_concept_operator();
         let has_aqand = concept_operator.has_partial_operator_code_flag(op::CCFS_AQAND_TYPE);
-        let has_all_aqall = concept_operator.has_partial_operator_code_flag(op::CCFS_ALL_AQALL_TYPE);
+        let has_all_aqall =
+            concept_operator.has_partial_operator_code_flag(op::CCFS_ALL_AQALL_TYPE);
         let has_some = concept_operator.has_partial_operator_code_flag(op::CCFS_SOME_TYPE);
 
         if self.conf_specialized_automate_rules && !negated && has_aqand {
@@ -735,7 +804,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         } else if (!negated && has_all_aqall) || (negated && has_some) {
             // CRole* role = concept->getRole();
-            let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+            let role = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_role();
             if role == collecting_role {
                 if (!negated && has_all_aqall) || (negated && has_some) {
                     let rea_op_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
@@ -756,15 +828,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 .ontology_arenas()
                                 .concept(rea_op_concept.target)
                                 .get_concept_tag();
-                            con_extension_map
-                                .get_or_insert_with(HashMap::new)
-                                .insert(
-                                    con_tag,
-                                    ConceptNegationPair {
-                                        concept: rea_op_concept.target,
-                                        negated: rea_op_con_negation,
-                                    },
-                                );
+                            con_extension_map.get_or_insert_with(HashMap::new).insert(
+                                con_tag,
+                                ConceptNegationPair {
+                                    concept: rea_op_concept.target,
+                                    negated: rea_op_con_negation,
+                                },
+                            );
                         }
                     }
                 }
@@ -798,26 +868,88 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         let mut generated_inv_link = false;
 
-        // W3-DEFER[api]: iterate roleLinkerIt (CSortedNegLinker<CRole*> chain; not ported).
-        let _ = role_linker_it;
-        let role_chain: Vec<NegLink<RoleId>> = Vec::new();
+        let role_chain: Vec<NegLink<RoleId>> = role_linker_it.to_vec();
         for role_link in role_chain {
             let role = role_link.target;
             let inv_role = role_link.negated;
-            // W3-DEFER[api]: rangeConLinkerIt = role->getRangeConceptList();
+            let range_con_linker_it = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .get_range_concept_list()
+                .to_vec();
+            let domain_con_linker_it = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .get_domain_concept_list()
+                .to_vec();
+            let disjoint_role_linker = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .get_disjoint_role_list()
+                .to_vec();
             // W3-DEFER[api]: STATINC(LINKSCREATIONCOUNT,calcAlgContext);
             // W3-DEFER[memory-pool]: individualLink = allocateAndConstructAndParameterize(taskMemMan, getUsedProcessContext());
-            let individual_link: EdgeId = Id::NONE;
+            let mut individual_link: EdgeId = Id::NONE;
             if !inv_role {
-                // W3-DEFER[api]: !checkRoleExisting || !hasIndividualsLink(indiSource,indiDestination,role,true,calcAlgContext)
-                let has_individuals_link = false;
+                let mut source_ref = indi_source;
+                let mut destination_ref = indi_destination;
+                let has_individuals_link = self.get_individual_node_link(
+                    &mut source_ref,
+                    &mut destination_ref,
+                    role,
+                    calc_alg_context,
+                ) != Id::NONE;
                 if !check_role_existing || !has_individuals_link {
-                    // W3-DEFER[api]: createIndividualNodeDisjointRolesLinks(indiSource,indiDestination,role->getDisjointRoleList(),depTrackPoint,calcAlgContext);
-                    // W3-DEFER[api]: individualLink->initIndividualLinkEdge(indiSource,indiSource,indiDestination,role,depTrackPoint);
-                    // W3-DEFER[api]: reapplyIterator = installIndividualNodeRoleLinkReapplied(indiSource,indiDestination,individualLink,calcAlgContext);
-                    let reapply_iterator: ReapplyQueueIteratorHandle = INVALID;
-                    // W3-DEFER[api]: if (rangeConLinkerIt) addConceptsToIndividual(rangeConLinkerIt,false,indiDestination,depTrackPoint,true,false,nullptr,calcAlgContext);
-                    // W3-DEFER[api]: domainConLinkerIt = role->getDomainConceptList(); if (domainConLinkerIt) addConceptsToIndividual(domainConLinkerIt,false,indiSource,...);
+                    let mut source_ref = indi_source;
+                    let mut destination_ref = indi_destination;
+                    self.create_individual_node_disjoint_roles_links(
+                        &mut source_ref,
+                        &mut destination_ref,
+                        &disjoint_role_linker,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                    let mut edge = IndividualLinkEdge::new();
+                    edge.creator = indi_source;
+                    edge.set_source_individual(indi_source);
+                    edge.set_destination_individual(indi_destination);
+                    edge.set_link_role(role);
+                    edge.set_dependency_track_point(dep_track_point);
+                    individual_link = calc_alg_context.process_context_mut().alloc_edge(edge);
+                    let mut source_ref = indi_source;
+                    let mut destination_ref = indi_destination;
+                    let reapply_iterator = self.install_individual_node_role_link_reapplied(
+                        &mut source_ref,
+                        &mut destination_ref,
+                        individual_link,
+                        calc_alg_context,
+                    );
+                    if !range_con_linker_it.is_empty() {
+                        let mut destination_ref = indi_destination;
+                        self.add_concepts_to_individual(
+                            &range_con_linker_it,
+                            false,
+                            &mut destination_ref,
+                            dep_track_point,
+                            true,
+                            false,
+                            None,
+                            calc_alg_context,
+                        );
+                    }
+                    if !domain_con_linker_it.is_empty() {
+                        let mut source_ref = indi_source;
+                        self.add_concepts_to_individual(
+                            &domain_con_linker_it,
+                            false,
+                            &mut source_ref,
+                            dep_track_point,
+                            true,
+                            false,
+                            None,
+                            calc_alg_context,
+                        );
+                    }
                     self.apply_reapply_queue_concepts_restricted(
                         indi_source,
                         reapply_iterator,
@@ -826,16 +958,66 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     );
                 }
             } else {
-                // W3-DEFER[api]: !checkRoleExisting || !hasIndividualsLink(indiDestination,indiSource,role,true,calcAlgContext)
-                let has_individuals_link = false;
+                let mut source_ref = indi_destination;
+                let mut destination_ref = indi_source;
+                let has_individuals_link = self.get_individual_node_link(
+                    &mut source_ref,
+                    &mut destination_ref,
+                    role,
+                    calc_alg_context,
+                ) != Id::NONE;
                 if !check_role_existing || !has_individuals_link {
                     generated_inv_link = true;
-                    // W3-DEFER[api]: createIndividualNodeDisjointRolesLinks(indiDestination,indiSource,role->getDisjointRoleList(),depTrackPoint,calcAlgContext);
-                    // W3-DEFER[api]: individualLink->initIndividualLinkEdge(indiSource,indiDestination,indiSource,role,depTrackPoint);
-                    // W3-DEFER[api]: reapplyIterator = installIndividualNodeRoleLinkReapplied(indiDestination,indiSource,individualLink,calcAlgContext);
-                    let reapply_iterator: ReapplyQueueIteratorHandle = INVALID;
-                    // W3-DEFER[api]: if (rangeConLinkerIt) addConceptsToIndividual(rangeConLinkerIt,false,indiSource,...);
-                    // W3-DEFER[api]: domainConLinkerIt; if present addConceptsToIndividual(domainConLinkerIt,false,indiDestination,...);
+                    let mut source_ref = indi_destination;
+                    let mut destination_ref = indi_source;
+                    self.create_individual_node_disjoint_roles_links(
+                        &mut source_ref,
+                        &mut destination_ref,
+                        &disjoint_role_linker,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                    let mut edge = IndividualLinkEdge::new();
+                    edge.creator = indi_source;
+                    edge.set_source_individual(indi_destination);
+                    edge.set_destination_individual(indi_source);
+                    edge.set_link_role(role);
+                    edge.set_dependency_track_point(dep_track_point);
+                    individual_link = calc_alg_context.process_context_mut().alloc_edge(edge);
+                    let mut source_ref = indi_destination;
+                    let mut destination_ref = indi_source;
+                    let reapply_iterator = self.install_individual_node_role_link_reapplied(
+                        &mut source_ref,
+                        &mut destination_ref,
+                        individual_link,
+                        calc_alg_context,
+                    );
+                    if !range_con_linker_it.is_empty() {
+                        let mut destination_ref = indi_source;
+                        self.add_concepts_to_individual(
+                            &range_con_linker_it,
+                            false,
+                            &mut destination_ref,
+                            dep_track_point,
+                            true,
+                            false,
+                            None,
+                            calc_alg_context,
+                        );
+                    }
+                    if !domain_con_linker_it.is_empty() {
+                        let mut source_ref = indi_destination;
+                        self.add_concepts_to_individual(
+                            &domain_con_linker_it,
+                            false,
+                            &mut source_ref,
+                            dep_track_point,
+                            true,
+                            false,
+                            None,
+                            calc_alg_context,
+                        );
+                    }
                     self.apply_reapply_queue_concepts_restricted(
                         indi_destination,
                         reapply_iterator,
@@ -900,19 +1082,73 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> EdgeId {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-        let _ = (indi_creator, role, dep_track_point);
-        // W3-DEFER[api]: createIndividualNodeDisjointRolesLinks(indiSource,indiDestination,role->getDisjointRoleList(),depTrackPoint,calcAlgContext);
-        // CReapplyQueueIterator reapplyIterator;
+        let disjoint_role_linker = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_disjoint_role_list()
+            .to_vec();
+        let mut source_ref = indi_source;
+        let mut destination_ref = indi_destination;
+        self.create_individual_node_disjoint_roles_links(
+            &mut source_ref,
+            &mut destination_ref,
+            &disjoint_role_linker,
+            dep_track_point,
+            calc_alg_context,
+        );
         // W3-DEFER[api]: STATINC(LINKSCREATIONCOUNT,calcAlgContext);
         // W3-DEFER[memory-pool]: individualLink = allocateAndConstructAndParameterize(taskMemMan, getUsedProcessContext());
-        let individual_link: EdgeId = Id::NONE;
-        // W3-DEFER[api]: individualLink->initIndividualLinkEdge(indiCreator,indiSource,indiDestination,role,depTrackPoint);
-        // W3-DEFER[api]: reapplyIterator = installIndividualNodeRoleLinkReapplied(indiSource,indiDestination,individualLink,calcAlgContext);
-        let reapply_iterator: ReapplyQueueIteratorHandle = INVALID;
-        // W3-DEFER[api]: rangeConLinkerIt = role->getRangeConceptList();
-        //   if (rangeConLinkerIt) addConceptsToIndividual(rangeConLinkerIt,false,indiDestination,depTrackPoint,false,false,nullptr,calcAlgContext);
-        // W3-DEFER[api]: domainConLinkerIt = role->getDomainConceptList();
-        //   if (domainConLinkerIt) addConceptsToIndividual(domainConLinkerIt,false,indiSource,depTrackPoint,false,false,nullptr,calcAlgContext);
+        let mut edge = IndividualLinkEdge::new();
+        edge.creator = indi_creator;
+        edge.set_source_individual(indi_source);
+        edge.set_destination_individual(indi_destination);
+        edge.set_link_role(role);
+        edge.set_dependency_track_point(dep_track_point);
+        let individual_link: EdgeId = calc_alg_context.process_context_mut().alloc_edge(edge);
+        let mut source_ref = indi_source;
+        let mut destination_ref = indi_destination;
+        let reapply_iterator = self.install_individual_node_role_link_reapplied(
+            &mut source_ref,
+            &mut destination_ref,
+            individual_link,
+            calc_alg_context,
+        );
+        let range_con_linker_it = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_range_concept_list()
+            .to_vec();
+        if !range_con_linker_it.is_empty() {
+            let mut destination_ref = indi_destination;
+            self.add_concepts_to_individual(
+                &range_con_linker_it,
+                false,
+                &mut destination_ref,
+                dep_track_point,
+                false,
+                false,
+                None,
+                calc_alg_context,
+            );
+        }
+        let domain_con_linker_it = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_domain_concept_list()
+            .to_vec();
+        if !domain_con_linker_it.is_empty() {
+            let mut source_ref = indi_source;
+            self.add_concepts_to_individual(
+                &domain_con_linker_it,
+                false,
+                &mut source_ref,
+                dep_track_point,
+                false,
+                false,
+                None,
+                calc_alg_context,
+            );
+        }
         self.apply_reapply_queue_concepts_restricted(
             indi_source,
             reapply_iterator,
@@ -950,12 +1186,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dependency_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W3-DEFER[api]: concept = conceptDescriptor->getConcept();
-        let concept: ConceptId = Id::NONE;
-        // role = concept->getRole();  (resolved against the ontology arenas once conceptDescriptor->getConcept() is surfaced)
-        // W3-DEFER[api]: role = concept->getRole();
-        let role: RoleId = Id::NONE;
-        let _ = concept;
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(concept_descriptor)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         self.add_concept_to_reapply_queue_role(
             concept_descriptor,
             role,
@@ -979,20 +1217,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         // W3-DEFER[api]: STATINC(INSERTCONCEPTREAPPLICATIONSCOUNT,calcAlgContext);
-        // W3-DEFER[api]: reapplyQueue = processIndi->getRoleReapplyQueue(role,true);
-        let reapply_queue: ReapplyQueueHandle = INVALID;
-        // W3-DEFER[memory-pool/api]: reapplyConDes = allocateAndConstruct(taskMemMan);
-        //                            reapplyConDes->initReapllyDescriptor(conceptDescriptor,dependencyTrackPoint,isStaticDes);
-        //                            reapplyQueue->addReapplyConceptDescriptor(reapplyConDes);
-        let _ = (
-            concept_descriptor,
-            role,
-            process_indi,
-            is_static_des,
-            dependency_track_point,
-            reapply_queue,
-            calc_alg_context,
-        );
+        let reapply_con_des = calc_alg_context
+            .process_context_mut()
+            .alloc_reapply_con_desc(ReapplyConceptDescriptor::new(
+                concept_descriptor,
+                dependency_track_point,
+                is_static_des,
+            ));
+        calc_alg_context
+            .process_context_mut()
+            .node_add_role_reapply_concept_descriptor(process_indi, role, reapply_con_des);
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addConceptToReapplyQueue`
@@ -1009,21 +1243,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         // W3-DEFER[api]: STATINC(INSERTCONCEPTREAPPLICATIONSCOUNT,calcAlgContext);
-        // W3-DEFER[api]: reapplyQueue = processIndi->getConceptReapplyQueue(concept,negation,true);
-        let reapply_queue: CondensedReapplyQueueHandle = INVALID;
-        // W3-DEFER[memory-pool/api]: reapplyConDes = allocateAndConstruct(taskMemMan);
-        //                            reapplyConDes->initReapllyDescriptor(conceptDescriptor,dependencyTrackPoint,!negation);
-        //                            reapplyQueue->addReapplyConceptDescriptor(reapplyConDes);
-        let _ = (
+        let concept_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        let mut reapply_con_des = CondensedReapplyConceptDescriptor::new(
             concept_descriptor,
-            concept,
-            negation,
-            process_indi,
-            is_static_des,
             dependency_track_point,
-            reapply_queue,
-            calc_alg_context,
+            !negation,
         );
+        reapply_con_des.static_descriptor = is_static_des;
+        let reapply_con_des = calc_alg_context
+            .process_context_mut()
+            .alloc_cond_reapply_con_desc(reapply_con_des);
+        calc_alg_context
+            .process_context_mut()
+            .node_add_concept_reapply_concept_descriptor_by_tag(
+                process_indi,
+                concept_tag,
+                negation,
+                reapply_con_des,
+            );
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addConceptToReapplyQueue`
@@ -1039,20 +1279,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         // W3-DEFER[api]: STATINC(INSERTCONCEPTREAPPLICATIONSCOUNT,calcAlgContext);
-        // W3-DEFER[api]: reapplyQueue = processIndi->getRoleReapplyQueue(role,true);
-        let reapply_queue: ReapplyQueueHandle = INVALID;
-        // W3-DEFER[memory-pool/api]: reapplyConDes = allocateAndConstruct(taskMemMan);
-        //                            reapplyConDes->initReapllyDescriptor(conceptDescriptor,dependencyTrackPoint,procRest);
-        //                            reapplyQueue->addReapplyConceptDescriptor(reapplyConDes);
-        let _ = (
+        let mut reapply_con_des =
+            ReapplyConceptDescriptor::new(concept_descriptor, dependency_track_point, false);
+        reapply_con_des.init_reapply_descriptor_restricted(
             concept_descriptor,
-            role,
-            process_indi,
-            proc_rest,
             dependency_track_point,
-            reapply_queue,
-            calc_alg_context,
+            proc_rest,
         );
+        let reapply_con_des = calc_alg_context
+            .process_context_mut()
+            .alloc_reapply_con_desc(reapply_con_des);
+        calc_alg_context
+            .process_context_mut()
+            .node_add_role_reapply_concept_descriptor(process_indi, role, reapply_con_des);
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addConceptToReapplyQueue`
@@ -1069,21 +1308,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         // W3-DEFER[api]: STATINC(INSERTCONCEPTREAPPLICATIONSCOUNT,calcAlgContext);
-        // W3-DEFER[api]: reapplyQueue = processIndi->getConceptReapplyQueue(concept,negation,true);
-        let reapply_queue: CondensedReapplyQueueHandle = INVALID;
-        // W3-DEFER[memory-pool/api]: reapplyConDes = allocateAndConstruct(taskMemMan);
-        //                            reapplyConDes->initReapllyDescriptor(conceptDescriptor,dependencyTrackPoint,!negation,procRest);
-        //                            reapplyQueue->addReapplyConceptDescriptor(reapplyConDes);
-        let _ = (
+        let concept_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        let mut reapply_con_des = CondensedReapplyConceptDescriptor::new(
             concept_descriptor,
-            concept,
-            negation,
-            process_indi,
-            proc_rest,
             dependency_track_point,
-            reapply_queue,
-            calc_alg_context,
+            !negation,
         );
+        reapply_con_des.init_reapply_descriptor_restricted(
+            concept_descriptor,
+            dependency_track_point,
+            !negation,
+            proc_rest,
+        );
+        let reapply_con_des = calc_alg_context
+            .process_context_mut()
+            .alloc_cond_reapply_con_desc(reapply_con_des);
+        calc_alg_context
+            .process_context_mut()
+            .node_add_concept_reapply_concept_descriptor_by_tag(
+                process_indi,
+                concept_tag,
+                negation,
+                reapply_con_des,
+            );
     }
 
     // =======================================================================
@@ -1100,14 +1350,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[api]: reapplyQueue = processIndi->getConceptReapplyQueue(concept,negation,false);
-        let reapply_queue: CondensedReapplyQueueHandle = INVALID;
-        let _ = (concept_descriptor, concept, negation, process_indi, calc_alg_context);
-        if reapply_queue != INVALID {
-            // W3-DEFER[api]: return reapplyQueue->hasConceptDescriptor(conceptDescriptor);
-            return false;
-        }
-        false
+        let concept_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        calc_alg_context
+            .process_context()
+            .node_concept_reapply_queue_has_concept_descriptor_by_tag(
+                process_indi,
+                concept_tag,
+                negation,
+                concept_descriptor,
+            )
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::isConceptInReapplyQueue`
@@ -1119,14 +1373,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W3-DEFER[api]: reapplyQueue = processIndi->getRoleReapplyQueue(role,false);
-        let reapply_queue: ReapplyQueueHandle = INVALID;
-        let _ = (concept_descriptor, role, process_indi, calc_alg_context);
-        if reapply_queue != INVALID {
-            // W3-DEFER[api]: return reapplyQueue->hasConceptDescriptor(conceptDescriptor);
-            return false;
-        }
-        false
+        calc_alg_context
+            .process_context()
+            .node_role_reapply_queue_has_concept_descriptor(process_indi, role, concept_descriptor)
     }
 
     // =======================================================================

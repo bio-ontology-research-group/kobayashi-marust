@@ -6,9 +6,8 @@
 //!
 //! Faithful, method-by-method port (snake_case of each C++ name, same control
 //! flow). The methods here are mostly trivial field getters/setters/flag
-//! toggles; the few that touch not-yet-ported linker/allocator classes carry a
-//! `W2-DEFER[api]` marker plus the closest minimal stub, matching the PN-1
-//! convention.
+//! toggles; context-sensitive ownership differences are documented with
+//! `KONCLUDE-PORT-NOTE[...]` comments at the relevant method bodies.
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: the C++ `mSuccessorIndiNodeBackwardDependencyLinker`
 //! is an intrusive `CXLinker<CIndividualProcessNode*>` chain; per `substrate.rs`
@@ -20,8 +19,11 @@
 #![allow(dead_code)]
 
 use super::super::model::{Cint64, Id};
+use super::concept_process_linker::ConceptProcessLinkerId;
+use super::context::ProcessContext;
+use super::individual_process_linker::IndividualProcessNodeLinkerId;
 use super::node::{IndividualProcessNode, IndividualProcessNodePriority};
-use super::stubs::{ConceptProcessLinkerId, IndividualProcessNodeLinkerId, RoleBackPropHashId};
+use super::role_backward_prop::RoleBackwardPropagationHashId as RoleBackPropHashId;
 use super::NodeId;
 
 impl IndividualProcessNode {
@@ -55,7 +57,8 @@ impl IndividualProcessNode {
     ) -> &mut Self {
         if linker != Id::NONE {
             // mSuccessorIndiNodeBackwardDependencyLinker = linker->append(mSuccessorIndiNodeBackwardDependencyLinker);
-            self.successor_indi_node_backward_dependency_linker.insert(0, linker);
+            self.successor_indi_node_backward_dependency_linker
+                .insert(0, linker);
         }
         self
     }
@@ -79,7 +82,9 @@ impl IndividualProcessNode {
 
     /// Port of `CIndividualProcessNode::hasSuccessorIndividualNodeBackwardDependencyLinker`.
     pub fn has_successor_individual_node_backward_dependency_linker(&self) -> bool {
-        !self.successor_indi_node_backward_dependency_linker.is_empty()
+        !self
+            .successor_indi_node_backward_dependency_linker
+            .is_empty()
     }
 
     /// Port of `CIndividualProcessNode::clearSuccessorIndividualNodeBackwardDependencyLinker`.
@@ -106,14 +111,12 @@ impl IndividualProcessNode {
     // Role-backward-propagation hash (lazy-allocated).
     // ===================================================================
 
-    /// Port of `CIndividualProcessNode::getRoleBackwardPropagationHash`.
-    pub fn role_backward_propagation_hash(&mut self, create: bool) -> RoleBackPropHashId {
-        if create && self.role_back_prop_hash == Id::NONE {
-            // mRoleBackPropHash = CObjectParameterizingAllocator<CRoleBackwardPropagationHash,CProcessContext*>
-            //     ::allocateAndConstructAndParameterize(mMemAllocMan, mProcessContext);
-            // W2-DEFER[api]: allocate a RoleBackwardPropagationHash in the per-test
-            // arena (over mem_alloc_man / process_context) and store its id here.
-        }
+    /// Port-facing read of `CIndividualProcessNode::getRoleBackwardPropagationHash(false)`.
+    pub fn role_backward_propagation_hash(&self, create: bool) -> RoleBackPropHashId {
+        debug_assert!(
+            !create,
+            "use ProcessContext::node_role_backward_propagation_hash for create=true"
+        );
         self.role_back_prop_hash
     }
 
@@ -145,13 +148,19 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::takeConceptProcessLinker`.
-    pub fn take_concept_process_linker(&mut self) -> ConceptProcessLinkerId {
+    ///
+    /// Requires the arena-owning `ProcessContext` to resolve
+    /// `mConceptProcessLinker->getNext()`. `ProcessContext::node_take_concept_process_linker`
+    /// is the usual call path when the node itself is arena-owned.
+    pub fn take_concept_process_linker(
+        &mut self,
+        process_context: &ProcessContext,
+    ) -> ConceptProcessLinkerId {
         let con_proc_linker = self.concept_process_linker;
-        if self.concept_process_linker != Id::NONE {
-            // mConceptProcessLinker = mConceptProcessLinker->getNext();
-            // W2-DEFER[api]: CConceptProcessLinker::get_next over the per-test arena;
-            // until the linker class is ported, advance to NONE (head pop only).
-            self.concept_process_linker = Id::NONE;
+        if self.concept_process_linker.is_some() {
+            self.concept_process_linker = process_context
+                .concept_process_linker(con_proc_linker)
+                .get_next();
         }
         con_proc_linker
     }
@@ -166,14 +175,18 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::addConceptProcessLinker`.
+    ///
+    /// Requires the arena-owning `ProcessContext` to execute
+    /// `conProcessLinker->append(mConceptProcessLinker)`. `ProcessContext::
+    /// node_add_concept_process_linker` is the usual call path when the node
+    /// itself is arena-owned.
     pub fn add_concept_process_linker(
         &mut self,
         con_process_linker: ConceptProcessLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
-        // mConceptProcessLinker = conProcessLinker->append(mConceptProcessLinker);
-        // W2-DEFER[api]: CConceptProcessLinker::append (chain the existing head
-        // behind the passed linker over the per-test arena); until ported, set head.
-        self.concept_process_linker = con_process_linker;
+        self.concept_process_linker = process_context
+            .append_concept_process_linker_chain(con_process_linker, self.concept_process_linker);
         self
     }
 
@@ -271,7 +284,10 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::setDeterministicExpandingProcessingQueued`.
-    pub fn set_deterministic_expanding_processing_queued(&mut self, imm_pro_que: bool) -> &mut Self {
+    pub fn set_deterministic_expanding_processing_queued(
+        &mut self,
+        imm_pro_que: bool,
+    ) -> &mut Self {
         self.det_exp_processing_queued = imm_pro_que;
         self
     }
@@ -448,15 +464,214 @@ impl IndividualProcessNode {
 
     /// Port of `CIndividualProcessNode::resetLastProcessingPriority`.
     pub fn reset_last_processing_priority(&mut self) -> &mut Self {
-        // mLastProcessingPriority.setPriorityToNull();
-        // W2-DEFER[api]: CIndividualProcessNodePriority::set_priority_to_null is a
-        // method of the (separate) priority class, not part of PN-5; port it with
-        // that class so this call delegates instead of mutating fields inline.
+        self.last_processing_priority.set_priority_to_null();
         self
     }
 
     /// Port of `CIndividualProcessNode::getLastProcessingPriority`.
     pub fn last_processing_priority(&self) -> IndividualProcessNodePriority {
         self.last_processing_priority
+    }
+}
+
+impl ProcessContext {
+    /// Arena-backed port of `CIndividualProcessNode::takeConceptProcessLinker`.
+    pub fn node_take_concept_process_linker(&mut self, node: NodeId) -> ConceptProcessLinkerId {
+        let con_proc_linker = self.node(node).concept_process_linker;
+        if con_proc_linker.is_some() {
+            let next = self.concept_process_linker(con_proc_linker).get_next();
+            self.node_mut(node).concept_process_linker = next;
+        }
+        con_proc_linker
+    }
+
+    /// Port of `CLinkerBase::append` for `CConceptProcessLinker` ids.
+    pub fn append_concept_process_linker_chain(
+        &mut self,
+        linker: ConceptProcessLinkerId,
+        appending_list: ConceptProcessLinkerId,
+    ) -> ConceptProcessLinkerId {
+        if linker.is_none() {
+            return appending_list;
+        }
+        let mut last = linker;
+        loop {
+            let next = self.concept_process_linker(last).get_next();
+            if next.is_none() {
+                break;
+            }
+            last = next;
+        }
+        self.concept_process_linker_mut(last)
+            .set_next(appending_list);
+        linker
+    }
+
+    /// Arena-backed port of `CIndividualProcessNode::addConceptProcessLinker`.
+    pub fn node_add_concept_process_linker(
+        &mut self,
+        node: NodeId,
+        con_process_linker: ConceptProcessLinkerId,
+    ) -> &mut Self {
+        let old_head = self.node(node).concept_process_linker;
+        let new_head = self.append_concept_process_linker_chain(con_process_linker, old_head);
+        self.node_mut(node).concept_process_linker = new_head;
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::RoleId;
+    use super::super::concept_process_linker::ConceptProcessLinker;
+    use super::super::role_backward_prop::{
+        BackwardPropagationLink, BackwardPropagationLinkId, BackwardPropagationReapplyDescriptor,
+    };
+    use super::super::stubs::ProcessContextId;
+    use super::super::ConDescId;
+    use super::*;
+
+    #[test]
+    fn pn5_reset_last_processing_priority_delegates_to_priority_null_reset() {
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+        node.set_last_processing_priority(IndividualProcessNodePriority {
+            priority_con: 3.0,
+            priority_ind: 5.0,
+            strict_order: false,
+        });
+
+        node.reset_last_processing_priority();
+
+        assert_eq!(node.last_processing_priority().priority_con, 0.0);
+        assert_eq!(node.last_processing_priority().priority_ind, 0.0);
+        assert!(node.last_processing_priority().strict_order);
+        assert!(node.last_processing_priority().is_null_priority());
+    }
+
+    #[test]
+    fn pn5_context_concept_process_linker_add_appends_old_head_to_tail_and_take_advances() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+        let first = ctx.alloc_concept_process_linker(ConceptProcessLinker::new());
+        let second = ctx.alloc_concept_process_linker(ConceptProcessLinker::new());
+        let old_head = ctx.alloc_concept_process_linker(ConceptProcessLinker::new());
+
+        ctx.concept_process_linker_mut(first).set_next(second);
+        ctx.node_mut(node).set_concept_process_linker(old_head);
+
+        ctx.node_add_concept_process_linker(node, first);
+
+        assert_eq!(ctx.node(node).concept_process_linker(), first);
+        assert_eq!(ctx.concept_process_linker(first).get_next(), second);
+        assert_eq!(ctx.concept_process_linker(second).get_next(), old_head);
+
+        assert_eq!(ctx.node_take_concept_process_linker(node), first);
+        assert_eq!(ctx.node(node).concept_process_linker(), second);
+        assert_eq!(ctx.node_take_concept_process_linker(node), second);
+        assert_eq!(ctx.node(node).concept_process_linker(), old_head);
+    }
+
+    #[test]
+    fn pn5_context_role_backward_propagation_hash_lazy_allocates() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+
+        assert!(ctx
+            .node_role_backward_propagation_hash(node, false)
+            .is_none());
+        let hash = ctx.node_role_backward_propagation_hash(node, true);
+
+        assert!(hash.is_some());
+        assert_eq!(ctx.node(node).role_backward_propagation_hash(false), hash);
+        assert!(ctx
+            .role_backward_prop_hash(hash)
+            .get_role_backward_propagation_data_hash()
+            .is_empty());
+    }
+
+    #[test]
+    fn pn5_role_backward_hash_preserves_konclude_prepend_and_return_values() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+        let source_a = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+        let source_b = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+        let role = RoleId::new(7);
+        let concept = ConDescId::new(11);
+        let hash = ctx.node_role_backward_propagation_hash(node, true);
+
+        let mut reapply = BackwardPropagationReapplyDescriptor::new();
+        reapply.init_backward_propagation_reapply_descriptor(concept);
+        let reapply = ctx.alloc_backward_prop_reapply_desc(reapply);
+        assert_eq!(
+            ctx.role_backward_prop_hash_add_backward_propagation_concept_descriptor(
+                hash, role, reapply
+            ),
+            BackwardPropagationLinkId::NONE
+        );
+
+        let mut first = BackwardPropagationLink::new();
+        first.init_backward_propagation_link(source_a, role);
+        let first = ctx.alloc_backward_prop_link(first);
+        assert_eq!(
+            ctx.role_backward_prop_hash_add_backward_propagation_link(hash, role, first),
+            reapply
+        );
+
+        let mut second = BackwardPropagationLink::new();
+        second.init_backward_propagation_link(source_b, role);
+        let second = ctx.alloc_backward_prop_link(second);
+        assert_eq!(
+            ctx.role_backward_prop_hash_add_backward_propagation_link(hash, role, second),
+            reapply
+        );
+
+        let data = ctx
+            .role_backward_prop_hash(hash)
+            .get_role_backward_propagation_data_hash()
+            .get(&role)
+            .copied()
+            .unwrap();
+        assert_eq!(data.link_linker, second);
+        assert_eq!(ctx.backward_prop_link(second).get_next(), first);
+        assert_eq!(data.reapply_linker, reapply);
+        assert_eq!(
+            ctx.backward_prop_reapply_desc(reapply)
+                .get_reaplly_concept_descriptor(),
+            concept
+        );
+    }
+
+    #[test]
+    fn pn5_role_backward_hash_duplicate_source_guard_checks_existing_head() {
+        let mut ctx = ProcessContext::new();
+        let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+        let source = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
+        let role = RoleId::new(13);
+        let hash = ctx.node_role_backward_propagation_hash(node, true);
+
+        let mut first = BackwardPropagationLink::new();
+        first.init_backward_propagation_link(source, role);
+        let first = ctx.alloc_backward_prop_link(first);
+        assert!(ctx
+            .role_backward_prop_hash_add_backward_propagation_link(hash, role, first)
+            .is_none());
+
+        let mut duplicate = BackwardPropagationLink::new();
+        duplicate.init_backward_propagation_link(source, role);
+        let duplicate = ctx.alloc_backward_prop_link(duplicate);
+        assert!(ctx
+            .role_backward_prop_hash_add_backward_propagation_link(hash, role, duplicate)
+            .is_none());
+
+        let data = ctx
+            .role_backward_prop_hash(hash)
+            .get_role_backward_propagation_data_hash()
+            .get(&role)
+            .unwrap();
+        assert_eq!(data.link_linker, first);
+        assert_eq!(
+            ctx.backward_prop_link(first).get_next(),
+            BackwardPropagationLinkId::NONE
+        );
     }
 }

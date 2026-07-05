@@ -66,15 +66,29 @@ impl<T> std::hash::Hash for Id<T> {
 
 impl<T> Id<T> {
     #[inline]
-    pub const fn new(raw: Cint64) -> Self { Id { raw, _k: PhantomData } }
+    pub const fn new(raw: Cint64) -> Self {
+        Id {
+            raw,
+            _k: PhantomData,
+        }
+    }
     /// The null/unset id (== a `nullptr` back-pointer).
-    pub const NONE: Self = Id { raw: INVALID, _k: PhantomData };
+    pub const NONE: Self = Id {
+        raw: INVALID,
+        _k: PhantomData,
+    };
     #[inline]
-    pub fn is_none(self) -> bool { self.raw < 0 }
+    pub fn is_none(self) -> bool {
+        self.raw < 0
+    }
     #[inline]
-    pub fn is_some(self) -> bool { self.raw >= 0 }
+    pub fn is_some(self) -> bool {
+        self.raw >= 0
+    }
     #[inline]
-    pub fn index(self) -> usize { self.raw as usize }
+    pub fn index(self) -> usize {
+        self.raw as usize
+    }
 }
 
 impl<T> std::fmt::Debug for Id<T> {
@@ -92,11 +106,15 @@ pub struct Arena<T> {
 }
 
 impl<T> Default for Arena<T> {
-    fn default() -> Self { Arena { items: Vec::new() } }
+    fn default() -> Self {
+        Arena { items: Vec::new() }
+    }
 }
 
 impl<T> Arena<T> {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
     #[inline]
     pub fn push(&mut self, v: T) -> Id<T> {
         let id = Id::new(self.items.len() as Cint64);
@@ -104,18 +122,30 @@ impl<T> Arena<T> {
         id
     }
     #[inline]
-    pub fn get(&self, id: Id<T>) -> &T { &self.items[id.index()] }
+    pub fn get(&self, id: Id<T>) -> &T {
+        &self.items[id.index()]
+    }
     #[inline]
-    pub fn get_mut(&mut self, id: Id<T>) -> &mut T { &mut self.items[id.index()] }
+    pub fn get_mut(&mut self, id: Id<T>) -> &mut T {
+        &mut self.items[id.index()]
+    }
     #[inline]
-    pub fn len(&self) -> usize { self.items.len() }
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
     #[inline]
-    pub fn watermark(&self) -> usize { self.items.len() }
+    pub fn watermark(&self) -> usize {
+        self.items.len()
+    }
     /// Backtrack: drop everything allocated since `mark`.
     #[inline]
-    pub fn truncate_to(&mut self, mark: usize) { self.items.truncate(mark); }
+    pub fn truncate_to(&mut self, mark: usize) {
+        self.items.truncate(mark);
+    }
     #[inline]
-    pub fn iter(&self) -> std::slice::Iter<'_, T> { self.items.iter() }
+    pub fn iter(&self) -> std::slice::Iter<'_, T> {
+        self.items.iter()
+    }
 }
 
 /// KONCLUDE-PORT-NOTE[ownership]: Konclude's intrusive linker chains
@@ -141,8 +171,14 @@ pub struct Trail {
 }
 
 impl Trail {
-    pub fn new() -> Self { Trail::default() }
+    pub fn new() -> Self {
+        Trail::default()
+    }
     /// Open a backtrack scope; returns the level to restore to.
-    pub fn push_mark(&mut self, len: usize) { self.marks.push(len); }
-    pub fn pop_mark(&mut self) -> Option<usize> { self.marks.pop() }
+    pub fn push_mark(&mut self, len: usize) {
+        self.marks.push(len);
+    }
+    pub fn pop_mark(&mut self) -> Option<usize> {
+        self.marks.pop()
+    }
 }

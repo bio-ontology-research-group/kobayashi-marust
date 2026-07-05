@@ -30,11 +30,12 @@
 use std::collections::HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::process::context::ProcessContext;
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::SatNodeId;
 use super::base::SaturationCache;
-use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
-use super::value::{CacheValue, CacheValueIdentifier};
 use super::context::CacheContext;
+use super::value::{CacheValue, CacheValueIdentifier};
 
 // ---------------------------------------------------------------------------
 // Local arena id aliases (this family's per-ontology cache objects).
@@ -164,14 +165,14 @@ impl SaturationNodeAssociatedExpansionCacheContext {
 /// the owning chain is an `AssociatedConceptLinkerId` `Vec` on the holder.
 pub struct SaturationNodeAssociatedConceptLinker {
     /// `CCacheValue` payload (the linker data).
-    /// KONCLUDE-PORT-NOTE[unclear]: opaque `Cint64` until F0 `cache::value` lands
-    /// (see file header); the real type is `CacheValue`.
-    pub cache_value: Cint64,
+    pub cache_value: CacheValue,
 }
 
 impl Default for SaturationNodeAssociatedConceptLinker {
     fn default() -> Self {
-        SaturationNodeAssociatedConceptLinker { cache_value: INVALID }
+        SaturationNodeAssociatedConceptLinker {
+            cache_value: CacheValue::new(),
+        }
     }
 }
 
@@ -182,21 +183,19 @@ impl SaturationNodeAssociatedConceptLinker {
     }
 
     /// Port of `initConceptLinker` (C++ `setData(cacheValue)`).
-    /// KONCLUDE-PORT-NOTE[unclear]: `cache_value` is the opaque `CCacheValue`
-    /// payload (`Cint64`) until F0 `cache::value` is threaded in.
-    pub fn init_concept_linker(&mut self, cache_value: Cint64) -> &mut Self {
+    pub fn init_concept_linker(&mut self, cache_value: CacheValue) -> &mut Self {
         self.cache_value = cache_value;
         self
     }
 
     /// Port of `setCacheValue` (C++ `setData(cacheValue)`).
-    pub fn set_cache_value(&mut self, cache_value: Cint64) -> &mut Self {
+    pub fn set_cache_value(&mut self, cache_value: CacheValue) -> &mut Self {
         self.cache_value = cache_value;
         self
     }
 
     /// Port of `getCacheValue` (C++ `return &getData()`).
-    pub fn get_cache_value(&self) -> Cint64 {
+    pub fn get_cache_value(&self) -> CacheValue {
         self.cache_value
     }
 }
@@ -298,9 +297,8 @@ pub struct AssociatedConceptExpansion {
     // --- CSaturationNodeAssociatedConceptExpansion base members ---------------
     /// `CCACHINGHASH<CCacheValueHasher, CSaturationNodeAssociatedConceptLinker*> mConceptExpansionHash`.
     /// KONCLUDE-PORT-NOTE[memory-pool]: the pool-managed hash → `HashMap`; key is
-    /// an opaque `CCacheValue` id (`[unclear]`, see file header), value the
-    /// concept-linker id.
-    pub concept_expansion_hash: HashMap<Cint64, AssociatedConceptLinkerId>,
+    /// the `CCacheValue` payload, value the concept-linker id.
+    pub concept_expansion_hash: HashMap<CacheValue, AssociatedConceptLinkerId>,
     /// `CSaturationNodeAssociatedConceptLinker* mConceptExpansionLinker`
     /// (intrusive chain head → owned `Vec`, head-at-FRONT).
     pub concept_expansion_linker: Vec<AssociatedConceptLinkerId>,
@@ -367,7 +365,9 @@ impl AssociatedConceptExpansion {
     }
 
     /// Port of `getConceptExpansionHash`.
-    pub fn get_concept_expansion_hash(&mut self) -> &mut HashMap<Cint64, AssociatedConceptLinkerId> {
+    pub fn get_concept_expansion_hash(
+        &mut self,
+    ) -> &mut HashMap<CacheValue, AssociatedConceptLinkerId> {
         &mut self.concept_expansion_hash
     }
 
@@ -375,24 +375,25 @@ impl AssociatedConceptExpansion {
     pub fn add_concept_expansion_linker(
         &mut self,
         concept_linker: AssociatedConceptLinkerId,
+        context: &CacheContext,
     ) -> &mut Self {
-        // W6-DEFER[api]: faithful logic resolves `conceptLinker` in its arena to
-        //   mConceptExpansionCount += conceptLinker->getCount();
-        //   mConceptExpansionLinker = conceptLinker->append(mConceptExpansionLinker);   // head-front prepend
-        //   mConceptExpansionHash.insert(CCacheValueHasher(conceptLinker->getCacheValue()), conceptLinker);
-        // The concept-linker arena is not threaded into this struct, so the count
-        // accumulation and the cache-value-keyed hash insert are deferred; the chain
-        // prepend (head-front per the CLinker convention) is recorded for reconcile.
-        if concept_linker.is_some() {
-            self.concept_expansion_linker.insert(0, concept_linker);
+        if concept_linker.is_none() {
+            return self;
         }
+        let cache_value = context
+            .associated_concept_linker(concept_linker)
+            .get_cache_value();
+        self.concept_expansion_count += 1;
+        self.concept_expansion_linker.insert(0, concept_linker);
+        self.concept_expansion_hash
+            .insert(cache_value, concept_linker);
         self
     }
 
     /// Port of `getConceptExpansionLinker(CCacheValue*)` — the hash lookup overload.
     pub fn get_concept_expansion_linker_for_cache_value(
         &self,
-        cache_value: Cint64,
+        cache_value: CacheValue,
     ) -> AssociatedConceptLinkerId {
         self.concept_expansion_hash
             .get(&cache_value)
@@ -401,7 +402,7 @@ impl AssociatedConceptExpansion {
     }
 
     /// Port of `hasConceptExpansionLinker(CCacheValue*)`.
-    pub fn has_concept_expansion_linker(&self, cache_value: Cint64) -> bool {
+    pub fn has_concept_expansion_linker(&self, cache_value: CacheValue) -> bool {
         self.concept_expansion_hash.contains_key(&cache_value)
     }
 
@@ -750,6 +751,30 @@ impl SaturationNodeAssociatedExpansionCacheUnsatisfiabilityWriteData {
     }
 }
 
+/// Typed write-data record for the staged Rust drain of
+/// `CSaturationNodeAssociatedExpansionCacheWriteData*` chains.
+///
+/// Konclude uses an intrusive base-class chain and downcasts by
+/// `getWriteDataType()`. The port keeps the two concrete payloads in an enum for
+/// typed dispatch while the legacy opaque `Cint64` compatibility methods remain
+/// deferred.
+pub enum SaturationNodeAssociatedExpansionCacheWriteDataRecord {
+    /// `SNAECWT_UNSAT`.
+    Unsat(SaturationNodeAssociatedExpansionCacheUnsatisfiabilityWriteData),
+    /// `SNAECWT_EXPAND`.
+    Expand(SaturationNodeAssociatedExpansionCacheExpansionWriteData),
+}
+
+impl SaturationNodeAssociatedExpansionCacheWriteDataRecord {
+    /// Port of `getWriteDataType` on the base write-data pointer.
+    pub fn get_write_data_type(&self) -> SaturationNodeAssociatedExpansionCacheWriteDataType {
+        match self {
+            Self::Unsat(_) => SaturationNodeAssociatedExpansionCacheWriteDataType::Unsat,
+            Self::Expand(_) => SaturationNodeAssociatedExpansionCacheWriteDataType::Expand,
+        }
+    }
+}
+
 // ===========================================================================
 // CSaturationNodeAssociatedExpansionCacheEntry
 //   (`: public CIndividualSaturationProcessNodeCacheData, public CCacheEntry`)
@@ -850,7 +875,8 @@ impl SaturationNodeAssociatedExpansionCacheEntry {
         &mut self,
         nondet_concept_expansion: AssociatedConceptExpansionId,
     ) -> &mut Self {
-        self.nondet_expansion_linker.insert(0, nondet_concept_expansion);
+        self.nondet_expansion_linker
+            .insert(0, nondet_concept_expansion);
         self
     }
 
@@ -916,15 +942,18 @@ impl SaturationNodeCacheUpdater {
     }
 
     /// Port of `propagateUnsatisfibility`.
-    pub fn propagate_unsatisfibility(&mut self, node: SatNodeId, context: Cint64) -> &mut Self {
-        // W6-DEFER[api]: faithful logic builds a local
-        // `CIndividualSaturationProcessNodeStatusFlags`, `setClashedFlag(true)`, then
-        // `updateDirectAddingIndividualStatusFlags(node, &flags, context)`. The
-        // status-flag bit ops (`setClashedFlag`/`hasFlags`/`addFlags`) are not yet
-        // ported on `IndividualSaturationProcessNodeStatusFlags`, and resolving the
-        // `SatNodeId` requires the (un-threaded) process node arena, so the
-        // propagation is deferred.
-        let _ = (node, context);
+    pub fn propagate_unsatisfibility(
+        &mut self,
+        node: SatNodeId,
+        process_context: &mut ProcessContext,
+        context: Cint64,
+    ) -> &mut Self {
+        let mut flags = IndividualSaturationProcessNodeStatusFlags::default();
+        flags.set_flags(
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+            true,
+        );
+        self.update_direct_adding_individual_status_flags(node, &flags, process_context, context);
         self
     }
 
@@ -951,12 +980,15 @@ impl SaturationNodeCacheUpdater {
         &self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
+        process_context: &ProcessContext,
         context: Cint64,
     ) -> bool {
-        // W6-DEFER[api]: `!indiNode->getDirectStatusFlags()->hasFlags(addingFlags, true)`.
-        // Needs the process node arena + the unported `hasFlags` bit op.
-        let _ = (indi_node, adding_flags, context);
-        false
+        let _ = context;
+        indi_node.is_some()
+            && !process_context
+                .sat_node(indi_node)
+                .direct_status_flags
+                .has_flags(adding_flags, true)
     }
 
     /// Port of `requiresIndirectAddingIndividualStatusFlagsUpdate`.
@@ -964,11 +996,15 @@ impl SaturationNodeCacheUpdater {
         &self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
+        process_context: &ProcessContext,
         context: Cint64,
     ) -> bool {
-        // W6-DEFER[api]: `!indiNode->getIndirectStatusFlags()->hasFlags(addingFlags, true)`.
-        let _ = (indi_node, adding_flags, context);
-        false
+        let _ = context;
+        indi_node.is_some()
+            && !process_context
+                .sat_node(indi_node)
+                .indirect_status_flags
+                .has_flags(adding_flags, true)
     }
 
     /// Port of `updateDirectAddingIndividualStatusFlags`.
@@ -976,17 +1012,56 @@ impl SaturationNodeCacheUpdater {
         &mut self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
+        process_context: &mut ProcessContext,
         context: Cint64,
     ) {
-        // W6-DEFER[api]: the C++ worklist propagation —
-        //   if requiresDirect…Update: seed an update linker on indiNode, addFlags to its
-        //   direct flags, ++mDirectUpdatedStatusIndiNodeCount; then drain the update-linker
-        //   worklist, and for each `getCopyDependingIndividualNodeLinker()` neighbour that
-        //   still requires the update, addFlags + enqueue, and recurse via
-        //   updateIndirectAddingIndividualStatusFlags(updateIndiNode, …).
-        // Requires the process node arena (neighbour linkers) + the unported flag bit
-        // ops + the opaque update-linker recycling chain.
-        let _ = (indi_node, adding_flags, context);
+        if self.requires_direct_adding_individual_status_flags_update(
+            indi_node,
+            adding_flags,
+            process_context,
+            context,
+        ) {
+            let mut direct_update_linker = vec![indi_node];
+            process_context
+                .sat_node_mut(indi_node)
+                .direct_status_flags
+                .add_flags(adding_flags);
+            self.direct_updated_status_indi_node_count += 1;
+
+            while !direct_update_linker.is_empty() {
+                let update_indi_node = direct_update_linker.remove(0);
+                let depending_nodes: Vec<SatNodeId> = process_context
+                    .sat_node(update_indi_node)
+                    .get_copy_depending_individual_node_linker()
+                    .iter()
+                    .map(|link| link.target)
+                    .filter(|id| id.is_some())
+                    .collect();
+
+                for depending_indi in depending_nodes {
+                    if self.requires_direct_adding_individual_status_flags_update(
+                        depending_indi,
+                        adding_flags,
+                        process_context,
+                        context,
+                    ) {
+                        process_context
+                            .sat_node_mut(depending_indi)
+                            .direct_status_flags
+                            .add_flags(adding_flags);
+                        self.direct_updated_status_indi_node_count += 1;
+                        direct_update_linker.insert(0, depending_indi);
+                    }
+                }
+
+                self.update_indirect_adding_individual_status_flags(
+                    update_indi_node,
+                    adding_flags,
+                    process_context,
+                    context,
+                );
+            }
+        }
     }
 
     /// Port of `updateIndirectAddingIndividualStatusFlags`.
@@ -994,15 +1069,92 @@ impl SaturationNodeCacheUpdater {
         &mut self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
+        process_context: &mut ProcessContext,
         context: Cint64,
     ) {
-        // W6-DEFER[api]: the indirect-flag worklist propagation — like the direct
-        // variant but also walking, for each drained node, the
-        // `RoleBackwardSaturationPropagationHash` backward-prop links (source individuals)
-        // and the `getNonInverseConnectedIndividualNodeLinker()` neighbours, adding the
-        // indirect flags + enqueueing each newly-updated source, bumping
-        // mIndirectUpdatedStatusIndiNodeCount. Same arena / flag-op / recycling-chain deps.
-        let _ = (indi_node, adding_flags, context);
+        if self.requires_indirect_adding_individual_status_flags_update(
+            indi_node,
+            adding_flags,
+            process_context,
+            context,
+        ) {
+            let mut direct_update_linker = vec![indi_node];
+            process_context
+                .sat_node_mut(indi_node)
+                .indirect_status_flags
+                .add_flags(adding_flags);
+            self.indirect_updated_status_indi_node_count += 1;
+
+            while !direct_update_linker.is_empty() {
+                let update_indi_node = direct_update_linker.remove(0);
+                let depending_nodes: Vec<SatNodeId> = process_context
+                    .sat_node(update_indi_node)
+                    .get_copy_depending_individual_node_linker()
+                    .iter()
+                    .map(|link| link.target)
+                    .filter(|id| id.is_some())
+                    .collect();
+
+                for depending_indi in depending_nodes {
+                    if self.requires_indirect_adding_individual_status_flags_update(
+                        depending_indi,
+                        adding_flags,
+                        process_context,
+                        context,
+                    ) {
+                        process_context
+                            .sat_node_mut(depending_indi)
+                            .indirect_status_flags
+                            .add_flags(adding_flags);
+                        self.indirect_updated_status_indi_node_count += 1;
+                        direct_update_linker.insert(0, depending_indi);
+                    }
+                }
+
+                let role_backward_source_nodes =
+                    process_context.sat_node_role_backward_source_individuals(update_indi_node);
+
+                for source_individual in role_backward_source_nodes {
+                    if self.requires_indirect_adding_individual_status_flags_update(
+                        source_individual,
+                        adding_flags,
+                        process_context,
+                        context,
+                    ) {
+                        process_context
+                            .sat_node_mut(source_individual)
+                            .indirect_status_flags
+                            .add_flags(adding_flags);
+                        self.indirect_updated_status_indi_node_count += 1;
+                        direct_update_linker.insert(0, source_individual);
+                    }
+                }
+
+                let non_inverse_connected_nodes: Vec<SatNodeId> = process_context
+                    .sat_node(update_indi_node)
+                    .get_non_inverse_connected_individual_node_linker()
+                    .iter()
+                    .copied()
+                    .filter(|id| id.is_some())
+                    .collect();
+
+                for source_individual in non_inverse_connected_nodes {
+                    if self.requires_indirect_adding_individual_status_flags_update(
+                        source_individual,
+                        adding_flags,
+                        process_context,
+                        context,
+                    ) {
+                        process_context
+                            .sat_node_mut(source_individual)
+                            .indirect_status_flags
+                            .add_flags(adding_flags);
+                        self.indirect_updated_status_indi_node_count += 1;
+                        direct_update_linker.insert(0, source_individual);
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1289,5 +1441,56 @@ impl SaturationNodeAssociatedExpansionCache {
         // the staged single-thread port drains writes inline (see `write_cache_data`).
         let _ = (type_, event);
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn alloc_concept_linker(
+        context: &mut CacheContext,
+        cache_value: CacheValue,
+    ) -> AssociatedConceptLinkerId {
+        let mut linker = SaturationNodeAssociatedConceptLinker::new();
+        linker.init_concept_linker(cache_value);
+        context.alloc_associated_concept_linker(linker)
+    }
+
+    #[test]
+    fn add_concept_expansion_linker_prepends_counts_and_indexes_by_cache_value() {
+        let mut context = CacheContext::new();
+        let cache_value_1 =
+            CacheValue::new_value(11, 101, CacheValueIdentifier::CacheValTagAndConcept);
+        let cache_value_2 =
+            CacheValue::new_value(22, 202, CacheValueIdentifier::CacheValTagAndNegatedConcept);
+        let linker_1 = alloc_concept_linker(&mut context, cache_value_1);
+        let linker_2 = alloc_concept_linker(&mut context, cache_value_2);
+
+        let mut expansion =
+            AssociatedConceptExpansion::new(AssociatedConceptExpansionKind::Concept, 0);
+
+        expansion.add_concept_expansion_linker(linker_1, &context);
+        assert_eq!(expansion.get_concept_expansion_count(), 1);
+        assert_eq!(expansion.get_concept_expansion_linker(), &[linker_1]);
+        assert_eq!(
+            expansion.get_concept_expansion_linker_for_cache_value(cache_value_1),
+            linker_1
+        );
+
+        expansion.add_concept_expansion_linker(linker_2, &context);
+        assert_eq!(expansion.get_concept_expansion_count(), 2);
+        assert_eq!(
+            expansion.get_concept_expansion_linker(),
+            &[linker_2, linker_1]
+        );
+        assert_eq!(
+            expansion.get_concept_expansion_linker_for_cache_value(cache_value_1),
+            linker_1
+        );
+        assert_eq!(
+            expansion.get_concept_expansion_linker_for_cache_value(cache_value_2),
+            linker_2
+        );
     }
 }

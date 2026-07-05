@@ -74,16 +74,11 @@
 //!
 //! Deferrals (no logic dropped; recorded inline + in doc):
 //!   * `// W4-DEFER[api]` — the unported saturation satellites this group bottoms
-//!     out in: `CReapplyConceptSaturationLabelSet` (insertConceptReturnClashed /
-//!     insertConceptReapplicationReturnTriggered / hasModifiedUpdateLinkers),
-//!     `CConceptSaturationDescriptor` (initConceptSaturationDescriptor / getConcept /
-//!     getNegation), `CImplicationReapplyConceptSaturationDescriptor`,
-//!     `CSaturationModifiedProcessUpdateLinker`, the per-node
-//!     `CRoleBackwardSaturationPropagationHash` (the backward-prop fan-out arm),
-//!     `CSuccessorConnectedNominalSet`, the nominal-handling data, and the
+//!     out in: `CConceptSetFlags`, the remaining label-set copy/flag helpers, the
 //!     `CSaturationNominalDependentNodeHash` / `CSaturationInfluencedNominalSet`
 //!     membership ops; plus the consistence model chain (`CConcreteOntology` /
 //!     `CConsistence` / `CConsistenceTaskData` / `CSatisfiableCalculationTask`).
+//!     `CSuccessorConnectedNominalSet` and the role-backward fan-out arms are live.
 //!   * `// W4-DEFER[memory-pool]` — the fresh `CObjectAllocator<…>` allocation
 //!     branch of every create-from-pool helper (no per-test arena for these linker
 //!     payload kinds yet; the helpers take from the databox remaining-pool and
@@ -99,19 +94,27 @@
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::completion::stubs::SatisfiableCalculationTask;
 use super::super::model::op::{
-    CCALL, CCAND, CCAQALL, CCAQAND, CCAQCHOOCE, CCAQSOME, CCBRANCHALL, CCBRANCHAQALL, CCBRANCHAQAND,
-    CCBRANCHTRIG, CCIMPL, CCIMPLALL, CCIMPLAQALL, CCIMPLAQAND, CCIMPLTRIG, CCOR, CCSOME, CCSUB,
+    CCALL, CCAND, CCAQALL, CCAQAND, CCAQCHOOCE, CCAQSOME, CCATOM, CCBRANCHALL, CCBRANCHAQALL,
+    CCBRANCHAQAND, CCBRANCHTRIG, CCIMPL, CCIMPLALL, CCIMPLAQALL, CCIMPLAQAND, CCIMPLTRIG, CCOR,
+    CCSOME, CCSUB,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, NegLink};
+use super::super::process::nominal_conn::SuccessorConnectedNominalSetId;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::{
     ConceptSaturationDescriptor, ConceptSaturationProcess, ConceptSaturationProcessLinkerId,
-    IndividualSaturationSuccessorLinkData, ReapplyConceptSaturationLabelSetId, RoleSaturationProcess,
+    IndividualSaturationSuccessorLinkDataLinker, IndividualSaturationSuccessorLinkDataLinkerId,
+    ReapplyConceptSaturationLabelSetId, RoleSaturationProcess, SaturationNominalConnectionType,
 };
 use super::super::process::SatNodeId;
 // W4.5: the saturation-satellite linker structs (for the create*-pool allocations).
-use super::satellites::{ConceptSaturationProcessLinker, RoleSaturationProcessLinker};
+use super::satellites::{
+    ConceptSaturationProcessLinker, ImplicationReapplyConceptSaturationDescriptor,
+    ImplicationReapplyConceptSaturationDescriptorId, RoleSaturationProcessLinker,
+    SaturationModificationProcessUpdateType, SaturationModifiedProcessUpdateLinker,
+    SaturationModifiedProcessUpdateLinkerId,
+};
 
 // ===========================================================================
 // CIndividualSaturationProcessNodeStatusFlags — the status-flag word.
@@ -160,7 +163,11 @@ impl IndividualSaturationProcessNodeStatusFlags {
     }
 
     /// Port of `hasFlags(CIndividualSaturationProcessNodeStatusFlags*,bool)` (cpp 205–207).
-    pub fn has_flags(&self, flags: &IndividualSaturationProcessNodeStatusFlags, check_all_flags: bool) -> bool {
+    pub fn has_flags(
+        &self,
+        flags: &IndividualSaturationProcessNodeStatusFlags,
+        check_all_flags: bool,
+    ) -> bool {
         self.has_flags_code(flags.get_flags(), check_all_flags)
     }
 
@@ -204,6 +211,772 @@ impl IndividualSaturationProcessNodeStatusFlags {
     /// Port of `hasInsufficientFlag` (cpp 51–53).
     pub fn has_insufficient_flag(&self) -> bool {
         self.has_flags_code(Self::INDSATFLAGINSUFFICIENT, false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::op::CCATOM;
+    use super::super::super::model::RoleId;
+    use super::super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::super::saturation::satellites::{
+        ConceptSaturationDescriptorId, ConceptSaturationDescriptorReapplyData,
+        ImplicationReapplyConceptSaturationDescriptor,
+        ImplicationReapplyConceptSaturationDescriptorId,
+    };
+    use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::*;
+
+    #[test]
+    fn add_influenced_nominal_records_first_influence_once() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        algo.add_influenced_nominal(41, &mut ctx);
+        let set = ctx.saturation_influenced_nominal_set(false);
+        assert!(ctx
+            .process_context()
+            .sat_influenced_nominal_set(set)
+            .is_nominal_influenced(41));
+
+        assert!(!ctx
+            .process_context_mut()
+            .sat_influenced_nominal_set_mut(set)
+            .set_nominal_influenced(41));
+    }
+
+    #[test]
+    fn nominal_dependent_node_is_marked_insufficient_when_nominal_already_influenced() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let dependent = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(7));
+
+        algo.add_influenced_nominal(11, &mut ctx);
+        algo.add_nominal_dependent_individual_node(11, dependent, 0, &mut ctx);
+
+        assert!(ctx
+            .process_context()
+            .sat_node(dependent)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(ctx.processing_data_box().is_insufficient_node_occured());
+    }
+
+    #[test]
+    fn influenced_nominal_marks_previously_registered_dependent_nodes() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let first = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(3));
+        let second = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(4));
+
+        algo.add_nominal_dependent_individual_node(17, first, 1, &mut ctx);
+        algo.add_nominal_dependent_individual_node(17, second, 2, &mut ctx);
+        assert!(!ctx
+            .process_context()
+            .sat_node(first)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(!ctx
+            .process_context()
+            .sat_node(second)
+            .direct_status_flags
+            .has_insufficient_flag());
+
+        algo.add_influenced_nominal(17, &mut ctx);
+
+        assert!(ctx
+            .process_context()
+            .sat_node(first)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(ctx
+            .process_context()
+            .sat_node(second)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(ctx.processing_data_box().is_insufficient_node_occured());
+    }
+
+    #[test]
+    fn successor_link_data_linker_create_release_reuses_intrusive_free_list() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let first = algo.create_individual_saturation_successor_link_data_linker(&mut ctx);
+        assert!(first.is_some());
+        assert_eq!(
+            ctx.process_context().indi_sat_succ_link_data_linker_count(),
+            1
+        );
+
+        let succ_data = ctx
+            .process_context_mut()
+            .alloc_sat_succ_data(Default::default());
+        ctx.process_context_mut()
+            .indi_sat_succ_link_data_linker_mut(first)
+            .init_successor_link_data_linker(succ_data)
+            .set_next(first);
+
+        algo.release_individual_saturation_successor_link_data_linker(first, &mut ctx);
+        assert_eq!(
+            ctx.processing_data_box()
+                .remaining_individual_successor_link_data_linker(),
+            first
+        );
+        assert_eq!(
+            ctx.process_context()
+                .indi_sat_succ_link_data_linker(first)
+                .get_next(),
+            Id::NONE
+        );
+
+        let reused = algo.create_individual_saturation_successor_link_data_linker(&mut ctx);
+        assert_eq!(reused, first);
+        assert!(ctx
+            .processing_data_box()
+            .remaining_individual_successor_link_data_linker()
+            .is_none());
+    }
+
+    #[test]
+    fn s11_implication_reapply_insert_triggered_prepends_chain_once_per_tag() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let trigger = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(211);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let direct_descriptor = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(trigger, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let label_set = ctx.process_context_mut().alloc_reapply_con_sat_label_set(
+            super::super::satellites::ReapplyConceptSaturationLabelSet::new(INVALID),
+        );
+        let trigger_tag = ctx.ontology_arenas().concept(trigger).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(label_set)
+            .concept_des_dep_hash
+            .insert(
+                trigger_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: direct_descriptor,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+
+        let first = ctx
+            .process_context_mut()
+            .alloc_imp_reapply_con_sat_desc(ImplicationReapplyConceptSaturationDescriptor::new());
+        let second = ctx
+            .process_context_mut()
+            .alloc_imp_reapply_con_sat_desc(ImplicationReapplyConceptSaturationDescriptor::new());
+        let mut out_descriptor = ConceptSaturationDescriptorId::NONE;
+
+        assert!(ctx
+            .process_context_mut()
+            .reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
+                label_set,
+                trigger_tag,
+                first,
+                Some(&mut out_descriptor),
+            ));
+        assert_eq!(out_descriptor, direct_descriptor);
+        assert_eq!(
+            ctx.process_context()
+                .reapply_con_sat_label_set(label_set)
+                .get_total_count(),
+            1
+        );
+
+        assert!(ctx
+            .process_context_mut()
+            .reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
+                label_set,
+                trigger_tag,
+                second,
+                None,
+            ));
+        let head = ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .concept_des_dep_hash
+            .get(&trigger_tag)
+            .unwrap()
+            .imp_reapply_con_sat_des;
+        assert_eq!(head, second);
+        assert_eq!(
+            ctx.process_context()
+                .imp_reapply_con_sat_desc(second)
+                .get_next(),
+            first
+        );
+        assert_eq!(
+            ctx.process_context()
+                .reapply_con_sat_label_set(label_set)
+                .get_total_count(),
+            1
+        );
+    }
+
+    #[test]
+    fn s11_update_implication_reapply_advances_trigger_and_executes_final_operand() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let conclusion = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(221);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let first_trigger = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(223);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let second_trigger = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(225);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATOM)
+                .set_concept_tag(227)
+                .add_operand_linker(conclusion, false)
+                .add_operand_linker(second_trigger, false)
+                .set_operand_count(2);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(root, true);
+        let second_trigger_descriptor = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(second_trigger, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let second_trigger_tag = ctx
+            .ontology_arenas()
+            .concept(second_trigger)
+            .get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(label_set)
+            .concept_des_dep_hash
+            .insert(
+                second_trigger_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: second_trigger_descriptor,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+
+        let initial_reapply = {
+            let triggers = [
+                NegLink {
+                    target: first_trigger,
+                    negated: false,
+                },
+                NegLink {
+                    target: second_trigger,
+                    negated: false,
+                },
+            ];
+            let mut descriptor = ImplicationReapplyConceptSaturationDescriptor::new();
+            descriptor.init_implication_reaplly_concept_saturation_descriptor(
+                implication,
+                Some(&triggers),
+            );
+            ctx.process_context_mut()
+                .alloc_imp_reapply_con_sat_desc(descriptor)
+        };
+        let before_count = ctx.process_context().con_sat_desc_count();
+        let mut root_ref = root;
+
+        assert!(
+            algo.update_implication_reapply_concept_saturation_descriptor(
+                initial_reapply,
+                &mut root_ref,
+                label_set,
+                &mut ctx,
+            )
+        );
+
+        let queued = ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .concept_des_dep_hash
+            .get(&second_trigger_tag)
+            .unwrap()
+            .imp_reapply_con_sat_des;
+        assert!(queued.is_some());
+        assert_eq!(
+            ctx.process_context()
+                .imp_reapply_con_sat_desc(queued)
+                .get_next_trigger_concept()
+                .unwrap()[0]
+                .target,
+            second_trigger
+        );
+        assert_eq!(ctx.process_context().con_sat_desc_count(), before_count + 1);
+    }
+
+    #[test]
+    fn s11_insert_concept_replays_matching_implication_reapply_chain() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let conclusion = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(231);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let trigger = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(233);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATOM)
+                .set_concept_tag(235)
+                .add_operand_linker(conclusion, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(root, true);
+        let trigger_tag = ctx.ontology_arenas().concept(trigger).get_concept_tag();
+        let queued_reapply = {
+            let triggers = [NegLink {
+                target: trigger,
+                negated: true,
+            }];
+            let mut descriptor = ImplicationReapplyConceptSaturationDescriptor::new();
+            descriptor.init_implication_reaplly_concept_saturation_descriptor(
+                implication,
+                Some(&triggers),
+            );
+            ctx.process_context_mut()
+                .alloc_imp_reapply_con_sat_desc(descriptor)
+        };
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(label_set)
+            .concept_des_dep_hash
+            .insert(
+                trigger_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: ConceptSaturationDescriptorId::NONE,
+                    imp_reapply_con_sat_des: queued_reapply,
+                },
+            );
+        let trigger_descriptor = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(trigger, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let mut root_ref = root;
+        assert!(!algo.insert_concept_to_individual_concept_set(
+            trigger_descriptor,
+            &mut root_ref,
+            label_set,
+            &mut ctx,
+        ));
+
+        let conclusion_tag = ctx.ontology_arenas().concept(conclusion).get_concept_tag();
+        let mut conclusion_descriptor = ConceptSaturationDescriptorId::NONE;
+        let mut imp_reapply = ImplicationReapplyConceptSaturationDescriptorId::NONE;
+        assert!(ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .get_concept_saturation_descriptor_by_tag(
+                conclusion_tag,
+                &mut conclusion_descriptor,
+                &mut imp_reapply,
+            ));
+        assert!(conclusion_descriptor.is_some());
+    }
+
+    #[test]
+    fn s11_insert_concept_detects_opposite_polarity_clash() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let concept = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(241);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(root, true);
+        let positive_descriptor = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let concept_tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(label_set)
+            .concept_des_dep_hash
+            .insert(
+                concept_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: positive_descriptor,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        let negative_descriptor = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, true);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let mut root_ref = root;
+        assert!(algo.insert_concept_to_individual_concept_set(
+            negative_descriptor,
+            &mut root_ref,
+            label_set,
+            &mut ctx,
+        ));
+        assert!(ctx
+            .process_context()
+            .sat_node(root)
+            .direct_status_flags
+            .has_clashed_flag());
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(root)
+                .get_clashed_concept_saturation_descriptor_linker(),
+            negative_descriptor
+        );
+    }
+
+    #[test]
+    fn s11_modified_update_linkers_prepend_on_label_set() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, true);
+
+        let first = algo.create_modified_process_update_linker(&mut ctx);
+        ctx.process_context_mut()
+            .sat_modified_process_update_linker_mut(first)
+            .init_process_update_linker(
+                node,
+                SaturationModificationProcessUpdateType::UpdateDisjunctCommonConceptExtraction,
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_add_modified_update_linker(label_set, first);
+
+        let second = algo.create_modified_process_update_linker(&mut ctx);
+        ctx.process_context_mut()
+            .sat_modified_process_update_linker_mut(second)
+            .init_process_update_linker(
+                node,
+                SaturationModificationProcessUpdateType::UpdateDisjunctCommonConceptExtraction,
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_add_modified_update_linker(label_set, second);
+
+        let head = ctx
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .get_modified_update_linker();
+        assert_eq!(head, second);
+        assert_eq!(
+            ctx.process_context()
+                .sat_modified_process_update_linker(head)
+                .get_next(),
+            first
+        );
+    }
+
+    #[test]
+    fn s11_process_modified_update_linker_enqueues_disjunct_extraction_once() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, true);
+        let extraction_data = ctx
+            .process_context_mut()
+            .sat_node_ext_disjunct_common_concept_extraction_data(node, true);
+        let continuation = ctx
+            .process_context()
+            .sat_disjunct_common_concept_extraction_data(extraction_data)
+            .get_extraction_continue_process_linker();
+
+        let update = algo.create_modified_process_update_linker(&mut ctx);
+        ctx.process_context_mut()
+            .sat_modified_process_update_linker_mut(update)
+            .init_process_update_linker(
+                node,
+                SaturationModificationProcessUpdateType::UpdateDisjunctCommonConceptExtraction,
+            );
+
+        let mut root_ref = node;
+        algo.process_modification_update_linkers(&mut root_ref, label_set, update, &mut ctx);
+        assert_eq!(
+            ctx.processing_data_box()
+                .individual_disjunct_common_concept_extract_process_linker(),
+            &[continuation]
+        );
+        assert!(ctx
+            .process_context()
+            .indi_sat_process_node_linker(continuation)
+            .is_processing_queued());
+
+        algo.process_modification_update_linkers(&mut root_ref, label_set, update, &mut ctx);
+        assert_eq!(
+            ctx.processing_data_box()
+                .individual_disjunct_common_concept_extract_process_linker(),
+            &[continuation]
+        );
+    }
+
+    #[test]
+    fn s11_direct_not_dependent_status_flags_fan_out_to_backward_sources() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let target = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_add_backward_propagation_link(target, RoleId::new(701), source);
+
+        algo.update_direct_not_dependent_adding_individual_status_flags(
+            target,
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+            &mut ctx,
+        );
+
+        assert!(ctx
+            .process_context()
+            .sat_node(target)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(ctx
+            .process_context()
+            .sat_node(target)
+            .indirect_status_flags
+            .has_insufficient_flag());
+        assert!(!ctx
+            .process_context()
+            .sat_node(source)
+            .direct_status_flags
+            .has_insufficient_flag());
+        assert!(ctx
+            .process_context()
+            .sat_node(source)
+            .indirect_status_flags
+            .has_insufficient_flag());
+    }
+
+    #[test]
+    fn s11_indirect_status_flags_fan_out_to_backward_sources() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let target = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_add_backward_propagation_link(target, RoleId::new(703), source);
+        let mut flags = IndividualSaturationProcessNodeStatusFlags::default();
+        flags.init_status_flags();
+        flags.add_flags_code(IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL);
+
+        algo.update_indirect_adding_individual_status_flags(target, &flags, &mut ctx);
+
+        assert!(ctx
+            .process_context()
+            .sat_node(target)
+            .indirect_status_flags
+            .has_flags_code(
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL,
+                true
+            ));
+        assert!(ctx
+            .process_context()
+            .sat_node(source)
+            .indirect_status_flags
+            .has_flags_code(
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL,
+                true
+            ));
+        assert!(!ctx
+            .process_context()
+            .sat_node(source)
+            .direct_status_flags
+            .has_flags_code(
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL,
+                true
+            ));
+    }
+
+    #[test]
+    fn s11_successor_connected_nominal_fan_out_to_backward_sources_once() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let target = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_add_backward_propagation_link(target, RoleId::new(719), source);
+
+        algo.update_adding_successor_connected_nominal(target, 1101, &mut ctx);
+
+        assert!(ctx
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(target, 1101));
+        assert!(ctx
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(source, 1101));
+        assert_eq!(algo.successor_connected_nominal_updated_count, 2);
+
+        algo.update_adding_successor_connected_nominal(target, 1101, &mut ctx);
+        assert_eq!(
+            algo.successor_connected_nominal_updated_count, 2,
+            "membership must stop duplicate successor-connected nominal propagation"
+        );
+    }
+
+    #[test]
+    fn s11_successor_connected_nominal_abox_gate_skips_source_fan_out() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let target = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let copy_dep = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let backward_source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let non_inverse_source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_mut(target)
+            .abox_individual_representation_node = true;
+        ctx.process_context_mut()
+            .sat_node_mut(target)
+            .depending_indi_node_linker
+            .push(NegLink {
+                target: copy_dep,
+                negated: false,
+            });
+        ctx.process_context_mut()
+            .sat_node_add_backward_propagation_link(target, RoleId::new(727), backward_source);
+        ctx.process_context_mut()
+            .sat_node_mut(target)
+            .non_inverse_connected_indi_node_linker
+            .push(non_inverse_source);
+
+        algo.update_adding_successor_connected_nominal(target, 1103, &mut ctx);
+
+        assert!(ctx
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(target, 1103));
+        assert!(ctx
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(copy_dep, 1103));
+        assert!(!ctx
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(backward_source, 1103));
+        assert!(!ctx
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(non_inverse_source, 1103));
+        assert_eq!(algo.successor_connected_nominal_updated_count, 2);
+    }
+
+    #[test]
+    fn s11_max_cardinality_candidates_fan_out_to_backward_sources() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let target = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_add_backward_propagation_link(target, RoleId::new(709), source);
+
+        algo.update_max_cardinality_candidates(target, 4, 7, &mut ctx);
+
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(target)
+                .get_max_atleast_cardinality_candidate(),
+            4
+        );
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(target)
+                .get_max_atmost_cardinality_candidate(),
+            7
+        );
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(source)
+                .get_max_atleast_cardinality_candidate(),
+            4
+        );
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(source)
+                .get_max_atmost_cardinality_candidate(),
+            7
+        );
     }
 }
 
@@ -459,12 +1232,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn create_individual_saturation_successor_link_data_linker(
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Id<IndividualSaturationSuccessorLinkData> {
-        let succ_link_data_linker = calc_alg_context
-            .processing_data_box_mut()
-            .take_remaining_individual_successor_link_data_linker();
+    ) -> IndividualSaturationSuccessorLinkDataLinkerId {
+        let ctx_base = &mut calc_alg_context.base;
+        let mut succ_link_data_linker = ctx_base
+            .used_processing_data_box
+            .take_remaining_individual_successor_link_data_linker(
+                &mut ctx_base.used_process_context,
+            );
         if succ_link_data_linker.is_none() {
-            // W4-DEFER[memory-pool]: CObjectAllocator<CIndividualSaturationSuccessorLinkDataLinker>::allocateAndConstruct(taskMemMan)
+            succ_link_data_linker = calc_alg_context
+                .process_context_mut()
+                .alloc_indi_sat_succ_link_data_linker(
+                    IndividualSaturationSuccessorLinkDataLinker::new(),
+                );
         }
         succ_link_data_linker
     }
@@ -472,14 +1252,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of `releaseIndividualSaturationSuccessorLinkDataLinker` (cpp 7378–7384).
     pub fn release_individual_saturation_successor_link_data_linker(
         &mut self,
-        succ_link_data_linker: Id<IndividualSaturationSuccessorLinkData>,
+        succ_link_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         if succ_link_data_linker.is_some() {
-            // W4-DEFER[api]: succLinkDataLinker->clearNext();
-            calc_alg_context
-                .processing_data_box_mut()
-                .add_remaining_individual_successor_link_data_linker(succ_link_data_linker);
+            let ctx_base = &mut calc_alg_context.base;
+            ctx_base
+                .used_process_context
+                .indi_sat_succ_link_data_linker_mut(succ_link_data_linker)
+                .clear_next();
+            ctx_base
+                .used_processing_data_box
+                .add_remaining_individual_successor_link_data_linker(
+                    &mut ctx_base.used_process_context,
+                    succ_link_data_linker,
+                );
         }
     }
 
@@ -514,29 +1301,24 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     }
 
     /// Port of `createModifiedProcessUpdateLinker` (cpp 7409–7412).
-    ///
-    /// KONCLUDE-PORT-NOTE[memory-pool]: `CSaturationModifiedProcessUpdateLinker` has
-    /// no databox pool and no per-test arena yet; the fresh `CObjectAllocator`
-    /// allocation is `W4-DEFER[memory-pool]` and the handle stays opaque
-    /// (`Cint64`, `INVALID` == the unallocated `nullptr`).
     pub fn create_modified_process_update_linker(
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // W4-DEFER[memory-pool]: CObjectAllocator<CSaturationModifiedProcessUpdateLinker>::allocateAndConstruct(taskMemMan)
-        INVALID
+    ) -> SaturationModifiedProcessUpdateLinkerId {
+        calc_alg_context
+            .process_context_mut()
+            .alloc_sat_modified_process_update_linker(SaturationModifiedProcessUpdateLinker::new())
     }
 
     /// Port of `createImplicationReapplyConceptSaturationDescriptor` (cpp 7415–7419).
     ///
-    /// KONCLUDE-PORT-NOTE[memory-pool]: as above for
-    /// `CImplicationReapplyConceptSaturationDescriptor` — opaque `Cint64` handle.
     pub fn create_implication_reapply_concept_saturation_descriptor(
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // W4-DEFER[memory-pool]: CObjectAllocator<CImplicationReapplyConceptSaturationDescriptor>::allocateAndConstruct(taskMemMan)
-        INVALID
+    ) -> ImplicationReapplyConceptSaturationDescriptorId {
+        calc_alg_context
+            .process_context_mut()
+            .alloc_imp_reapply_con_sat_desc(ImplicationReapplyConceptSaturationDescriptor::new())
     }
 
     // =======================================================================
@@ -583,7 +1365,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         for concept_add_linker_it in concept_add_linker {
             let op_concept = concept_add_linker_it.target;
             let op_con_negation = concept_add_linker_it.negated ^ negate;
-            self.add_concept_filtered_to_individual(op_concept, op_con_negation, process_indi, calc_alg_context);
+            self.add_concept_filtered_to_individual(
+                op_concept,
+                op_con_negation,
+                process_indi,
+                calc_alg_context,
+            );
         }
     }
 
@@ -651,7 +1438,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .get_operator_code();
         let mut insert_concept = self.conf_force_all_concept_insertion;
         if !insert_concept {
-            if (!negate && (op_code == CCAND || op_code == CCAQAND || op_code == CCIMPLAQAND || op_code == CCBRANCHAQAND))
+            if (!negate
+                && (op_code == CCAND
+                    || op_code == CCAQAND
+                    || op_code == CCIMPLAQAND
+                    || op_code == CCBRANCHAQAND))
                 || (negate && op_code == CCOR)
             {
                 // opConLinkerIt = addingConcept->getOperandList();
@@ -717,9 +1508,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) {
         // STATINC(CONCEPTSADDEDINDINODELABELSETCOUNT) + g_ksat_concAdds — debug stats, elided.
 
-        let concept_saturation_descriptor = self.create_concept_saturation_descriptor(calc_alg_context);
-        // W4-DEFER[api]: conceptSaturationDescriptor->initConceptSaturationDescriptor(addingConcept,negate)
-        //   — CConceptSaturationDescriptor satellite not yet ported.
+        let concept_saturation_descriptor =
+            self.create_concept_saturation_descriptor(calc_alg_context);
+        calc_alg_context
+            .process_context_mut()
+            .con_sat_desc_mut(concept_saturation_descriptor)
+            .init_concept_saturation_descriptor(adding_concept, negate);
 
         let contained = self.insert_concept_to_individual_concept_set(
             concept_saturation_descriptor,
@@ -775,13 +1569,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
     /// Port of `insertConceptToIndividualConceptSet` (cpp 7424–7535).
     ///
-    /// PORT-PENDING — faithful structure recorded below. The operator-code
-    /// dispatch and the label-set insertion both read the concept off the
-    /// (unported) `CConceptSaturationDescriptor` (`getConcept()` / `getNegation()`),
-    /// and the insertion bottoms out in the unported `CReapplyConceptSaturationLabelSet`
-    /// (`insertConceptReturnClashed` / `hasModifiedUpdateLinkers` /
-    /// `getModifiedUpdateLinker`) and `CImplicationReapplyConceptSaturationDescriptor`.
-    /// The locally-resolvable read is `rootProcessIndi->getRequiredBackwardPropagation()`.
+    /// The operator-code dispatch, label-set insertion, matching implication replay,
+    /// implication-trigger seeding, implication-adding-skipping seed generation, and
+    /// clash side effects are live. The modified-update-linker hook now traverses the
+    /// typed `CSaturationModifiedProcessUpdateLinker` chain and dispatches the
+    /// disjunct-common-concept extraction update type.
     ///
     /// C++ structure:
     /// ```text
@@ -822,35 +1614,216 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         label_set: ReapplyConceptSaturationLabelSetId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let contained = false;
-        // requiredBackProp = rootProcessIndi->getRequiredBackwardPropagation() (locally resolvable).
+        let mut contained = false;
+        let mut insert_concept = true;
+        let mut impl_trigger_generation = false;
         let required_back_prop = calc_alg_context
             .process_context()
             .sat_node(*root_process_indi)
             .get_required_backward_propagation();
-        // W4-DEFER[api]: concept = conceptSaturationDescriptor->getConcept(); conNeg = ...->getNegation();
-        //   opCode = concept->getOperatorCode(); the operator-code branch counters
-        //   (mAddedSUBConcepts/mAddedALLConcepts/mAddedSOMEConcepts/mAddedIMPLConcepts/
-        //   mAddedTRIGGConcepts/mAddedELSEConcepts) + insertConcept/contained/
-        //   implTriggerGeneration are set per the doc-comment transcription. The
-        //   CConceptSaturationDescriptor concept resolution and the
-        //   CReapplyConceptSaturationLabelSet insertion (insertConceptReturnClashed /
-        //   reapply-trigger replay / hasModifiedUpdateLinkers) + the
-        //   CImplicationReapplyConceptSaturationDescriptor seeding are unported; the
-        //   `updateDirectAddingIndividualStatusFlags(.., INDSATFLAGCLASHED)` /
-        //   `processModificationUpdateLinkers` / `hasConceptLocalImpact` /
-        //   `updateImplicationReapplyConceptSaturationDescriptor` leaves are siblings.
-        let _ = (concept_saturation_descriptor, label_set, required_back_prop);
+        let (concept, con_neg, con_tag, op_code) = {
+            let process_context = calc_alg_context.process_context();
+            let con_sat_des = process_context.con_sat_desc(concept_saturation_descriptor);
+            let concept = con_sat_des.get_concept();
+            let con_neg = con_sat_des.get_negation();
+            let concept_ref = calc_alg_context.ontology_arenas().concept(concept);
+            (
+                concept,
+                con_neg,
+                concept_ref.get_concept_tag(),
+                concept_ref.get_operator_code(),
+            )
+        };
+
+        if !self.conf_force_all_concept_insertion {
+            if op_code == CCATOM {
+                self.added_sub_concepts += 1;
+            } else if op_code == CCSUB {
+                self.added_sub_concepts += 1;
+            } else if !con_neg && (op_code == CCALL || op_code == CCIMPLALL) {
+                self.added_all_concepts += 1;
+                insert_concept = false;
+                contained = !required_back_prop;
+            } else if (!con_neg && (op_code == CCSOME || op_code == CCAQSOME))
+                || (con_neg && op_code == CCALL)
+            {
+                self.added_some_concepts += 1;
+            } else if op_code == CCIMPL {
+                self.added_impl_concepts += 1;
+                if !required_back_prop
+                    && !self.has_concept_local_impact(concept, false, calc_alg_context)
+                {
+                    insert_concept = false;
+                    contained = true;
+                } else {
+                    impl_trigger_generation = true;
+                    contained = true;
+                }
+            } else if op_code == CCIMPLTRIG || op_code == CCBRANCHTRIG {
+                self.added_trigg_concepts += 1;
+            } else if op_code == CCAQCHOOCE {
+                insert_concept = false;
+                self.added_else_concepts += 1;
+            } else {
+                self.added_else_concepts += 1;
+            }
+        }
+
+        if insert_concept {
+            let mut new_insertion = false;
+            let mut reapply_imp_reapply_con_sat_des =
+                ImplicationReapplyConceptSaturationDescriptorId::NONE;
+            let clashed = calc_alg_context
+                .process_context_mut()
+                .reapply_con_sat_label_set_insert_concept_return_clashed(
+                    label_set,
+                    concept_saturation_descriptor,
+                    con_tag,
+                    Some(&mut new_insertion),
+                    Some(&mut reapply_imp_reapply_con_sat_des),
+                );
+
+            if !clashed {
+                if new_insertion {
+                    let mut reapply_it = reapply_imp_reapply_con_sat_des;
+                    while reapply_it.is_some() {
+                        let (next_reapply, trigger) = {
+                            let descriptor = calc_alg_context
+                                .process_context()
+                                .imp_reapply_con_sat_desc(reapply_it);
+                            (
+                                descriptor.get_next(),
+                                descriptor
+                                    .get_next_trigger_concept()
+                                    .and_then(|linker| linker.first().copied()),
+                            )
+                        };
+                        if let Some(trigger_con_linker) = trigger {
+                            if trigger_con_linker.target == concept
+                                && trigger_con_linker.negated != con_neg
+                            {
+                                self.update_implication_reapply_concept_saturation_descriptor(
+                                    reapply_it,
+                                    root_process_indi,
+                                    label_set,
+                                    calc_alg_context,
+                                );
+                            }
+                        }
+                        reapply_it = next_reapply;
+                    }
+
+                    if impl_trigger_generation {
+                        let trigger_suffix = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_operand_list()
+                            .to_vec();
+                        let new_reapply = self
+                            .create_implication_reapply_concept_saturation_descriptor(
+                                calc_alg_context,
+                            );
+                        calc_alg_context
+                            .process_context_mut()
+                            .imp_reapply_con_sat_desc_mut(new_reapply)
+                            .init_implication_reaplly_concept_saturation_descriptor(
+                                concept,
+                                Some(&trigger_suffix),
+                            );
+                        self.update_implication_reapply_concept_saturation_descriptor(
+                            new_reapply,
+                            root_process_indi,
+                            label_set,
+                            calc_alg_context,
+                        );
+                    }
+
+                    if self.conf_implication_adding_skipping
+                        && !con_neg
+                        && (op_code == CCATOM
+                            || op_code == CCSUB
+                            || op_code == CCIMPLTRIG
+                            || op_code == CCBRANCHTRIG)
+                    {
+                        let op_concepts = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_operand_list()
+                            .to_vec();
+                        for op_concept_linker_it in op_concepts {
+                            if !op_concept_linker_it.negated {
+                                let op_concept = op_concept_linker_it.target;
+                                if calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(op_concept)
+                                    .get_operator_code()
+                                    == CCIMPL
+                                {
+                                    let trigger_suffix = calc_alg_context
+                                        .ontology_arenas()
+                                        .concept(op_concept)
+                                        .get_operand_list()
+                                        .to_vec();
+                                    let new_reapply = self
+                                        .create_implication_reapply_concept_saturation_descriptor(
+                                            calc_alg_context,
+                                        );
+                                    calc_alg_context
+                                        .process_context_mut()
+                                        .imp_reapply_con_sat_desc_mut(new_reapply)
+                                        .init_implication_reaplly_concept_saturation_descriptor(
+                                            op_concept,
+                                            Some(&trigger_suffix),
+                                        );
+                                    self.update_implication_reapply_concept_saturation_descriptor(
+                                        new_reapply,
+                                        root_process_indi,
+                                        label_set,
+                                        calc_alg_context,
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    if calc_alg_context
+                        .process_context()
+                        .reapply_con_sat_label_set(label_set)
+                        .has_modified_update_linkers()
+                    {
+                        let mod_proc_update_linker = calc_alg_context
+                            .process_context()
+                            .reapply_con_sat_label_set(label_set)
+                            .get_modified_update_linker();
+                        self.process_modification_update_linkers(
+                            root_process_indi,
+                            label_set,
+                            mod_proc_update_linker,
+                            calc_alg_context,
+                        );
+                    }
+                } else {
+                    contained = true;
+                }
+            } else {
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_node_add_clashed_concept_saturation_descriptor_linker(
+                        *root_process_indi,
+                        concept_saturation_descriptor,
+                    );
+                self.update_direct_adding_individual_status_flags(
+                    *root_process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+                    calc_alg_context,
+                );
+                contained = true;
+            }
+        }
         contained
     }
 
     /// Port of `processModificationUpdateLinkers` (cpp 7540–7548).
-    ///
-    /// PORT-PENDING — the `CSaturationModifiedProcessUpdateLinker` chain (opaque
-    /// `Cint64` head) + its `getProcessingIndividual()` / `getUpdateType()` are
-    /// unported; the only `UPDATEPDISJUNCTCOMMONCONCEPTSEXTRACTION` branch calls the
-    /// sibling `addDisjunctCommonConceptExtractionToProcessingQueue` (group I,
-    /// PU-SAT-9).
     ///
     /// C++ structure:
     /// ```text
@@ -864,24 +1837,35 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         root_process_indi: &mut SatNodeId,
         label_set: ReapplyConceptSaturationLabelSetId,
-        mod_proc_update_linker: Cint64,
+        mod_proc_update_linker: SaturationModifiedProcessUpdateLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: the CSaturationModifiedProcessUpdateLinker chain + its
-        //   per-element processing-individual / update-type; the
-        //   UPDATEPDISJUNCTCOMMONCONCEPTSEXTRACTION branch is
-        //   self.add_disjunct_common_concept_extraction_to_processing_queue(indiProcNode, ctx).
-        let _ = (&mut *root_process_indi, label_set, mod_proc_update_linker, &mut *calc_alg_context);
+        let _ = (&mut *root_process_indi, label_set);
+        let mut mod_proc_update_linker_it = mod_proc_update_linker;
+        while mod_proc_update_linker_it.is_some() {
+            let (next, mut indi_proc_node, update_type) = {
+                let linker = calc_alg_context
+                    .process_context()
+                    .sat_modified_process_update_linker(mod_proc_update_linker_it);
+                (
+                    linker.get_next(),
+                    linker.get_processing_individual(),
+                    linker.get_update_type(),
+                )
+            };
+            if update_type
+                == SaturationModificationProcessUpdateType::UpdateDisjunctCommonConceptExtraction
+            {
+                self.add_disjunct_common_concept_extraction_to_processing_queue(
+                    &mut indi_proc_node,
+                    calc_alg_context,
+                );
+            }
+            mod_proc_update_linker_it = next;
+        }
     }
 
     /// Port of `updateImplicationReapplyConceptSaturationDescriptor` (cpp 7552–7576).
-    ///
-    /// PORT-PENDING — operates entirely on the unported
-    /// `CImplicationReapplyConceptSaturationDescriptor` (`getNextTriggerConcept` /
-    /// `getImplicationConcept` / `initImplicationReapllyConceptSaturationDescriptor`)
-    /// and `CReapplyConceptSaturationLabelSet`
-    /// (`insertConceptReapplicationReturnTriggered`); the implication-execution leaf
-    /// is `addConceptFilteredToIndividual(... ,false)` (sibling).
     ///
     /// C++ structure:
     /// ```text
@@ -902,16 +1886,81 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// ```
     pub fn update_implication_reapply_concept_saturation_descriptor(
         &mut self,
-        reapply_imp_reapply_con_sat_des: Cint64,
+        reapply_imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId,
         root_process_indi: &mut SatNodeId,
         label_set: ReapplyConceptSaturationLabelSetId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // STATINC(IMPLICATIONTRIGGERINGCOUNT) / IMPLICATIONEXECUTINGCOUNT — debug stats, elided.
-        // W4-DEFER[api]: CImplicationReapplyConceptSaturationDescriptor +
-        //   CReapplyConceptSaturationLabelSet reapplication; the execution leaf is the
-        //   sibling self.add_concept_filtered_to_individual_label_set(..., false, ctx).
-        let _ = (reapply_imp_reapply_con_sat_des, &mut *root_process_indi, label_set, &mut *calc_alg_context);
+        let (impl_concept, curr_trigger_concepts) = {
+            let descriptor = calc_alg_context
+                .process_context()
+                .imp_reapply_con_sat_desc(reapply_imp_reapply_con_sat_des);
+            (
+                descriptor.get_implication_concept(),
+                descriptor
+                    .get_next_trigger_concept()
+                    .map(|trigger| trigger.to_vec())
+                    .unwrap_or_default(),
+            )
+        };
+        if curr_trigger_concepts.is_empty() {
+            return true;
+        }
+
+        let next_trigger_concepts = &curr_trigger_concepts[1..];
+        if next_trigger_concepts.is_empty() {
+            // execute implication
+            if let Some(imp_ex_con_op_linker) = calc_alg_context
+                .ontology_arenas()
+                .concept(impl_concept)
+                .get_operand_list()
+                .first()
+                .copied()
+            {
+                self.add_concept_filtered_to_individual_label_set(
+                    imp_ex_con_op_linker.target,
+                    imp_ex_con_op_linker.negated,
+                    root_process_indi,
+                    label_set,
+                    false,
+                    calc_alg_context,
+                );
+            }
+        } else {
+            let next_trigger = next_trigger_concepts[0].target;
+            let new_reapply_imp_reapply_con_sat_des =
+                self.create_implication_reapply_concept_saturation_descriptor(calc_alg_context);
+            calc_alg_context
+                .process_context_mut()
+                .imp_reapply_con_sat_desc_mut(new_reapply_imp_reapply_con_sat_des)
+                .init_implication_reaplly_concept_saturation_descriptor(
+                    impl_concept,
+                    Some(next_trigger_concepts),
+                );
+
+            let next_trigger_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(next_trigger)
+                .get_concept_tag();
+            let mut con_sat_des = Id::<ConceptSaturationDescriptor>::NONE;
+            let triggered = calc_alg_context
+                .process_context_mut()
+                .reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
+                    label_set,
+                    next_trigger_tag,
+                    new_reapply_imp_reapply_con_sat_des,
+                    Some(&mut con_sat_des),
+                );
+            if triggered {
+                self.update_implication_reapply_concept_saturation_descriptor(
+                    new_reapply_imp_reapply_con_sat_des,
+                    root_process_indi,
+                    label_set,
+                    calc_alg_context,
+                );
+            }
+        }
         true
     }
 
@@ -922,14 +1971,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_neg: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let op_code = calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+        let op_code = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operator_code();
         if op_code == CCSUB || op_code == CCIMPLTRIG || op_code == CCBRANCHTRIG {
             true
         } else if (!con_neg && (op_code == CCALL || op_code == CCIMPLALL || op_code == CCBRANCHALL))
             || (con_neg && op_code == CCSOME)
         {
             false
-        } else if (!con_neg && (op_code == CCAND || op_code == CCAQAND || op_code == CCBRANCHAQAND || op_code == CCIMPLAQAND))
+        } else if (!con_neg
+            && (op_code == CCAND
+                || op_code == CCAQAND
+                || op_code == CCBRANCHAQAND
+                || op_code == CCIMPLAQAND))
             || (con_neg && op_code == CCOR)
         {
             let op_con_list: Vec<NegLink<ConceptId>> = calc_alg_context
@@ -945,9 +2001,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 }
             }
             false
-        } else if (!con_neg && (op_code == CCSOME || op_code == CCAQSOME)) || (con_neg && op_code == CCALL) {
+        } else if (!con_neg && (op_code == CCSOME || op_code == CCAQSOME))
+            || (con_neg && op_code == CCALL)
+        {
             true
-        } else if (!con_neg && (op_code == CCAQALL || op_code == CCIMPLAQALL || op_code == CCBRANCHAQALL))
+        } else if (!con_neg
+            && (op_code == CCAQALL || op_code == CCIMPLAQALL || op_code == CCBRANCHAQALL))
             || (con_neg && (op_code == CCSOME || op_code == CCAQSOME))
         {
             false
@@ -960,7 +2019,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             for op in op_con_list {
                 let op_concept = op.target;
                 let op_negation = op.negated;
-                if op_negation == con_neg && self.has_concept_local_impact(op_concept, false, calc_alg_context) {
+                if op_negation == con_neg
+                    && self.has_concept_local_impact(op_concept, false, calc_alg_context)
+                {
                     return true;
                 }
             }
@@ -1000,16 +2061,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         connection_type: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let nominal_dependent_node_hash = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_nominal_dependent_node_hash(true);
-        // W4-DEFER[api]: nominalDependentNodeHash->addNominalDependentNode(nominalID,dependentIndiNode,connectionType)
-        let influenced_nominal_set = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_influenced_nominal_set(true);
-        // W4-DEFER[api]: is_nominal_influenced = influencedNominalSet->isNominalInfluenced(nominalID);
-        //   CSaturationInfluencedNominalSet membership op unported, stays `false`.
-        let is_nominal_influenced = false;
+        let nominal_dependent_node_hash =
+            calc_alg_context.saturation_nominal_dependent_node_hash(true);
+        calc_alg_context
+            .process_context_mut()
+            .sat_nominal_dependent_node_hash_add_nominal_dependent_node(
+                nominal_dependent_node_hash,
+                nominal_id,
+                dependent_indi_node,
+                SaturationNominalConnectionType::from(connection_type),
+            );
+        let influenced_nominal_set = calc_alg_context.saturation_influenced_nominal_set(true);
+        let is_nominal_influenced = calc_alg_context
+            .process_context()
+            .sat_influenced_nominal_set(influenced_nominal_set)
+            .is_nominal_influenced(nominal_id);
         if is_nominal_influenced {
             self.update_direct_adding_individual_status_flags(
                 dependent_indi_node,
@@ -1026,23 +2092,35 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         influenced_nominal_id: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let influenced_nominal_set = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_influenced_nominal_set(true);
-        // W4-DEFER[api]: firstInfluence = influencedNominalSet->setNominalInfluenced(influencedNominalID);
-        //   CSaturationInfluencedNominalSet op unported, stays `false`.
-        let first_influence = false;
+        let influenced_nominal_set = calc_alg_context.saturation_influenced_nominal_set(true);
+        let first_influence = calc_alg_context
+            .process_context_mut()
+            .sat_influenced_nominal_set_mut(influenced_nominal_set)
+            .set_nominal_influenced(influenced_nominal_id);
         if first_influence {
-            let nominal_dependent_node_hash = calc_alg_context
-                .processing_data_box_mut()
-                .saturation_nominal_dependent_node_hash(true);
-            // W4-DEFER[api]: for (nominalDepNodeDataIt = nominalDependentNodeHash
-            //     ->getNominalDependentNodeData(influencedNominalID); nominalDepNodeDataIt;
-            //     nominalDepNodeDataIt = nominalDepNodeDataIt->getNext()) {
-            //   dependentIndSatProcNode = nominalDepNodeDataIt->getDependentIndividualSaturationNode();
-            //   self.update_direct_adding_individual_status_flags(dependentIndSatProcNode, INDSATFLAGINSUFFICIENT, ctx);
-            //   self.set_insufficient_node_occured(ctx);
-            // } — CSaturationNominalDependentNodeData chain unported.
+            let nominal_dependent_node_hash =
+                calc_alg_context.saturation_nominal_dependent_node_hash(true);
+            let mut nominal_dep_node_data_it = calc_alg_context
+                .process_context()
+                .sat_nominal_dependent_node_hash(nominal_dependent_node_hash)
+                .get_nominal_dependent_node_data(influenced_nominal_id);
+            while nominal_dep_node_data_it.is_some() {
+                let dependent_ind_sat_proc_node = calc_alg_context
+                    .process_context()
+                    .sat_nominal_dependent_node_data(nominal_dep_node_data_it)
+                    .get_dependent_individual_saturation_node();
+                let next = calc_alg_context
+                    .process_context()
+                    .sat_nominal_dependent_node_data(nominal_dep_node_data_it)
+                    .get_next_nominal_connection_type_data();
+                self.update_direct_adding_individual_status_flags(
+                    dependent_ind_sat_proc_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+                nominal_dep_node_data_it = next;
+            }
         }
     }
 
@@ -1060,7 +2138,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             nominal_id,
             calc_alg_context,
         );
-        let nom_delayed_con_sat_proc_linker = self.create_concept_saturation_process_linker(calc_alg_context);
+        let nom_delayed_con_sat_proc_linker =
+            self.create_concept_saturation_process_linker(calc_alg_context);
         // W4-DEFER[api]: nomDelayedConSatProcLinker->initConceptSaturationProcessLinker(
         //   conProLinker->getConceptSaturationDescriptor());
         // W4-DEFER[api]: processIndi->getNominalHandlingData(true)
@@ -1101,7 +2180,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut adding_flags = IndividualSaturationProcessNodeStatusFlags::default();
         adding_flags.init_status_flags();
         adding_flags.add_flags_code(flags);
-        self.update_direct_adding_individual_status_flags_with_flags(indi_node, &adding_flags, calc_alg_context);
+        self.update_direct_adding_individual_status_flags_with_flags(
+            indi_node,
+            &adding_flags,
+            calc_alg_context,
+        );
     }
 
     /// Port of `updateDirectNotDependentAddingIndividualStatusFlags` — the
@@ -1163,7 +2246,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if self.requires_direct_adding_individual_status_flags_update(indi_node, adding_flags, calc_alg_context) {
+        if self.requires_direct_adding_individual_status_flags_update(
+            indi_node,
+            adding_flags,
+            calc_alg_context,
+        ) {
             let mut direct_update_linker: Vec<SatNodeId> = vec![indi_node];
             // directIndiFlags = indiNode->getDirectStatusFlags(); directIndiFlags->addFlags(addingFlags)
             calc_alg_context
@@ -1183,7 +2270,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clone();
                 for depending_indi_linker_it in depending_indi_linker {
                     let depending_indi = depending_indi_linker_it.target;
-                    if self.requires_direct_adding_individual_status_flags_update(depending_indi, adding_flags, calc_alg_context) {
+                    if self.requires_direct_adding_individual_status_flags_update(
+                        depending_indi,
+                        adding_flags,
+                        calc_alg_context,
+                    ) {
                         calc_alg_context
                             .process_context_mut()
                             .sat_node_mut(depending_indi)
@@ -1194,7 +2285,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     }
                 }
 
-                self.update_indirect_adding_individual_status_flags(update_indi_node, adding_flags, calc_alg_context);
+                self.update_indirect_adding_individual_status_flags(
+                    update_indi_node,
+                    adding_flags,
+                    calc_alg_context,
+                );
             }
         }
     }
@@ -1207,13 +2302,21 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if self.requires_direct_adding_individual_status_flags_update(indi_node, adding_flags, calc_alg_context) {
+        if self.requires_direct_adding_individual_status_flags_update(
+            indi_node,
+            adding_flags,
+            calc_alg_context,
+        ) {
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(indi_node)
                 .direct_status_flags
                 .add_flags(adding_flags);
-            if self.requires_indirect_adding_individual_status_flags_update(indi_node, adding_flags, calc_alg_context) {
+            if self.requires_indirect_adding_individual_status_flags_update(
+                indi_node,
+                adding_flags,
+                calc_alg_context,
+            ) {
                 calc_alg_context
                     .process_context_mut()
                     .sat_node_mut(indi_node)
@@ -1228,11 +2331,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .sat_node(indi_node)
                 .abox_individual_representation_node;
             if !is_abox {
-                // W4-DEFER[api]: backwardPropHash = indiNode->getRoleBackwardPropagationHash(false);
-                //   if backwardPropHash: for each (role -> backwardPropData.mLinkLinker -> link):
-                //     sourceIndividual = link->getSourceIndividual();
-                //     self.update_indirect_adding_individual_status_flags(sourceIndividual, addingFlags, ctx);
-                //   — CRoleBackwardSaturationPropagationHash satellite unported.
+                let backward_sources = calc_alg_context
+                    .process_context()
+                    .sat_node_role_backward_source_individuals(indi_node);
+                for source_individual in backward_sources {
+                    self.update_indirect_adding_individual_status_flags(
+                        source_individual,
+                        adding_flags,
+                        calc_alg_context,
+                    );
+                }
 
                 // non-inverse-connected fan-out (getNonInverseConnectedIndividualNodeLinker):
                 let non_inv_conn_indi_linker: Vec<SatNodeId> = calc_alg_context
@@ -1242,7 +2350,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clone();
                 for non_inv_conn_indi_linker_it in non_inv_conn_indi_linker {
                     let source_individual = non_inv_conn_indi_linker_it;
-                    self.update_indirect_adding_individual_status_flags(source_individual, adding_flags, calc_alg_context);
+                    self.update_indirect_adding_individual_status_flags(
+                        source_individual,
+                        adding_flags,
+                        calc_alg_context,
+                    );
                 }
             }
         }
@@ -1261,7 +2373,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if self.requires_indirect_adding_individual_status_flags_update(indi_node, adding_flags, calc_alg_context) {
+        if self.requires_indirect_adding_individual_status_flags_update(
+            indi_node,
+            adding_flags,
+            calc_alg_context,
+        ) {
             let mut direct_update_linker: Vec<SatNodeId> = vec![indi_node];
             calc_alg_context
                 .process_context_mut()
@@ -1280,7 +2396,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clone();
                 for depending_indi_linker_it in depending_indi_linker {
                     let depending_indi = depending_indi_linker_it.target;
-                    if self.requires_indirect_adding_individual_status_flags_update(depending_indi, adding_flags, calc_alg_context) {
+                    if self.requires_indirect_adding_individual_status_flags_update(
+                        depending_indi,
+                        adding_flags,
+                        calc_alg_context,
+                    ) {
                         calc_alg_context
                             .process_context_mut()
                             .sat_node_mut(depending_indi)
@@ -1296,12 +2416,26 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .sat_node(update_indi_node)
                     .abox_individual_representation_node;
 
-                // W4-DEFER[api]: if backwardPropHash(update) && !update_is_abox:
-                //   for each (role -> backwardPropData.mLinkLinker -> link):
-                //     sourceIndividual = link->getSourceIndividual();
-                //     if requires_indirect(sourceIndividual): add INDIRECT flags; ++count; push sourceIndividual.
-
                 if !update_is_abox {
+                    let backward_sources = calc_alg_context
+                        .process_context()
+                        .sat_node_role_backward_source_individuals(update_indi_node);
+                    for source_individual in backward_sources {
+                        if self.requires_indirect_adding_individual_status_flags_update(
+                            source_individual,
+                            adding_flags,
+                            calc_alg_context,
+                        ) {
+                            calc_alg_context
+                                .process_context_mut()
+                                .sat_node_mut(source_individual)
+                                .indirect_status_flags
+                                .add_flags(adding_flags);
+                            self.indirect_updated_status_indi_node_count += 1;
+                            direct_update_linker.insert(0, source_individual);
+                        }
+                    }
+
                     let non_inv_conn_indi_linker: Vec<SatNodeId> = calc_alg_context
                         .process_context()
                         .sat_node(update_indi_node)
@@ -1309,7 +2443,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .clone();
                     for non_inv_conn_indi_linker_it in non_inv_conn_indi_linker {
                         let source_individual = non_inv_conn_indi_linker_it;
-                        if self.requires_indirect_adding_individual_status_flags_update(source_individual, adding_flags, calc_alg_context) {
+                        if self.requires_indirect_adding_individual_status_flags_update(
+                            source_individual,
+                            adding_flags,
+                            calc_alg_context,
+                        ) {
                             calc_alg_context
                                 .process_context_mut()
                                 .sat_node_mut(source_individual)
@@ -1335,12 +2473,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_nominal_id: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: succConnNomSet = indiNode->getSuccessorConnectedNominalSet(false);
-        //   if succConnNomSet && succConnNomSet->hasSuccessorConnectedNominal(addingNominalID): return false;
-        //   CSuccessorConnectedNominalSet satellite unported, so the membership test is
-        //   treated as absent (returns true — "requires adding").
-        let _ = (indi_node, adding_nominal_id, &mut *calc_alg_context);
-        true
+        !calc_alg_context
+            .process_context_mut()
+            .sat_node_has_successor_connected_nominal(indi_node, adding_nominal_id)
     }
 
     /// Port of `updateAddingSuccessorConnectedNominal` — the set-iterating overload
@@ -1348,25 +2483,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn update_adding_successor_connected_nominal_set(
         &mut self,
         indi_node: SatNodeId,
-        succ_conn_nom_set: Cint64,
+        succ_conn_nom_set: SuccessorConnectedNominalSetId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: for connectedNominalID in succConnNomSet:
-        //   self.update_adding_successor_connected_nominal(indiNode, connectedNominalID, ctx);
-        //   — CSuccessorConnectedNominalSet iteration unported.
-        let _ = (indi_node, succ_conn_nom_set, &mut *calc_alg_context);
+        if succ_conn_nom_set.is_none() {
+            return;
+        }
+        let nominal_ids = calc_alg_context
+            .process_context()
+            .nominal_conn_set(succ_conn_nom_set)
+            .iter_snapshot();
+        for connected_nominal_id in nominal_ids {
+            self.update_adding_successor_connected_nominal(
+                indi_node,
+                connected_nominal_id,
+                calc_alg_context,
+            );
+        }
     }
 
     /// Port of `updateAddingSuccessorConnectedNominal` — the `cint64 addingNominalID`
     /// worklist (cpp 7819–7880).
     ///
-    /// PORT-PENDING — faithful structure recorded below. The worklist body mutates
-    /// each node's `CSuccessorConnectedNominalSet` (lazy
-    /// `getSuccessorConnectedNominalSet(true)->addSuccessorConnectedNominal(id)`);
-    /// the set satellite is unported, and `requiresAddingSuccessorConnectedNominals`
-    /// (also unported) gates every step, so the worklist cannot terminate faithfully
-    /// yet. The copy-depending / role-backward-prop-hash / non-inverse-connected
-    /// fan-out structure mirrors `updateIndirectAddingIndividualStatusFlags`.
+    /// The copy-depending / role-backward-prop-hash / non-inverse-connected
+    /// worklist mirrors `updateIndirectAddingIndividualStatusFlags`.
     ///
     /// C++ structure:
     /// ```text
@@ -1388,11 +2528,101 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_nominal_id: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: CSuccessorConnectedNominalSet (membership + add) +
-        //   CRoleBackwardSaturationPropagationHash unported; worklist deferred per the
-        //   doc-comment transcription. The portable arms (copy-depending /
-        //   non-inverse-connected) mirror update_indirect_adding_individual_status_flags.
-        let _ = (indi_node, adding_nominal_id, &mut *calc_alg_context);
+        if self.requires_adding_successor_connected_nominals(
+            indi_node,
+            adding_nominal_id,
+            calc_alg_context,
+        ) {
+            let mut direct_update_linker: Vec<SatNodeId> = vec![indi_node];
+            if calc_alg_context
+                .process_context_mut()
+                .sat_node_add_successor_connected_nominal(indi_node, adding_nominal_id)
+            {
+                self.successor_connected_nominal_updated_count += 1;
+            }
+
+            while !direct_update_linker.is_empty() {
+                let update_indi_node = direct_update_linker.remove(0);
+
+                let depending_indi_linker: Vec<NegLink<SatNodeId>> = calc_alg_context
+                    .process_context()
+                    .sat_node(update_indi_node)
+                    .depending_indi_node_linker
+                    .clone();
+                for depending_indi_linker_it in depending_indi_linker {
+                    let depending_indi = depending_indi_linker_it.target;
+                    if self.requires_adding_successor_connected_nominals(
+                        depending_indi,
+                        adding_nominal_id,
+                        calc_alg_context,
+                    ) {
+                        if calc_alg_context
+                            .process_context_mut()
+                            .sat_node_add_successor_connected_nominal(
+                                depending_indi,
+                                adding_nominal_id,
+                            )
+                        {
+                            self.successor_connected_nominal_updated_count += 1;
+                        }
+                        direct_update_linker.insert(0, depending_indi);
+                    }
+                }
+
+                let update_is_abox = calc_alg_context
+                    .process_context()
+                    .sat_node(update_indi_node)
+                    .abox_individual_representation_node;
+                if !update_is_abox {
+                    let backward_sources = calc_alg_context
+                        .process_context()
+                        .sat_node_role_backward_source_individuals(update_indi_node);
+                    for source_individual in backward_sources {
+                        if self.requires_adding_successor_connected_nominals(
+                            source_individual,
+                            adding_nominal_id,
+                            calc_alg_context,
+                        ) {
+                            if calc_alg_context
+                                .process_context_mut()
+                                .sat_node_add_successor_connected_nominal(
+                                    source_individual,
+                                    adding_nominal_id,
+                                )
+                            {
+                                self.successor_connected_nominal_updated_count += 1;
+                            }
+                            direct_update_linker.insert(0, source_individual);
+                        }
+                    }
+
+                    let non_inv_conn_indi_linker: Vec<SatNodeId> = calc_alg_context
+                        .process_context()
+                        .sat_node(update_indi_node)
+                        .non_inverse_connected_indi_node_linker
+                        .clone();
+                    for non_inv_conn_indi_linker_it in non_inv_conn_indi_linker {
+                        let source_individual = non_inv_conn_indi_linker_it;
+                        if self.requires_adding_successor_connected_nominals(
+                            source_individual,
+                            adding_nominal_id,
+                            calc_alg_context,
+                        ) {
+                            if calc_alg_context
+                                .process_context_mut()
+                                .sat_node_add_successor_connected_nominal(
+                                    source_individual,
+                                    adding_nominal_id,
+                                )
+                            {
+                                self.successor_connected_nominal_updated_count += 1;
+                            }
+                            direct_update_linker.insert(0, source_individual);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // =======================================================================
@@ -1415,12 +2645,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of `updateMaxCardinalityCandidates` (cpp 7907–7967).
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: the update-linker worklist collapses to a
-    /// `Vec<SatNodeId>` LIFO stack. The copy-depending and non-inverse-connected
-    /// fan-out arms are ported; the role-backward-propagation hash arm is
-    /// `W4-DEFER[api]`. The per-node `addMaxAtleast/AtmostCardinalityCandidate`
-    /// mutators are sat-node methods scheduled for SAT-1; they are referenced by
-    /// name (reconciled when the node unit lands) so the candidate semantics are not
-    /// guessed here.
+    /// `Vec<SatNodeId>` LIFO stack. The copy-depending, role-backward-propagation,
+    /// and non-inverse-connected fan-out arms are ported through the context-owned
+    /// saturation satellites.
     pub fn update_max_cardinality_candidates(
         &mut self,
         indi_node: SatNodeId,
@@ -1428,7 +2655,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         atmost_candidate: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if self.requires_max_cardinality_candidate_propagation(indi_node, atleast_candidate, atmost_candidate, calc_alg_context) {
+        if self.requires_max_cardinality_candidate_propagation(
+            indi_node,
+            atleast_candidate,
+            atmost_candidate,
+            calc_alg_context,
+        ) {
             let mut direct_update_linker: Vec<SatNodeId> = vec![indi_node];
             calc_alg_context
                 .process_context_mut()
@@ -1450,7 +2682,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clone();
                 for depending_indi_linker_it in depending_indi_linker {
                     let depending_indi = depending_indi_linker_it.target;
-                    if self.requires_max_cardinality_candidate_propagation(depending_indi, atleast_candidate, atmost_candidate, calc_alg_context) {
+                    if self.requires_max_cardinality_candidate_propagation(
+                        depending_indi,
+                        atleast_candidate,
+                        atmost_candidate,
+                        calc_alg_context,
+                    ) {
                         calc_alg_context
                             .process_context_mut()
                             .sat_node_mut(depending_indi)
@@ -1469,12 +2706,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .sat_node(update_indi_node)
                     .abox_individual_representation_node;
 
-                // W4-DEFER[api]: if backwardPropHash(update) && !update_is_abox:
-                //   for each (role -> backwardPropData.mLinkLinker -> link):
-                //     sourceIndividual = link->getSourceIndividual();
-                //     if requires(sourceIndividual): source.add_max_atleast/atmost; ++count; push.
-
                 if !update_is_abox {
+                    let backward_sources = calc_alg_context
+                        .process_context()
+                        .sat_node_role_backward_source_individuals(update_indi_node);
+                    for source_individual in backward_sources {
+                        if self.requires_max_cardinality_candidate_propagation(
+                            source_individual,
+                            atleast_candidate,
+                            atmost_candidate,
+                            calc_alg_context,
+                        ) {
+                            calc_alg_context
+                                .process_context_mut()
+                                .sat_node_mut(source_individual)
+                                .add_max_atleast_cardinality_candidate(atleast_candidate);
+                            calc_alg_context
+                                .process_context_mut()
+                                .sat_node_mut(source_individual)
+                                .add_max_atmost_cardinality_candidate(atmost_candidate);
+                            self.maximum_cardinality_candidates_updated_count += 1;
+                            direct_update_linker.insert(0, source_individual);
+                        }
+                    }
+
                     let non_inv_conn_indi_linker: Vec<SatNodeId> = calc_alg_context
                         .process_context()
                         .sat_node(update_indi_node)
@@ -1482,7 +2737,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .clone();
                     for non_inv_conn_indi_linker_it in non_inv_conn_indi_linker {
                         let source_individual = non_inv_conn_indi_linker_it;
-                        if self.requires_max_cardinality_candidate_propagation(source_individual, atleast_candidate, atmost_candidate, calc_alg_context) {
+                        if self.requires_max_cardinality_candidate_propagation(
+                            source_individual,
+                            atleast_candidate,
+                            atmost_candidate,
+                            calc_alg_context,
+                        ) {
                             calc_alg_context
                                 .process_context_mut()
                                 .sat_node_mut(source_individual)

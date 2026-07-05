@@ -61,22 +61,22 @@
 use super::super::model::op::{CCAQCHOOCE, CCATOM, CCIMPLTRIG, CCSUB};
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, IndividualId, RoleId};
+use super::super::process::propagation_binding::{
+    PropagationBindingDescriptor, PropagationBindingDescriptorId, PropagationBindingMapData,
+    PropagationBindingSet, PropagationBindingSetId,
+};
 use super::super::process::stubs::IndiBlockDataId;
+use super::super::process::varbind::VarBindingPathId;
 use super::super::process::{
-    ConDescId, ConProcDescId, DependencyId, EdgeId, LabelSetId, NodeId, RestrictionSpecId,
-    TrackPointId,
+    ConDescId, ConProcDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId,
+    RestrictionSpecId, TrackPointId,
 };
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
 
-/// KONCLUDE-PORT-NOTE[api]: `CPropagationBindingSet*` (+ its `CPropagationBindingMap`
-/// / `CPropagationBindingDescriptor` chain) and `CDependency*` belong to the
-/// not-yet-ported propagation-binding subsystem (the same family that gates the
-/// u11 variable-binding rules); modelled as opaque handles (`INVALID` == `nullptr`).
-type PropagationBindingSetHandle = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CDependency*` (the dependency BASE, distinct from the
-/// arena `DependencyNode`) is not yet ported → opaque handle.
-type DependencyHandle = Cint64;
+/// KONCLUDE-PORT-NOTE[ownership]: `CDependency*` additional-dependency chains are
+/// represented by the folded dependency-link spine used by the dependency factory.
+type DependencyHandle = DepLinkId;
 /// KONCLUDE-PORT-NOTE[api]: `CProcessingRestrictionSpecification*` is not yet ported
 /// → opaque handle.
 type ProcRestrictionHandle = Cint64;
@@ -86,9 +86,8 @@ type BranchingTriggerHandle = Cint64;
 /// KONCLUDE-PORT-NOTE[api]: `CReverseRoleAssertionLinker*` / `CRoleAssertionLinker*`
 /// are not yet ported (assertion-linker satellites) → opaque handles.
 type RoleAssertionLinkerHandle = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CVariableBindingPath*` and the propagation-id keyed
-/// collection hash are not yet ported → opaque handles.
-type VariableBindingPathHandle = Cint64;
+/// KONCLUDE-PORT-NOTE[ownership]: `CVariableBindingPath*` → `VarBindingPathId`.
+type VariableBindingPathHandle = VarBindingPathId;
 /// KONCLUDE-PORT-NOTE[api]: `CIndividualNodeBlockingTestData*` /
 /// `CBlockingAlternativeData**` (blocking-test satellites) are not yet ported.
 type BlockingTestDataHandle = Cint64;
@@ -108,54 +107,108 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// and re-applies any queued reapply concepts.
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: `newPropBindingSet`/`prevPropBindingSet`
-    /// (`CPropagationBindingSet*`) and `otherDependencies` (`CDependency*`) become
-    /// opaque handles until the propagation-binding subsystem lands.
+    /// (`CPropagationBindingSet*`) are arena ids; `otherDependencies`
+    /// (`CDependency*`) is represented by the folded `DepLinkId` dependency spine.
     pub fn propagate_fresh_propagation_bindings(
         &mut self,
         process_indi: &mut NodeId,
         con_des: ConDescId,
-        new_prop_binding_set: PropagationBindingSetHandle,
-        prev_prop_binding_set: PropagationBindingSetHandle,
+        new_prop_binding_set: PropagationBindingSetId,
+        prev_prop_binding_set: PropagationBindingSetId,
         other_dependencies: DependencyHandle,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager()
         let task_mem_man: Cint64 = INVALID;
         let mut propagations = false;
-        if prev_prop_binding_set != INVALID {
-            // W3-DEFER[api]: propagations |= newPropBindingSet->adoptPropagateAllFlag(prevPropBindingSet)
-            // W3-DEFER[api]: prevPropBindMap = prevPropBindingSet->getPropagationBindingMap()
-            // W3-DEFER[api]: newPropBindMap = newPropBindingSet->getPropagationBindingMap()
-            //
-            // The C++ runs a sorted merge-walk: itNew over newPropBindMap, itPrev over
-            // prevPropBindMap. For each prevPropID it sets doPropagation when the key
-            // is new-only OR present in newPropBindMap without a descriptor
-            // (updateExisting). Reproduced structurally over the prev-only /
-            // not-yet-described key set (empty deferred).
-            let mut new_prop_bind_des_linker: Cint64 = INVALID;
-            // (key, update_existing) for each propagating prev key — deferred empty.
-            let prop_keys: &[(Cint64, bool)] = &[];
-            for &(_prev_prop_id, update_existing) in prop_keys.iter() {
+        if prev_prop_binding_set.is_some() {
+            let adopted = {
+                let prev_snapshot = {
+                    let pc = calc_alg_context.process_context();
+                    pc.prop_binding_set(prev_prop_binding_set)
+                        .propagate_all_flag
+                };
+                let new_set = calc_alg_context
+                    .process_context_mut()
+                    .prop_binding_set_mut(new_prop_binding_set);
+                let old_flag = new_set.propagate_all_flag;
+                new_set.propagate_all_flag |= prev_snapshot;
+                new_set.propagate_all_flag != old_flag
+            };
+            propagations |= adopted;
+
+            let prop_keys: Vec<(Cint64, bool)> = {
+                let pc = calc_alg_context.process_context();
+                let prev_map = &pc.prop_binding_set(prev_prop_binding_set).prop_map.map;
+                let new_map = &pc.prop_binding_set(new_prop_binding_set).prop_map.map;
+                let mut keys = Vec::new();
+                for (&prev_prop_id, prev_data) in prev_map.iter() {
+                    if !prev_data.has_propagation_binding_descriptor() {
+                        continue;
+                    }
+                    let update_existing = new_map
+                        .get(&prev_prop_id)
+                        .map_or(false, |data| !data.has_propagation_binding_descriptor());
+                    if !new_map.contains_key(&prev_prop_id) || update_existing {
+                        keys.push((prev_prop_id, update_existing));
+                    }
+                }
+                keys.sort_by_key(|(prop_id, _)| *prop_id);
+                keys
+            };
+            let mut new_prop_bind_des_linker: PropagationBindingDescriptorId = Id::NONE;
+            for (prev_prop_id, update_existing) in prop_keys {
                 // W3-DEFER[macro]: STATINC(PBINDPROPAGATEDCOUNT, calcAlgContext)
                 // W3-DEFER[macro]: STATINC(PBINDPROPAGATEDFRESHCOUNT, calcAlgContext)
-                // W3-DEFER[api]: prevPropBindDes = itPrev.value().getPropagationBindingDescriptor()
-                // W3-DEFER[memory-pool]: newPropBindDes = allocateAndConstruct<CPropagationBindingDescriptor>(taskMemMan)
-                let new_prop_bind_des: Cint64 = INVALID;
-                let new_dep_track_point: TrackPointId = Id::NONE;
-                // self.create_propagatebinding_dependency(&mut newDepTrackPoint, processIndi, conDes,
-                //     prevPropBindDes->getDependencyTrackPoint(), otherDependencies, calcAlgContext)
-                // — sibling dependency-creation helper (later dependency-tracking unit).
-                // W3-DEFER[api]: propBinding = prevPropBindDes->getPropagationBinding()
-                // W3-DEFER[api]: newPropBindDes->initPropagationBindingDescriptor(propBinding, newDepTrackPoint)
+                let prev_prop_bind_des = calc_alg_context
+                    .process_context()
+                    .prop_binding_set(prev_prop_binding_set)
+                    .prop_map
+                    .value(prev_prop_id)
+                    .get_propagation_binding_descriptor();
+                let prop_binding = calc_alg_context
+                    .process_context()
+                    .prop_binding_des(prev_prop_bind_des)
+                    .get_propagation_binding();
+                let prev_dep_track_point = calc_alg_context
+                    .process_context()
+                    .prop_binding_des(prev_prop_bind_des)
+                    .get_dependency_track_point();
+                // W3-DEFER[memory-pool]: allocateAndConstruct<CPropagationBindingDescriptor>(taskMemMan)
+                let new_prop_bind_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_prop_binding_des(PropagationBindingDescriptor::new());
+                calc_alg_context
+                    .process_context_mut()
+                    .prop_binding_des_mut(new_prop_bind_des)
+                    .set_data(new_prop_bind_des);
+                let mut new_dep_track_point: TrackPointId = Id::NONE;
+                let _bind_dep_node = self.create_propagate_binding_dependency(
+                    &mut new_dep_track_point,
+                    process_indi,
+                    con_des,
+                    prev_dep_track_point,
+                    other_dependencies,
+                    calc_alg_context,
+                );
+                if new_dep_track_point.is_none() {
+                    new_dep_track_point = prev_dep_track_point;
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .prop_binding_des_mut(new_prop_bind_des)
+                    .init_propagation_binding_descriptor(prop_binding, new_dep_track_point);
                 if update_existing {
-                    // W3-DEFER[api]: data = (*newPropBindMap)[propBinding->getPropagationID()]
-                    // W3-DEFER[api]: data.setPropagationBindingDescriptor(newPropBindDes)
-                    // reapplyDes = data.getReapplyConceptDescriptor()
-                    //   (CPropagationBindingReapplyConceptDescriptor*, an unported satellite).
-                    let reapply_des: Cint64 = INVALID;
-                    if reapply_des != INVALID {
-                        // applyReapplyQueueConcepts(processIndi, reapplyDes, calcAlgContext)
-                        // — the CPropagationBindingReapplyConceptDescriptor overload (u10).
+                    let reapply_des = {
+                        let data = calc_alg_context
+                            .process_context_mut()
+                            .prop_binding_set_mut(new_prop_binding_set)
+                            .prop_map
+                            .entry_mut(prev_prop_id);
+                        data.set_propagation_binding_descriptor(new_prop_bind_des);
+                        data.get_reapply_concept_descriptor()
+                    };
+                    if reapply_des.is_some() {
                         self.apply_reapply_queue_concepts_propagation_binding(
                             *process_indi,
                             reapply_des,
@@ -163,18 +216,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         );
                     }
                 } else {
-                    // W3-DEFER[api]: itNew = newPropBindMap->insert(propBinding->getPropagationID(),
-                    //     CPropagationBindingMapData(newPropBindDes))
+                    calc_alg_context
+                        .process_context_mut()
+                        .prop_binding_set_mut(new_prop_binding_set)
+                        .prop_map
+                        .map
+                        .insert(
+                            prev_prop_id,
+                            PropagationBindingMapData::new(new_prop_bind_des),
+                        );
                 }
-                // W3-DEFER[api]: newPropBindDesLinker = newPropBindDes->append(newPropBindDesLinker)
-                new_prop_bind_des_linker = new_prop_bind_des;
+                if new_prop_bind_des_linker.is_none() {
+                    new_prop_bind_des_linker = new_prop_bind_des;
+                } else {
+                    PropagationBindingDescriptor::append(
+                        calc_alg_context.process_context_mut(),
+                        new_prop_bind_des,
+                        new_prop_bind_des_linker,
+                    );
+                    new_prop_bind_des_linker = new_prop_bind_des;
+                }
                 propagations = true;
             }
-            if new_prop_bind_des_linker != INVALID {
-                // W3-DEFER[api]: newPropBindingSet->addPropagationBindingDescriptorLinker(newPropBindDesLinker)
+            if new_prop_bind_des_linker.is_some() {
+                PropagationBindingSet::add_propagation_binding_descriptor_linker(
+                    calc_alg_context.process_context_mut(),
+                    new_prop_binding_set,
+                    new_prop_bind_des_linker,
+                );
             }
         }
-        let _ = (con_des, new_prop_binding_set, other_dependencies, task_mem_man);
+        let _ = (
+            con_des,
+            new_prop_binding_set,
+            other_dependencies,
+            task_mem_man,
+        );
         propagations
     }
 
@@ -203,7 +280,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (CReverseRoleAssertionLinker is an unported satellite linker.)
         let role: RoleId = Id::NONE;
         let indi: IndividualId = Id::NONE; // CIndividual* (asserted individual) — deferred id.
-        // markIndividualNodeBackendNonConceptSetRelatedProcessing(processIndi, calcAlgContext)
+                                           // markIndividualNodeBackendNonConceptSetRelatedProcessing(processIndi, calcAlgContext)
         self.mark_individual_node_backend_non_concept_set_related_processing(
             *process_indi,
             calc_alg_context,
@@ -272,7 +349,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         // W3-RECONCILE[ownership]: snapshot role->getIndirectSuperRoleList()
                         // before the &mut-ctx call (role_linker_it arg).
                         let super_role_list: Vec<super::super::model::substrate::NegLink<RoleId>> =
-                            calc_alg_context.ontology_arenas().role(role).get_indirect_super_role_list().to_vec();
+                            calc_alg_context
+                                .ontology_arenas()
+                                .role(role)
+                                .get_indirect_super_role_list()
+                                .to_vec();
                         self.create_new_individuals_links_reapplyed(
                             loc_nominal_indi,
                             *process_indi,
@@ -283,7 +364,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         );
 
-                        self.propagate_individual_node_modified(&mut loc_nominal_indi, calc_alg_context);
+                        self.propagate_individual_node_modified(
+                            &mut loc_nominal_indi,
+                            calc_alg_context,
+                        );
                         self.add_individual_to_processing_queue(loc_nominal_indi, calc_alg_context);
                     }
                     let _ = &mut loc_nominal_indi;
@@ -414,7 +498,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         // W3-RECONCILE[ownership]: snapshot role->getIndirectSuperRoleList()
                         // before the &mut-ctx call (role_linker_it arg).
                         let super_role_list: Vec<super::super::model::substrate::NegLink<RoleId>> =
-                            calc_alg_context.ontology_arenas().role(role).get_indirect_super_role_list().to_vec();
+                            calc_alg_context
+                                .ontology_arenas()
+                                .role(role)
+                                .get_indirect_super_role_list()
+                                .to_vec();
                         self.create_new_individuals_links_reapplyed(
                             *process_indi,
                             loc_nominal_indi,
@@ -425,7 +513,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         );
 
-                        self.propagate_individual_node_modified(&mut loc_nominal_indi, calc_alg_context);
+                        self.propagate_individual_node_modified(
+                            &mut loc_nominal_indi,
+                            calc_alg_context,
+                        );
                         self.add_individual_to_processing_queue(loc_nominal_indi, calc_alg_context);
                     }
                     let _ = &mut loc_nominal_indi;
@@ -612,7 +703,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: `CNonDeterministicDependencyNode*` →
     /// `DependencyId`; the returned `CSatisfiableCalculationTask*` →
-    /// `Id<SatisfiableCalculationTask>` (Task-layer stub).
+    /// `Id<SatisfiableCalculationTask>`.
     pub fn create_distinct_branching_task(
         &mut self,
         process_indi_node: &mut NodeId,
@@ -623,14 +714,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         branching_merging_proc_rest: RestrictionSpecId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Id<SatisfiableCalculationTask> {
-        // PORT-PENDING: faithful transcription of cpp 15530-15607. The whole body is
-        // the dependent-task spawn machinery (the same family as u13's
-        // create_merge_branching_task), driven by not-yet-ported facilities:
+        // Faithful transcription of cpp 15530-15607. The branch-dependent task
+        // allocation is live; the remaining branch-local body still depends on
+        // not-yet-ported child context/databox/scheduler facilities:
         //
         //   STATINC(TASKDISTINCTMERGEBRANCHCREATIONCOUNT, calcAlgContext);
         //   conDes = conProDes->getConceptDescriptor();
         //   role   = conDes->getConcept()->getRole();
-        //   newSatCalcTask = createDependendBranchingTaskList(1, calcAlgContext);            // sibling (task unit)
+        let new_sat_calc_task = self.create_dependend_branching_task_list(1, calc_alg_context);
+        //   newSatCalcTask = createDependendBranchingTaskList(1, calcAlgContext);
         //   processorContext = calcAlgContext->getUsedTaskProcessorContext();
         //   newProcessContext = newSatCalcTask->getProcessContext(processorContext);
         //   newCalcAlgContext = createCalculationAlgorithmContext(processorContext,
@@ -673,11 +765,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   newSatCalcTask->setTaskPriority(newTaskPriority);
         //   return newSatCalcTask;
         //
-        // Held PORT-PENDING (rather than half-ported) because the new per-task context
-        // / databox / memory pool come from the unported `createCalculationAlgorithmContext`
-        // + Task-layer task-list allocator, and every typed local belongs to a
-        // not-yet-ported class (process tagger, task processor context, the new
-        // branching-merging restriction spec on the NEW context).
+        // Held partially deferred because the new per-task context/databox/memory
+        // pool come from the still-deferred `createCalculationAlgorithmContext`,
+        // and every typed local belongs to a not-yet-ported class (process tagger,
+        // task processor context, the new branching-merging restriction spec on
+        // the NEW context).
         let _ = (
             process_indi_node,
             con_pro_des,
@@ -685,9 +777,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             create_as_nominal,
             merge_dependency_node,
             branching_merging_proc_rest,
-            calc_alg_context,
+            &mut *calc_alg_context,
         );
-        Id::NONE
+        if let Some(task_priority_strategy) = calc_alg_context.base.used_task_priority_strategy() {
+            let used_sat_calc_task = calc_alg_context.base.used_sat_calc_task;
+            let new_task_priority = task_priority_strategy.get_priority_for_task_merging(
+                &calc_alg_context.base.sat_calc_task_arena,
+                new_sat_calc_task,
+                used_sat_calc_task,
+            );
+            calc_alg_context
+                .base
+                .sat_calc_task_mut(new_sat_calc_task)
+                .base
+                .set_task_priority(new_task_priority);
+        }
+        new_sat_calc_task
     }
 
     // =======================================================================
@@ -816,12 +921,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// cpp 17307-17319.
     ///
     /// Returns the (first) link edge from `indi_source` to `indi_destination` carrying
-    /// `role`, by scanning the source's successor-role hash for a link whose link-role
-    /// matches.
-    ///
-    /// KONCLUDE-PORT-NOTE[api]: `indiDestination` is part of the C++ signature but its
-    /// body only filters by `role` over `indiSource`'s successor-role hash (the
-    /// destination is implied by the iterator). Faithfully preserved.
+    /// `role`, by scanning the source's successor-role iterator for the destination
+    /// individual id and returning the first edge whose link-role matches.
     pub fn get_individual_node_link(
         &mut self,
         indi_source: &mut NodeId,
@@ -830,20 +931,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> EdgeId {
         // succRoleHash = indiSource->getSuccessorRoleHash(false);
-        // W6-DEFER[api]: getSuccessorRoleHash is an unported node satellite, and its
-        //   CSuccessorRoleIterator (keyed by indiSource->getIndividualNodeID()) has no
-        //   ported iterator. Faithful loop:
-        //     if succRoleHash:
-        //       succRoleIt = succRoleHash->getSuccessorRoleIterator(indiSource->getIndividualNodeID());
-        //       while succRoleIt.hasNext():
-        //         link = succRoleIt.next(true);
-        //         if link->getLinkRole() == role: return link;
-        //   (link->getLinkRole() IS ported on IndividualLinkEdge — `edge(id).get_link_role()`.)
-        let succ_role_hash: Cint64 = INVALID;
-        if succ_role_hash != INVALID {
-            // deferred iterator walk — no successor links resolvable yet.
+        let succ_role_hash = calc_alg_context
+            .process_context()
+            .node(*indi_source)
+            .use_succ_role_hash;
+        if succ_role_hash.is_some() {
+            let dest_indi_id = calc_alg_context
+                .process_context()
+                .node(*indi_destination)
+                .individual_node_id();
+            let mut succ_role_it = calc_alg_context
+                .process_context()
+                .node_successor_role_iterator(*indi_source, dest_indi_id);
+            while succ_role_it.has_next() {
+                let link = succ_role_it.next(true);
+                if calc_alg_context
+                    .process_context()
+                    .edge(link)
+                    .get_link_role()
+                    == role
+                {
+                    return link;
+                }
+            }
         }
-        let _ = (indi_source, indi_destination, role, calc_alg_context);
         Id::NONE
     }
 
@@ -858,9 +969,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// concept tag + negation), optionally reporting the first not-entailed descriptor
     /// and whether the two sets are equal. The count fast-fails + the threshold-driven
     /// choice between a direct-lookup walk and a sorted tag-merge walk are ported
-    /// faithfully; the two inner walks iterate `CReapplyConceptLabelSetIterator`, an
-    /// unported satellite, so their per-descriptor comparisons are `W6-DEFER[api]`
-    /// with the logic in-comment (same treatment as u16's nominal-aware twin).
+    /// faithfully over the live `CReapplyConceptLabelSetIterator`.
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: the nullable out-pointers
     /// `CConceptDescriptor** firstNotEntailedConDes` / `bool* equalConSet` become
@@ -874,6 +983,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // W3-DEFER[macro]: STATINC(LABELCONCEPTSUBSETTESTCOUNT, calcAlgContext)
+        let mut first_not_entailed_con_des = first_not_entailed_con_des;
+        let mut equal_con_set = equal_con_set;
         let sub_con_set_count = calc_alg_context
             .process_context()
             .label_set(sub_concept_set)
@@ -882,7 +993,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .label_set(super_concept_set)
             .get_concept_count();
-        if let Some(out_eq) = equal_con_set {
+        if let Some(out_eq) = equal_con_set.as_deref_mut() {
             if sub_con_set_count != super_con_set_count {
                 *out_eq = false;
             } else {
@@ -897,39 +1008,142 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         let threshold_factor: Cint64 = 10;
         if sub_con_set_count * threshold_factor < super_con_set_count {
-            // Direct-lookup branch: for each subConDes, require
-            // superConceptSet->containsConceptDescriptor(subConDes); the first miss
-            // sets *firstNotEntailedConDes and returns false.
-            // W6-DEFER[api]: CReapplyConceptLabelSetIterator (true,false,false) +
-            //   containsConceptDescriptor are unported satellites.
-            //
-            //   subConSetIt = subConceptSet->getConceptLabelSetIterator(true,false,false);
-            //   while subConSetIt.hasValue():
-            //     subConDes = subConSetIt.getConceptDescriptor();
-            //     if !superConceptSet->containsConceptDescriptor(subConDes):
-            //       if firstNotEntailedConDes: *firstNotEntailedConDes = subConDes;
-            //       return false;
-            //     subConSetIt.moveNext();
-            let _ = first_not_entailed_con_des;
+            let mut sub_con_set_it = calc_alg_context
+                .process_context()
+                .label_set_concept_label_set_iterator(sub_concept_set, true, false, false);
+            while sub_con_set_it.has_value() {
+                let sub_con_des = sub_con_set_it.get_concept_descriptor();
+                let concept = calc_alg_context
+                    .process_context()
+                    .con_desc(sub_con_des)
+                    .get_concept();
+                let negated = calc_alg_context
+                    .process_context()
+                    .con_desc(sub_con_des)
+                    .is_negated();
+                if !self.label_set_contains_concept_resolved(
+                    super_concept_set,
+                    concept,
+                    negated,
+                    calc_alg_context,
+                ) {
+                    if let Some(out) = first_not_entailed_con_des.as_deref_mut() {
+                        *out = sub_con_des;
+                    }
+                    return false;
+                }
+                sub_con_set_it.move_next(calc_alg_context.process_context());
+            }
         } else {
-            // Sorted tag-merge branch over both iterators (ascending concept tag):
-            // W6-DEFER[api]: same unported iterator. Faithful logic:
-            //   subConSetIt  = subConceptSet->getConceptLabelSetIterator(true,false,false);
-            //   superConSetIt = superConceptSet->getConceptLabelSetIterator(true,false,false);
-            //   superConDes = superConSetIt.getConceptDescriptor();
-            //   superConTag = superConDes->getConceptTag(); superConSetIt.moveNext();
-            //   while subConSetIt.hasValue():
-            //     subConDes = subConSetIt.getConceptDescriptor(); subConTag = subConDes->getConceptTag();
-            //     while superConTag < subConTag:
-            //       if !superConSetIt.hasValue(): {*firstNotEntailedConDes = subConDes; return false;}
-            //       superConDes = superConSetIt.getConceptDescriptor(); superConTag = superConDes->getConceptTag();
-            //       superConSetIt.moveNext();
-            //       if equalConSet && superConTag < subConTag: *equalConSet = false;
-            //     if subConTag != superConTag:
-            //       *firstNotEntailedConDes = subConDes; *equalConSet = false; return false;
-            //     else if subConDes->isNegated() != superConDes->isNegated():
-            //       *firstNotEntailedConDes = subConDes; *equalConSet = false; return false;
-            //     subConSetIt.moveNext();
+            let mut sub_con_set_it = calc_alg_context
+                .process_context()
+                .label_set_concept_label_set_iterator(sub_concept_set, true, false, false);
+            let mut super_con_set_it = calc_alg_context
+                .process_context()
+                .label_set_concept_label_set_iterator(super_concept_set, true, false, false);
+            let mut super_con_des = super_con_set_it.get_concept_descriptor();
+            let mut super_con_tag = super_con_set_it.get_data_tag(
+                calc_alg_context.process_context(),
+                calc_alg_context.ontology_arenas(),
+            );
+            super_con_set_it.move_next(calc_alg_context.process_context());
+            while sub_con_set_it.has_value() {
+                let sub_con_des = sub_con_set_it.get_concept_descriptor();
+                let sub_con_tag = sub_con_set_it.get_data_tag(
+                    calc_alg_context.process_context(),
+                    calc_alg_context.ontology_arenas(),
+                );
+                while super_con_tag < sub_con_tag {
+                    if !super_con_set_it.has_value() {
+                        if let Some(out) = first_not_entailed_con_des.as_deref_mut() {
+                            *out = sub_con_des;
+                        }
+                        return false;
+                    }
+                    super_con_des = super_con_set_it.get_concept_descriptor();
+                    super_con_tag = super_con_set_it.get_data_tag(
+                        calc_alg_context.process_context(),
+                        calc_alg_context.ontology_arenas(),
+                    );
+                    super_con_set_it.move_next(calc_alg_context.process_context());
+                    if super_con_tag < sub_con_tag {
+                        if let Some(out_eq) = equal_con_set.as_deref_mut() {
+                            *out_eq = false;
+                        }
+                    }
+                }
+                if sub_con_tag != super_con_tag {
+                    if let Some(out) = first_not_entailed_con_des.as_deref_mut() {
+                        *out = sub_con_des;
+                    }
+                    if let Some(out_eq) = equal_con_set.as_deref_mut() {
+                        *out_eq = false;
+                    }
+                    return false;
+                } else if calc_alg_context
+                    .process_context()
+                    .con_desc(sub_con_des)
+                    .is_negated()
+                    != calc_alg_context
+                        .process_context()
+                        .con_desc(super_con_des)
+                        .is_negated()
+                {
+                    if let Some(out) = first_not_entailed_con_des.as_deref_mut() {
+                        *out = sub_con_des;
+                    }
+                    if let Some(out_eq) = equal_con_set.as_deref_mut() {
+                        *out_eq = false;
+                    }
+                    return false;
+                }
+                sub_con_set_it.move_next(calc_alg_context.process_context());
+            }
+        }
+        true
+    }
+
+    fn are_label_concept_sets_equal_in_sorted_lockstep(
+        concept_set1: LabelSetId,
+        concept_set2: LabelSetId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let mut con_set1_it = calc_alg_context
+            .process_context()
+            .label_set_concept_label_set_iterator(concept_set1, true, false, false);
+        let mut con_set2_it = calc_alg_context
+            .process_context()
+            .label_set_concept_label_set_iterator(concept_set2, true, false, false);
+        while con_set1_it.has_value() {
+            if !con_set2_it.has_value() {
+                return false;
+            }
+            let con_des1 = con_set1_it.get_concept_descriptor();
+            let con_des2 = con_set2_it.get_concept_descriptor();
+            if calc_alg_context
+                .process_context()
+                .con_desc(con_des1)
+                .get_concept()
+                != calc_alg_context
+                    .process_context()
+                    .con_desc(con_des2)
+                    .get_concept()
+            {
+                return false;
+            }
+            if calc_alg_context
+                .process_context()
+                .con_desc(con_des1)
+                .is_negated()
+                != calc_alg_context
+                    .process_context()
+                    .con_desc(con_des2)
+                    .is_negated()
+            {
+                return false;
+            }
+            con_set1_it.move_next(calc_alg_context.process_context());
+            con_set2_it.move_next(calc_alg_context.process_context());
         }
         true
     }
@@ -937,10 +1151,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::isLabelConceptEqualSet`.
     /// cpp 17547-17575.
     ///
-    /// Set-equality of two concept-label sets: equal count, signature-equivalent, and
-    /// (concept, negation)-identical in sorted lockstep. The count + signature fast
-    /// fails are ported; the lockstep walk over `CReapplyConceptLabelSetIterator` is
-    /// `W6-DEFER[api]`.
+    /// Set-equality of two concept-label sets: equal count, signature-equivalent,
+    /// and (concept, negation)-identical in sorted lockstep.
     pub fn is_label_concept_equal_set(
         &mut self,
         concept_set1: LabelSetId,
@@ -959,32 +1171,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if concept_set1_count != concept_set2_count {
             return false;
         }
-        // if (!conceptSet1->getConceptSignature()->isSignatureEquivalent(conceptSet2->getConceptSignature())): return false;
-        // W6-DEFER[api]: CReapplyConceptLabelSet exposes only a signature VALUE today
-        //   (get_concept_signature_value); the full CConceptSignature::isSignatureEquivalent
-        //   is not ported, so the cheap value compare stands in (sound prefilter — a
-        //   true equivalence implies equal values; reconciles when the signature type lands).
-        let sig1 = calc_alg_context
+        if !calc_alg_context
             .process_context()
             .label_set(concept_set1)
-            .get_concept_signature_value();
-        let sig2 = calc_alg_context
-            .process_context()
-            .label_set(concept_set2)
-            .get_concept_signature_value();
-        if sig1 != sig2 {
+            .concept_signature
+            .is_signature_equivalent(
+                &calc_alg_context
+                    .process_context()
+                    .label_set(concept_set2)
+                    .concept_signature,
+            )
+        {
             return false;
         }
-        // W6-DEFER[api]: lockstep iterator walk:
-        //   conSet1It = conceptSet1->getConceptLabelSetIterator(true,false,false);
-        //   conSet2It = conceptSet2->getConceptLabelSetIterator(true,false,false);
-        //   while conSet1It.hasValue():
-        //     if !conSet2It.hasValue(): return false;
-        //     conDes1 = conSet1It.getConceptDescriptor(); conDes2 = conSet2It.getConceptDescriptor();
-        //     if conDes1->getConcept() != conDes2->getConcept(): return false;
-        //     if conDes1->isNegated() != conDes2->isNegated(): return false;
-        //     conSet1It.moveNext(); conSet2It.moveNext();
-        true
+        Self::are_label_concept_sets_equal_in_sorted_lockstep(
+            concept_set1,
+            concept_set2,
+            calc_alg_context,
+        )
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::isPairwiseLabelConceptEqualSet`.
@@ -992,8 +1196,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///
     /// Pairwise set-equality used by pairwise-equal-set blocking: each of the two
     /// (set, pair-set) couples must agree in count, be signature-equivalent, and be
-    /// (concept, negation)-identical in sorted lockstep. The count + signature fast
-    /// fails are ported; the two lockstep walks are `W6-DEFER[api]`.
+    /// (concept, negation)-identical in sorted lockstep.
     pub fn is_pairwise_label_concept_equal_set(
         &mut self,
         concept_set1: LabelSetId,
@@ -1025,37 +1228,44 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if concept_set2_count != concept_set2p_count {
             return false;
         }
-        // if (!conceptSet1->getConceptSignature()->isSignatureEquivalent(conceptSet1Pair->getConceptSignature())): return false;
-        // W6-DEFER[api]: signature value prefilter (see is_label_concept_equal_set note).
-        let sig1 = calc_alg_context
+        if !calc_alg_context
             .process_context()
             .label_set(concept_set1)
-            .get_concept_signature_value();
-        let sig1p = calc_alg_context
-            .process_context()
-            .label_set(concept_set1_pair)
-            .get_concept_signature_value();
-        if sig1 != sig1p {
+            .concept_signature
+            .is_signature_equivalent(
+                &calc_alg_context
+                    .process_context()
+                    .label_set(concept_set1_pair)
+                    .concept_signature,
+            )
+        {
             return false;
         }
-        // if (!conceptSet2->getConceptSignature()->isSignatureEquivalent(conceptSet2Pair->getConceptSignature())): return false;
-        let sig2 = calc_alg_context
+        if !calc_alg_context
             .process_context()
             .label_set(concept_set2)
-            .get_concept_signature_value();
-        let sig2p = calc_alg_context
-            .process_context()
-            .label_set(concept_set2_pair)
-            .get_concept_signature_value();
-        if sig2 != sig2p {
+            .concept_signature
+            .is_signature_equivalent(
+                &calc_alg_context
+                    .process_context()
+                    .label_set(concept_set2_pair)
+                    .concept_signature,
+            )
+        {
             return false;
         }
-        // W6-DEFER[api]: the two lockstep iterator walks (conSet1/conSet1Pair, then
-        //   conSet2/conSet2Pair) over CReapplyConceptLabelSetIterator, each requiring
-        //   identical (getConcept(), isNegated()) in order, returning false on the
-        //   first mismatch or length difference. (Note: the C++ obtains conSet2It with
-        //   the 2-arg getConceptLabelSetIterator(true,false) overload — same semantics.)
-        true
+        if !Self::are_label_concept_sets_equal_in_sorted_lockstep(
+            concept_set1,
+            concept_set1_pair,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        Self::are_label_concept_sets_equal_in_sorted_lockstep(
+            concept_set2,
+            concept_set2_pair,
+            calc_alg_context,
+        )
     }
 
     // =======================================================================
@@ -1070,39 +1280,73 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// whether any were found.
     ///
     /// KONCLUDE-PORT-NOTE[ownership]: the collecting `QHash<cint64, CVariableBindingPath*>`
-    /// becomes a `&mut Vec<(Cint64, VariableBindingPathHandle)>` (insertion-ordered
-    /// key→path pairs); the variable-binding-path subsystem is not yet ported, so the
-    /// per-node hash traversal is `W6-DEFER[api]`.
+    /// becomes a `&mut Vec<(Cint64, VarBindingPathId)>`; inserting an existing key
+    /// replaces the stored path, matching `QHash::insert`.
     pub fn collect_individual_node_variable_propagation_bindings(
         &mut self,
         individual_node: &mut NodeId,
-        collecting_propagation_variable_bindings_hash: &mut Vec<(Cint64, VariableBindingPathHandle)>,
+        collecting_propagation_variable_bindings_hash: &mut Vec<(
+            Cint64,
+            VariableBindingPathHandle,
+        )>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // foundVarPropBindings is set true only inside the deferred traversal below;
-        // with that traversal unported it stays false (faithful for the no-binding case).
-        let found_var_prop_bindings = false;
-        // conVarBindSetHash = individualNode->getConceptVariableBindingPathSetHash(false);
-        // W6-DEFER[api]: getConceptVariableBindingPathSetHash is an unported node
-        //   satellite (ConceptVarBindPathSetHashId); the whole nested traversal —
-        //     for hashData in conVarBindSetHash:
-        //       varBindSet = hashData.mUseVariableBindingPathSet; conDes = varBindSet->getConceptDescriptor();
-        //       if varBindSet && conDes:
-        //         varBindMap = varBindSet->getVariableBindingPathMap();
-        //         for mapData in varBindMap:
-        //           varBindDes = mapData.getVariableBindingPathDescriptor();
-        //           if varBindDes:
-        //             varBindPath = varBindDes->getVariableBindingPath();
-        //             if varBindPath:
-        //               foundVarPropBindings = true;
-        //               collectingPropagationVariableBindingsHash.insert(varBindPath->getPropagationID(), varBindPath);
-        //   — bottoms out in unported CConceptVariableBindingPathSetHash / CVariableBindingPathSet /
-        //     CVariableBindingPathMap / CVariableBindingPathDescriptor / CVariableBindingPath.
-        let _ = (
-            individual_node,
-            &mut *collecting_propagation_variable_bindings_hash,
-            calc_alg_context,
-        );
+        let collected_paths: Vec<(Cint64, VarBindingPathId)> = {
+            let pc = calc_alg_context.process_context();
+            let con_var_bind_set_hash =
+                pc.node(*individual_node).use_concept_var_bind_path_set_hash;
+            if con_var_bind_set_hash.is_none() {
+                return false;
+            }
+
+            let mut collected_paths = Vec::new();
+            for hash_data in pc
+                .con_var_bind_path_set_hash(con_var_bind_set_hash)
+                .map
+                .values()
+            {
+                let var_bind_set = hash_data.use_variable_binding_path_set;
+                if var_bind_set.is_none() {
+                    continue;
+                }
+                let con_des = pc.vbpath_set(var_bind_set).get_concept_descriptor();
+                if con_des.is_none() {
+                    continue;
+                }
+
+                for map_data in pc
+                    .vbpath_set(var_bind_set)
+                    .get_variable_binding_path_map()
+                    .map
+                    .values()
+                {
+                    let var_bind_des = map_data.get_variable_binding_path_descriptor();
+                    if var_bind_des.is_some() {
+                        let var_bind_path = pc.vbpath_des(var_bind_des).get_variable_binding_path();
+                        if var_bind_path.is_some() {
+                            collected_paths.push((
+                                pc.vbpath(var_bind_path).get_propagation_id(),
+                                var_bind_path,
+                            ));
+                        }
+                    }
+                }
+            }
+            collected_paths
+        };
+
+        let found_var_prop_bindings = !collected_paths.is_empty();
+        for (propagation_id, var_bind_path) in collected_paths {
+            if let Some((_existing_prop_id, existing_path)) =
+                collecting_propagation_variable_bindings_hash
+                    .iter_mut()
+                    .find(|(prop_id, _)| *prop_id == propagation_id)
+            {
+                *existing_path = var_bind_path;
+            } else {
+                collecting_propagation_variable_bindings_hash.push((propagation_id, var_bind_path));
+            }
+        }
         found_var_prop_bindings
     }
 
@@ -1122,8 +1366,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> Vec<Vec<ConceptId>> {
         let mut associated_concepts_set: Vec<Vec<ConceptId>> = Vec::new();
 
-        let mut variable_propagation_binding_collection_hash: Vec<(Cint64, VariableBindingPathHandle)> =
-            Vec::new();
+        let mut variable_propagation_binding_collection_hash: Vec<(
+            Cint64,
+            VariableBindingPathHandle,
+        )> = Vec::new();
         self.collect_individual_node_variable_propagation_bindings(
             individual_node,
             &mut variable_propagation_binding_collection_hash,
@@ -1163,8 +1409,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dependent_nominal_id_list: &[Cint64],
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Vec<Vec<Vec<ConceptId>>> {
-        let mut variable_propagation_binding_collection_hash: Vec<(Cint64, VariableBindingPathHandle)> =
-            Vec::new();
+        let mut variable_propagation_binding_collection_hash: Vec<(
+            Cint64,
+            VariableBindingPathHandle,
+        )> = Vec::new();
         self.collect_individual_node_variable_propagation_bindings(
             individual_node,
             &mut variable_propagation_binding_collection_hash,
@@ -1177,8 +1425,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
         // (No need to collect from the nominal nodes — identical for blocker + blocked.)
 
-        let mut all_variable_mappings_associated_concepts_over_nodes_list_set: Vec<Vec<Vec<ConceptId>>> =
-            Vec::new();
+        let mut all_variable_mappings_associated_concepts_over_nodes_list_set: Vec<
+            Vec<Vec<ConceptId>>,
+        > = Vec::new();
 
         for &(_prop_id, var_bind_path) in variable_propagation_binding_collection_hash.iter() {
             let mut associated_concepts_over_nodes_list: Vec<Vec<ConceptId>> = Vec::new();
@@ -1379,7 +1628,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         // W3-DEFER[macro]: STATINC(FULLANALOGOUSPROPAGATIONBLOCKINGSUCCESSCOUNT, calcAlgContext)
-        let _ = (block_data, test_continue_blocking, block_alt_data, &mut dependent_nominal_id_list);
+        let _ = (
+            block_data,
+            test_continue_blocking,
+            block_alt_data,
+            &mut dependent_nominal_id_list,
+        );
         true
     }
 

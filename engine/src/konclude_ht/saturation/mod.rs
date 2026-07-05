@@ -19,9 +19,9 @@
 //! is therefore a plain owned Rust struct, not an `Id<T>`-addressed arena element;
 //! there are no saturation-layer id aliases.
 
-pub mod stubs;     // W4: saturation-layer not-yet-ported placeholder markers
+pub mod algorithm;
 pub mod satellites; // W4.5: saturation-layer per-test satellites (linkers/descriptors/label-set)
-pub mod algorithm; // W4: CCalculationTableauApproximationSaturationTaskHandleAlgorithm — fields
+pub mod stubs; // W4: saturation-layer not-yet-ported placeholder markers // W4: CCalculationTableauApproximationSaturationTaskHandleAlgorithm — fields
 
 // W4 method-batch units SAT u01..u12 (the ~195 apply*Rule / driver / node-init /
 // ATMOST-merging / critical-concept / extension-propagation / cache-handoff

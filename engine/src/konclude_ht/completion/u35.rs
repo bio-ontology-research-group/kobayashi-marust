@@ -69,9 +69,8 @@
 //! (`create*Individual*`, `installIndividualNodeRoleLink*`, the disjoint/negation
 //! edges, `propagateIndividualNodeModified`, `pruneSuccessors`, the role-successor
 //! concept scanners) are driven by not-yet-ported subsystems: the per-test edge
-//! allocators (`CIndividualLinkEdge`/`CNegationDisjointEdge`/`CDistinctEdge`
-//! `init*` — though `alloc_edge`/`alloc_distinct_edge`/`alloc_disjoint_edge` exist,
-//! their `init*` bodies are W2-DEFER), the clash-descriptor factory + the
+//! allocators (`CIndividualLinkEdge`/`CNegationDisjointEdge`/`CDistinctEdge`),
+//! the clash-descriptor factory + the
 //! `CCalculationClashProcessingException` throw (Unit 30, `[exceptions]`), the
 //! reapply-queue iterator (`CReapplyQueueIterator`), the saturation-caching
 //! expansion helpers (`tryExpansionFromSaturatedData`/`tryEstablishSaturationCaching`/
@@ -88,29 +87,28 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::{Id, NegLink};
-use super::super::model::{Cint64, ConceptId, RoleId, INVALID};
+use super::super::model::op;
+use super::super::model::substrate::{Id, NegLink, INVALID};
+use super::super::model::{Cint64, ConceptId, RoleId};
+use super::super::process::blocking_hash::{
+    BlockingIndividualNodeCandidateHash, BlockingIndividualNodeCandidateHashId,
+};
+use super::super::process::edge::{DisjointEdge, DistinctEdge, IndividualLinkEdge};
 use super::super::process::node::IndividualProcessNode;
+use super::super::process::rs1::ReapplyQueueIterator;
 use super::super::process::{
-    ConDescId, EdgeId, LabelSetId, NodeId, SatNodeId, TrackPointId,
+    ClashDescId, ConDescId, EdgeId, LabelSetId, NodeId, SatNodeId, TrackPointId,
 };
 use super::context::CalculationAlgorithmContextBase;
-
-/// `CReapplyQueueIterator` — the reapply-queue cursor `installIndividualNodeRole-
-/// LinkReapplied` returns. KONCLUDE-PORT-NOTE[api]: the iterator value type is not
-/// yet ported; kept as an opaque `Cint64` handle (`INVALID` == default-constructed).
-type ReapplyQueueIterator = Cint64;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
     // Debug associated-concepts string builders (cpp 18390–18462).
     //
-    // PORT-PENDING: pure Qt-string instrumentation over `QSet<CConcept*>` /
-    // `QMap<cint64,QString>` / `QSet<QList<QSet<CConcept*>>>` aggregates that are
-    // not represented in the port (the associated-concept sets are debug-only,
-    // never threaded through an arena id). Each reads `concept->getConceptTag()`
-    // (`ctx.ontology_arenas().concept(id).get_concept_tag()`) and joins per the
-    // C++; held PORT-PENDING until the debug aggregate types land.
+    // KONCLUDE-PORT-NOTE[ownership]: Qt `QSet<CConcept*>` /
+    // `QSet<QList<QSet<CConcept*>>>` debug-only aggregate inputs are represented
+    // by slices/Vectors of `ConceptId` groups. The per-node concept rendering
+    // still reproduces the ordered `QMap<cint64,QString>` tag join.
     // =======================================================================
 
     /// Port of `generateDebugIndividualNodeAssociatedConceptsString`. cpp 18390–18409.
@@ -124,15 +122,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         associated_concepts: &[ConceptId],
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> String {
-        // PORT-PENDING: faithful transcription of cpp 18390–18409.
-        //   conTagConceptStringMap: BTreeMap<Cint64,String> (QMap = ordered);
-        //   for concept in associated_concepts:
-        //       tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
-        //       conTagConceptStringMap.insert(tag, tag.to_string());
-        //   conceptsString = conTagConceptStringMap.values().join(", ");
-        //   return format!("{} : {{{}}}", indi_node_id, conceptsString);
-        let _ = (indi_node_id, associated_concepts);
-        String::new()
+        let mut con_tag_concept_string_map = std::collections::BTreeMap::new();
+        for concept in associated_concepts.iter().copied() {
+            let concept_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            con_tag_concept_string_map.insert(concept_tag, concept_tag.to_string());
+        }
+        let concepts_string = con_tag_concept_string_map
+            .values()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{} : {{{}}}", indi_node_id, concepts_string)
     }
 
     /// Port of `generateDebugIndividualNodeAssociatedConceptsSetString`. cpp 18414–18425.
@@ -146,13 +149,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         all_variable_mappings_associated_concepts_set: &[Vec<ConceptId>],
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> String {
-        // PORT-PENDING: faithful transcription of cpp 18414–18425.
-        //   indiNodeId = ctx.process_context().node(*individual_node).individual_node_id();
-        //   for set in all_variable_mappings_associated_concepts_set:
-        //       lines.push(self.generate_debug_individual_node_associated_concepts_string(indiNodeId, set, ctx));
-        //   return lines.join("<br>\n");
-        let _ = (individual_node, all_variable_mappings_associated_concepts_set);
-        String::new()
+        let individual_node_id = calc_alg_context
+            .process_context()
+            .node(*individual_node)
+            .individual_node_id();
+        let mut all_node_list_associated_concepts_string_list = Vec::new();
+        for associated_concepts in all_variable_mappings_associated_concepts_set.iter() {
+            let associated_concepts_string = self
+                .generate_debug_individual_node_associated_concepts_string(
+                    individual_node_id,
+                    associated_concepts,
+                    calc_alg_context,
+                );
+            all_node_list_associated_concepts_string_list.push(associated_concepts_string);
+        }
+        all_node_list_associated_concepts_string_list.join("<br>\n")
     }
 
     /// Port of `generateDebugIndividualNodesListAssociatedConceptsSetString`. cpp 18430–18462.
@@ -169,18 +180,68 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         node_naming: &str,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> String {
-        // PORT-PENDING: faithful transcription of cpp 18430–18462 (the three-part
-        // per-node-list rendering: "<naming> node …", "<naming> predecessor …",
-        // then "nominal node …" per dependent nominal id). Held PORT-PENDING with
-        // the debug aggregate types.
-        let _ = (
-            individual_node,
-            ancestor_individual_node,
-            dependent_nominal_id_list,
-            all_variable_mappings_associated_concepts_over_nodes_list_set,
-            node_naming,
-        );
-        String::new()
+        let individual_node_id = calc_alg_context
+            .process_context()
+            .node(*individual_node)
+            .individual_node_id();
+        let ancestor_individual_node_id = calc_alg_context
+            .process_context()
+            .node(*ancestor_individual_node)
+            .individual_node_id();
+        let mut all_node_list_associated_concepts_string_list = Vec::new();
+
+        for node_list_associated_concepts in
+            all_variable_mappings_associated_concepts_over_nodes_list_set.iter()
+        {
+            let mut node_list_associated_concepts_string_list = Vec::new();
+            let mut list_iter = node_list_associated_concepts.iter();
+            if let Some(test_indi_associated_concepts) = list_iter.next() {
+                let test_indi_associated_concepts_string = self
+                    .generate_debug_individual_node_associated_concepts_string(
+                        individual_node_id,
+                        test_indi_associated_concepts,
+                        calc_alg_context,
+                    );
+                node_list_associated_concepts_string_list.push(format!(
+                    "{} node {}",
+                    node_naming, test_indi_associated_concepts_string
+                ));
+            }
+            if let Some(ancestor_test_indi_associated_concepts) = list_iter.next() {
+                let ancestor_test_indi_associated_concepts_string = self
+                    .generate_debug_individual_node_associated_concepts_string(
+                        ancestor_individual_node_id,
+                        ancestor_test_indi_associated_concepts,
+                        calc_alg_context,
+                    );
+                node_list_associated_concepts_string_list.push(format!(
+                    "{} predecessor {}",
+                    node_naming, ancestor_test_indi_associated_concepts_string
+                ));
+            }
+
+            let mut dependent_nominal_id_iter = dependent_nominal_id_list.iter();
+            for nominal_indi_associated_concepts in list_iter {
+                let dependent_nominal_id = dependent_nominal_id_iter
+                    .next()
+                    .copied()
+                    .unwrap_or_default();
+                let nominal_indi_associated_concepts_string = self
+                    .generate_debug_individual_node_associated_concepts_string(
+                        dependent_nominal_id,
+                        nominal_indi_associated_concepts,
+                        calc_alg_context,
+                    );
+                node_list_associated_concepts_string_list.push(format!(
+                    "nominal node {}",
+                    nominal_indi_associated_concepts_string
+                ));
+            }
+            all_node_list_associated_concepts_string_list
+                .push(node_list_associated_concepts_string_list.join("  |||  "));
+        }
+
+        all_node_list_associated_concepts_string_list.join("<br>\n")
     }
 
     // =======================================================================
@@ -198,9 +259,71 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*test_indi)
-            .get_reapply_concept_label_set(false);
-        self.contains_individual_node_concept_label(con_label_set, con_test, contains_negation, calc_alg_context)
+            .node_reapply_concept_label_set(*test_indi);
+        self.contains_individual_node_concept_label(
+            con_label_set,
+            con_test,
+            contains_negation,
+            calc_alg_context,
+        )
+    }
+
+    /// Context-resolved concept containment for live label-set callers.
+    ///
+    /// `CReapplyConceptLabelSet` still has legacy `ConceptId -> tag` shims from the
+    /// structural wave. Completion code must use ontology concept tags and descriptor
+    /// negation from the process arena, matching the C++ pointer-based lookup.
+    pub fn label_set_contains_concept_get_negated_resolved(
+        &mut self,
+        con_label_set: LabelSetId,
+        con_test: ConceptId,
+        contains_negation: Option<&mut bool>,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let con_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(con_test)
+            .get_concept_tag();
+        let mut con_des: ConDescId = Id::NONE;
+        let mut dep_track_point = TrackPointId::NONE;
+        if !calc_alg_context
+            .process_context()
+            .label_set(con_label_set)
+            .get_concept_descriptor_by_tag(con_tag, &mut con_des, &mut dep_track_point)
+        {
+            if let Some(data) = calc_alg_context
+                .process_context()
+                .label_set_additional_get_cloned(con_label_set, con_tag)
+            {
+                con_des = data.concept_descriptor;
+            }
+            if con_des.is_none() {
+                return false;
+            }
+        }
+        if let Some(out) = contains_negation {
+            *out = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .is_negated();
+        }
+        true
+    }
+
+    pub fn label_set_contains_concept_resolved(
+        &mut self,
+        con_label_set: LabelSetId,
+        con_test: ConceptId,
+        negated: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let mut contains_negated = false;
+        self.label_set_contains_concept_get_negated_resolved(
+            con_label_set,
+            con_test,
+            Some(&mut contains_negated),
+            calc_alg_context,
+        ) && contains_negated == negated
     }
 
     /// Port of `containsIndividualNodeConcept(CReapplyConceptLabelSet*, CConcept*,
@@ -213,11 +336,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let mut contains_neg = false;
-        if !calc_alg_context
-            .process_context()
-            .label_set(con_label_set)
-            .contains_concept_get_negated(con_test, Some(&mut contains_neg))
-        {
+        if !self.label_set_contains_concept_get_negated_resolved(
+            con_label_set,
+            con_test,
+            Some(&mut contains_neg),
+            calc_alg_context,
+        ) {
             return false;
         }
         if let Some(out) = contains_negation {
@@ -250,11 +374,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let concept = con_test_linker[idx].target;
             let con_neg = con_test_linker[idx].negated;
             let mut contains_neg = false;
-            if !calc_alg_context
-                .process_context()
-                .label_set(con_label_set)
-                .contains_concept_get_negated(concept, Some(&mut contains_neg))
-            {
+            if !self.label_set_contains_concept_get_negated_resolved(
+                con_label_set,
+                concept,
+                Some(&mut contains_neg),
+                calc_alg_context,
+            ) {
                 return false;
             }
             if contains_neg == con_neg {
@@ -295,11 +420,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         for nl in con_test_linker {
             let concept = nl.target;
             let con_neg = nl.negated ^ negated;
-            if !calc_alg_context
-                .process_context()
-                .label_set(con_label_set)
-                .contains_concept(concept, con_neg)
-            {
+            if !self.label_set_contains_concept_resolved(
+                con_label_set,
+                concept,
+                con_neg,
+                calc_alg_context,
+            ) {
                 return false;
             }
         }
@@ -317,9 +443,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*test_indi)
-            .get_reapply_concept_label_set(false);
-        self.contains_individual_node_concepts_label_negated(con_label_set, con_test_linker, negated, calc_alg_context)
+            .node_reapply_concept_label_set(*test_indi);
+        self.contains_individual_node_concepts_label_negated(
+            con_label_set,
+            con_test_linker,
+            negated,
+            calc_alg_context,
+        )
     }
 
     /// Port of `containsIndividualNodeConcepts(CIndividualProcessNode*&,
@@ -333,9 +463,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*test_indi)
-            .get_reapply_concept_label_set(false);
-        self.contains_individual_node_concepts_label_get_negated(con_label_set, con_test_linker, contains_negation, calc_alg_context)
+            .node_reapply_concept_label_set(*test_indi);
+        self.contains_individual_node_concepts_label_get_negated(
+            con_label_set,
+            con_test_linker,
+            contains_negation,
+            calc_alg_context,
+        )
     }
 
     /// Port of `containsIndividualNodeConcepts(CIndividualProcessNode*&,
@@ -348,10 +482,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*test_indi)
-            .get_reapply_concept_label_set(false);
+            .node_reapply_concept_label_set(*test_indi);
         // C++ passes (bool*)nullptr.
-        self.contains_individual_node_concepts_label_get_negated(con_label_set, con_test_linker, None, calc_alg_context)
+        self.contains_individual_node_concepts_label_get_negated(
+            con_label_set,
+            con_test_linker,
+            None,
+            calc_alg_context,
+        )
     }
 
     // =======================================================================
@@ -369,17 +507,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_des: ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 19543–19549.
-        //   procDataBox = calc_alg_context.processing_data_box_mut();
-        //   blockingCandHash = procDataBox.get_blocking_individual_node_candidate_hash(true);
-        //   blockingCandData = blockingCandHash.get_blocking_individual_candidate_data(con_des, true);
-        //   STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT);
-        //   blockingCandData.insert_blocking_candidate_individual_node(*indi);
-        //
-        // Held PORT-PENDING: `CBlockingIndividualNodeCandidateHash` /
-        // `CBlockingIndividualNodeCandidateData` accessors are not yet ported (the
-        // databox exposes the hash field but not the candidate-data get/insert API).
-        let _ = (indi, con_des);
+        let blocking_cand_hash =
+            self.get_or_create_blocking_individual_node_candidate_hash(calc_alg_context);
+        let blocking_cand_data =
+            BlockingIndividualNodeCandidateHash::get_blocking_individual_candidate_data_for_concept_descriptor(
+                calc_alg_context.process_context_mut(),
+                blocking_cand_hash,
+                con_des,
+                true,
+            );
+        // W3-DEFER[macro]: STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT, calcAlgContext).
+        calc_alg_context
+            .process_context_mut()
+            .blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(
+                blocking_cand_data,
+                *indi,
+            );
     }
 
     /// Port of `addIndividualNodeCandidateForConcept(CIndividualProcessNode*&,
@@ -395,21 +538,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negated: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 19552–19568.
-        //   blockingCandHash = calc_alg_context.processing_data_box_mut().get_blocking_individual_node_candidate_hash(true);
-        //   for nl in concepts:
-        //       concept = nl.target; conceptNeg = nl.negated ^ negated;
-        //       data = blockingCandHash.get_blocking_individual_candidate_data(concept, conceptNeg, true);
-        //       STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT);
-        //       data.insert_blocking_candidate_individual_node(*indi);
-        //       opCode = ctx.ontology_arenas().concept(concept).get_operator_code();
-        //       if (!conceptNeg && opCode == CCAND) || (conceptNeg && opCode == CCOR):
-        //           self.add_individual_node_candidate_for_concept(indi, ctx.ontology_arenas().concept(concept).get_operand_list(), conceptNeg, ctx);
-        //
-        // Held PORT-PENDING with the blocking-candidate hash/data API (as above);
-        // the concept-arena reads (`get_operator_code`/`get_operand_list`, CCAND/CCOR)
-        // become live on the reconcile pass.
-        let _ = (indi, concepts, negated);
+        let blocking_cand_hash =
+            self.get_or_create_blocking_individual_node_candidate_hash(calc_alg_context);
+        for concept_link in concepts.iter() {
+            let concept = concept_link.target;
+            let concept_negation = concept_link.negated ^ negated;
+            let blocking_cand_data =
+                BlockingIndividualNodeCandidateHash::get_blocking_individual_candidate_data(
+                    calc_alg_context.process_context_mut(),
+                    blocking_cand_hash,
+                    concept,
+                    concept_negation,
+                    true,
+                );
+            // W3-DEFER[macro]: STATINC(ANYWHEREBLOCKINGCANDIDATEHASHUDATEADDCOUNT, calcAlgContext).
+            calc_alg_context
+                .process_context_mut()
+                .blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(
+                    blocking_cand_data,
+                    *indi,
+                );
+            let op_code = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operator_code();
+            if (!concept_negation && op_code == op::CCAND)
+                || (concept_negation && op_code == op::CCOR)
+            {
+                let operands = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operand_list()
+                    .to_vec();
+                self.add_individual_node_candidate_for_concept(
+                    indi,
+                    &operands,
+                    concept_negation,
+                    calc_alg_context,
+                );
+            }
+        }
+    }
+
+    /// Localized equivalent of
+    /// `processingDataBox->getBlockingIndividualNodeCandidateHash(true)`.
+    fn get_or_create_blocking_individual_node_candidate_hash(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> BlockingIndividualNodeCandidateHashId {
+        calc_alg_context.blocking_individual_node_candidate_hash(true)
     }
 
     // =======================================================================
@@ -429,53 +606,243 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: &mut NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 19634–19688.
-        // The node processing-restriction-flag reads/writes are substrate-resolvable
-        // (`has_partial_processing_restriction_flags`/`add_processing_restriction_flags`
-        // + the `PRF_*` consts on `IndividualProcessNode`); the structure is:
-        //
-        //   addIndividualToProcessingQueueDueToModification = false;
-        //   if !indi.has_partial(PRF_SATURATIONBLOCKINGCACHEDRETESTDUETOMODIFICATION):
-        //       indi.add(PRF_SATURATIONBLOCKINGCACHEDRETESTDUETOMODIFICATION);
-        //   if !indi.has_partial(PRF_BLOCKINGRETESTDUEDIRECTMODIFIED) && !indi.nominal_individual():
-        //       indi.add(PRF_BLOCKINGRETESTDUEDIRECTMODIFIED);
-        //       self.propagate_processing_restriction_to_successors(indi, PRF_BLOCKINGRETESTDUEANCESTORMODIFIED, true,
-        //           PRF_DIRECTBLOCKED | PRF_INDIRECTBLOCKED | PRF_PROCESSINGBLOCKED, ctx);   // Unit 1
-        //       addIndividualToProcessingQueueDueToModification = true;
-        //   self.eliminiate_blocked_individuals(indi, ctx);                                  // Unit 3
-        //   if indi.has_partial(PRF_SATISFIABLECACHED) && !indi.has_partial(PRF_RETESTSATISFIABLECACHEDDUEDIRECTMODIFIED):
-        //       indi.add(PRF_RETESTSATISFIABLECACHEDDUEDIRECTMODIFIED); addIndividualToProcessingQueueDueToModification = true;
-        //   if indi.has_partial(PRF_SIGNATUREBLOCKINGCACHED) && !indi.has_partial(PRF_RETESTSIGNATUREBLOCKINGCACHEDDUEDIRECTMODIFIED):
-        //       indi.add(PRF_RETESTSIGNATUREBLOCKINGCACHEDDUEDIRECTMODIFIED); addIndividualToProcessingQueueDueToModification = true;
-        //   if indi.has_partial(PRF_COMPLETIONGRAPHCACHED) && !indi.has_partial(PRF_RETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED):
-        //       indi.add(PRF_RETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED); addIndividualToProcessingQueueDueToModification = true;
-        //   if indi.has_partial(PRF_SATURATIONBLOCKINGCACHED) && !indi.has_partial(PRF_RETESTSATURATIONBLOCKINGCACHEDDUEDIRECTMODIFIED):
-        //       indi.add(PRF_RETESTSATURATIONBLOCKINGCACHEDDUEDIRECTMODIFIED); addIndividualToProcessingQueueDueToModification = true;
-        //   if addIndividualToProcessingQueueDueToModification:
-        //       self.add_individual_to_blocking_update_review_processing_queue(indi, ctx);   // Unit 3
-        //   if indi.has_partial(PRF_SYNCHRONIZEDBACKEND | …SUCCESSOREXPANSIONBLOCKED | …NEIGHBOUREXPANSIONBLOCKED |
-        //         PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION | …INDIRECTNOMINALEXPANSIONBLOCKED)
-        //         && !indi.has_partial(PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED):
-        //       indi.add(PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED);
-        //       if !addIndividualToProcessingQueueDueToModification: self.add_individual_to_backend_synchronisation_retest_queue(indi, ctx);  // Unit 3
-        //   if indi.has_partial(PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION) && !indi.has_partial(PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED)
-        //         && !indi.has_partial(PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION):
-        //       indi.add(PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED);
-        //       if !addIndividualToProcessingQueueDueToModification: self.add_individual_to_backend_direct_influence_expansion_queue(indi, ctx);  // Unit 3
-        //   if self.opt_incremental_compatible_expansion && indi.has_partial(PRF_INCREMENTALEXPANDING) && !indi.has_partial(PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED):
-        //       indi.add(PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED);
-        //       self.add_individual_to_incremental_compatibility_checking_queue(indi, ctx);  // Unit 26
-        //   if indi.is_nominal_individual_node() && indi.nominal_individual() && indi.is_delayed_nominal_processing_queued():
-        //       indi.set_delayed_nominal_processing_queued(false);
-        //       self.add_individual_to_processing_queue(indi, ctx);                          // Unit 1
-        //
-        // Held PORT-PENDING: the queue-add + processing-restriction-propagation
-        // siblings (`propagate_processing_restriction_to_successors`,
-        // `eliminiate_blocked_individuals`, `add_individual_to_*_queue`, Units 1/3/26)
-        // are not yet ported; the node flag ops + `self.opt_incremental_compatible_expansion`
-        // become live on the reconcile pass. NOTE `mOptIncrementalCompatibleExpansion`
-        // is `self.opt_incremental_compatible_expansion`.
-        let _ = indi;
+        let mut add_individual_to_processing_queue_due_to_modification = false;
+        if !calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHEDRETESTDUETOMODIFICATION,
+            )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHEDRETESTDUETOMODIFICATION,
+                );
+        }
+        if !calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_BLOCKINGRETESTDUEDIRECTMODIFIED,
+            )
+            && calc_alg_context
+                .process_context()
+                .node(*indi)
+                .nominal_individual()
+                .is_none()
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_BLOCKINGRETESTDUEDIRECTMODIFIED,
+                );
+            self.propagate_processing_restriction_to_successors(
+                *indi,
+                IndividualProcessNode::PRF_BLOCKINGRETESTDUEANCESTORMODIFIED,
+                true,
+                IndividualProcessNode::PRF_DIRECTBLOCKED
+                    | IndividualProcessNode::PRF_INDIRECTBLOCKED
+                    | IndividualProcessNode::PRF_PROCESSINGBLOCKED,
+                calc_alg_context,
+            );
+            add_individual_to_processing_queue_due_to_modification = true;
+        }
+        self.eliminiate_blocked_individuals(*indi, calc_alg_context);
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_SATISFIABLECACHED)
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTSATISFIABLECACHEDDUEDIRECTMODIFIED,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTSATISFIABLECACHEDDUEDIRECTMODIFIED,
+                );
+            add_individual_to_processing_queue_due_to_modification = true;
+        }
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED,
+            )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTSIGNATUREBLOCKINGCACHEDDUEDIRECTMODIFIED,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTSIGNATUREBLOCKINGCACHEDDUEDIRECTMODIFIED,
+                );
+            add_individual_to_processing_queue_due_to_modification = true;
+        }
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED,
+            )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTCOMPLETIONGRAPHCACHEDDUEDIRECTMODIFIED,
+                );
+            add_individual_to_processing_queue_due_to_modification = true;
+        }
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED,
+            )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTSATURATIONBLOCKINGCACHEDDUEDIRECTMODIFIED,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTSATURATIONBLOCKINGCACHEDDUEDIRECTMODIFIED,
+                );
+            add_individual_to_processing_queue_due_to_modification = true;
+        }
+        if add_individual_to_processing_queue_due_to_modification {
+            self.add_individual_to_blocking_update_review_processing_queue(*indi, calc_alg_context);
+        }
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKEND
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION
+                    | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
+            )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                );
+            if !add_individual_to_processing_queue_due_to_modification {
+                self.add_individual_to_backend_synchronisation_retest_queue(
+                    *indi,
+                    calc_alg_context,
+                );
+            }
+        }
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDPARTIALEXPANSION,
+            )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_SYNCHRONIZEDBACKENNEIGHBOURDFULLEXPANSION,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_RETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED,
+                );
+            if !add_individual_to_processing_queue_due_to_modification {
+                self.add_individual_to_backend_direct_influence_expansion_queue(
+                    *indi,
+                    calc_alg_context,
+                );
+            }
+        }
+        if self.opt_incremental_compatible_expansion
+            && calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_INCREMENTALEXPANDING,
+                )
+            && !calc_alg_context
+                .process_context()
+                .node(*indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED,
+                )
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED,
+                );
+            self.add_individual_to_incremental_compatibility_checking_queue(
+                *indi,
+                calc_alg_context,
+            );
+        }
+        if calc_alg_context
+            .process_context()
+            .node(*indi)
+            .is_nominal_individual_node()
+            && calc_alg_context
+                .process_context()
+                .node(*indi)
+                .nominal_individual()
+                .is_some()
+            && calc_alg_context
+                .process_context()
+                .node(*indi)
+                .is_delayed_nominal_processing_queued()
+        {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*indi)
+                .set_delayed_nominal_processing_queued(false);
+            self.add_individual_to_processing_queue(*indi, calc_alg_context);
+        }
     }
 
     /// Port of `pruneSuccessors`. cpp 19699–19758.
@@ -491,42 +858,168 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         remove_nominal_links: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 19699–19758.
-        //   indi.add(PRF_PURGEDBLOCKED);
-        //   self.eliminiate_blocked_individuals(indi, ctx);                                  // Unit 3
-        //   if remove_nominal_links && ancestor_indi.is_some():
-        //       ancIndiID = ctx...node(ancestor_indi).individual_node_id();
-        //       connSuccSet = node_mut(*indi).get_connection_successor_set(false);
-        //       if connSuccSet && connSuccSet.get_connection_successor_count() > 0:
-        //           for connID in connSuccSet.iterator():
-        //               if ancIndiID != connID:
-        //                   nomIndi = self.get_up_to_date_individual_by_id(connID, ctx);      // Unit 36
-        //                   if nomIndi.is_nominal_individual_node():
-        //                       locNomIndi = self.get_localized_individual(nomIndi, false, ctx);  // Unit 36
-        //                       for link in locNomIndi.successor_role_iterator(*indi): locNomIndi.remove_individual_link(link);
-        //                       locNomIndi.remove_individual_connection(*indi);
-        //       for succLink in node(*indi).successor_iterator():
-        //           succIndi = self.get_successor_individual(indi, succLink, ctx);            // Unit 36
-        //           if succIndi.is_nominal_individual_node() && succIndi.id() != ancIndiID:
-        //               locNomIndi = self.get_localized_individual(succIndi, false, ctx);
-        //               for link in locNomIndi.successor_role_iterator(*indi): locNomIndi.remove_individual_link(link);
-        //               locNomIndi.remove_individual_connection(*indi);
-        //   ancDepth = node(*indi).individual_ancestor_depth();
-        //   for succLink in node(*indi).successor_iterator():
-        //       if edge(succLink).get_creator_individual().id() == node(*indi).id():
-        //           succIndi = self.get_successor_individual(indi, succLink, ctx);
-        //           if succIndi.individual_ancestor_depth() > ancDepth:
-        //               if succIndi.is_blockable_individual() && !succIndi.has_purged_blocked_processing_restriction_flags():
-        //                   locSuccIndi = self.get_localized_individual(succIndi, false, ctx);
-        //                   self.prune_successors(locSuccIndi, *indi, true, ctx);             // recurse
-        //
-        // Held PORT-PENDING: the successor/connection/successor-role iterators
-        // (`CSuccessorIterator`/`CConnectionSuccessorSetIterator`/`CSuccessorRoleIterator`),
-        // `eliminiate_blocked_individuals` (Unit 3), and the cross-unit individual
-        // resolvers `get_up_to_date_individual_by_id`/`get_localized_individual`/
-        // `get_successor_individual` (Unit 36). The node flag op + ancestor-depth
-        // reads are substrate-resolvable on the reconcile pass.
-        let _ = (indi, ancestor_indi, remove_nominal_links);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(*indi)
+            .add_processing_restriction_flags(IndividualProcessNode::PRF_PURGEDBLOCKED);
+        self.eliminiate_blocked_individuals(*indi, calc_alg_context);
+
+        if remove_nominal_links && ancestor_indi.is_some() {
+            let ancestor_indi_id = calc_alg_context
+                .process_context()
+                .node(ancestor_indi)
+                .individual_node_id();
+            let pruned_indi_id = calc_alg_context
+                .process_context()
+                .node(*indi)
+                .individual_node_id();
+
+            let conn_ids: Vec<Cint64> = {
+                let conn_set = calc_alg_context
+                    .process_context()
+                    .node_connection_successor_set_existing(*indi);
+                if conn_set.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .conn_succ_set(conn_set)
+                        .get_connection_successor_count()
+                        > 0
+                {
+                    let mut iterator = calc_alg_context
+                        .process_context()
+                        .conn_succ_set(conn_set)
+                        .get_connection_successor_iterator();
+                    let mut ids = Vec::new();
+                    while iterator.has_next() {
+                        ids.push(iterator.next(true));
+                    }
+                    ids
+                } else {
+                    Vec::new()
+                }
+            };
+
+            for conn_id in conn_ids {
+                if ancestor_indi_id != conn_id {
+                    let nom_indi = self.get_up_to_date_individual_by_id(conn_id, calc_alg_context);
+                    if nom_indi.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .node(nom_indi)
+                            .is_nominal_individual_node()
+                    {
+                        let loc_nom_indi =
+                            self.get_localized_individual(nom_indi, false, calc_alg_context);
+                        self.remove_nominal_pruned_links(
+                            loc_nom_indi,
+                            pruned_indi_id,
+                            *indi,
+                            calc_alg_context,
+                        );
+                    }
+                }
+            }
+
+            let succ_links = self.snapshot_successor_links(*indi, calc_alg_context);
+            for succ_link in succ_links {
+                let succ_indi = self.get_successor_individual(indi, succ_link, calc_alg_context);
+                if calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .is_nominal_individual_node()
+                    && calc_alg_context
+                        .process_context()
+                        .node(succ_indi)
+                        .individual_node_id()
+                        != ancestor_indi_id
+                {
+                    let loc_nom_indi =
+                        self.get_localized_individual(succ_indi, false, calc_alg_context);
+                    self.remove_nominal_pruned_links(
+                        loc_nom_indi,
+                        pruned_indi_id,
+                        *indi,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
+
+        let ancestor_depth = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .individual_ancestor_depth();
+        let source_indi_id = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .individual_node_id();
+        let succ_links = self.snapshot_successor_links(*indi, calc_alg_context);
+        for succ_link in succ_links {
+            let creator_indi = calc_alg_context
+                .process_context()
+                .edge(succ_link)
+                .get_creator_individual();
+            let creator_indi_id = calc_alg_context
+                .process_context()
+                .node(creator_indi)
+                .individual_node_id();
+            if creator_indi_id == source_indi_id {
+                let succ_indi = self.get_successor_individual(indi, succ_link, calc_alg_context);
+                let prune_succ = {
+                    let succ_node = calc_alg_context.process_context().node(succ_indi);
+                    succ_node.individual_ancestor_depth() > ancestor_depth
+                        && succ_node.is_blockable_individual()
+                        && !succ_node.has_purged_blocked_processing_restriction_flags()
+                };
+                if prune_succ {
+                    let mut loc_succ_indi =
+                        self.get_localized_individual(succ_indi, false, calc_alg_context);
+                    self.prune_successors(&mut loc_succ_indi, *indi, true, calc_alg_context);
+                }
+            }
+        }
+    }
+
+    fn snapshot_successor_links(
+        &mut self,
+        indi: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Vec<EdgeId> {
+        let mut iterator = calc_alg_context
+            .process_context()
+            .node_successor_iterator(indi);
+        let mut links = Vec::new();
+        while iterator.has_next() {
+            links.push(iterator.next_link(true));
+        }
+        links
+    }
+
+    fn remove_nominal_pruned_links(
+        &mut self,
+        loc_nom_indi: NodeId,
+        pruned_indi_id: Cint64,
+        pruned_indi: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let links = {
+            let mut iterator = calc_alg_context
+                .process_context()
+                .node_successor_role_iterator(loc_nom_indi, pruned_indi_id);
+            let mut links = Vec::new();
+            while iterator.has_next() {
+                links.push(iterator.next(true));
+            }
+            links
+        };
+        for link in links {
+            calc_alg_context
+                .process_context_mut()
+                .node_remove_individual_link(loc_nom_indi, link);
+        }
+        calc_alg_context
+            .process_context_mut()
+            .node_remove_individual_connection(loc_nom_indi, pruned_indi);
     }
 
     // =======================================================================
@@ -558,19 +1051,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         concept_negation: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 20125–20140.
-        //   roleSuccHash = node_mut(*process_indi).get_reapply_role_successor_hash(false);
-        //   if roleSuccHash.is_some():
-        //       for link in role_succ_hash(roleSuccHash).get_role_successor_link_iterator(role):
-        //           succIndi = self.get_successor_individual(process_indi, link, ctx);        // Unit 36
-        //           conLabelSet = node_mut(succIndi).get_reapply_concept_label_set(false);
-        //           if label_set(conLabelSet).has_concept(concept, concept_negation): return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: the `CRoleSuccessorLinkIterator` (role-succ-hash
-        // iterator) + `get_successor_individual` (Unit 36); the label-set
-        // `has_concept` is ported.
-        let _ = (process_indi, role, concept, concept_negation);
+        let role_succ_hash = calc_alg_context
+            .process_context()
+            .node_reapply_role_successor_hash_existing(*process_indi);
+        if role_succ_hash.is_some() {
+            let mut role_succ_it = calc_alg_context
+                .process_context()
+                .role_succ_hash(role_succ_hash)
+                .get_role_successor_link_iterator(calc_alg_context.process_context().edges(), role);
+            while role_succ_it.has_next() {
+                let link = role_succ_it.next(true);
+                let succ_indi = self.get_successor_individual(process_indi, link, calc_alg_context);
+                let con_label_set = calc_alg_context
+                    .process_context_mut()
+                    .node_reapply_concept_label_set(succ_indi);
+                if self.label_set_contains_concept_resolved(
+                    con_label_set,
+                    concept,
+                    concept_negation,
+                    calc_alg_context,
+                ) {
+                    return true;
+                }
+            }
+        }
         false
     }
 
@@ -586,23 +1090,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 20142–20167.
-        //   roleSuccHash = node_mut(*process_indi).get_reapply_role_successor_hash(false);
-        //   if roleSuccHash.is_some():
-        //       for link in role_succ_hash(roleSuccHash).get_role_successor_link_iterator(role):
-        //           succIndi = self.get_successor_individual(process_indi, link, ctx);        // Unit 36
-        //           conLabelSet = node_mut(succIndi).get_reapply_concept_label_set(false);
-        //           allContained = true;
-        //           for nl in concept_linker:
-        //               if !label_set(conLabelSet).has_concept(nl.target, nl.negated ^ negate): allContained = false; break;
-        //           if allContained:
-        //               // C++ `if (process_indi.is_individual_ancestor(succIndi)) {}` is an empty no-op
-        //               return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: the role-succ-hash iterator + `get_successor_individual`
-        // (Unit 36); the label-set test is ported.
-        let _ = (process_indi, role, concept_linker, negate);
+        let role_succ_hash = calc_alg_context
+            .process_context()
+            .node_reapply_role_successor_hash_existing(*process_indi);
+        if role_succ_hash.is_some() {
+            let mut role_succ_it = calc_alg_context
+                .process_context()
+                .role_succ_hash(role_succ_hash)
+                .get_role_successor_link_iterator(calc_alg_context.process_context().edges(), role);
+            while role_succ_it.has_next() {
+                let link = role_succ_it.next(true);
+                let mut succ_indi =
+                    self.get_successor_individual(process_indi, link, calc_alg_context);
+                if self.contains_individual_node_concepts_negated(
+                    &mut succ_indi,
+                    concept_linker,
+                    negate,
+                    calc_alg_context,
+                ) {
+                    return true;
+                }
+            }
+        }
         false
     }
 
@@ -618,12 +1127,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 20170–20193 (identical scan to
-        // `has_role_successor_concepts`, returning `succIndi` instead of `true` and
-        // `NodeId::NONE` (`nullptr`) instead of `false`).
-        // Held PORT-PENDING: the role-succ-hash iterator + `get_successor_individual`
-        // (Unit 36); the label-set test is ported.
-        let _ = (process_indi, role, concept_linker, negate);
+        let role_succ_hash = calc_alg_context
+            .process_context()
+            .node_reapply_role_successor_hash_existing(*process_indi);
+        if role_succ_hash.is_some() {
+            let mut role_succ_it = calc_alg_context
+                .process_context()
+                .role_succ_hash(role_succ_hash)
+                .get_role_successor_link_iterator(calc_alg_context.process_context().edges(), role);
+            while role_succ_it.has_next() {
+                let link = role_succ_it.next(true);
+                let mut succ_indi =
+                    self.get_successor_individual(process_indi, link, calc_alg_context);
+                if self.contains_individual_node_concepts_negated(
+                    &mut succ_indi,
+                    concept_linker,
+                    negate,
+                    calc_alg_context,
+                ) {
+                    return succ_indi;
+                }
+            }
+        }
         NodeId::NONE
     }
 
@@ -644,33 +1169,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         distinct_count: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 20198–20238.
-        //   roleSuccHash = node_mut(*process_indi).get_reapply_role_successor_hash(false);
-        //   if roleSuccHash.is_some():
-        //       for link in role_succ_hash(roleSuccHash).get_role_successor_link_iterator(role):
-        //           succIndi = self.get_successor_individual(process_indi, link, ctx);        // Unit 36
-        //           succIndiID = node(succIndi).individual_node_id();
-        //           disHash = node_mut(succIndi).get_distinct_hash(false);
-        //           if disHash.is_some():
-        //               maxSuccDisCount = distinct_hash(disHash).get_distinct_count() + 1;
-        //               if maxSuccDisCount >= distinct_count
-        //                  && self.contains_individual_node_concepts_negated(succIndi, concept_linker, negate, ctx):  // ported (this unit)
-        //                   succDisCount = 1; failDisCount = 0;
-        //                   for disIndiID in distinct_hash(disHash).iterator():
-        //                       (while maxSuccDisCount - failDisCount >= distinct_count && succDisCount < distinct_count)
-        //                       if disIndiID != succIndiID && node(*process_indi).has_role_successor_to_individual_id(role, disIndiID, true):
-        //                           if disIndiID < succIndiID: break;  // pair already checked w/ smaller-id successor
-        //                           disIndi = self.get_up_to_date_individual_by_id(disIndiID, ctx);   // Unit 36
-        //                           if self.contains_individual_node_concepts_negated(disIndi, concept_linker, negate, ctx): succDisCount += 1; else failDisCount += 1;
-        //                   if succDisCount >= distinct_count: return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: the role-succ-hash + distinct-hash iterators,
-        // `get_successor_individual`/`get_up_to_date_individual_by_id` (Unit 36).
-        // The `contains_individual_node_concepts_negated` test +
-        // `has_role_successor_to_individual_id` node accessor are ported; they become
-        // live on the reconcile pass.
-        let _ = (process_indi, role, concept_linker, negate, distinct_count);
+        let role_succ_hash = calc_alg_context
+            .process_context()
+            .node_reapply_role_successor_hash_existing(*process_indi);
+        if role_succ_hash.is_some() {
+            let mut role_succ_it = calc_alg_context
+                .process_context()
+                .role_succ_hash(role_succ_hash)
+                .get_role_successor_link_iterator(calc_alg_context.process_context().edges(), role);
+            while role_succ_it.has_next() {
+                let link = role_succ_it.next(true);
+                let mut succ_indi =
+                    self.get_successor_individual(process_indi, link, calc_alg_context);
+                let succ_indi_id = calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .individual_node_id();
+                let dis_hash = calc_alg_context
+                    .process_context()
+                    .node_distinct_hash_existing(succ_indi);
+                if dis_hash.is_some() {
+                    let max_succ_dis_count = calc_alg_context
+                        .process_context()
+                        .distinct_hash(dis_hash)
+                        .get_distinct_count()
+                        + 1;
+                    if max_succ_dis_count >= distinct_count
+                        && self.contains_individual_node_concepts_negated(
+                            &mut succ_indi,
+                            concept_linker,
+                            negate,
+                            calc_alg_context,
+                        )
+                    {
+                        let mut succ_dis_count = 1;
+                        let mut fail_dis_count = 0;
+                        let mut dis_it = calc_alg_context
+                            .process_context()
+                            .distinct_hash(dis_hash)
+                            .get_distinct_iterator();
+                        while dis_it.has_next()
+                            && max_succ_dis_count - fail_dis_count >= distinct_count
+                            && succ_dis_count < distinct_count
+                        {
+                            let dis_indi_id = dis_it.next_distinct_individual_id(true);
+                            if dis_indi_id != succ_indi_id
+                                && calc_alg_context
+                                    .process_context_mut()
+                                    .node_has_role_successor_to_individual_id(
+                                        *process_indi,
+                                        role,
+                                        dis_indi_id,
+                                        true,
+                                    )
+                            {
+                                if dis_indi_id < succ_indi_id {
+                                    break;
+                                }
+                                let mut dis_indi = self
+                                    .get_up_to_date_individual_by_id(dis_indi_id, calc_alg_context);
+                                if dis_indi.is_some()
+                                    && self.contains_individual_node_concepts_negated(
+                                        &mut dis_indi,
+                                        concept_linker,
+                                        negate,
+                                        calc_alg_context,
+                                    )
+                                {
+                                    succ_dis_count += 1;
+                                } else {
+                                    fail_dis_count += 1;
+                                }
+                            }
+                        }
+                        if succ_dis_count >= distinct_count {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
         false
     }
 
@@ -698,28 +1276,59 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 20241–20270.
-        //   if disjoint_role_linker not empty:
-        //       for nl in disjoint_role_linker:
-        //           disjointRole = nl.target;
-        //           negDisEdge = ctx.process_context_mut().alloc_disjoint_edge(DisjointEdge::new(...));
-        //           disjoint_edge_mut(negDisEdge).init_negation_disjoint_edge(*source_indi, *destination_indi, disjointRole, dep_track_point);
-        //           linkIndi = node(*source_indi).get_role_successor_to_individual_link_id(disjointRole, node(*destination_indi).id(), true);
-        //           if linkIndi.is_some():
-        //               // [exceptions]: clash — throw CCalculationClashProcessingException(clashDes)
-        //               //   clashDes = self.create_clashed_individual_link_descriptor(NONE, linkIndi, edge(linkIndi).get_dependency_track_point(), ctx);   // Unit 30
-        //               //   clashDes = self.create_clashed_negation_disjoint_descriptor(clashDes, negDisEdge, dep_track_point, ctx);                        // Unit 30
-        //               return; // early-return placeholder for the throw
-        //           else:
-        //               node_mut(*source_indi).set_disjoint_role_connections(true);
-        //               node_mut(*destination_indi).set_disjoint_role_connections(true);
-        //               node_mut(*source_indi).install_disjoint_link(negDisEdge);
-        //       // destination need not install the connection — the disjoint roles already carry a role link.
-        //
-        // Held PORT-PENDING: the `CNegationDisjointEdge::init_negation_disjoint_edge`
-        // body (W2-DEFER) + the clash-descriptor factory/throw (Unit 30, [exceptions]).
-        // The role/role-list iteration + node flag/install ops are substrate-resolvable.
-        let _ = (source_indi, destination_indi, disjoint_role_linker, dep_track_point);
+        for nl in disjoint_role_linker {
+            let disjoint_role = nl.target;
+            let mut edge = DisjointEdge::new();
+            edge.init_negation_disjoint_edge(
+                *source_indi,
+                *destination_indi,
+                disjoint_role,
+                dep_track_point,
+            );
+            let neg_dis_edge = calc_alg_context
+                .process_context_mut()
+                .alloc_disjoint_edge(edge);
+
+            let link_indi = self.get_individual_node_link(
+                source_indi,
+                destination_indi,
+                disjoint_role,
+                calc_alg_context,
+            );
+            if link_indi.is_some() {
+                let link_dep_track_point = calc_alg_context
+                    .process_context()
+                    .edge(link_indi)
+                    .get_dependency_track_point();
+                let mut clash_des: ClashDescId = Id::NONE;
+                clash_des = self.create_clashed_individual_link_descriptor(
+                    clash_des,
+                    link_indi,
+                    link_dep_track_point,
+                    calc_alg_context,
+                );
+                clash_des = self.create_clashed_negation_disjoint_descriptor(
+                    clash_des,
+                    neg_dis_edge,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                calc_alg_context.raise_clash(clash_des);
+                return;
+            }
+
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*source_indi)
+                .set_disjoint_role_connections(true);
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(*destination_indi)
+                .set_disjoint_role_connections(true);
+            calc_alg_context
+                .process_context_mut()
+                .node_install_disjoint_link(*source_indi, neg_dis_edge);
+        }
     }
 
     /// Port of `createIndividualNodeNegationLink`. cpp 20274–20295.
@@ -735,24 +1344,67 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 20274–20295.
-        //   negDisEdge = ctx.process_context_mut().alloc_disjoint_edge(DisjointEdge::new(...));
-        //   disjoint_edge_mut(negDisEdge).init_negation_disjoint_edge(*source_indi, *destination_indi, negation_role, dep_track_point);
-        //   linkIndi = node(*source_indi).get_role_successor_to_individual_link_id(negation_role, node(*destination_indi).id(), true);
-        //   if linkIndi.is_some():
-        //       // [exceptions]: clash — throw CCalculationClashProcessingException(clashDes) (same two-descriptor chain as above, Unit 30)
-        //       return;
-        //   else:
-        //       node_mut(*source_indi).install_disjoint_link(negDisEdge);
-        //       node_mut(*source_indi).set_disjoint_role_connections(true);
-        //       node_mut(*destination_indi).set_disjoint_role_connections(true);
-        //       destId = node(*source_indi).individual_node_id();
-        //       connSet = node_mut(*destination_indi).get_connection_successor_set(true);
-        //       conn_succ_set_mut(connSet).insert_connection_successor(destId);
-        //
-        // Held PORT-PENDING: the disjoint-edge `init` body (W2-DEFER) + clash
-        // factory/throw (Unit 30, [exceptions]); the node ops are substrate-resolvable.
-        let _ = (source_indi, destination_indi, negation_role, dep_track_point);
+        let mut edge = DisjointEdge::new();
+        edge.init_negation_disjoint_edge(
+            *source_indi,
+            *destination_indi,
+            negation_role,
+            dep_track_point,
+        );
+        let neg_dis_edge = calc_alg_context
+            .process_context_mut()
+            .alloc_disjoint_edge(edge);
+
+        let link_indi = self.get_individual_node_link(
+            source_indi,
+            destination_indi,
+            negation_role,
+            calc_alg_context,
+        );
+        if link_indi.is_some() {
+            let link_dep_track_point = calc_alg_context
+                .process_context()
+                .edge(link_indi)
+                .get_dependency_track_point();
+            let mut clash_des: ClashDescId = Id::NONE;
+            clash_des = self.create_clashed_individual_link_descriptor(
+                clash_des,
+                link_indi,
+                link_dep_track_point,
+                calc_alg_context,
+            );
+            clash_des = self.create_clashed_negation_disjoint_descriptor(
+                clash_des,
+                neg_dis_edge,
+                dep_track_point,
+                calc_alg_context,
+            );
+            calc_alg_context.raise_clash(clash_des);
+            return;
+        }
+
+        calc_alg_context
+            .process_context_mut()
+            .node_install_disjoint_link(*source_indi, neg_dis_edge);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(*source_indi)
+            .set_disjoint_role_connections(true);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(*destination_indi)
+            .set_disjoint_role_connections(true);
+        let source_id = calc_alg_context
+            .process_context()
+            .node(*source_indi)
+            .individual_node_id();
+        let conn_set = calc_alg_context
+            .process_context_mut()
+            .node_connection_successor_set(*destination_indi);
+        calc_alg_context
+            .process_context_mut()
+            .conn_succ_set_mut(conn_set)
+            .insert_connection_successor(source_id);
     }
 
     // =======================================================================
@@ -777,55 +1429,144 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: &mut NodeId,
         con_des: ConDescId,
         role_linker: &[NegLink<RoleId>],
-        anc_role: RoleId,
+        _anc_role: RoleId,
         concept_linker: &[NegLink<ConceptId>],
         negate: bool,
         dep_track_point: TrackPointId,
         saturation_indi_node: SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 21565–21632.
-        //   succIndi = NONE; mergeLink = NONE;
-        //   roleSucc = node_mut(*indi).get_reapply_role_successor_hash(false);
-        //   if roleSucc.is_some():
-        //       for nl in role_linker (until succIndi found):
-        //           role = nl.target; invRole = nl.negated;
-        //           if !invRole && ctx.ontology_arenas().role(role).is_functional():
-        //               it = role_succ_hash(roleSucc).get_role_successor_link_iterator(role);
-        //               if it.has_next(): link = it.next(false); succIndi = self.get_localized_successor_individual(indi, link, ctx); mergeLink = link;  // Unit 36
-        //   if succIndi.is_some():
-        //       nextAllDepTrackPoint = NONE;
-        //       allDepNode = self.create_all_dependency(&mut nextAllDepTrackPoint, indi, con_des, dep_track_point, edge(mergeLink).get_dependency_track_point(), ctx);  // Unit 29
-        //       satCachingPossible; lastSatCachPossibleConDes = NONE;
-        //       if self.conf_expand_created_successors_from_saturation:
-        //           self.try_expansion_from_saturated_data(indi, succIndi, con_des, nextAllDepTrackPoint, saturation_indi_node, &mut satCachingPossible, &mut lastSatCachPossibleConDes, ctx);
-        //       newLinksAdded = false;
-        //       for nl in role_linker:
-        //           role = nl.target; invRole = nl.negated;
-        //           if !invRole:
-        //               if !self.has_individuals_link(indi, succIndi, role, true, ctx):       // ported (this unit)
-        //                   self.create_new_individuals_link_reapplyed(indi, indi, succIndi, role, nextAllDepTrackPoint, ctx);  // this unit
-        //                   newLinksAdded = true;
-        //           else:
-        //               if !self.has_individuals_link(succIndi, indi, role, true, ctx):
-        //                   self.create_new_individuals_link_reapplyed(indi, succIndi, indi, role, nextAllDepTrackPoint, ctx);
-        //                   newLinksAdded = true;
-        //       if newLinksAdded: self.propagate_individual_node_modified(succIndi, ctx);     // this unit
-        //       self.add_concepts_to_individual(concept_linker, negate, succIndi, nextAllDepTrackPoint, true, true, NONE, ctx);  // Unit 36
-        //       if self.conf_caching_blocking_from_saturation:
-        //           self.try_establish_saturation_caching(indi, succIndi, saturation_indi_node, &mut satCachingPossible, &mut lastSatCachPossibleConDes, ctx);
-        //   return succIndi;
-        //
-        // Held PORT-PENDING: the role-succ-hash iterator, `create_all_dependency`
-        // (Unit 29), the saturation-caching expansion helpers, `add_concepts_to_individual`
-        // (Unit 36), `get_localized_successor_individual` (Unit 36). The
-        // `is_functional` read + `has_individuals_link` + `create_new_individuals_link_reapplyed`
-        // + `propagate_individual_node_modified` are ported (this unit).
-        let _ = (
-            indi, con_des, role_linker, anc_role, concept_linker, negate, dep_track_point,
-            saturation_indi_node,
-        );
-        NodeId::NONE
+        let mut succ_indi = NodeId::NONE;
+        let mut merge_link = EdgeId::NONE;
+        let role_succ_hash = calc_alg_context
+            .process_context()
+            .node_reapply_role_successor_hash_existing(*indi);
+        if role_succ_hash.is_some() {
+            for role_link in role_linker {
+                if succ_indi.is_some() {
+                    break;
+                }
+                let role = role_link.target;
+                let inv_role = role_link.negated;
+                if !inv_role
+                    && calc_alg_context
+                        .ontology_arenas()
+                        .role(role)
+                        .is_functional()
+                {
+                    let mut role_succ_it = calc_alg_context
+                        .process_context()
+                        .role_succ_hash(role_succ_hash)
+                        .get_role_successor_link_iterator(
+                            calc_alg_context.process_context().edges(),
+                            role,
+                        );
+                    if role_succ_it.has_next() {
+                        let link = role_succ_it.next(false);
+                        succ_indi =
+                            self.get_localized_successor_individual(indi, link, calc_alg_context);
+                        merge_link = link;
+                    }
+                }
+            }
+        }
+
+        if succ_indi.is_some() {
+            let mut next_all_dep_track_point = TrackPointId::NONE;
+            let link_dep_track_point = calc_alg_context
+                .process_context()
+                .edge(merge_link)
+                .get_dependency_track_point();
+            let _all_dep_node = self.create_all_dependency(
+                &mut next_all_dep_track_point,
+                indi,
+                con_des,
+                dep_track_point,
+                link_dep_track_point,
+                calc_alg_context,
+            );
+            let mut sat_caching_possible = true;
+            let mut last_sat_cach_possible_con_des = ConDescId::NONE;
+            let mut saturation_indi_node = saturation_indi_node;
+            if self.conf_expand_created_successors_from_saturation {
+                self.try_expansion_from_saturated_data(
+                    indi,
+                    succ_indi,
+                    con_des,
+                    next_all_dep_track_point,
+                    &mut saturation_indi_node,
+                    &mut sat_caching_possible,
+                    &mut last_sat_cach_possible_con_des,
+                    calc_alg_context,
+                );
+            }
+
+            let mut new_links_added = false;
+            for role_link in role_linker {
+                let role = role_link.target;
+                let inv_role = role_link.negated;
+                if !inv_role {
+                    let mut target = succ_indi;
+                    if !self.has_individuals_link(indi, &mut target, role, true, calc_alg_context) {
+                        self.create_new_individuals_link_reapplyed(
+                            *indi,
+                            *indi,
+                            succ_indi,
+                            role,
+                            next_all_dep_track_point,
+                            calc_alg_context,
+                        );
+                        new_links_added = true;
+                    }
+                } else {
+                    let mut source = succ_indi;
+                    let mut target = *indi;
+                    if !self.has_individuals_link(
+                        &mut source,
+                        &mut target,
+                        role,
+                        true,
+                        calc_alg_context,
+                    ) {
+                        self.create_new_individuals_link_reapplyed(
+                            *indi,
+                            succ_indi,
+                            *indi,
+                            role,
+                            next_all_dep_track_point,
+                            calc_alg_context,
+                        );
+                        new_links_added = true;
+                    }
+                }
+            }
+            if new_links_added {
+                let mut modified = succ_indi;
+                self.propagate_individual_node_modified(&mut modified, calc_alg_context);
+            }
+            let mut target = succ_indi;
+            self.add_concepts_to_individual(
+                concept_linker,
+                negate,
+                &mut target,
+                next_all_dep_track_point,
+                true,
+                true,
+                None,
+                calc_alg_context,
+            );
+            if self.conf_caching_blocking_from_saturation {
+                self.try_establish_saturation_caching(
+                    indi,
+                    succ_indi,
+                    saturation_indi_node,
+                    &mut sat_caching_possible,
+                    &mut last_sat_cach_possible_con_des,
+                    calc_alg_context,
+                );
+            }
+        }
+        succ_indi
     }
 
     /// Port of `createSuccessorIndividual`. cpp 21635–21670.
@@ -845,33 +1586,105 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         saturation_indi_node: SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 21635–21670.
-        //   nextDepTrackPoint = NONE;
-        //   someDepNode = self.create_some_dependency(&mut nextDepTrackPoint, indi, con_des, dep_track_point, ctx);   // Unit 29
-        //   succIndi = self.create_new_individual(nextDepTrackPoint, ctx.ontology_arenas().role(anc_role).is_data_role(), ctx);  // this unit
-        //   satCachingPossible = true; lastSatCachPossibleConDes = NONE;
-        //   if self.conf_expand_created_successors_from_saturation:
-        //       self.try_expansion_from_saturated_data(indi, succIndi, con_des, nextDepTrackPoint, saturation_indi_node, &mut satCachingPossible, &mut lastSatCachPossibleConDes, ctx);
-        //   ancLink = self.create_new_individuals_links_reapplyed(indi, succIndi, role_linker, anc_role, nextDepTrackPoint, false, ctx);  // Unit 10
-        //   node_mut(succIndi).set_ancestor_link(ancLink);
-        //   node_mut(succIndi).set_individual_ancestor_depth(node(*indi).individual_ancestor_depth() + 1);
-        //   if node(*indi).has_partial(PRF_SATISFIABLECACHED | PRF_ANCESTORSATISFIABLECACHED): node_mut(succIndi).add(PRF_ANCESTORSATISFIABLECACHED);
-        //   if node(*indi).has_partial(PRF_SIGNATUREBLOCKINGCACHED | PRF_ANCESTORSIGNATUREBLOCKINGCACHED): node_mut(succIndi).add(PRF_ANCESTORSIGNATUREBLOCKINGCACHED);
-        //   if node(*indi).has_partial(PRF_SATURATIONBLOCKINGCACHED | PRF_ANCESTORSATURATIONBLOCKINGCACHED): node_mut(succIndi).add(PRF_ANCESTORSATURATIONBLOCKINGCACHED);
-        //   self.add_concepts_to_individual(concept_linker, negate, succIndi, nextDepTrackPoint, true, true, NONE, ctx);  // Unit 36
-        //   if self.conf_caching_blocking_from_saturation:
-        //       self.try_establish_saturation_caching(indi, succIndi, saturation_indi_node, &mut satCachingPossible, &mut lastSatCachPossibleConDes, ctx);
-        //   return succIndi;
-        //
-        // Held PORT-PENDING: `create_some_dependency` (Unit 29),
-        // `create_new_individuals_links_reapplyed` (Unit 10), the saturation-caching
-        // helpers, `add_concepts_to_individual` (Unit 36). `create_new_individual` +
-        // the node-flag inheritance are ported (this unit) / substrate-resolvable.
-        let _ = (
-            indi, con_des, role_linker, anc_role, concept_linker, negate, dep_track_point,
-            saturation_indi_node,
+        let mut next_dep_track_point = TrackPointId::NONE;
+        let _some_dep_node = self.create_some_dependency(
+            &mut next_dep_track_point,
+            indi,
+            con_des,
+            dep_track_point,
+            calc_alg_context,
         );
-        NodeId::NONE
+        let is_data_role = calc_alg_context
+            .ontology_arenas()
+            .role(anc_role)
+            .is_data_role();
+        let mut succ_indi =
+            self.create_new_individual(next_dep_track_point, is_data_role, calc_alg_context);
+        let mut sat_caching_possible = true;
+        let mut last_sat_cach_possible_con_des = ConDescId::NONE;
+        let mut saturation_indi_node = saturation_indi_node;
+        if self.conf_expand_created_successors_from_saturation {
+            self.try_expansion_from_saturated_data(
+                indi,
+                succ_indi,
+                con_des,
+                next_dep_track_point,
+                &mut saturation_indi_node,
+                &mut sat_caching_possible,
+                &mut last_sat_cach_possible_con_des,
+                calc_alg_context,
+            );
+        }
+        let anc_link = self.create_new_individuals_links_reapplyed(
+            *indi,
+            succ_indi,
+            role_linker,
+            anc_role,
+            next_dep_track_point,
+            false,
+            calc_alg_context,
+        );
+        let ancestor_depth = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .individual_ancestor_depth();
+        let source_flags = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .processing_restriction_flags();
+        {
+            let succ_node = calc_alg_context.process_context_mut().node_mut(succ_indi);
+            succ_node.set_ancestor_link(anc_link);
+            succ_node.set_individual_ancestor_depth(ancestor_depth + 1);
+            if source_flags
+                & (IndividualProcessNode::PRF_SATISFIABLECACHED
+                    | IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED)
+                != 0
+            {
+                succ_node.add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED,
+                );
+            }
+            if source_flags
+                & (IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED
+                    | IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED)
+                != 0
+            {
+                succ_node.add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED,
+                );
+            }
+            if source_flags
+                & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
+                    | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
+                != 0
+            {
+                succ_node.add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
+                );
+            }
+        }
+        self.add_concepts_to_individual(
+            concept_linker,
+            negate,
+            &mut succ_indi,
+            next_dep_track_point,
+            true,
+            true,
+            None,
+            calc_alg_context,
+        );
+        if self.conf_caching_blocking_from_saturation {
+            self.try_establish_saturation_caching(
+                indi,
+                succ_indi,
+                saturation_indi_node,
+                &mut sat_caching_possible,
+                &mut last_sat_cach_possible_con_des,
+                calc_alg_context,
+            );
+        }
+        succ_indi
     }
 
     /// Port of `createDistinctSuccessorIndividuals`. cpp 22143–22186.
@@ -893,32 +1706,106 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         succ_card_count: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 22143–22186.
-        //   for _ in 0..succ_card_count:
-        //       succIndi = self.create_new_individual(dep_track_point, ctx.ontology_arenas().role(anc_role).is_data_role(), ctx);  // this unit
-        //       indi_list.push(succIndi);
-        //   saturationIndiNode = self.get_creation_successor_saturation_node(indi, con_des, ctx);   // saturation helper (unported)
-        //   self.create_individuals_distinct(indi_list, dep_track_point, ctx);                      // this unit
-        //   for succIndi in indi_list:
-        //       satCachingPossible = true; lastSatCachPossibleConDes = NONE;
-        //       if self.conf_expand_created_successors_from_saturation && saturationIndiNode.is_some():
-        //           self.try_expansion_from_saturated_data(indi, succIndi, con_des, dep_track_point, saturationIndiNode, &mut satCachingPossible, &mut lastSatCachPossibleConDes, ctx);
-        //       ancLink = self.create_new_individuals_links_reapplyed(indi, succIndi, role_linker, anc_role, dep_track_point, false, ctx);  // Unit 10
-        //       node_mut(succIndi).set_ancestor_link(ancLink);
-        //       node_mut(succIndi).set_individual_ancestor_depth(node(*indi).individual_ancestor_depth() + 1);
-        //       <inherit PRF_ANCESTOR{SATISFIABLE,SIGNATUREBLOCKING,SATURATIONBLOCKING}CACHED as in create_successor_individual>
-        //       self.add_concepts_to_individual(concept_linker, negate, succIndi, dep_track_point, true, true, NONE, ctx);  // Unit 36
-        //       if self.conf_caching_blocking_from_saturation && saturationIndiNode.is_some():
-        //           self.try_establish_saturation_caching(indi, succIndi, saturationIndiNode, &mut satCachingPossible, &mut lastSatCachPossibleConDes, ctx);
-        //
-        // Held PORT-PENDING: `get_creation_successor_saturation_node` + the
-        // saturation-caching helpers, `create_new_individuals_links_reapplyed`
-        // (Unit 10), `add_concepts_to_individual` (Unit 36). `create_new_individual`
-        // + `create_individuals_distinct` are ported (this unit).
-        let _ = (
-            indi, con_des, indi_list, role_linker, anc_role, concept_linker, negate,
-            dep_track_point, succ_card_count,
-        );
+        let is_data_role = calc_alg_context
+            .ontology_arenas()
+            .role(anc_role)
+            .is_data_role();
+        for _ in 0..succ_card_count {
+            let succ_indi =
+                self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
+            indi_list.push(succ_indi);
+        }
+        let mut saturation_indi_node =
+            self.get_creation_successor_saturation_node(indi, con_des, calc_alg_context);
+        self.create_individuals_distinct(indi_list, dep_track_point, calc_alg_context);
+
+        let ancestor_depth = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .individual_ancestor_depth();
+        let source_flags = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .processing_restriction_flags();
+        let created_successors = indi_list.clone();
+        for mut succ_indi in created_successors {
+            let mut sat_caching_possible = true;
+            let mut last_sat_cach_possible_con_des = ConDescId::NONE;
+            if self.conf_expand_created_successors_from_saturation && saturation_indi_node.is_some()
+            {
+                self.try_expansion_from_saturated_data(
+                    indi,
+                    succ_indi,
+                    con_des,
+                    dep_track_point,
+                    &mut saturation_indi_node,
+                    &mut sat_caching_possible,
+                    &mut last_sat_cach_possible_con_des,
+                    calc_alg_context,
+                );
+            }
+            let anc_link = self.create_new_individuals_links_reapplyed(
+                *indi,
+                succ_indi,
+                role_linker,
+                anc_role,
+                dep_track_point,
+                false,
+                calc_alg_context,
+            );
+            {
+                let succ_node = calc_alg_context.process_context_mut().node_mut(succ_indi);
+                succ_node.set_ancestor_link(anc_link);
+                succ_node.set_individual_ancestor_depth(ancestor_depth + 1);
+                if source_flags
+                    & (IndividualProcessNode::PRF_SATISFIABLECACHED
+                        | IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED)
+                    != 0
+                {
+                    succ_node.add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED,
+                    );
+                }
+                if source_flags
+                    & (IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED
+                        | IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED)
+                    != 0
+                {
+                    succ_node.add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED,
+                    );
+                }
+                if source_flags
+                    & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
+                        | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
+                    != 0
+                {
+                    succ_node.add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
+                    );
+                }
+            }
+            self.add_concepts_to_individual(
+                concept_linker,
+                negate,
+                &mut succ_indi,
+                dep_track_point,
+                true,
+                true,
+                None,
+                calc_alg_context,
+            );
+            if self.conf_caching_blocking_from_saturation && saturation_indi_node.is_some() {
+                self.try_establish_saturation_caching(
+                    indi,
+                    succ_indi,
+                    saturation_indi_node,
+                    &mut sat_caching_possible,
+                    &mut last_sat_cach_possible_con_des,
+                    calc_alg_context,
+                );
+            }
+        }
     }
 
     // =======================================================================
@@ -945,37 +1832,124 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> EdgeId {
-        // PORT-PENDING: faithful transcription of cpp 22212–22247.
-        //   ancRoleLink = NONE; generatedInvLink = false;
-        //   for nl in role_linker:
-        //       role = nl.target; invRole = nl.negated; STATINC(LINKSCREATIONCOUNT);
-        //       individualLink = ctx.process_context_mut().alloc_edge(IndividualLinkEdge::new(...));
-        //       if !invRole:
-        //           self.create_individual_node_disjoint_roles_links(indi_source, indi_destination, ctx.ontology_arenas().role(role).get_disjoint_role_list(), dep_track_point, ctx);  // this unit
-        //           edge_mut(individualLink).init_individual_link_edge(*indi_source, *indi_source, *indi_destination, role, dep_track_point);
-        //           self.install_individual_node_role_link(indi_source, indi_destination, individualLink, ctx);  // this unit
-        //       else:
-        //           generatedInvLink = true;
-        //           self.create_individual_node_disjoint_roles_links(indi_destination, indi_source, ctx.ontology_arenas().role(role).get_disjoint_role_list(), dep_track_point, ctx);
-        //           edge_mut(individualLink).init_individual_link_edge(*indi_source, *indi_destination, *indi_source, role, dep_track_point);
-        //           self.install_individual_node_role_link(indi_destination, indi_source, individualLink, ctx);
-        //       if anc_role == role: ancRoleLink = individualLink;
-        //   if generatedInvLink || node(*indi_destination).is_nominal_individual_node():
-        //       destId = node(*indi_destination).individual_node_id();
-        //       conn_succ_set_mut(node_mut(*indi_source).get_connection_successor_set(true)).insert_connection_successor(destId);
-        //   srcId = node(*indi_source).individual_node_id();
-        //   conn_succ_set_mut(node_mut(*indi_destination).get_connection_successor_set(true)).insert_connection_successor(srcId);
-        //   if self.opt_incremental_compatible_expansion:
-        //       self.link_creation_directly_changed_neighbour_connection_update(indi_destination, indi_source, true, ctx);  // Unit 26
-        //   return ancRoleLink;
-        //
-        // Held PORT-PENDING: the `CIndividualLinkEdge::init_individual_link_edge` body
-        // (W2-DEFER), the connection-successor-set insert API, and
-        // `link_creation_directly_changed_neighbour_connection_update` (Unit 26). The
-        // role-list reads, `alloc_edge`, and `install_individual_node_role_link` +
-        // `create_individual_node_disjoint_roles_links` (this unit) are resolvable.
-        let _ = (indi_source, indi_destination, role_linker, anc_role, dep_track_point);
-        EdgeId::NONE
+        let mut anc_role_link = EdgeId::NONE;
+        // W3-DEFER[api]: STATINC(LINKSCREATIONCOUNT, calcAlgContext).
+        // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager().
+        let mut generated_inv_link = false;
+        let role_chain = role_linker.to_vec();
+        for nl in role_chain {
+            let role = nl.target;
+            let inv_role = nl.negated;
+            let disjoint_role_linker = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .get_disjoint_role_list()
+                .to_vec();
+
+            let mut edge = IndividualLinkEdge::new();
+            if !inv_role {
+                self.create_individual_node_disjoint_roles_links(
+                    indi_source,
+                    indi_destination,
+                    &disjoint_role_linker,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return anc_role_link;
+                }
+                edge.init_individual_link_edge(
+                    *indi_source,
+                    *indi_source,
+                    *indi_destination,
+                    role,
+                    dep_track_point,
+                );
+                let individual_link = calc_alg_context.process_context_mut().alloc_edge(edge);
+                self.install_individual_node_role_link(
+                    indi_source,
+                    indi_destination,
+                    individual_link,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return anc_role_link;
+                }
+                if anc_role == role {
+                    anc_role_link = individual_link;
+                }
+            } else {
+                generated_inv_link = true;
+                self.create_individual_node_disjoint_roles_links(
+                    indi_destination,
+                    indi_source,
+                    &disjoint_role_linker,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return anc_role_link;
+                }
+                edge.init_individual_link_edge(
+                    *indi_source,
+                    *indi_destination,
+                    *indi_source,
+                    role,
+                    dep_track_point,
+                );
+                let individual_link = calc_alg_context.process_context_mut().alloc_edge(edge);
+                self.install_individual_node_role_link(
+                    indi_destination,
+                    indi_source,
+                    individual_link,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return anc_role_link;
+                }
+                if anc_role == role {
+                    anc_role_link = individual_link;
+                }
+            }
+        }
+
+        let indi_source_id = calc_alg_context
+            .process_context()
+            .node(*indi_source)
+            .individual_node_id();
+        let indi_destination_id = calc_alg_context
+            .process_context()
+            .node(*indi_destination)
+            .individual_node_id();
+        let indi_destination_is_nominal = calc_alg_context
+            .process_context()
+            .node(*indi_destination)
+            .is_nominal_individual_node();
+        if generated_inv_link || indi_destination_is_nominal {
+            let conn_succ_set = calc_alg_context
+                .process_context_mut()
+                .node_connection_successor_set(*indi_source);
+            calc_alg_context
+                .process_context_mut()
+                .conn_succ_set_mut(conn_succ_set)
+                .insert_connection_successor(indi_destination_id);
+        }
+        let conn_succ_set = calc_alg_context
+            .process_context_mut()
+            .node_connection_successor_set(*indi_destination);
+        calc_alg_context
+            .process_context_mut()
+            .conn_succ_set_mut(conn_succ_set)
+            .insert_connection_successor(indi_source_id);
+        if self.opt_incremental_compatible_expansion {
+            self.link_creation_directly_changed_neighbour_connection_update(
+                *indi_destination,
+                *indi_source,
+                true,
+                calc_alg_context,
+            );
+        }
+        anc_role_link
     }
 
     /// Port of `installIndividualNodeRoleLink`. cpp 22251–22269.
@@ -990,24 +1964,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_link: EdgeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 22251–22269.
-        //   disSuccRoleHash = node_mut(*source_indi).get_disjoint_successor_role_hash(false);
-        //   if disSuccRoleHash.is_some():
-        //       destId = node(*destination_indi).individual_node_id(); linkRole = edge(individual_link).get_link_role();
-        //       negDisEdge = ...get_disjoint_successor_role_link(destId, linkRole);
-        //       if negDisEdge.is_some():
-        //           // [exceptions]: clash — throw (Unit 30) with createClashedIndividualLinkDescriptor + createClashedNegationDisjointDescriptor
-        //           return;
-        //   succLinkCount = node_mut(*source_indi).install_individual_link(individual_link);
-        //   if self.conf_occurrence_statistics_collecting && self.opt_collect_occurrence_statistics:
-        //       nondeterministically = self.has_nondeterministic_dependency(edge(individual_link).get_dependency_track_point(), ctx);  // Unit 29
-        //       occ_stats_cache_handler(self.occ_stats_cache_handler).inc_role_instance_occurrencce_statistics(edge(individual_link).get_link_role(), nondeterministically, !node(*source_indi).nominal_individual(), succLinkCount <= 1);
-        //
-        // Held PORT-PENDING: the disjoint-successor-role hash lookup + clash/throw
-        // (Unit 30, [exceptions]) + the occurrence-statistics cache handler. The
-        // `install_individual_link` node accessor + `has_nondeterministic_dependency`
-        // (Unit 29) are ported.
-        let _ = (source_indi, destination_indi, individual_link);
+        if self.raise_role_link_disjoint_clash_if_needed(
+            *source_indi,
+            *destination_indi,
+            individual_link,
+            calc_alg_context,
+        ) {
+            return;
+        }
+
+        let mut reapply_iterator = ReapplyQueueIterator::empty();
+        let succ_link_count = calc_alg_context
+            .process_context_mut()
+            .node_install_individual_link(*source_indi, individual_link, &mut reapply_iterator);
+        self.update_role_link_occurrence_statistics(
+            *source_indi,
+            *destination_indi,
+            individual_link,
+            succ_link_count,
+            calc_alg_context,
+        );
     }
 
     /// Port of `installIndividualNodeRoleLinkReapplied`. cpp 22272–22292.
@@ -1021,14 +1997,148 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         individual_link: EdgeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> ReapplyQueueIterator {
-        // PORT-PENDING: faithful transcription of cpp 22272–22292 (identical clash
-        // check to `install_individual_node_role_link`, but the install variant
-        // `node_mut(*source_indi).install_individual_link(individual_link, &mut reapplyIterator)`
-        // fills + returns the `CReapplyQueueIterator`).
-        // Held PORT-PENDING: same as `install_individual_node_role_link`, plus the
-        // reapply-queue iterator value type (opaque `Cint64` here, [api]).
-        let _ = (source_indi, destination_indi, individual_link);
-        INVALID
+        if self.raise_role_link_disjoint_clash_if_needed(
+            *source_indi,
+            *destination_indi,
+            individual_link,
+            calc_alg_context,
+        ) {
+            return ReapplyQueueIterator::empty();
+        }
+
+        let mut reapply_iterator = ReapplyQueueIterator::empty();
+        let succ_link_count = calc_alg_context
+            .process_context_mut()
+            .node_install_individual_link(*source_indi, individual_link, &mut reapply_iterator);
+        self.update_role_link_occurrence_statistics(
+            *source_indi,
+            *destination_indi,
+            individual_link,
+            succ_link_count,
+            calc_alg_context,
+        );
+        reapply_iterator
+    }
+
+    fn update_role_link_occurrence_statistics(
+        &mut self,
+        source_indi: NodeId,
+        destination_indi: NodeId,
+        individual_link: EdgeId,
+        succ_link_count: Cint64,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if !self.conf_occurrence_statistics_collecting
+            || !self.opt_collect_occurrence_statistics
+            || succ_link_count != 1
+        {
+            return;
+        }
+
+        let role = calc_alg_context
+            .process_context()
+            .edge(individual_link)
+            .get_link_role();
+        let dep_track_point = calc_alg_context
+            .process_context()
+            .edge(individual_link)
+            .get_dependency_track_point();
+        let role_id = calc_alg_context.ontology_arenas().role(role).get_role_tag();
+        let concept_count = calc_alg_context.ontology_arenas().concept_count();
+        let role_count = calc_alg_context.ontology_arenas().role_count();
+        let nondeterministic =
+            self.has_nondeterministic_dependency(dep_track_point, calc_alg_context);
+        let deterministic_count = if nondeterministic { 0 } else { 1 };
+        let nondeterministic_count = if nondeterministic { 1 } else { 0 };
+        let source_nominal = calc_alg_context
+            .process_context()
+            .node(source_indi)
+            .nominal_individual()
+            .is_some();
+        let destination_nominal = calc_alg_context
+            .process_context()
+            .node(destination_indi)
+            .nominal_individual()
+            .is_some();
+        let individual_count = if source_nominal || destination_nominal {
+            1
+        } else {
+            0
+        };
+        let existential_count = if source_nominal || destination_nominal {
+            0
+        } else {
+            1
+        };
+
+        calc_alg_context
+            .occurrence_statistics_cache_handler_mut()
+            .inc_role_instance_occurrencce_statistics(
+                role_id,
+                concept_count,
+                role_count,
+                deterministic_count,
+                nondeterministic_count,
+                individual_count,
+                existential_count,
+                1,
+                1,
+            );
+    }
+
+    fn raise_role_link_disjoint_clash_if_needed(
+        &mut self,
+        source_indi: NodeId,
+        destination_indi: NodeId,
+        individual_link: EdgeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let disjoint_hash = calc_alg_context
+            .process_context()
+            .node(source_indi)
+            .use_disjoint_succ_role_hash;
+        if disjoint_hash.is_none() {
+            return false;
+        }
+        let dest_id = calc_alg_context
+            .process_context()
+            .node(destination_indi)
+            .individual_node_id();
+        let link_role = calc_alg_context
+            .process_context()
+            .edge(individual_link)
+            .get_link_role();
+        let neg_dis_edge = calc_alg_context
+            .process_context()
+            .disjoint_succ_role_hash(disjoint_hash)
+            .get_disjoint_successor_role_link(dest_id, link_role);
+        if neg_dis_edge.is_none() {
+            return false;
+        }
+
+        let link_dep_track_point = calc_alg_context
+            .process_context()
+            .edge(individual_link)
+            .get_dependency_track_point();
+        let neg_dis_dep_track_point = calc_alg_context
+            .process_context()
+            .disjoint_edge(neg_dis_edge)
+            .get_dependency_track_point();
+        let mut clash_des: ClashDescId = Id::NONE;
+        clash_des = self.create_clashed_individual_link_descriptor(
+            clash_des,
+            individual_link,
+            link_dep_track_point,
+            calc_alg_context,
+        );
+        clash_des = self.create_clashed_negation_disjoint_descriptor(
+            clash_des,
+            neg_dis_edge,
+            neg_dis_dep_track_point,
+            calc_alg_context,
+        );
+        calc_alg_context.raise_clash(clash_des);
+        true
     }
 
     /// Port of `createNewIndividualsLink`. cpp 22355–22369.
@@ -1046,22 +2156,61 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> EdgeId {
-        // PORT-PENDING: faithful transcription of cpp 22355–22369.
-        //   STATINC(LINKSCREATIONCOUNT);
-        //   self.create_individual_node_disjoint_roles_links(indi_source, indi_destination, ctx.ontology_arenas().role(role).get_disjoint_role_list(), dep_track_point, ctx);  // this unit
-        //   individualLink = ctx.process_context_mut().alloc_edge(IndividualLinkEdge::new(...));
-        //   edge_mut(individualLink).init_individual_link_edge(*indi_creator, *indi_source, *indi_destination, role, dep_track_point);
-        //   self.install_individual_node_role_link(indi_source, indi_destination, individualLink, ctx);  // this unit
-        //   srcId = node(*indi_source).individual_node_id();
-        //   conn_succ_set_mut(node_mut(*indi_destination).get_connection_successor_set(true)).insert_connection_successor(srcId);
-        //   if self.opt_incremental_compatible_expansion:
-        //       self.link_creation_directly_changed_neighbour_connection_update(indi_destination, indi_source, true, ctx);  // Unit 26
-        //   return individualLink;
-        //
-        // Held PORT-PENDING: the edge `init` body (W2-DEFER), the connection-set
-        // insert API, and the incremental neighbour-update sibling (Unit 26).
-        let _ = (indi_creator, indi_source, indi_destination, role, dep_track_point);
-        EdgeId::NONE
+        // W3-DEFER[api]: STATINC(LINKSCREATIONCOUNT, calcAlgContext).
+        // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager().
+        let disjoint_role_linker = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_disjoint_role_list()
+            .to_vec();
+        self.create_individual_node_disjoint_roles_links(
+            indi_source,
+            indi_destination,
+            &disjoint_role_linker,
+            dep_track_point,
+            calc_alg_context,
+        );
+        if calc_alg_context.has_pending_signal() {
+            return EdgeId::NONE;
+        }
+        let mut edge = IndividualLinkEdge::new();
+        edge.init_individual_link_edge(
+            *indi_creator,
+            *indi_source,
+            *indi_destination,
+            role,
+            dep_track_point,
+        );
+        let individual_link = calc_alg_context.process_context_mut().alloc_edge(edge);
+        self.install_individual_node_role_link(
+            indi_source,
+            indi_destination,
+            individual_link,
+            calc_alg_context,
+        );
+        if calc_alg_context.has_pending_signal() {
+            return individual_link;
+        }
+        let indi_source_id = calc_alg_context
+            .process_context()
+            .node(*indi_source)
+            .individual_node_id();
+        let conn_succ_set = calc_alg_context
+            .process_context_mut()
+            .node_connection_successor_set(*indi_destination);
+        calc_alg_context
+            .process_context_mut()
+            .conn_succ_set_mut(conn_succ_set)
+            .insert_connection_successor(indi_source_id);
+        if self.opt_incremental_compatible_expansion {
+            self.link_creation_directly_changed_neighbour_connection_update(
+                *indi_destination,
+                *indi_source,
+                true,
+                calc_alg_context,
+            );
+        }
+        individual_link
     }
 
     // NOTE: `createNewIndividualsLinkReapplyed` (cpp 22372–22398) and
@@ -1083,18 +2232,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 22401–22409.
-        //   STATINC(DISTINCTCREATIONCOUNT);
-        //   disEdge = ctx.process_context_mut().alloc_distinct_edge(DistinctEdge::new(...));
-        //   distinct_edge_mut(disEdge).init_distinct_edge(*indi_source, *indi_destination, dep_track_point);
-        //   srcId = node(*indi_source).individual_node_id(); destId = node(*indi_destination).individual_node_id();
-        //   distinct_hash_mut(node_mut(*indi_source).get_distinct_hash(true)).insert_distinct_individual(destId, disEdge);
-        //   distinct_hash_mut(node_mut(*indi_destination).get_distinct_hash(true)).insert_distinct_individual(srcId, disEdge);
-        //
-        // Held PORT-PENDING: the `CDistinctEdge::init_distinct_edge` body (W2-DEFER)
-        // + the distinct-hash insert API; `alloc_distinct_edge` + `get_distinct_hash`
-        // are resolvable.
-        let _ = (indi_source, indi_destination, dep_track_point);
+        let dis_edge = calc_alg_context
+            .process_context_mut()
+            .alloc_distinct_edge(DistinctEdge::new());
+        calc_alg_context
+            .process_context_mut()
+            .distinct_edge_mut(dis_edge)
+            .init_distinct_edge(*indi_source, *indi_destination, dep_track_point);
+
+        let source_id = calc_alg_context
+            .process_context()
+            .node(*indi_source)
+            .individual_node_id();
+        let destination_id = calc_alg_context
+            .process_context()
+            .node(*indi_destination)
+            .individual_node_id();
+
+        let source_distinct_hash = calc_alg_context
+            .process_context_mut()
+            .node_distinct_hash(*indi_source);
+        calc_alg_context
+            .process_context_mut()
+            .distinct_hash_mut(source_distinct_hash)
+            .insert_distinct_individual(destination_id, dis_edge);
+
+        let destination_distinct_hash = calc_alg_context
+            .process_context_mut()
+            .node_distinct_hash(*indi_destination);
+        calc_alg_context
+            .process_context_mut()
+            .distinct_hash_mut(destination_distinct_hash)
+            .insert_distinct_individual(source_id, dis_edge);
     }
 
     /// Port of `createIndividualsDistinct(CPROCESSINGLIST<CIndividualProcessNode*>&,
@@ -1108,21 +2277,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: faithful transcription of cpp 22413–22430.
-        //   for i in 0..indi_list.len():
-        //       indi1 = indi_list[i];
-        //       for j in (i+1)..indi_list.len():
-        //           indi2 = indi_list[j]; STATINC(DISTINCTCREATIONCOUNT);
-        //           disEdge = ctx.process_context_mut().alloc_distinct_edge(DistinctEdge::new(...));
-        //           distinct_edge_mut(disEdge).init_distinct_edge(indi1, indi2, dep_track_point);
-        //           id1 = node(indi1).individual_node_id(); id2 = node(indi2).individual_node_id();
-        //           distinct_hash_mut(node_mut(indi1).get_distinct_hash(true)).insert_distinct_individual(id2, disEdge);
-        //           distinct_hash_mut(node_mut(indi2).get_distinct_hash(true)).insert_distinct_individual(id1, disEdge);
-        //
-        // Held PORT-PENDING: same as `create_individuals_distinct_pair`. (The C++
-        // caches each node's distinct hash once per outer/inner iteration; the port
-        // re-fetches per insert — behaviour identical.)
-        let _ = (indi_list, dep_track_point);
+        for source_index in 0..indi_list.len() {
+            let indi_source = indi_list[source_index];
+            for indi_destination in indi_list.iter().skip(source_index + 1).copied() {
+                let mut source = indi_source;
+                let mut destination = indi_destination;
+                self.create_individuals_distinct_pair(
+                    &mut source,
+                    &mut destination,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+            }
+        }
     }
 
     /// Port of `hasIndividualsLink`. cpp 22433–22435. FULLY PORTED.
@@ -1139,9 +2306,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(*indi_destination)
             .individual_node_id();
         calc_alg_context
-            .process_context()
-            .node(*indi_source)
-            .has_role_successor_to_individual_id(role, dest_id, locateable)
+            .process_context_mut()
+            .node_has_role_successor_to_individual_id(*indi_source, role, dest_id, locateable)
     }
 
     // =======================================================================
@@ -1157,25 +2323,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 22439–22458.
-        //   STATINC(SUCCESSORINDINODECREATIONCOUNT);
-        //   newIndividual = ctx.process_context_mut().alloc_node(IndividualProcessNode::new(...));
-        //   indiProcNodeVec = ctx.processing_data_box().individual_process_node_vector();
-        //   newIndividualID = ctx.processing_data_box_mut().next_individual_node_id();
-        //   newIndividualID = max(indiProcNodeVec.get_item_max_index() + 1, newIndividualID);
-        //   node_mut(newIndividual).set_individual_node_id(newIndividualID);
-        //   indiProcNodeVec.set_local_data(newIndividualID, newIndividual);
-        //   if self.opt_consistence_node_marking: node_mut(newIndividual).add_processing_restriction_flags(PRF_CONSNODEPREPARATIONINDINODE);
-        //   if self.opt_incremental_compatible_expansion:
-        //       node_mut(newIndividual).add_processing_restriction_flags(PRF_INCREMENTALEXPANDING);
-        //       node_mut(newIndividual).set_incremental_expansion_id(ctx.processing_data_box().incremental_expansion_id());
-        //   return newIndividual;
-        //
-        // NOW LIVE. The node-vector get-max-index / set-data API is wired
-        // (`process/node_resolution.rs` `IndividualProcessNodeVector`), `alloc_node`,
-        // `next_individual_node_id`, `set_individual_node_id`, the flag adds, and
-        // `incremental_expansion_id` are all available.
-        //
         // W3-DEFER[macro]: STATINC(SUCCESSORINDINODECREATIONCOUNT, ctx).
         let new_individual = calc_alg_context
             .process_context_mut()
@@ -1233,30 +2380,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         data_node: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 22462–22475.
-        //   newIndividual = self.create_new_empty_individual(ctx);                            // this unit
-        //   node_mut(newIndividual).init_dependency_tracker(dep_track_point);
-        //   if !data_node:
-        //       topConcept = ctx.processing_data_box().ontology_top_concept();
-        //       self.add_concept_to_individual(topConcept, false, newIndividual, dep_track_point, true, false, ctx);  // Unit 36
-        //   else:
-        //       node_mut(newIndividual).set_extended_queue_processing(true);
-        //       topDataRangeConcept = ctx.processing_data_box().ontology_top_data_range_concept();
-        //       self.add_concept_to_individual(topDataRangeConcept, false, newIndividual, dep_track_point, true, false, ctx);  // Unit 36
-        //       node_mut(newIndividual).add_processing_restriction_flags(PRF_CONCRETEDATAINDINODE);
-        //   return newIndividual;
-        //
-        // NOW LIVE. `add_concept_to_individual` (Unit 36) is wired; the node
-        // `initDependencyTracker(depTrackPoint)` derived init stays W2-deferred, so the
-        // field is set directly via `set_dependency_track_point` (the descriptor-init
-        // convention u36 uses for `init_concept_descriptor_fields`).
+        // KONCLUDE-PORT-NOTE[api]: the node `initDependencyTracker(depTrackPoint)`
+        // derived initializer is represented by the live dependency-track-point setter,
+        // matching the descriptor-init convention used elsewhere in the port.
         let mut new_individual = self.create_new_empty_individual(calc_alg_context);
         calc_alg_context
             .process_context_mut()
             .node_mut(new_individual)
             .set_dependency_track_point(dep_track_point);
         if !data_node {
-            let top_concept = calc_alg_context.processing_data_box().ontology_top_concept();
+            let top_concept = calc_alg_context
+                .processing_data_box()
+                .ontology_top_concept();
             self.add_concept_to_individual(
                 top_concept,
                 false,
@@ -1300,14 +2435,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_id: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 22477–22482.
-        //   if self.is_nominal_individual_node_available(indi_id, ctx):       // Unit 36
-        //       return self.get_up_to_date_individual_by_id(indi_id, ctx);    // Unit 36
-        //   return NONE;
-        //
-        // NOW LIVE: superseded by `ctx.get_available_up_to_date_individual`
-        // (node-resolution keystone) — `is_nominal_individual_node_available` +
-        // `get_up_to_date_individual_by_id` are wired there.
         calc_alg_context.get_available_up_to_date_individual(indi_id)
     }
 
@@ -1320,17 +2447,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> NodeId {
-        // PORT-PENDING: faithful transcription of cpp 22485–22493.
-        //   currentTag = ctx...used_process_tagger().current_localization_tag();   // process-tagger (opaque [api])
-        //   if !node(indi).is_localization_tag_up_to_date(currentTag) && node(indi).is_relocalized():
-        //       STATINC(INDINODEUPDATELOADCOUNT);
-        //       indiProcNodeVec = ctx.processing_data_box().individual_process_node_vector();
-        //       return indiProcNodeVec.get_data(node(indi).individual_node_id());   // vector get-data (unported)
-        //   return indi;
-        //
-        // NOW LIVE: superseded by `ctx.get_up_to_date_individual` (node-resolution
-        // keystone) — the tagger + `is_localization_tag_up_to_date` + the databox
-        // node-vector `get_data` are wired there.
         calc_alg_context.get_up_to_date_individual(indi)
     }
 }

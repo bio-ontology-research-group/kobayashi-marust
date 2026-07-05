@@ -19,30 +19,32 @@
 //! `setMaximumDeterministicBranchTag`, `getMaximumDeterministicBranchTag`.
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: per the global substrate decision, each
-//! intrusive `CXLinker<CIndividualProcessNode*>` / `CIndividualProcessNodeLinker`
-//! chain head is owned here as a `Vec<NodeId>` whose **front (index 0) is the
-//! chain head**. `getNext()`-style head advance ⇒ `remove(0)`; the C++
-//! `linker->append(mHead)` (which splices the *new* chain in front of the
-//! existing head and returns the new head) ⇒ prepend; "take the whole linker" ⇒
-//! `std::mem::take`. The intrusive `clearNext()` bookkeeping has no `Vec` analog.
+//! intrusive `CXLinker<CIndividualProcessNode*>` chain heads are owned here as
+//! `Vec<NodeId>` whose **front (index 0) is the chain head**. The richer
+//! `CIndividualProcessNodeLinker` is arena-backed because it carries the
+//! processing-queued flag as well as the node pointer.
 //!
 //! KONCLUDE-PORT-NOTE[memory-pool]: the `getX(create)` lazy getters allocate
 //! their hash/queue/set/tree from the per-test `CProcessContext` pool and run its
-//! `initX(prev)` reseed; that allocator + the target container classes are not
-//! ported yet, so each allocation site is left as a `// W2-DEFER[api]` stub and
-//! the getter returns the current `mUseX` id (`Id::NONE` until wired).
+//! `initX(prev)` reseed. The signature-blocking and blocking-candidate hashes
+//! are context-threaded here because their target classes are now ported; the
+//! remaining queue/set/tree getters keep using the existing context helpers or
+//! explicit deferrals.
 
 #![allow(dead_code)]
 
 use super::super::model::substrate::{Cint64, Id};
 use super::databox::ProcessingDataBox;
+use super::individual_process_linker::IndividualProcessNodeLinkerId;
 use super::stubs::{
-    BlockingIndividualNodeLinkedCandidateHash, BranchingTree,
-    IndividualReactivationProcessingQueue, NodeSwitchHistory, ReusingReviewData,
+    BranchingTree, IndividualReactivationProcessingQueue, NodeSwitchHistory, ReusingReviewData,
     SignatureBlockingReviewSet,
 };
 // W3.5b/W2.7 reconcile: real ported blocking-candidate hashes (un-wired from `stubs`).
-use super::blocking_hash::BlockingIndividualNodeCandidateHash;
+use super::blocking_hash::{
+    BlockingIndividualNodeCandidateHash, BlockingIndividualNodeLinkedCandidateHash,
+};
+use super::context::ProcessContext;
 use super::reapply_sat::SignatureBlockingCandidateHash;
 use super::{ConProcDescId, NodeId};
 
@@ -60,70 +62,50 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getSignatureBlockingCandidateHash`. `.cpp` 1302.
     pub fn signature_blocking_candidate_hash(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<SignatureBlockingCandidateHash> {
-        if self.signature_blocking_candidate_hash.is_none() && create {
-            // W2-DEFER[api]: allocate CSignatureBlockingCandidateHash from the
-            // process-context pool + initSignatureBlockingCandidateHash(prev).
-            //   self.signature_blocking_candidate_hash = <alloc>;
-            //   self.signature_blocking_candidate_hash
-            //       .init_signature_blocking_candidate_hash(self.prev_signature_blocking_candidate_hash);
-            //   self.use_signature_blocking_candidate_hash = self.signature_blocking_candidate_hash;
-        }
-        self.use_signature_blocking_candidate_hash
+        ctx.processing_data_box_signature_blocking_candidate_hash(self, create)
     }
 
     /// Port of `CProcessingDataBox::getSignatureNominalDelayingCandidateHash`. `.cpp` 1313.
     pub fn signature_nominal_delaying_candidate_hash(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<SignatureBlockingCandidateHash> {
-        if self.signature_nominal_delaying_candidate_hash.is_none() && create {
-            // W2-DEFER[api]: allocate CSignatureBlockingCandidateHash from the
-            // process-context pool + initSignatureBlockingCandidateHash(prev).
-            //   self.signature_nominal_delaying_candidate_hash = <alloc>;
-            //   self.use_signature_nominal_delaying_candidate_hash =
-            //       self.signature_nominal_delaying_candidate_hash;
-        }
-        self.use_signature_nominal_delaying_candidate_hash
+        ctx.processing_data_box_signature_nominal_delaying_candidate_hash(self, create)
     }
 
     /// Port of `CProcessingDataBox::getBlockingIndividualNodeCandidateHash`. `.cpp` 1324.
     pub fn blocking_individual_node_candidate_hash(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<BlockingIndividualNodeCandidateHash> {
-        if self.blocking_indi_node_candidate_hash.is_none() && create {
-            // W2-DEFER[api]: allocate CBlockingIndividualNodeCandidateHash + init(prev).
-            //   self.blocking_indi_node_candidate_hash = <alloc>;
-            //   self.use_blocking_indi_node_candidate_hash = self.blocking_indi_node_candidate_hash;
-        }
-        self.use_blocking_indi_node_candidate_hash
+        ctx.processing_data_box_blocking_individual_node_candidate_hash(self, create)
     }
 
     /// Port of `CProcessingDataBox::getBlockingIndividualNodeLinkedCandidateHash`. `.cpp` 1333.
     pub fn blocking_individual_node_linked_candidate_hash(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<BlockingIndividualNodeLinkedCandidateHash> {
-        if self.blocking_indi_node_linked_candidate_hash.is_none() && create {
-            // W2-DEFER[api]: allocate CBlockingIndividualNodeLinkedCandidateHash + init(prev).
-            //   self.blocking_indi_node_linked_candidate_hash = <alloc>;
-            //   self.use_blocking_indi_node_linked_candidate_hash =
-            //       self.blocking_indi_node_linked_candidate_hash;
-        }
-        self.use_blocking_indi_node_linked_candidate_hash
+        ctx.processing_data_box_blocking_individual_node_linked_candidate_hash(self, create)
     }
 
     /// Port of `CProcessingDataBox::getSignatureBlockingReviewSet`. `.cpp` 1342.
     pub fn signature_blocking_review_set(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<SignatureBlockingReviewSet> {
         if self.signature_blocking_review_set.is_none() && create {
-            // W2-DEFER[api]: allocate CSignatureBlockingReviewSet + initSignatureBlockingReviewSet(prev).
-            //   self.signature_blocking_review_set = <alloc>;
-            //   self.use_signature_blocking_review_set = self.signature_blocking_review_set;
+            self.signature_blocking_review_set = ctx.alloc_signature_blocking_review_set_from_prev(
+                self.prev_signature_blocking_review_set,
+            );
+            self.use_signature_blocking_review_set = self.signature_blocking_review_set;
         }
         self.use_signature_blocking_review_set
     }
@@ -131,12 +113,13 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getEarlyIndividualReactivationProcessingQueue`. `.cpp` 1351.
     pub fn early_individual_reactivation_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualReactivationProcessingQueue> {
         if self.early_indi_react_pro_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualReactivationProcessingQueue + initProcessingQueue(prev).
-            //   self.early_indi_react_pro_queue = <alloc>;
-            //   self.use_early_indi_react_pro_queue = self.early_indi_react_pro_queue;
+            self.early_indi_react_pro_queue =
+                ctx.alloc_reactivation_proc_queue_from_prev(self.prev_early_indi_react_pro_queue);
+            self.use_early_indi_react_pro_queue = self.early_indi_react_pro_queue;
         }
         self.use_early_indi_react_pro_queue
     }
@@ -152,12 +135,13 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getLateIndividualReactivationProcessingQueue`. `.cpp` 1371.
     pub fn late_individual_reactivation_processing_queue(
         &mut self,
+        ctx: &mut ProcessContext,
         create: bool,
     ) -> Id<IndividualReactivationProcessingQueue> {
         if self.late_indi_react_pro_queue.is_none() && create {
-            // W2-DEFER[api]: allocate CIndividualReactivationProcessingQueue + initProcessingQueue(prev).
-            //   self.late_indi_react_pro_queue = <alloc>;
-            //   self.use_late_indi_react_pro_queue = self.late_indi_react_pro_queue;
+            self.late_indi_react_pro_queue =
+                ctx.alloc_reactivation_proc_queue_from_prev(self.prev_late_indi_react_pro_queue);
+            self.use_late_indi_react_pro_queue = self.late_indi_react_pro_queue;
         }
         self.use_late_indi_react_pro_queue
     }
@@ -187,33 +171,47 @@ impl ProcessingDataBox {
     }
 
     /// Port of `CProcessingDataBox::getReusingReviewData`. `.cpp` 1402.
-    pub fn reusing_review_data(&mut self, create: bool) -> Id<ReusingReviewData> {
+    pub fn reusing_review_data(
+        &mut self,
+        ctx: &mut ProcessContext,
+        create: bool,
+    ) -> Id<ReusingReviewData> {
         if self.reusing_review_set.is_none() && create {
-            // W2-DEFER[api]: allocate CReusingReviewData + initReviewData(prev).
-            //   self.reusing_review_set = <alloc>;
-            //   self.use_reusing_review_set = self.reusing_review_set;
+            self.reusing_review_set =
+                ctx.alloc_reusing_review_data_from_prev(self.prev_reusing_review_set);
+            self.use_reusing_review_set = self.reusing_review_set;
         }
         self.use_reusing_review_set
     }
 
     /// Port of `CProcessingDataBox::getNodeSwitchHistory`. `.cpp` 1411.
     pub fn node_switch_history(&mut self, create: bool) -> Id<NodeSwitchHistory> {
-        if self.node_switch_history.is_none() && create {
-            // W2-DEFER[api]: allocate CNodeSwitchHistory + initSwitchHistory(prev).
-            //   self.node_switch_history = <alloc>;
-            //   self.use_node_switch_history = self.node_switch_history;
-        }
+        let _ = create;
         self.use_node_switch_history
+    }
+
+    /// Context-threaded port of `CProcessingDataBox::getNodeSwitchHistory`. `.cpp` 1411.
+    pub fn node_switch_history_with_context(
+        &mut self,
+        ctx: &mut ProcessContext,
+        create: bool,
+    ) -> Id<NodeSwitchHistory> {
+        ctx.processing_data_box_node_switch_history(self, create)
     }
 
     /// Port of `CProcessingDataBox::getBranchingTree`. `.cpp` 1420.
     pub fn branching_tree(&mut self, create: bool) -> Id<BranchingTree> {
-        if self.branching_tree.is_none() && create {
-            // W2-DEFER[api]: allocate CBranchingTree + initBranchingTree(prev).
-            //   self.branching_tree = <alloc>;
-            //   self.use_branching_tree = self.branching_tree;
-        }
+        let _ = create;
         self.use_branching_tree
+    }
+
+    /// Context-threaded port of `CProcessingDataBox::getBranchingTree`. `.cpp` 1420.
+    pub fn branching_tree_with_context(
+        &mut self,
+        ctx: &mut ProcessContext,
+        create: bool,
+    ) -> Id<BranchingTree> {
+        ctx.processing_data_box_branching_tree(self, create)
     }
 
     /// Port of `CProcessingDataBox::hasCacheTestingIndividualNodes`. `.cpp` 1429.
@@ -259,7 +257,9 @@ impl ProcessingDataBox {
 
     /// Port of `CProcessingDataBox::hasSortedNominalNonDeterministicProcessingNodes`. `.cpp` 1465.
     pub fn has_sorted_nominal_non_deterministic_processing_nodes(&self) -> bool {
-        !self.sorted_nominal_non_det_processing_node_linker.is_empty()
+        !self
+            .sorted_nominal_non_det_processing_node_linker
+            .is_empty()
     }
 
     /// Port of `CProcessingDataBox::takeSortedNominalNonDeterministicProcessingNode`. `.cpp` 1469.
@@ -269,7 +269,10 @@ impl ProcessingDataBox {
             .first()
             .copied()
             .unwrap_or(NodeId::NONE);
-        if !self.sorted_nominal_non_det_processing_node_linker.is_empty() {
+        if !self
+            .sorted_nominal_non_det_processing_node_linker
+            .is_empty()
+        {
             self.nominal_non_det_processing_count -= 1; // 1472
             self.sorted_nominal_non_det_processing_node_linker.remove(0); // 1473
         }
@@ -291,7 +294,7 @@ impl ProcessingDataBox {
     ) -> &mut Self {
         if !linker.is_empty() {
             self.nominal_non_det_processing_count += linker.len() as Cint64; // 1487
-            // 1488: linker->append(mHead) ⇒ prepend (see ownership note).
+                                                                             // 1488: linker->append(mHead) ⇒ prepend (see ownership note).
             let mut linker = linker;
             linker.append(&mut self.sorted_nominal_non_det_processing_node_linker);
             self.sorted_nominal_non_det_processing_node_linker = linker;
@@ -383,7 +386,10 @@ impl ProcessingDataBox {
     }
 
     /// Port of `CProcessingDataBox::addBlockableIndividualNodeUpdatedLinker`. `.cpp` 1568.
-    pub fn add_blockable_individual_node_updated_linker(&mut self, linker: Vec<NodeId>) -> &mut Self {
+    pub fn add_blockable_individual_node_updated_linker(
+        &mut self,
+        linker: Vec<NodeId>,
+    ) -> &mut Self {
         if !linker.is_empty() {
             // 1570: linker->append(mHead) ⇒ prepend (see ownership note).
             let mut linker = linker;
@@ -429,22 +435,19 @@ impl ProcessingDataBox {
     }
 
     /// Port of `CProcessingDataBox::getIndividualProcessNodeLinker`. `.cpp` 1642.
-    pub fn individual_process_node_linker(&self) -> &[NodeId] {
-        &self.indi_process_node_linker
+    pub fn individual_process_node_linker(&self) -> IndividualProcessNodeLinkerId {
+        self.indi_process_node_linker
     }
 
     /// Port of `CProcessingDataBox::takeIndividualProcessNodeLinker`. `.cpp` 1646.
-    ///
-    /// KONCLUDE-PORT-NOTE[ownership]: advances the head and returns the old head
-    /// node (the C++ `clearNext()` on the detached linker has no `Vec` analog).
-    pub fn take_individual_process_node_linker(&mut self) -> NodeId {
-        let head = self
-            .indi_process_node_linker
-            .first()
-            .copied()
-            .unwrap_or(NodeId::NONE);
-        if !self.indi_process_node_linker.is_empty() {
-            self.indi_process_node_linker.remove(0); // 1649
+    pub fn take_individual_process_node_linker(
+        &mut self,
+        ctx: &mut ProcessContext,
+    ) -> IndividualProcessNodeLinkerId {
+        let head = self.indi_process_node_linker;
+        if self.indi_process_node_linker.is_some() {
+            self.indi_process_node_linker = ctx.individual_process_node_linker(head).get_next();
+            ctx.individual_process_node_linker_mut(head).clear_next();
         }
         head
     }
@@ -452,21 +455,102 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::setIndividualProcessNodeLinker`. `.cpp` 1655.
     pub fn set_individual_process_node_linker(
         &mut self,
-        indi_process_node_linker: Vec<NodeId>,
+        indi_process_node_linker: IndividualProcessNodeLinkerId,
     ) -> &mut Self {
         self.indi_process_node_linker = indi_process_node_linker; // 1656
         self
     }
 
     /// Port of `CProcessingDataBox::addIndividualProcessNodeLinker`. `.cpp` 1661.
-    ///
-    /// KONCLUDE-PORT-NOTE[ownership]: no null guard in the source; the single
-    /// linker is prepended (`indiProcessNodeLinker->append(mHead)`).
     pub fn add_individual_process_node_linker(
         &mut self,
-        indi_process_node_linker: NodeId,
+        ctx: &mut ProcessContext,
+        indi_process_node_linker: IndividualProcessNodeLinkerId,
     ) -> &mut Self {
-        self.indi_process_node_linker.insert(0, indi_process_node_linker); // 1662
+        self.indi_process_node_linker = ctx.append_individual_process_node_linker_chain(
+            indi_process_node_linker,
+            self.indi_process_node_linker,
+        ); // 1662
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::konclude_ht::model::substrate::INVALID;
+
+    #[test]
+    fn db4_signature_blocking_candidate_hash_wrapper_allocates_and_copies_previous() {
+        let mut ctx = ProcessContext::new();
+        let mut prev = SignatureBlockingCandidateHash::new(INVALID);
+        prev.insert_signature_blocking_candidates(17, vec![5, 6]);
+        let prev_id = ctx.alloc_sig_block_cand_hash(prev);
+
+        let mut data_box = ProcessingDataBox::new();
+        data_box.prev_signature_blocking_candidate_hash = prev_id;
+
+        let created = data_box.signature_blocking_candidate_hash(&mut ctx, true);
+        assert!(created.is_some());
+        assert_eq!(
+            data_box.signature_blocking_candidate_hash(&mut ctx, false),
+            created
+        );
+        assert_eq!(data_box.signature_blocking_candidate_hash, created);
+        assert_eq!(data_box.use_signature_blocking_candidate_hash, created);
+        assert_eq!(
+            ctx.sig_block_cand_hash(created)
+                .get_blocking_candidates_count(17),
+            2
+        );
+        assert_eq!(
+            ctx.sig_block_cand_hash(prev_id)
+                .get_blocking_candidates_count(17),
+            2
+        );
+    }
+
+    #[test]
+    fn db4_signature_nominal_delaying_candidate_hash_wrapper_allocates() {
+        let mut ctx = ProcessContext::new();
+        let mut data_box = ProcessingDataBox::new();
+
+        assert_eq!(
+            data_box.signature_nominal_delaying_candidate_hash(&mut ctx, false),
+            Id::NONE
+        );
+        let created = data_box.signature_nominal_delaying_candidate_hash(&mut ctx, true);
+
+        assert!(created.is_some());
+        assert_eq!(data_box.signature_nominal_delaying_candidate_hash, created);
+        assert_eq!(
+            data_box.use_signature_nominal_delaying_candidate_hash,
+            created
+        );
+    }
+
+    #[test]
+    fn db4_blocking_candidate_hash_wrappers_allocate_and_reuse() {
+        let mut ctx = ProcessContext::new();
+        let mut data_box = ProcessingDataBox::new();
+
+        let cand_hash = data_box.blocking_individual_node_candidate_hash(&mut ctx, true);
+        assert!(cand_hash.is_some());
+        assert_eq!(data_box.blocking_indi_node_candidate_hash, cand_hash);
+        assert_eq!(
+            data_box.blocking_individual_node_candidate_hash(&mut ctx, false),
+            cand_hash
+        );
+
+        let linked_hash = data_box.blocking_individual_node_linked_candidate_hash(&mut ctx, true);
+        assert!(linked_hash.is_some());
+        assert_eq!(
+            data_box.blocking_indi_node_linked_candidate_hash,
+            linked_hash
+        );
+        assert_eq!(
+            data_box.blocking_individual_node_linked_candidate_hash(&mut ctx, false),
+            linked_hash
+        );
     }
 }

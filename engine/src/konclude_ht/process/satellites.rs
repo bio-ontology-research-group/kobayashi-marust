@@ -26,9 +26,62 @@
 use std::collections::{HashMap, HashSet};
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
-use super::super::model::RoleId;
+use super::super::model::{ConceptId, RoleId};
+use super::node_resolution::ProcessTagger;
+use super::reapply_sat::ReapplyConceptDescriptorId;
 use super::stubs::CandidateLinkerId;
 use super::{ClashDescId, ConDescId, DependencyId, EdgeId, RestrictionSpecId, TrackPointId};
+
+/// `CCoreConceptDescriptor*` → `CoreConceptDescriptorId`.
+pub type CoreConceptDescriptorId = Id<CoreConceptDescriptor>;
+
+/// Port of `CCoreConceptDescriptor`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct CoreConceptDescriptor {
+    /// `CLinkerBase::mData`.
+    pub concept_descriptor: ConDescId,
+    /// `CLinkerBase::mNext`.
+    pub next: CoreConceptDescriptorId,
+}
+
+impl Default for CoreConceptDescriptor {
+    fn default() -> Self {
+        Self {
+            concept_descriptor: ConDescId::NONE,
+            next: CoreConceptDescriptorId::NONE,
+        }
+    }
+}
+
+impl CoreConceptDescriptor {
+    /// Port of `CCoreConceptDescriptor()`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Port of `initCoreConceptDescriptor`.
+    pub fn init_core_concept_descriptor(&mut self, con_des: ConDescId) -> &mut Self {
+        self.concept_descriptor = con_des;
+        self.next = CoreConceptDescriptorId::NONE;
+        self
+    }
+
+    /// Port of `getConceptDesciptor` (Konclude spelling).
+    pub fn get_concept_desciptor(&self) -> ConDescId {
+        self.concept_descriptor
+    }
+
+    /// Port of `CLinkerBase::getNext`.
+    pub fn get_next(&self) -> CoreConceptDescriptorId {
+        self.next
+    }
+
+    /// Port-facing equivalent of `coreConDes->append(next)`.
+    pub fn append(&mut self, next: CoreConceptDescriptorId) -> &mut Self {
+        self.next = next;
+        self
+    }
+}
 
 // ===========================================================================
 // Shared not-yet-ported placeholder types (resolved in LS-1 / RS-1 / BM-1 + SD-1)
@@ -45,20 +98,115 @@ use super::{ClashDescId, ConDescId, DependencyId, EdgeId, RestrictionSpecId, Tra
 // `reapply_sat::LabelSetMapEntry`, `ls1`) keeps resolving onto the real type.
 pub use super::condensed_reapply::CondensedReapplyQueue;
 
-/// Port of `CReapplyQueue` (placeholder, held by value).
-#[derive(Default)]
-pub struct ReapplyQueue;
+/// Port of `CReapplyQueue`.
+///
+/// KONCLUDE-PORT-NOTE[ownership]: `CReapplyConceptDescriptor*` heads become ids
+/// into `ProcessContext::reapply_con_descs`. Konclude's optional queue-count
+/// macro is disabled in the source header, so only the descriptor heads are kept.
+#[derive(Copy, Clone)]
+pub struct ReapplyQueue {
+    /// `CReapplyConceptDescriptor* mStaticReapplyDesLinker`.
+    pub static_reapply_des_linker: ReapplyConceptDescriptorId,
+    /// `CReapplyConceptDescriptor* mDynamicReapplyDesLinker`.
+    pub dynamic_reapply_des_linker: ReapplyConceptDescriptorId,
+}
 
-/// Port of `CConceptSetSignature` (placeholder, held by value). Real port keeps
-/// `getSignatureValue()`; only the value is modelled for now.
-#[derive(Default)]
+impl Default for ReapplyQueue {
+    fn default() -> Self {
+        ReapplyQueue {
+            static_reapply_des_linker: ReapplyConceptDescriptorId::NONE,
+            dynamic_reapply_des_linker: ReapplyConceptDescriptorId::NONE,
+        }
+    }
+}
+
+impl ReapplyQueue {
+    /// Port of `CReapplyQueue::CReapplyQueue`.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Port of `CConceptSetSignature` (held by value).
+#[derive(Copy, Clone)]
 pub struct ConceptSetSignature {
+    pub value1: Cint64,
+    pub value2: Cint64,
+    pub value3: Cint64,
     pub signature_value: Cint64,
+}
+
+impl Default for ConceptSetSignature {
+    fn default() -> Self {
+        let mut sig = ConceptSetSignature {
+            value1: 0,
+            value2: 1,
+            value3: 0,
+            signature_value: 0,
+        };
+        sig.reset();
+        sig
+    }
+}
+
+impl ConceptSetSignature {
+    /// Port of `CConceptSetSignature::reset`.
+    pub fn reset(&mut self) -> &mut Self {
+        self.signature_value = 0;
+        self.value1 = 0;
+        self.value2 = 1;
+        self.value3 = 0;
+        self
+    }
+
+    /// Port of `CConceptSetSignature::getSignatureValue`.
+    pub fn get_signature_value(&self) -> Cint64 {
+        self.signature_value
+    }
+
+    /// Port of `CConceptSetSignature::addConceptSignature(CConcept*, bool)`.
+    ///
+    /// KONCLUDE-PORT-NOTE[ownership]: Konclude folds the raw `CConcept*` pointer
+    /// into `mValue3`; the arena port uses the stable `ConceptId` raw value.
+    pub fn add_concept_signature(
+        &mut self,
+        concept: ConceptId,
+        concept_tag: Cint64,
+        negation: bool,
+    ) -> &mut Self {
+        let con_sig = if negation {
+            Cint64::MAX.wrapping_sub(concept_tag)
+        } else {
+            concept_tag
+        };
+        self.value1 = self.value1.wrapping_add(con_sig);
+        self.value2 = self.value2.wrapping_mul(con_sig);
+        self.value3 = self.value3.wrapping_add(concept.raw);
+        self.signature_value = self.value1 ^ self.value2 ^ self.value3;
+        self
+    }
+
+    /// Port of `CConceptSetSignature::isSignatureEquivalent`.
+    pub fn is_signature_equivalent(&self, other: &ConceptSetSignature) -> bool {
+        self.signature_value == other.signature_value
+    }
 }
 
 /// Port of `CConceptSetStructure` (placeholder, held by value).
 #[derive(Default)]
 pub struct ConceptSetStructure;
+
+impl ConceptSetStructure {
+    /// Port of `hasBindingPropagationConcepts`.
+    pub fn has_binding_propagation_concepts(&self) -> bool {
+        false
+    }
+
+    /// Port of `hasDynamicCreatedConcepts`.
+    pub fn has_dynamic_created_concepts(&self) -> bool {
+        false
+    }
+}
 
 /// Port of `CConceptSetFlags` (placeholder, held by value).
 #[derive(Default)]
@@ -70,6 +218,107 @@ pub struct ConceptSetFlags;
 pub struct ConceptLabelSetModificationTag {
     // CProcessTag::mProcessTag
     pub process_tag: Cint64,
+}
+
+impl ConceptLabelSetModificationTag {
+    /// Port of `getConceptLabelSetModificationTag`.
+    pub fn get_concept_label_set_modification_tag(&self) -> Cint64 {
+        self.process_tag
+    }
+
+    /// Port of `setConceptLabelSetModificationTag(cint64)`.
+    pub fn set_concept_label_set_modification_tag(
+        &mut self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> &mut Self {
+        self.process_tag = concept_label_set_modification_tag;
+        self
+    }
+
+    /// Port of `initConceptLabelSetModificationTag(cint64)`.
+    pub fn init_concept_label_set_modification_tag(
+        &mut self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> &mut Self {
+        self.process_tag = concept_label_set_modification_tag;
+        self
+    }
+
+    /// Port of `isConceptLabelSetModificationTagUpdated(cint64)`.
+    pub fn is_concept_label_set_modification_tag_updated(
+        &self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> bool {
+        concept_label_set_modification_tag > self.process_tag
+    }
+
+    /// Port of `isConceptLabelSetModificationTagUpToDate(cint64)`.
+    pub fn is_concept_label_set_modification_tag_up_to_date(
+        &self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> bool {
+        self.process_tag >= concept_label_set_modification_tag
+    }
+
+    /// Port of `updateConceptLabelSetModificationTag(cint64)`.
+    pub fn update_concept_label_set_modification_tag(
+        &mut self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> bool {
+        let updated = self.process_tag != concept_label_set_modification_tag;
+        self.process_tag = concept_label_set_modification_tag;
+        updated
+    }
+
+    /// Port of `setConceptLabelSetModificationTag(CProcessTagger*)`.
+    pub fn set_concept_label_set_modification_tag_tagger(
+        &mut self,
+        process_tagger: &ProcessTagger,
+    ) -> &mut Self {
+        self.set_concept_label_set_modification_tag(
+            process_tagger.get_current_concept_label_set_modification_tag(),
+        )
+    }
+
+    /// Port of `initConceptLabelSetModificationTag(CProcessTagger*)`.
+    pub fn init_concept_label_set_modification_tag_tagger(
+        &mut self,
+        process_tagger: &ProcessTagger,
+    ) -> &mut Self {
+        self.init_concept_label_set_modification_tag(
+            process_tagger.get_current_concept_label_set_modification_tag(),
+        )
+    }
+
+    /// Port of `isConceptLabelSetModificationTagUpdated(CProcessTagger*)`.
+    pub fn is_concept_label_set_modification_tag_updated_tagger(
+        &self,
+        process_tagger: &ProcessTagger,
+    ) -> bool {
+        self.is_concept_label_set_modification_tag_updated(
+            process_tagger.get_current_concept_label_set_modification_tag(),
+        )
+    }
+
+    /// Port of `isConceptLabelSetModificationTagUpToDate(CProcessTagger*)`.
+    pub fn is_concept_label_set_modification_tag_up_to_date_tagger(
+        &self,
+        process_tagger: &ProcessTagger,
+    ) -> bool {
+        self.is_concept_label_set_modification_tag_up_to_date(
+            process_tagger.get_current_concept_label_set_modification_tag(),
+        )
+    }
+
+    /// Port of `updateConceptLabelSetModificationTag(CProcessTagger*)`.
+    pub fn update_concept_label_set_modification_tag_tagger(
+        &mut self,
+        process_tagger: &ProcessTagger,
+    ) -> bool {
+        self.update_concept_label_set_modification_tag(
+            process_tagger.get_current_concept_label_set_modification_tag(),
+        )
+    }
 }
 
 /// Port of `CConceptDescriptorDependencyReapplyData`
@@ -127,9 +376,9 @@ pub struct ReapplyConceptLabelSet {
     pub additional_concept_des_dep_map: AdditionalDesDepMapRef,
 
     // --- descriptor linker heads --------------------------------------------
-    pub core_con_des_linker: ConDescId,  // CCoreConceptDescriptor* mCoreConDesLinker
-    pub concept_des_linker: ConDescId,   // CConceptDescriptor* mConceptDesLinker
-    pub prev_concept_des_linker: ConDescId, // CConceptDescriptor* mPrevConceptDesLinker
+    pub core_con_des_linker: CoreConceptDescriptorId, // CCoreConceptDescriptor* mCoreConDesLinker
+    pub concept_des_linker: ConDescId,                // CConceptDescriptor* mConceptDesLinker
+    pub prev_concept_des_linker: ConDescId,           // CConceptDescriptor* mPrevConceptDesLinker
 
     // --- value-typed signature / structure / flags (inline) -----------------
     pub concept_signature: ConceptSetSignature, // mConceptSignature
@@ -176,7 +425,7 @@ impl Default for ReapplyConceptLabelSet {
             modification_tag: ConceptLabelSetModificationTag::default(),
             concept_des_dep_map: HashMap::new(),
             additional_concept_des_dep_map: AdditionalDesDepMapRef::Null,
-            core_con_des_linker: Id::NONE,
+            core_con_des_linker: CoreConceptDescriptorId::NONE,
             concept_des_linker: Id::NONE,
             prev_concept_des_linker: Id::NONE,
             concept_signature: ConceptSetSignature::default(),
@@ -197,6 +446,30 @@ impl ReapplyConceptLabelSet {
         }
     }
 
+    /// Port of inherited `getConceptLabelSetModificationTag`.
+    pub fn get_concept_label_set_modification_tag(&self) -> Cint64 {
+        self.modification_tag
+            .get_concept_label_set_modification_tag()
+    }
+
+    /// Port of inherited `updateConceptLabelSetModificationTag(CProcessTagger*)`.
+    pub fn update_concept_label_set_modification_tag(
+        &mut self,
+        process_tagger: &ProcessTagger,
+    ) -> bool {
+        self.modification_tag
+            .update_concept_label_set_modification_tag_tagger(process_tagger)
+    }
+
+    /// Port of inherited `isConceptLabelSetModificationTagUpToDate(cint64)`.
+    pub fn is_concept_label_set_modification_tag_up_to_date(
+        &self,
+        concept_label_set_modification_tag: Cint64,
+    ) -> bool {
+        self.modification_tag
+            .is_concept_label_set_modification_tag_up_to_date(concept_label_set_modification_tag)
+    }
+
     /// Port of `getConceptCount`.
     pub fn get_concept_count(&self) -> Cint64 {
         self.concept_count
@@ -206,7 +479,7 @@ impl ReapplyConceptLabelSet {
         self.concept_signature.signature_value
     }
     /// Port of `getCoreConceptDescriptorLinker`.
-    pub fn get_core_concept_descriptor_linker(&self) -> ConDescId {
+    pub fn get_core_concept_descriptor_linker(&self) -> CoreConceptDescriptorId {
         self.core_con_des_linker
     }
 
@@ -254,7 +527,7 @@ impl Default for ReapplyRoleSuccessorData {
             link_linker: Id::NONE,
             located_link_set: false,
             link_count: 0,
-            reapply_queue: ReapplyQueue,
+            reapply_queue: ReapplyQueue::new(),
         }
     }
 }
@@ -336,11 +609,11 @@ pub struct BranchingMergingProcessingRestrictionSpecification {
 
     // --- own fields ----------------------------------------------------------
     pub remaining_nominal_creation_count: Cint64, // mRemainingNominalCreationCount
-    pub indi_link: EdgeId,                         // CIndividualLinkEdge* mIndiLink
+    pub indi_link: EdgeId,                        // CIndividualLinkEdge* mIndiLink
     pub remaining_linker_merging_candidate_indi_node_count: Cint64, // mRemainingLinkerMergingCandidateIndiNodeCount
-    pub remaining_valid_merging_candidate_indi_node_count: Cint64,  // mRemainingValidMergingCandidateIndiNodeCount
-    pub distinct_set_fixed: bool,             // mDistinctSetFixed
-    pub has_merging_init_candidates: bool,    // mHasMergingInitCandidates
+    pub remaining_valid_merging_candidate_indi_node_count: Cint64, // mRemainingValidMergingCandidateIndiNodeCount
+    pub distinct_set_fixed: bool,                                  // mDistinctSetFixed
+    pub has_merging_init_candidates: bool,                         // mHasMergingInitCandidates
 
     // --- the distinct-merged-nodes COW pair (behaviour-load-bearing) --------
     /// `CPROCESSSET<cint64>* mDistinctMergedNodesSet`. `None` == `nullptr`.
@@ -371,10 +644,16 @@ pub struct BranchingMergingProcessingRestrictionSpecification {
 
     pub distinct_set_node_relocated: bool, // mDistinctSetNodeRelocated
 
-    pub succ_choice_triggering_installed: bool,       // mSuccChoiceTriggeringInstalled
+    pub succ_choice_triggering_installed: bool, // mSuccChoiceTriggeringInstalled
     pub succ_choice_triggering_installed_count: Cint64, // mSuccChoiceTriggeringInstalledCount
     // KONCLUDE-PORT-NOTE[ownership]: `CXLinker<CIndividualLinkEdge*>*` → `Vec<EdgeId>`.
     pub last_checked_succ_choice_trigger_linker: Vec<EdgeId>, // mLastCheckedSuccChoiceTriggerLinker
+
+    // KONCLUDE-PORT-NOTE[api]: the full `CProcessingRestrictionSpecification*`
+    // hierarchy is still collapsed to this arena record. This field carries the
+    // `CLinkProcessingRestrictionSpecification::mRestLink` payload for the live
+    // restricted-reapply path.
+    pub link_restriction: EdgeId,
 }
 
 impl Default for BranchingMergingProcessingRestrictionSpecification {
@@ -407,6 +686,7 @@ impl Default for BranchingMergingProcessingRestrictionSpecification {
             succ_choice_triggering_installed: false,
             succ_choice_triggering_installed_count: 0,
             last_checked_succ_choice_trigger_linker: Vec::new(),
+            link_restriction: Id::NONE,
         }
     }
 }
@@ -420,6 +700,15 @@ impl BranchingMergingProcessingRestrictionSpecification {
         }
     }
 
+    /// Port of `CProcessingRestrictionSpecification::initProcessingRestriction`.
+    pub fn init_processing_restriction(&mut self, prev_rest: Option<&Self>) -> &mut Self {
+        self.priority_offset = prev_rest.map_or(0.0, |prev| prev.priority_offset);
+        self
+    }
+    /// Port of `getNextProcessingRestrictionSpecification`.
+    pub fn get_next_processing_restriction_specification(&self) -> RestrictionSpecId {
+        self.next_restriction
+    }
     /// Port of `getPriorityOffset` (from the `CProcessingRestrictionSpecification` base).
     pub fn get_priority_offset(&self) -> f64 {
         self.priority_offset
@@ -429,12 +718,24 @@ impl BranchingMergingProcessingRestrictionSpecification {
         self.priority_offset = priority_offset;
         self
     }
+    /// Port of `CLinkProcessingRestrictionSpecification::initLinkRestriction`.
+    pub fn init_link_restriction(&mut self, rest_link: EdgeId) -> &mut Self {
+        self.link_restriction = rest_link;
+        self
+    }
+    /// Port of `CLinkProcessingRestrictionSpecification::getLinkRestriction`.
+    pub fn get_link_restriction(&self) -> EdgeId {
+        self.link_restriction
+    }
     /// Port of `getDependencyTrackPoint` (from the `CDependencyTracker` base).
     pub fn get_dependency_track_point(&self) -> TrackPointId {
         self.dependency_track_point
     }
     /// Port of `setDependencyTrackPoint`.
-    pub fn set_dependency_track_point(&mut self, dependency_track_point: TrackPointId) -> &mut Self {
+    pub fn set_dependency_track_point(
+        &mut self,
+        dependency_track_point: TrackPointId,
+    ) -> &mut Self {
         self.dependency_track_point = dependency_track_point;
         self
     }

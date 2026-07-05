@@ -33,16 +33,12 @@
 //! out/in-out pointer-reference becomes `&mut SatNodeId` (an arena id), and
 //! `CConceptSaturationProcessLinker*` becomes `ConceptSaturationProcessLinkerId`.
 //!
-//! ## Why these bodies are PORT-PENDING
+//! ## Remaining PORT-PENDING bodies
 //!
-//! KONCLUDE-PORT-NOTE[api]: every one of the five rules dereferences, on its FIRST
-//! statement, the saturation descriptor chain
-//! `conSatProLinker->getConceptSaturationDescriptor()->getNegation()/getConcept()`.
-//! `CConceptSaturationProcessLinker` and `CConceptSaturationDescriptor` are both
-//! still zero-field marker stubs in `process::stubs` (no accessors, no per-test
-//! arena), so the `con_negation` / `concept` locals that drive ALL downstream
-//! control flow cannot yet be bound. The bodies then bottom out in three further
-//! not-yet-ported facilities:
+//! KONCLUDE-PORT-NOTE[api]: the saturation descriptor chain
+//! `conSatProLinker->getConceptSaturationDescriptor()->getNegation()/getConcept()`
+//! is now live. The small cardinality rules are ported below; the remaining bodies
+//! bottom out in three further not-yet-ported facilities:
 //!   1. the saturation node accessors deferred to process unit **SAT-1**
 //!      (`getRoleBackwardPropagationHash`, `getDirectStatusFlags`,
 //!      `getReapplyConceptSaturationLabelSet`, `getNominalIndividual`,
@@ -73,8 +69,17 @@
 #![allow(unused_variables)]
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
+use super::super::model::op::{CCATLEAST, CCATMOST, CCATOM};
+use super::super::model::substrate::Cint64;
+use super::super::model::RoleId;
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::SatNodeId;
+use super::satellites::ConceptSaturationDescriptorId;
+
+// `CCriticalConceptType` enum tags used by `addCriticalConceptDescriptor`.
+// File-local mirror of the (file-private) copies in `s08.rs` / `s09.rs`.
+const CCT_ATMOST: Cint64 = 1;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================
@@ -83,10 +88,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyATMOSTRule`.
     ///
-    /// PORT-PENDING — faithful structure recorded below. Needs the descriptor
-    /// chain (`getConceptSaturationDescriptor`/`getNegation`/`getConcept`), the
-    /// concept reads (`getRole`/`getParameter`/`getOperandList`, model-ported),
-    /// the status-flag masks, and the siblings `updateMaxCardinalityCandidates` /
+    /// Live port. Uses the descriptor chain, concept role/parameter/operands,
+    /// status-flag masks, and the siblings `updateMaxCardinalityCandidates` /
     /// `updateDirectAddingIndividualStatusFlags` /
     /// `addFUNCTIONALConceptExtensionProcessingRole` /
     /// `addQualifiedFUNCTIONALAtmostConceptExtensionProcessing` /
@@ -118,11 +121,62 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: the
-        // `conDes`/`concept`/`cardinality` locals come from the unported
-        // `CConceptSaturationProcessLinker`/`CConceptSaturationDescriptor` accessor
-        // chain; the status-flag masks and the five sibling helpers are not ported.
-        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let (role, cardinality, has_operands): (RoleId, Cint64, bool) = {
+            let concept_ref = calc_alg_context.ontology_arenas().concept(concept);
+            (
+                concept_ref.get_role(),
+                concept_ref.get_parameter() - Cint64::from(con_negation),
+                !concept_ref.get_operand_list().is_empty(),
+            )
+        };
+
+        if cardinality < 0 {
+            self.update_direct_adding_individual_status_flags(
+                *process_indi,
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+                calc_alg_context,
+            );
+        } else {
+            self.update_max_cardinality_candidates(*process_indi, 0, cardinality, calc_alg_context);
+            self.update_direct_adding_individual_status_flags(
+                *process_indi,
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYRESTRICTED,
+                calc_alg_context,
+            );
+            if cardinality == 1 {
+                if !has_operands {
+                    self.add_functional_concept_extension_processing_role(
+                        role,
+                        process_indi,
+                        calc_alg_context,
+                    );
+                } else {
+                    self.add_qualified_functional_atmost_concept_extension_processing(
+                        con_des,
+                        process_indi,
+                        calc_alg_context,
+                    );
+                }
+            }
+            self.add_critical_concept_descriptor(
+                con_des,
+                CCT_ATMOST,
+                process_indi,
+                calc_alg_context,
+            );
+        }
     }
 
     // =======================================================================
@@ -131,8 +185,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::applyATLEASTRule`.
     ///
-    /// PORT-PENDING — faithful structure recorded below. Needs the descriptor
-    /// chain, the status-flag masks, and the siblings
+    /// Live port. Uses the descriptor chain and the siblings
     /// `updateMaxCardinalityCandidates` / `createSuccessorForConcept`.
     ///
     /// C++ structure:
@@ -153,10 +206,37 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
-        // chain + `updateMaxCardinalityCandidates` / `createSuccessorForConcept`
-        // siblings not ported.
-        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let _role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
+        let cardinality = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_parameter()
+            + Cint64::from(con_negation);
+
+        if cardinality > 0 {
+            self.update_max_cardinality_candidates(*process_indi, cardinality, 0, calc_alg_context);
+            self.create_successor_for_concept(
+                process_indi,
+                con_sat_pro_linker,
+                cardinality,
+                calc_alg_context,
+            );
+        }
     }
 
     // =======================================================================
@@ -233,7 +313,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // backward-propagation hash/reapply-descriptor/link satellites and the
         // process-data flag accessors are unported; the descriptor chain, the
         // status-flag masks and the four siblings land in later PU-SAT units.
-        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+        let _ = (
+            &mut *process_indi,
+            con_sat_pro_linker,
+            &mut *calc_alg_context,
+        );
     }
 
     // =======================================================================
@@ -375,7 +459,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // chain, reapply label-set / role-succ-hash satellite reads, the backend
         // association cache handler (W6-DEFER[api]), the status/critical masks, and
         // the ~10 siblings are all not yet ported.
-        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+        let _ = (
+            &mut *process_indi,
+            con_sat_pro_linker,
+            &mut *calc_alg_context,
+        );
     }
 
     // =======================================================================
@@ -483,6 +571,167 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // chain, the saturation/reapply label-set reads, the backend association
         // cache handler (W6-DEFER[api]), the status/critical masks, and the ~9
         // siblings are all not yet ported.
-        let _ = (&mut *process_indi, con_sat_pro_linker, &mut *calc_alg_context);
+        let _ = (
+            &mut *process_indi,
+            con_sat_pro_linker,
+            &mut *calc_alg_context,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::role::Role;
+    use super::super::super::model::ConceptId;
+    use super::super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::super::satellites::{ConceptSaturationDescriptor, ConceptSaturationProcessLinker};
+    use super::*;
+
+    fn role(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> RoleId {
+        let mut role = Role::new();
+        role.set_role_tag(tag);
+        ctx.ontology_arenas_mut().alloc_role(role)
+    }
+
+    fn atom(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> ConceptId {
+        let mut concept = Concept::new();
+        concept.set_operator_code(CCATOM).set_concept_tag(tag);
+        ctx.ontology_arenas_mut().alloc_concept(concept)
+    }
+
+    fn cardinality_concept(
+        ctx: &mut CalculationAlgorithmContextBase,
+        op_code: Cint64,
+        tag: Cint64,
+        role: RoleId,
+        parameter: Cint64,
+        operand: Option<ConceptId>,
+    ) -> ConceptId {
+        let mut concept = Concept::new();
+        concept
+            .set_operator_code(op_code)
+            .set_concept_tag(tag)
+            .set_role(role)
+            .set_parameter(parameter);
+        if let Some(operand) = operand {
+            concept
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+        }
+        ctx.ontology_arenas_mut().alloc_concept(concept)
+    }
+
+    fn concept_process_linker(
+        ctx: &mut CalculationAlgorithmContextBase,
+        concept: ConceptId,
+        negated: bool,
+    ) -> (
+        ConceptSaturationProcessLinkerId,
+        ConceptSaturationDescriptorId,
+    ) {
+        let mut descriptor = ConceptSaturationDescriptor::new();
+        descriptor.init_concept_saturation_descriptor(concept, negated);
+        let descriptor = ctx.process_context_mut().alloc_con_sat_desc(descriptor);
+        let mut linker = ConceptSaturationProcessLinker::new();
+        linker.init_concept_saturation_process_linker(descriptor);
+        (
+            ctx.process_context_mut().alloc_con_sat_proc_linker(linker),
+            descriptor,
+        )
+    }
+
+    #[test]
+    fn s04_apply_atleast_rule_updates_max_candidate() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 501);
+        let concept = cardinality_concept(&mut ctx, CCATLEAST, 503, role, 2, None);
+        let (linker, _) = concept_process_linker(&mut ctx, concept, false);
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        algo.apply_atleast_rule(&mut node, linker, &mut ctx);
+
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(node)
+                .get_max_atleast_cardinality_candidate(),
+            2
+        );
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(node)
+                .get_max_atmost_cardinality_candidate(),
+            0
+        );
+    }
+
+    #[test]
+    fn s04_apply_atleast_rule_negated_increments_cardinality() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 511);
+        let concept = cardinality_concept(&mut ctx, CCATLEAST, 513, role, 2, None);
+        let (linker, _) = concept_process_linker(&mut ctx, concept, true);
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        algo.apply_atleast_rule(&mut node, linker, &mut ctx);
+
+        assert_eq!(
+            ctx.process_context()
+                .sat_node(node)
+                .get_max_atleast_cardinality_candidate(),
+            3
+        );
+    }
+
+    #[test]
+    fn s04_apply_atmost_rule_sets_restricted_and_max_candidate() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 521);
+        let concept = cardinality_concept(&mut ctx, CCATMOST, 523, role, 2, None);
+        let (linker, _) = concept_process_linker(&mut ctx, concept, false);
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        algo.apply_atmost_rule(&mut node, linker, &mut ctx);
+
+        let node_ref = ctx.process_context().sat_node(node);
+        assert_eq!(node_ref.get_max_atleast_cardinality_candidate(), 0);
+        assert_eq!(node_ref.get_max_atmost_cardinality_candidate(), 2);
+        assert!(node_ref.direct_status_flags.has_flags_code(
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYRESTRICTED,
+            false,
+        ));
+    }
+
+    #[test]
+    fn s04_apply_atmost_rule_negative_cardinality_clashes() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = role(&mut ctx, 531);
+        let operand = atom(&mut ctx, 535);
+        let concept = cardinality_concept(&mut ctx, CCATMOST, 533, role, 0, Some(operand));
+        let (linker, _) = concept_process_linker(&mut ctx, concept, true);
+        let mut node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        algo.apply_atmost_rule(&mut node, linker, &mut ctx);
+
+        let node_ref = ctx.process_context().sat_node(node);
+        assert!(node_ref.direct_status_flags.has_clashed_flag());
+        assert_eq!(node_ref.get_max_atmost_cardinality_candidate(), 0);
     }
 }

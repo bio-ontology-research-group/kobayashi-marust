@@ -20,6 +20,7 @@
 
 use super::super::model::substrate::Cint64;
 use super::super::model::ConceptId;
+use super::super::process::node::IndividualProcessNode;
 use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
 use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
 use super::algorithm::{IndiNodeQueueType, DETERMINISTIC_PROCESS_PRIORITY};
@@ -27,6 +28,28 @@ use super::clash::CalcSignal;
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    fn take_next_backend_reuse_expansion_individual(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> NodeId {
+        let q = calc_alg_context.get_backend_individual_reuse_expansion_queue(false);
+        if q.is_some()
+            && !calc_alg_context
+                .process_context()
+                .indi_unsorted_proc_queue(q)
+                .is_empty()
+        {
+            let q = calc_alg_context.get_backend_individual_reuse_expansion_queue(true);
+            let indi_proc_node = calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(q)
+                .take_next_process_individual_node();
+            self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BackendExpansionReuse;
+            return indi_proc_node;
+        }
+        NodeId::NONE
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::continueIndividualProcessing`.
     pub fn continue_individual_processing(
         &self,
@@ -51,7 +74,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // if (conProQue && !conProQue->isEmpty()) {
         if con_pro_que.is_some()
-            && !calc_alg_context.process_context().concept_proc_queue(con_pro_que).is_empty()
+            && !calc_alg_context
+                .process_context()
+                .concept_proc_queue(con_pro_que)
+                .is_empty()
         {
             // CConceptProcessPriority conProPri;
             // if (conProQue->getNextConceptProcessPriority(&conProPri)) {
@@ -175,7 +201,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let bp = self.or_branch_stack.last_mut().expect("checked non-empty");
             let link = bp.disjuncts[bp.next_alt];
             bp.next_alt += 1;
-            (bp.node, link.target, link.negated ^ bp.negate, bp.dep_track_point)
+            (
+                bp.node,
+                link.target,
+                link.negated ^ bp.negate,
+                bp.dep_track_point,
+            )
         };
 
         // re-seed the node onto the immediately-processing queue so
@@ -210,10 +241,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// completion graph is saturated OR a rule raises a pending clash/stop signal
     /// (which it leaves set for the caller to inspect); it does not itself decide
     /// the verdict.
-    fn run_saturation_loop(
-        &mut self,
-        calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) {
+    fn run_saturation_loop(&mut self, calc_alg_context: &mut CalculationAlgorithmContextBase) {
         if calc_alg_context.has_pending_signal() {
             return;
         }
@@ -264,8 +292,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     self.applied_total_rule_count += 1;
 
                     // tableauRuleProcessing → tableauRuleChoice → apply_*_rule engine.
-                    continue_processing_individual =
-                        self.tableau_rule_processing(indi_proc_node, con_proc_des, calc_alg_context);
+                    continue_processing_individual = self.tableau_rule_processing(
+                        indi_proc_node,
+                        con_proc_des,
+                        calc_alg_context,
+                    );
                     // The clash/stop a rule may raise unwinds HERE (the C++ throw from
                     // inside tableauRuleProcessing), before the reinsert/continue branch.
                     if calc_alg_context.has_pending_signal() {
@@ -302,6 +333,52 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 return;
             }
         }
+    }
+
+    /// Shared body for the early/late `CIndividualReactivationProcessingQueue`
+    /// probes in `takeNextProcessIndividual`.
+    fn take_next_reactivation_individual_from_queue(
+        &mut self,
+        q: super::super::process::queues::IndividualReactivationProcessingQueueId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> NodeId {
+        let (react_indi_node, force_reactivation) = calc_alg_context
+            .process_context_mut()
+            .indi_reactivation_proc_queue_mut(q)
+            .take_next_reactivation_individual()
+            .unwrap_or((NodeId::NONE, false));
+        let indi_proc_node = self.get_localized_individual(react_indi_node, true, calc_alg_context);
+        if force_reactivation {
+            let completion_graph_cached = calc_alg_context
+                .process_context()
+                .node(indi_proc_node)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED,
+                );
+            if completion_graph_cached {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_proc_node)
+                    .clear_processing_restriction_flags(
+                        IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED,
+                    );
+                self.reapply_satisfiable_cached_absorbed_disjunction_concepts(
+                    indi_proc_node,
+                    calc_alg_context,
+                );
+                self.reapply_satisfiable_cached_absorbed_generating_concepts(
+                    indi_proc_node,
+                    calc_alg_context,
+                );
+            }
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(indi_proc_node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_COMPLETIONGRAPHCACHINGINVALIDATED,
+                );
+        }
+        indi_proc_node
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::takeNextProcessIndividual`.
@@ -391,7 +468,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_individual_immediately_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_unsorted_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_individual_immediately_processing_queue(true);
                 indi_proc_node = calc_alg_context
@@ -410,7 +490,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_role_assertion_expansion_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_unsorted_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_role_assertion_expansion_processing_queue(true);
                 indi_proc_node = calc_alg_context
@@ -428,12 +511,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let q = calc_alg_context
                 .get_individual_depth_deterministic_expansion_preprocessing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context
                     .get_individual_depth_deterministic_expansion_preprocessing_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DetExp;
             }
         }
@@ -443,7 +530,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let q = calc_alg_context
                 .get_individual_depth_first_deterministic_expansion_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_unsorted_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context
                     .get_individual_depth_first_deterministic_expansion_processing_queue(true);
@@ -459,12 +549,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_distinct_value_space_satisfiability_checking_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q =
                     calc_alg_context.get_distinct_value_space_satisfiability_checking_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_VstSatTesting;
                 if indi_proc_node.is_some() {
                     indi_proc_node =
@@ -477,11 +571,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_value_space_triggering_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_value_space_triggering_processing_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_VsTriggering;
                 if indi_proc_node.is_some() {
                     indi_proc_node =
@@ -494,7 +592,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_backend_cache_synchronization_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_unsorted_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_backend_cache_synchronization_processing_queue(true);
                 indi_proc_node = calc_alg_context
@@ -509,7 +610,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_backend_direct_influence_expansion_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_unsorted_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_backend_direct_influence_expansion_queue(true);
                 indi_proc_node = calc_alg_context
@@ -521,27 +625,264 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
-        // --- Probes 11-19: variable-binding concept-batch (CIndividualConceptBatch-
-        // ProcessingQueue stub), incremental compatibility-checking / expansion-
-        // initializing / expansion (CIndividualCustomPriorityProcessingQueue stub) /
-        // compatible-merge, early reactivation (CIndividualReactivationProcessingQueue
-        // stub), nominal-non-det SORT, backend reuse-expansion prepare/fixed.
-        // W3-DEFER[api]: these probe still-stubbed queue containers and/or dispatch
-        // into deferred merge/incremental/backend helpers. ---
+        // --- Probe 11: variable-binding concept-batch (cpp 2305-2315). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_variable_binding_concept_batch_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_concept_batch_proc_queue(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.get_variable_binding_concept_batch_processing_queue(true);
+                let next =
+                    calc_alg_context.take_next_variable_binding_concept_batch_process_individual(q);
+                if let Some((_var_bind_concept, batch_indi_node, con_pro_des)) = next {
+                    if batch_indi_node.is_some() {
+                        let localized =
+                            self.get_localized_individual(batch_indi_node, true, calc_alg_context);
+                        let con_pro_que = calc_alg_context
+                            .process_context_mut()
+                            .node_concept_processing_queue(localized, true);
+                        ConceptProcessingQueue::insert_concept_process_descriptor(
+                            con_pro_que,
+                            con_pro_des,
+                            calc_alg_context.process_context_mut(),
+                        );
+                        indi_proc_node = localized;
+                        self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_VarBindBatchQue;
+                    }
+                }
+            }
+        }
 
-        // --- Probe 20: INQT_OUTDATED individual-processing queue. W3-DEFER[api]:
-        // `CIndividualProcessingQueue` (the CIndividualProcessNodeDescriptor priority
-        // map) is still a stub; off the trivial path. ---
+        // --- Probe 12: incremental compatibility-checking queue (cpp 2318-2337). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_incremental_compatibility_checking_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.get_incremental_compatibility_checking_queue(true);
+                while !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
+                {
+                    let mut comp_check_indi_node = calc_alg_context
+                        .process_context_mut()
+                        .indi_depth_queue_take_next(q);
+                    comp_check_indi_node =
+                        self.get_localized_individual(comp_check_indi_node, true, calc_alg_context);
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(comp_check_indi_node)
+                        .set_incremental_compatibility_checking_queued(false);
+                    if calc_alg_context
+                        .process_context()
+                        .node(comp_check_indi_node)
+                        .has_partial_processing_restriction_flags(
+                            IndividualProcessNode::PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED,
+                        )
+                    {
+                        calc_alg_context
+                            .process_context_mut()
+                            .node_mut(comp_check_indi_node)
+                            .clear_processing_restriction_flags(
+                                IndividualProcessNode::PRF_INCREMENTALEXPANSIONRETESTDUEDIRECTMODIFIED,
+                            );
+                    }
+                    self.check_compatibility_update_directly_changed_propagation(
+                        comp_check_indi_node,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
+
+        // --- Probe 13: incremental-expansion initializing queue (cpp 2340-2361). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_incremental_expansion_initializing_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
+            {
+                let q =
+                    calc_alg_context.get_incremental_expansion_initializing_processing_queue(true);
+                while !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
+                {
+                    let mut inc_exp_init_indi_node = calc_alg_context
+                        .process_context_mut()
+                        .indi_depth_queue_take_next(q);
+                    inc_exp_init_indi_node = self.get_localized_individual(
+                        inc_exp_init_indi_node,
+                        true,
+                        calc_alg_context,
+                    );
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(inc_exp_init_indi_node)
+                        .set_incremental_expansion_queued(false);
+                    if self.requires_incremental_node_expansion(
+                        inc_exp_init_indi_node,
+                        calc_alg_context,
+                    ) {
+                        self.initialize_incremental_individual_expansion(
+                            inc_exp_init_indi_node,
+                            calc_alg_context,
+                        );
+                    }
+                }
+            }
+        }
+
+        // --- Probe 14: incremental-expansion processing queue (cpp 2364-2373). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.get_incremental_expansion_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_custom_priority_proc_queue(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.get_incremental_expansion_processing_queue(true);
+                while indi_proc_node.is_none()
+                    && !calc_alg_context
+                        .process_context()
+                        .indi_custom_priority_proc_queue(q)
+                        .is_empty()
+                {
+                    let mut inc_exp_indi_node = calc_alg_context
+                        .process_context_mut()
+                        .indi_custom_priority_queue_take_next(q);
+                    inc_exp_indi_node =
+                        self.get_localized_individual(inc_exp_indi_node, true, calc_alg_context);
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(inc_exp_indi_node)
+                        .set_incremental_expansion_queued(false);
+                    if self.requires_incremental_node_expansion(inc_exp_indi_node, calc_alg_context)
+                    {
+                        indi_proc_node =
+                            self.incremental_node_expansion(inc_exp_indi_node, calc_alg_context);
+                    }
+                }
+            }
+        }
+
+        // --- Probe 15: incremental compatible-merge.
+        // W3-DEFER[api]: deferred merge helper. ---
+
+        // --- Probe 16: early individual-reactivation queue (cpp 2402-2419). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.early_individual_reactivation_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_reactivation_proc_queue(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.early_individual_reactivation_processing_queue(true);
+                indi_proc_node =
+                    self.take_next_reactivation_individual_from_queue(q, calc_alg_context);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_CompCachedReact;
+            }
+        }
+
+        // --- Probe 17: nominal-non-deterministic processing sort prep
+        // (cpp 2421-2439). LIVE. ---
+        if indi_proc_node.is_none()
+            && !calc_alg_context
+                .processing_data_box()
+                .has_nominal_non_deterministic_processing_nodes_sorted()
+        {
+            let mut nom_non_det_pro_linkers = calc_alg_context
+                .processing_data_box_mut()
+                .take_sorted_nominal_non_deterministic_processing_node_linker();
+            nom_non_det_pro_linkers.sort_by(|left, right| {
+                let left_id = calc_alg_context
+                    .process_context()
+                    .node(*left)
+                    .individual_node_id();
+                let right_id = calc_alg_context
+                    .process_context()
+                    .node(*right)
+                    .individual_node_id();
+                right_id.cmp(&left_id)
+            });
+            calc_alg_context
+                .processing_data_box_mut()
+                .clear_sorted_nominal_non_deterministic_processing_node_linker();
+            for nom_non_det_pro_linker in nom_non_det_pro_linkers {
+                calc_alg_context
+                    .processing_data_box_mut()
+                    .add_sorted_nominal_non_deterministic_processing_node_linker(vec![
+                        nom_non_det_pro_linker,
+                    ]);
+            }
+            calc_alg_context
+                .processing_data_box_mut()
+                .set_nominal_non_deterministic_processing_nodes_sorted(true);
+        }
+
+        // --- Probe 18: prepare backend reuse-expansion branching.
+        // W3-DEFER[api]: task branching + reuse-mode dependency siblings. ---
+
+        // --- Probe 19: fixed-mode backend reuse-expansion (cpp 2453-2460). LIVE. ---
+        if indi_proc_node.is_none() && self.opt_backend_expansion_reuse {
+            let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(true);
+            if calc_alg_context
+                .process_context()
+                .backend_neighbour_expansion_controlling_data(exp_cont_data)
+                .is_fixed_reuse_expansion_mode()
+            {
+                indi_proc_node =
+                    self.take_next_backend_reuse_expansion_individual(calc_alg_context);
+            }
+        }
+
+        // --- Probe 20: individual-processing queue (cpp 2459-2467). LIVE. ---
+        if indi_proc_node.is_none() {
+            self.min_concept_processing_priority_level = 0.0;
+            let q = calc_alg_context.individual_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_proc_queue(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.individual_processing_queue(true);
+                let indi_process_node_des = calc_alg_context
+                    .process_context_mut()
+                    .indi_processing_queue_take_next_descriptor(q);
+                indi_proc_node = calc_alg_context
+                    .process_context()
+                    .indi_proc_node_desc(indi_process_node_des)
+                    .get_individual();
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Outdated;
+            }
+        }
 
         // --- Probe 21: nominal processing queue (cpp 2381-2387). LIVE. ---
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_nominal_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_nominal_processing_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_Nominal;
             }
         }
@@ -568,11 +909,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_individual_depth_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_individual_depth_processing_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_DepthNormal;
             }
         }
@@ -584,7 +929,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_individual_depth_first_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_unsorted_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_unsorted_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_individual_depth_first_processing_queue(true);
                 indi_proc_node = calc_alg_context
@@ -595,8 +943,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
-        // --- Probe 28: late individual-reactivation. W3-DEFER[api]:
-        // `CIndividualReactivationProcessingQueue` stub + reapply helpers. ---
+        // --- Probe 28: late individual-reactivation queue (cpp 2621-2640). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.late_individual_reactivation_processing_queue(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_reactivation_proc_queue(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.late_individual_reactivation_processing_queue(true);
+                indi_proc_node =
+                    self.take_next_reactivation_individual_from_queue(q, calc_alg_context);
+                self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_CompCachedReact;
+            }
+        }
 
         // --- Probe 29: blocking-update review queue (cpp 2643-2650). LIVE. ---
         if indi_proc_node.is_none() {
@@ -604,11 +965,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             self.opt_det_exp_preporcessing = false;
             let q = calc_alg_context.get_blocking_update_review_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_blocking_update_review_processing_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BlockUp;
             }
         }
@@ -617,18 +982,126 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if indi_proc_node.is_none() {
             let q = calc_alg_context.get_blocked_reactivation_processing_queue(false);
             if q.is_some()
-                && !calc_alg_context.process_context().indi_depth_proc_queue(q).is_empty()
+                && !calc_alg_context
+                    .process_context()
+                    .indi_depth_proc_queue(q)
+                    .is_empty()
             {
                 let q = calc_alg_context.get_blocked_reactivation_processing_queue(true);
-                indi_proc_node =
-                    calc_alg_context.process_context_mut().indi_depth_queue_take_next(q);
+                indi_proc_node = calc_alg_context
+                    .process_context_mut()
+                    .indi_depth_queue_take_next(q);
                 self.indi_node_from_queue_type = IndiNodeQueueType::Inqt_BlockReact;
             }
         }
 
-        // --- Probes 31-34: signature-blocking review set, reusing review data,
-        // backend late-neighbour expansion, prioritized backend reuse-expansion.
-        // W3-DEFER[api]: review-set / reusing / backend subsystems. ---
+        // --- Probe 31: signature-blocking review set (cpp 2661-2694). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.signature_blocking_review_set(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .signature_blocking_review_set(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.signature_blocking_review_set(true);
+                let next_review = calc_alg_context
+                    .process_context_mut()
+                    .signature_blocking_review_set_mut(q)
+                    .take_next_review_individual();
+                if let Some((blocked_indi_id, is_non_subset_data)) = next_review {
+                    indi_proc_node =
+                        self.get_localized_individual_by_id(blocked_indi_id, calc_alg_context);
+
+                    if !is_non_subset_data && self.conf_individual_reusing_from_signature_blocking {
+                        self.upgrade_signature_blocking_to_individual_reusing(
+                            indi_proc_node,
+                            calc_alg_context,
+                        );
+                    }
+
+                    let loc_sig_blocking_data = self
+                        .get_or_create_signature_blocking_concept_expansion_data(
+                            indi_proc_node,
+                            calc_alg_context,
+                        );
+                    if !calc_alg_context
+                        .process_context()
+                        .sig_block_con_exp_data(loc_sig_blocking_data)
+                        .is_identic_concept_set_required()
+                    {
+                        calc_alg_context
+                            .process_context_mut()
+                            .sig_block_con_exp_data_mut(loc_sig_blocking_data)
+                            .set_identic_concept_set_required(true);
+                        calc_alg_context
+                            .process_context_mut()
+                            .node_mut(indi_proc_node)
+                            .set_last_search_blocker_candidate_count(0);
+                        self.detect_individual_node_signature_blocking_status(
+                            indi_proc_node,
+                            calc_alg_context,
+                        );
+                    }
+                }
+            }
+        }
+
+        // --- Probe 32: reusing review data (cpp 2698-2714). LIVE. ---
+        if indi_proc_node.is_none() {
+            let q = calc_alg_context.reusing_review_data(false);
+            if q.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .reusing_review_data(q)
+                    .is_empty()
+            {
+                let q = calc_alg_context.reusing_review_data(false);
+                while calc_alg_context
+                    .process_context()
+                    .reusing_review_data(q)
+                    .has_next_individual_id()
+                    && indi_proc_node.is_none()
+                {
+                    let indi_node_id = calc_alg_context
+                        .process_context_mut()
+                        .reusing_review_data_mut(q)
+                        .take_next_individual_id();
+
+                    indi_proc_node =
+                        self.get_localized_individual_by_id(indi_node_id, calc_alg_context);
+                    let reuse_data = calc_alg_context
+                        .process_context()
+                        .node(indi_proc_node)
+                        .reusing_individual_node_concept_expansion_data(false);
+                    if !calc_alg_context
+                        .process_context()
+                        .reusing_con_exp_data(reuse_data)
+                        .is_concept_set_still_subset()
+                    {
+                        self.remove_individual_reusing(&mut indi_proc_node, calc_alg_context);
+                    } else {
+                        indi_proc_node = NodeId::NONE;
+                    }
+                }
+            }
+        }
+
+        // --- Probe 33: backend late-neighbour expansion.
+        // W3-DEFER[api]: backend-neighbour expansion cursor. ---
+
+        // --- Probe 34: prioritized-mode backend reuse-expansion (cpp 2734-2741). LIVE. ---
+        if indi_proc_node.is_none() && self.opt_backend_expansion_reuse {
+            let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(true);
+            if calc_alg_context
+                .process_context()
+                .backend_neighbour_expansion_controlling_data(exp_cont_data)
+                .is_prioritized_reuse_expansion_mode()
+            {
+                indi_proc_node =
+                    self.take_next_backend_reuse_expansion_individual(calc_alg_context);
+            }
+        }
 
         // --- Probe 35: delaying-nominal processing queue (cpp 2761-2767). LIVE. ---
         if indi_proc_node.is_none() {
@@ -698,7 +1171,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.signature_indi_node_status_hash
                     .insert(con_sig_value, processing_restriction_flags);
 
-                if !self.signature_indi_node_pred_dep_hash.contains_key(&con_sig_value) {
+                if !self
+                    .signature_indi_node_pred_dep_hash
+                    .contains_key(&con_sig_value)
+                {
                     // cint64 indiAncestorDepth = indiNode->getIndividualAncestorDepth();
                     let indi_ancestor_depth: Cint64 = calc_alg_context
                         .process_context()

@@ -27,6 +27,7 @@ use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::ConceptId;
 // F0 base, ported in `cache/base.rs`.
 use super::base::CompletionGraphCache;
+use super::context::CacheContext;
 
 // ===========================================================================
 // F4-local arena id aliases (the `CXxx*` → `Id<T>` replacement, PORT.md §5).
@@ -402,21 +403,27 @@ impl ReuseCacheEntryWriteData {
     /// Port of `getCacheValueList` (Expand payload; `None` for the base record).
     pub fn get_cache_value_list(&self) -> Option<&Vec<CacheValue>> {
         match self {
-            ReuseCacheEntryWriteData::Expand { cache_value_list, .. } => Some(cache_value_list),
+            ReuseCacheEntryWriteData::Expand {
+                cache_value_list, ..
+            } => Some(cache_value_list),
             _ => None,
         }
     }
     /// Port of `getMinimalCacheValueList`.
     pub fn get_minimal_cache_value_list(&self) -> Option<&Vec<CacheValue>> {
         match self {
-            ReuseCacheEntryWriteData::Expand { minimal_value_list, .. } => Some(minimal_value_list),
+            ReuseCacheEntryWriteData::Expand {
+                minimal_value_list, ..
+            } => Some(minimal_value_list),
             _ => None,
         }
     }
     /// Port of `getJobInstantiation`.
     pub fn get_job_instantiation(&self) -> JobInstantiation {
         match self {
-            ReuseCacheEntryWriteData::Expand { job_instantiation, .. } => *job_instantiation,
+            ReuseCacheEntryWriteData::Expand {
+                job_instantiation, ..
+            } => *job_instantiation,
             _ => INVALID,
         }
     }
@@ -648,9 +655,7 @@ pub struct ReuseCompletionGraphCacheReader {
     /// `CReuseCompletionGraphCacheSlotItem* mCurrentSlot`.
     pub current_slot: ReuseCacheSlotItemId,
     /// `QAtomicPointer<CReuseCompletionGraphCacheSlotItem> mUpdatedSlot`.
-    /// KONCLUDE-PORT-NOTE[threading]: opaque atomic slot pointer (logically a
-    /// `ReuseCacheSlotItemId` published cross-thread).
-    pub updated_slot: Cint64,
+    pub updated_slot: ReuseCacheSlotItemId,
     /// `CXLinker<TConceptNegPair>* mFreeLinker`.
     /// KONCLUDE-PORT-NOTE[memory-pool]: opaque freelist head of reusable linker
     /// nodes.
@@ -672,7 +677,7 @@ impl ReuseCompletionGraphCacheReader {
         ReuseCompletionGraphCacheReader {
             context: ReuseCompletionGraphCacheContext::new(),
             current_slot: Id::NONE,
-            updated_slot: INVALID,
+            updated_slot: Id::NONE,
             free_linker: INVALID,
             entry_voting_vec: Vec::new(),
             test_concept_linker_vec: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
@@ -683,32 +688,40 @@ impl ReuseCompletionGraphCacheReader {
     // W6-CACHE method-batch
 
     /// Port of `updateSlot` (`mUpdatedSlot.fetchAndStoreOrdered(updatedSlot)`).
-    /// KONCLUDE-PORT-NOTE[threading]: atomic exchange of the published slot id →
-    /// single-threaded inline swap of the opaque `updated_slot` handle.
-    pub fn update_slot(&mut self, updated_slot: Cint64) -> &mut Self {
+    pub fn update_slot(
+        &mut self,
+        updated_slot: ReuseCacheSlotItemId,
+        cache_context: &mut CacheContext,
+    ) -> &mut Self {
+        // KONCLUDE-PORT-NOTE[threading]: atomic exchange of the published slot id
+        // becomes a single-threaded swap on the arena id.
         let prev_slot = self.updated_slot;
         self.updated_slot = updated_slot;
-        if prev_slot != INVALID {
-            // W6-DEFER[api]: prevSlot->decReader() — the slot lives in the facade arena.
+        if prev_slot.is_some() {
+            cache_context
+                .reuse_cache_slot_item_mut(prev_slot)
+                .dec_reader();
         }
         self
     }
 
     /// Port of `hasUpdatedSlotItem` (`mUpdatedSlot.fetchAndAddRelaxed(0) != nullptr`).
     pub fn has_updated_slot_item(&self) -> bool {
-        self.updated_slot != INVALID
+        self.updated_slot.is_some()
     }
 
     /// Port of `switchToUpdatedSlotItem` (`mUpdatedSlot.fetchAndStoreOrdered(nullptr)`).
     /// KONCLUDE-PORT-NOTE[threading]: take the published slot id and clear the atomic.
-    pub fn switch_to_updated_slot_item(&mut self) -> bool {
+    pub fn switch_to_updated_slot_item(&mut self, cache_context: &mut CacheContext) -> bool {
         let updated_slot = self.updated_slot;
-        self.updated_slot = INVALID;
-        if updated_slot != INVALID {
+        self.updated_slot = Id::NONE;
+        if updated_slot.is_some() {
             let prev_slot = self.current_slot;
-            self.current_slot = ReuseCacheSlotItemId::new(updated_slot);
+            self.current_slot = updated_slot;
             if prev_slot.is_some() {
-                // W6-DEFER[api]: prevSlot->decReader() — facade-arena slot.
+                cache_context
+                    .reuse_cache_slot_item_mut(prev_slot)
+                    .dec_reader();
             }
             return true;
         }
@@ -747,8 +760,13 @@ impl ReuseCompletionGraphCacheReader {
                 adding_level = self.test_concept_linker_level;
             }
             // head-at-FRONT prepend (`newLinker->append(mTestConceptLinkerVec[level])`).
-            self.test_concept_linker_vec[adding_level as usize]
-                .insert(0, NegLink { target: concept, negated });
+            self.test_concept_linker_vec[adding_level as usize].insert(
+                0,
+                NegLink {
+                    target: concept,
+                    negated,
+                },
+            );
             self.test_concept_linker_count += 1;
             return true;
         }
@@ -786,18 +804,22 @@ impl ReuseCompletionGraphCacheReader {
     /// test-concept-ring bookkeeping is fully ported.
     pub fn get_cache_entry(
         &mut self,
+        cache_context: &mut CacheContext,
         concept: ConceptId,
         minimal_completion_graph: Option<&mut bool>,
         deterministic_connection: Option<&mut bool>,
     ) -> ReuseCacheEntryId {
         let mut entry: ReuseCacheEntryId = Id::NONE;
         if self.has_updated_slot_item() {
-            self.switch_to_updated_slot_item();
+            self.switch_to_updated_slot_item(cache_context);
         }
         if self.current_slot.is_some() {
-            // W6-DEFER[api]: entryHash = mCurrentSlot->getEntryHash() — facade-arena hash.
-            // W6-DEFER[api]: entryCount = mCurrentSlot->getEntryCount().
-            let entry_count: Cint64 = 0;
+            let _entry_hash = cache_context
+                .reuse_cache_slot_item(self.current_slot)
+                .get_entry_hash();
+            let entry_count = cache_context
+                .reuse_cache_slot_item(self.current_slot)
+                .get_entry_count();
 
             if entry_count > 0 {
                 if (self.entry_voting_vec.len() as Cint64) < entry_count {
@@ -816,7 +838,13 @@ impl ReuseCompletionGraphCacheReader {
                 self.test_concept_linker_count = 1;
                 self.test_concept_linker_level = 0;
                 // W6-DEFER[memory-pool]: getConceptTestLinker() — node collapsed into Vec.
-                self.test_concept_linker_vec[0].insert(0, NegLink { target: concept, negated: false });
+                self.test_concept_linker_vec[0].insert(
+                    0,
+                    NegLink {
+                        target: concept,
+                        negated: false,
+                    },
+                );
                 tested_concept_set.insert(concept);
 
                 while self.test_concept_linker_count > 0 {
@@ -851,7 +879,9 @@ impl ReuseCompletionGraphCacheReader {
                         // W6-DEFER[api]: entailed/incompatible entry-linker chains (facade arena).
                         let entailed_entry_linker: &[ReuseCacheEntryId] = &[];
                         let incompatible_entry_linker: &[ReuseCacheEntryId] = &[];
-                        if !entailed_entry_linker.is_empty() || !incompatible_entry_linker.is_empty() {
+                        if !entailed_entry_linker.is_empty()
+                            || !incompatible_entry_linker.is_empty()
+                        {
                             for &_e in entailed_entry_linker {
                                 // W6-DEFER[api]: item = mEntryVotingVec[entry->getEntryID()];
                                 //   item.mEntry = entry; item.mEntailedCount++; item.mTmpReferenced = true;
@@ -889,7 +919,12 @@ impl ReuseCompletionGraphCacheReader {
                         // matching-polarity operands lvl 0). Reproduced over empty
                         // deferred operand lists (ontology-arena concepts unported here).
                         let op_linker: &[NegLink<ConceptId>] = &[];
-                        self.add_testing_concepts(op_linker, test_con_neg, 0, &mut tested_concept_set);
+                        self.add_testing_concepts(
+                            op_linker,
+                            test_con_neg,
+                            0,
+                            &mut tested_concept_set,
+                        );
                     }
 
                     // W6-DEFER[memory-pool]: releaseConceptTestLinker(tmpTestConLinker)
@@ -986,9 +1021,8 @@ impl ReuseCompletionGraphCache {
     /// KONCLUDE-PORT-NOTE[threading]: `mReaderSyncMutex` guards the reader-list
     /// splice → single-threaded inline; `reader->append(mReaderLinker)` prepends
     /// (head-at-FRONT).
-    pub fn create_cache_reader(&mut self) -> ReuseCacheReaderId {
-        // W6-DEFER[memory-pool]: reader = new CReuseCompletionGraphCacheReader()
-        let reader: ReuseCacheReaderId = Id::NONE;
+    pub fn create_cache_reader(&mut self, cache_context: &mut CacheContext) -> ReuseCacheReaderId {
+        let reader = cache_context.alloc_reuse_cache_reader(ReuseCompletionGraphCacheReader::new());
         // mReaderSyncMutex.lock();
         self.reader_linker.insert(0, reader);
         // mReaderSyncMutex.unlock();
@@ -1016,66 +1050,118 @@ impl ReuseCompletionGraphCache {
     }
 
     /// Port of `createReaderSlotUpdate`.
-    /// KONCLUDE-PORT-NOTE[memory-pool]: the slot + its detached copy of `mEntyHash`
-    /// are pool-allocated; here the slot-id append onto `slot_linker` is faithful,
-    /// the allocation + hash detach-copy are deferred.
-    pub fn create_reader_slot_update(&mut self, _context: Cint64) {
-        // W6-DEFER[memory-pool]: slot = allocateAndConstructWithMemroyPool<CReuseCompletionGraphCacheSlotItem>
-        // W6-DEFER[memory-pool]: entyHash = copy of *mEntyHash; entyHash->detach();
-        // W6-DEFER[api]: slot->setEntryHash(entyHash); slot->setEntryCount(mEntryCount);
-        let slot: ReuseCacheSlotItemId = Id::NONE;
+    /// KONCLUDE-PORT-NOTE[memory-pool]: the C++ slot-local memory pool becomes a
+    /// normal arena allocation; the detached hash copy is a `Clone` of `mEntyHash`.
+    pub fn create_reader_slot_update(&mut self, cache_context: &mut CacheContext) {
+        if self.enty_hash.is_none() {
+            self.enty_hash = cache_context.alloc_reuse_compat_entry_hash(
+                ReuseCompletionGraphCompatibilityEntryHash::new_with_context(INVALID),
+            );
+        }
+        let enty_hash = cache_context
+            .reuse_compat_entry_hash(self.enty_hash)
+            .clone();
+        let enty_hash = cache_context.alloc_reuse_compat_entry_hash(enty_hash);
+        let mut slot = ReuseCompletionGraphCacheSlotItem::new();
+        slot.set_entry_hash(enty_hash);
+        slot.set_entry_count(self.entry_count);
+        let slot = cache_context.alloc_reuse_cache_slot_item(slot);
         // `mSlotLinker->append(slot)` — tail-append onto the live slot list.
         self.slot_linker.push(slot);
         // for each reader: slot->incReader(); readerLinkerIt->updateSlot(slot)
-        for &_reader in &self.reader_linker {
-            // W6-DEFER[api]: slot->incReader(); reader->updateSlot(slot) — cross-instance.
+        for &reader in &self.reader_linker {
+            cache_context.reuse_cache_slot_item_mut(slot).inc_reader();
+            let prev_slot = {
+                let reader = cache_context.reuse_cache_reader_mut(reader);
+                let prev_slot = reader.updated_slot;
+                reader.updated_slot = slot;
+                prev_slot
+            };
+            if prev_slot.is_some() {
+                cache_context
+                    .reuse_cache_slot_item_mut(prev_slot)
+                    .dec_reader();
+            }
         }
     }
 
     /// Port of `cleanUnusedSlots` (drop slots whose reader count fell to zero).
     /// KONCLUDE-PORT-NOTE[memory-pool]: releasing a dropped slot's pools is deferred;
-    /// the per-slot `hasCacheReaders()` lives in the facade arena (deferred), so the
-    /// retain predicate is reproduced structurally.
-    pub fn clean_unused_slots(&mut self, _context: Cint64) {
+    /// arena allocation is reclaimed with the cache context.
+    pub fn clean_unused_slots(&mut self, cache_context: &mut CacheContext) {
         let mut kept: Vec<ReuseCacheSlotItemId> = Vec::new();
         for &slot in &self.slot_linker {
-            // W6-DEFER[api]: slotLinkerIt->hasCacheReaders() — facade-arena slot.
-            let has_cache_readers = true;
-            if has_cache_readers {
+            if cache_context
+                .reuse_cache_slot_item(slot)
+                .has_cache_readers()
+            {
                 kept.push(slot);
-            } else {
-                // W6-DEFER[memory-pool]: memMan->releaseTemporaryMemoryPools(slot->getMemoryPools())
             }
         }
         self.slot_linker = kept;
     }
 
     /// Port of `writeExpandCacheData`.
-    /// KONCLUDE-PORT-NOTE[memory-pool]: the new entry + the per-value `CXLinker`
-    /// nodes are pool-allocated and the entailed-entry chains live in `mEntyHash`
-    /// (facade arena); here the `mEntryCount` / `mEntyList` bookkeeping is faithful
-    /// and the entry/hash mutation is deferred.
+    /// KONCLUDE-PORT-NOTE[memory-pool]: compatibility wrapper for older call sites
+    /// that do not yet thread the cache-pool arena. The live port is
+    /// `write_expand_cache_data_in_context`.
     pub fn write_expand_cache_data(
         &mut self,
-        _context: Cint64,
+        context: Cint64,
         cache_list: &[CacheValue],
         minimal_cache_list: &[CacheValue],
-        _job_inst: JobInstantiation,
+        job_inst: JobInstantiation,
     ) {
-        // W6-DEFER[memory-pool]: newEntry = allocateAndConstruct<CReuseCompletionGraphCacheEntry>(context)
-        // W6-DEFER[api]: newEntry->setJobInstantiation(jobInst)
+        let _ = (context, cache_list, minimal_cache_list, job_inst);
+        // W6-DEFER[api]: legacy call sites must pass `CacheContext` so the entry
+        // and `mEntyHash` can be materialized in the cache arena.
         let new_entry: ReuseCacheEntryId = Id::NONE;
         self.enty_list.push(new_entry);
-        // W6-DEFER[api]: newEntry->setEntryID(mEntryCount)
+        self.entry_count += 1;
+    }
 
-        for &_cache_value in cache_list {
-            // W6-DEFER[api]: hashData = (*mEntyHash)[cacheValue];
-            // W6-DEFER[memory-pool]: linker = allocateAndConstruct<CXLinker<...>>; linker->initLinker(newEntry);
-            // W6-DEFER[api]: hashData.addEntailedEntyLinker(linker); newEntry->addEntailedValue(cacheValue);
+    /// Port of `writeExpandCacheData`.
+    /// KONCLUDE-PORT-NOTE[ownership]: `CReuseCompletionGraphCacheContext` owns a
+    /// memory manager in C++; the Rust port stores the allocated entry and
+    /// compatibility hash in `CacheContext` typed arenas. `mEntyHash` is allocated
+    /// lazily here because `ReuseCompletionGraphCache::new()` has no arena handle.
+    pub fn write_expand_cache_data_in_context(
+        &mut self,
+        cache_context: &mut CacheContext,
+        context: Cint64,
+        cache_list: &[CacheValue],
+        minimal_cache_list: &[CacheValue],
+        job_inst: JobInstantiation,
+    ) {
+        if self.enty_hash.is_none() {
+            self.enty_hash = cache_context.alloc_reuse_compat_entry_hash(
+                ReuseCompletionGraphCompatibilityEntryHash::new_with_context(context),
+            );
         }
-        for &_cache_value in minimal_cache_list {
-            // W6-DEFER[api]: newEntry->addMinimalValue(cacheValue);
+
+        let mut entry = ReuseCompletionGraphCacheEntry::new();
+        entry.context = context;
+        entry.set_job_instantiation(job_inst);
+        entry.set_entry_id(self.entry_count);
+        let new_entry = cache_context.alloc_reuse_cache_entry(entry);
+        self.enty_list.push(new_entry);
+
+        for &cache_value in cache_list {
+            cache_context
+                .reuse_compat_entry_hash_mut(self.enty_hash)
+                .get_or_create_mut(cache_value)
+                .add_entailed_enty_linker(new_entry);
+            cache_context
+                .reuse_cache_entry_mut(new_entry)
+                .add_entailed_value(cache_value);
         }
+
+        for &cache_value in minimal_cache_list {
+            cache_context
+                .reuse_cache_entry_mut(new_entry)
+                .add_minimal_value(cache_value);
+        }
+
         self.entry_count += 1;
     }
 
@@ -1086,6 +1172,7 @@ impl ReuseCompletionGraphCache {
     /// dispatch is the opaque event seam.
     pub fn process_customs_events(
         &mut self,
+        cache_context: &mut CacheContext,
         _event_type: Cint64,
         write_data_chain: &[ReuseCacheEntryWriteData],
         _memory_pools: Cint64,
@@ -1100,11 +1187,17 @@ impl ReuseCompletionGraphCache {
                 // upstream copy/paste; the same chain is used for both. Preserved.
                 let minimal_cache_list = data.get_cache_value_list().cloned().unwrap_or_default();
                 let job_inst = data.get_job_instantiation();
-                self.write_expand_cache_data(INVALID, &cache_list, &minimal_cache_list, job_inst);
+                self.write_expand_cache_data_in_context(
+                    cache_context,
+                    INVALID,
+                    &cache_list,
+                    &minimal_cache_list,
+                    job_inst,
+                );
             }
         }
-        self.create_reader_slot_update(INVALID);
-        self.clean_unused_slots(INVALID);
+        self.create_reader_slot_update(cache_context);
+        self.clean_unused_slots(cache_context);
         // W6-DEFER[memory-pool]: mContext.getMemoryPoolAllocationManager()->releaseTemporaryMemoryPools(memoryPools)
         false
     }
@@ -1113,5 +1206,145 @@ impl ReuseCompletionGraphCache {
 impl Default for ReuseCompletionGraphCache {
     fn default() -> Self {
         ReuseCompletionGraphCache::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn write_expand_cache_data_materializes_entry_and_hash() {
+        let mut cache_context = CacheContext::new();
+        let mut cache = ReuseCompletionGraphCache::new();
+        let cache_values = vec![11, 17];
+        let minimal_values = vec![17];
+
+        cache.write_expand_cache_data_in_context(
+            &mut cache_context,
+            23,
+            &cache_values,
+            &minimal_values,
+            31,
+        );
+
+        assert_eq!(cache.entry_count, 1);
+        assert_eq!(cache.enty_list.len(), 1);
+        assert_eq!(cache_context.reuse_cache_entries.len(), 1);
+        assert_eq!(cache_context.reuse_compat_entry_hashes.len(), 1);
+
+        let entry_id = cache.enty_list[0];
+        let entry = cache_context.reuse_cache_entry(entry_id);
+        assert_eq!(entry.context, 23);
+        assert_eq!(entry.get_job_instantiation(), 31);
+        assert_eq!(entry.get_entry_id(), 0);
+        assert_eq!(entry.get_entailed_values(), &cache_values);
+        assert_eq!(entry.get_minimal_values(), &minimal_values);
+        assert!(entry.has_minimal_value(17));
+
+        let hash = cache_context.reuse_compat_entry_hash(cache.enty_hash);
+        assert_eq!(hash.value(&11).get_entailed_entry_linker(), &[entry_id]);
+        assert_eq!(hash.value(&17).get_entailed_entry_linker(), &[entry_id]);
+        assert!(hash.value(&11).get_incompatible_entry_linker().is_empty());
+    }
+
+    #[test]
+    fn reuse_cache_create_reader_prepends_reader_linker_with_context() {
+        let mut cache_context = CacheContext::new();
+        let mut cache = ReuseCompletionGraphCache::new();
+
+        let first = cache.create_cache_reader(&mut cache_context);
+        let second = cache.create_cache_reader(&mut cache_context);
+
+        assert_eq!(cache.reader_linker, vec![second, first]);
+        assert_eq!(cache_context.reuse_cache_readers.len(), 2);
+    }
+
+    #[test]
+    fn reuse_cache_create_reader_slot_update_publishes_snapshot_to_readers() {
+        let mut cache_context = CacheContext::new();
+        let mut cache = ReuseCompletionGraphCache::new();
+        let first = cache.create_cache_reader(&mut cache_context);
+        let second = cache.create_cache_reader(&mut cache_context);
+        cache.write_expand_cache_data_in_context(&mut cache_context, 23, &[11, 17], &[17], 31);
+
+        cache.create_reader_slot_update(&mut cache_context);
+
+        assert_eq!(cache.slot_linker.len(), 1);
+        let slot = cache.slot_linker[0];
+        let slot_item = cache_context.reuse_cache_slot_item(slot);
+        assert_eq!(slot_item.get_entry_count(), 1);
+        assert_eq!(slot_item.reader_sharing_count, 2);
+        assert!(slot_item.has_cache_readers());
+        let slot_hash = cache_context.reuse_compat_entry_hash(slot_item.get_entry_hash());
+        let entry = cache.enty_list[0];
+        assert_eq!(slot_hash.value(&11).get_entailed_entry_linker(), &[entry]);
+        assert_eq!(cache_context.reuse_cache_reader(first).updated_slot, slot);
+        assert_eq!(cache_context.reuse_cache_reader(second).updated_slot, slot);
+    }
+
+    #[test]
+    fn reuse_cache_reader_switches_updated_slot_and_decrements_previous_current_slot() {
+        let mut cache_context = CacheContext::new();
+        let mut old_slot = ReuseCompletionGraphCacheSlotItem::new();
+        old_slot.inc_reader();
+        let old_slot = cache_context.alloc_reuse_cache_slot_item(old_slot);
+        let mut new_slot = ReuseCompletionGraphCacheSlotItem::new();
+        new_slot.inc_reader();
+        let new_slot = cache_context.alloc_reuse_cache_slot_item(new_slot);
+        let mut reader = ReuseCompletionGraphCacheReader::new();
+        reader.current_slot = old_slot;
+        reader.update_slot(new_slot, &mut cache_context);
+
+        assert!(reader.switch_to_updated_slot_item(&mut cache_context));
+
+        assert_eq!(reader.current_slot, new_slot);
+        assert_eq!(reader.updated_slot, ReuseCacheSlotItemId::NONE);
+        assert!(!cache_context
+            .reuse_cache_slot_item(old_slot)
+            .has_cache_readers());
+        assert!(cache_context
+            .reuse_cache_slot_item(new_slot)
+            .has_cache_readers());
+    }
+
+    #[test]
+    fn reuse_cache_clean_unused_slots_removes_zero_reader_slots() {
+        let mut cache_context = CacheContext::new();
+        let unused_head =
+            cache_context.alloc_reuse_cache_slot_item(ReuseCompletionGraphCacheSlotItem::new());
+        let mut used = ReuseCompletionGraphCacheSlotItem::new();
+        used.inc_reader_count(2);
+        let used = cache_context.alloc_reuse_cache_slot_item(used);
+        let unused_tail =
+            cache_context.alloc_reuse_cache_slot_item(ReuseCompletionGraphCacheSlotItem::new());
+        let mut cache = ReuseCompletionGraphCache::new();
+        cache.slot_linker = vec![unused_head, used, unused_tail];
+
+        cache.clean_unused_slots(&mut cache_context);
+
+        assert_eq!(cache.slot_linker, vec![used]);
+    }
+
+    #[test]
+    fn reuse_cache_process_customs_events_writes_and_publishes_slot() {
+        let mut cache_context = CacheContext::new();
+        let mut cache = ReuseCompletionGraphCache::new();
+        let reader = cache.create_cache_reader(&mut cache_context);
+        let write_data =
+            ReuseCacheEntryWriteData::init_expand_write_data(vec![41, 43], vec![43], 47);
+
+        assert!(!cache.process_customs_events(&mut cache_context, 0, &[write_data], INVALID));
+
+        assert_eq!(cache.entry_count, 1);
+        assert_eq!(cache.slot_linker.len(), 1);
+        let slot = cache.slot_linker[0];
+        assert_eq!(cache_context.reuse_cache_reader(reader).updated_slot, slot);
+        assert_eq!(
+            cache_context
+                .reuse_cache_slot_item(slot)
+                .reader_sharing_count,
+            1
+        );
     }
 }

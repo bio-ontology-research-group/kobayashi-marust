@@ -36,6 +36,10 @@
 #![allow(dead_code)]
 
 use super::super::model::substrate::{Cint64, Id};
+use super::consequences::ComputedConsequencesCacheWriteDataId;
+use super::sigexpand::{
+    SigExpanderCacheValueListId, SigExpanderDepHashId, SigExpanderEntryWriteDataId,
+};
 
 // --- shared event-type codes (Port of `Cache/CacheSettings.h` `EVENT*` consts) ---
 // Konclude declares these as `(QEvent::Type)200x`; kept as `Cint64` so the ported
@@ -70,8 +74,6 @@ pub struct CachingDepHash;
 pub struct CacheEntryWriteData;
 /// Placeholder — Port of `CSaturationNodeAssociatedExpansionCacheWriteData` (F5).
 pub struct SaturationNodeAssociatedExpansionCacheWriteData;
-/// Placeholder — Port of `CComputedConsequencesCacheWriteData` (F6).
-pub struct ComputedConsequencesCacheWriteData;
 /// Placeholder — Port of `CBackendRepresentativeMemoryCacheWriteData` (F1).
 pub struct BackendRepresentativeMemoryCacheWriteData;
 /// Placeholder — Port of `CBackendIndividualRetrievalComputationUpdateCoordinationHash` (F1).
@@ -86,8 +88,6 @@ pub type CacheEntryWriteDataId = Id<CacheEntryWriteData>;
 /// `CSaturationNodeAssociatedExpansionCacheWriteData*` → arena id.
 pub type SaturationNodeAssociatedExpansionCacheWriteDataId =
     Id<SaturationNodeAssociatedExpansionCacheWriteData>;
-/// `CComputedConsequencesCacheWriteData*` → arena id.
-pub type ComputedConsequencesCacheWriteDataId = Id<ComputedConsequencesCacheWriteData>;
 /// `CBackendRepresentativeMemoryCacheWriteData*` → arena id.
 pub type BackendRepresentativeMemoryCacheWriteDataId =
     Id<BackendRepresentativeMemoryCacheWriteData>;
@@ -131,9 +131,9 @@ pub enum CacheEvent {
         /// `mNewSignature`.
         new_signature: Cint64,
         /// `mCacheValueList` — `CCACHINGLIST<CCacheValue>*` (pool-allocated).
-        cache_value_list: CachingValueListId,
+        cache_value_list: SigExpanderCacheValueListId,
         /// `mDepHash` — `CCACHINGHASH<cint64,cint64>*` (pool-allocated).
-        dep_hash: CachingDepHashId,
+        dep_hash: SigExpanderDepHashId,
         /// `mMemoryPools` — `CMemoryPool*` ([memory-pool], opaque handle).
         memory_pools: Cint64,
     },
@@ -144,9 +144,9 @@ pub enum CacheEvent {
         /// `mSignature`.
         signature: Cint64,
         /// `mCacheValueList` — `CCACHINGLIST<CCacheValue>*`.
-        cache_value_list: CachingValueListId,
+        cache_value_list: SigExpanderCacheValueListId,
         /// `mBranchedValueList` — `CCACHINGLIST<CCacheValue>*`.
-        branched_value_list: CachingValueListId,
+        branched_value_list: SigExpanderCacheValueListId,
         /// `mMemoryPools` — `CMemoryPool*` ([memory-pool]).
         memory_pools: Cint64,
     },
@@ -154,8 +154,8 @@ pub enum CacheEvent {
     /// Port of `CWriteCachedDataEvent`.
     /// (`EVENT_WRITE_CACHED_DATA_ENTRY`)
     WriteCachedData {
-        /// `mWriteData` — `CCacheEntryWriteData*`.
-        write_data: CacheEntryWriteDataId,
+        /// `mWriteData` — `CSignatureSatisfiableExpanderCacheEntryWriteData*`.
+        write_data: SigExpanderEntryWriteDataId,
         /// `mMemoryPools` — `CMemoryPool*` ([memory-pool]).
         memory_pools: Cint64,
     },
@@ -254,8 +254,8 @@ impl CacheEvent {
     pub fn write_expand_cached(
         prev_signature: Cint64,
         new_signature: Cint64,
-        cache_value_list: CachingValueListId,
-        dep_hash: CachingDepHashId,
+        cache_value_list: SigExpanderCacheValueListId,
+        dep_hash: SigExpanderDepHashId,
         memory_pools: Cint64,
     ) -> Self {
         CacheEvent::WriteExpandCached {
@@ -270,8 +270,8 @@ impl CacheEvent {
     /// Port of `CWriteSatisfiableBranchCachedEvent::CWriteSatisfiableBranchCachedEvent`.
     pub fn write_satisfiable_branch_cached(
         signature: Cint64,
-        cache_value_list: CachingValueListId,
-        branched_list: CachingValueListId,
+        cache_value_list: SigExpanderCacheValueListId,
+        branched_list: SigExpanderCacheValueListId,
         memory_pools: Cint64,
     ) -> Self {
         CacheEvent::WriteSatisfiableBranchCached {
@@ -283,8 +283,14 @@ impl CacheEvent {
     }
 
     /// Port of `CWriteCachedDataEvent::CWriteCachedDataEvent`.
-    pub fn write_cached_data(write_data: CacheEntryWriteDataId, memory_pools: Cint64) -> Self {
-        CacheEvent::WriteCachedData { write_data, memory_pools }
+    pub fn write_cached_data(
+        write_data: SigExpanderEntryWriteDataId,
+        memory_pools: Cint64,
+    ) -> Self {
+        CacheEvent::WriteCachedData {
+            write_data,
+            memory_pools,
+        }
     }
 
     /// Port of `CWriteSaturationCacheDataEvent::CWriteSaturationCacheDataEvent`.
@@ -292,7 +298,10 @@ impl CacheEvent {
         write_data: SaturationNodeAssociatedExpansionCacheWriteDataId,
         memory_pools: Cint64,
     ) -> Self {
-        CacheEvent::WriteSaturationCacheData { write_data, memory_pools }
+        CacheEvent::WriteSaturationCacheData {
+            write_data,
+            memory_pools,
+        }
     }
 
     /// Port of `CWriteComputedConcequencesCacheEntryEvent::CWriteComputedConcequencesCacheEntryEvent`.
@@ -300,7 +309,10 @@ impl CacheEvent {
         write_data: ComputedConsequencesCacheWriteDataId,
         memory_pools: Cint64,
     ) -> Self {
-        CacheEvent::WriteComputedConcequencesCacheEntry { write_data, memory_pools }
+        CacheEvent::WriteComputedConcequencesCacheEntry {
+            write_data,
+            memory_pools,
+        }
     }
 
     /// Port of `CWriteBackendAssociationCachedEvent::CWriteBackendAssociationCachedEvent`.
@@ -308,7 +320,10 @@ impl CacheEvent {
         write_data: BackendRepresentativeMemoryCacheWriteDataId,
         memory_pools: Cint64,
     ) -> Self {
-        CacheEvent::WriteBackendAssociationCached { write_data, memory_pools }
+        CacheEvent::WriteBackendAssociationCached {
+            write_data,
+            memory_pools,
+        }
     }
 
     /// Port of `CRetrieveIncompletelyAssociationCachedEvent::CRetrieveIncompletelyAssociationCachedEvent`.
@@ -379,7 +394,9 @@ impl CacheEvent {
             CacheEvent::WriteComputedConcequencesCacheEntry { .. } => {
                 EVENT_WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY
             }
-            CacheEvent::WriteBackendAssociationCached { .. } => EVENT_WRITE_BACKEND_ASSOCIATION_ENTRY,
+            CacheEvent::WriteBackendAssociationCached { .. } => {
+                EVENT_WRITE_BACKEND_ASSOCIATION_ENTRY
+            }
             CacheEvent::RetrieveIncompletelyAssociationCached { .. } => {
                 EVENT_RETRIEVE_INCOMPLETELY_ASSOCIATION_CACHED
             }
@@ -421,14 +438,19 @@ impl CacheEvent {
     /// Port of `CWriteSatisfiableCacheEntryEvent::getCacheItemList`.
     pub fn get_cache_item_list(&self) -> Option<&Vec<CacheValue>> {
         match self {
-            CacheEvent::WriteSatisfiableCacheEntry { cache_item_list, .. } => Some(cache_item_list),
+            CacheEvent::WriteSatisfiableCacheEntry {
+                cache_item_list, ..
+            } => Some(cache_item_list),
             _ => None,
         }
     }
 
     /// Port of `CWriteSatisfiableCacheEntryEvent::setCacheItemList`.
     pub fn set_cache_item_list(&mut self, list: Vec<CacheValue>) {
-        if let CacheEvent::WriteSatisfiableCacheEntry { cache_item_list, .. } = self {
+        if let CacheEvent::WriteSatisfiableCacheEntry {
+            cache_item_list, ..
+        } = self
+        {
             *cache_item_list = list;
         }
     }
@@ -436,16 +458,19 @@ impl CacheEvent {
     /// Port of `CWriteSatisfiableCacheEntryEvent::getCacheOutcomeList`.
     pub fn get_cache_outcome_list(&self) -> Option<&Vec<CacheValue>> {
         match self {
-            CacheEvent::WriteSatisfiableCacheEntry { cache_outcome_list, .. } => {
-                Some(cache_outcome_list)
-            }
+            CacheEvent::WriteSatisfiableCacheEntry {
+                cache_outcome_list, ..
+            } => Some(cache_outcome_list),
             _ => None,
         }
     }
 
     /// Port of `CWriteSatisfiableCacheEntryEvent::setCacheOutcomeList`.
     pub fn set_cache_outcome_list(&mut self, list: Vec<CacheValue>) {
-        if let CacheEvent::WriteSatisfiableCacheEntry { cache_outcome_list, .. } = self {
+        if let CacheEvent::WriteSatisfiableCacheEntry {
+            cache_outcome_list, ..
+        } = self
+        {
             *cache_outcome_list = list;
         }
     }
@@ -467,7 +492,7 @@ impl CacheEvent {
     }
 
     /// Port of `CWriteExpandCachedEvent::getDepHash`.
-    pub fn get_dep_hash(&self) -> Option<CachingDepHashId> {
+    pub fn get_dep_hash(&self) -> Option<SigExpanderDepHashId> {
         match self {
             CacheEvent::WriteExpandCached { dep_hash, .. } => Some(*dep_hash),
             _ => None,
@@ -483,11 +508,12 @@ impl CacheEvent {
     }
 
     /// Port of `CWriteSatisfiableBranchCachedEvent::getBranchedValueList`.
-    pub fn get_branched_value_list(&self) -> Option<CachingValueListId> {
+    pub fn get_branched_value_list(&self) -> Option<SigExpanderCacheValueListId> {
         match self {
-            CacheEvent::WriteSatisfiableBranchCached { branched_value_list, .. } => {
-                Some(*branched_value_list)
-            }
+            CacheEvent::WriteSatisfiableBranchCached {
+                branched_value_list,
+                ..
+            } => Some(*branched_value_list),
             _ => None,
         }
     }
@@ -495,19 +521,21 @@ impl CacheEvent {
     /// Port of `CWriteExpandCachedEvent::getCacheValueList` /
     /// `CWriteSatisfiableBranchCachedEvent::getCacheValueList` (same name+type on
     /// both classes → one method).
-    pub fn get_cache_value_list(&self) -> Option<CachingValueListId> {
+    pub fn get_cache_value_list(&self) -> Option<SigExpanderCacheValueListId> {
         match self {
-            CacheEvent::WriteExpandCached { cache_value_list, .. }
-            | CacheEvent::WriteSatisfiableBranchCached { cache_value_list, .. } => {
-                Some(*cache_value_list)
+            CacheEvent::WriteExpandCached {
+                cache_value_list, ..
             }
+            | CacheEvent::WriteSatisfiableBranchCached {
+                cache_value_list, ..
+            } => Some(*cache_value_list),
             _ => None,
         }
     }
 
     /// Port of `CWriteCachedDataEvent::getWriteData`.
     /// (per-family name; see the [api] note above on the `getWriteData` overloads.)
-    pub fn get_cache_entry_write_data(&self) -> Option<CacheEntryWriteDataId> {
+    pub fn get_cache_entry_write_data(&self) -> Option<SigExpanderEntryWriteDataId> {
         match self {
             CacheEvent::WriteCachedData { write_data, .. } => Some(*write_data),
             _ => None,
@@ -573,9 +601,10 @@ impl CacheEvent {
         &self,
     ) -> Option<BackendIndividualRetrievalCoordinationHashId> {
         match self {
-            CacheEvent::RetrieveIncompletelyAssociationCached { last_retrieval_hash, .. } => {
-                Some(*last_retrieval_hash)
-            }
+            CacheEvent::RetrieveIncompletelyAssociationCached {
+                last_retrieval_hash,
+                ..
+            } => Some(*last_retrieval_hash),
             _ => None,
         }
     }
@@ -585,9 +614,9 @@ impl CacheEvent {
         &self,
     ) -> Option<BackendIndividualRetrievalCoordinationHashId> {
         match self {
-            CacheEvent::RetrieveIncompletelyAssociationCached { new_retrieval_hash, .. } => {
-                Some(*new_retrieval_hash)
-            }
+            CacheEvent::RetrieveIncompletelyAssociationCached {
+                new_retrieval_hash, ..
+            } => Some(*new_retrieval_hash),
             _ => None,
         }
     }
@@ -603,9 +632,10 @@ impl CacheEvent {
     /// Port of `CRetrieveIncompletelyAssociationCachedEvent::hasAllIndividualsAdded`.
     pub fn has_all_individuals_added(&self) -> Option<bool> {
         match self {
-            CacheEvent::RetrieveIncompletelyAssociationCached { all_individuals_added, .. } => {
-                Some(*all_individuals_added)
-            }
+            CacheEvent::RetrieveIncompletelyAssociationCached {
+                all_individuals_added,
+                ..
+            } => Some(*all_individuals_added),
             _ => None,
         }
     }
@@ -624,9 +654,9 @@ impl CacheEvent {
     /// Port of `CInitializeIndividualAssociationsCacheEvent::getIndividualCount`.
     pub fn get_individual_count(&self) -> Option<Cint64> {
         match self {
-            CacheEvent::InitializeIndividualAssociationsCache { individual_count, .. } => {
-                Some(*individual_count)
-            }
+            CacheEvent::InitializeIndividualAssociationsCache {
+                individual_count, ..
+            } => Some(*individual_count),
             _ => None,
         }
     }
@@ -648,11 +678,18 @@ impl CacheEvent {
     /// `CReportMaximumHandledRecomputationIdsEvent` → one method.
     pub fn get_ontology_identifier(&self) -> Option<Cint64> {
         match self {
-            CacheEvent::RetrieveIncompletelyAssociationCached { ontology_identifier, .. }
-            | CacheEvent::InitializeIndividualAssociationsCache { ontology_identifier, .. }
-            | CacheEvent::ReportMaximumHandledRecomputationIds { ontology_identifier, .. } => {
-                Some(*ontology_identifier)
+            CacheEvent::RetrieveIncompletelyAssociationCached {
+                ontology_identifier,
+                ..
             }
+            | CacheEvent::InitializeIndividualAssociationsCache {
+                ontology_identifier,
+                ..
+            }
+            | CacheEvent::ReportMaximumHandledRecomputationIds {
+                ontology_identifier,
+                ..
+            } => Some(*ontology_identifier),
             _ => None,
         }
     }

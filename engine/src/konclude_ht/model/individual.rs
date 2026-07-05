@@ -251,7 +251,8 @@ impl Individual {
         &mut self,
         rev_ass_role_linker: ReverseRoleAssertion,
     ) -> &mut Self {
-        self.reverse_assertion_role_linker.insert(0, rev_ass_role_linker);
+        self.reverse_assertion_role_linker
+            .insert(0, rev_ass_role_linker);
         self
     }
     /// Port of `CIndividual::setReverseAssertionRoleLinker`.
@@ -294,7 +295,10 @@ impl Individual {
             let con = ass_con_it.target;
             let negated = ass_con_it.negated;
             // assLinker->initNegLinker(con, negated)
-            let ass_linker = ConceptAssertion { target: con, negated };
+            let ass_linker = ConceptAssertion {
+                target: con,
+                negated,
+            };
             self.add_assertion_concept_linker(ass_linker);
         }
         self.nominal_concept = individual.nominal_concept;
@@ -401,7 +405,11 @@ impl Variable {
     }
 
     /// Port of `CVariable::initVariable`.
-    pub fn init_variable(&mut self, nominal_concept: ConceptId, path_variable_id: Cint64) -> &mut Self {
+    pub fn init_variable(
+        &mut self,
+        nominal_concept: ConceptId,
+        path_variable_id: Cint64,
+    ) -> &mut Self {
         self.nominal_concept = nominal_concept;
         self.path_variable_id = path_variable_id;
         self

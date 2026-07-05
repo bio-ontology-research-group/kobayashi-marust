@@ -75,6 +75,11 @@
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
+use super::super::process::representative::{
+    RepresentativeVariableBindingPathJoiningKeyHash, RepresentativeVariableBindingPathSetData,
+    RepresentativeVariableBindingPathSetDataId, RepresentativeVariableBindingPathSetJoiningHash,
+    RepresentativeVariableBindingPathSetJoiningKeyMap,
+};
 use super::super::process::stubs::{BackendSyncDataId, DataAssertionLinkerId};
 use super::super::process::{ConDescId, DependencyId, NodeId, SatNodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
@@ -225,16 +230,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // W3-DEFER[api]: `calcAlgContext->getUsedDependencyFactory()
-            //   ->createDATAASSERTIONDependency(valueDepTrackPoint, processIndi,
-            //   prevDepTrackPoint, calcAlgContext)` — the dependency factory
-            //   (Algorithm-layer stub) allocates the DATAASSERTION dep-node and
-            //   sets `value_dep_track_point` to its continuation track point. The
-            //   factory is not yet ported, so the dep-node stays `Id::NONE` and the
-            //   out track point is left unset (mirrors the C++ when the factory is
-            //   absent — both `Id::NONE`).
-            let _ = (value_dep_track_point, process_indi, prev_dep_track_point);
-            dep_node = Id::NONE;
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .create_dataassertion_dependency(
+                    value_dep_track_point,
+                    process_indi,
+                    prev_dep_track_point,
+                );
         }
         dep_node
     }
@@ -294,7 +296,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // identity flows from the unported `createNewIndividual` and every literal
         // operation needs the stubbed CDataAssertionLinker / CDataLiteral /
         // CProcessAssertedDataLiteralLinker accessors.
-        let _ = (process_indi, data_assertion_linker, dep_track_point, calc_alg_context);
+        let _ = (
+            process_indi,
+            data_assertion_linker,
+            dep_track_point,
+            calc_alg_context,
+        );
     }
 
     // =======================================================================
@@ -307,41 +314,101 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Lazily builds (and caches) the per-`join_concept` joining-key map over a
     /// representative variable-binding-path set.
     ///
-    /// KONCLUDE-PORT-NOTE[ownership]: the parameter
-    /// `CRepresentativeVariableBindingPathSetData* repVarBindPathSetData` and the
-    /// returned `CRepresentativeVariableBindingPathSetJoiningKeyMap*` belong to the
-    /// not-yet-ported representative-propagation family (the same one that gates
-    /// the u05 representative rules); they are modelled as opaque `Cint64` until
-    /// that family lands.
     pub fn get_representative_joining_key_data(
         &mut self,
-        rep_var_bind_path_set_data: Cint64,
+        rep_var_bind_path_set_data: RepresentativeVariableBindingPathSetDataId,
         join_concept: ConceptId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // PORT-PENDING: faithful transcription of cpp 10771–10799.
-        //   keyVarLinker = joinConcept->getVariableLinker();
-        //   joiningData = nullptr;
-        //   joiningHash = repVarBindPathSetData->getJoiningHash(false);
-        //   if joiningHash: joiningData = joiningHash->getRepresentativeVariableBindingPathSetJoiningData(joinConcept, false);
-        //   if !joiningData:
-        //       joiningHash = repVarBindPathSetData->getJoiningHash(true);
-        //       joiningData = joiningHash->getRepresentativeVariableBindingPathSetJoiningData(joinConcept, true);
-        //       varBindPathJoiningKeyHash = procDataBox->getRepresentativeVariableBindingPathJoiningKeyHash(true);
-        //       joiningKeyMap = joiningData->getJoiningKeyMap();
-        //       varBindPathMap = repVarBindPathSetData->getMigrateData(false)
-        //                            ->getRepresentativeVariableBindingPathMap();
-        //       for (path entry) in varBindPathMap:
-        //           varBindPath = it.value().getVariableBindingPath();
-        //           joinKey = varBindPathJoiningKeyHash
-        //                       ->getRepresentativeVariableBindingPathJoiningKey(varBindPath, keyVarLinker, true);
-        //           joiningKeyDataMap = joiningKeyMap->getJoiningKeyDataMap(joinKey, true);
-        //           joiningKeyDataMap->insert(varBindPath->getPropagationID(), varBindPath);
-        //   return joiningData->getJoiningKeyMap();
-        // W6-DEFER[api]: the representative-variable-binding-path joining hashes /
-        // maps and the migrate-data path map are not yet ported.
-        let _ = (rep_var_bind_path_set_data, join_concept, calc_alg_context);
-        INVALID
+    ) -> RepresentativeVariableBindingPathSetJoiningKeyMap {
+        let key_vars = calc_alg_context
+            .ontology_arenas()
+            .concept(join_concept)
+            .get_variable_linker()
+            .to_vec();
+
+        let mut joining_data = {
+            let ctx = calc_alg_context.process_context_mut();
+            let joining_hash = RepresentativeVariableBindingPathSetData::get_joining_hash(
+                ctx,
+                rep_var_bind_path_set_data,
+                false,
+            );
+            if joining_hash.is_some() {
+                RepresentativeVariableBindingPathSetJoiningHash::get_representative_variable_binding_path_set_joining_data(
+                    ctx,
+                    joining_hash,
+                    join_concept,
+                    false,
+                )
+            } else {
+                Id::NONE
+            }
+        };
+
+        if joining_data.is_none() {
+            let joining_hash = {
+                let ctx = calc_alg_context.process_context_mut();
+                RepresentativeVariableBindingPathSetData::get_joining_hash(
+                    ctx,
+                    rep_var_bind_path_set_data,
+                    true,
+                )
+            };
+            joining_data = {
+                let ctx = calc_alg_context.process_context_mut();
+                RepresentativeVariableBindingPathSetJoiningHash::get_representative_variable_binding_path_set_joining_data(
+                    ctx,
+                    joining_hash,
+                    join_concept,
+                    true,
+                )
+            };
+
+            let var_bind_path_joining_key_hash =
+                calc_alg_context.representative_variable_binding_path_joining_key_hash(true);
+            let var_bind_paths = {
+                let ctx = calc_alg_context.process_context_mut();
+                let migrate_data = RepresentativeVariableBindingPathSetData::get_migrate_data(
+                    ctx,
+                    rep_var_bind_path_set_data,
+                    false,
+                );
+                ctx.rep_var_bind_path_set_migrate_data(migrate_data)
+                    .get_representative_variable_binding_path_map()
+                    .map
+                    .values()
+                    .map(|data| data.get_variable_binding_path())
+                    .collect::<Vec<_>>()
+            };
+
+            for var_bind_path in var_bind_paths {
+                let join_key =
+                    RepresentativeVariableBindingPathJoiningKeyHash::get_representative_variable_binding_path_joining_key(
+                        calc_alg_context.process_context_mut(),
+                        var_bind_path_joining_key_hash,
+                        var_bind_path,
+                        &key_vars,
+                        true,
+                    );
+                let prop_id = calc_alg_context
+                    .process_context()
+                    .vbpath(var_bind_path)
+                    .get_propagation_id();
+                let joining_data_map = calc_alg_context
+                    .process_context_mut()
+                    .rep_var_bind_path_set_joining_data_mut(joining_data)
+                    .get_joining_key_map_mut()
+                    .get_joining_key_data_map(join_key, true)
+                    .expect("created representative joining-key data map");
+                joining_data_map.insert(prop_id, var_bind_path);
+            }
+        }
+
+        calc_alg_context
+            .process_context()
+            .rep_var_bind_path_set_joining_data(joining_data)
+            .get_joining_key_map()
+            .clone()
     }
 
     // =======================================================================
@@ -397,7 +464,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   * finally add the remaining init concepts (skipping the leading one iff
         //     `baseSatIndiNode == satIndiNode`) via `addConceptToIndividual`.
         //   return true on the fast path; false otherwise.
-        let _ = (indi, init_concept_linker, dep_track_point, allow_preprocess, calc_alg_context);
+        let _ = (
+            indi,
+            init_concept_linker,
+            dep_track_point,
+            allow_preprocess,
+            calc_alg_context,
+        );
         false
     }
 
@@ -532,7 +605,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         visit_func: &mut dyn FnMut(NodeId, NodeId, TrackPointId) -> bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 22988–23025.
+        // Faithful transcription of cpp 22988–23025. The process-side backend-sync
+        // data and its merged-node linker are live; the backend association label
+        // exclusion remains deferred at the exact Konclude predicate.
         //   visited = false; continueVisiting = true;
         //   depTrackPoint = calcAlgContext->getBaseDependencyNode()->getContinueDependencyTrackPoint();
         //   backendSyncData = indiNode->getIndividualBackendCacheSynchronisationData(false);
@@ -553,11 +628,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //                              : backendSyncDataIndiNode;
         //           continueVisiting = visitFunc(indiNode, locNode, backSyncDepTrackPoint); visited = true;
         //   return visited;
-        // W6-DEFER[api]: backend sync data + association-data label tests +
-        // CIndividualMergingHash + getUpToDateIndividual/getLocalizedIndividual
-        // siblings are not yet ported.
-        let _ = (indi_node, localize, visit_func, calc_alg_context);
-        false
+        // W6-DEFER[api]: assocData->getDeterministicMergedSameConsideredLabelCacheEntry()
+        // and mBackendCacheHandler->hasIndividualIdsInAssociatedIndividualSetLabel(...).
+        // The old CIndividualMergingHash iteration is represented here by the
+        // backend-sync merged-node linker, which is the live process satellite used
+        // by the adjacent Unit 20/25 backend-sync ports.
+        let base_dep_node = calc_alg_context.base_dependency_node();
+        let dep_track_point = if base_dep_node.is_some() {
+            calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(base_dep_node)
+        } else {
+            TrackPointId::NONE
+        };
+        let backend_sync_data = calc_alg_context
+            .process_context()
+            .node(indi_node)
+            .individual_backend_cache_synchronisation_data(false);
+        let mut visited = false;
+        let mut continue_visiting = true;
+
+        if backend_sync_data.is_some() {
+            continue_visiting = visit_func(indi_node, indi_node, dep_track_point);
+            visited = true;
+        }
+
+        if continue_visiting && backend_sync_data.is_some() {
+            let merged_nodes = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_merged_individual_node_linker()
+                .to_vec();
+            for backend_sync_data_indi_node in merged_nodes {
+                if !continue_visiting {
+                    break;
+                }
+                if backend_sync_data_indi_node == indi_node {
+                    continue;
+                }
+                let merged_backend_sync_data = calc_alg_context
+                    .process_context()
+                    .node(backend_sync_data_indi_node)
+                    .individual_backend_cache_synchronisation_data(false);
+                if merged_backend_sync_data.is_none() {
+                    continue;
+                }
+                let loc_node = if localize {
+                    self.get_localized_individual(
+                        backend_sync_data_indi_node,
+                        false,
+                        calc_alg_context,
+                    )
+                } else {
+                    backend_sync_data_indi_node
+                };
+                let back_sync_dep_track_point = {
+                    let process_context = calc_alg_context.process_context();
+                    let merging_hash = process_context.node(indi_node).use_individual_merging_hash;
+                    let merged_nominal = process_context
+                        .node(backend_sync_data_indi_node)
+                        .nominal_individual();
+                    if merging_hash.is_some() && merged_nominal.is_some() {
+                        let merged_indi_id = calc_alg_context
+                            .ontology_arenas()
+                            .individual(merged_nominal)
+                            .get_individual_id();
+                        process_context
+                            .individual_merging_hash(merging_hash)
+                            .get(merged_indi_id)
+                            .map(|merging_data| merging_data.get_dependency_track_point())
+                            .unwrap_or(dep_track_point)
+                    } else {
+                        dep_track_point
+                    }
+                };
+                continue_visiting = visit_func(indi_node, loc_node, back_sync_dep_track_point);
+                visited = true;
+            }
+        }
+
+        visited
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getBackendSynchronizationFilledRoleNeighbourExpansionDataHash`.
@@ -598,7 +748,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W6-DEFER[api]: the role-set neighbour array, the label cache items, and
         // mBackendCacheHandler->visitRolesOfAssociatedNeigbourRoleSetLabel are not
         // yet ported.
-        let _ = (indi_node, assoc_data, loc_backend_sync_data, calc_alg_context);
+        let _ = (
+            indi_node,
+            assoc_data,
+            loc_backend_sync_data,
+            calc_alg_context,
+        );
         INVALID
     }
 
@@ -623,14 +778,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node(indi_node)
             .individual_backend_cache_synchronisation_data(true);
         if loc_backend_sync_data == Id::NONE {
-            // W6-DEFER[api]: allocate a fresh
-            // CIndividualNodeRepresentativeMemoryBackendCacheSynchronisationData and
-            // `initSynchronisationData(backendSyncData)` from the shared one. The
-            // backend-sync-data struct (process::stubs marker) has no arena/ctor
-            // yet, so the localised handle stays `Id::NONE`; the set-back is kept so
-            // the control flow is faithful.
-            let _ = backend_sync_data;
-            loc_backend_sync_data = Id::NONE;
+            loc_backend_sync_data = calc_alg_context
+                .process_context_mut()
+                .alloc_backend_sync_data_from_prev(backend_sync_data);
             calc_alg_context
                 .process_context_mut()
                 .node_mut(indi_node)
@@ -739,5 +889,226 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // iteration is portable but only reached through that backend-cache state.
         let _ = (indi_node, calc_alg_context);
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::individual::Individual;
+    use super::super::super::model::substrate::INVALID;
+    use super::super::super::model::VariableId;
+    use super::super::super::process::backend_sync::IndividualNodeBackendCacheSynchronisationData;
+    use super::super::super::process::context::ProcessContext;
+    use super::super::super::process::merging_hash::IndividualMergingHash;
+    use super::super::super::process::node::IndividualProcessNode;
+    use super::super::super::process::varbind::{
+        RepresentativeVariableBindingPathMapData, VarBindingDescriptorId, VarBindingPathId,
+        VariableBinding, VariableBindingDescriptor, VariableBindingPath,
+    };
+    use super::super::super::process::NodeId;
+    use super::super::super::process::TrackPointId;
+    use super::super::algorithm::CompletionTaskHandleAlgorithm;
+    use super::*;
+
+    fn seed_backend_sync_data(
+        ctx: &mut CalculationAlgorithmContextBase,
+        node: NodeId,
+    ) -> BackendSyncDataId {
+        let data = IndividualNodeBackendCacheSynchronisationData::new();
+        let sync = ctx.process_context_mut().alloc_backend_sync_data(data);
+        ctx.process_context_mut()
+            .node_mut(node)
+            .set_individual_backend_cache_synchronisation_data(sync);
+        sync
+    }
+
+    fn var_binding(
+        ctx: &mut ProcessContext,
+        variable: Cint64,
+        individual: Cint64,
+    ) -> super::super::super::process::varbind::VarBindingId {
+        let id = ctx.alloc_var_binding(VariableBinding::new());
+        ctx.var_binding_mut(id).init_variable_binding(
+            TrackPointId::NONE,
+            NodeId::new(individual),
+            VariableId::new(variable),
+        );
+        id
+    }
+
+    fn var_binding_path_from_bindings(
+        ctx: &mut ProcessContext,
+        prop_id: Cint64,
+        bindings: &[super::super::super::process::varbind::VarBindingId],
+    ) -> VarBindingPathId {
+        let mut head = VarBindingDescriptorId::NONE;
+        let mut last = VarBindingDescriptorId::NONE;
+        for binding in bindings {
+            let des = ctx.alloc_var_binding_des(VariableBindingDescriptor::new());
+            ctx.var_binding_des_mut(des)
+                .init_variable_binding_descriptor(*binding);
+            if last.is_some() {
+                ctx.var_binding_des_mut(last).set_next(des);
+            } else {
+                head = des;
+            }
+            last = des;
+        }
+        let path = ctx.alloc_vbpath(VariableBindingPath::new());
+        ctx.vbpath_mut(path)
+            .init_variable_binding_path(prop_id, head);
+        path
+    }
+
+    #[test]
+    fn representative_joining_key_data_builds_cached_key_map() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+        let join_concept = {
+            let mut concept = Concept::new();
+            concept.add_variable_linker(VariableId::new(2));
+            concept.add_variable_linker(VariableId::new(3));
+            calc_ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+
+        let rep_data = {
+            let tag = calc_ctx
+                .process_context()
+                .used_process_tagger()
+                .get_current_localization_tag();
+            let rep_data = calc_ctx
+                .process_context_mut()
+                .alloc_rep_var_bind_path_set_data(RepresentativeVariableBindingPathSetData::new(
+                    INVALID, tag,
+                ));
+            calc_ctx
+                .process_context_mut()
+                .rep_var_bind_path_set_data_mut(rep_data)
+                .set_representative_id(10);
+            rep_data
+        };
+
+        let (path1, path2) = {
+            let ctx = calc_ctx.process_context_mut();
+            let b1 = var_binding(ctx, 1, 101);
+            let b2 = var_binding(ctx, 2, 102);
+            let b3 = var_binding(ctx, 3, 103);
+            (
+                var_binding_path_from_bindings(ctx, 41, &[b1, b2, b3]),
+                var_binding_path_from_bindings(ctx, 42, &[b1, b2, b3]),
+            )
+        };
+
+        let migrate_data = RepresentativeVariableBindingPathSetData::get_migrate_data(
+            calc_ctx.process_context_mut(),
+            rep_data,
+            true,
+        );
+        {
+            let map = calc_ctx
+                .process_context_mut()
+                .rep_var_bind_path_set_migrate_data_mut(migrate_data)
+                .get_representative_variable_binding_path_map_mut();
+            map.insert(
+                41,
+                RepresentativeVariableBindingPathMapData::new(path1, rep_data),
+            );
+            map.insert(
+                42,
+                RepresentativeVariableBindingPathMapData::new(path2, rep_data),
+            );
+        }
+
+        let first_map =
+            algo.get_representative_joining_key_data(rep_data, join_concept, &mut calc_ctx);
+        assert_eq!(first_map.count(), 1);
+        let bucket = first_map
+            .get_joining_key_data_map_existing(1)
+            .expect("first interned joining key bucket");
+        assert_eq!(bucket.count(), 2);
+        assert_eq!(bucket.value(41), path1);
+        assert_eq!(bucket.value(42), path2);
+
+        let second_map =
+            algo.get_representative_joining_key_data(rep_data, join_concept, &mut calc_ctx);
+        assert_eq!(second_map.count(), 1);
+        assert_eq!(
+            calc_ctx
+                .process_context()
+                .rep_var_bind_path_joining_key_hash(
+                    calc_ctx
+                        .processing_data_box()
+                        .use_rep_var_bind_path_joining_key_hash
+                )
+                .next_rep_var_bind_path_joining_key_tag,
+            2
+        );
+    }
+
+    #[test]
+    fn visit_relevant_backend_sync_individuals_uses_merging_hash_dependency_track_point() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+
+        let base_individual = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(10));
+        let merged_individual = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(20));
+        let base = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let merged = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        calc_ctx
+            .process_context_mut()
+            .node_mut(base)
+            .set_nominal_individual(base_individual);
+        calc_ctx
+            .process_context_mut()
+            .node_mut(merged)
+            .set_nominal_individual(merged_individual);
+
+        let base_sync = seed_backend_sync_data(&mut calc_ctx, base);
+        seed_backend_sync_data(&mut calc_ctx, merged);
+        calc_ctx
+            .process_context_mut()
+            .backend_sync_data_mut(base_sync)
+            .merged_individual_node_linker = vec![merged];
+
+        let merge_track_point = TrackPointId::new(77);
+        let mut merging_hash = IndividualMergingHash::new();
+        merging_hash
+            .entry_mut(20)
+            .set_merged_with_individual(true)
+            .set_dependency_track_point(merge_track_point);
+        let merging_hash = calc_ctx
+            .process_context_mut()
+            .alloc_individual_merging_hash(merging_hash);
+        calc_ctx
+            .process_context_mut()
+            .node_mut(base)
+            .use_individual_merging_hash = merging_hash;
+
+        let mut seen = Vec::new();
+        assert!(
+            algo.visit_individuals_relevant_backend_synchronisation_data_individuals(
+                base,
+                false,
+                &mut |_, node, dep_track_point| {
+                    seen.push((node, dep_track_point));
+                    true
+                },
+                &mut calc_ctx,
+            )
+        );
+
+        assert_eq!(
+            seen,
+            vec![(base, TrackPointId::NONE), (merged, merge_track_point)]
+        );
     }
 }

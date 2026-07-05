@@ -77,15 +77,19 @@
 //! (an edit to u33/u34, out of scope for this unit); (2) `mGroundingHandler`
 //! (grounding rule), the answerer message adapter (finalize rule), `mDatatypeHandler`
 //! (data rules) and the `CReapplyRoleSuccessorHash` satellite + iterator (the ∀-fan-out
-//! loop) are all still unported. Each blocked site below carries a `// RECONCILE-NEED:`
-//! naming exactly what must land first.
+//! loop) are all still unported or require cross-unit signature reconciliation.
+//! Each blocked site below names exactly what must land first.
 
 #![allow(dead_code, unused_variables, unused_mut, unused_assignments)]
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId, VariableId};
+use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
+use super::super::process::propagation_binding::{
+    PropagationBinding, PropagationBindingDescriptor, PropagationBindingSet,
+};
 use super::super::process::{
-    ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId, RoleSuccHashId, TrackPointId,
+    ConDescId, ConProcDescId, DepLinkId, EdgeId, LabelSetId, NodeId, TrackPointId,
 };
 use super::context::CalculationAlgorithmContextBase;
 
@@ -105,7 +109,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
         // concept = conDes->getConcept()
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let concept_negation: bool = negate;
         // depTrackPoint = conProDes->getDependencyTrackPoint()
         let dep_track_point: TrackPointId = calc_alg_context
@@ -125,7 +132,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // W6-DEFER[macro]: STATINC(VARBINDRULEANDAPPLICATIONCOUNT, calcAlgContext)
 
         // topConcept = procDataBox->getOntologyTopConcept()  (real databox read)
-        let top_concept: ConceptId = calc_alg_context.processing_data_box().ontology_top_concept();
+        let top_concept: ConceptId = calc_alg_context
+            .processing_data_box()
+            .ontology_top_concept();
 
         // W6-DEFER[api]: answererMessageAdapter =
         //   calcAlgContext->getSatisfiableCalculationTask()
@@ -201,11 +210,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_dependency_track_point();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let negated: bool = calc_alg_context.process_context().con_desc(con_des).is_negated();
-        let op_count: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_operand_count();
-        let op_con_linker: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let negated: bool = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .is_negated();
+        let op_count: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_count();
+        let op_con_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
 
         // W6-DEFER[api]: conSet = processIndi->getReapplyConceptLabelSet(false)
         let mut con_set: LabelSetId = Id::NONE;
@@ -218,11 +239,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // `mGroundingHandler->getGroundingConceptLinker(...)`, which is unported, so the
         // whole body still short-circuits (newGroundedLinker stays null). The read is left
         // as the `INVALID` short-circuit to keep the dead body inert until grounding lands.
-        // RECONCILE-NEED: CConceptNominalSchemaGroundingHandler (`mGroundingHandler`) —
-        //   getGroundingConceptLinker + groundedConPropBindDesHash/additionalPropBindDesHash;
-        //   once present, wire conSet/conPropBindSetHash node-getters + the dep creators
-        //   (create_bind_propagate_grounding_dependency / create_propagate_connection_dependency,
-        //   both already ported) + propagate_initial/fresh helpers (see RECONCILE-NEED below).
+        // The CConceptNominalSchemaGroundingHandler grounding-linker helpers are live
+        // in Unit 6. This Unit 7 body still holds the INVALID short-circuit until the
+        // sorted grounding-linker traversal and emission path are ported.
         let prop_bind_set: Cint64 = INVALID;
 
         if prop_bind_set != INVALID {
@@ -364,9 +383,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_dependency_track_point();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let op_linker: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
         // bindingTriggerConcept = opLinker[0], cycleTriggerConcept = opLinker[1]
         let binding_trigger_concept: ConceptId =
             op_linker.first().map(|l| l.target).unwrap_or(Id::NONE);
@@ -383,15 +408,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (create_bind_propagate_cycle_dependency / create_propagate_connection_dependency /
         // create_propagate_binding_dependency, all ported), and the cross-individual
         // resolver `get_corrected_merged_into_individual_node` (u14, ported) + `get_up_to_date_individual`.
-        // Still-blocked: the per-binding emission path runs through
-        // `propagate_*_propagation_bindings` (u33/u34), which are PORT-PENDING skeletons
-        // typed on opaque `Cint64`, not the `PropagationBindingSetId` the satellite
-        // lookups now return; and the `CPropagationBindingMap` sorted dual-iteration
-        // (itCycle vs itTrigger) merge-walk accessor is not exposed yet.
-        // RECONCILE-NEED: reconcile u33/u34 propagate_initial/fresh_propagation_bindings
-        //   from `Cint64` to `PropagationBindingSetId`/`PropagationBindingSetHandle`, and
-        //   expose a `CPropagationBindingMap` ordered-iterator pair, before this merge can
-        //   be ported faithfully.
+        // Still-blocked: the per-binding emission helpers are typed on
+        // `PropagationBindingSetId`, but this cycle rule still needs the
+        // `CPropagationBindingMap` sorted dual-iteration (itCycle vs itTrigger)
+        // merge-walk accessor before it can be ported faithfully.
         todo!(
             "applyBINDPROPAGATECYCLERule body needs the propagation-binding emission helpers \
              (u33/u34) reconciled to PropagationBindingSetId + a CPropagationBindingMap \
@@ -413,23 +433,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
-        let role: RoleId = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role: RoleId = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_dependency_track_point();
-        let op_count: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_operand_count();
+        let op_count: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_count();
         // opLinker / conceptOpLinker = concept->getOperandList() (passed to the
         // propagation helper; not iterated here)
 
         // W6-DEFER[macro]: STATINC(PBINDRULEALLAPPLICATIONCOUNT, calcAlgContext)
 
         // restLink = getLinkProcessingRestriction(conProDes)  (sibling helper, unit u03)
-        let rest_link: EdgeId = self.get_link_processing_restriction(con_pro_des_id, calc_alg_context);
+        let rest_link: EdgeId =
+            self.get_link_processing_restriction(con_pro_des_id, calc_alg_context);
         if rest_link != Id::NONE {
             // succIndi = getSuccessorIndividual(processIndi, restLink, calcAlgContext)
-            let mut succ_indi: NodeId = self.get_successor_individual(process_indi, rest_link, calc_alg_context);
+            let mut succ_indi: NodeId =
+                self.get_successor_individual(process_indi, rest_link, calc_alg_context);
             // propagatePropagationBindingsToSuccessor(processIndi, succIndi, opLinker, negate,
             //   conDes, restLink, calcAlgContext)
             self.propagate_propagation_bindings_to_successor(
@@ -442,25 +473,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             );
         } else {
-            // W6-DEFER[api]: roleSuccHash = processIndi->getReapplyRoleSuccessorHash(false)
-            //   (node role-successor-hash satellite getter not yet ported ⇒ null ⇒
-            //    no successor links to propagate over)
-            // RECONCILE-NEED: `CReapplyRoleSuccessorHash` + `CRoleSuccessorLinkIterator`
-            //   are still W2-DEFER stubs (process/pn3.rs get_reapply_role_successor_hash
-            //   does not allocate; process/rs1.rs get_role_successor_link_iterator returns a
-            //   non-functional unit). The successor-propagation helper
-            //   (propagate_propagation_bindings_to_successor) + get_successor_individual are
-            //   ready; only the role-successor-hash satellite/iterator block this loop.
-            let role_succ_hash: RoleSuccHashId = Id::NONE;
-            if role_succ_hash != Id::NONE {
-                // roleSuccIt = roleSuccHash->getRoleSuccessorLinkIterator(role)
-                // while (roleSuccIt.hasNext()) {
-                //   link = roleSuccIt.next(true)
-                //   succIndi = getSuccessorIndividual(processIndi, link, calcAlgContext)
-                //   propagatePropagationBindingsToSuccessor(processIndi, succIndi, opLinker,
-                //     negate, conDes, link, calcAlgContext)
-                // }
-                // W6-DEFER[api]: role-successor iteration (unported role-succ-hash satellite)
+            let role_succ_hash = calc_alg_context
+                .process_context()
+                .node_reapply_role_successor_hash_existing(*process_indi);
+            if role_succ_hash.is_some() {
+                let mut role_succ_it = calc_alg_context
+                    .process_context()
+                    .role_succ_hash(role_succ_hash)
+                    .get_role_successor_link_iterator(
+                        calc_alg_context.process_context().edges(),
+                        role,
+                    );
+                while role_succ_it.has_next() {
+                    let link = role_succ_it.next(true);
+                    let mut succ_indi =
+                        self.get_successor_individual(process_indi, link, calc_alg_context);
+                    self.propagate_propagation_bindings_to_successor(
+                        *process_indi,
+                        &mut succ_indi,
+                        concept,
+                        negate,
+                        con_des,
+                        link,
+                        calc_alg_context,
+                    );
+                }
             }
         }
         // if (!conProDes->isConceptReapplied())
@@ -470,7 +507,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .is_concept_reapplied();
         if !is_concept_reapplied {
             // if (!isConceptInReapplyQueue(conDes, role, processIndi, calcAlgContext))
-            if !self.is_concept_in_reapply_queue_role(con_des, role, *process_indi, calc_alg_context) {
+            if !self.is_concept_in_reapply_queue_role(
+                con_des,
+                role,
+                *process_indi,
+                calc_alg_context,
+            ) {
                 // addConceptToReapplyQueue(conDes, role, processIndi, true, depTrackPoint, calcAlgContext)
                 self.add_concept_to_reapply_queue_role(
                     con_des,
@@ -503,20 +545,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_dependency_track_point();
-        let op_count: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_operand_count();
-        let op_linker: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let op_count: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_count();
+        let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
 
         // W6-DEFER[memory-pool]: taskMemMan
         // W6-DEFER[macro]: STATINC(PBINDRULEIMPLICATIONAPPLICATIONCOUNT, calcAlgContext)
 
-        // W6-DEFER[api]: conSet = processIndi->getReapplyConceptLabelSet(false)
-        let mut con_set: LabelSetId = Id::NONE;
+        let mut con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*process_indi);
         let mut binding_con_des: ConDescId = Id::NONE;
         let mut binding_dep_track_point: TrackPointId = Id::NONE;
         let mut reapply_queue: Cint64 = INVALID;
@@ -526,11 +578,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             op_linker.first().map(|l| l.target).unwrap_or(Id::NONE);
         let binding_trigger_concept_negation: bool =
             op_linker.first().map(|l| l.negated).unwrap_or(false);
+        let binding_trigger_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(binding_trigger_concept)
+            .get_concept_tag();
         let trigger_linker: Vec<NegLink<ConceptId>> = op_linker.iter().skip(1).copied().collect();
 
-        // W6-DEFER[api]: conSet->getConceptDescriptorAndReapplyQueue(
-        //   bindingTriggerConcept, bindingConDes, bindingDepTrackPoint, reapplyQueue)
-        let has_binding_con_des_and_queue = false;
+        let has_binding_con_des_and_queue = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_concept_descriptor_and_reapply_queue_by_tag(
+                binding_trigger_tag,
+                &mut binding_con_des,
+                &mut binding_dep_track_point,
+            );
         if !has_binding_con_des_and_queue {
             // search next not-existing trigger
             let mut all_triggers_available = true;
@@ -578,45 +639,126 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
             } else {
-                // collect trigger dependencies, create the implication binding concept
-                // and propagate the initial bindings.
-                // for each trigger: createCONNECTIONDependency(processIndi, triggerConDes, …)
-                // W6-DEFER[api]: triggerDeps connection-dependency chain (dep factory)
-                // nextDepTrackPoint = createBINDPROPAGATEIMPLICATIONDependency(...)
-                // bindingConDes = addConceptToIndividualReturnConceptDescriptor(
-                //   bindingTriggerConcept, bindingTriggerConceptNegation, processIndi, …)
-                // conPropBindingSetHash = processIndi->getConceptPropagationBindingSetHash(true)
-                // prevPropBindingSet = …getPropagationBindingSet(concept, false)
-                // propBindingSet = …getPropagationBindingSet(bindingTriggerConcept, true)
-                // propBindingSet->setConceptDescriptor(bindingConDes)
-                // propagateInitialPropagationBindings(processIndi, bindingConDes,
-                //   propBindingSet, prevPropBindingSet, triggerDeps, calcAlgContext)
-                // W6-DEFER[api]: implication binding creation + initial propagation
-                // Now-available: create_connection_dependency (u29) +
-                // create_bind_propagate_implication_dependency (ported),
-                // add_concept_to_individual_return_concept_descriptor (u36),
-                // node_concept_propagation_binding_set_hash + get_propagation_binding_set
-                // (→ PropagationBindingSetId) + set_concept_descriptor.
-                // RECONCILE-NEED: the final `propagate_initial_propagation_bindings` (u33)
-                //   still takes opaque `Cint64`, not `PropagationBindingSetId`; reconcile its
-                //   signature (and u34's `propagate_fresh_*`) before wiring this branch, else
-                //   the set id cannot be passed. Left deferred to avoid editing u33/u34 here.
+                // W3-DEFER[api]: triggerDeps `CDependency*` BASE chain.
+                // The C++ loop over triggerLinker creates CONNECTION dependency
+                // nodes and links them through `CDependency::setNext`; Rust has
+                // the node factory wrapper but not the base-link object, so keep
+                // the C++ position explicit and pass a null opaque handle below.
+                let trigger_deps: DepLinkId = DepLinkId::NONE;
+
+                let mut next_dep_track_point: TrackPointId = Id::NONE;
+                let _impl_dep_node = self.create_bind_propagate_implication_dependency(
+                    &mut next_dep_track_point,
+                    process_indi,
+                    con_des,
+                    dep_track_point,
+                    DepLinkId::NONE,
+                    calc_alg_context,
+                );
+
+                binding_con_des = self.add_concept_to_individual_return_concept_descriptor(
+                    binding_trigger_concept,
+                    binding_trigger_concept_negation,
+                    process_indi,
+                    next_dep_track_point,
+                    true,
+                    false,
+                    calc_alg_context,
+                );
+
+                let con_prop_binding_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_propagation_binding_set_hash(*process_indi);
+                let concept_tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag();
+                let prev_prop_binding_set =
+                    ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                        calc_alg_context.process_context_mut(),
+                        con_prop_binding_set_hash,
+                        concept_tag,
+                        false,
+                    );
+                let prop_binding_set =
+                    ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                        calc_alg_context.process_context_mut(),
+                        con_prop_binding_set_hash,
+                        binding_trigger_tag,
+                        true,
+                    );
+                calc_alg_context
+                    .process_context_mut()
+                    .prop_binding_set_mut(prop_binding_set)
+                    .set_concept_descriptor(binding_con_des);
+                self.propagate_initial_propagation_bindings(
+                    process_indi,
+                    binding_con_des,
+                    prop_binding_set,
+                    prev_prop_binding_set,
+                    trigger_deps,
+                    calc_alg_context,
+                );
             }
         } else {
             // existing binding concept: refresh propagated bindings
-            // collect trigger dependencies (createCONNECTIONDependency)
-            // conPropBindingSetHash = processIndi->getConceptPropagationBindingSetHash(true)
-            // prevPropBindingSet / propBindingSet lookups
-            // W6-DEFER[api]: propagateFreshPropagationBindings(processIndi, conDes,
-            //   propBindingSet, prevPropBindingSet, triggerDeps, calcAlgContext)
-            let propagated_fresh = false;
+            // W6-DEFER[api]: triggerDeps connection-dependency BASE chain.
+            // The dependency-node factory wrappers are ported, but the CDependency*
+            // base linker passed as `otherDependencies` is not; keep the exact C++
+            // position and pass null until the dependency base lands.
+            let trigger_deps: DepLinkId = DepLinkId::NONE;
+
+            let con_prop_binding_set_hash = calc_alg_context
+                .process_context_mut()
+                .node_concept_propagation_binding_set_hash(*process_indi);
+            let concept_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            let prev_prop_binding_set =
+                ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                    calc_alg_context.process_context_mut(),
+                    con_prop_binding_set_hash,
+                    concept_tag,
+                    false,
+                );
+            let prop_binding_set = ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                calc_alg_context.process_context_mut(),
+                con_prop_binding_set_hash,
+                binding_trigger_tag,
+                true,
+            );
+            calc_alg_context
+                .process_context_mut()
+                .prop_binding_set_mut(prop_binding_set)
+                .set_concept_descriptor(binding_con_des);
+            let propagated_fresh = self.propagate_fresh_propagation_bindings(
+                process_indi,
+                con_des,
+                prop_binding_set,
+                prev_prop_binding_set,
+                trigger_deps,
+                calc_alg_context,
+            );
             if propagated_fresh {
-                // W6-DEFER[api]: setIndividualNodeConceptLabelSetModified(processIndi, …)
-                // W6-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true)
-                // W6-DEFER[api]: addConceptPreprocessedToProcessingQueue(
-                //   bindingConDes, bindingDepTrackPoint, conProQueue, processIndi, true, …)
-                // if (!reapplyQueue->isEmpty()) reapply iterator over conSet
-                // W6-DEFER[api]: applyReapplyQueueConcepts(processIndi, &reapplyQueueIt, …)
+                self.set_individual_node_concept_label_set_modified(process_indi, calc_alg_context);
+                let con_pro_queue = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_processing_queue(*process_indi, true);
+                self.add_concept_preprocessed_to_processing_queue_skip(
+                    binding_con_des,
+                    binding_dep_track_point,
+                    con_pro_queue,
+                    *process_indi,
+                    true,
+                    calc_alg_context,
+                    INVALID,
+                );
+                // W3-DEFER[api]: if (!reapplyQueue->isEmpty()) construct the
+                // condensed iterator from the concrete queue pointer returned by
+                // getConceptDescriptorAndReapplyQueue and call applyReapplyQueueConcepts.
+                // The label-set API currently exposes descriptor + dependency outputs
+                // but not that queue pointer.
             }
         }
     }
@@ -630,7 +772,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // propagatePropagationBindings(processIndi, conProDes, negate, false, calcAlgContext)
-        self.propagate_propagation_bindings(process_indi, con_pro_des, negate, false, calc_alg_context);
+        self.propagate_propagation_bindings(
+            process_indi,
+            con_pro_des,
+            negate,
+            false,
+            calc_alg_context,
+        );
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyBINDPROPAGATEANDFLAGALLRule`.
@@ -644,7 +792,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // ++mStatBackPropActivationCount
         self.stat_back_prop_activation_count += 1;
         // propagatePropagationBindings(processIndi, conProDes, negate, true, calcAlgContext)
-        self.propagate_propagation_bindings(process_indi, con_pro_des, negate, true, calc_alg_context);
+        self.propagate_propagation_bindings(
+            process_indi,
+            con_pro_des,
+            negate,
+            true,
+            calc_alg_context,
+        );
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyBINDVARIABLERule`.
@@ -665,85 +819,253 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         // variable = concept->getVariable()
-        let variable: Option<VariableId> = calc_alg_context.ontology_arenas().concept(concept).get_variable();
+        let variable: Option<VariableId> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_variable();
         let concept_negation: bool = negate;
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_dependency_track_point();
-        let op_con_linker: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let op_con_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
 
         // bindingTriggerConcept = opConLinker[0]
         let binding_trigger_concept: ConceptId =
             op_con_linker.first().map(|l| l.target).unwrap_or(Id::NONE);
         let binding_trigger_concept_negation: bool =
             op_con_linker.first().map(|l| l.negated).unwrap_or(false);
+        let binding_trigger_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(binding_trigger_concept)
+            .get_concept_tag();
 
         // processContext / procDataBox reachable; W6-DEFER[memory-pool]: taskMemMan
-        // W6-DEFER[api]: conSet = processIndi->getReapplyConceptLabelSet(false)
-        let mut con_set: LabelSetId = Id::NONE;
+        let con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*process_indi);
         let mut binding_con_des: ConDescId = Id::NONE;
         let mut binding_dep_track_point: TrackPointId = Id::NONE;
         let mut reapply_queue: Cint64 = INVALID;
 
         // W6-DEFER[macro]: STATINC(PBINDRULEBINDNAPPLICATIONCOUNT, calcAlgContext)
 
-        // W6-DEFER[api]: conSet->getConceptDescriptorAndReapplyQueue(
-        //   bindingTriggerConcept, bindingConDes, bindingDepTrackPoint, reapplyQueue)
-        let has_binding_con_des_and_queue = false;
+        let has_binding_con_des_and_queue = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_concept_descriptor_and_reapply_queue_by_tag(
+                binding_trigger_tag,
+                &mut binding_con_des,
+                &mut binding_dep_track_point,
+            );
         if !has_binding_con_des_and_queue {
             // W6-DEFER[macro]: STATINC(PBINDVARIABLEBINDCOUNT, calcAlgContext)
-            // nextDepTrackPoint = createBINDVARIABLEDependency(...)  [W6-DEFER dep factory]
-            // conSet = processIndi->getReapplyConceptLabelSet(true)
-            // bindingConDes = addConceptToIndividualReturnConceptDescriptor(
-            //   bindingTriggerConcept, bindingTriggerConceptNegation, processIndi, …)
-            // conPropBindingSetHash = processIndi->getConceptPropagationBindingSetHash(true)
-            // prevPropBindingSet/propBindingSet lookups; propBindingSet->setConceptDescriptor(...)
-            // propagateInitialPropagationBindings(processIndi, bindingConDes,
-            //   propBindingSet, prevPropBindingSet, nullptr, calcAlgContext)
-            // propVarBinding = new CPropagationBinding(nextPropBindingID, …, variable)
-            //   nextPropBindingID = procDataBox->getNextBindingPropagationID(true)
-            // propBindDes = new CPropagationBindingDescriptor(propVarBinding, nextDepTrackPoint)
-            // propBindingSet->addPropagationBinding(propBindDes, true)
-            // W6-DEFER[api]: fresh variable-binding creation
-            // Now-available: create_bind_variable_dependency (ported),
-            // add_concept_to_individual_return_concept_descriptor (u36),
-            // node_concept_propagation_binding_set_hash + get_propagation_binding_set,
-            // add_propagation_binding / get_new_special_propagation_binding_descriptor
-            // (process/propagation_binding.rs).
-            // RECONCILE-NEED: (a) `propagate_initial_propagation_bindings` (u33) takes
-            //   opaque `Cint64`, not `PropagationBindingSetId` — reconcile before wiring;
-            //   (b) the `CPropagationBinding(Descriptor)` constructors + the databox
-            //   `getNextBindingPropagationID` are needed to allocate the new variable binding.
-            //   Left deferred to avoid editing u33/u34/databox here.
+            let mut next_dep_track_point: TrackPointId = Id::NONE;
+            let _bind_dep_node = self.create_bind_variable_dependency(
+                &mut next_dep_track_point,
+                process_indi,
+                con_des,
+                dep_track_point,
+                calc_alg_context,
+            );
+            let _con_set = calc_alg_context
+                .process_context_mut()
+                .node_reapply_concept_label_set(*process_indi);
+
+            binding_con_des = self.add_concept_to_individual_return_concept_descriptor(
+                binding_trigger_concept,
+                binding_trigger_concept_negation,
+                process_indi,
+                next_dep_track_point,
+                false,
+                false,
+                calc_alg_context,
+            );
+
+            let con_prop_binding_set_hash = calc_alg_context
+                .process_context_mut()
+                .node_concept_propagation_binding_set_hash(*process_indi);
+            let concept_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            let prev_prop_binding_set =
+                ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                    calc_alg_context.process_context_mut(),
+                    con_prop_binding_set_hash,
+                    concept_tag,
+                    false,
+                );
+            let prop_binding_set = ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                calc_alg_context.process_context_mut(),
+                con_prop_binding_set_hash,
+                binding_trigger_tag,
+                true,
+            );
+            calc_alg_context
+                .process_context_mut()
+                .prop_binding_set_mut(prop_binding_set)
+                .set_concept_descriptor(binding_con_des);
+            self.propagate_initial_propagation_bindings(
+                process_indi,
+                binding_con_des,
+                prop_binding_set,
+                prev_prop_binding_set,
+                DepLinkId::NONE,
+                calc_alg_context,
+            );
+
+            let prop_var_binding = {
+                let mut prop_var_binding = PropagationBinding::new();
+                let next_prop_binding_id = calc_alg_context
+                    .processing_data_box_mut()
+                    .next_binding_propagation_id(true);
+                prop_var_binding.init_propagation_binding(
+                    next_prop_binding_id,
+                    next_dep_track_point,
+                    *process_indi,
+                    binding_con_des,
+                    variable.unwrap_or(Id::NONE),
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .alloc_prop_binding(prop_var_binding)
+            };
+            let prop_bind_des = {
+                let mut prop_bind_des = PropagationBindingDescriptor::new();
+                prop_bind_des
+                    .init_propagation_binding_descriptor(prop_var_binding, next_dep_track_point);
+                let prop_bind_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_prop_binding_des(prop_bind_des);
+                calc_alg_context
+                    .process_context_mut()
+                    .prop_binding_des_mut(prop_bind_des)
+                    .set_data(prop_bind_des);
+                prop_bind_des
+            };
+            PropagationBindingSet::add_propagation_binding(
+                calc_alg_context.process_context_mut(),
+                prop_binding_set,
+                prop_bind_des,
+                true,
+            );
         } else {
             // existing binding concept
-            // conPropBindingSetHash = processIndi->getConceptPropagationBindingSetHash(true)
-            // prevPropBindingSet/propBindingSet lookups
             let mut new_var_bind_created = false;
-            // W6-DEFER[api]: propBindingSet->getNewSepcialPropagationBindingDescriptor()
-            let has_new_special_binding_descriptor = false;
+            let con_prop_binding_set_hash = calc_alg_context
+                .process_context_mut()
+                .node_concept_propagation_binding_set_hash(*process_indi);
+            let concept_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            let prev_prop_binding_set =
+                ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                    calc_alg_context.process_context_mut(),
+                    con_prop_binding_set_hash,
+                    concept_tag,
+                    false,
+                );
+            let prop_binding_set = ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                calc_alg_context.process_context_mut(),
+                con_prop_binding_set_hash,
+                binding_trigger_tag,
+                true,
+            );
+            let has_new_special_binding_descriptor = calc_alg_context
+                .process_context()
+                .prop_binding_set(prop_binding_set)
+                .get_new_special_propagation_binding_descriptor()
+                .is_some();
             if !has_new_special_binding_descriptor {
                 // W6-DEFER[macro]: STATINC(PBINDVARIABLEBINDCOUNT, calcAlgContext)
-                // nextDepTrackPoint = createBINDVARIABLEDependency(...)
-                // propVarBinding/propBindDes allocation + addPropagationBinding(propBindDes, true)
-                // W6-DEFER[api]: new variable binding allocation (unported binding subsystem)
+                let mut next_dep_track_point: TrackPointId = Id::NONE;
+                let _bind_dep_node = self.create_bind_variable_dependency(
+                    &mut next_dep_track_point,
+                    process_indi,
+                    con_des,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                let prop_var_binding = {
+                    let mut prop_var_binding = PropagationBinding::new();
+                    let next_prop_binding_id = calc_alg_context
+                        .processing_data_box_mut()
+                        .next_binding_propagation_id(true);
+                    prop_var_binding.init_propagation_binding(
+                        next_prop_binding_id,
+                        next_dep_track_point,
+                        *process_indi,
+                        binding_con_des,
+                        variable.unwrap_or(Id::NONE),
+                    );
+                    calc_alg_context
+                        .process_context_mut()
+                        .alloc_prop_binding(prop_var_binding)
+                };
+                let prop_bind_des = {
+                    let mut prop_bind_des = PropagationBindingDescriptor::new();
+                    prop_bind_des.init_propagation_binding_descriptor(
+                        prop_var_binding,
+                        next_dep_track_point,
+                    );
+                    let prop_bind_des = calc_alg_context
+                        .process_context_mut()
+                        .alloc_prop_binding_des(prop_bind_des);
+                    calc_alg_context
+                        .process_context_mut()
+                        .prop_binding_des_mut(prop_bind_des)
+                        .set_data(prop_bind_des);
+                    prop_bind_des
+                };
+                PropagationBindingSet::add_propagation_binding(
+                    calc_alg_context.process_context_mut(),
+                    prop_binding_set,
+                    prop_bind_des,
+                    true,
+                );
                 new_var_bind_created = true;
             }
 
-            // W6-DEFER[api]: propagateFreshPropagationBindings(processIndi, conDes,
-            //   propBindingSet, prevPropBindingSet, nullptr, calcAlgContext)
-            let propagated_fresh = false;
+            calc_alg_context
+                .process_context_mut()
+                .prop_binding_set_mut(prop_binding_set)
+                .set_concept_descriptor(binding_con_des);
+            let propagated_fresh = self.propagate_fresh_propagation_bindings(
+                process_indi,
+                con_des,
+                prop_binding_set,
+                prev_prop_binding_set,
+                DepLinkId::NONE,
+                calc_alg_context,
+            );
             if propagated_fresh || new_var_bind_created {
-                // W6-DEFER[api]: setIndividualNodeConceptLabelSetModified(processIndi, …)
-                // W6-DEFER[api]: conProQueue = processIndi->getConceptProcessingQueue(true)
-                // W6-DEFER[api]: addConceptPreprocessedToProcessingQueue(
-                //   bindingConDes, bindingDepTrackPoint, conProQueue, processIndi, true, …)
-                // if (!reapplyQueue->isEmpty()) reapply iterator over conSet
-                // W6-DEFER[api]: applyReapplyQueueConcepts(processIndi, &reapplyQueueIt, …)
+                self.set_individual_node_concept_label_set_modified(process_indi, calc_alg_context);
+                let con_pro_queue = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_processing_queue(*process_indi, true);
+                self.add_concept_preprocessed_to_processing_queue_skip(
+                    binding_con_des,
+                    binding_dep_track_point,
+                    con_pro_queue,
+                    *process_indi,
+                    true,
+                    calc_alg_context,
+                    INVALID,
+                );
+                // W3-DEFER[api]: if (!reapplyQueue->isEmpty()) construct the
+                // condensed iterator from the concrete queue pointer returned by
+                // getConceptDescriptorAndReapplyQueue and call applyReapplyQueueConcepts.
             }
         }
     }
@@ -761,7 +1083,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(con_pro_des_id)
@@ -774,7 +1099,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         // if (!negate || concept->getOperandCount() <= 1) applyANDRule else applyORRule
-        let op_count: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_operand_count();
+        let op_count: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_count();
         if !negate || op_count <= 1 {
             self.apply_and_rule(process_indi, con_pro_des, negate, calc_alg_context);
         } else {
@@ -795,7 +1123,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(con_pro_des_id)
@@ -821,11 +1152,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         // dataLiteral = concept->getDataLiteral()
         // KONCLUDE-PORT-NOTE[api]: CDataLiteral* is an opaque `Cint64` handle (the
         // concrete data-literal model is not ported); `INVALID` == `nullptr`.
-        let data_literal: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_data_literal();
+        let data_literal: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_data_literal();
         if data_literal != INVALID {
             let dep_track_point: TrackPointId = calc_alg_context
                 .process_context()
@@ -853,19 +1190,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des_id)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         // dataLiteral = concept->getDataLiteral()  ([api] opaque handle)
-        let data_literal: Cint64 = calc_alg_context.ontology_arenas().concept(concept).get_data_literal();
+        let data_literal: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_data_literal();
         if data_literal != INVALID {
             let dep_track_point: TrackPointId = calc_alg_context
                 .process_context()
                 .con_proc_desc(con_pro_des_id)
                 .get_dependency_track_point();
             // triggerConcept = concept->getOperandList()->getData()  (first operand)
-            let trigger_concept: ConceptId =
-                calc_alg_context.ontology_arenas().concept(concept).get_operand_list().first()
-                    .map(|l| l.target)
-                    .unwrap_or(Id::NONE);
+            let trigger_concept: ConceptId = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .first()
+                .map(|l| l.target)
+                .unwrap_or(Id::NONE);
             let mut triggered_concepts: ConDescId = Id::NONE;
             // if (mDatatypeHandler && mConfDatatypeReasoning) {
             //   mDatatypeHandler->triggerDataLiteralConcept(processIndi, dataLiteral, negate,
@@ -878,7 +1224,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 //  addtriggeredValueSpaceConcepts emission below does not fire)
                 if triggered_concepts != Id::NONE {
                     // addtriggeredValueSpaceConcepts(processIndi, triggeredConcepts, calcAlgContext)
-                    self.addtriggered_value_space_concepts(*process_indi, triggered_concepts, calc_alg_context);
+                    self.addtriggered_value_space_concepts(
+                        *process_indi,
+                        triggered_concepts,
+                        calc_alg_context,
+                    );
                 }
             }
         }

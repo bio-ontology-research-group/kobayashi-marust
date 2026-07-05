@@ -26,9 +26,9 @@
 
 use std::collections::HashMap;
 
-use super::environment::ConcurrentTaskCalculationEnvironment;
-use super::env_factory::ConfigDependedCalculationEnvironmentFactory;
 use super::super::model::substrate::{Cint64, INVALID};
+use super::env_factory::ConfigDependedCalculationEnvironmentFactory;
+use super::environment::ConcurrentTaskCalculationEnvironment;
 
 /// Port of `CCalculationManager`.
 ///
@@ -311,42 +311,66 @@ impl ConcurrentTaskCalculationManager {
             stat_hash.insert(
                 String::from("calculation-tasks-processed-count"),
                 con_task_env.get_calculation_statistic_tasks_processed_count()
-                    - stat.get("calculation-tasks-processed-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-tasks-processed-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-tasks-created-count"),
                 con_task_env.get_calculation_statistic_tasks_created_count()
-                    - stat.get("calculation-tasks-created-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-tasks-created-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-tasks-added-count"),
                 con_task_env.get_calculation_statistic_tasks_added_count()
-                    - stat.get("calculation-tasks-added-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-tasks-added-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-tasks-updated-count"),
                 con_task_env.get_calculation_statistic_tasks_updated_count()
-                    - stat.get("calculation-tasks-updated-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-tasks-updated-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-tasks-completed-count"),
                 con_task_env.get_calculation_statistic_tasks_completed_count()
-                    - stat.get("calculation-tasks-completed-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-tasks-completed-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-tasks-requested-count"),
                 con_task_env.get_calculation_statistic_tasks_requested_count()
-                    - stat.get("calculation-tasks-requested-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-tasks-requested-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-threads-blocking-count"),
                 con_task_env.get_calculation_statistic_threads_blocked_count()
-                    - stat.get("calculation-threads-blocking-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-threads-blocking-count")
+                        .copied()
+                        .unwrap_or(0),
             );
             stat_hash.insert(
                 String::from("calculation-threads-events-processed-count"),
                 con_task_env.get_calculation_statistic_events_processed_count()
-                    - stat.get("calculation-threads-events-processed-count").copied().unwrap_or(0),
+                    - stat
+                        .get("calculation-threads-events-processed-count")
+                        .copied()
+                        .unwrap_or(0),
             );
         }
         stat_hash

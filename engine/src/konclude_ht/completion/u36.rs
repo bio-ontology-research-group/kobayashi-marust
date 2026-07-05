@@ -80,19 +80,20 @@
 //! `add_concept_preprocessed_to_processing_queue`, `apply_reapply_queue_concepts`)
 //! via `self.x(...)`; only the genuine leaves stay deferred: `STATINC` (W3-DEFER[macro]),
 //! the `CConceptDescriptor::initConceptDescriptor` derived init (W2 descriptor
-//! method — set the public fields directly), the `CCondensedReapplyQueueIterator::hasNext`
-//! guard (the iterator is a zero-size stub), the marker-individual / occurrence-statistics
-//! hooks (W6), and the `throw CCalculationClashProcessingException` channel
+//! method — set the public fields directly), and the
+//! `throw CCalculationClashProcessingException` channel
 //! (W3-DEFER[exceptions], not yet established at this layer). Logic is documented,
 //! never silently dropped.
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::{Cint64, Id, INVALID, NegLink};
-use super::super::model::ConceptId;
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
+use super::super::model::{ConceptId, IndividualId};
 use super::super::process::descriptor::ClashDescriptor;
-use super::super::process::ls1::CondensedReapplyQueueIterator;
+use super::super::process::marker_hash::MarkerIndividualNodeHash;
+use super::super::process::node::{IndividualProcessNode, IndividualType};
+use super::super::process::reapply_sat::CondensedReapplyQueueIterator;
 use super::super::process::satellites::ReapplyConceptLabelSet;
 use super::super::process::{ConDescId, EdgeId, LabelSetId, NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
@@ -175,12 +176,134 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   }
         //   return upToDateIndi;
         //
-        // NOW LIVE: superseded by the node-resolution keystone on
-        // `CalculationAlgorithmContextBase` (`process/node_resolution.rs`). The
-        // vector-hit path is delegated to `ctx.get_up_to_date_individual_by_id`; the
-        // miss path (createNewTemporaryNominalIndividual + backend-cache load) stays
-        // deferred INSIDE the keystone (W3-DEFER there), so the verdicts match.
-        calc_alg_context.get_up_to_date_individual_by_id(indi_id)
+        let up_to_date_indi = calc_alg_context.get_up_to_date_individual_by_id(indi_id);
+        if up_to_date_indi.is_some() {
+            return up_to_date_indi;
+        }
+        if indi_id > 0 {
+            return NodeId::NONE;
+        }
+
+        let individual_id = -indi_id;
+        let mut individual = calc_alg_context
+            .ontology_arenas()
+            .individual_iter()
+            .enumerate()
+            .find_map(|(idx, indi)| {
+                (indi.get_individual_id() == individual_id)
+                    .then_some(IndividualId::new(idx as Cint64))
+            })
+            .unwrap_or(IndividualId::NONE);
+        if individual.is_none() {
+            individual =
+                self.create_new_temporary_nominal_individual(individual_id, calc_alg_context);
+        }
+        if individual.is_none() {
+            return NodeId::NONE;
+        }
+
+        self.track_individual_referred_dependence(indi_id, calc_alg_context);
+
+        let base_dep_node = calc_alg_context.base_dependency_node();
+        let dep_track_point = if base_dep_node.is_some() {
+            calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(base_dep_node)
+        } else {
+            TrackPointId::NONE
+        };
+        let localiced_indi = calc_alg_context
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        {
+            let role_assertion_creation_id = calc_alg_context
+                .processing_data_box_mut()
+                .next_role_assertion_creation_id(true);
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(localiced_indi)
+                .set_dependency_track_point(dep_track_point)
+                .set_nominal_individual(individual)
+                .set_individual_type(IndividualType::Nominal)
+                .set_individual_node_id(indi_id)
+                .set_role_assertion_creation_id(role_assertion_creation_id)
+                .set_nominal_individual_triples_assertions(true);
+        }
+        calc_alg_context
+            .processing_data_box_mut()
+            .individual_process_node_vector_mut()
+            .set_local_data(indi_id, localiced_indi);
+
+        // W3-DEFER[api]: exact pointer-copy assignments for
+        // `setAssertionRoleLinker`, `setReverseAssertionRoleLinker`,
+        // `setAssertionDataLinker`, and the incremental branch's
+        // `setAssertionConceptLinker` remain blocked because `CIndividual` assertion
+        // linkers are ported as model vectors, while the process-node fields are
+        // still opaque linker ids.
+
+        // W3-DEFER[api]: no live databox slot for
+        // `getUniversalConnectionNominalValueConcept` exists yet.
+        let nominal_concept = calc_alg_context
+            .ontology_arenas()
+            .individual(individual)
+            .get_individual_nominal_concept();
+        if nominal_concept.is_some() {
+            let mut localiced_indi_mut = localiced_indi;
+            self.add_concept_to_individual(
+                nominal_concept,
+                false,
+                &mut localiced_indi_mut,
+                dep_track_point,
+                true,
+                true,
+                calc_alg_context,
+            );
+        }
+
+        if self.opt_consistence_node_marking {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(localiced_indi)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_CONSNODEPREPARATIONINDINODE,
+                );
+        }
+
+        if !self.opt_incremental_compatible_expansion {
+            let mut expansion_blocked = false;
+            if self.load_individual_node_data_from_backend_cache(localiced_indi, calc_alg_context) {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(localiced_indi)
+                    .set_nominal_individual_representative_backend_data_loaded(true);
+                // W6-DEFER[api]: `initializeIndividualNodeWithBackendCache` and
+                // `tryEstablishExpansionBlockingWithBackendCacheSynchronisation`.
+            }
+            if !expansion_blocked {
+                self.add_individual_to_processing_queue(localiced_indi, calc_alg_context);
+            }
+        } else {
+            let inc_exp_id = calc_alg_context
+                .processing_data_box()
+                .incremental_expansion_id();
+            let exp_id = calc_alg_context
+                .processing_data_box_mut()
+                .next_incremental_individual_expansion_id(true);
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(localiced_indi)
+                .set_incremental_expansion_id(inc_exp_id)
+                .add_processing_restriction_flags(IndividualProcessNode::PRF_INCREMENTALEXPANDING);
+            let exp_data = calc_alg_context
+                .process_context_mut()
+                .node_incremental_expansion_data(localiced_indi, true);
+            calc_alg_context
+                .process_context_mut()
+                .inc_exp_data_mut(exp_data)
+                .set_expansion_id(exp_id);
+        }
+
+        localiced_indi
     }
 
     // =======================================================================
@@ -382,7 +505,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             dependency_track_point,
             calc_alg_context,
         );
-        let mut reapply_it = CondensedReapplyQueueIterator;
+        let mut reapply_it = CondensedReapplyQueueIterator::new();
         let contained = self.insert_concepts_to_individual_concept_set(
             concept_descriptor,
             dependency_track_point,
@@ -414,11 +537,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
                 INVALID,
             );
-            // if (reapplyIt.hasNext()) { applyReapplyQueueConcepts(processIndi, &reapplyIt, ctx); }
-            // W3-DEFER[api]: `CCondensedReapplyQueueIterator::hasNext` — the iterator is a
-            // zero-size stub (no populated entries yet); the guarded reapply
-            // (`apply_reapply_queue_concepts(process_indi, &mut reapply_it, ctx)`) lands
-            // once the condensed-reapply-queue iterator is ported.
+            if reapply_it.has_next() {
+                self.apply_reapply_queue_concepts_condensed_iterator(
+                    *process_indi,
+                    reapply_it,
+                    calc_alg_context,
+                );
+            }
         } else {
             self.stat_con_des_contained_count += 1;
             self.release_concept_descriptor(concept_descriptor, calc_alg_context);
@@ -438,12 +563,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> ConDescId {
         let con_pro_queue = calc_alg_context
             .process_context_mut()
-            .node_mut(*process_indi)
-            .get_concept_processing_queue(true);
+            .node_concept_processing_queue(*process_indi, true);
         let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*process_indi)
-            .get_reapply_concept_label_set(true);
+            .node_reapply_concept_label_set(*process_indi);
         // KONCLUDE_ASSERT_X(…) — debug asserts, elided.
 
         let concept_descriptor = self.create_concept_descriptor(calc_alg_context);
@@ -454,7 +577,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             dependency_track_point,
             calc_alg_context,
         );
-        let mut reapply_it = CondensedReapplyQueueIterator;
+        let mut reapply_it = CondensedReapplyQueueIterator::new();
         // NB: this variant does NOT branch on `contained` — it always treats the
         // concept as freshly inserted (the C++ ignores the return).
         self.insert_concepts_to_individual_concept_set(
@@ -484,10 +607,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             *process_indi,
             allow_preprocessing,
             calc_alg_context,
-                INVALID,
+            INVALID,
         );
-        // if (reapplyIt.hasNext()) applyReapplyQueueConcepts(processIndi, &reapplyIt, ctx);
-        // W3-DEFER[api]: condensed-reapply-queue iterator stub (see add_concept_to_individual).
+        if reapply_it.has_next() {
+            self.apply_reapply_queue_concepts_condensed_iterator(
+                *process_indi,
+                reapply_it,
+                calc_alg_context,
+            );
+        }
         concept_descriptor
     }
 
@@ -511,23 +639,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi: &mut NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // processTagger = ctx->getUsedProcessTagger();
-        // processTagger->incConceptLabelSetModificationTag();
-        // indi->getReapplyConceptLabelSet(true)->updateConceptLabelSetModificationTag(processTagger);
-        // ctx->setMinModificationIndividualCandidate(indi);
-        // propagateIndividualNodeModified(indi, ctx);
-        //
-        // W3-DEFER[api]: `CProcessTagger::incConceptLabelSetModificationTag` (tagger stub
-        // has no methods), `CReapplyConceptLabelSet::updateConceptLabelSetModificationTag`
-        // (label-set modification-tag protocol not yet ported), and
-        // `CCalculationAlgorithmContext::setMinModificationIndividualCandidate` (no ctx
-        // setter yet). The label-set is still materialised (matching the C++
-        // `getReapplyConceptLabelSet(true)` side effect) and the node-modified
-        // propagation IS live.
-        let _con_label_set = calc_alg_context
+        let con_label_set = calc_alg_context
             .process_context_mut()
-            .node_mut(*indi)
-            .get_reapply_concept_label_set(true);
+            .node_reapply_concept_label_set(*indi);
+        let tag = {
+            let process_context = calc_alg_context.process_context_mut();
+            process_context
+                .used_process_tagger_mut()
+                .inc_concept_label_set_modification_tag();
+            process_context
+                .used_process_tagger()
+                .get_current_concept_label_set_modification_tag()
+        };
+        calc_alg_context
+            .process_context_mut()
+            .label_set_mut(con_label_set)
+            .modification_tag
+            .update_concept_label_set_modification_tag(tag);
+        calc_alg_context
+            .base
+            .set_min_modification_individual_candidate(*indi);
         self.propagate_individual_node_modified(indi, calc_alg_context);
     }
 
@@ -538,17 +669,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         mod_tag: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // return indi->getReapplyConceptLabelSet(false)->isConceptLabelSetModificationTagUpToDate(modTag);
-        //
-        // W3-DEFER[api]: `CReapplyConceptLabelSet::isConceptLabelSetModificationTagUpToDate`
-        // — the label-set modification-tag protocol is not yet ported. C++ default (an
-        // unmodified / tag-up-to-date label set) is `false` here (no modification seen).
-        let _label_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(*indi)
-            .get_reapply_concept_label_set(false);
-        let _ = mod_tag;
-        false
+        let label_set = calc_alg_context
+            .process_context()
+            .node(*indi)
+            .use_reapply_con_label_set;
+        if label_set.is_none() {
+            return false;
+        }
+        calc_alg_context
+            .process_context()
+            .label_set(label_set)
+            .is_concept_label_set_modification_tag_up_to_date(mod_tag)
     }
 
     // =======================================================================
@@ -815,7 +946,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             dependency_track_point,
             calc_alg_context,
         );
-        let mut reapply_it = CondensedReapplyQueueIterator;
+        let mut reapply_it = CondensedReapplyQueueIterator::new();
         let contained = self.insert_concepts_to_individual_concept_set(
             concept_descriptor,
             dependency_track_point,
@@ -847,8 +978,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
                 INVALID,
             );
-            // if (reapplyIt.hasNext()) applyReapplyQueueConcepts(processIndi, &reapplyIt, ctx);
-            // W3-DEFER[api]: condensed-reapply-queue iterator stub (see add_concept_to_individual).
+            if reapply_it.has_next() {
+                self.apply_reapply_queue_concepts_condensed_iterator(
+                    *process_indi,
+                    reapply_it,
+                    calc_alg_context,
+                );
+            }
         } else {
             self.stat_con_des_contained_count += 1;
             self.release_concept_descriptor(concept_descriptor, calc_alg_context);
@@ -889,13 +1025,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .con_desc(concept_descriptor)
                 .is_negated();
             if self.is_concept_unsatisfiability_saturated(con, neg, calc_alg_context) {
-                // W3-DEFER[exceptions]: createClashedConceptDescriptor (clash unit) +
-                //   throw CCalculationClashProcessingException — the clash-exception channel
-                //   is not yet established at this layer. The saturated-unsatisfiability
-                //   clash is detected (the guard is live) but the non-local throw is deferred;
-                //   the C++ would not fall through, so we early-return `false` (concept not
-                //   contained) as the closest local behaviour.
-                let _ = (clashed_concept_descriptor, clashed_dependency_track_point);
+                let clash_con_des_linker = self.create_clashed_concept_descriptor(
+                    Id::NONE,
+                    process_indi,
+                    concept_descriptor,
+                    dependency_track_point,
+                    calc_alg_context,
+                );
+                calc_alg_context.raise_clash(clash_con_des_linker);
                 return false;
             }
         }
@@ -906,7 +1043,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (the label set cannot do it from `&mut self`), lift the label set out of the
         // arena so the `&ProcessContext` descriptor-negation resolver is free of the
         // `&mut` borrow, run the faithful clash insert, then restore the label set.
-        let _ = reapply_it; // reapply-queue out-iterator deferred (queue is a stub).
         let new_concept = calc_alg_context
             .process_context()
             .con_desc(concept_descriptor)
@@ -920,13 +1056,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(new_concept)
             .get_concept_tag();
         let mut lifted_label_set = std::mem::replace(
-            calc_alg_context.process_context_mut().label_set_mut(con_label_set),
+            calc_alg_context
+                .process_context_mut()
+                .label_set_mut(con_label_set),
             ReapplyConceptLabelSet::default(),
         );
         let contained = {
             let pc = calc_alg_context.process_context();
             lifted_label_set.insert_concept_get_clash_resolved(
                 concept_descriptor,
+                new_concept,
                 new_con_tag,
                 new_negated,
                 &|d| pc.con_desc(d).is_negated(),
@@ -937,6 +1076,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         *calc_alg_context
             .process_context_mut()
             .label_set_mut(con_label_set) = lifted_label_set;
+        if !contained {
+            if let Some(out) = reapply_it {
+                *out = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_reapply_iterator_by_tag(
+                        *process_indi,
+                        new_con_tag,
+                        new_negated,
+                        true,
+                    );
+            }
+        }
 
         if !contained {
             // if (allowInitalization && !processIndi->getIndividualInitializationConcept())
@@ -954,19 +1105,63 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
             // nondeterministically = hasNondeterministicDependency(dependencyTrackPoint, ctx);
-            let _nondeterministically =
+            let nondeterministically =
                 self.has_nondeterministic_dependency(dependency_track_point, calc_alg_context);
             // if (conceptDescriptor->getConcept()->getOperatorCode() == CCMARKER)
             //   ctx->getProcessingDataBox()->getMarkerIndividualNodeHash(true)
             //       ->addMarkerIndividualNode(conceptDescriptor->getConcept(), processIndi, nondeterministically);
-            // W6-DEFER[api]: the marker-individual-node hash (`getMarkerIndividualNodeHash`
-            //   + `addMarkerIndividualNode`) and the `CCMARKER` operator-code dispatch are the
-            //   marker subsystem — held until the marker hash is wired.
+            if calc_alg_context
+                .ontology_arenas()
+                .concept(new_concept)
+                .get_operator_code()
+                == super::super::model::op::CCMARKER
+            {
+                let marker_hash = calc_alg_context.marker_individual_node_hash(true);
+                MarkerIndividualNodeHash::add_marker_individual_node(
+                    calc_alg_context.process_context_mut(),
+                    marker_hash,
+                    new_concept,
+                    *process_indi,
+                    nondeterministically,
+                );
+            }
             //
             // if (mConfOccurrenceStatisticsCollecting && mOptCollectOccurrenceStatistics)
             //   mOccStatsCacheHandler->incConceptInstanceOccurrencceStatistics(
             //       conceptDescriptor->getConcept(), nondeterministically, processIndi->getNominalIndividual() == nullptr);
-            // W6-DEFER[api]: the occurrence-statistics cache handler (W6 Cache subtree).
+            if self.conf_occurrence_statistics_collecting && self.opt_collect_occurrence_statistics
+            {
+                let concept_id = calc_alg_context
+                    .ontology_arenas()
+                    .concept(new_concept)
+                    .get_concept_tag();
+                let concept_count = calc_alg_context.ontology_arenas().concept_count();
+                let role_count = calc_alg_context.ontology_arenas().role_count();
+                let deterministic_count = if nondeterministically { 0 } else { 1 };
+                let nondeterministic_count = if nondeterministically { 1 } else { 0 };
+                let individual_count = if calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .nominal_individual()
+                    .is_some()
+                {
+                    1
+                } else {
+                    0
+                };
+                let existential_count = if individual_count == 0 { 1 } else { 0 };
+                calc_alg_context
+                    .occurrence_statistics_cache_handler_mut()
+                    .inc_concept_instance_occurrencce_statistics(
+                        concept_id,
+                        concept_count,
+                        role_count,
+                        deterministic_count,
+                        nondeterministic_count,
+                        individual_count,
+                        existential_count,
+                    );
+            }
         }
 
         // if (contained && clashedConceptDescriptor) {
@@ -1009,7 +1204,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// because the derived form also computes terminology tags). This unit only needs
     /// the field-init effect, so it writes the public descriptor fields directly through
     /// the arena accessor (the same convention u25 uses for wrapper-less node fields).
-    fn init_concept_descriptor_fields(
+    pub(super) fn init_concept_descriptor_fields(
         &mut self,
         concept_descriptor: ConDescId,
         concept: ConceptId,

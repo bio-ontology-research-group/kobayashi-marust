@@ -65,13 +65,18 @@ impl SuccessorRoleHash {
     /// Port of `initSuccessorRoleHash(CSuccessorRoleHash* prevRoleSuccHash)`.
     /// The size-threshold COW (share if `size <= 100`, else keep prev; combine if
     /// `size*10 > prev.size`) is reproduced over owned clones.
-    pub fn init_successor_role_hash(&mut self, prev_role_succ_hash: Option<&SuccessorRoleHash>) -> &mut Self {
+    pub fn init_successor_role_hash(
+        &mut self,
+        prev_role_succ_hash: Option<&SuccessorRoleHash>,
+    ) -> &mut Self {
         if let Some(prev) = prev_role_succ_hash {
             if prev.prev_successor_link_hash.is_none() && prev.successor_link_hash.len() <= 100 {
                 self.successor_link_hash = prev.successor_link_hash.clone();
                 self.prev_successor_link_hash = None;
                 self.prev_validating_required = false;
-            } else if prev.prev_successor_link_hash.is_none() && prev.successor_link_hash.len() > 100 {
+            } else if prev.prev_successor_link_hash.is_none()
+                && prev.successor_link_hash.len() > 100
+            {
                 self.successor_link_hash.clear();
                 self.prev_successor_link_hash = Some(prev.successor_link_hash.clone());
                 self.prev_validating_required = false;
@@ -80,7 +85,9 @@ impl SuccessorRoleHash {
                 if prev.successor_link_hash.len() * 10 > prev_prev.len() {
                     self.successor_link_hash = prev.successor_link_hash.clone();
                     for (neighbour_id, links) in prev_prev.iter() {
-                        if !self.prev_validating_required || !prev.successor_link_hash.contains_key(neighbour_id) {
+                        if !self.prev_validating_required
+                            || !prev.successor_link_hash.contains_key(neighbour_id)
+                        {
                             for link in links.iter() {
                                 self.successor_link_hash
                                     .entry(*neighbour_id)
@@ -129,7 +136,10 @@ impl SuccessorRoleHash {
         if self.prev_successor_link_hash.is_none() || self.successor_link_hash.contains_key(&indi) {
             SuccessorRoleIterator::new(
                 indi,
-                self.successor_link_hash.get(&indi).cloned().unwrap_or_default(),
+                self.successor_link_hash
+                    .get(&indi)
+                    .cloned()
+                    .unwrap_or_default(),
             )
         } else if self
             .prev_successor_link_hash
@@ -177,7 +187,8 @@ impl SuccessorRoleHash {
         {
             let prev = self.prev_successor_link_hash.take().unwrap();
             for (indi_id, links) in prev.iter() {
-                if !self.prev_validating_required || !self.successor_link_hash.contains_key(indi_id) {
+                if !self.prev_validating_required || !self.successor_link_hash.contains_key(indi_id)
+                {
                     self.successor_link_hash
                         .entry(*indi_id)
                         .or_default()
@@ -186,6 +197,28 @@ impl SuccessorRoleHash {
             }
         }
         self.successor_link_hash.remove(&indi);
+        self
+    }
+
+    /// Port of `CSuccessorRoleHash::removeSuccessorRoleLink(cint64 indi, CIndividualLinkEdge* link)`.
+    ///
+    /// When the bucket is still in the shared previous hash, localise that bucket
+    /// before deleting the concrete edge, matching the COW write discipline used by
+    /// `insertSuccessorRoleLink` / `removeSuccessor`.
+    pub fn remove_successor_role_link(&mut self, indi: Cint64, link: EdgeId) -> &mut Self {
+        if let Some(prev) = &self.prev_successor_link_hash {
+            if prev.contains_key(&indi) && !self.successor_link_hash.contains_key(&indi) {
+                let promoted: Vec<EdgeId> = prev.get(&indi).cloned().unwrap_or_default();
+                self.successor_link_hash.insert(indi, promoted);
+                self.prev_validating_required = true;
+            }
+        }
+        if let Some(links) = self.successor_link_hash.get_mut(&indi) {
+            links.retain(|candidate| *candidate != link);
+            if links.is_empty() {
+                self.successor_link_hash.remove(&indi);
+            }
+        }
         self
     }
 
@@ -244,7 +277,11 @@ impl SuccessorRoleIterator {
 
     /// Port of the `(indi, beginIt, endIt)` ctor.
     pub fn new(indi: Cint64, links: Vec<EdgeId>) -> Self {
-        SuccessorRoleIterator { indi, links, pos: 0 }
+        SuccessorRoleIterator {
+            indi,
+            links,
+            pos: 0,
+        }
     }
 
     /// The successor individual id (`mIndi`).

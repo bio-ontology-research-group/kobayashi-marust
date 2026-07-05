@@ -92,7 +92,11 @@ impl CacheValue {
     /// Port of `CCacheValue::CCacheValue(first, second, third)`
     /// (`: CTrible<qint64>(first,second,third)`) — writes the raw triple.
     pub fn new_raw(first: Cint64, second: Cint64, third: Cint64) -> Self {
-        CacheValue { first, second, third }
+        CacheValue {
+            first,
+            second,
+            third,
+        }
     }
 
     /// Port of
@@ -220,7 +224,9 @@ pub struct CacheValueHasher {
 
 impl Default for CacheValueHasher {
     fn default() -> Self {
-        CacheValueHasher { cache_value: CacheValueId::NONE }
+        CacheValueHasher {
+            cache_value: CacheValueId::NONE,
+        }
     }
 }
 
@@ -231,29 +237,17 @@ impl CacheValueHasher {
     }
 
     /// Port of `CCacheValueHasher::getHashValue` (`return qHash(*mCacheValue);`).
-    /// KONCLUDE-PORT-NOTE[api]: the faithful body resolves `self.cache_value`
-    /// against the cache-value arena and forwards to `CacheValue::q_hash`
-    /// (`arena.get(self.cache_value).q_hash() as Cint64`). F0 deliberately leaves
-    /// the cache-value container/arena undecided (see the `CCACHINGHASH` note at
-    /// the foot of this file), so the resolution is deferred; the hash math itself
-    /// is fully ported on `CacheValue::q_hash`. W6-DEFER[api].
-    /// W6-UNDEFER (cache-arena): resolves `self.cache_value` against the
-    /// cache-value arena and forwards to `CacheValue::q_hash`
-    /// (`return qHash(*mCacheValue);`).
+    /// KONCLUDE-PORT-NOTE[api]: `mCacheValue` is an arena id; the faithful body
+    /// resolves it through `CacheContext` and forwards to `CacheValue::q_hash`.
     pub fn get_hash_value(&self, ctx: &CacheContext) -> Cint64 {
         ctx.cache_value(self.cache_value).q_hash() as Cint64
     }
 
     /// Port of `CCacheValueHasher::operator==`
     /// (`if (*mCacheValue != *hasher.mCacheValue) return false; return true;`).
-    /// KONCLUDE-PORT-NOTE[api]: the faithful test compares the two resolved
-    /// `CacheValue`s by value (`CacheValue` derives the structural `Eq` that
-    /// matches `CTrible::operator==`). Pending the cache-value arena, the interim
-    /// compares the arena ids instead — equal id ⇒ equal value, but distinct ids
-    /// with equal values are reported unequal (the one observable difference,
-    /// flagged for the reconcile). Control flow is preserved. W6-DEFER[api].
-    /// W6-UNDEFER (cache-arena): resolves both ids and compares the `CacheValue`s
-    /// by value (`if (*mCacheValue != *hasher.mCacheValue) return false;`).
+    /// KONCLUDE-PORT-NOTE[api]: `mCacheValue` is an arena id; the faithful test
+    /// resolves both ids and compares the `CacheValue`s by value, matching
+    /// `CTrible::operator==` instead of pointer identity.
     pub fn eq_hasher(&self, other: &CacheValueHasher, ctx: &CacheContext) -> bool {
         if ctx.cache_value(self.cache_value) != ctx.cache_value(other.cache_value) {
             return false;
@@ -570,9 +564,13 @@ impl CacheTaggingPool {
         self.next_pool_start_tag += self.pool_size;
         // build random permutation using Fisher-Yates algorithm
         // [api] deterministic LCG in place of qrand().
-        let mut rng_state: u64 = (self.next_pool_start_tag as u64).wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let mut rng_state: u64 = (self.next_pool_start_tag as u64)
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let mut next_rand = || -> i64 {
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((rng_state >> 33) & 0x7fff_ffff) as i64
         };
         let mut i = self.pool_size - 1;
@@ -635,3 +633,42 @@ pub struct DummyValue;
 // they parameterise over is per-family and not yet ported); each family unit
 // will pick the concrete container at its own port. Recorded here as the F0
 // shared decision so the families reference it rather than re-deciding.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_value_hasher_hash_resolves_arena_value() {
+        let mut ctx = CacheContext::new();
+        let value = CacheValue::new_value(17, 23, CacheValueIdentifier::CacheValTagAndRole);
+        let value_id = ctx.alloc_cache_value(value);
+        let hasher = CacheValueHasher::new(value_id);
+
+        assert_eq!(hasher.get_hash_value(&ctx), value.q_hash() as Cint64);
+    }
+
+    #[test]
+    fn cache_value_hasher_equality_is_by_resolved_value() {
+        let mut ctx = CacheContext::new();
+        let first = ctx.alloc_cache_value(CacheValue::new_value(
+            11,
+            13,
+            CacheValueIdentifier::CacheValTagAndConcept,
+        ));
+        let equal_distinct_id = ctx.alloc_cache_value(CacheValue::new_value(
+            11,
+            13,
+            CacheValueIdentifier::CacheValTagAndConcept,
+        ));
+        let different = ctx.alloc_cache_value(CacheValue::new_value(
+            11,
+            14,
+            CacheValueIdentifier::CacheValTagAndConcept,
+        ));
+
+        let first_hasher = CacheValueHasher::new(first);
+        assert!(first_hasher.eq_hasher(&CacheValueHasher::new(equal_distinct_id), &ctx));
+        assert!(!first_hasher.eq_hasher(&CacheValueHasher::new(different), &ctx));
+    }
+}

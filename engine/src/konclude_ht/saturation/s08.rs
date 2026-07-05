@@ -49,7 +49,8 @@
 //! `CIndividualSaturationProcessNode*&` in/out reference becomes `&mut SatNodeId`;
 //! a by-value `CIndividualSaturationProcessNode*` becomes `SatNodeId`; `CRole*` →
 //! `RoleId`. `cint64&` / `bool&` out-params become `&mut Cint64` / `&mut bool`;
-//! a `CSaturationSuccessorData**` out-pointer becomes `&mut Cint64`.
+//! a `CSaturationSuccessorData**` out-pointer stays opaque until the merge-distinct
+//! containers are ported.
 //!
 //! KONCLUDE-PORT-NOTE[overload]: C++ overloads (Rust cannot) are disambiguated by
 //! a suffix on the worker overload — `_for_nodes` (the explicit-node merge-subset /
@@ -103,19 +104,17 @@
 //!     `...HashData` (merged linked-successor hash, merge-distinct hash/set, the
 //!     remaining-mergeable-cardinality hash) and the databox ATMOST-merging
 //!     process-linker queue (`hasSaturationATMOSTMergingProcessLinker`);
-//!   * the **mutating** `CLinkedRoleSaturationSuccessorHash` surface
-//!     (`getLinkedRoleSuccessorData(role,create)` / `deactivateLinkedSuccessor`) and
-//!     `CSaturationSuccessorData` THREADING — the struct is now ported, but these
-//!     methods still take it as opaque `Cint64`; a reconcile should re-type those
-//!     params to `SaturationSuccessorDataId` once a producer (the successor-hash read
-//!     path) exists. RECONCILE-NEED: successor-data param re-typing + the
-//!     `getLinkedRoleSuccessorData` read accessor (process + satellites).
+//!   * the **ATMOST mutating merge surface** beyond subset deactivation —
+//!     `increaseLinkedSuccessorCount` and the process-owned merge-distinct multimap
+//!     view needed to wire the larger group-G bodies into live `tryIndividiual...`.
 //!   * the **FUNCTIONAL/ALL successor-extension data** + `getRoleBackwardPropagationHash`
 //!     + `CCriticalPredecessorRoleCardinalityHash` (all still opaque `Cint64` in sat1);
 //!   * the **deep** `CReapplyConceptSaturationLabelSet` bodies (`containsConcept`,
 //!     `getConceptDescriptorAndReapplyQueue`) — only simple accessors are ported;
-//!   * the **status-flag masks** `INDSATFLAGINSUFFICIENT` / `hasInsufficientFlag` /
-//!     `hasClashedFlag`. RECONCILE-NEED: saturation status-flag masks (process/sat1.rs).
+//!   * the **status-flag masks** are now available on
+//!     `IndividualSaturationProcessNodeStatusFlags` (see the focused sat1
+//!     regression for `INDSATFLAGINSUFFICIENT` / `hasInsufficientFlag` /
+//!     `hasClashedFlag`); no longer a group-G blocker.
 //! No live (non-deferred) site calls these group-G methods, so the signatures stay
 //! as-is until that coordinated reconcile.
 
@@ -123,9 +122,19 @@
 #![allow(unused_variables)]
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
-use super::super::model::substrate::{Cint64, INVALID};
-use super::super::model::RoleId;
+use super::super::model::op::{CCAND, CCAQAND, CCATOM, CCBRANCHAQAND, CCIMPLAQAND, CCOR, CCSUB};
+use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::{ConceptId, NegLink, RoleId};
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::SatNodeId;
+use super::satellites::{
+    BackwardSaturationPropagationLink, ConceptSaturationDescriptorId,
+    ImplicationReapplyConceptSaturationDescriptorId, IndividualSaturationSuccessorLinkDataLinkerId,
+    LinkedRoleSaturationSuccessorDataId, LinkedRoleSaturationSuccessorHashId,
+    ReapplyConceptSaturationLabelSetId, SaturationSuccessorDataId,
+};
+
+const CCT_ATMOST: Cint64 = 1;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================
@@ -150,8 +159,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> RoleId {
-        let mut inv_role: RoleId =
-            calc_alg_context.ontology_arenas().role(role).get_inverse_role();
+        let mut inv_role: RoleId = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_inverse_role();
         if inv_role.is_none() {
             let inv_eq_role_list = calc_alg_context
                 .ontology_arenas()
@@ -223,66 +234,176 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // `CIndividualSaturationProcessNode* ancSatNode`
         anc_sat_node: SatNodeId,
         // `CXNegLinker<CRole*>* creationRoleLinker` — satellite-owned linker.
-        creation_role_linker: Cint64,
+        creation_role_linker: Vec<NegLink<RoleId>>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   ancSuccLinkData = nullptr;
-        //   collectLinkedSuccessorNodes(ancSatNode, ctx);                       // sibling
-        //   invRole = getInverseRole(role, ctx);                                // LIVE sibling
-        //   ancLinkedSuccHash = ancSatNode->getLinkedRoleSuccessorHash(true);
-        //   if (ancLinkedSuccHash) {
-        //       ancSuccData = ancLinkedSuccHash->getLinkedRoleSuccessorData(invRole, false);
-        //       if (ancSuccData)
-        //           ancSuccLinkData = ancSuccData->mSuccNodeDataMap.value(indiProcSatNode->getIndividualID());
-        //   }
-        //   if (ancSuccLinkData && ancSuccLinkData->mActiveCount >= 1) {
-        //       ancSuccCreationRoleLinker = ancSuccLinkData->mCreationRoleLinker;
-        //       updated = false;
-        //       funcConExtData = succSatNode->getSuccessorExtensionData(true)->getFUNCTIONALConceptsExtensionData(true);
-        //       if (!funcConExtData->hasIndividualNodeForwardingPredecessorMerged(ancSatNode)) {
-        //           succConSet = succSatNode->getReapplyConceptSaturationLabelSet(false);
-        //           if (succConSet)
-        //               for (conSatDesIt in succConSet->getConceptSaturationDescriptionLinker())
-        //                   addConceptFilteredToIndividual(conSatDesIt->getConcept(), conSatDesIt->isNegated(), ancSatNode, ctx);  // sibling
-        //           depCopyLinker = new CXNegLinker<...>; depCopyLinker->initNegLinker(ancSatNode, false);
-        //           succSatNode->addCopyDependingIndividualNodeLinker(depCopyLinker);
-        //           preprocessResolvedIndividualNode(ancSatNode, ctx);          // sibling
-        //       }
-        //       for (creationRoleLinkerIt in creationRoleLinker) if (!negated) {
-        //           creationRole = creationRoleLinkerIt->getData();
-        //           if (!funcConExtData->hasIndividualNodeForwardingPredecessorMerged(ancSatNode, creationRole)) {
-        //               updated = true;
-        //               funcConExtData->setIndividualNodeForwardingPredecessorMerged(ancSatNode, creationRole);
-        //               invCreationRole = getInverseRole(creationRole, ctx);
-        //               if (invCreationRole && !ancLinkedSuccHash->hasActiveLinkedSuccessor(invCreationRole, indiProcSatNode)) {
-        //                   for (invCreationSuperRoleIt in invCreationRole->getIndirectSuperRoleList()) {
-        //                       creationSuperRole = invCreationSuperRoleIt->getData();
-        //                       if (!negated) {
-        //                           ancLinkedSuccHash->addExtensionSuccessor(creationSuperRole, indiProcSatNode, invCreationRole, 1);
-        //                           addNewLinkedExtensionProcessingRole(creationSuperRole, ancSatNode, true, true, ctx);  // sibling
-        //                       } else {
-        //                           backPropLink = new CBackwardSaturationPropagationLink;
-        //                           backPropLink->initBackwardPropagationLink(ancSatNode, creationSuperRole);
-        //                           installBackwardPropagationLink(ancSatNode, indiProcSatNode, creationSuperRole, backPropLink, true, false, ctx);  // s06 sibling
-        //                       }
-        //                   }
-        //               }
-        //           }
-        //       }
-        //       return updated;
-        //   }
-        //   return false;
-        // CLinkedRoleSaturationSuccessorHash / CSaturationSuccessorData /
-        // CSaturationIndividualNodeFUNCTIONALConceptsExtensionData satellites + the
-        // listed siblings are not yet ported.
-        let _ = (
-            indi_proc_sat_node,
-            role,
-            succ_sat_node,
-            anc_sat_node,
-            creation_role_linker,
-        );
+        let mut anc_sat_node_ref = anc_sat_node;
+        self.collect_linked_successor_nodes(&mut anc_sat_node_ref, calc_alg_context, INVALID);
+        let inv_role = self.get_inverse_role(role, calc_alg_context);
+        let anc_linked_succ_hash = calc_alg_context
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(anc_sat_node, true);
+        let mut anc_succ_link_data = SaturationSuccessorDataId::NONE;
+        if anc_linked_succ_hash.is_some() {
+            let anc_succ_data = calc_alg_context
+                .process_context()
+                .linked_role_sat_succ_hash(anc_linked_succ_hash)
+                .get_linked_role_successor_data(inv_role);
+            if anc_succ_data.is_some() {
+                let indi_id = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node)
+                    .get_individual_id();
+                anc_succ_link_data = calc_alg_context
+                    .process_context()
+                    .linked_role_sat_succ_data(anc_succ_data)
+                    .get_successor_node_data_map()
+                    .get(&indi_id)
+                    .copied()
+                    .unwrap_or(SaturationSuccessorDataId::NONE);
+            }
+        }
+
+        if anc_succ_link_data.is_some()
+            && calc_alg_context
+                .process_context()
+                .sat_succ_data(anc_succ_link_data)
+                .get_active_count()
+                >= 1
+        {
+            let mut updated = false;
+            let func_con_ext_data = calc_alg_context
+                .process_context_mut()
+                .sat_node_functional_concepts_extension_data(succ_sat_node, true);
+            if !calc_alg_context
+                .process_context()
+                .sat_indi_node_functional_concept_ext_data(func_con_ext_data)
+                .has_individual_node_forwarding_predecessor_merged_node(anc_sat_node)
+            {
+                let succ_con_set = calc_alg_context
+                    .process_context()
+                    .sat_node(succ_sat_node)
+                    .reapply_con_sat_label_set;
+                if succ_con_set.is_some() {
+                    let mut con_sat_des_it = calc_alg_context
+                        .process_context()
+                        .reapply_con_sat_label_set(succ_con_set)
+                        .get_concept_saturation_description_linker();
+                    while con_sat_des_it.is_some() {
+                        let (concept, negation, next) = {
+                            let con_sat_des_ref = calc_alg_context
+                                .process_context()
+                                .con_sat_desc(con_sat_des_it);
+                            (
+                                con_sat_des_ref.get_concept(),
+                                con_sat_des_ref.get_negation(),
+                                con_sat_des_ref.get_next_concept_desciptor(),
+                            )
+                        };
+                        let mut anc_node_ref = anc_sat_node;
+                        self.add_concept_filtered_to_individual(
+                            concept,
+                            negation,
+                            &mut anc_node_ref,
+                            calc_alg_context,
+                        );
+                        con_sat_des_it = next;
+                    }
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_node_mut(succ_sat_node)
+                    .add_copy_depending_individual_node_linker(NegLink {
+                        target: anc_sat_node,
+                        negated: false,
+                    });
+                self.preprocess_resolved_individual_node(anc_sat_node, calc_alg_context);
+            }
+
+            for creation_role_linker_it in creation_role_linker {
+                if !creation_role_linker_it.negated {
+                    let creation_role = creation_role_linker_it.target;
+                    if !calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(func_con_ext_data)
+                        .has_individual_node_forwarding_predecessor_merged(
+                            anc_sat_node,
+                            creation_role,
+                        )
+                    {
+                        updated = true;
+                        calc_alg_context
+                            .process_context_mut()
+                            .sat_indi_node_functional_concept_ext_data_mut(func_con_ext_data)
+                            .set_individual_node_forwarding_predecessor_merged(
+                                anc_sat_node,
+                                creation_role,
+                            );
+                        let inv_creation_role =
+                            self.get_inverse_role(creation_role, calc_alg_context);
+                        if inv_creation_role.is_some()
+                            && !calc_alg_context
+                                .process_context()
+                                .linked_role_successor_hash_has_active_linked_successor(
+                                    anc_linked_succ_hash,
+                                    inv_creation_role,
+                                    *indi_proc_sat_node,
+                                    None,
+                                    1,
+                                )
+                        {
+                            let inv_creation_super_roles = calc_alg_context
+                                .ontology_arenas()
+                                .role(inv_creation_role)
+                                .get_indirect_super_role_list()
+                                .to_vec();
+                            for inv_creation_super_role_it in inv_creation_super_roles {
+                                let creation_super_role = inv_creation_super_role_it.target;
+                                if !inv_creation_super_role_it.negated {
+                                    calc_alg_context
+                                        .process_context_mut()
+                                        .linked_role_successor_hash_add_extension_successor(
+                                            anc_linked_succ_hash,
+                                            creation_super_role,
+                                            *indi_proc_sat_node,
+                                            inv_creation_role,
+                                            1,
+                                        );
+                                    let mut anc_node_ref = anc_sat_node;
+                                    self.add_new_linked_extension_processing_role(
+                                        creation_super_role,
+                                        &mut anc_node_ref,
+                                        true,
+                                        true,
+                                        calc_alg_context,
+                                    );
+                                } else {
+                                    let mut back_prop_link =
+                                        BackwardSaturationPropagationLink::new();
+                                    back_prop_link.init_backward_propagation_link(
+                                        anc_sat_node,
+                                        creation_super_role,
+                                    );
+                                    let back_prop_link = calc_alg_context
+                                        .process_context_mut()
+                                        .alloc_backward_sat_prop_link(back_prop_link);
+                                    self.install_backward_propagation_link(
+                                        anc_sat_node,
+                                        *indi_proc_sat_node,
+                                        creation_super_role,
+                                        back_prop_link,
+                                        true,
+                                        false,
+                                        calc_alg_context,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return updated;
+        }
         false
     }
 
@@ -298,25 +419,29 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         indi_proc_sat_node: &mut SatNodeId,
         // `CSaturationSuccessorData* subsetIndiSuccData`
-        subset_indi_succ_data: Cint64,
+        subset_indi_succ_data: SaturationSuccessorDataId,
         // `CSaturationSuccessorData* superIndiSuccData`
-        super_indi_succ_data: Cint64,
+        super_indi_succ_data: SaturationSuccessorDataId,
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   subsetIndiSuccNode = subsetIndiSuccData->mSuccIndiNode;
-        //   superIndiSuccNode  = superIndiSuccData->mSuccIndiNode;
-        //   return isLinkedIndividualSuccessorNodeMergingSubset(indiProcSatNode,
-        //       subsetIndiSuccNode, subsetIndiSuccData, superIndiSuccNode, superIndiSuccData, role, ctx);  // → _for_nodes
-        // CSaturationSuccessorData satellite not yet ported.
-        let _ = (
+        let subset_indi_succ_node = calc_alg_context
+            .process_context()
+            .sat_succ_data(subset_indi_succ_data)
+            .get_successor_individual_node();
+        let super_indi_succ_node = calc_alg_context
+            .process_context()
+            .sat_succ_data(super_indi_succ_data)
+            .get_successor_individual_node();
+        self.is_linked_individual_successor_node_merging_subset_for_nodes(
             indi_proc_sat_node,
+            subset_indi_succ_node,
             subset_indi_succ_data,
+            super_indi_succ_node,
             super_indi_succ_data,
             role,
-        );
-        false
+            calc_alg_context,
+        )
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::isLinkedIndividualSuccessorNodeMergingSubset`
@@ -333,61 +458,96 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         // `CIndividualSaturationProcessNode* subsetIndiSuccNode`
         subset_indi_succ_node: SatNodeId,
-        subset_indi_succ_data: Cint64,
+        subset_indi_succ_data: SaturationSuccessorDataId,
         super_indi_succ_node: SatNodeId,
-        super_indi_succ_data: Cint64,
+        super_indi_succ_data: SaturationSuccessorDataId,
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   if (subsetIndiSuccData->mVALUENominalConnection || superIndiSuccData->mVALUENominalConnection) return false;
-        //   if (subsetIndiSuccNode->hasNominalIntegrated()) return false;
-        //   if (subsetIndiSuccNode->hasDataValueApplied()) return false;
-        //   if (superIndiSuccData->mActiveCount <= 0) return false;
-        //   if (subsetIndiSuccData->mSuccCount > superIndiSuccData->mSuccCount) return false;
-        //   if (!isSuccessorCreationRoleMergingSubset(role, superIndiSuccData->mCreationRoleLinker, ctx)) return false;  // _for_role
-        //   if (!isIndividualNodeLabelMergingSubset(subsetIndiSuccNode, superIndiSuccNode, false, ctx)) return false;
-        //   return true;
-        // CSaturationSuccessorData + node nominal/data-value flags not yet ported.
-        let _ = (
-            indi_proc_sat_node,
-            subset_indi_succ_node,
-            subset_indi_succ_data,
-            super_indi_succ_node,
-            super_indi_succ_data,
+        let (
+            subset_value_nominal,
+            subset_succ_count,
+            super_value_nominal,
+            super_active_count,
+            super_succ_count,
+            super_creation_roles,
+        ) = {
+            let process_context = calc_alg_context.process_context();
+            let subset_data = process_context.sat_succ_data(subset_indi_succ_data);
+            let super_data = process_context.sat_succ_data(super_indi_succ_data);
+            (
+                subset_data.value_nominal_connection,
+                subset_data.succ_count,
+                super_data.value_nominal_connection,
+                super_data.active_count,
+                super_data.succ_count,
+                super_data.creation_role_linker.clone(),
+            )
+        };
+        if subset_value_nominal || super_value_nominal {
+            return false;
+        }
+        {
+            let subset_node = calc_alg_context
+                .process_context()
+                .sat_node(subset_indi_succ_node);
+            if subset_node.has_nominal_integrated() {
+                return false;
+            }
+            if subset_node.has_data_value_applied() {
+                return false;
+            }
+        }
+        if super_active_count <= 0 {
+            return false;
+        }
+        if subset_succ_count > super_succ_count {
+            return false;
+        }
+        if !self.is_successor_creation_role_merging_subset_for_role(
             role,
-        );
-        false
+            &super_creation_roles,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        if !self.is_individual_node_label_merging_subset(
+            subset_indi_succ_node,
+            super_indi_succ_node,
+            false,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        let _ = indi_proc_sat_node;
+        true
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::isSuccessorCreationRoleMergingSubset`
     /// (the `CXNegLinker<CRole*>*`/`CXNegLinker<CRole*>*` overload). cpp 1370–1380.
     ///
-    /// True when every non-negated creation-role of `superCreationRoleLinker` is
-    /// itself contained (subset) in `superCreationRoleLinker` (per the `_for_role`
-    /// worker). (C++ iterates `superCreationRoleLinker` and tests each via the
-    /// single-role worker; `subCreationRoleLinker` is unused in the body.)
+    /// True when every non-negated creation-role of `subCreationRoleLinker` is
+    /// itself contained in `superCreationRoleLinker` (per the `_for_role` worker).
     pub fn is_successor_creation_role_merging_subset(
         &mut self,
         // `CXNegLinker<CRole*>* subCreationRoleLinker`
-        sub_creation_role_linker: Cint64,
+        sub_creation_role_linker: &[NegLink<RoleId>],
         // `CXNegLinker<CRole*>* superCreationRoleLinker`
-        super_creation_role_linker: Cint64,
+        super_creation_role_linker: &[NegLink<RoleId>],
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   for (subCreationRoleLinkerIt = superCreationRoleLinker; subCreationRoleLinkerIt; ++) {
-        //       if (!subCreationRoleLinkerIt->isNegated()) {
-        //           subCreationRole = subCreationRoleLinkerIt->getData();
-        //           if (!isSuccessorCreationRoleMergingSubset(subCreationRole, superCreationRoleLinker, ctx))  // _for_role
-        //               return false;
-        //       }
-        //   }
-        //   return true;
-        // The CXNegLinker<CRole*> chains come from CSaturationSuccessorData
-        // (`mCreationRoleLinker`), a not-yet-ported satellite.
-        let _ = (sub_creation_role_linker, super_creation_role_linker);
-        false
+        for sub_creation_role_linker_it in sub_creation_role_linker.iter() {
+            if !sub_creation_role_linker_it.negated
+                && !self.is_successor_creation_role_merging_subset_for_role(
+                    sub_creation_role_linker_it.target,
+                    super_creation_role_linker,
+                    calc_alg_context,
+                )
+            {
+                return false;
+            }
+        }
+        true
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::isSuccessorCreationRoleMergingSubset`
@@ -398,16 +558,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         sub_creation_role: RoleId,
         // `CXNegLinker<CRole*>* superCreationRoleLinker`
-        super_creation_role_linker: Cint64,
+        super_creation_role_linker: &[NegLink<RoleId>],
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   for (superCreationRoleLinkerIt = superCreationRoleLinker; superCreationRoleLinkerIt; ++)
-        //       if (!superCreationRoleLinkerIt->isNegated() && superCreationRoleLinkerIt->getData() == subCreationRole)
-        //           return true;
-        //   return false;
-        // The CXNegLinker<CRole*> chain comes from a not-yet-ported CSaturationSuccessorData satellite.
-        let _ = (sub_creation_role, super_creation_role_linker);
+        let _ = calc_alg_context;
+        for super_creation_role_linker_it in super_creation_role_linker.iter() {
+            if !super_creation_role_linker_it.negated
+                && super_creation_role_linker_it.target == sub_creation_role
+            {
+                return true;
+            }
+        }
         false
     }
 
@@ -429,30 +590,64 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         ignore_and_concepts: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   subsetConSet = subsetIndiSuccNode->getReapplyConceptSaturationLabelSet(false);
-        //   superConSet  = superIndiSuccNode->getReapplyConceptSaturationLabelSet(false);
-        //   if (!superConSet && subsetConSet) return false;
-        //   if (subsetConSet && superConSet) {
-        //       if (subsetConSet->getConceptCount() <= superConSet->getConceptCount()) {
-        //           for (conDesIt in subsetConSet->getConceptSaturationDescriptionLinker()) {
-        //               concept = conDesIt->getConcept(); negation = conDesIt->isNegated();
-        //               conCode = concept->getOperatorCode();
-        //               if (!ignoreANDConcepts
-        //                   || (!negation && conCode != CCAND && conCode != CCAQAND && conCode != CCIMPLAQAND && conCode != CCBRANCHAQAND)
-        //                   || (negation && conCode != CCOR)) {
-        //                   if (!superConSet->containsConcept(concept, negation)) return false;
-        //               }
-        //           }
-        //       } else return false;
-        //   }
-        //   return true;
-        // CReapplyConceptSaturationLabelSet satellite not yet ported.
-        let _ = (
-            subset_indi_succ_node,
-            super_indi_succ_node,
-            ignore_and_concepts,
-        );
+        let subset_con_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(subset_indi_succ_node, false);
+        let super_con_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(super_indi_succ_node, false);
+
+        if super_con_set.is_none() && subset_con_set.is_some() {
+            return false;
+        }
+        if subset_con_set.is_some() && super_con_set.is_some() {
+            let (subset_count, super_count, mut subset_iterator) = {
+                let process_context = calc_alg_context.process_context();
+                let subset_ref = process_context.reapply_con_sat_label_set(subset_con_set);
+                let super_ref = process_context.reapply_con_sat_label_set(super_con_set);
+                (
+                    subset_ref.get_concept_count(),
+                    super_ref.get_concept_count(),
+                    subset_ref.get_iterator(true, false),
+                )
+            };
+            if subset_count > super_count {
+                return false;
+            }
+            while subset_iterator.has_next() {
+                let con_des = subset_iterator.get_concept_saturation_descriptor();
+                if con_des.is_some() {
+                    let (concept, negation, con_code) = {
+                        let process_context = calc_alg_context.process_context();
+                        let con_des_ref = process_context.con_sat_desc(con_des);
+                        let concept = con_des_ref.get_concept();
+                        let negation = con_des_ref.get_negation();
+                        let con_code = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_operator_code();
+                        (concept, negation, con_code)
+                    };
+                    let check_containment = !ignore_and_concepts
+                        || (!negation
+                            && con_code != CCAND
+                            && con_code != CCAQAND
+                            && con_code != CCIMPLAQAND
+                            && con_code != CCBRANCHAQAND)
+                        || (negation && con_code != CCOR);
+                    if check_containment
+                        && Self::sat_label_set_contains_concept_get_negation(
+                            super_con_set,
+                            concept,
+                            calc_alg_context,
+                        ) != Some(negation)
+                    {
+                        return false;
+                    }
+                }
+                subset_iterator.move_next();
+            }
+        }
         true
     }
 
@@ -470,39 +665,117 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         indi_proc_sat_node: &mut SatNodeId,
         // `CLinkedRoleSaturationSuccessorHash* linkedSuccHash`
-        linked_succ_hash: Cint64,
+        linked_succ_hash: LinkedRoleSaturationSuccessorHashId,
         // `CPROCESSMAP<cint64,CSaturationSuccessorData*>* succDataMap`
-        succ_data_map: Cint64,
+        succ_data_map: LinkedRoleSaturationSuccessorDataId,
         role: RoleId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let links_deactivated = false;
-        // W4-DEFER[api]: faithful C++ body —
-        //   removedSuccCardCount = 0;
-        //   for ((indiID, succLinkData) in succDataMap) {
-        //       if (succLinkData->mActiveCount > 0) {
-        //           succCard = succLinkData->mSuccCount;
-        //           nodeMergeable = true;
-        //           if (succLinkData->mSuccIndiNode && (succLinkData->mSuccIndiNode->hasDataValueApplied() || succLinkData->mSuccIndiNode->hasNominalIntegrated())) nodeMergeable = false;
-        //           if (succLinkData->mVALUENominalConnection) nodeMergeable = false;
-        //           if (nodeMergeable) {
-        //               for (creationRoleLinkerIt in succLinkData->mCreationRoleLinker) if (!negated) {
-        //                   creationRole = creationRoleLinkerIt->getData();
-        //                   deactivateLink = false;
-        //                   for ((mergeIndiID, mergeSuccLinkData) in succDataMap) if (!deactivateLink && indiID != mergeIndiID && mergeSuccLinkData->mActiveCount > 0)
-        //                       if (isLinkedIndividualSuccessorNodeMergingSubset(indiProcSatNode, succLinkData, mergeSuccLinkData, creationRole, ctx))
-        //                           deactivateLink = true;
-        //                   if (deactivateLink)
-        //                       for (creationSuperRoleIt in creationRole->getIndirectSuperRoleList()) if (!negated)
-        //                           linkedSuccHash->deactivateLinkedSuccessor(creationSuperRoleIt->getData(), succLinkData->mSuccIndiNode, creationRole);
-        //               }
-        //           }
-        //           if (succLinkData->mActiveCount <= 0) removedSuccCardCount += succCard;
-        //       }
-        //   }
-        //   return linksDeactivated;   // never assigned true in C++
-        // CLinkedRoleSaturationSuccessorHash / CSaturationSuccessorData satellites not yet ported.
-        let _ = (indi_proc_sat_node, linked_succ_hash, succ_data_map, role);
+        let mut removed_succ_card_count: Cint64 = 0;
+        if linked_succ_hash.is_none() || succ_data_map.is_none() {
+            let _ = role;
+            return links_deactivated;
+        }
+        let succ_data_entries: Vec<(Cint64, SaturationSuccessorDataId)> = calc_alg_context
+            .process_context()
+            .linked_role_sat_succ_data(succ_data_map)
+            .get_successor_node_data_map()
+            .iter()
+            .map(|(indi_id, succ_data)| (*indi_id, *succ_data))
+            .collect();
+        for (indi_id, succ_link_data) in succ_data_entries.iter().copied() {
+            if calc_alg_context
+                .process_context()
+                .sat_succ_data(succ_link_data)
+                .active_count
+                > 0
+            {
+                let (succ_card, succ_node, value_nominal_connection, creation_roles) = {
+                    let succ_data_ref = calc_alg_context
+                        .process_context()
+                        .sat_succ_data(succ_link_data);
+                    (
+                        succ_data_ref.succ_count,
+                        succ_data_ref.succ_indi_node,
+                        succ_data_ref.value_nominal_connection,
+                        succ_data_ref.creation_role_linker.clone(),
+                    )
+                };
+
+                let mut node_mergeable = true;
+                if succ_node.is_some() {
+                    let succ_node_ref = calc_alg_context.process_context().sat_node(succ_node);
+                    if succ_node_ref.has_data_value_applied()
+                        || succ_node_ref.has_nominal_integrated()
+                    {
+                        node_mergeable = false;
+                    }
+                }
+                if value_nominal_connection {
+                    node_mergeable = false;
+                }
+
+                if node_mergeable {
+                    for creation_role_linker_it in creation_roles.iter() {
+                        if !creation_role_linker_it.negated {
+                            let creation_role = creation_role_linker_it.target;
+                            let mut deactivate_link = false;
+                            for (merge_indi_id, merge_succ_link_data) in
+                                succ_data_entries.iter().copied()
+                            {
+                                if !deactivate_link && indi_id != merge_indi_id {
+                                    if calc_alg_context
+                                        .process_context()
+                                        .sat_succ_data(merge_succ_link_data)
+                                        .active_count
+                                        > 0
+                                        && self.is_linked_individual_successor_node_merging_subset(
+                                            indi_proc_sat_node,
+                                            succ_link_data,
+                                            merge_succ_link_data,
+                                            creation_role,
+                                            calc_alg_context,
+                                        )
+                                    {
+                                        deactivate_link = true;
+                                    }
+                                }
+                            }
+                            if deactivate_link {
+                                let creation_super_roles = calc_alg_context
+                                    .ontology_arenas()
+                                    .role(creation_role)
+                                    .get_indirect_super_role_list()
+                                    .to_vec();
+                                for creation_super_role_it in creation_super_roles {
+                                    if !creation_super_role_it.negated {
+                                        calc_alg_context
+                                            .process_context_mut()
+                                            .linked_role_successor_hash_deactivate_linked_successor(
+                                                linked_succ_hash,
+                                                creation_super_role_it.target,
+                                                succ_node,
+                                                creation_role,
+                                            );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if calc_alg_context
+                    .process_context()
+                    .sat_succ_data(succ_link_data)
+                    .active_count
+                    <= 0
+                {
+                    removed_succ_card_count += succ_card;
+                }
+            }
+        }
+        let _ = (role, removed_succ_card_count);
         links_deactivated
     }
 
@@ -520,7 +793,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn mark_nominal_atmost_restricted_ancestors_as_insufficient(
         &mut self,
         // `CConceptSaturationDescriptor* conDes`
-        con_des: Cint64,
+        con_des: ConceptSaturationDescriptorId,
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
@@ -565,7 +838,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn mark_atmost_restricted_ancestors_as_insufficient(
         &mut self,
         // `CConceptSaturationDescriptor* conDes`
-        con_des: Cint64,
+        con_des: ConceptSaturationDescriptorId,
         // `CIndividualSaturationProcessNode* functionallyRestrictedSuccessorNode`
         functionally_restricted_successor_node: SatNodeId,
         // `CXNegLinker<CRole*>* functionallyRestrictedSuccessorCreationRoleLinker`
@@ -662,19 +935,222 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn collect_atmost_concept_relevant_successors(
         &mut self,
         // `CConceptSaturationDescriptor* conDes`
-        con_des: Cint64,
+        con_des: ConceptSaturationDescriptorId,
         indi_proc_sat_node: &mut SatNodeId,
         // `CLinkedRoleSaturationSuccessorData* succData`
-        succ_data: Cint64,
+        succ_data: LinkedRoleSaturationSuccessorDataId,
         // `CIndividualSaturationSuccessorLinkDataLinker*& mergingSuccDataLinker`
-        merging_succ_data_linker: &mut Cint64,
+        merging_succ_data_linker: &mut IndividualSaturationSuccessorLinkDataLinkerId,
         last_successor_node: &mut SatNodeId,
         // `CXNegLinker<CRole*>*& lastSuccessorCreationRoleLinker`
-        last_successor_creation_role_linker: &mut Cint64,
+        last_successor_creation_role_linker: &mut Vec<NegLink<RoleId>>,
         min_cardinality: &mut Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Cint64 {
-        let found_cardinality: Cint64 = 0;
+        let (concept, concept_negation) = {
+            let con_des_ref = calc_alg_context.process_context().con_sat_desc(con_des);
+            (con_des_ref.get_concept(), con_des_ref.get_negation())
+        };
+        let (role, allowed_cardinality, operands) = {
+            let concept_ref = calc_alg_context.ontology_arenas().concept(concept);
+            (
+                concept_ref.get_role(),
+                concept_ref.get_parameter() - Cint64::from(concept_negation),
+                concept_ref.get_operand_list().to_vec(),
+            )
+        };
+
+        let mut found_cardinality: Cint64 = 0;
+        *min_cardinality = 0;
+
+        let mut trivial_qualification = true;
+        for op_linker in operands.iter() {
+            let op_code = calc_alg_context
+                .ontology_arenas()
+                .concept(op_linker.target)
+                .get_operator_code();
+            if op_linker.negated || (op_code != CCATOM && op_code != CCSUB) {
+                trivial_qualification = false;
+                break;
+            }
+        }
+
+        // Deferred[api]: CConceptProcessData::getConceptRoleBranchTrigger.
+        // The current substrate has no CConceptRoleBranchingTrigger chain yet. The
+        // C++ fallback when there is no choose-trigger linker is preserved below:
+        // a missing non-trivial operand makes `operantsContained = false`.
+        let choose_trigger_linker_available = false;
+
+        let succ_role_data_ids: Vec<_> = calc_alg_context
+            .process_context()
+            .linked_role_sat_succ_data(succ_data)
+            .get_successor_node_data_map()
+            .values()
+            .copied()
+            .collect();
+
+        for succ_role_data_id in succ_role_data_ids {
+            let (
+                active_count,
+                succ_cardinality,
+                value_nominal_connection,
+                succ_node,
+                creation_role_linker,
+            ) = {
+                let succ_role_data = calc_alg_context
+                    .process_context()
+                    .sat_succ_data(succ_role_data_id);
+                (
+                    succ_role_data.get_active_count(),
+                    succ_role_data.get_successor_count(),
+                    succ_role_data.value_nominal_connection,
+                    succ_role_data.get_successor_individual_node(),
+                    succ_role_data.creation_role_linker.clone(),
+                )
+            };
+            if active_count < 1 {
+                continue;
+            }
+
+            let mut operants_contained_negative = true;
+            let mut operants_contained_positive = true;
+            let mut operants_contained = true;
+            let mut qualification_representitive_successor_indi = false;
+
+            if value_nominal_connection {
+                *last_successor_node = SatNodeId::NONE;
+                last_successor_creation_role_linker.clear();
+                // Deferred[api]: VALUE-nominal branch needs getCorrectedNode over
+                // mDetCachedCGIndiVector and the completion-layer
+                // CReapplyConceptLabelSet::containsConcept. Until that sibling
+                // substrate exists, preserve the same no-label-set flag transition
+                // used by the C++ body below the failed/absent reapply-label path.
+                if trivial_qualification {
+                    operants_contained_positive = false;
+                } else if !choose_trigger_linker_available {
+                    operants_contained = false;
+                }
+            } else {
+                *last_successor_node = succ_node;
+                *last_successor_creation_role_linker = creation_role_linker;
+
+                let succ_con_set = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_reapply_concept_saturation_label_set(succ_node, false);
+                let concept_sat_item = {
+                    let item = calc_alg_context
+                        .process_context()
+                        .sat_node(succ_node)
+                        .get_saturation_concept_reference_linking();
+                    if item.is_some()
+                        && item.index()
+                            < calc_alg_context
+                                .process_context()
+                                .extended_con_ref_linking_data_count()
+                    {
+                        item
+                    } else {
+                        Id::NONE
+                    }
+                };
+                if succ_con_set.is_some() {
+                    if !operands.is_empty() {
+                        for op_linker in operands.iter() {
+                            if concept_sat_item.is_some() {
+                                let concept_sat_item_ref = calc_alg_context
+                                    .process_context()
+                                    .extended_con_ref_linking_data(concept_sat_item);
+                                let indi_concept = concept_sat_item_ref.get_saturation_concept();
+                                let indi_con_negation =
+                                    concept_sat_item_ref.get_saturation_negation();
+                                let indi_role = concept_sat_item_ref.get_saturation_role_ranges();
+                                if op_linker.target == indi_concept
+                                    && op_linker.negated == indi_con_negation
+                                    && (indi_role.is_none() || indi_role == role)
+                                {
+                                    qualification_representitive_successor_indi = true;
+                                    operants_contained_negative = false;
+                                }
+                            }
+                            if !qualification_representitive_successor_indi {
+                                if let Some(contained_negation) =
+                                    Self::sat_label_set_contains_concept_get_negation(
+                                        succ_con_set,
+                                        op_linker.target,
+                                        calc_alg_context,
+                                    )
+                                {
+                                    if contained_negation == op_linker.negated {
+                                        operants_contained_negative = false;
+                                    } else {
+                                        operants_contained_positive = false;
+                                    }
+                                } else if trivial_qualification {
+                                    operants_contained_positive = false;
+                                } else if !choose_trigger_linker_available {
+                                    operants_contained = false;
+                                }
+                            }
+                        }
+                    } else {
+                        if concept_sat_item.is_some() {
+                            let concept_sat_item_ref = calc_alg_context
+                                .process_context()
+                                .extended_con_ref_linking_data(concept_sat_item);
+                            let indi_concept = concept_sat_item_ref.get_saturation_concept();
+                            let indi_con_negation = concept_sat_item_ref.get_saturation_negation();
+                            let indi_role = concept_sat_item_ref.get_saturation_role_ranges();
+                            let top_concept = calc_alg_context
+                                .processing_data_box()
+                                .ontology_top_concept();
+                            if top_concept == indi_concept
+                                && !indi_con_negation
+                                && (indi_role.is_none() || indi_role == role)
+                            {
+                                qualification_representitive_successor_indi = true;
+                            }
+                        }
+                        operants_contained_negative = false;
+                    }
+                } else if trivial_qualification {
+                    operants_contained_positive = false;
+                } else if !choose_trigger_linker_available {
+                    operants_contained = false;
+                }
+            }
+            let _ = operants_contained_negative;
+
+            if operants_contained_positive || !operants_contained {
+                *min_cardinality = (*min_cardinality).max(succ_cardinality);
+                let nominal_individual = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node)
+                    .get_nominal_individual();
+                if operants_contained
+                    && operants_contained_positive
+                    && nominal_individual.is_none()
+                    && succ_cardinality > allowed_cardinality
+                {
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+                        calc_alg_context,
+                    );
+                }
+
+                if !qualification_representitive_successor_indi {
+                    found_cardinality += succ_cardinality;
+                    let new_linker = self
+                        .create_individual_saturation_successor_link_data_linker(calc_alg_context);
+                    calc_alg_context
+                        .process_context_mut()
+                        .indi_sat_succ_link_data_linker_mut(new_linker)
+                        .init_successor_link_data_linker(succ_role_data_id)
+                        .set_next(*merging_succ_data_linker);
+                    *merging_succ_data_linker = new_linker;
+                }
+            }
+        }
         // W4-DEFER[api]: faithful C++ body —
         //   concept = conDes->getConcept(); conceptNegation = conDes->isNegated();
         //   role = concept->getRole(); allowedCardinality = concept->getParameter() - 1*conceptNegation;
@@ -742,16 +1218,38 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // CLinkedRoleSaturationSuccessorData / CSaturationSuccessorData / label sets /
         // CSaturationConceptDataItem / CConceptRoleBranchingTrigger satellites + the
         // getCorrectedNode / status-flag / pool-linker siblings not yet ported.
-        let _ = (
-            con_des,
-            indi_proc_sat_node,
-            succ_data,
-            merging_succ_data_linker,
-            last_successor_node,
-            last_successor_creation_role_linker,
-            min_cardinality,
-        );
         found_cardinality
+    }
+
+    fn sat_label_set_contains_concept_get_negation(
+        label_set: ReapplyConceptSaturationLabelSetId,
+        concept: ConceptId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Option<bool> {
+        let con_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        let mut con_sat_des = ConceptSaturationDescriptorId::NONE;
+        let mut imp_reapply_con_sat_des = ImplicationReapplyConceptSaturationDescriptorId::NONE;
+        let contained = calc_alg_context
+            .process_context()
+            .reapply_con_sat_label_set(label_set)
+            .get_concept_saturation_descriptor_by_tag(
+                con_tag,
+                &mut con_sat_des,
+                &mut imp_reapply_con_sat_des,
+            );
+        if contained && con_sat_des.is_some() {
+            Some(
+                calc_alg_context
+                    .process_context()
+                    .con_sat_desc(con_sat_des)
+                    .get_negation(),
+            )
+        } else {
+            None
+        }
     }
 
     // =======================================================================
@@ -773,41 +1271,132 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let node_saturation = false;
-        // W4-DEFER[api]: faithful C++ body —
-        //   processingDataBox = calcAlgContext->getUsedProcessingDataBox();
-        //   while (!nodeSaturation && processingDataBox->hasSaturationATMOSTMergingProcessLinker()) {
-        //       mergingProcessLinker = processingDataBox->getSaturationATMOSTMergingProcessLinker();
-        //       indiProcSatNode = mergingProcessLinker->getData();
-        //       indirectFlags = indiProcSatNode->getIndirectStatusFlags();
-        //       if (!indirectFlags->hasInsufficientFlag() && !indirectFlags->hasClashedFlag()) {
-        //           atmostSuccMergingData = indiProcSatNode->getATMOSTSuccessorMergingData(false);
-        //           if (atmostSuccMergingData) {
-        //               conProcLinker = atmostSuccMergingData->getMergingConceptLinker();
-        //               while (!nodeSaturation && conProcLinker) {
-        //                   conDes = conProcLinker->getConceptSaturationDescriptor();
-        //                   mergingSuccData = atmostSuccMergingData->getATMOSTConceptMergingData(conDes);
-        //                   nodeInsufficient = false; ancestorPossiblyInsufficient = false;
-        //                   functionallyRestrictedSuccessorNode = nullptr; functionallyRestrictedSuccessorCreationRoleLinker = nullptr;
-        //                   nodeSaturation = tryIndividiualATMOSTConceptSuccessorMerging(conDes, &mergingSuccData, nodeInsufficient, ancestorPossiblyInsufficient,
-        //                       functionallyRestrictedSuccessorNode, functionallyRestrictedSuccessorCreationRoleLinker, indiProcSatNode, ctx);
-        //                   if (!nodeSaturation) {
-        //                       if (nodeInsufficient) { ++mInsufficientATMOSTCount; updateDirectAddingIndividualStatusFlags(indiProcSatNode, INDSATFLAGINSUFFICIENT, ctx); setInsufficientNodeOccured(ctx); }
-        //                       else addCriticalConceptForDependentNodes(conDes, CCT_ATMOST, indiProcSatNode, false, INDSATFLAGINSUFFICIENT, ctx);   // sibling
-        //                       if (indiProcSatNode->hasNominalIntegrated()) markNominalATMOSTRestrictedAncestorsAsInsufficient(conDes, indiProcSatNode, ctx);
-        //                       if (ancestorPossiblyInsufficient) { markATMOSTRestrictedAncestorsAsInsufficient(conDes, functionallyRestrictedSuccessorNode, functionallyRestrictedSuccessorCreationRoleLinker, indiProcSatNode, ctx);
-        //                           updateDirectAddingIndividualStatusFlags(indiProcSatNode, INDSATFLAGCARDINALITYPROPLEMATIC, ctx); }
-        //                   }
-        //                   if (!nodeSaturation) conProcLinker = atmostSuccMergingData->takeNextMergingConceptLinker();
-        //               }
-        //           }
-        //       }
-        //       if (!nodeSaturation) { mergingProcessLinker = processingDataBox->takeSaturationATMOSTMergingProcessLinker(); mergingProcessLinker->setProcessingQueued(false); }
-        //   }
-        //   return nodeSaturation;
-        // The databox ATMOST-merging queue + CSaturationATMOSTSuccessorMergingData
-        // satellite + the addCriticalConceptForDependentNodes / status-flag siblings
-        // not yet ported.
+        let mut node_saturation = false;
+        while !node_saturation
+            && calc_alg_context
+                .processing_data_box()
+                .has_saturation_atmost_merging_process_linker()
+        {
+            let merging_process_linker = calc_alg_context
+                .processing_data_box()
+                .saturation_atmost_merging_process_linker();
+            let mut indi_proc_sat_node = calc_alg_context
+                .process_context()
+                .indi_sat_process_node_linker(merging_process_linker)
+                .get_processing_individual();
+
+            let indirect_flags = calc_alg_context
+                .process_context()
+                .sat_node(indi_proc_sat_node)
+                .indirect_status_flags;
+            if !indirect_flags.has_insufficient_flag() && !indirect_flags.has_clashed_flag() {
+                let atmost_succ_merging_data = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_ext_atmost_successor_merging_data(indi_proc_sat_node, false);
+                if atmost_succ_merging_data.is_some() {
+                    let mut con_proc_linker = calc_alg_context
+                        .process_context()
+                        .sat_atmost_successor_merging_data(atmost_succ_merging_data)
+                        .get_merging_concept_linker();
+                    while !node_saturation && con_proc_linker.is_some() {
+                        let con_des = calc_alg_context
+                            .process_context()
+                            .con_sat_proc_linker(con_proc_linker)
+                            .get_concept_saturation_descriptor();
+
+                        calc_alg_context
+                            .process_context_mut()
+                            .sat_atmost_successor_merging_data_atmost_concept_merging_data(
+                                atmost_succ_merging_data,
+                                con_des,
+                            );
+
+                        let mut node_insufficient = false;
+                        let mut ancestor_possibly_insufficient = false;
+                        let mut functionally_restricted_successor_node = SatNodeId::NONE;
+                        let mut functionally_restricted_successor_creation_role_linker = INVALID;
+
+                        node_saturation = self.try_individiual_atmost_concept_successor_merging(
+                            con_des,
+                            INVALID,
+                            &mut node_insufficient,
+                            &mut ancestor_possibly_insufficient,
+                            &mut functionally_restricted_successor_node,
+                            &mut functionally_restricted_successor_creation_role_linker,
+                            &mut indi_proc_sat_node,
+                            calc_alg_context,
+                        );
+
+                        if !node_saturation {
+                            if node_insufficient {
+                                self.insufficient_atmost_count += 1;
+                                self.update_direct_adding_individual_status_flags(
+                                    indi_proc_sat_node,
+                                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                                    calc_alg_context,
+                                );
+                                self.set_insufficient_node_occured(calc_alg_context);
+                            } else {
+                                self.add_critical_concept_for_dependent_nodes(
+                                    con_des,
+                                    CCT_ATMOST,
+                                    &mut indi_proc_sat_node,
+                                    false,
+                                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                                    calc_alg_context,
+                                );
+                            }
+                            if calc_alg_context
+                                .process_context()
+                                .sat_node(indi_proc_sat_node)
+                                .has_nominal_integrated()
+                            {
+                                self.mark_nominal_atmost_restricted_ancestors_as_insufficient(
+                                    con_des,
+                                    &mut indi_proc_sat_node,
+                                    calc_alg_context,
+                                );
+                            }
+                            if ancestor_possibly_insufficient {
+                                self.mark_atmost_restricted_ancestors_as_insufficient(
+                                    con_des,
+                                    functionally_restricted_successor_node,
+                                    functionally_restricted_successor_creation_role_linker,
+                                    &mut indi_proc_sat_node,
+                                    calc_alg_context,
+                                );
+                                self.update_direct_adding_individual_status_flags(
+                                    indi_proc_sat_node,
+                                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYPROPLEMATIC,
+                                    calc_alg_context,
+                                );
+                            }
+                        }
+
+                        if !node_saturation {
+                            con_proc_linker = calc_alg_context
+                                .process_context_mut()
+                                .sat_atmost_successor_merging_data_take_next_merging_concept_linker(
+                                    atmost_succ_merging_data,
+                                );
+                        }
+                    }
+                }
+            }
+
+            if !node_saturation {
+                let ctx_base = &mut calc_alg_context.base;
+                let merging_process_linker = ctx_base
+                    .used_processing_data_box
+                    .take_saturation_atmost_merging_process_linker(
+                        &mut ctx_base.used_process_context,
+                    );
+                ctx_base
+                    .used_process_context
+                    .indi_sat_process_node_linker_mut(merging_process_linker)
+                    .set_processing_queued(false);
+            }
+        }
         node_saturation
     }
 
@@ -1011,7 +1600,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn try_individiual_atmost_concept_successor_merging(
         &mut self,
         // `CConceptSaturationDescriptor* conDes`
-        con_des: Cint64,
+        con_des: ConceptSaturationDescriptorId,
         // `CSaturationATMOSTSuccessorMergingHashData* mergingSuccData`
         merging_succ_data: Cint64,
         node_insufficient: &mut bool,
@@ -1153,53 +1742,96 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     pub fn is_individual_successor_link_cardinality_mergeable(
         &mut self,
         // `CSaturationSuccessorData* subsetIndiSuccData`
-        subset_indi_succ_data: Cint64,
+        subset_indi_succ_data: SaturationSuccessorDataId,
         // `CSaturationSuccessorData* superIndiSuccData`
-        super_indi_succ_data: Cint64,
+        super_indi_succ_data: SaturationSuccessorDataId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   subsetIndiSuccNode = subsetIndiSuccData->mSuccIndiNode;
-        //   superIndiSuccNode  = superIndiSuccData->mSuccIndiNode;
-        //   return isIndividualSuccessorLinkCardinalityMergeable(subsetIndiSuccNode, subsetIndiSuccData, superIndiSuccNode, superIndiSuccData, ctx);  // → _for_nodes
-        // CSaturationSuccessorData satellite not yet ported.
-        let _ = (subset_indi_succ_data, super_indi_succ_data);
-        false
+        let subset_indi_succ_node = calc_alg_context
+            .process_context()
+            .sat_succ_data(subset_indi_succ_data)
+            .get_successor_individual_node();
+        let super_indi_succ_node = calc_alg_context
+            .process_context()
+            .sat_succ_data(super_indi_succ_data)
+            .get_successor_individual_node();
+        self.is_individual_successor_link_cardinality_mergeable_for_nodes(
+            subset_indi_succ_node,
+            subset_indi_succ_data,
+            super_indi_succ_node,
+            super_indi_succ_data,
+            calc_alg_context,
+        )
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::isIndividualSuccessorLinkCardinalityMergeable`
     /// (the explicit-node worker overload). cpp 4473–4493. [overload] `_for_nodes` suffix.
     ///
-    /// True when two role successors can be cardinality-merged: neither a
-    /// VALUE-nominal connection, neither node nominal-integrated, an ABox-individual
-    /// representation, nor data-value-applied; their creation-role sets are merging
-    /// subsets of each other (via the subset-only direction in C++); and the subset
-    /// label is a merging subset (AND-concepts ignored).
+    /// True when two role successors can be cardinality-merged: neither is a
+    /// VALUE-nominal connection, neither node is nominal-integrated,
+    /// ABox-representation, nor data-value-applied; the subset creation-role set is
+    /// a merging subset of the super set; and the subset label is a merging subset
+    /// (AND-concepts ignored).
     pub fn is_individual_successor_link_cardinality_mergeable_for_nodes(
         &mut self,
         // `CIndividualSaturationProcessNode* subsetIndiSuccNode`
         subset_indi_succ_node: SatNodeId,
-        subset_indi_succ_data: Cint64,
+        subset_indi_succ_data: SaturationSuccessorDataId,
         super_indi_succ_node: SatNodeId,
-        super_indi_succ_data: Cint64,
+        super_indi_succ_data: SaturationSuccessorDataId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   if (subsetIndiSuccData->mVALUENominalConnection || superIndiSuccData->mVALUENominalConnection) return false;
-        //   if (subsetIndiSuccNode->hasNominalIntegrated() || superIndiSuccNode->hasNominalIntegrated()) return false;
-        //   if (subsetIndiSuccNode->isABoxIndividualRepresentationNode() || superIndiSuccNode->isABoxIndividualRepresentationNode()) return false;
-        //   if (subsetIndiSuccNode->hasDataValueApplied() || superIndiSuccNode->hasDataValueApplied()) return false;
-        //   if (!isSuccessorCreationRoleMergingSubset(subsetIndiSuccData->mCreationRoleLinker, superIndiSuccData->mCreationRoleLinker, ctx)) return false;
-        //   if (!isIndividualNodeLabelMergingSubset(subsetIndiSuccNode, superIndiSuccNode, true, ctx)) return false;
-        //   return true;
-        // CSaturationSuccessorData + node flags satellites not yet ported.
-        let _ = (
+        let (
+            subset_value_nominal,
+            subset_creation_roles,
+            super_value_nominal,
+            super_creation_roles,
+        ) = {
+            let process_context = calc_alg_context.process_context();
+            let subset_data = process_context.sat_succ_data(subset_indi_succ_data);
+            let super_data = process_context.sat_succ_data(super_indi_succ_data);
+            (
+                subset_data.value_nominal_connection,
+                subset_data.creation_role_linker.clone(),
+                super_data.value_nominal_connection,
+                super_data.creation_role_linker.clone(),
+            )
+        };
+        if subset_value_nominal || super_value_nominal {
+            return false;
+        }
+        {
+            let process_context = calc_alg_context.process_context();
+            let subset_node = process_context.sat_node(subset_indi_succ_node);
+            let super_node = process_context.sat_node(super_indi_succ_node);
+            if subset_node.has_nominal_integrated() || super_node.has_nominal_integrated() {
+                return false;
+            }
+            if subset_node.is_abox_individual_representation_node()
+                || super_node.is_abox_individual_representation_node()
+            {
+                return false;
+            }
+            if subset_node.has_data_value_applied() || super_node.has_data_value_applied() {
+                return false;
+            }
+        }
+        if !self.is_successor_creation_role_merging_subset(
+            &subset_creation_roles,
+            &super_creation_roles,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        if !self.is_individual_node_label_merging_subset(
             subset_indi_succ_node,
-            subset_indi_succ_data,
             super_indi_succ_node,
-            super_indi_succ_data,
-        );
-        false
+            true,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        true
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::isIndividualSuccessorLinkCardinalityExtendedMergeable`
@@ -1210,17 +1842,27 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         indi_proc_sat_node: &mut SatNodeId,
         // `CSaturationSuccessorData* indiSuccData1`
-        indi_succ_data1: Cint64,
+        indi_succ_data1: SaturationSuccessorDataId,
         // `CSaturationSuccessorData* indiSuccData2`
-        indi_succ_data2: Cint64,
+        indi_succ_data2: SaturationSuccessorDataId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   indiSuccNode1 = indiSuccData1->mSuccIndiNode; indiSuccNode2 = indiSuccData2->mSuccIndiNode;
-        //   return isIndividualSuccessorLinkCardinalityExtendedMergeable(indiProcSatNode, indiSuccNode1, indiSuccData1, indiSuccNode2, indiSuccData2, ctx);  // → _for_nodes
-        // CSaturationSuccessorData satellite not yet ported.
-        let _ = (indi_proc_sat_node, indi_succ_data1, indi_succ_data2);
-        false
+        let indi_succ_node1 = calc_alg_context
+            .process_context()
+            .sat_succ_data(indi_succ_data1)
+            .get_successor_individual_node();
+        let indi_succ_node2 = calc_alg_context
+            .process_context()
+            .sat_succ_data(indi_succ_data2)
+            .get_successor_individual_node();
+        self.is_individual_successor_link_cardinality_extended_mergeable_for_nodes(
+            indi_proc_sat_node,
+            indi_succ_node1,
+            indi_succ_data1,
+            indi_succ_node2,
+            indi_succ_data2,
+            calc_alg_context,
+        )
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::isIndividualSuccessorLinkCardinalityExtendedMergeable`
@@ -1234,30 +1876,74 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         indi_proc_sat_node: &mut SatNodeId,
         indi_succ_node1: SatNodeId,
-        indi_succ_data1: Cint64,
+        indi_succ_data1: SaturationSuccessorDataId,
         indi_succ_node2: SatNodeId,
-        indi_succ_data2: Cint64,
+        indi_succ_data2: SaturationSuccessorDataId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   if (indiSuccData1->mVALUENominalConnection || indiSuccData2->mVALUENominalConnection) return false;
-        //   if (indiSuccNode1->hasNominalIntegrated() || indiSuccNode2->hasNominalIntegrated()) return false;
-        //   if (indiSuccNode1->hasDataValueApplied() || indiSuccNode2->hasDataValueApplied()) return false;
-        //   if (indiSuccNode1->isABoxIndividualRepresentationNode() || indiSuccNode2->isABoxIndividualRepresentationNode()) return false;
-        //   if (!isSuccessorCreationRoleMergingSubset(indiSuccData1->mCreationRoleLinker, indiSuccData2->mCreationRoleLinker, ctx)) return false;
-        //   if (!isSuccessorCreationRoleMergingSubset(indiSuccData2->mCreationRoleLinker, indiSuccData1->mCreationRoleLinker, ctx)) return false;
-        //   if (isIndividualNodeLabelMergingProblematic(indiProcSatNode, indiSuccNode1, indiSuccNode2, indiSuccData1->mCreationRoleLinker, ctx)) return false;
-        //   if (isIndividualNodeLabelMergingProblematic(indiProcSatNode, indiSuccNode2, indiSuccNode1, indiSuccData2->mCreationRoleLinker, ctx)) return false;
-        //   return true;
-        // CSaturationSuccessorData + node flags satellites not yet ported.
-        let _ = (
+        let (value_nominal1, creation_roles1, value_nominal2, creation_roles2) = {
+            let process_context = calc_alg_context.process_context();
+            let data1 = process_context.sat_succ_data(indi_succ_data1);
+            let data2 = process_context.sat_succ_data(indi_succ_data2);
+            (
+                data1.value_nominal_connection,
+                data1.creation_role_linker.clone(),
+                data2.value_nominal_connection,
+                data2.creation_role_linker.clone(),
+            )
+        };
+        if value_nominal1 || value_nominal2 {
+            return false;
+        }
+        {
+            let process_context = calc_alg_context.process_context();
+            let node1 = process_context.sat_node(indi_succ_node1);
+            let node2 = process_context.sat_node(indi_succ_node2);
+            if node1.has_nominal_integrated() || node2.has_nominal_integrated() {
+                return false;
+            }
+            if node1.has_data_value_applied() || node2.has_data_value_applied() {
+                return false;
+            }
+            if node1.is_abox_individual_representation_node()
+                || node2.is_abox_individual_representation_node()
+            {
+                return false;
+            }
+        }
+        if !self.is_successor_creation_role_merging_subset(
+            &creation_roles1,
+            &creation_roles2,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        if !self.is_successor_creation_role_merging_subset(
+            &creation_roles2,
+            &creation_roles1,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        if self.is_individual_node_label_merging_problematic(
             indi_proc_sat_node,
             indi_succ_node1,
-            indi_succ_data1,
             indi_succ_node2,
-            indi_succ_data2,
-        );
-        false
+            creation_roles1,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        if self.is_individual_node_label_merging_problematic(
+            indi_proc_sat_node,
+            indi_succ_node2,
+            indi_succ_node1,
+            creation_roles2,
+            calc_alg_context,
+        ) {
+            return false;
+        }
+        true
     }
 
     // =======================================================================
@@ -1278,68 +1964,196 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         indi_proc_sat_node: &mut SatNodeId,
         // `CSaturationSuccessorData* succLinkData`
-        succ_link_data: Cint64,
+        succ_link_data: SaturationSuccessorDataId,
         // `CIndividualSaturationSuccessorLinkDataLinker* mergingSuccDataLinker`
-        merging_succ_data_linker: Cint64,
+        merging_succ_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
         // `CPROCESSHASH<CSaturationSuccessorData*,cint64>* remainMergeableCardHash`
-        remain_mergeable_card_hash: Cint64,
+        remain_mergeable_card_hash: &mut std::collections::HashMap<
+            SaturationSuccessorDataId,
+            Cint64,
+        >,
         role: RoleId,
         max_required_merging_cardinality: Cint64,
         // `CPROCESSHASH<CSaturationSuccessorData*,CSaturationSuccessorData*>* mergeDistintHash`
-        merge_distint_hash: Cint64,
+        merge_distint_hash: &mut std::collections::HashMap<
+            SaturationSuccessorDataId,
+            Vec<SaturationSuccessorDataId>,
+        >,
         // `CPROCESSSET< QPair<...> >* mergeDistintSet`
-        merge_distint_set: Cint64,
+        merge_distint_set: &mut std::collections::HashSet<(
+            SaturationSuccessorDataId,
+            SaturationSuccessorDataId,
+        )>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Cint64 {
-        let merged_cardinality: Cint64 = 0;
-        // W4-DEFER[api]: faithful C++ body —
-        //   remainingCardinality = succLinkData->mSuccCount; intoAllMergeable = false; intoAllMergeableChecked = false;
-        //   // fast path: some other successor with capacity >= succLinkData->mSuccCount that is mergeable+distinct-clear:
-        //   for (it in mergingSuccDataLinker) if (mergeSuccLinkData != succLinkData) {
-        //       mergeableCardinality = remainMergeableCardHash->value(mergeSuccLinkData, mergeSuccLinkData->mSuccCount);
-        //       if (mergeableCardinality >= succLinkData->mSuccCount) {
-        //           if (!mergeDistintSet->contains(QPair(qMin,qMax))) { if (isIndividualSuccessorLinkCardinalityMergeable(succLinkData, mergeSuccLinkData, ctx)) return remainingCardinality; else intoAllMergeableChecked = true; }
-        //           else intoAllMergeableChecked = true;
-        //       }
-        //   }
-        //   mergedCardinality = 0;
-        //   for (it in mergingSuccDataLinker; remainingCardinality > 0 && mergedCardinality < maxRequiredMergingCardinality; ) if (mergeSuccLinkData != succLinkData) {
-        //       mergeableCardinality = remainMergeableCardHash->value(mergeSuccLinkData, mergeSuccLinkData->mSuccCount);
-        //       if (mergeableCardinality > 0 && mergeableCardinality < succLinkData->mSuccCount) {
-        //           if (!mergeDistintSet->contains(QPair(qMin,qMax))) {
-        //               if (intoAllMergeable || isIndividualSuccessorLinkCardinalityMergeable(succLinkData, mergeSuccLinkData, ctx)) {
-        //                   if (!intoAllMergeableChecked) {
-        //                       intoAllMergeable = true;
-        //                       for (remTestIt = it->getNext(); remTestIt; remTestIt = remTestIt->getNext()) if (remTestSuccLinkData != succLinkData && remTestSuccLinkData != mergeSuccLinkData) {
-        //                           c = remainMergeableCardHash->value(remTestSuccLinkData, remTestSuccLinkData->mSuccCount);
-        //                           if (c > 0 && c < succLinkData->mSuccCount && !mergeDistintSet->contains(QPair(qMin(remTest,succ),qMax(...))))
-        //                               if (!isIndividualSuccessorLinkCardinalityMergeable(succLinkData, mergeSuccLinkData, ctx)) intoAllMergeable = false;
-        //                       }
-        //                       intoAllMergeableChecked = true;
-        //                   }
-        //                   if (!intoAllMergeable && succLinkData->mSuccCount > 1) {
-        //                       mergeDistintSet->insert(QPair(qMin(mergeSucc,succ),qMax(...)));
-        //                       for (mDIt = mergeDistintHash->constFind(succLinkData); mDIt.key() == succLinkData; ++mDIt) { distSuccData = mDIt.value(); mergeDistintHash->insertMulti(distSuccData,mergeSuccLinkData); mergeDistintHash->insertMulti(mergeSuccLinkData,distSuccData); mergeDistintSet->insert(QPair(qMin(mergeSucc,dist),qMax(...))); }
-        //                       mergeDistintHash->insertMulti(succLinkData,mergeSuccLinkData); mergeDistintHash->insertMulti(mergeSuccLinkData,succLinkData);
-        //                   }
-        //                   mergingCardinality = qMin(remainingCardinality, mergeableCardinality); remainingCardinality -= mergingCardinality; mergedCardinality += mergingCardinality;
-        //               } else intoAllMergeableChecked = true;
-        //           } else intoAllMergeableChecked = true;
-        //       }
-        //   }
-        //   return mergedCardinality;
-        // CSaturationSuccessorData / merge distinct hash+set / remaining-mergeable hash
-        // satellites + the cardinality-mergeable sibling (this unit) not yet ported.
-        let _ = (
-            indi_proc_sat_node,
-            succ_link_data,
-            merging_succ_data_linker,
-            remain_mergeable_card_hash,
-            role,
-            max_required_merging_cardinality,
-            merge_distint_hash,
-            merge_distint_set,
-        );
+        let succ_count = calc_alg_context
+            .process_context()
+            .sat_succ_data(succ_link_data)
+            .get_successor_count();
+        let mut remaining_cardinality = succ_count;
+        let mut into_all_mergeable = false;
+        let mut into_all_mergeable_checked = false;
+
+        let mut merging_succ_data_linker_it = merging_succ_data_linker;
+        while merging_succ_data_linker_it.is_some() {
+            let (merge_succ_link_data, next_linker) = {
+                let linker = calc_alg_context
+                    .process_context()
+                    .indi_sat_succ_link_data_linker(merging_succ_data_linker_it);
+                (linker.get_data(), linker.get_next())
+            };
+            if merge_succ_link_data != succ_link_data {
+                let default_mergeable_cardinality = calc_alg_context
+                    .process_context()
+                    .sat_succ_data(merge_succ_link_data)
+                    .get_successor_count();
+                let mergeable_cardinality = remain_mergeable_card_hash
+                    .get(&merge_succ_link_data)
+                    .copied()
+                    .unwrap_or(default_mergeable_cardinality);
+                if mergeable_cardinality >= succ_count {
+                    if !merge_distint_set.contains(&Self::successor_data_pair(
+                        merge_succ_link_data,
+                        succ_link_data,
+                    )) {
+                        if self.is_individual_successor_link_cardinality_mergeable(
+                            succ_link_data,
+                            merge_succ_link_data,
+                            calc_alg_context,
+                        ) {
+                            return remaining_cardinality;
+                        }
+                        into_all_mergeable_checked = true;
+                    } else {
+                        into_all_mergeable_checked = true;
+                    }
+                }
+            }
+            merging_succ_data_linker_it = next_linker;
+        }
+
+        let mut merged_cardinality: Cint64 = 0;
+        merging_succ_data_linker_it = merging_succ_data_linker;
+        while merging_succ_data_linker_it.is_some()
+            && remaining_cardinality > 0
+            && merged_cardinality < max_required_merging_cardinality
+        {
+            let (merge_succ_link_data, next_linker) = {
+                let linker = calc_alg_context
+                    .process_context()
+                    .indi_sat_succ_link_data_linker(merging_succ_data_linker_it);
+                (linker.get_data(), linker.get_next())
+            };
+            if merge_succ_link_data != succ_link_data {
+                let default_mergeable_cardinality = calc_alg_context
+                    .process_context()
+                    .sat_succ_data(merge_succ_link_data)
+                    .get_successor_count();
+                let mergeable_cardinality = remain_mergeable_card_hash
+                    .get(&merge_succ_link_data)
+                    .copied()
+                    .unwrap_or(default_mergeable_cardinality);
+                if mergeable_cardinality > 0 && mergeable_cardinality < succ_count {
+                    let merge_pair =
+                        Self::successor_data_pair(merge_succ_link_data, succ_link_data);
+                    if !merge_distint_set.contains(&merge_pair) {
+                        if into_all_mergeable
+                            || self.is_individual_successor_link_cardinality_mergeable(
+                                succ_link_data,
+                                merge_succ_link_data,
+                                calc_alg_context,
+                            )
+                        {
+                            if !into_all_mergeable_checked {
+                                into_all_mergeable = true;
+                                let mut rem_test_succ_data_linker_it = next_linker;
+                                while rem_test_succ_data_linker_it.is_some() {
+                                    let (rem_test_succ_link_data, rem_next_linker) = {
+                                        let linker = calc_alg_context
+                                            .process_context()
+                                            .indi_sat_succ_link_data_linker(
+                                                rem_test_succ_data_linker_it,
+                                            );
+                                        (linker.get_data(), linker.get_next())
+                                    };
+                                    if rem_test_succ_link_data != succ_link_data
+                                        && rem_test_succ_link_data != merge_succ_link_data
+                                    {
+                                        let default_mergeable_cardinality = calc_alg_context
+                                            .process_context()
+                                            .sat_succ_data(rem_test_succ_link_data)
+                                            .get_successor_count();
+                                        let rem_mergeable_cardinality = remain_mergeable_card_hash
+                                            .get(&rem_test_succ_link_data)
+                                            .copied()
+                                            .unwrap_or(default_mergeable_cardinality);
+                                        if rem_mergeable_cardinality > 0
+                                            && rem_mergeable_cardinality < succ_count
+                                            && !merge_distint_set.contains(
+                                                &Self::successor_data_pair(
+                                                    rem_test_succ_link_data,
+                                                    succ_link_data,
+                                                ),
+                                            )
+                                            && !self
+                                                .is_individual_successor_link_cardinality_mergeable(
+                                                    succ_link_data,
+                                                    merge_succ_link_data,
+                                                    calc_alg_context,
+                                                )
+                                        {
+                                            into_all_mergeable = false;
+                                        }
+                                    }
+                                    rem_test_succ_data_linker_it = rem_next_linker;
+                                }
+                                into_all_mergeable_checked = true;
+                            }
+
+                            if !into_all_mergeable && succ_count > 1 {
+                                merge_distint_set.insert(merge_pair);
+                                let distinct_successors = merge_distint_hash
+                                    .get(&succ_link_data)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                for dist_succ_data in distinct_successors {
+                                    merge_distint_hash
+                                        .entry(dist_succ_data)
+                                        .or_default()
+                                        .push(merge_succ_link_data);
+                                    merge_distint_hash
+                                        .entry(merge_succ_link_data)
+                                        .or_default()
+                                        .push(dist_succ_data);
+                                    merge_distint_set.insert(Self::successor_data_pair(
+                                        merge_succ_link_data,
+                                        dist_succ_data,
+                                    ));
+                                }
+                                merge_distint_hash
+                                    .entry(succ_link_data)
+                                    .or_default()
+                                    .push(merge_succ_link_data);
+                                merge_distint_hash
+                                    .entry(merge_succ_link_data)
+                                    .or_default()
+                                    .push(succ_link_data);
+                            }
+
+                            let merging_cardinality =
+                                remaining_cardinality.min(mergeable_cardinality);
+                            remaining_cardinality -= merging_cardinality;
+                            merged_cardinality += merging_cardinality;
+                        } else {
+                            into_all_mergeable_checked = true;
+                        }
+                    } else {
+                        into_all_mergeable_checked = true;
+                    }
+                }
+            }
+            merging_succ_data_linker_it = next_linker;
+        }
         merged_cardinality
     }
 
@@ -1361,40 +2175,106 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         role: RoleId,
         // `CSortedNegLinker<CConcept*>* conQualificationLinker`
-        con_qualification_linker: Cint64,
+        con_qualification_linker: Option<&[NegLink<ConceptId>]>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Cint64 {
-        let matching_succ_count: Cint64 = 0;
-        // W4-DEFER[api]: faithful C++ body —
-        //   linkedSuccHash = indiProcSatNode->getLinkedRoleSuccessorHash(false);
-        //   if (linkedSuccHash) {
-        //       succHash = linkedSuccHash->getLinkedRoleSuccessorHash(); predSuccData = succHash->value(role);
-        //       if (predSuccData) {
-        //           trivialQualification = true;
-        //           for (opLinkerIt in conQualificationLinker) if (opNeg || (opCode != CCATOM && opCode != CCSUB)) trivialQualification = false;
-        //           for ((id, succRoleData) in predSuccData->mSuccNodeDataMap) if (succRoleData->mActiveCount >= 1) {
-        //               succCardinality = succRoleData->mSuccCount;
-        //               operantsContainedNegative = operantsContainedPositive = operantsContained = true;
-        //               if (succRoleData->mVALUENominalConnection) operantsContainedPositive = true;
-        //               else {
-        //                   succNode = succRoleData->mSuccIndiNode; lastSuccessorNode = succNode; lastSuccessorCreationRoleLinker = succRoleData->mCreationRoleLinker;
-        //                   succConSet = succNode->getReapplyConceptSaturationLabelSet(false);
-        //                   if (succConSet) {
-        //                       if (conQualificationLinker)
-        //                           for (opLinkerIt in conQualificationLinker) { opConcept = opLinkerIt->getData(); opConceptNegation = opLinkerIt->isNegated(); containedNegation = false;
-        //                               if (succConSet->containsConcept(opConcept, &containedNegation)) { if (containedNegation == opConceptNegation) operantsContainedNegative = false; else operantsContainedPositive = false; }
-        //                               else if (trivialQualification) operantsContainedPositive = false; else operantsContained = false; }
-        //                       else operantsContainedNegative = false;
-        //                   } else if (trivialQualification) operantsContainedPositive = false; else operantsContained = false;
-        //               }
-        //               if (operantsContainedPositive || !operantsContained) matchingSuccCount += succCardinality;
-        //           }
-        //       }
-        //   }
-        //   return matchingSuccCount;
-        // CLinkedRoleSaturationSuccessorHash / CSaturationSuccessorData / label-set
-        // satellites not yet ported.
-        let _ = (indi_proc_sat_node, role, con_qualification_linker);
+        let mut matching_succ_count: Cint64 = 0;
+        let linked_succ_hash = calc_alg_context
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(*indi_proc_sat_node, false);
+        if linked_succ_hash.is_none() {
+            return matching_succ_count;
+        }
+
+        let pred_succ_data = calc_alg_context
+            .process_context_mut()
+            .linked_role_successor_data(linked_succ_hash, role, false);
+        if pred_succ_data.is_none() {
+            return matching_succ_count;
+        }
+
+        let mut trivial_qualification = true;
+        if let Some(con_qualification_linker) = con_qualification_linker {
+            for op_linker_it in con_qualification_linker.iter() {
+                let op_code = calc_alg_context
+                    .ontology_arenas()
+                    .concept(op_linker_it.target)
+                    .get_operator_code();
+                if op_linker_it.negated || (op_code != CCATOM && op_code != CCSUB) {
+                    trivial_qualification = false;
+                    break;
+                }
+            }
+        }
+
+        let succ_role_data_ids: Vec<_> = calc_alg_context
+            .process_context()
+            .linked_role_sat_succ_data(pred_succ_data)
+            .get_successor_node_data_map()
+            .values()
+            .copied()
+            .collect();
+
+        for succ_role_data_id in succ_role_data_ids {
+            let (active_count, succ_cardinality, value_nominal_connection, succ_node) = {
+                let succ_role_data = calc_alg_context
+                    .process_context()
+                    .sat_succ_data(succ_role_data_id);
+                (
+                    succ_role_data.get_active_count(),
+                    succ_role_data.get_successor_count(),
+                    succ_role_data.value_nominal_connection,
+                    succ_role_data.get_successor_individual_node(),
+                )
+            };
+            if active_count < 1 {
+                continue;
+            }
+
+            let mut operants_contained_negative = true;
+            let mut operants_contained_positive = true;
+            let mut operants_contained = true;
+            if value_nominal_connection {
+                operants_contained_positive = true;
+            } else {
+                let succ_con_set = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_reapply_concept_saturation_label_set(succ_node, false);
+                if succ_con_set.is_some() {
+                    if let Some(con_qualification_linker) = con_qualification_linker {
+                        for op_linker_it in con_qualification_linker.iter() {
+                            if let Some(contained_negation) =
+                                Self::sat_label_set_contains_concept_get_negation(
+                                    succ_con_set,
+                                    op_linker_it.target,
+                                    calc_alg_context,
+                                )
+                            {
+                                if contained_negation == op_linker_it.negated {
+                                    operants_contained_negative = false;
+                                } else {
+                                    operants_contained_positive = false;
+                                }
+                            } else if trivial_qualification {
+                                operants_contained_positive = false;
+                            } else {
+                                operants_contained = false;
+                            }
+                        }
+                    } else {
+                        operants_contained_negative = false;
+                    }
+                } else if trivial_qualification {
+                    operants_contained_positive = false;
+                } else {
+                    operants_contained = false;
+                }
+            }
+            let _ = operants_contained_negative;
+            if operants_contained_positive || !operants_contained {
+                matching_succ_count += succ_cardinality;
+            }
+        }
         matching_succ_count
     }
 
@@ -1421,57 +2301,99 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // `CIndividualSaturationProcessNode* probTestingSuccNode`
         prob_testing_succ_node: SatNodeId,
         // `CXNegLinker<CRole*>* creationRoleLinker`
-        creation_role_linker: Cint64,
+        creation_role_linker: Vec<NegLink<RoleId>>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: faithful C++ body —
-        //   mergingConSet = mergingSuccNode->getReapplyConceptSaturationLabelSet(false);
-        //   propTestConSet = probTestingSuccNode->getReapplyConceptSaturationLabelSet(false);
-        //   for (conDesIt in mergingConSet->getConceptSaturationDescriptionLinker()) {
-        //       concept = conDesIt->getConcept(); negation = conDesIt->isNegated(); propTestConDes = nullptr; propTestImpReapDes = nullptr;
-        //       if (propTestConSet->getConceptDescriptorAndReapplyQueue(concept, propTestConDes, propTestImpReapDes)) {
-        //           if (propTestConDes) { if (propTestConDes->isNegated() != negation) return true; }
-        //           else if (!negation && propTestImpReapDes) { propTestImpCon = propTestImpReapDes->getImplicationConcept();
-        //               if (!propTestConSet->containsConcept(propTestImpCon->getOperandList()->getData()) && !mergingConSet->containsConcept(propTestImpCon->getOperandList()->getData())) return true; }
-        //       } else {
-        //           // concept not present in prob-testing label -> test whether critical:
-        //           for (predConDesIt in indiProcSatNode->getReapplyConceptSaturationLabelSet(false)->getConceptSaturationDescriptionLinker()) {
-        //               predConcept = predConDesIt->getConcept(); predConNegation = predConDesIt->isNegated(); predConOpCode = predConcept->getOperatorCode();
-        //               if (predConNegation && predConOpCode == CCATLEAST || !predConNegation && predConOpCode == CCATMOST) {
-        //                   predOpCon = nullptr; if (predConcept->getOperandList()) predOpCon = predConcept = predConcept->getOperandList()->getData();
-        //                   if (!predOpCon || predOpCon == concept)
-        //                       for (creationRoleLinkerIt in creationRoleLinker) if (!negated)
-        //                           for (creationSuperRoleIt in creationRole->getIndirectSuperRoleList()) if (!negated)
-        //                               if (creationSuperRole == predConcept->getRole()) { allowedCardinality = predConcept->getParameter() - 1*predConNegation;
-        //                                   if (getIndividualNodeQualifiedSuccessorCount(indiProcSatNode, creationSuperRole, predConcept->getOperandList(), ctx) > allowedCardinality) return true; }
-        //               }
-        //           }
-        //           opCode = concept->getOperatorCode(); conOp = concept->getConceptOperator();
-        //           if (!negation && conOp->hasPartialOperatorCodeFlag(CCFS_AQALL_TYPE) || negation && conOp->hasPartialOperatorCodeFlag(CCFS_SOME_TYPE) || !negation && opCode == CCATMOST || negation && opCode == CCATLEAST) {
-        //               collectLinkedSuccessorNodes(probTestingSuccNode, ctx);   // sibling
-        //               propTestLinkedSuccHash = probTestingSuccNode->getLinkedRoleSuccessorHash(false);
-        //               if (propTestLinkedSuccHash && propTestLinkedSuccHash->hasLinkedRoleSuccessorData(concept->getRole())) return true;
-        //           }
-        //           if (!negation && conOp->hasPartialOperatorCodeFlag(CCFS_SOME_TYPE | CCF_SELF | CCF_ATLEAST) || negation && conOp->hasPartialOperatorCodeFlag(CCFS_AQALL_TYPE | CCF_ATMOST)) {
-        //               propTestBackwardPropHash = probTestingSuccNode->getRoleBackwardPropagationHash(false);
-        //               if (propTestBackwardPropHash) { backwardPropDataHash = propTestBackwardPropHash->getRoleBackwardPropagationDataHash();
-        //                   for (superRoleIt in concept->getRole()->getIndirectSuperRoleList()) if (!negated) {
-        //                       backwardPropData = backwardPropDataHash->valuePointer(superRole);
-        //                       if (backwardPropData && backwardPropData->mReapplyLinker) return true; } }
-        //           }
-        //       }
-        //   }
-        //   return false;
-        // CReapplyConceptSaturationLabelSet / CLinkedRoleSaturationSuccessorHash /
-        // CRoleBackwardSaturationPropagationHash satellites + the
-        // getIndividualNodeQualifiedSuccessorCount (this unit) / collectLinkedSuccessorNodes
-        // siblings not yet ported.
-        let _ = (
-            indi_proc_sat_node,
-            merging_succ_node,
-            prob_testing_succ_node,
-            creation_role_linker,
-        );
+        let merging_con_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(merging_succ_node, false);
+        let prop_test_con_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(prob_testing_succ_node, false);
+        if merging_con_set.is_none() || prop_test_con_set.is_none() {
+            return false;
+        }
+
+        let mut merging_iterator = calc_alg_context
+            .process_context()
+            .reapply_con_sat_label_set(merging_con_set)
+            .get_iterator(true, false);
+        while merging_iterator.has_next() {
+            let con_des = merging_iterator.get_concept_saturation_descriptor();
+            if con_des.is_some() {
+                let (concept, negation, con_tag) = {
+                    let process_context = calc_alg_context.process_context();
+                    let con_des_ref = process_context.con_sat_desc(con_des);
+                    let concept = con_des_ref.get_concept();
+                    let negation = con_des_ref.get_negation();
+                    let con_tag = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag();
+                    (concept, negation, con_tag)
+                };
+
+                let mut prop_test_con_des = ConceptSaturationDescriptorId::NONE;
+                let mut prop_test_imp_reap_des =
+                    ImplicationReapplyConceptSaturationDescriptorId::NONE;
+                let contained = calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(prop_test_con_set)
+                    .get_concept_descriptor_and_reapply_queue_by_tag(
+                        con_tag,
+                        &mut prop_test_con_des,
+                        &mut prop_test_imp_reap_des,
+                    );
+                if contained {
+                    if prop_test_con_des.is_some() {
+                        if calc_alg_context
+                            .process_context()
+                            .con_sat_desc(prop_test_con_des)
+                            .get_negation()
+                            != negation
+                        {
+                            return true;
+                        }
+                    } else if !negation && prop_test_imp_reap_des.is_some() {
+                        let prop_test_imp_con = calc_alg_context
+                            .process_context()
+                            .imp_reapply_con_sat_desc(prop_test_imp_reap_des)
+                            .get_implication_concept();
+                        let first_operand = calc_alg_context
+                            .ontology_arenas()
+                            .concept(prop_test_imp_con)
+                            .get_operand_list()
+                            .first()
+                            .map(|link| link.target);
+                        if let Some(first_operand) = first_operand {
+                            let first_operand_tag = calc_alg_context
+                                .ontology_arenas()
+                                .concept(first_operand)
+                                .get_concept_tag();
+                            let prop_test_contains = calc_alg_context
+                                .process_context()
+                                .reapply_con_sat_label_set(prop_test_con_set)
+                                .contains_concept_or_reaplly_queue(first_operand_tag);
+                            let merging_contains = calc_alg_context
+                                .process_context()
+                                .reapply_con_sat_label_set(merging_con_set)
+                                .contains_concept_or_reaplly_queue(first_operand_tag);
+                            if !prop_test_contains && !merging_contains {
+                                return true;
+                            }
+                        }
+                    }
+                } else {
+                    // W4-DEFER[api]: concept absent in `propTestConSet`; the
+                    // remaining C++ body tests predecessor ATMOST/¬ATLEAST
+                    // criticality through `creationRoleLinker`, sibling
+                    // `collectLinkedSuccessorNodes`, and
+                    // `CRoleBackwardSaturationPropagationHash` reapply data.
+                    let _ = (concept, *indi_proc_sat_node, &creation_role_linker);
+                }
+            }
+            merging_iterator.move_next();
+        }
         false
     }
 
@@ -1490,48 +2412,1372 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         &mut self,
         indi_proc_sat_node: &mut SatNodeId,
         // `CSaturationSuccessorData* succLinkData`
-        succ_link_data: Cint64,
+        succ_link_data: SaturationSuccessorDataId,
         // `CSaturationSuccessorData** mergedSuccLinkData` (out)
-        merged_succ_link_data: &mut Cint64,
+        merged_succ_link_data: Option<&mut SaturationSuccessorDataId>,
         // `CIndividualSaturationSuccessorLinkDataLinker* mergingSuccDataLinker`
-        merging_succ_data_linker: Cint64,
+        merging_succ_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
         // `CPROCESSHASH<CSaturationSuccessorData*,cint64>* remainMergeableCardHash`
-        remain_mergeable_card_hash: Cint64,
+        remain_mergeable_card_hash: &mut std::collections::HashMap<
+            SaturationSuccessorDataId,
+            Cint64,
+        >,
         role: RoleId,
         max_required_merging_cardinality: Cint64,
         // `CPROCESSHASH<CSaturationSuccessorData*,CSaturationSuccessorData*>* mergeDistintHash`
-        merge_distint_hash: Cint64,
+        merge_distint_hash: &mut std::collections::HashMap<
+            SaturationSuccessorDataId,
+            Vec<SaturationSuccessorDataId>,
+        >,
         // `CPROCESSSET< QPair<...> >* mergeDistintSet`
-        merge_distint_set: Cint64,
+        merge_distint_set: &mut std::collections::HashSet<(
+            SaturationSuccessorDataId,
+            SaturationSuccessorDataId,
+        )>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Cint64 {
-        // W4-DEFER[api]: faithful C++ body —
-        //   for (it in mergingSuccDataLinker) {
-        //       mergeSuccLinkData = it->getData();
-        //       mergeableCardinality = remainMergeableCardHash->value(mergeSuccLinkData, mergeSuccLinkData->mSuccCount);
-        //       if (mergeableCardinality > 0 && !mergeDistintSet->contains(QPair(qMin(mergeSucc,succ),qMax(...)))) {
-        //           if (isIndividualSuccessorLinkCardinalityExtendedMergeable(indiProcSatNode, succLinkData, mergeSuccLinkData, ctx)) {
-        //               remainMergeableCardHash->insert(mergeSuccLinkData, 0);
-        //               for (mDIt = mergeDistintHash->constFind(succLinkData); mDIt.key() == succLinkData; ++mDIt) { distSuccData = mDIt.value(); mergeDistintHash->insertMulti(distSuccData,mergeSuccLinkData); mergeDistintHash->insertMulti(mergeSuccLinkData,distSuccData); mergeDistintSet->insert(QPair(qMin(mergeSucc,dist),qMax(...))); }
-        //               if (mergedSuccLinkData) *mergedSuccLinkData = mergeSuccLinkData;
-        //               return mergeableCardinality;
-        //           }
-        //       }
-        //   }
-        //   return 0;
-        // CSaturationSuccessorData / merge distinct hash+set / remaining-mergeable hash
-        // satellites + the extended-mergeable sibling (this unit) not yet ported.
-        let _ = (
-            indi_proc_sat_node,
-            succ_link_data,
-            merged_succ_link_data,
-            merging_succ_data_linker,
-            remain_mergeable_card_hash,
-            role,
-            max_required_merging_cardinality,
-            merge_distint_hash,
-            merge_distint_set,
-        );
+        let mut merged_succ_link_data = merged_succ_link_data;
+        let mut merging_succ_data_linker_it = merging_succ_data_linker;
+        while merging_succ_data_linker_it.is_some() {
+            let (merge_succ_link_data, next_linker) = {
+                let linker = calc_alg_context
+                    .process_context()
+                    .indi_sat_succ_link_data_linker(merging_succ_data_linker_it);
+                (linker.get_data(), linker.get_next())
+            };
+            let default_mergeable_cardinality = calc_alg_context
+                .process_context()
+                .sat_succ_data(merge_succ_link_data)
+                .get_successor_count();
+            let mergeable_cardinality = remain_mergeable_card_hash
+                .get(&merge_succ_link_data)
+                .copied()
+                .unwrap_or(default_mergeable_cardinality);
+            if mergeable_cardinality > 0
+                && !merge_distint_set.contains(&Self::successor_data_pair(
+                    merge_succ_link_data,
+                    succ_link_data,
+                ))
+                && self.is_individual_successor_link_cardinality_extended_mergeable(
+                    indi_proc_sat_node,
+                    succ_link_data,
+                    merge_succ_link_data,
+                    calc_alg_context,
+                )
+            {
+                remain_mergeable_card_hash.insert(merge_succ_link_data, 0);
+                let distinct_successors = merge_distint_hash
+                    .get(&succ_link_data)
+                    .cloned()
+                    .unwrap_or_default();
+                for dist_succ_data in distinct_successors {
+                    merge_distint_hash
+                        .entry(dist_succ_data)
+                        .or_default()
+                        .push(merge_succ_link_data);
+                    merge_distint_hash
+                        .entry(merge_succ_link_data)
+                        .or_default()
+                        .push(dist_succ_data);
+                    merge_distint_set.insert(Self::successor_data_pair(
+                        merge_succ_link_data,
+                        dist_succ_data,
+                    ));
+                }
+                if let Some(out_merged_succ_link_data) = merged_succ_link_data.as_deref_mut() {
+                    *out_merged_succ_link_data = merge_succ_link_data;
+                }
+                return mergeable_cardinality;
+            }
+            merging_succ_data_linker_it = next_linker;
+        }
         0
+    }
+
+    fn successor_data_pair(
+        first: SaturationSuccessorDataId,
+        second: SaturationSuccessorDataId,
+    ) -> (SaturationSuccessorDataId, SaturationSuccessorDataId) {
+        if first.raw <= second.raw {
+            (first, second)
+        } else {
+            (second, first)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::completion::context::CalculationAlgorithmContextBase;
+    use super::super::super::model::concept::Concept;
+    use super::super::super::model::op::{CCATMOST, CCATOM, CCTOP};
+    use super::super::super::model::role::Role;
+    use super::super::super::process::sat_linker::IndividualSaturationProcessNodeLinker;
+    use super::super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::super::process::sat_ref::ExtendedConceptReferenceLinkingData;
+    use super::super::super::saturation::satellites::{
+        ConceptSaturationDescriptor, ConceptSaturationDescriptorReapplyData,
+        ImplicationReapplyConceptSaturationDescriptor,
+        ImplicationReapplyConceptSaturationDescriptorId,
+        IndividualSaturationSuccessorLinkDataLinkerId, LinkedRoleSaturationSuccessorData,
+        SaturationSuccessorData,
+    };
+    use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::*;
+
+    fn make_role(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> RoleId {
+        let mut role = Role::new();
+        role.set_role_tag(tag);
+        ctx.ontology_arenas_mut().alloc_role(role)
+    }
+
+    fn atom(ctx: &mut CalculationAlgorithmContextBase, tag: Cint64) -> ConceptId {
+        let mut concept = Concept::new();
+        concept.set_operator_code(CCATOM).set_concept_tag(tag);
+        ctx.ontology_arenas_mut().alloc_concept(concept)
+    }
+
+    fn insert_label(
+        ctx: &mut CalculationAlgorithmContextBase,
+        node: SatNodeId,
+        concept: ConceptId,
+        negated: bool,
+    ) {
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(node, true);
+        let mut descriptor = ConceptSaturationDescriptor::new();
+        descriptor.init_concept_saturation_descriptor(concept, negated);
+        let descriptor = ctx.process_context_mut().alloc_con_sat_desc(descriptor);
+        let con_tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_insert_concept_return_clashed(
+                label_set, descriptor, con_tag, None, None,
+            );
+    }
+
+    #[test]
+    fn s08_create_ancestor_successor_merging_extension_forwards_label_and_inverse_link() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let role = make_role(&mut ctx, 7101);
+        let inv_role = make_role(&mut ctx, 7103);
+        let creation_role = make_role(&mut ctx, 7105);
+        let inv_creation_role = make_role(&mut ctx, 7107);
+        let creation_super_role = make_role(&mut ctx, 7109);
+        ctx.ontology_arenas_mut()
+            .role_mut(role)
+            .set_inverse_role(inv_role);
+        ctx.ontology_arenas_mut()
+            .role_mut(creation_role)
+            .set_inverse_role(inv_creation_role);
+        ctx.ontology_arenas_mut()
+            .role_mut(inv_creation_role)
+            .add_indirect_super_role_linker(NegLink {
+                target: creation_super_role,
+                negated: false,
+            });
+
+        let mut indi = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(7201));
+        let succ = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(7203));
+        let anc = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(7205));
+        ctx.process_context_mut()
+            .sat_node_mut(indi)
+            .init_individual_saturation_process_node(7201, Id::NONE, Id::NONE);
+        ctx.process_context_mut()
+            .sat_node_mut(succ)
+            .init_individual_saturation_process_node(7203, Id::NONE, Id::NONE);
+        ctx.process_context_mut()
+            .sat_node_mut(anc)
+            .init_individual_saturation_process_node(7205, Id::NONE, Id::NONE);
+        let forwarded = atom(&mut ctx, 7211);
+        insert_label(&mut ctx, succ, forwarded, false);
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(anc, true);
+
+        let anc_linked_hash = ctx
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(anc, true);
+        let anc_succ_data =
+            ctx.process_context_mut()
+                .linked_role_successor_data(anc_linked_hash, inv_role, true);
+        let anc_succ_link = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(indi)
+                .set_successor_count(1)
+                .set_active_count(1)
+                .creation_role_linker
+                .push(NegLink {
+                    target: inv_role,
+                    negated: false,
+                });
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        {
+            let anc_succ_data_ref = ctx
+                .process_context_mut()
+                .linked_role_sat_succ_data_mut(anc_succ_data);
+            anc_succ_data_ref.set_last_successor_link_data(anc_succ_link);
+            anc_succ_data_ref
+                .get_successor_node_data_map_mut()
+                .insert(7201, anc_succ_link);
+        }
+
+        assert!(algo.create_ancestor_successor_merging_extension(
+            &mut indi,
+            role,
+            succ,
+            anc,
+            vec![NegLink {
+                target: creation_role,
+                negated: false
+            }],
+            &mut ctx,
+        ));
+
+        let anc_label = ctx
+            .process_context()
+            .sat_node(anc)
+            .reapply_con_sat_label_set;
+        let mut con_des = ConceptSaturationDescriptorId::NONE;
+        let mut imp_des = ImplicationReapplyConceptSaturationDescriptorId::NONE;
+        let forwarded_tag = ctx.ontology_arenas().concept(forwarded).get_concept_tag();
+        assert!(ctx
+            .process_context()
+            .reapply_con_sat_label_set(anc_label)
+            .get_concept_saturation_descriptor_by_tag(forwarded_tag, &mut con_des, &mut imp_des,));
+        assert!(ctx
+            .process_context()
+            .sat_node(succ)
+            .get_copy_depending_individual_node_linker()
+            .iter()
+            .any(|link| link.target == anc && !link.negated));
+        let func_ext = ctx
+            .process_context_mut()
+            .sat_node_functional_concepts_extension_data(succ, false);
+        assert!(ctx
+            .process_context()
+            .sat_indi_node_functional_concept_ext_data(func_ext)
+            .has_individual_node_forwarding_predecessor_merged(anc, creation_role));
+        assert!(ctx
+            .process_context()
+            .linked_role_successor_hash_has_active_linked_successor(
+                anc_linked_hash,
+                creation_super_role,
+                indi,
+                Some(inv_creation_role),
+                1,
+            ));
+        assert!(!algo.create_ancestor_successor_merging_extension(
+            &mut indi,
+            role,
+            succ,
+            anc,
+            vec![NegLink {
+                target: creation_role,
+                negated: false
+            }],
+            &mut ctx,
+        ));
+    }
+
+    #[test]
+    fn s08_atmost_merging_driver_drains_empty_queued_node() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let mut linker = IndividualSaturationProcessNodeLinker::new();
+        linker.init_process_node_linker(node, true);
+        let linker = ctx
+            .process_context_mut()
+            .alloc_indi_sat_process_node_linker(linker);
+        ctx.processing_data_box_mut()
+            .set_saturation_atmost_merging_process_linker(linker);
+
+        assert!(!algo.try_atmost_concept_successor_merging(&mut ctx));
+        assert!(!ctx
+            .processing_data_box()
+            .has_saturation_atmost_merging_process_linker());
+        assert!(!ctx
+            .process_context()
+            .indi_sat_process_node_linker(linker)
+            .is_processing_queued());
+    }
+
+    #[test]
+    fn s08_atmost_merging_driver_materializes_concept_data_and_takes_concepts() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let data = ctx
+            .process_context_mut()
+            .sat_node_ext_atmost_successor_merging_data(node, true);
+        let con = ctx
+            .process_context_mut()
+            .alloc_con_sat_desc(ConceptSaturationDescriptor::new());
+        ctx.process_context_mut()
+            .sat_atmost_successor_merging_data_add_merging_processing_concept(data, con);
+
+        let mut linker = IndividualSaturationProcessNodeLinker::new();
+        linker.init_process_node_linker(node, true);
+        let linker = ctx
+            .process_context_mut()
+            .alloc_indi_sat_process_node_linker(linker);
+        ctx.processing_data_box_mut()
+            .set_saturation_atmost_merging_process_linker(linker);
+
+        assert!(!algo.try_atmost_concept_successor_merging(&mut ctx));
+        assert_eq!(
+            ctx.process_context()
+                .sat_atmost_successor_merging_data(data)
+                .get_merging_concept_linker(),
+            Id::NONE
+        );
+        assert!(ctx
+            .process_context_mut()
+            .sat_atmost_successor_merging_data_concept_merging_hash(data, false)
+            .is_some());
+    }
+
+    #[test]
+    fn s08_collect_atmost_trivial_missing_operand_skips_successor_without_label_set() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(11);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let atmost = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATMOST)
+                .set_parameter(1)
+                .set_concept_tag(13)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let con_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(atmost, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let succ_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let succ_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(succ_node)
+                .set_successor_count(2)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let linked_data = {
+            let mut data = LinkedRoleSaturationSuccessorData::new();
+            data.get_successor_node_data_map_mut()
+                .insert(succ_node.index() as Cint64, succ_data);
+            ctx.process_context_mut()
+                .alloc_linked_role_sat_succ_data(data)
+        };
+
+        let mut root_ref = root;
+        let mut merging = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+        let mut last_successor = SatNodeId::NONE;
+        let mut last_roles = Vec::new();
+        let mut min_cardinality = -1;
+
+        let found = algo.collect_atmost_concept_relevant_successors(
+            con_des,
+            &mut root_ref,
+            linked_data,
+            &mut merging,
+            &mut last_successor,
+            &mut last_roles,
+            &mut min_cardinality,
+            &mut ctx,
+        );
+
+        assert_eq!(found, 0);
+        assert_eq!(min_cardinality, 0);
+        assert_eq!(merging, IndividualSaturationSuccessorLinkDataLinkerId::NONE);
+        assert_eq!(last_successor, succ_node);
+    }
+
+    #[test]
+    fn s08_collect_atmost_positive_operand_prepends_countable_successor() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(21);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let atmost = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATMOST)
+                .set_parameter(1)
+                .set_concept_tag(23)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let con_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(atmost, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let succ_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(succ_node, true);
+        let operand_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(operand, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let operand_tag = ctx.ontology_arenas().concept(operand).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(label_set)
+            .concept_des_dep_hash
+            .insert(
+                operand_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: operand_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+
+        let succ_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(succ_node)
+                .set_successor_count(2)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let linked_data = {
+            let mut data = LinkedRoleSaturationSuccessorData::new();
+            data.get_successor_node_data_map_mut()
+                .insert(succ_node.index() as Cint64, succ_data);
+            ctx.process_context_mut()
+                .alloc_linked_role_sat_succ_data(data)
+        };
+
+        let mut root_ref = root;
+        let mut merging = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+        let mut last_successor = SatNodeId::NONE;
+        let mut last_roles = Vec::new();
+        let mut min_cardinality = 0;
+
+        let found = algo.collect_atmost_concept_relevant_successors(
+            con_des,
+            &mut root_ref,
+            linked_data,
+            &mut merging,
+            &mut last_successor,
+            &mut last_roles,
+            &mut min_cardinality,
+            &mut ctx,
+        );
+
+        assert_eq!(found, 2);
+        assert_eq!(min_cardinality, 2);
+        assert_eq!(last_successor, succ_node);
+        let linker = ctx
+            .process_context()
+            .indi_sat_succ_link_data_linker(merging);
+        assert_eq!(linker.get_data(), succ_data);
+        assert_eq!(
+            linker.get_next(),
+            IndividualSaturationSuccessorLinkDataLinkerId::NONE
+        );
+        assert!(ctx
+            .process_context()
+            .sat_node(root)
+            .direct_status_flags
+            .has_clashed_flag());
+    }
+
+    #[test]
+    fn s08_collect_atmost_operand_representative_updates_min_without_linking() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(41);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let atmost = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATMOST)
+                .set_parameter(3)
+                .set_concept_tag(43)
+                .add_operand_linker(operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let con_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(atmost, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let succ_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(succ_node, true);
+        let mut concept_sat_item = ExtendedConceptReferenceLinkingData::new();
+        concept_sat_item.init_concept_saturation_testing_item(operand, false, RoleId::NONE);
+        let concept_sat_item = ctx
+            .process_context_mut()
+            .alloc_extended_con_ref_linking_data(concept_sat_item);
+        ctx.process_context_mut()
+            .sat_node_mut(succ_node)
+            .concept_saturation_link_ref_data = concept_sat_item;
+
+        let succ_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(succ_node)
+                .set_successor_count(2)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let linked_data = {
+            let mut data = LinkedRoleSaturationSuccessorData::new();
+            data.get_successor_node_data_map_mut()
+                .insert(succ_node.index() as Cint64, succ_data);
+            ctx.process_context_mut()
+                .alloc_linked_role_sat_succ_data(data)
+        };
+
+        let mut root_ref = root;
+        let mut merging = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+        let mut last_successor = SatNodeId::NONE;
+        let mut last_roles = Vec::new();
+        let mut min_cardinality = 0;
+
+        let found = algo.collect_atmost_concept_relevant_successors(
+            con_des,
+            &mut root_ref,
+            linked_data,
+            &mut merging,
+            &mut last_successor,
+            &mut last_roles,
+            &mut min_cardinality,
+            &mut ctx,
+        );
+
+        assert_eq!(found, 0);
+        assert_eq!(min_cardinality, 2);
+        assert_eq!(merging, IndividualSaturationSuccessorLinkDataLinkerId::NONE);
+        assert_eq!(last_successor, succ_node);
+    }
+
+    #[test]
+    fn s08_collect_atmost_no_operand_existing_label_set_counts_successor() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let atmost = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATMOST)
+                .set_parameter(3)
+                .set_concept_tag(31);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let con_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(atmost, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let succ_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(succ_node, true);
+        let succ_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(succ_node)
+                .set_successor_count(1)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let linked_data = {
+            let mut data = LinkedRoleSaturationSuccessorData::new();
+            data.get_successor_node_data_map_mut()
+                .insert(succ_node.index() as Cint64, succ_data);
+            ctx.process_context_mut()
+                .alloc_linked_role_sat_succ_data(data)
+        };
+
+        let mut root_ref = root;
+        let mut merging = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+        let mut last_successor = SatNodeId::NONE;
+        let mut last_roles = Vec::new();
+        let mut min_cardinality = 0;
+
+        let found = algo.collect_atmost_concept_relevant_successors(
+            con_des,
+            &mut root_ref,
+            linked_data,
+            &mut merging,
+            &mut last_successor,
+            &mut last_roles,
+            &mut min_cardinality,
+            &mut ctx,
+        );
+
+        assert_eq!(found, 1);
+        assert_eq!(min_cardinality, 1);
+        assert_eq!(
+            ctx.process_context()
+                .indi_sat_succ_link_data_linker(merging)
+                .get_data(),
+            succ_data
+        );
+    }
+
+    #[test]
+    fn s08_collect_atmost_top_representative_updates_min_without_linking() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let top = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCTOP).set_concept_tag(51);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+        let atmost = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATMOST)
+                .set_parameter(3)
+                .set_concept_tag(53);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let con_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(atmost, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let succ_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(succ_node, true);
+        let mut concept_sat_item = ExtendedConceptReferenceLinkingData::new();
+        concept_sat_item.init_concept_saturation_testing_item(top, false, RoleId::NONE);
+        let concept_sat_item = ctx
+            .process_context_mut()
+            .alloc_extended_con_ref_linking_data(concept_sat_item);
+        ctx.process_context_mut()
+            .sat_node_mut(succ_node)
+            .concept_saturation_link_ref_data = concept_sat_item;
+
+        let succ_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(succ_node)
+                .set_successor_count(1)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let linked_data = {
+            let mut data = LinkedRoleSaturationSuccessorData::new();
+            data.get_successor_node_data_map_mut()
+                .insert(succ_node.index() as Cint64, succ_data);
+            ctx.process_context_mut()
+                .alloc_linked_role_sat_succ_data(data)
+        };
+
+        let mut root_ref = root;
+        let mut merging = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+        let mut last_successor = SatNodeId::NONE;
+        let mut last_roles = Vec::new();
+        let mut min_cardinality = 0;
+
+        let found = algo.collect_atmost_concept_relevant_successors(
+            con_des,
+            &mut root_ref,
+            linked_data,
+            &mut merging,
+            &mut last_successor,
+            &mut last_roles,
+            &mut min_cardinality,
+            &mut ctx,
+        );
+
+        assert_eq!(found, 0);
+        assert_eq!(min_cardinality, 1);
+        assert_eq!(merging, IndividualSaturationSuccessorLinkDataLinkerId::NONE);
+        assert_eq!(last_successor, succ_node);
+    }
+
+    #[test]
+    fn s08_successor_creation_role_subset_uses_non_negated_roles() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let role_a = RoleId::new(7);
+        let role_b = RoleId::new(11);
+        let subset = vec![NegLink {
+            target: role_a,
+            negated: false,
+        }];
+        let super_set = vec![
+            NegLink {
+                target: role_a,
+                negated: false,
+            },
+            NegLink {
+                target: role_b,
+                negated: true,
+            },
+        ];
+
+        assert!(algo.is_successor_creation_role_merging_subset(&subset, &super_set, &mut ctx));
+        assert!(
+            !algo.is_successor_creation_role_merging_subset_for_role(role_b, &super_set, &mut ctx)
+        );
+    }
+
+    #[test]
+    fn s08_label_merging_subset_checks_polarity_and_ignores_and_when_requested() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let atom = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(61);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let and_concept = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCAND).set_concept_tag(63);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let atom_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(atom, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let and_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(and_concept, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let subset = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let super_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let subset_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(subset, true);
+        let super_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(super_node, true);
+        let atom_tag = ctx.ontology_arenas().concept(atom).get_concept_tag();
+        let and_tag = ctx.ontology_arenas().concept(and_concept).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(subset_set)
+            .concept_des_dep_hash
+            .insert(
+                atom_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: atom_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(subset_set)
+            .concept_des_dep_hash
+            .insert(
+                and_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: and_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(subset_set)
+            .concept_count = 2;
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(super_set)
+            .concept_des_dep_hash
+            .insert(
+                atom_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: atom_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(super_set)
+            .concept_count = 2;
+
+        assert!(algo.is_individual_node_label_merging_subset(subset, super_node, true, &mut ctx));
+        assert!(!algo.is_individual_node_label_merging_subset(subset, super_node, false, &mut ctx));
+    }
+
+    #[test]
+    fn s08_cardinality_mergeable_uses_successor_data_and_node_guards() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let subset_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let super_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let subset_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(subset_node)
+                .set_successor_count(1)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let super_data = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(super_node)
+                .set_successor_count(1)
+                .set_active_count(1);
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+
+        assert!(algo.is_individual_successor_link_cardinality_mergeable(
+            subset_data,
+            super_data,
+            &mut ctx
+        ));
+
+        ctx.process_context_mut()
+            .sat_node_mut(super_node)
+            .set_data_value_applied(true);
+        assert!(!algo.is_individual_successor_link_cardinality_mergeable(
+            subset_data,
+            super_data,
+            &mut ctx
+        ));
+        ctx.process_context_mut()
+            .sat_node_mut(super_node)
+            .set_data_value_applied(false);
+        ctx.process_context_mut()
+            .sat_succ_data_mut(subset_data)
+            .value_nominal_connection = true;
+        assert!(!algo.is_individual_successor_link_cardinality_mergeable(
+            subset_data,
+            super_data,
+            &mut ctx
+        ));
+    }
+
+    #[test]
+    fn s08_extended_cardinality_mergeable_requires_symmetric_role_sets() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role_a = RoleId::new(17);
+        let role_b = RoleId::new(19);
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let node1 = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let node2 = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let data1 = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(node1)
+                .set_successor_count(1)
+                .set_active_count(1);
+            data.creation_role_linker.push(NegLink {
+                target: role_a,
+                negated: false,
+            });
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+        let data2 = {
+            let mut data = SaturationSuccessorData::new();
+            data.set_successor_individual_node(node2)
+                .set_successor_count(1)
+                .set_active_count(1);
+            data.creation_role_linker.push(NegLink {
+                target: role_a,
+                negated: false,
+            });
+            data.creation_role_linker.push(NegLink {
+                target: role_b,
+                negated: false,
+            });
+            ctx.process_context_mut().alloc_sat_succ_data(data)
+        };
+
+        let mut root_ref = root;
+        assert!(
+            !algo.is_individual_successor_link_cardinality_extended_mergeable(
+                &mut root_ref,
+                data1,
+                data2,
+                &mut ctx
+            )
+        );
+
+        ctx.process_context_mut()
+            .sat_succ_data_mut(data1)
+            .creation_role_linker
+            .push(NegLink {
+                target: role_b,
+                negated: false,
+            });
+        assert!(
+            algo.is_individual_successor_link_cardinality_extended_mergeable(
+                &mut root_ref,
+                data1,
+                data2,
+                &mut ctx
+            )
+        );
+    }
+
+    #[test]
+    fn s08_qualified_successor_count_checks_label_polarity_and_value_nominals() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = RoleId::new(23);
+        let operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(101);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let operand_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(operand, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let neg_operand_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(operand, true);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let matching_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let opposite_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let missing_label_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let value_nominal_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+
+        let operand_tag = ctx.ontology_arenas().concept(operand).get_concept_tag();
+        let matching_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(matching_node, true);
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(matching_set)
+            .concept_des_dep_hash
+            .insert(
+                operand_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: operand_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(matching_set)
+            .concept_count = 1;
+
+        let opposite_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(opposite_node, true);
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(opposite_set)
+            .concept_des_dep_hash
+            .insert(
+                operand_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: neg_operand_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(opposite_set)
+            .concept_count = 1;
+
+        let hash = ctx
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(root, true);
+        let role_data = ctx
+            .process_context_mut()
+            .linked_role_successor_data(hash, role, true);
+        for (node, count, value_nominal) in [
+            (matching_node, 2, false),
+            (opposite_node, 3, false),
+            (missing_label_node, 5, false),
+            (value_nominal_node, 7, true),
+        ] {
+            let succ_data = {
+                let mut data = SaturationSuccessorData::new();
+                data.set_successor_individual_node(node)
+                    .set_successor_count(count)
+                    .set_active_count(1);
+                data.value_nominal_connection = value_nominal;
+                ctx.process_context_mut().alloc_sat_succ_data(data)
+            };
+            ctx.process_context_mut()
+                .linked_role_sat_succ_data_mut(role_data)
+                .get_successor_node_data_map_mut()
+                .insert(node.index() as Cint64, succ_data);
+        }
+
+        let mut root_ref = root;
+        let qualification = [NegLink {
+            target: operand,
+            negated: false,
+        }];
+        assert_eq!(
+            algo.get_individual_node_qualified_successor_count(
+                &mut root_ref,
+                role,
+                Some(&qualification),
+                &mut ctx,
+            ),
+            9
+        );
+    }
+
+    #[test]
+    fn s08_qualified_successor_count_preserves_null_and_nontrivial_branches() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let role = RoleId::new(29);
+        let and_operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCAND).set_concept_tag(111);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let labelled_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let unlabelled_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(labelled_node, true);
+
+        let hash = ctx
+            .process_context_mut()
+            .sat_node_ext_linked_role_successor_hash(root, true);
+        let role_data = ctx
+            .process_context_mut()
+            .linked_role_successor_data(hash, role, true);
+        for (node, count) in [(labelled_node, 4), (unlabelled_node, 6)] {
+            let succ_data = {
+                let mut data = SaturationSuccessorData::new();
+                data.set_successor_individual_node(node)
+                    .set_successor_count(count)
+                    .set_active_count(1);
+                ctx.process_context_mut().alloc_sat_succ_data(data)
+            };
+            ctx.process_context_mut()
+                .linked_role_sat_succ_data_mut(role_data)
+                .get_successor_node_data_map_mut()
+                .insert(node.index() as Cint64, succ_data);
+        }
+
+        let mut root_ref = root;
+        assert_eq!(
+            algo.get_individual_node_qualified_successor_count(
+                &mut root_ref,
+                role,
+                None,
+                &mut ctx,
+            ),
+            4
+        );
+
+        let nontrivial_qualification = [NegLink {
+            target: and_operand,
+            negated: false,
+        }];
+        assert_eq!(
+            algo.get_individual_node_qualified_successor_count(
+                &mut root_ref,
+                role,
+                Some(&nontrivial_qualification),
+                &mut ctx,
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn s08_label_merging_problematic_detects_opposite_polarity() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let concept = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(121);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let merging_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let prop_test_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, true);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let merging_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let prop_test_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let merging_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(merging_node, true);
+        let prop_test_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(prop_test_node, true);
+        let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(merging_set)
+            .concept_des_dep_hash
+            .insert(
+                tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: merging_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(prop_test_set)
+            .concept_des_dep_hash
+            .insert(
+                tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: prop_test_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+
+        let mut root_ref = root;
+        assert!(algo.is_individual_node_label_merging_problematic(
+            &mut root_ref,
+            merging_node,
+            prop_test_node,
+            Vec::new(),
+            &mut ctx,
+        ));
+    }
+
+    #[test]
+    fn s08_label_merging_problematic_accepts_same_polarity_prefix() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let concept = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(131);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let merging_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let prop_test_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let merging_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let prop_test_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let merging_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(merging_node, true);
+        let prop_test_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(prop_test_node, true);
+        let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        for (set, descriptor) in [(merging_set, merging_des), (prop_test_set, prop_test_des)] {
+            ctx.process_context_mut()
+                .reapply_con_sat_label_set_mut(set)
+                .concept_des_dep_hash
+                .insert(
+                    tag,
+                    ConceptSaturationDescriptorReapplyData {
+                        con_sat_des: descriptor,
+                        imp_reapply_con_sat_des:
+                            ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                    },
+                );
+        }
+
+        let mut root_ref = root;
+        assert!(!algo.is_individual_node_label_merging_problematic(
+            &mut root_ref,
+            merging_node,
+            prop_test_node,
+            Vec::new(),
+            &mut ctx,
+        ));
+    }
+
+    #[test]
+    fn s08_label_merging_problematic_detects_missing_implication_operand() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let trigger = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(141);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication_operand = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(143);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let implication = {
+            let mut concept = Concept::new();
+            concept
+                .set_operator_code(CCATOM)
+                .set_concept_tag(145)
+                .add_operand_linker(implication_operand, false)
+                .set_operand_count(1);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let merging_des = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(trigger, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let imp_reapply_des = {
+            let mut descriptor = ImplicationReapplyConceptSaturationDescriptor::new();
+            descriptor.init_implication_reaplly_concept_saturation_descriptor(implication, None);
+            ctx.process_context_mut()
+                .alloc_imp_reapply_con_sat_desc(descriptor)
+        };
+
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let merging_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let prop_test_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let merging_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(merging_node, true);
+        let prop_test_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(prop_test_node, true);
+        let trigger_tag = ctx.ontology_arenas().concept(trigger).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(merging_set)
+            .concept_des_dep_hash
+            .insert(
+                trigger_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: merging_des,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(prop_test_set)
+            .concept_des_dep_hash
+            .insert(
+                trigger_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: ConceptSaturationDescriptorId::NONE,
+                    imp_reapply_con_sat_des: imp_reapply_des,
+                },
+            );
+
+        let mut root_ref = root;
+        assert!(algo.is_individual_node_label_merging_problematic(
+            &mut root_ref,
+            merging_node,
+            prop_test_node,
+            Vec::new(),
+            &mut ctx,
+        ));
     }
 }

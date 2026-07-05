@@ -4,9 +4,9 @@
 //! flag ops + blocker-candidate counts
 //! (`Source/Reasoner/Kernel/Process/CIndividualProcessNode.cpp` lines 1275–1671).
 //!
-//! All of PN-4 is plain self-local accessor/flag logic — no sibling node is read,
-//! so every method stays a `&mut self`/`&self` method (no associated-fn-over-Arena
-//! split needed for this unit).
+//! PN-4 is mostly plain self-local accessor/flag logic. The blocking-follow-set
+//! lazy getter threads `ProcessContext`, matching Konclude's pool allocation of
+//! `CBlockingFollowSet`.
 //!
 //! SKIPPED here (already ported in `node.rs` PN simple-accessor block): the
 //! ancestor-depth / nominal-level / merged-into-id / processing-restriction-flag
@@ -26,12 +26,15 @@
 #![allow(dead_code)]
 
 use super::super::model::{Cint64, Id};
+use super::analized_concept_expansion::IndividualNodeAnalizedConceptExpansionData;
+use super::blocking_follow::BlockingFollowSet;
+use super::context::ProcessContext;
 use super::node::IndividualProcessNode;
+use super::reapply_sat::ReapplyConceptDescriptorId as ReapplyConDescId;
 use super::stubs::{
     AnalizedConExpDataId, BackendSyncDataId, BlockingFollowSetId, IndiBlockDataId,
-    IndiSatBlockDataId, IndividualNodeModelDataId, ReapplyConDescId, ReusingConExpDataId,
-    SatCacheRetDataId, SatCacheStoringDataId, SigBlockConExpDataId, UnsatCacheRetId,
-    VarPropBlockDataId,
+    IndiSatBlockDataId, IndividualNodeModelDataId, ReusingConExpDataId, SatCacheRetDataId,
+    SatCacheStoringDataId, SigBlockConExpDataId, UnsatCacheRetId, VarPropBlockDataId,
 };
 use super::{ConDescId, NodeId};
 
@@ -195,41 +198,69 @@ impl IndividualProcessNode {
         &mut self,
         create_or_localize: bool,
     ) -> AnalizedConExpDataId {
+        debug_assert!(
+            !create_or_localize,
+            "use analized_concept_expansion_data_with_context for allocation"
+        );
+        self.use_sig_block_ind_expl_data
+    }
+
+    /// Context-threaded port of `CIndividualProcessNode::getAnalizedConceptExpansionData`.
+    pub fn analized_concept_expansion_data_with_context(
+        &mut self,
+        process_context: &mut ProcessContext,
+        create_or_localize: bool,
+    ) -> AnalizedConExpDataId {
         if self.sig_block_ind_expl_data.is_none() && create_or_localize {
-            // W2-DEFER[api]: CObjectAllocator<CIndividualNodeAnalizedConceptExpansionData>
-            // ::allocateAndConstruct(mMemAllocMan) then
-            // initBlockingExplorationData(mPrevSigBlockIndExplData) — both need the
-            // process-context arena, not reachable from `&mut self`. The
-            // `mUseX = mX` handoff that follows is preserved; `mX` stays NONE until
-            // the allocator is wired.
-            // self.sig_block_ind_expl_data = <allocated id>;
+            let mut data = IndividualNodeAnalizedConceptExpansionData::new();
+            if self.prev_sig_block_ind_expl_data.is_some() {
+                let prev = process_context.analized_con_exp_data(self.prev_sig_block_ind_expl_data);
+                data.init_blocking_exploration_data(Some(prev));
+            } else {
+                data.init_blocking_exploration_data(None);
+            }
+            self.sig_block_ind_expl_data = process_context.alloc_analized_con_exp_data(data);
             self.use_sig_block_ind_expl_data = self.sig_block_ind_expl_data;
         }
         self.use_sig_block_ind_expl_data
     }
 
     /// Port of `CIndividualProcessNode::getBlockingFollowSet`.
-    pub fn blocking_follow_set(&mut self, create_or_localize: bool) -> BlockingFollowSetId {
+    pub fn blocking_follow_set(
+        &mut self,
+        process_context: &mut ProcessContext,
+        create_or_localize: bool,
+    ) -> BlockingFollowSetId {
         if self.sig_block_follow_set.is_none() && create_or_localize {
-            // W2-DEFER[api]: CObjectParameterizingAllocator<CBlockingFollowSet,
-            // CProcessContext*>::allocateAndConstructAndParameterize(mMemAllocMan,
-            // mProcessContext) then initBlockingFollowSet(mPrevSigBlockFollowSet) —
-            // needs the process-context arena. The `mUseX = mX` handoff is preserved.
-            // self.sig_block_follow_set = <allocated id>;
+            let prev = self.prev_sig_block_follow_set;
+            let current_tag = process_context
+                .used_process_tagger()
+                .get_current_blocking_follow_tag();
+            let mut follow_set = BlockingFollowSet::new();
+            if prev.is_some() {
+                let taken = std::mem::replace(
+                    process_context.blocking_follow_set_mut(prev),
+                    BlockingFollowSet::new(),
+                );
+                follow_set.init_blocking_follow_set(Some(&taken), current_tag);
+                *process_context.blocking_follow_set_mut(prev) = taken;
+            } else {
+                follow_set.init_blocking_follow_set(None, current_tag);
+            }
+            self.sig_block_follow_set = process_context.alloc_blocking_follow_set(follow_set);
             self.use_sig_block_follow_set = self.sig_block_follow_set;
         }
         self.use_sig_block_follow_set
     }
 
     /// Port of `CIndividualProcessNode::hasBlockingFollower`.
-    pub fn has_blocking_follower(&self) -> bool {
+    pub fn has_blocking_follower(&self, process_context: &ProcessContext) -> bool {
         if self.use_sig_block_follow_set.is_none() {
             false
         } else {
-            // W2-DEFER[api]: CBlockingFollowSet::empty() — not yet ported (stub).
-            // Faithful expression is `!self.use_sig_block_follow_set.empty()`; until
-            // the follow-set is ported a present set is treated as non-empty.
-            true
+            !process_context
+                .blocking_follow_set(self.use_sig_block_follow_set)
+                .is_empty()
         }
     }
 
@@ -238,7 +269,10 @@ impl IndividualProcessNode {
     // ===================================================================
 
     /// Port of `CIndividualProcessNode::getIndividualSaturationBlockingData`.
-    pub fn individual_saturation_blocking_data(&self, local_block_data: bool) -> IndiSatBlockDataId {
+    pub fn individual_saturation_blocking_data(
+        &self,
+        local_block_data: bool,
+    ) -> IndiSatBlockDataId {
         if local_block_data {
             self.indi_sat_block_data
         } else {
@@ -337,6 +371,12 @@ impl IndividualProcessNode {
         &self.processing_blocked_individuals_linker
     }
 
+    /// Port of `CIndividualProcessNode::clearProcessingBlockedIndividualsLinker`.
+    pub fn clear_processing_blocked_individuals_linker(&mut self) -> &mut Self {
+        self.processing_blocked_individuals_linker.clear();
+        self
+    }
+
     // ===================================================================
     // Satisfiable-cached absorbed disjunctions / generating linkers (1509–1547).
     // ===================================================================
@@ -357,15 +397,7 @@ impl IndividualProcessNode {
         &mut self,
         disjunction_reapply_con_des: ReapplyConDescId,
     ) -> &mut Self {
-        if self.sat_cached_absorbed_disjunctions_reapply_con_des.is_none() {
-            self.sat_cached_absorbed_disjunctions_reapply_con_des = disjunction_reapply_con_des;
-        } else {
-            // W2-DEFER[api]: disjunctionReapplyConDes->setNext(
-            //   mSatCachedAbsorbedDisjunctionsReapplyConDes) — CReapplyConceptDescriptor
-            // is a stub; the intrusive next-splice needs its arena. The head
-            // reassignment (prepend) is preserved.
-            self.sat_cached_absorbed_disjunctions_reapply_con_des = disjunction_reapply_con_des;
-        }
+        self.sat_cached_absorbed_disjunctions_reapply_con_des = disjunction_reapply_con_des;
         self
     }
 
@@ -385,16 +417,7 @@ impl IndividualProcessNode {
         &mut self,
         successor_generating_reapply_con_des: ReapplyConDescId,
     ) -> &mut Self {
-        if self.sat_cached_absorbed_successor_reapply_con_des.is_none() {
-            self.sat_cached_absorbed_successor_reapply_con_des =
-                successor_generating_reapply_con_des;
-        } else {
-            // W2-DEFER[api]: successorGeneratingReapplyConDes->setNext(
-            //   mSatCachedAbsorbedSuccessorReapplyConDes) — stub CReapplyConceptDescriptor;
-            // next-splice needs its arena. Head reassignment (prepend) preserved.
-            self.sat_cached_absorbed_successor_reapply_con_des =
-                successor_generating_reapply_con_des;
-        }
+        self.sat_cached_absorbed_successor_reapply_con_des = successor_generating_reapply_con_des;
         self
     }
 
@@ -496,7 +519,10 @@ impl IndividualProcessNode {
     // ===================================================================
 
     /// Port of `CIndividualProcessNode::setLastConceptCountCachedBlockingCandidate`.
-    pub fn set_last_concept_count_cached_blocking_candidate(&mut self, con_count: Cint64) -> &mut Self {
+    pub fn set_last_concept_count_cached_blocking_candidate(
+        &mut self,
+        con_count: Cint64,
+    ) -> &mut Self {
         self.last_concept_count_cached_blocker_candidate = con_count;
         self
     }
@@ -512,7 +538,10 @@ impl IndividualProcessNode {
     }
 
     /// Port of `CIndividualProcessNode::setLastConceptCountSearchBlockingCandidate`.
-    pub fn set_last_concept_count_search_blocking_candidate(&mut self, con_count: Cint64) -> &mut Self {
+    pub fn set_last_concept_count_search_blocking_candidate(
+        &mut self,
+        con_count: Cint64,
+    ) -> &mut Self {
         self.last_concept_count_search_blocker_candidate = con_count;
         self
     }
@@ -554,5 +583,93 @@ impl IndividualProcessNode {
     pub fn set_last_search_blocker_candidate_signature(&mut self, can_count: Cint64) -> &mut Self {
         self.last_search_blocker_candidate_signature = can_count;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::stubs::ProcessContextId;
+    use super::*;
+
+    #[test]
+    fn pn4_blocking_follow_set_allocates_and_checks_empty_state() {
+        let mut ctx = ProcessContext::new();
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+
+        assert_eq!(node.blocking_follow_set(&mut ctx, false), Id::NONE);
+        assert!(!node.has_blocking_follower(&ctx));
+
+        let follow_set = node.blocking_follow_set(&mut ctx, true);
+        assert!(follow_set.is_some());
+        assert_eq!(node.blocking_follow_set(&mut ctx, true), follow_set);
+        assert!(!node.has_blocking_follower(&ctx));
+
+        assert!(ctx.blocking_follow_set_mut(follow_set).insert(17));
+        assert!(node.has_blocking_follower(&ctx));
+    }
+
+    #[test]
+    fn pn4_blocking_follow_set_copies_previous_generation() {
+        let mut ctx = ProcessContext::new();
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+
+        let parent_set = node.blocking_follow_set(&mut ctx, true);
+        assert!(ctx.blocking_follow_set_mut(parent_set).insert(23));
+        node.prev_sig_block_follow_set = parent_set;
+        node.use_sig_block_follow_set = parent_set;
+        node.sig_block_follow_set = Id::NONE;
+
+        let localized_set = node.blocking_follow_set(&mut ctx, true);
+        assert!(localized_set.is_some());
+        assert_ne!(localized_set, parent_set);
+        assert!(ctx.blocking_follow_set(localized_set).contains(23));
+        assert!(ctx.blocking_follow_set(parent_set).contains(23));
+        assert!(ctx.blocking_follow_set_mut(localized_set).insert(29));
+        assert!(!ctx.blocking_follow_set(parent_set).contains(29));
+    }
+
+    #[test]
+    fn pn4_analized_concept_expansion_data_read_does_not_allocate() {
+        let mut ctx = ProcessContext::new();
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+
+        assert_eq!(node.analized_concept_expansion_data(false), Id::NONE);
+        assert_eq!(
+            node.analized_concept_expansion_data_with_context(&mut ctx, false),
+            Id::NONE
+        );
+        assert!(node.sig_block_ind_expl_data.is_none());
+    }
+
+    #[test]
+    fn pn4_analized_concept_expansion_data_allocates_and_copies_previous_generation() {
+        let mut ctx = ProcessContext::new();
+        let mut prev_data = IndividualNodeAnalizedConceptExpansionData::new();
+        prev_data
+            .set_last_concept_count(12)
+            .set_last_concept_signature(44)
+            .set_minimal_valid_concept_count_limit(9)
+            .set_invalid_blocker(true);
+        let prev_data = ctx.alloc_analized_con_exp_data(prev_data);
+
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+        node.prev_sig_block_ind_expl_data = prev_data;
+        node.use_sig_block_ind_expl_data = prev_data;
+
+        let localized = node.analized_concept_expansion_data_with_context(&mut ctx, true);
+        assert!(localized.is_some());
+        assert_ne!(localized, prev_data);
+        assert_eq!(node.sig_block_ind_expl_data, localized);
+        assert_eq!(node.use_sig_block_ind_expl_data, localized);
+
+        let localized_data = ctx.analized_con_exp_data(localized);
+        assert_eq!(localized_data.get_last_concept_count(), 12);
+        assert_eq!(localized_data.get_last_concept_signature(), 44);
+        assert_eq!(localized_data.get_minimal_valid_concept_count_limit(), 9);
+        assert!(localized_data.is_invalid_blocker());
+        assert_eq!(
+            node.analized_concept_expansion_data_with_context(&mut ctx, true),
+            localized
+        );
     }
 }

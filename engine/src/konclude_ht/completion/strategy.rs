@@ -49,23 +49,24 @@
     clippy::needless_return
 )]
 
-use super::super::model::op::{
-    CCALL, CCAND, CCAQALL, CCAQAND, CCAQCHOOCE, CCAQSOME, CCATLEAST, CCATMOST, CCATOM, CCBACKACTIVIMPL,
-    CCBACKACTIVTRIG, CCBOTTOM, CCBRANCHALL, CCBRANCHAQALL, CCBRANCHAQAND, CCBRANCHIMPL,
-    CCBRANCHTRIG, CCDATALITERAL, CCDATALITERALIMPLI, CCDATARESTRICTION, CCDATARESTRICTIONIMPLI,
-    CCDATATYPE, CCDATATYPEIMPLI, CCEQ, CCIMPL, CCIMPLALL, CCIMPLAQALL, CCIMPLAQAND, CCIMPLTRIG,
-    CCNOMINAL, CCNOMINALIMPLI, CCOR, CCPBINDALL, CCPBINDAND, CCPBINDAQAND, CCPBINDCYCLE,
-    CCPBINDGROUND, CCPBINDIMPL, CCPBINDTRIG, CCPBINDVARIABLE, CCSELF, CCSOME, CCSUB, CCTOP,
-    CCVALUE, CCVARBINDALL, CCVARBINDAND, CCVARBINDAQALL, CCVARBINDAQAND, CCVARBINDFINALZE,
-    CCVARBINDGROUND, CCVARBINDIMPL, CCVARBINDJOIN, CCVARBINDPREPARE, CCVARBINDTRIG,
-    CCVARBINDVARIABLE, CCVARPBACKAQALL, CCVARPBACKAQAND, CCVARPBACKALL, CCVARPBACKTRIG,
-};
 use super::super::model::ontology::OntologyArenas;
-use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
+use super::super::model::op::{
+    CCALL, CCAND, CCAQALL, CCAQAND, CCAQCHOOCE, CCAQSOME, CCATLEAST, CCATMOST, CCATOM,
+    CCBACKACTIVIMPL, CCBACKACTIVTRIG, CCBOTTOM, CCBRANCHALL, CCBRANCHAQALL, CCBRANCHAQAND,
+    CCBRANCHIMPL, CCBRANCHTRIG, CCDATALITERAL, CCDATALITERALIMPLI, CCDATARESTRICTION,
+    CCDATARESTRICTIONIMPLI, CCDATATYPE, CCDATATYPEIMPLI, CCEQ, CCIMPL, CCIMPLALL, CCIMPLAQALL,
+    CCIMPLAQAND, CCIMPLTRIG, CCNOMINAL, CCNOMINALIMPLI, CCOR, CCPBINDALL, CCPBINDAND, CCPBINDAQAND,
+    CCPBINDCYCLE, CCPBINDGROUND, CCPBINDIMPL, CCPBINDTRIG, CCPBINDVARIABLE, CCSELF, CCSOME, CCSUB,
+    CCTOP, CCVALUE, CCVARBINDALL, CCVARBINDAND, CCVARBINDAQALL, CCVARBINDAQAND, CCVARBINDFINALZE,
+    CCVARBINDGROUND, CCVARBINDIMPL, CCVARBINDJOIN, CCVARBINDPREPARE, CCVARBINDTRIG,
+    CCVARBINDVARIABLE, CCVARPBACKALL, CCVARPBACKAQALL, CCVARPBACKAQAND, CCVARPBACKTRIG,
+};
+use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
 use super::super::model::ConceptId;
 use super::super::process::context::ProcessContext;
 use super::super::process::descriptor::ConceptProcessPriority;
 use super::super::process::node::IndividualProcessNodePriority;
+use super::super::process::queues::ConceptProcessingQueue;
 use super::super::process::{ConDescId, ConProcDescId, NodeId};
 use super::stubs::SatisfiableCalculationTask;
 
@@ -89,6 +90,7 @@ type SatCalcTaskId = Id<SatisfiableCalculationTask>;
 /// table. C++ keeps `double priorities[200]` plus the interior alias
 /// `symAccessPri = priorities + priCount/2` so signed concept op-codes index
 /// +/-100 around the array midpoint.
+#[derive(Clone)]
 pub struct ConcreteConceptProcessingOperatorPriorityStrategy {
     /// Port of `priCount` (always 200).
     pri_count: Cint64,
@@ -406,6 +408,7 @@ impl Default for ConcreteConceptProcessingOperatorPriorityStrategy {
 ///
 /// Tagged-enum dispatch supersedes the abstract base's pure virtuals; the empty
 /// abstract `.cpp` bodies contribute nothing beyond the dispatch surface.
+#[derive(Clone)]
 pub enum ConceptProcessingPriorityStrategy {
     /// Port of `CConcreteConceptProcessingOperatorPriorityStrategy`.
     ConcreteOperator(ConcreteConceptProcessingOperatorPriorityStrategy),
@@ -449,9 +452,10 @@ impl ConceptProcessingPriorityStrategy {
         individual: NodeId,
     ) -> f64 {
         match self {
-            Self::ConcreteOperator(s) => {
-                s.get_priority_offset_for_disjunction_delayed_considering(concept_descriptor, individual)
-            }
+            Self::ConcreteOperator(s) => s.get_priority_offset_for_disjunction_delayed_considering(
+                concept_descriptor,
+                individual,
+            ),
         }
     }
 
@@ -462,10 +466,17 @@ impl ConceptProcessingPriorityStrategy {
         individual: NodeId,
     ) -> f64 {
         match self {
-            Self::ConcreteOperator(s) => {
-                s.get_priority_offset_for_disjunction_delayed_processing(concept_descriptor, individual)
-            }
+            Self::ConcreteOperator(s) => s.get_priority_offset_for_disjunction_delayed_processing(
+                concept_descriptor,
+                individual,
+            ),
         }
+    }
+}
+
+impl Default for ConceptProcessingPriorityStrategy {
+    fn default() -> Self {
+        Self::new_concrete_operator()
     }
 }
 
@@ -479,6 +490,7 @@ impl ConceptProcessingPriorityStrategy {
 /// Port of `CIndividualAncestorDepthMaximumConceptProcessingPriorityStrategy`.
 ///
 /// (Filename says "ConceptProcessing" but it extends the *individual* interface.)
+#[derive(Clone)]
 pub struct IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy {
     /// Port of `mStrictIndiNodeProcessing`.
     strict_indi_node_processing: bool,
@@ -508,27 +520,23 @@ impl IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy {
     /// Port of `CIndividualAncestorDepthMaximumConceptProcessingPriorityStrategy::getPriorityForIndividual`.
     pub fn get_priority_for_individual(
         &self,
-        ctx: &ProcessContext,
+        ctx: &mut ProcessContext,
         individual: NodeId,
     ) -> IndividualProcessNodePriority {
         let mut con_priority: f64 = 0.0;
-        // W6-DEFER[api]: CConceptProcessingQueue* conProQueue =
-        //     individual->getConceptProcessingQueue(false);
-        // if (conProQueue) {
-        //     CConceptProcessPriority conProPriority;
-        //     if (conProQueue->getNextConceptProcessPriority(&conProPriority)) {
-        //         conPriority = conProPriority.getPriority();
-        //     }
-        // }
-        // The CConceptProcessingQueue satellite (a `process::stubs` marker) and its
-        // getNextConceptProcessPriority are not yet ported; the branch is preserved
-        // and con_priority stays 0.
+        let con_pro_queue = ctx.node_concept_processing_queue(individual, false);
+        if con_pro_queue.is_some() {
+            if let Some(con_pro_priority) =
+                ConceptProcessingQueue::get_next_concept_process_priority(con_pro_queue, ctx)
+            {
+                con_priority = con_pro_priority.get_priority();
+            }
+        }
 
         // double indiPriority = individual->getIndividualAncestorDepth();
         let mut indi_priority: f64 = ctx.node(individual).individual_ancestor_depth() as f64;
         if self.add_id_indi_priorization {
-            indi_priority +=
-                -1.0 / ((10 + ctx.node(individual).individual_node_id()) as f64) + 0.1;
+            indi_priority += -1.0 / ((10 + ctx.node(individual).individual_node_id()) as f64) + 0.1;
         }
         // return CIndividualProcessNodePriority(conPriority, indiPriority, mStrictIndiNodeProcessing);
         IndividualProcessNodePriority {
@@ -547,6 +555,7 @@ impl Default for IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy
 
 /// Port of the `CIndividualProcessingPriorityStrategy` interface (one concrete:
 /// `CIndividualAncestorDepthMaximumConceptProcessingPriorityStrategy`).
+#[derive(Clone)]
 pub enum IndividualProcessingPriorityStrategy {
     /// Port of `CIndividualAncestorDepthMaximumConceptProcessingPriorityStrategy`.
     AncestorDepthMaximum(IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy),
@@ -577,12 +586,18 @@ impl IndividualProcessingPriorityStrategy {
     /// Port of `CIndividualProcessingPriorityStrategy::getPriorityForIndividual` (DORMANT).
     pub fn get_priority_for_individual(
         &self,
-        ctx: &ProcessContext,
+        ctx: &mut ProcessContext,
         individual: NodeId,
     ) -> IndividualProcessNodePriority {
         match self {
             Self::AncestorDepthMaximum(s) => s.get_priority_for_individual(ctx, individual),
         }
+    }
+}
+
+impl Default for IndividualProcessingPriorityStrategy {
+    fn default() -> Self {
+        Self::new_ancestor_depth_maximum()
     }
 }
 
@@ -594,6 +609,7 @@ impl IndividualProcessingPriorityStrategy {
 ///
 /// Stateless base concrete; all four methods are `parentDepth + 1.` with small
 /// `+0.1` / `-branchNumber/(10*maxBranchCount)` tweaks.
+#[derive(Clone)]
 pub struct EqualDepthTaskProcessingPriorityStrategy;
 
 impl EqualDepthTaskProcessingPriorityStrategy {
@@ -605,6 +621,7 @@ impl EqualDepthTaskProcessingPriorityStrategy {
     /// Port of `CEqualDepthTaskProcessingPriorityStrategy::getPriorityForTaskBranching`.
     pub fn get_priority_for_task_branching(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         ctx: &ProcessContext,
         onto: &OntologyArenas,
         branching_task: SatCalcTaskId,
@@ -615,35 +632,29 @@ impl EqualDepthTaskProcessingPriorityStrategy {
         branch_number: Cint64,
         branch_stats: Cint64,
     ) -> f64 {
-        // W6-DEFER[api]: double parentDepth = parentTask->getTaskDepth();
-        let parent_depth: f64 = 0.0;
-        let mut priority: f64 = 0.0;
+        let parent_depth = task_arena.get(parent_task).base.get_task_depth() as f64;
         // double maxBranchCount = branchingConcept->getConcept()->getOperandCount();
         let max_branch_count: f64 = onto
             .concept(ctx.con_desc(branching_concept).get_concept())
             .get_operand_count() as f64;
-        // W6-DEFER[api]: double parentPriority = parentTask->getTaskPriority();
-        let parent_priority: f64 = 0.0;
+        let _parent_priority = task_arena.get(parent_task).base.get_task_priority();
         // priority = parentDepth + 1. + (0.1 - branchNumber / ((1+parentDepth) * 10 * maxBranchCount));
-        priority = parent_depth
+        parent_depth
             + 1.0
-            + (0.1 - branch_number as f64 / (10.0 * max_branch_count));
-        priority
+            + (0.1 - branch_number as f64 / ((1.0 + parent_depth) * 10.0 * max_branch_count))
     }
 
     /// Port of `CEqualDepthTaskProcessingPriorityStrategy::getPriorityForTaskQualifing`.
     pub fn get_priority_for_task_qualifing(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         branching_task: SatCalcTaskId,
         parent_task: SatCalcTaskId,
         qualifing_negated: bool,
     ) -> f64 {
-        // W6-DEFER[api]: double parentDepth = parentTask->getTaskDepth();
-        let parent_depth: f64 = 0.0;
-        let mut priority: f64 = 0.0;
-        // W6-DEFER[api]: double parentPriority = parentTask->getTaskPriority();
-        let parent_priority: f64 = 0.0;
-        priority = parent_depth + 1.0;
+        let parent_depth = task_arena.get(parent_task).base.get_task_depth() as f64;
+        let _parent_priority = task_arena.get(parent_task).base.get_task_priority();
+        let mut priority = parent_depth + 1.0;
         if qualifing_negated {
             priority += 0.1;
         }
@@ -653,31 +664,26 @@ impl EqualDepthTaskProcessingPriorityStrategy {
     /// Port of `CEqualDepthTaskProcessingPriorityStrategy::getPriorityForTaskMerging`.
     pub fn get_priority_for_task_merging(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         branching_task: SatCalcTaskId,
         parent_task: SatCalcTaskId,
     ) -> f64 {
-        // W6-DEFER[api]: double parentDepth = parentTask->getTaskDepth();
-        let parent_depth: f64 = 0.0;
-        let mut priority: f64 = 0.0;
-        // W6-DEFER[api]: double parentPriority = parentTask->getTaskPriority();
-        let parent_priority: f64 = 0.0;
-        priority = parent_depth + 1.0;
-        priority
+        let parent_depth = task_arena.get(parent_task).base.get_task_depth() as f64;
+        let _parent_priority = task_arena.get(parent_task).base.get_task_priority();
+        parent_depth + 1.0
     }
 
     /// Port of `CEqualDepthTaskProcessingPriorityStrategy::getPriorityForTaskReusing`.
     pub fn get_priority_for_task_reusing(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         branching_task: SatCalcTaskId,
         parent_task: SatCalcTaskId,
         reusing_alternative: bool,
     ) -> f64 {
-        // W6-DEFER[api]: double parentDepth = parentTask->getTaskDepth();
-        let parent_depth: f64 = 0.0;
-        let mut priority: f64 = 0.0;
-        // W6-DEFER[api]: double parentPriority = parentTask->getTaskPriority();
-        let parent_priority: f64 = 0.0;
-        priority = parent_depth + 1.0;
+        let parent_depth = task_arena.get(parent_task).base.get_task_depth() as f64;
+        let _parent_priority = task_arena.get(parent_task).base.get_task_priority();
+        let mut priority = parent_depth + 1.0;
         if reusing_alternative {
             priority += 0.1;
         }
@@ -697,6 +703,7 @@ impl Default for EqualDepthTaskProcessingPriorityStrategy {
 /// `getPriorityForTaskBranching` (a completion-graph-cache hit check + a
 /// branch-statistics learning offset). The other three task methods are
 /// inherited (dispatched to the base in the enum).
+#[derive(Clone)]
 pub struct EqualDepthCacheOrientatedProcessingPriorityStrategy;
 
 impl EqualDepthCacheOrientatedProcessingPriorityStrategy {
@@ -708,6 +715,7 @@ impl EqualDepthCacheOrientatedProcessingPriorityStrategy {
     /// Port of `CEqualDepthCacheOrientatedProcessingPriorityStrategy::getPriorityForTaskBranching`.
     pub fn get_priority_for_task_branching(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         ctx: &ProcessContext,
         onto: &OntologyArenas,
         branching_task: SatCalcTaskId,
@@ -718,15 +726,12 @@ impl EqualDepthCacheOrientatedProcessingPriorityStrategy {
         branch_number: Cint64,
         branch_stats: Cint64,
     ) -> f64 {
-        // W6-DEFER[api]: double parentDepth = parentTask->getTaskDepth();
-        let parent_depth: f64 = 0.0;
-        let mut priority: f64 = 0.0;
+        let parent_depth = task_arena.get(parent_task).base.get_task_depth() as f64;
         // double maxBranchCount = branchingConcept->getConcept()->getOperandCount();
         let max_branch_count: f64 = onto
             .concept(ctx.con_desc(branching_concept).get_concept())
             .get_operand_count() as f64;
-        // W6-DEFER[api]: double parentPriority = parentTask->getTaskPriority();
-        let parent_priority: f64 = 0.0;
+        let _parent_priority = task_arena.get(parent_task).base.get_task_priority();
 
         let mut disjunct_cached = false;
 
@@ -781,8 +786,9 @@ impl EqualDepthCacheOrientatedProcessingPriorityStrategy {
             }
             let mut clash_factor = 0.0;
             if expanded_count != 0 {
-                clash_factor =
-                    (clash_count as f64 / expanded_count as f64).min(1.0).max(0.0);
+                clash_factor = (clash_count as f64 / expanded_count as f64)
+                    .min(1.0)
+                    .max(0.0);
             } else if clash_count != 0 {
                 clash_factor = 1.0 / (clash_count as f64 * 10.0);
             }
@@ -800,8 +806,7 @@ impl EqualDepthCacheOrientatedProcessingPriorityStrategy {
             }
         }
 
-        priority = parent_depth + 1.0 + priority_sub_offset + learning_offset + branch_offset;
-        priority
+        parent_depth + 1.0 + priority_sub_offset + learning_offset + branch_offset
     }
 }
 
@@ -818,6 +823,7 @@ impl Default for EqualDepthCacheOrientatedProcessingPriorityStrategy {
 /// The engine constructs the cache-orientated concrete
 /// (`mTaskProcessingStrategy = new CEqualDepthCacheOrientatedProcessingPriorityStrategy()`;
 /// the plain `CEqualDepthTask…` ctor line is commented out).
+#[derive(Clone)]
 pub enum TaskProcessingPriorityStrategy {
     /// Port of `CEqualDepthTaskProcessingPriorityStrategy`.
     EqualDepth(EqualDepthTaskProcessingPriorityStrategy),
@@ -836,6 +842,7 @@ impl TaskProcessingPriorityStrategy {
     /// Port of `CTaskProcessingPriorityStrategy::getPriorityForTaskBranching`.
     pub fn get_priority_for_task_branching(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         ctx: &ProcessContext,
         onto: &OntologyArenas,
         branching_task: SatCalcTaskId,
@@ -848,6 +855,7 @@ impl TaskProcessingPriorityStrategy {
     ) -> f64 {
         match self {
             Self::EqualDepth(s) => s.get_priority_for_task_branching(
+                task_arena,
                 ctx,
                 onto,
                 branching_task,
@@ -859,6 +867,7 @@ impl TaskProcessingPriorityStrategy {
                 branch_stats,
             ),
             Self::EqualDepthCacheOrientated(s) => s.get_priority_for_task_branching(
+                task_arena,
                 ctx,
                 onto,
                 branching_task,
@@ -875,49 +884,267 @@ impl TaskProcessingPriorityStrategy {
     /// Port of `CTaskProcessingPriorityStrategy::getPriorityForTaskQualifing`.
     pub fn get_priority_for_task_qualifing(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         branching_task: SatCalcTaskId,
         parent_task: SatCalcTaskId,
         qualifing_negated: bool,
     ) -> f64 {
         match self {
-            Self::EqualDepth(s) => {
-                s.get_priority_for_task_qualifing(branching_task, parent_task, qualifing_negated)
-            }
+            Self::EqualDepth(s) => s.get_priority_for_task_qualifing(
+                task_arena,
+                branching_task,
+                parent_task,
+                qualifing_negated,
+            ),
             // INHERITED from CEqualDepthTaskProcessingPriorityStrategy.
             Self::EqualDepthCacheOrientated(_) => EqualDepthTaskProcessingPriorityStrategy
-                .get_priority_for_task_qualifing(branching_task, parent_task, qualifing_negated),
+                .get_priority_for_task_qualifing(
+                    task_arena,
+                    branching_task,
+                    parent_task,
+                    qualifing_negated,
+                ),
         }
     }
 
     /// Port of `CTaskProcessingPriorityStrategy::getPriorityForTaskMerging`.
     pub fn get_priority_for_task_merging(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         branching_task: SatCalcTaskId,
         parent_task: SatCalcTaskId,
     ) -> f64 {
         match self {
-            Self::EqualDepth(s) => s.get_priority_for_task_merging(branching_task, parent_task),
+            Self::EqualDepth(s) => {
+                s.get_priority_for_task_merging(task_arena, branching_task, parent_task)
+            }
             // INHERITED from CEqualDepthTaskProcessingPriorityStrategy.
             Self::EqualDepthCacheOrientated(_) => EqualDepthTaskProcessingPriorityStrategy
-                .get_priority_for_task_merging(branching_task, parent_task),
+                .get_priority_for_task_merging(task_arena, branching_task, parent_task),
         }
     }
 
     /// Port of `CTaskProcessingPriorityStrategy::getPriorityForTaskReusing`.
     pub fn get_priority_for_task_reusing(
         &self,
+        task_arena: &Arena<SatisfiableCalculationTask>,
         branching_task: SatCalcTaskId,
         parent_task: SatCalcTaskId,
         reusing_alternative: bool,
     ) -> f64 {
         match self {
-            Self::EqualDepth(s) => {
-                s.get_priority_for_task_reusing(branching_task, parent_task, reusing_alternative)
-            }
+            Self::EqualDepth(s) => s.get_priority_for_task_reusing(
+                task_arena,
+                branching_task,
+                parent_task,
+                reusing_alternative,
+            ),
             // INHERITED from CEqualDepthTaskProcessingPriorityStrategy.
             Self::EqualDepthCacheOrientated(_) => EqualDepthTaskProcessingPriorityStrategy
-                .get_priority_for_task_reusing(branching_task, parent_task, reusing_alternative),
+                .get_priority_for_task_reusing(
+                    task_arena,
+                    branching_task,
+                    parent_task,
+                    reusing_alternative,
+                ),
         }
+    }
+}
+
+impl Default for TaskProcessingPriorityStrategy {
+    fn default() -> Self {
+        Self::new_equal_depth_cache_orientated()
+    }
+}
+
+#[cfg(test)]
+mod individual_priority_tests {
+    use super::super::super::process::descriptor::{ConceptDescriptor, ConceptProcessDescriptor};
+    use super::super::super::process::node::IndividualProcessNode;
+    use super::super::super::process::queues::ConceptProcessingQueue;
+    use super::*;
+
+    fn node_with_queue(ctx: &mut ProcessContext, indi_id: Cint64, depth: Cint64) -> NodeId {
+        let node = ctx.alloc_node(IndividualProcessNode::new(Id::NONE));
+        ctx.node_mut(node)
+            .set_individual_node_id(indi_id)
+            .set_individual_ancestor_depth(depth);
+        node
+    }
+
+    fn insert_priority(ctx: &mut ProcessContext, node: NodeId, priority: f64) {
+        let queue = ctx.node_concept_processing_queue(node, true);
+        let con_desc = ctx.alloc_con_desc(ConceptDescriptor::new());
+        let mut cpd = ConceptProcessDescriptor::new();
+        cpd.concept_des = con_desc;
+        cpd.priority = ConceptProcessPriority::new(priority);
+        let cpd = ctx.alloc_con_proc_desc(cpd);
+        ConceptProcessingQueue::insert_concept_process_descriptor(queue, cpd, ctx);
+    }
+
+    #[test]
+    fn individual_priority_uses_ancestor_depth_and_empty_concept_queue_default() {
+        let mut ctx = ProcessContext::new();
+        let node = node_with_queue(&mut ctx, 7, 4);
+        let strategy = IndividualProcessingPriorityStrategy::new_ancestor_depth_maximum();
+
+        let priority = strategy.get_priority_for_individual(&mut ctx, node);
+
+        assert_eq!(priority.get_concept_priority(), 0.0);
+        assert_eq!(priority.get_individual_priority(), 4.0);
+        assert!(!priority.strict_order);
+    }
+
+    #[test]
+    fn individual_priority_reads_next_concept_process_priority_and_id_offset() {
+        let mut ctx = ProcessContext::new();
+        let node = node_with_queue(&mut ctx, 5, 3);
+        insert_priority(&mut ctx, node, 6.0);
+        insert_priority(&mut ctx, node, 9.0);
+        let mut strategy = IndividualProcessingPriorityStrategy::new_ancestor_depth_maximum();
+        strategy.configure_strategy(true, true);
+
+        let priority = strategy.get_priority_for_individual(&mut ctx, node);
+        let expected_individual = 3.0 + (-1.0 / 15.0) + 0.1;
+
+        assert_eq!(priority.get_concept_priority(), 9.0);
+        assert!((priority.get_individual_priority() - expected_individual).abs() < f64::EPSILON);
+        assert!(priority.strict_order);
+    }
+
+    #[test]
+    fn individual_process_node_priority_matches_konclude_null_and_ordering() {
+        let mut priority = IndividualProcessNodePriority {
+            priority_con: 2.0,
+            priority_ind: 3.0,
+            strict_order: false,
+        };
+        assert!(!priority.is_null_priority());
+        priority.set_priority_to_null();
+        assert!(priority.is_null_priority());
+        assert!(priority.strict_order);
+
+        let strict_low = IndividualProcessNodePriority {
+            priority_con: 99.0,
+            priority_ind: 1.0,
+            strict_order: true,
+        };
+        let strict_high = IndividualProcessNodePriority {
+            priority_con: 1.0,
+            priority_ind: 2.0,
+            strict_order: true,
+        };
+        assert!(strict_low.lt_priority(&strict_high));
+        assert!(strict_high.gt_priority(&strict_low));
+
+        let loose_high_con = IndividualProcessNodePriority {
+            priority_con: 9.0,
+            priority_ind: 1.0,
+            strict_order: false,
+        };
+        let loose_low_con = IndividualProcessNodePriority {
+            priority_con: 4.0,
+            priority_ind: 99.0,
+            strict_order: false,
+        };
+        assert!(loose_high_con.lt_priority(&loose_low_con));
+        assert!(loose_low_con.gt_priority(&loose_high_con));
+        assert!(loose_high_con.le_priority(&loose_low_con));
+        assert!(loose_low_con.ge_priority(&loose_high_con));
+    }
+}
+
+#[cfg(test)]
+mod task_priority_tests {
+    use super::super::super::model::concept::Concept;
+    use super::super::super::process::descriptor::ConceptDescriptor;
+    use super::*;
+
+    fn task_arena_with_parent(
+        depth: Cint64,
+        priority: f64,
+    ) -> (
+        Arena<SatisfiableCalculationTask>,
+        SatCalcTaskId,
+        SatCalcTaskId,
+    ) {
+        let mut arena = Arena::new();
+        let parent = arena.push(SatisfiableCalculationTask::new());
+        arena.get_mut(parent).base.set_task_depth(depth);
+        arena.get_mut(parent).base.set_task_priority(priority);
+        let child = arena.push(SatisfiableCalculationTask::new());
+        (arena, parent, child)
+    }
+
+    #[test]
+    fn equal_depth_task_priorities_read_parent_task_depth() {
+        let (arena, parent, child) = task_arena_with_parent(4, 17.0);
+        let strategy = EqualDepthTaskProcessingPriorityStrategy::new();
+
+        assert_eq!(
+            strategy.get_priority_for_task_qualifing(&arena, child, parent, false),
+            5.0
+        );
+        assert_eq!(
+            strategy.get_priority_for_task_qualifing(&arena, child, parent, true),
+            5.1
+        );
+        assert_eq!(
+            strategy.get_priority_for_task_merging(&arena, child, parent),
+            5.0
+        );
+        assert_eq!(
+            strategy.get_priority_for_task_reusing(&arena, child, parent, true),
+            5.1
+        );
+    }
+
+    #[test]
+    fn equal_depth_branching_priority_uses_parent_depth_denominator() {
+        let (arena, parent, child) = task_arena_with_parent(4, 17.0);
+        let mut ctx = ProcessContext::new();
+        let mut onto = OntologyArenas::new();
+        let mut concept = Concept::new();
+        concept.set_operand_count(4);
+        let concept_id = onto.alloc_concept(concept);
+        let mut con_desc = ConceptDescriptor::new();
+        con_desc.concept = concept_id;
+        let con_desc = ctx.alloc_con_desc(con_desc);
+
+        let priority = EqualDepthTaskProcessingPriorityStrategy::new()
+            .get_priority_for_task_branching(
+                &arena,
+                &ctx,
+                &onto,
+                child,
+                parent,
+                NodeId::NONE,
+                con_desc,
+                NegLink {
+                    target: concept_id,
+                    negated: false,
+                },
+                2,
+                INVALID,
+            );
+
+        let expected = 4.0 + 1.0 + (0.1 - 2.0 / ((1.0 + 4.0) * 10.0 * 4.0));
+        assert!((priority - expected).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn cache_oriented_task_strategy_inherits_parent_depth_methods() {
+        let (arena, parent, child) = task_arena_with_parent(3, 11.0);
+        let strategy = TaskProcessingPriorityStrategy::new_equal_depth_cache_orientated();
+
+        assert_eq!(
+            strategy.get_priority_for_task_merging(&arena, child, parent),
+            4.0
+        );
+        assert_eq!(
+            strategy.get_priority_for_task_reusing(&arena, child, parent, true),
+            4.1
+        );
     }
 }
 
@@ -929,6 +1156,7 @@ impl TaskProcessingPriorityStrategy {
 ///
 /// Trivial policy: `testUnsatisfiableCacheForProcessing` -> `false`, the other
 /// six -> `true`. Stateless.
+#[derive(Clone)]
 pub struct GenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy;
 
 impl GenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy {
@@ -1016,6 +1244,7 @@ impl Default for GenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy {
 
 /// Port of the `CUnsatisfiableCacheRetrievalStrategy` interface (one concrete:
 /// `CGenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy`).
+#[derive(Clone)]
 pub enum UnsatisfiableCacheRetrievalStrategy {
     /// Port of `CGenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy`.
     GenerativeNonDeterministic(GenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy),
@@ -1051,9 +1280,12 @@ impl UnsatisfiableCacheRetrievalStrategy {
         disjunct_list: Cint64,
     ) -> bool {
         match self {
-            Self::GenerativeNonDeterministic(s) => {
-                s.test_unsatisfiable_cache_for_disjunction_branching(con_pro_des, indi, disjunct_list)
-            }
+            Self::GenerativeNonDeterministic(s) => s
+                .test_unsatisfiable_cache_for_disjunction_branching(
+                    con_pro_des,
+                    indi,
+                    disjunct_list,
+                ),
         }
     }
 
@@ -1091,9 +1323,12 @@ impl UnsatisfiableCacheRetrievalStrategy {
         or_disjunct_concept: NegLink<ConceptId>,
     ) -> bool {
         match self {
-            Self::GenerativeNonDeterministic(s) => {
-                s.test_unsatisfiable_cache_for_branched_disjuncts(con_pro_des, indi, or_disjunct_concept)
-            }
+            Self::GenerativeNonDeterministic(s) => s
+                .test_unsatisfiable_cache_for_branched_disjuncts(
+                    con_pro_des,
+                    indi,
+                    or_disjunct_concept,
+                ),
         }
     }
 
@@ -1105,9 +1340,12 @@ impl UnsatisfiableCacheRetrievalStrategy {
         merged_indi: NodeId,
     ) -> bool {
         match self {
-            Self::GenerativeNonDeterministic(s) => {
-                s.test_unsatisfiable_cache_for_merged_individual_nodes(con_pro_des, indi, merged_indi)
-            }
+            Self::GenerativeNonDeterministic(s) => s
+                .test_unsatisfiable_cache_for_merged_individual_nodes(
+                    con_pro_des,
+                    indi,
+                    merged_indi,
+                ),
         }
     }
 
@@ -1119,9 +1357,43 @@ impl UnsatisfiableCacheRetrievalStrategy {
         merged_indi: NodeId,
     ) -> bool {
         match self {
-            Self::GenerativeNonDeterministic(s) => {
-                s.test_unsatisfiable_cache_for_qualified_individual_nodes(con_pro_des, indi, merged_indi)
-            }
+            Self::GenerativeNonDeterministic(s) => s
+                .test_unsatisfiable_cache_for_qualified_individual_nodes(
+                    con_pro_des,
+                    indi,
+                    merged_indi,
+                ),
         }
+    }
+}
+
+impl Default for UnsatisfiableCacheRetrievalStrategy {
+    fn default() -> Self {
+        Self::new_generative_non_deterministic()
+    }
+}
+
+#[cfg(test)]
+mod unsat_cache_retrieval_strategy_tests {
+    use super::*;
+
+    #[test]
+    fn generative_non_deterministic_strategy_matches_konclude_truth_table() {
+        let strategy = UnsatisfiableCacheRetrievalStrategy::new_generative_non_deterministic();
+        let con = ConProcDescId::NONE;
+        let indi = NodeId::NONE;
+        let other = NodeId::NONE;
+        let disjunct = NegLink {
+            target: ConceptId::NONE,
+            negated: false,
+        };
+
+        assert!(!strategy.test_unsatisfiable_cache_for_processing(con, indi));
+        assert!(strategy.test_unsatisfiable_cache_for_disjunction_branching(con, indi, INVALID));
+        assert!(strategy.test_unsatisfiable_cache_for_merging_initialization(con, indi));
+        assert!(strategy.test_unsatisfiable_cache_for_successor_generation(con, indi));
+        assert!(strategy.test_unsatisfiable_cache_for_branched_disjuncts(con, indi, disjunct));
+        assert!(strategy.test_unsatisfiable_cache_for_merged_individual_nodes(con, indi, other));
+        assert!(strategy.test_unsatisfiable_cache_for_qualified_individual_nodes(con, indi, other));
     }
 }

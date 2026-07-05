@@ -28,17 +28,17 @@
 //!     `Shared{ prev_id, Additional }`;
 //!   - `prev.additional == Shared(a)`→ self copies the same alias `a`.
 //!
-//! KONCLUDE-PORT-NOTE[ownership][unclear]: dereferencing a `Shared` alias needs the
-//! label-set arena (to follow `LabelSetId` into another node's map). No such arena
-//! is threaded into LS-1 yet, so every *read through a Shared alias* (its `size()`,
-//! `value()`, `tryGetValuePointer()`, content-clone) is a `// W2-DEFER[api]` stub.
-//! `Null` and `Owned` are handled locally and exactly. This is the residual
-//! [unclear] alias-target encoding flagged in `satellites.rs`.
+//! KONCLUDE-PORT-NOTE[ownership]: dereferencing a `Shared` alias needs the
+//! label-set arena (to follow `LabelSetId` into another node's map). The legacy
+//! standalone methods remain arena-free for existing callers, while the
+//! `_in_context` LS-1 variants below follow shared aliases through
+//! `ProcessContext`, matching the C++ raw-map pointer reads.
 
 #![allow(dead_code)]
 
 use std::collections::HashMap;
 
+use super::super::model::ontology::OntologyArenas;
 use super::super::model::substrate::Cint64;
 use super::super::model::ConceptId;
 use super::context::ProcessContext;
@@ -46,7 +46,7 @@ use super::reapply_sat::{LabelSetMapEntry, ReapplyConceptLabelSetIterator};
 use super::satellites::{
     AdditionalDesDepMapRef, AdditionalMapSlot, ConceptDescriptorDependencyReapplyData,
     ConceptSetFlags, ConceptSetSignature, ConceptSetStructure, CondensedReapplyQueue,
-    LabelSetMapAlias, ReapplyConceptLabelSet,
+    CoreConceptDescriptorId, LabelSetMapAlias, ReapplyConceptLabelSet,
 };
 use super::{ClashDescId, ConDescId, LabelSetId, TrackPointId};
 
@@ -104,10 +104,37 @@ impl ReapplyConceptLabelSet {
     fn con_des_dep_track_point(_con_des: ConDescId) -> TrackPointId {
         TrackPointId::NONE
     }
-    /// W2-DEFER[api]: `CCondensedReapplyQueue::isEmpty` (queue payload not ported).
     #[inline]
-    fn queue_is_empty(_q: &CondensedReapplyQueue) -> bool {
-        true
+    fn concept_tag_in_ontology(onto: &OntologyArenas, concept: ConceptId) -> Cint64 {
+        onto.concept(concept).get_concept_tag()
+    }
+    #[inline]
+    fn con_des_tag_in_context(
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        con_des: ConDescId,
+    ) -> Cint64 {
+        ctx.con_desc(con_des).get_concept_tag(onto)
+    }
+    #[inline]
+    fn con_des_concept_in_context(ctx: &ProcessContext, con_des: ConDescId) -> ConceptId {
+        ctx.con_desc(con_des).get_concept()
+    }
+    #[inline]
+    fn con_des_negated_in_context(ctx: &ProcessContext, con_des: ConDescId) -> bool {
+        ctx.con_desc(con_des).is_negated()
+    }
+    #[inline]
+    fn con_des_dep_track_point_in_context(
+        ctx: &ProcessContext,
+        con_des: ConDescId,
+    ) -> TrackPointId {
+        ctx.con_desc(con_des).get_dependency_track_point()
+    }
+    /// Port of `CCondensedReapplyQueue::isEmpty`.
+    #[inline]
+    fn queue_is_empty(q: &CondensedReapplyQueue) -> bool {
+        q.is_empty()
     }
 
     // =======================================================================
@@ -120,7 +147,9 @@ impl ReapplyConceptLabelSet {
     /// done field-by-field here. The descriptor id is `Copy`; the queue payload
     /// deep-copy is `// W2-DEFER[api]` (the placeholder carries no state yet).
     #[inline]
-    fn clone_data(d: &ConceptDescriptorDependencyReapplyData) -> ConceptDescriptorDependencyReapplyData {
+    fn clone_data(
+        d: &ConceptDescriptorDependencyReapplyData,
+    ) -> ConceptDescriptorDependencyReapplyData {
         ConceptDescriptorDependencyReapplyData {
             concept_descriptor: d.concept_descriptor,
             // u15: the queue is a value member sharing its chain head (the C++
@@ -136,28 +165,65 @@ impl ReapplyConceptLabelSet {
         m.iter().map(|(k, v)| (*k, Self::clone_data(v))).collect()
     }
 
+    fn additional_alias_map_in_context<'a>(
+        ctx: &'a ProcessContext,
+        alias: LabelSetMapAlias,
+    ) -> Option<&'a HashMap<Cint64, ConceptDescriptorDependencyReapplyData>> {
+        let label_set = ctx.label_set(alias.label_set);
+        match alias.which {
+            AdditionalMapSlot::Main => Some(&label_set.concept_des_dep_map),
+            AdditionalMapSlot::Additional => match &label_set.additional_concept_des_dep_map {
+                AdditionalDesDepMapRef::Null => None,
+                AdditionalDesDepMapRef::Owned(m) => Some(m),
+                AdditionalDesDepMapRef::Shared(next_alias) => {
+                    Self::additional_alias_map_in_context(ctx, *next_alias)
+                }
+            },
+        }
+    }
+
     /// `mAdditionalConceptDesDepMap != nullptr`.
     #[inline]
     fn additional_is_present(&self) -> bool {
-        !matches!(self.additional_concept_des_dep_map, AdditionalDesDepMapRef::Null)
+        !matches!(
+            self.additional_concept_des_dep_map,
+            AdditionalDesDepMapRef::Null
+        )
     }
 
-    /// `mAdditionalConceptDesDepMap->size()`. Exact for `Owned`; `Shared` is
-    /// `// W2-DEFER[api]` (needs the label-set arena to follow the alias).
+    /// `mAdditionalConceptDesDepMap->size()` for legacy arena-free callers.
+    /// Context-threaded callers use `additional_size_in_context` to follow
+    /// `Shared` aliases through the label-set arena.
     #[inline]
     fn additional_size(&self) -> usize {
         match &self.additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Null => 0,
             AdditionalDesDepMapRef::Owned(m) => m.len(),
-            // W2-DEFER[api][unclear]: size of the aliased label-set map.
+            // Arena-free fallback; see `additional_size_in_context`.
             AdditionalDesDepMapRef::Shared(_) => 0,
+        }
+    }
+
+    /// Context-threaded `mAdditionalConceptDesDepMap->size()`, following `Shared`
+    /// aliases through the label-set arena like the C++ raw map pointer.
+    #[inline]
+    fn additional_size_in_context(&self, ctx: &ProcessContext) -> usize {
+        match &self.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Null => 0,
+            AdditionalDesDepMapRef::Owned(m) => m.len(),
+            AdditionalDesDepMapRef::Shared(alias) => {
+                Self::additional_alias_map_in_context(ctx, *alias).map_or(0, |m| m.len())
+            }
         }
     }
 
     /// `mAdditionalConceptDesDepMap->tryGetValuePointer(conTag, …)` (read borrow).
     /// `Owned` → the entry; `Null`/`Shared` → `None` (`Shared` is `// W2-DEFER[api]`).
     #[inline]
-    fn additional_get_ref(&self, con_tag: Cint64) -> Option<&ConceptDescriptorDependencyReapplyData> {
+    fn additional_get_ref(
+        &self,
+        con_tag: Cint64,
+    ) -> Option<&ConceptDescriptorDependencyReapplyData> {
         match &self.additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Null => None,
             AdditionalDesDepMapRef::Owned(m) => m.get(&con_tag),
@@ -166,16 +232,54 @@ impl ReapplyConceptLabelSet {
         }
     }
 
-    /// `mAdditionalConceptDesDepMap->value(conTag)` cloned out of the borrow (so a
-    /// `&mut` into `mConceptDesDepMap` can be taken afterwards). `Owned` → a clone
-    /// of the entry; `Null`/`Shared` → `None` (`Shared` is `// W2-DEFER[api]`).
+    /// Context-threaded `mAdditionalConceptDesDepMap->tryGetValuePointer(conTag, ...)`.
     #[inline]
-    fn additional_get_cloned(&self, con_tag: Cint64) -> Option<ConceptDescriptorDependencyReapplyData> {
+    fn additional_get_ref_in_context<'a>(
+        &'a self,
+        ctx: &'a ProcessContext,
+        con_tag: Cint64,
+    ) -> Option<&'a ConceptDescriptorDependencyReapplyData> {
+        match &self.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Null => None,
+            AdditionalDesDepMapRef::Owned(m) => m.get(&con_tag),
+            AdditionalDesDepMapRef::Shared(alias) => {
+                Self::additional_alias_map_in_context(ctx, *alias).and_then(|m| m.get(&con_tag))
+            }
+        }
+    }
+
+    /// `mAdditionalConceptDesDepMap->value(conTag)` cloned out of the borrow (so a
+    /// `&mut` into `mConceptDesDepMap` can be taken afterwards) for legacy
+    /// arena-free callers. Context-threaded callers use
+    /// `additional_get_cloned_in_context`.
+    #[inline]
+    fn additional_get_cloned(
+        &self,
+        con_tag: Cint64,
+    ) -> Option<ConceptDescriptorDependencyReapplyData> {
         match &self.additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Null => None,
             AdditionalDesDepMapRef::Owned(m) => m.get(&con_tag).map(Self::clone_data),
-            // W2-DEFER[api][unclear]: clone the aliased label-set entry.
+            // Arena-free fallback; see `additional_get_cloned_in_context`.
             AdditionalDesDepMapRef::Shared(_) => None,
+        }
+    }
+
+    /// Context-threaded `mAdditionalConceptDesDepMap->value(conTag)`, cloned out
+    /// so callers can subsequently mutate the main map.
+    #[inline]
+    fn additional_get_cloned_in_context(
+        &self,
+        ctx: &ProcessContext,
+        con_tag: Cint64,
+    ) -> Option<ConceptDescriptorDependencyReapplyData> {
+        match &self.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Null => None,
+            AdditionalDesDepMapRef::Owned(m) => m.get(&con_tag).map(Self::clone_data),
+            AdditionalDesDepMapRef::Shared(alias) => {
+                Self::additional_alias_map_in_context(ctx, *alias)
+                    .and_then(|m| m.get(&con_tag).map(Self::clone_data))
+            }
         }
     }
 
@@ -183,7 +287,10 @@ impl ReapplyConceptLabelSet {
     /// (the C++ bare-pointer copy) into the port's tri-state, exactly. See module
     /// doc for the three cases.
     #[inline]
-    fn copy_additional_ref(prev_id: LabelSetId, prev: &ReapplyConceptLabelSet) -> AdditionalDesDepMapRef {
+    fn copy_additional_ref(
+        prev_id: LabelSetId,
+        prev: &ReapplyConceptLabelSet,
+    ) -> AdditionalDesDepMapRef {
         match &prev.additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Null => AdditionalDesDepMapRef::Null,
             // prev owns the overflow map; aliasing prev's pointer = pointing at
@@ -198,17 +305,58 @@ impl ReapplyConceptLabelSet {
     }
 
     /// Clone the contents of the map `ls.mAdditionalConceptDesDepMap` points at
-    /// (the `*newMap = *prev->mAdditionalConceptDesDepMap;` step). `Owned` is
-    /// exact; `Shared` is `// W2-DEFER[api]`; `Null` is unreachable at the call site.
+    /// (the `*newMap = *prev->mAdditionalConceptDesDepMap;` step) for legacy
+    /// arena-free callers. Context-threaded callers use
+    /// `clone_additional_contents_in_context`.
     fn clone_additional_contents(
         ls: &ReapplyConceptLabelSet,
     ) -> HashMap<Cint64, ConceptDescriptorDependencyReapplyData> {
         match &ls.additional_concept_des_dep_map {
             AdditionalDesDepMapRef::Null => HashMap::new(),
             AdditionalDesDepMapRef::Owned(m) => Self::clone_map(m),
-            // W2-DEFER[api][unclear]: clone the aliased label-set map's contents.
+            // Arena-free fallback; see `clone_additional_contents_in_context`.
             AdditionalDesDepMapRef::Shared(_) => HashMap::new(),
         }
+    }
+
+    fn clone_additional_contents_in_context(
+        ctx: &ProcessContext,
+        ls: &ReapplyConceptLabelSet,
+    ) -> HashMap<Cint64, ConceptDescriptorDependencyReapplyData> {
+        match &ls.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Null => HashMap::new(),
+            AdditionalDesDepMapRef::Owned(m) => Self::clone_map(m),
+            AdditionalDesDepMapRef::Shared(alias) => {
+                Self::additional_alias_map_in_context(ctx, *alias)
+                    .map_or_else(HashMap::new, Self::clone_map)
+            }
+        }
+    }
+
+    /// Port-facing helper for `mConceptSignature.addConceptSignature(conceptDescriptor)`.
+    #[inline]
+    fn add_concept_descriptor_signature(&mut self, concept_descriptor: ConDescId) {
+        let concept = Self::con_des_concept(concept_descriptor);
+        let con_tag = Self::con_des_tag(concept_descriptor);
+        let negated = Self::con_des_negated(concept_descriptor);
+        self.concept_signature
+            .add_concept_signature(concept, con_tag, negated);
+    }
+
+    /// Context-threaded helper for
+    /// `mConceptSignature.addConceptSignature(conceptDescriptor)`.
+    #[inline]
+    fn add_concept_descriptor_signature_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+    ) {
+        let concept = Self::con_des_concept_in_context(ctx, concept_descriptor);
+        let con_tag = Self::con_des_tag_in_context(ctx, onto, concept_descriptor);
+        let negated = Self::con_des_negated_in_context(ctx, concept_descriptor);
+        self.concept_signature
+            .add_concept_signature(concept, con_tag, negated);
     }
 
     // =======================================================================
@@ -270,19 +418,18 @@ impl ReapplyConceptLabelSet {
                 } else {
                     // alias prev's MAIN map (line 84:
                     // `mAdditionalConceptDesDepMap = &prev->mConceptDesDepMap;`).
-                    self.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
-                        label_set: prev_id,
-                        which: AdditionalMapSlot::Main,
-                    });
+                    self.additional_concept_des_dep_map =
+                        AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+                            label_set: prev_id,
+                            which: AdditionalMapSlot::Main,
+                        });
                 }
             }
             // lines 87–90.
             // W2-DEFER[api]: `mConceptFlags`/`mConceptStructure` are fieldless
             // placeholders; copy is trivial today and lands fully with the types.
             self.concept_flags = ConceptSetFlags::default();
-            self.concept_signature = ConceptSetSignature {
-                signature_value: prev.concept_signature.signature_value,
-            };
+            self.concept_signature = prev.concept_signature;
             self.core_con_des_linker = prev.core_con_des_linker;
             self.concept_structure = ConceptSetStructure::default();
         } else {
@@ -291,7 +438,7 @@ impl ReapplyConceptLabelSet {
             self.additional_concept_des_dep_map = AdditionalDesDepMapRef::Null;
             self.concept_des_linker = ConDescId::NONE;
             self.prev_concept_des_linker = ConDescId::NONE;
-            self.core_con_des_linker = ConDescId::NONE;
+            self.core_con_des_linker = CoreConceptDescriptorId::NONE;
             self.concept_count = 0;
             // W2-DEFER[api]: mConceptFlags.reset()/mConceptSignature.reset()/mConceptStructure.reset().
             self.concept_flags = ConceptSetFlags::default();
@@ -301,11 +448,56 @@ impl ReapplyConceptLabelSet {
         self
     }
 
+    /// Context-threaded `initConceptLabelSet` variant for callers that can supply
+    /// the label-set arena, allowing the share/rebuild decision and the rebuild
+    /// copy to read through `Shared` additional-map aliases.
+    pub fn init_concept_label_set_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        prev: Option<(LabelSetId, &ReapplyConceptLabelSet)>,
+    ) -> &mut Self {
+        if let Some((prev_id, prev)) = prev {
+            self.concept_des_linker = prev.concept_des_linker;
+            self.prev_concept_des_linker = self.concept_des_linker;
+            self.concept_count = prev.concept_count;
+            let prev_add_present = prev.additional_is_present();
+            let prev_main_size = prev.concept_des_dep_map.len();
+            let share = (!prev_add_present && prev_main_size <= 50)
+                || (prev_add_present && prev_main_size * 10 < prev.additional_size_in_context(ctx));
+            if share {
+                self.concept_des_dep_map = Self::clone_map(&prev.concept_des_dep_map);
+                self.additional_concept_des_dep_map = Self::copy_additional_ref(prev_id, prev);
+            } else {
+                self.concept_des_dep_map.clear();
+                if prev_add_present {
+                    let mut new_map = Self::clone_additional_contents_in_context(ctx, prev);
+                    for (con_tag, con_data) in prev.concept_des_dep_map.iter() {
+                        new_map.insert(*con_tag, Self::clone_data(con_data));
+                    }
+                    self.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(new_map);
+                } else {
+                    self.additional_concept_des_dep_map =
+                        AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+                            label_set: prev_id,
+                            which: AdditionalMapSlot::Main,
+                        });
+                }
+            }
+            self.concept_flags = ConceptSetFlags::default();
+            self.concept_signature = prev.concept_signature;
+            self.core_con_des_linker = prev.core_con_des_linker;
+            self.concept_structure = ConceptSetStructure::default();
+        } else {
+            self.init_concept_label_set(None);
+        }
+        self
+    }
+
     /// Port of `addCoreConceptDescriptor`.
-    pub fn add_core_concept_descriptor(&mut self, core_con_des: ConDescId) -> &mut Self {
-        // W2-DEFER[api]: `coreConDes->append(mCoreConDesLinker)` links `core_con_des`
-        // ahead of the chain (sets its `next`) in the descriptor arena and returns
-        // it as the new head. The link-write is deferred; the new head is exact.
+    pub fn add_core_concept_descriptor(
+        &mut self,
+        core_con_des: CoreConceptDescriptorId,
+    ) -> &mut Self {
         self.core_con_des_linker = core_con_des;
         self
     }
@@ -319,9 +511,35 @@ impl ReapplyConceptLabelSet {
         )
     }
 
+    /// Context-threaded `hasConceptDescriptor` using the descriptor and concept
+    /// arenas instead of the legacy id-as-tag descriptor shims.
+    pub fn has_concept_descriptor_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+    ) -> bool {
+        self.has_concept_in_context(
+            ctx,
+            onto,
+            Self::con_des_concept_in_context(ctx, concept_descriptor),
+            Self::con_des_negated_in_context(ctx, concept_descriptor),
+        )
+    }
+
     /// Port of `containsConceptDescriptor`.
     pub fn contains_concept_descriptor(&self, concept_descriptor: ConDescId) -> bool {
         self.has_concept_descriptor(concept_descriptor)
+    }
+
+    /// Context-threaded `containsConceptDescriptor`.
+    pub fn contains_concept_descriptor_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+    ) -> bool {
+        self.has_concept_descriptor_in_context(ctx, onto, concept_descriptor)
     }
 
     /// Port of `hasConcept(CConcept*, bool negated)`.
@@ -341,6 +559,28 @@ impl ReapplyConceptLabelSet {
             && con_des_dep_data.map_or(false, |d| {
                 d.concept_descriptor.is_some()
                     && Self::con_des_negated(d.concept_descriptor) == negated
+            })
+    }
+
+    /// Context-threaded `hasConcept(CConcept*, bool negated)`.
+    pub fn has_concept_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept: ConceptId,
+        negated: bool,
+    ) -> bool {
+        let con_tag = Self::concept_tag_in_ontology(onto, concept);
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut is_contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            is_contained = con_des_dep_data.is_some();
+        }
+        is_contained
+            && con_des_dep_data.map_or(false, |d| {
+                d.concept_descriptor.is_some()
+                    && Self::con_des_negated_in_context(ctx, d.concept_descriptor) == negated
             })
     }
 
@@ -368,6 +608,32 @@ impl ReapplyConceptLabelSet {
         is_contained && con_des_dep_data.map_or(false, |d| d.concept_descriptor.is_some())
     }
 
+    /// Context-threaded `hasConcept(CConcept*, bool* containsNegated)`.
+    pub fn has_concept_get_negated_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept: ConceptId,
+        contains_negated: Option<&mut bool>,
+    ) -> bool {
+        let con_tag = Self::concept_tag_in_ontology(onto, concept);
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut is_contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            is_contained = con_des_dep_data.is_some();
+        }
+        if is_contained {
+            if let Some(out) = contains_negated {
+                *out = con_des_dep_data.map_or(false, |d| {
+                    d.concept_descriptor.is_some()
+                        && Self::con_des_negated_in_context(ctx, d.concept_descriptor)
+                });
+            }
+        }
+        is_contained && con_des_dep_data.map_or(false, |d| d.concept_descriptor.is_some())
+    }
+
     /// Port of `containsConcept(CConcept*, bool* containsNegated)`.
     pub fn contains_concept_get_negated(
         &self,
@@ -382,6 +648,17 @@ impl ReapplyConceptLabelSet {
         self.has_concept(concept, negated)
     }
 
+    /// Context-threaded `containsConcept(CConcept*, bool negated)`.
+    pub fn contains_concept_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept: ConceptId,
+        negated: bool,
+    ) -> bool {
+        self.has_concept_in_context(ctx, onto, concept, negated)
+    }
+
     /// Port of `getConceptDescriptor(CConcept*, CConceptDescriptor*&, CDependencyTrackPoint*&)`.
     pub fn get_concept_descriptor(
         &self,
@@ -390,6 +667,23 @@ impl ReapplyConceptLabelSet {
         dep_track_point: &mut TrackPointId,
     ) -> bool {
         self.get_concept_descriptor_by_tag(Self::concept_tag(concept), con_des, dep_track_point)
+    }
+
+    /// Context-threaded `getConceptDescriptor(CConcept*, ...)`.
+    pub fn get_concept_descriptor_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept: ConceptId,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+    ) -> bool {
+        self.get_concept_descriptor_by_tag_in_context(
+            ctx,
+            Self::concept_tag_in_ontology(onto, concept),
+            con_des,
+            dep_track_point,
+        )
     }
 
     /// Port of `getConceptDescriptor(cint64 conTag, CConceptDescriptor*&, CDependencyTrackPoint*&)`.
@@ -410,6 +704,33 @@ impl ReapplyConceptLabelSet {
             *con_des = data.concept_descriptor;
             if con_des.is_some() {
                 *dep_track_point = Self::con_des_dep_track_point(*con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            contained &= con_des.is_some();
+        }
+        contained
+    }
+
+    /// Context-threaded `getConceptDescriptor(cint64 conTag, ...)`.
+    pub fn get_concept_descriptor_by_tag_in_context(
+        &self,
+        ctx: &ProcessContext,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point_in_context(ctx, *con_des);
             } else {
                 *dep_track_point = TrackPointId::NONE;
             }
@@ -451,12 +772,51 @@ impl ReapplyConceptLabelSet {
         }
         con_des_dep_data.concept_descriptor = concept_descriptor;
         self.concept_count += 1;
-        // W2-DEFER[api]: mConceptSignature.addConceptSignature / mConceptFlags.addConceptFlags
-        //               / mConceptStructure.addedConcept(conceptDescriptor).
+        self.add_concept_descriptor_signature(concept_descriptor);
+        // W2-DEFER[api]: mConceptFlags.addConceptFlags /
+        //               mConceptStructure.addedConcept(conceptDescriptor).
         // W2-DEFER[api]: mConceptDesLinker = conceptDescriptor->append(mConceptDesLinker).
         self.concept_des_linker = concept_descriptor;
         if let Some(it) = reapply_queue_it {
             // W2-DEFER[api]: pos_neg_reapply_queue.getIterator(conceptDescriptor->isNegated(), true).
+            *it = CondensedReapplyQueueIterator;
+        }
+        true
+    }
+
+    /// Context-threaded `insertConceptIgnoreClash`.
+    pub fn insert_concept_ignore_clash_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+        _dep_track_point: TrackPointId,
+        reapply_queue_it: Option<&mut CondensedReapplyQueueIterator>,
+    ) -> bool {
+        let con_tag = Self::con_des_tag_in_context(ctx, onto, concept_descriptor);
+        let add_present = self.additional_is_present();
+        let add_opt = if add_present {
+            self.additional_get_cloned_in_context(ctx, con_tag)
+        } else {
+            None
+        };
+        let con_des_dep_data = self
+            .concept_des_dep_map
+            .entry(con_tag)
+            .or_insert_with(ConceptDescriptorDependencyReapplyData::default);
+        if add_present
+            && con_des_dep_data.concept_descriptor.is_none()
+            && Self::queue_is_empty(&con_des_dep_data.pos_neg_reapply_queue)
+        {
+            if let Some(add) = add_opt {
+                *con_des_dep_data = add;
+            }
+        }
+        con_des_dep_data.concept_descriptor = concept_descriptor;
+        self.concept_count += 1;
+        self.add_concept_descriptor_signature_in_context(ctx, onto, concept_descriptor);
+        self.concept_des_linker = concept_descriptor;
+        if let Some(it) = reapply_queue_it {
             *it = CondensedReapplyQueueIterator;
         }
         true
@@ -481,18 +841,19 @@ impl ReapplyConceptLabelSet {
         // tryInsert(conTag, data(conceptDescriptor), &containsAlready, &containedConDesDepData).
         let existed = self.concept_des_dep_map.contains_key(&con_tag);
         let contained_con_des_dep_data =
-            self.concept_des_dep_map
-                .entry(con_tag)
-                .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
+            self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
                     concept_descriptor,
                     pos_neg_reapply_queue: CondensedReapplyQueue::new(),
-                });
+                }
+            });
         let mut contains_already = existed;
         // C++ tracks containFromAdditionMap but never reads it afterwards.
         let mut _contain_from_addition_map = false;
         if !contains_already && add_present {
             if let Some(add) = add_opt {
-                if add.concept_descriptor.is_some() || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
+                if add.concept_descriptor.is_some()
+                    || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
                 {
                     *contained_con_des_dep_data = add;
                     contains_already = true;
@@ -506,7 +867,8 @@ impl ReapplyConceptLabelSet {
         }
         if contains_already {
             let contains_con_des = contained_con_des_dep_data.concept_descriptor;
-            if Self::con_des_negated(contains_con_des) != Self::con_des_negated(concept_descriptor) {
+            if Self::con_des_negated(contains_con_des) != Self::con_des_negated(concept_descriptor)
+            {
                 if let Some(out) = clashed_con_des {
                     *out = contains_con_des;
                 }
@@ -517,12 +879,80 @@ impl ReapplyConceptLabelSet {
             true
         } else {
             self.concept_count += 1;
-            // W2-DEFER[api]: mConceptFlags.addConceptFlags / mConceptSignature.addConceptSignature
-            //               / mConceptStructure.addedConcept(conceptDescriptor).
+            self.add_concept_descriptor_signature(concept_descriptor);
+            // W2-DEFER[api]: mConceptFlags.addConceptFlags /
+            //               mConceptStructure.addedConcept(conceptDescriptor).
             // W2-DEFER[api]: mConceptDesLinker = conceptDescriptor->append(mConceptDesLinker).
             self.concept_des_linker = concept_descriptor;
             if let Some(it) = reapply_queue_it {
                 // W2-DEFER[api]: pos_neg_reapply_queue.getIterator(conceptDescriptor->isNegated(), true).
+                *it = CondensedReapplyQueueIterator;
+            }
+            false
+        }
+    }
+
+    /// Context-threaded `insertConceptGetClash`.
+    pub fn insert_concept_get_clash_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+        _dep_track_point: TrackPointId,
+        reapply_queue_it: Option<&mut CondensedReapplyQueueIterator>,
+        clashed_con_des: Option<&mut ConDescId>,
+        clashed_dep_track_point: Option<&mut TrackPointId>,
+    ) -> bool {
+        let con_tag = Self::con_des_tag_in_context(ctx, onto, concept_descriptor);
+        let add_present = self.additional_is_present();
+        let add_opt = if add_present {
+            self.additional_get_cloned_in_context(ctx, con_tag)
+        } else {
+            None
+        };
+        let existed = self.concept_des_dep_map.contains_key(&con_tag);
+        let contained_con_des_dep_data =
+            self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
+                    concept_descriptor,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
+                }
+            });
+        let mut contains_already = existed;
+        let mut _contain_from_addition_map = false;
+        if !contains_already && add_present {
+            if let Some(add) = add_opt {
+                if add.concept_descriptor.is_some()
+                    || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
+                {
+                    *contained_con_des_dep_data = add;
+                    contains_already = true;
+                    _contain_from_addition_map = true;
+                }
+            }
+        }
+        if contained_con_des_dep_data.concept_descriptor.is_none() {
+            contained_con_des_dep_data.concept_descriptor = concept_descriptor;
+            contains_already = false;
+        }
+        if contains_already {
+            let contains_con_des = contained_con_des_dep_data.concept_descriptor;
+            if Self::con_des_negated_in_context(ctx, contains_con_des)
+                != Self::con_des_negated_in_context(ctx, concept_descriptor)
+            {
+                if let Some(out) = clashed_con_des {
+                    *out = contains_con_des;
+                }
+                if let Some(out) = clashed_dep_track_point {
+                    *out = Self::con_des_dep_track_point_in_context(ctx, contains_con_des);
+                }
+            }
+            true
+        } else {
+            self.concept_count += 1;
+            self.add_concept_descriptor_signature_in_context(ctx, onto, concept_descriptor);
+            self.concept_des_linker = concept_descriptor;
+            if let Some(it) = reapply_queue_it {
                 *it = CondensedReapplyQueueIterator;
             }
             false
@@ -545,6 +975,7 @@ impl ReapplyConceptLabelSet {
     pub fn insert_concept_get_clash_resolved(
         &mut self,
         concept_descriptor: ConDescId,
+        concept: ConceptId,
         con_tag: Cint64,
         negated: bool,
         desc_negated: &dyn Fn(ConDescId) -> bool,
@@ -559,16 +990,17 @@ impl ReapplyConceptLabelSet {
         };
         let existed = self.concept_des_dep_map.contains_key(&con_tag);
         let contained_con_des_dep_data =
-            self.concept_des_dep_map
-                .entry(con_tag)
-                .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
+            self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
                     concept_descriptor,
                     pos_neg_reapply_queue: CondensedReapplyQueue::new(),
-                });
+                }
+            });
         let mut contains_already = existed;
         if !contains_already && add_present {
             if let Some(add) = add_opt {
-                if add.concept_descriptor.is_some() || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
+                if add.concept_descriptor.is_some()
+                    || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
                 {
                     *contained_con_des_dep_data = add;
                     contains_already = true;
@@ -593,7 +1025,9 @@ impl ReapplyConceptLabelSet {
             true
         } else {
             self.concept_count += 1;
-            // W2-DEFER[api]: mConceptFlags/mConceptSignature/mConceptStructure adds.
+            self.concept_signature
+                .add_concept_signature(concept, con_tag, negated);
+            // W2-DEFER[api]: mConceptFlags.addConceptFlags / mConceptStructure.addedConcept.
             self.concept_des_linker = concept_descriptor;
             false
         }
@@ -623,16 +1057,17 @@ impl ReapplyConceptLabelSet {
         };
         let existed = self.concept_des_dep_map.contains_key(&con_tag);
         let contained_con_des_dep_data =
-            self.concept_des_dep_map
-                .entry(con_tag)
-                .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
+            self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
                     concept_descriptor,
                     pos_neg_reapply_queue: CondensedReapplyQueue::new(),
-                });
+                }
+            });
         let mut contains_already = existed;
         if !contains_already && add_present {
             if let Some(add) = add_opt {
-                if add.concept_descriptor.is_some() || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
+                if add.concept_descriptor.is_some()
+                    || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
                 {
                     *contained_con_des_dep_data = add;
                     contains_already = true;
@@ -648,7 +1083,8 @@ impl ReapplyConceptLabelSet {
                 *out = true;
             }
             let contains_con_des = contained_con_des_dep_data.concept_descriptor;
-            if Self::con_des_negated(contains_con_des) != Self::con_des_negated(concept_descriptor) {
+            if Self::con_des_negated(contains_con_des) != Self::con_des_negated(concept_descriptor)
+            {
                 let _contains_dep_track_point = Self::con_des_dep_track_point(contains_con_des);
                 // W2-DEFER[api]: allocate clashDes1/clashDes2, init from
                 // (conceptDescriptor, depTrackPoint) + (containsConDes, containsDepTrackPoint),
@@ -660,12 +1096,79 @@ impl ReapplyConceptLabelSet {
                 *out = false;
             }
             self.concept_count += 1;
-            // W2-DEFER[api]: mConceptFlags.addConceptFlags / mConceptSignature.addConceptSignature
-            //               / mConceptStructure.addedConcept(conceptDescriptor).
+            self.add_concept_descriptor_signature(concept_descriptor);
+            // W2-DEFER[api]: mConceptFlags.addConceptFlags /
+            //               mConceptStructure.addedConcept(conceptDescriptor).
             // W2-DEFER[api]: mConceptDesLinker = conceptDescriptor->append(mConceptDesLinker).
             self.concept_des_linker = concept_descriptor;
             if let Some(it) = reapply_queue_it {
                 // W2-DEFER[api]: pos_neg_reapply_queue.getIterator(conceptDescriptor->isNegated(), true).
+                *it = CondensedReapplyQueueIterator;
+            }
+        }
+        ClashDescId::NONE
+    }
+
+    /// Context-threaded `insertConceptReturnClash`.
+    pub fn insert_concept_return_clash_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+        _dep_track_point: TrackPointId,
+        has_contained: Option<&mut bool>,
+        reapply_queue_it: Option<&mut CondensedReapplyQueueIterator>,
+    ) -> ClashDescId {
+        let con_tag = Self::con_des_tag_in_context(ctx, onto, concept_descriptor);
+        let add_present = self.additional_is_present();
+        let add_opt = if add_present {
+            self.additional_get_cloned_in_context(ctx, con_tag)
+        } else {
+            None
+        };
+        let existed = self.concept_des_dep_map.contains_key(&con_tag);
+        let contained_con_des_dep_data =
+            self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
+                    concept_descriptor,
+                    pos_neg_reapply_queue: CondensedReapplyQueue::new(),
+                }
+            });
+        let mut contains_already = existed;
+        if !contains_already && add_present {
+            if let Some(add) = add_opt {
+                if add.concept_descriptor.is_some()
+                    || !Self::queue_is_empty(&add.pos_neg_reapply_queue)
+                {
+                    *contained_con_des_dep_data = add;
+                    contains_already = true;
+                }
+            }
+        }
+        if contained_con_des_dep_data.concept_descriptor.is_none() {
+            contained_con_des_dep_data.concept_descriptor = concept_descriptor;
+            contains_already = false;
+        }
+        if contains_already {
+            if let Some(out) = has_contained {
+                *out = true;
+            }
+            let contains_con_des = contained_con_des_dep_data.concept_descriptor;
+            if Self::con_des_negated_in_context(ctx, contains_con_des)
+                != Self::con_des_negated_in_context(ctx, concept_descriptor)
+            {
+                let _contains_dep_track_point =
+                    Self::con_des_dep_track_point_in_context(ctx, contains_con_des);
+                return ClashDescId::NONE;
+            }
+        } else {
+            if let Some(out) = has_contained {
+                *out = false;
+            }
+            self.concept_count += 1;
+            self.add_concept_descriptor_signature_in_context(ctx, onto, concept_descriptor);
+            self.concept_des_linker = concept_descriptor;
+            if let Some(it) = reapply_queue_it {
                 *it = CondensedReapplyQueueIterator;
             }
         }
@@ -686,6 +1189,30 @@ impl ReapplyConceptLabelSet {
     ) -> Result<bool, ClashDescId> {
         let mut contained = false;
         let clash = self.insert_concept_return_clash(
+            concept_descriptor,
+            dep_track_point,
+            Some(&mut contained),
+            reapply_queue_it,
+        );
+        if clash.is_some() {
+            return Err(clash);
+        }
+        Ok(contained)
+    }
+
+    /// Context-threaded `insertConceptThrowClashReturnContained`.
+    pub fn insert_concept_throw_clash_return_contained_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept_descriptor: ConDescId,
+        dep_track_point: TrackPointId,
+        reapply_queue_it: Option<&mut CondensedReapplyQueueIterator>,
+    ) -> Result<bool, ClashDescId> {
+        let mut contained = false;
+        let clash = self.insert_concept_return_clash_in_context(
+            ctx,
+            onto,
             concept_descriptor,
             dep_track_point,
             Some(&mut contained),
@@ -739,9 +1266,45 @@ impl ReapplyConceptLabelSet {
             let additional = match &self.additional_concept_des_dep_map {
                 AdditionalDesDepMapRef::Null => Vec::new(),
                 AdditionalDesDepMapRef::Owned(m) => Self::snapshot_sorted_entries(m),
-                // W2-DEFER[api][unclear]: snapshot the aliased label-set map (needs
-                // the label-set arena to follow the `Shared` alias).
+                // Arena-free fallback; see `get_concept_label_set_iterator_in_context`.
                 AdditionalDesDepMapRef::Shared(_) => Vec::new(),
+            };
+            ReapplyConceptLabelSetIterator::new(
+                self.concept_count,
+                ConDescId::NONE,
+                main,
+                additional,
+                !get_all_structure,
+            )
+        } else {
+            ReapplyConceptLabelSetIterator::new(
+                self.concept_count,
+                self.concept_des_linker,
+                Vec::new(),
+                Vec::new(),
+                true,
+            )
+        }
+    }
+
+    /// Context-threaded `getConceptLabelSetIterator`, following shared additional
+    /// aliases for the additional-map `constBegin`/`constEnd` range.
+    pub fn get_concept_label_set_iterator_in_context(
+        &self,
+        ctx: &ProcessContext,
+        get_sorted: bool,
+        get_dependencies: bool,
+        get_all_structure: bool,
+    ) -> ReapplyConceptLabelSetIterator {
+        if get_sorted || get_dependencies || get_all_structure {
+            let main = Self::snapshot_sorted_entries(&self.concept_des_dep_map);
+            let additional = match &self.additional_concept_des_dep_map {
+                AdditionalDesDepMapRef::Null => Vec::new(),
+                AdditionalDesDepMapRef::Owned(m) => Self::snapshot_sorted_entries(m),
+                AdditionalDesDepMapRef::Shared(alias) => {
+                    Self::additional_alias_map_in_context(ctx, *alias)
+                        .map_or_else(Vec::new, Self::snapshot_sorted_entries)
+                }
             };
             ReapplyConceptLabelSetIterator::new(
                 self.concept_count,
@@ -763,10 +1326,11 @@ impl ReapplyConceptLabelSet {
 
     /// Port of `getConceptDescriptorAndReapplyQueue(CConcept*, …)`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the C++ `reapplyQueue` out-pointer (→
-    /// `&conDesDepData->mPosNegReapplyQueue`) is `// W2-DEFER[api]`: the queue type
-    /// has no ported consumers yet, so only the `bool` + `con_des` +
-    /// `dep_track_point` outputs are materialised.
+    /// KONCLUDE-PORT-NOTE[ownership]: Rust callers that need the C++
+    /// `reapplyQueue` out-pointer use
+    /// `get_concept_descriptor_and_reapply_queue_state_by_tag`, which exposes
+    /// the queue state without returning a long-lived borrow into the label-set
+    /// map.
     pub fn get_concept_descriptor_and_reapply_queue(
         &self,
         concept: ConceptId,
@@ -775,6 +1339,23 @@ impl ReapplyConceptLabelSet {
     ) -> bool {
         self.get_concept_descriptor_and_reapply_queue_by_tag(
             Self::concept_tag(concept),
+            con_des,
+            dep_track_point,
+        )
+    }
+
+    /// Context-threaded `getConceptDescriptorAndReapplyQueue(CConcept*, ...)`.
+    pub fn get_concept_descriptor_and_reapply_queue_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept: ConceptId,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+    ) -> bool {
+        self.get_concept_descriptor_and_reapply_queue_by_tag_in_context(
+            ctx,
+            Self::concept_tag_in_ontology(onto, concept),
             con_des,
             dep_track_point,
         )
@@ -807,6 +1388,141 @@ impl ReapplyConceptLabelSet {
         contained
     }
 
+    /// Context-threaded `getConceptDescriptorAndReapplyQueue(cint64 conTag, ...)`.
+    pub fn get_concept_descriptor_and_reapply_queue_by_tag_in_context(
+        &self,
+        ctx: &ProcessContext,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point_in_context(ctx, *con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            contained = con_des.is_some();
+        }
+        contained
+    }
+
+    /// Rust-owned port helper for
+    /// `getConceptDescriptorAndReapplyQueue(cint64 conTag, ..., CCondensedReapplyQueue*& reapplyQueue)`.
+    ///
+    /// The C++ caller only needs `reapplyQueue->isEmpty()` before asking the
+    /// label set for `getConceptReapplyIterator(bindingConDes)`. Returning the
+    /// emptiness bit here preserves that control flow without holding a borrow
+    /// across the later iterator creation.
+    pub fn get_concept_descriptor_and_reapply_queue_state_by_tag(
+        &self,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+        reapply_queue_empty: &mut bool,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref(con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            *reapply_queue_empty = Self::queue_is_empty(&data.pos_neg_reapply_queue);
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point(*con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            contained = con_des.is_some();
+        } else {
+            *reapply_queue_empty = true;
+        }
+        contained
+    }
+
+    /// Context-threaded read-only helper for
+    /// `getConceptDescriptorAndReapplyQueue(cint64 conTag, ..., reapplyQueue)`.
+    pub fn get_concept_descriptor_and_reapply_queue_state_by_tag_in_context(
+        &self,
+        ctx: &ProcessContext,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+        reapply_queue_empty: &mut bool,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            *reapply_queue_empty = Self::queue_is_empty(&data.pos_neg_reapply_queue);
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point_in_context(ctx, *con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            contained = con_des.is_some();
+        } else {
+            *reapply_queue_empty = true;
+        }
+        contained
+    }
+
+    /// Extract the current dynamic reapply-queue head for `conTag`, clearing it
+    /// when requested. This is the context-threaded Rust equivalent of using the
+    /// `CCondensedReapplyQueue*` out-param returned by
+    /// `getConceptDescriptorAndReapplyQueue` and then calling
+    /// `reapplyQueue->getIterator(..., clearDynamicReapplyQueue)`.
+    pub fn take_concept_reapply_queue_head_by_tag(
+        &mut self,
+        con_tag: Cint64,
+        clear_dynamic_reapply_queue: bool,
+    ) -> super::reapply_sat::CondensedReapplyConceptDescriptorId {
+        if let Some(d) = self.concept_des_dep_map.get_mut(&con_tag) {
+            let head = d.pos_neg_reapply_queue.dynamic_pos_neg_reapply_des_linker();
+            if clear_dynamic_reapply_queue {
+                d.pos_neg_reapply_queue
+                    .set_dynamic_pos_neg_reapply_des_linker(
+                        super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+                    );
+            }
+            return head;
+        }
+        match &mut self.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Owned(m) => {
+                if let Some(d) = m.get_mut(&con_tag) {
+                    let head = d.pos_neg_reapply_queue.dynamic_pos_neg_reapply_des_linker();
+                    if clear_dynamic_reapply_queue {
+                        d.pos_neg_reapply_queue
+                            .set_dynamic_pos_neg_reapply_des_linker(
+                                super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+                            );
+                    }
+                    head
+                } else {
+                    super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE
+                }
+            }
+            // W2-DEFER[api][unclear]: follow the Shared alias.
+            _ => super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+        }
+    }
+
     /// Port of `getConceptDescriptorOrReapplyQueue(CConcept*, …)`.
     pub fn get_concept_descriptor_or_reapply_queue(
         &self,
@@ -816,6 +1532,23 @@ impl ReapplyConceptLabelSet {
     ) -> bool {
         self.get_concept_descriptor_or_reapply_queue_by_tag(
             Self::concept_tag(concept),
+            con_des,
+            dep_track_point,
+        )
+    }
+
+    /// Context-threaded `getConceptDescriptorOrReapplyQueue(CConcept*, ...)`.
+    pub fn get_concept_descriptor_or_reapply_queue_in_context(
+        &self,
+        ctx: &ProcessContext,
+        onto: &OntologyArenas,
+        concept: ConceptId,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+    ) -> bool {
+        self.get_concept_descriptor_or_reapply_queue_by_tag_in_context(
+            ctx,
+            Self::concept_tag_in_ontology(onto, concept),
             con_des,
             dep_track_point,
         )
@@ -855,6 +1588,111 @@ impl ReapplyConceptLabelSet {
         contained
     }
 
+    /// Context-threaded `getConceptDescriptorOrReapplyQueue(cint64 conTag, ...)`.
+    pub fn get_concept_descriptor_or_reapply_queue_by_tag_in_context(
+        &self,
+        ctx: &ProcessContext,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point_in_context(ctx, *con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            let reapply_queue_present = true;
+            contained = con_des.is_some() || reapply_queue_present;
+        }
+        contained
+    }
+
+    /// Read-only port helper for
+    /// `getConceptDescriptorOrReapplyQueue(cint64, conDes, depTrackPoint, reapplyQueue)`.
+    ///
+    /// Unlike `get_concept_descriptor_and_reapply_queue_state_by_tag`, this keeps
+    /// Konclude's "descriptor OR queue" containment semantics and exposes whether
+    /// the queue is empty for callers that need `reapplyQueue->isEmpty()`.
+    pub fn get_concept_descriptor_or_reapply_queue_state_by_tag(
+        &self,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+        reapply_queue_present: &mut bool,
+        reapply_queue_empty: &mut bool,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref(con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            *reapply_queue_present = true;
+            *reapply_queue_empty = Self::queue_is_empty(&data.pos_neg_reapply_queue);
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point(*con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            contained = con_des.is_some() || *reapply_queue_present;
+        } else {
+            *con_des = ConDescId::NONE;
+            *dep_track_point = TrackPointId::NONE;
+            *reapply_queue_present = false;
+            *reapply_queue_empty = true;
+        }
+        contained
+    }
+
+    /// Context-threaded read-only helper for
+    /// `getConceptDescriptorOrReapplyQueue(cint64, conDes, depTrackPoint, reapplyQueue)`.
+    pub fn get_concept_descriptor_or_reapply_queue_state_by_tag_in_context(
+        &self,
+        ctx: &ProcessContext,
+        con_tag: Cint64,
+        con_des: &mut ConDescId,
+        dep_track_point: &mut TrackPointId,
+        reapply_queue_present: &mut bool,
+        reapply_queue_empty: &mut bool,
+    ) -> bool {
+        let mut con_des_dep_data = self.concept_des_dep_map.get(&con_tag);
+        let mut contained = con_des_dep_data.is_some();
+        if con_des_dep_data.is_none() && self.additional_is_present() {
+            con_des_dep_data = self.additional_get_ref_in_context(ctx, con_tag);
+            contained = con_des_dep_data.is_some();
+        }
+        if contained {
+            let data = con_des_dep_data.unwrap();
+            *con_des = data.concept_descriptor;
+            *reapply_queue_present = true;
+            *reapply_queue_empty = Self::queue_is_empty(&data.pos_neg_reapply_queue);
+            if con_des.is_some() {
+                *dep_track_point = Self::con_des_dep_track_point_in_context(ctx, *con_des);
+            } else {
+                *dep_track_point = TrackPointId::NONE;
+            }
+            contained = con_des.is_some() || *reapply_queue_present;
+        } else {
+            *con_des = ConDescId::NONE;
+            *dep_track_point = TrackPointId::NONE;
+            *reapply_queue_present = false;
+            *reapply_queue_empty = true;
+        }
+        contained
+    }
+
     /// Port of `getConceptDescriptorAndReapplyQueue(CConcept*&, CConceptDescriptor*&, bool create)`
     /// → `CCondensedReapplyQueue*` (`None` == `nullptr`), setting `con_des` out.
     pub fn get_concept_descriptor_and_reapply_queue_create(
@@ -873,13 +1711,12 @@ impl ReapplyConceptLabelSet {
                 None
             };
             // tryInsert(conTag, data(nullptr), …).
-            let contained = self
-                .concept_des_dep_map
-                .entry(con_tag)
-                .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
+            let contained = self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
                     concept_descriptor: ConDescId::NONE,
                     pos_neg_reapply_queue: CondensedReapplyQueue::new(),
-                });
+                }
+            });
             if !existed && add_present {
                 if let Some(add) = add_opt {
                     if add.concept_descriptor.is_some()
@@ -893,7 +1730,11 @@ impl ReapplyConceptLabelSet {
             Some(&mut contained.pos_neg_reapply_queue)
         } else {
             if self.concept_des_dep_map.contains_key(&con_tag) {
-                *con_des = self.concept_des_dep_map.get(&con_tag).unwrap().concept_descriptor;
+                *con_des = self
+                    .concept_des_dep_map
+                    .get(&con_tag)
+                    .unwrap()
+                    .concept_descriptor;
                 return self
                     .concept_des_dep_map
                     .get_mut(&con_tag)
@@ -930,13 +1771,12 @@ impl ReapplyConceptLabelSet {
             } else {
                 None
             };
-            let contained = self
-                .concept_des_dep_map
-                .entry(con_tag)
-                .or_insert_with(|| ConceptDescriptorDependencyReapplyData {
+            let contained = self.concept_des_dep_map.entry(con_tag).or_insert_with(|| {
+                ConceptDescriptorDependencyReapplyData {
                     concept_descriptor: ConDescId::NONE,
                     pos_neg_reapply_queue: CondensedReapplyQueue::new(),
-                });
+                }
+            });
             if !existed && add_present {
                 if let Some(add) = add_opt {
                     if add.concept_descriptor.is_some()
@@ -979,7 +1819,11 @@ impl ReapplyConceptLabelSet {
     }
 
     /// Port of `containsConceptReapplyQueue(CConcept*&, bool& conceptNegation)`.
-    pub fn contains_concept_reapply_queue(&self, concept: ConceptId, _concept_negation: bool) -> bool {
+    pub fn contains_concept_reapply_queue(
+        &self,
+        concept: ConceptId,
+        _concept_negation: bool,
+    ) -> bool {
         let con_tag = Self::concept_tag(concept);
         if let Some(d) = self.concept_des_dep_map.get(&con_tag) {
             return !Self::queue_is_empty(&d.pos_neg_reapply_queue);
@@ -1009,7 +1853,7 @@ impl ReapplyConceptLabelSet {
         super::reapply_sat::CondensedReapplyQueueIterator::new_only_positive(
             ctx,
             dynamic_reapply_des_linker,
-            concept_negation,
+            !concept_negation,
         )
     }
 
@@ -1027,16 +1871,28 @@ impl ReapplyConceptLabelSet {
         concept_negation: bool,
         clear_dynamic_reapply_queue: bool,
     ) -> super::reapply_sat::CondensedReapplyQueueIterator {
-        // W2-DEFER[api]: the head comes from `CCondensedReapplyQueue::getIterator`
-        // once the queue ports its dynamic descriptor linker; `NONE` until then.
-        let head = super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE;
         let con_tag = Self::concept_tag(concept);
         if self.concept_des_dep_map.contains_key(&con_tag) {
             if !clear_dynamic_reapply_queue {
                 // pos_neg_reapply_queue.getIterator(conceptNegation, false).
+                let head = self
+                    .concept_des_dep_map
+                    .get(&con_tag)
+                    .map(|d| d.pos_neg_reapply_queue.dynamic_pos_neg_reapply_des_linker())
+                    .unwrap_or(super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE);
                 return Self::build_reapply_iterator(ctx, head, concept_negation);
             } else {
                 // mConceptDesDepMap[conTag].mPosNegReapplyQueue.getIterator(conceptNegation, true).
+                let head = if let Some(d) = self.concept_des_dep_map.get_mut(&con_tag) {
+                    let head = d.pos_neg_reapply_queue.dynamic_pos_neg_reapply_des_linker();
+                    d.pos_neg_reapply_queue
+                        .set_dynamic_pos_neg_reapply_des_linker(
+                            super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+                        );
+                    head
+                } else {
+                    super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE
+                };
                 return Self::build_reapply_iterator(ctx, head, concept_negation);
             }
         } else if self.additional_is_present() {
@@ -1044,20 +1900,95 @@ impl ReapplyConceptLabelSet {
             if let Some(add) = add_opt {
                 if !clear_dynamic_reapply_queue {
                     // add.pos_neg_reapply_queue.getIterator(conceptNegation, false).
+                    let head = add
+                        .pos_neg_reapply_queue
+                        .dynamic_pos_neg_reapply_des_linker();
                     return Self::build_reapply_iterator(ctx, head, concept_negation);
                 } else if !Self::queue_is_empty(&add.pos_neg_reapply_queue) {
                     // conDesDepData = *containedConDesDepData; (copy additional into main)
                     self.concept_des_dep_map.insert(con_tag, add);
                     // getIterator(conceptNegation, true).
+                    let head = if let Some(d) = self.concept_des_dep_map.get_mut(&con_tag) {
+                        let head = d.pos_neg_reapply_queue.dynamic_pos_neg_reapply_des_linker();
+                        d.pos_neg_reapply_queue
+                            .set_dynamic_pos_neg_reapply_des_linker(
+                                super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+                            );
+                        head
+                    } else {
+                        super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE
+                    };
                     return Self::build_reapply_iterator(ctx, head, concept_negation);
                 } else {
                     // add.pos_neg_reapply_queue.getIterator(conceptNegation, false).
+                    let head = add
+                        .pos_neg_reapply_queue
+                        .dynamic_pos_neg_reapply_des_linker();
                     return Self::build_reapply_iterator(ctx, head, concept_negation);
                 }
             }
         }
         // CCondensedReapplyQueueIterator(nullptr, conceptNegation).
-        Self::build_reapply_iterator(ctx, head, concept_negation)
+        Self::build_reapply_iterator(
+            ctx,
+            super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+            concept_negation,
+        )
+    }
+
+    /// Context-threaded `getConceptReapplyIterator` variant that can read
+    /// `containedConDesDepData` through a `Shared` additional-map alias before
+    /// optionally copying it into the main map for the clear-dynamic path.
+    pub fn get_concept_reapply_iterator_in_context(
+        &mut self,
+        ctx: &ProcessContext,
+        concept: ConceptId,
+        concept_negation: bool,
+        clear_dynamic_reapply_queue: bool,
+    ) -> super::reapply_sat::CondensedReapplyQueueIterator {
+        let con_tag = Self::concept_tag(concept);
+        if self.concept_des_dep_map.contains_key(&con_tag) {
+            return self.get_concept_reapply_iterator(
+                ctx,
+                concept,
+                concept_negation,
+                clear_dynamic_reapply_queue,
+            );
+        }
+        if self.additional_is_present() {
+            let add_opt = self.additional_get_cloned_in_context(ctx, con_tag);
+            if let Some(add) = add_opt {
+                if !clear_dynamic_reapply_queue {
+                    let head = add
+                        .pos_neg_reapply_queue
+                        .dynamic_pos_neg_reapply_des_linker();
+                    return Self::build_reapply_iterator(ctx, head, concept_negation);
+                } else if !Self::queue_is_empty(&add.pos_neg_reapply_queue) {
+                    self.concept_des_dep_map.insert(con_tag, add);
+                    let head = if let Some(d) = self.concept_des_dep_map.get_mut(&con_tag) {
+                        let head = d.pos_neg_reapply_queue.dynamic_pos_neg_reapply_des_linker();
+                        d.pos_neg_reapply_queue
+                            .set_dynamic_pos_neg_reapply_des_linker(
+                                super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+                            );
+                        head
+                    } else {
+                        super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE
+                    };
+                    return Self::build_reapply_iterator(ctx, head, concept_negation);
+                } else {
+                    let head = add
+                        .pos_neg_reapply_queue
+                        .dynamic_pos_neg_reapply_des_linker();
+                    return Self::build_reapply_iterator(ctx, head, concept_negation);
+                }
+            }
+        }
+        Self::build_reapply_iterator(
+            ctx,
+            super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE,
+            concept_negation,
+        )
     }
 
     /// Port of `getConceptReapplyIterator(CConceptDescriptor*, bool clearDynamicReapplyQueue)`.
@@ -1107,5 +2038,302 @@ impl ReapplyConceptLabelSet {
             }
         }
         con_data
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::substrate::INVALID;
+    use super::super::super::model::{concept::Concept, ontology::OntologyArenas};
+    use super::super::descriptor::ConceptDescriptor;
+    use super::super::reapply_sat::CondensedReapplyConceptDescriptor;
+    use super::*;
+
+    fn data(concept_descriptor: ConDescId) -> ConceptDescriptorDependencyReapplyData {
+        ConceptDescriptorDependencyReapplyData {
+            concept_descriptor,
+            pos_neg_reapply_queue: CondensedReapplyQueue::new(),
+        }
+    }
+
+    #[test]
+    fn plain_insert_get_clash_updates_signature_only_for_new_descriptor() {
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        let con_des = ConDescId::new(17);
+
+        let contained = set.insert_concept_get_clash(con_des, TrackPointId::NONE, None, None, None);
+        assert!(!contained);
+        let first_signature = set.get_concept_signature_value();
+        assert_ne!(first_signature, 0);
+
+        let contained = set.insert_concept_get_clash(con_des, TrackPointId::NONE, None, None, None);
+        assert!(contained);
+        assert_eq!(set.get_concept_signature_value(), first_signature);
+    }
+
+    #[test]
+    fn plain_insert_ignore_clash_updates_signature_on_every_insert() {
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        let con_des = ConDescId::new(19);
+
+        assert!(set.insert_concept_ignore_clash(con_des, TrackPointId::NONE, None));
+        let first_signature = set.get_concept_signature_value();
+        assert_ne!(first_signature, 0);
+
+        assert!(set.insert_concept_ignore_clash(con_des, TrackPointId::NONE, None));
+        assert_ne!(set.get_concept_signature_value(), first_signature);
+    }
+
+    fn alloc_concept_with_tag(onto: &mut OntologyArenas, tag: Cint64) -> ConceptId {
+        let mut concept = Concept::new();
+        concept.set_concept_tag(tag);
+        onto.alloc_concept(concept)
+    }
+
+    fn alloc_descriptor(
+        ctx: &mut ProcessContext,
+        concept: ConceptId,
+        negated: bool,
+        dep_track_point: TrackPointId,
+    ) -> ConDescId {
+        ctx.alloc_con_desc(ConceptDescriptor {
+            concept,
+            negated,
+            next: ConDescId::NONE,
+            dep_track_point,
+        })
+    }
+
+    #[test]
+    fn context_insert_uses_real_concept_tag_and_dependency_track_point() {
+        let mut ctx = ProcessContext::new();
+        let mut onto = OntologyArenas::new();
+        let concept = alloc_concept_with_tag(&mut onto, 7001);
+        let dep = TrackPointId::new(44);
+        let con_des = alloc_descriptor(&mut ctx, concept, true, dep);
+        assert_ne!(con_des.raw, 7001);
+
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        let contained =
+            set.insert_concept_get_clash_in_context(&ctx, &onto, con_des, dep, None, None, None);
+
+        assert!(!contained);
+        assert!(set.concept_des_dep_map.contains_key(&7001));
+        assert!(!set.concept_des_dep_map.contains_key(&con_des.raw));
+        assert!(set.has_concept_in_context(&ctx, &onto, concept, true));
+        assert!(!set.has_concept_in_context(&ctx, &onto, concept, false));
+
+        let mut found = ConDescId::NONE;
+        let mut found_dep = TrackPointId::NONE;
+        assert!(set.get_concept_descriptor_in_context(
+            &ctx,
+            &onto,
+            concept,
+            &mut found,
+            &mut found_dep
+        ));
+        assert_eq!(found, con_des);
+        assert_eq!(found_dep, dep);
+    }
+
+    #[test]
+    fn context_insert_get_clash_reports_opposite_descriptor_and_dep_point() {
+        let mut ctx = ProcessContext::new();
+        let mut onto = OntologyArenas::new();
+        let concept = alloc_concept_with_tag(&mut onto, 7101);
+        let pos_dep = TrackPointId::new(51);
+        let neg_dep = TrackPointId::new(52);
+        let pos_des = alloc_descriptor(&mut ctx, concept, false, pos_dep);
+        let neg_des = alloc_descriptor(&mut ctx, concept, true, neg_dep);
+
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        assert!(!set
+            .insert_concept_get_clash_in_context(&ctx, &onto, pos_des, pos_dep, None, None, None,));
+
+        let mut clash_des = ConDescId::NONE;
+        let mut clash_dep = TrackPointId::NONE;
+        assert!(set.insert_concept_get_clash_in_context(
+            &ctx,
+            &onto,
+            neg_des,
+            neg_dep,
+            None,
+            Some(&mut clash_des),
+            Some(&mut clash_dep),
+        ));
+        assert_eq!(clash_des, pos_des);
+        assert_eq!(clash_dep, pos_dep);
+    }
+
+    #[test]
+    fn context_reapply_queue_state_returns_descriptor_dependency() {
+        let mut ctx = ProcessContext::new();
+        let mut onto = OntologyArenas::new();
+        let concept = alloc_concept_with_tag(&mut onto, 7201);
+        let dep = TrackPointId::new(61);
+        let con_des = alloc_descriptor(&mut ctx, concept, false, dep);
+
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        assert!(
+            !set.insert_concept_get_clash_in_context(&ctx, &onto, con_des, dep, None, None, None,)
+        );
+
+        let mut found = ConDescId::NONE;
+        let mut found_dep = TrackPointId::NONE;
+        let mut queue_empty = false;
+        assert!(
+            set.get_concept_descriptor_and_reapply_queue_state_by_tag_in_context(
+                &ctx,
+                7201,
+                &mut found,
+                &mut found_dep,
+                &mut queue_empty,
+            )
+        );
+        assert_eq!(found, con_des);
+        assert_eq!(found_dep, dep);
+        assert!(queue_empty);
+    }
+
+    #[test]
+    fn init_in_context_uses_shared_additional_size_for_share_decision() {
+        let mut ctx = ProcessContext::new();
+        let mut target = ReapplyConceptLabelSet::new(INVALID);
+        let mut target_additional = HashMap::new();
+        for tag in 1000..1040 {
+            target_additional.insert(tag, data(ConDescId::new(tag)));
+        }
+        target.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(target_additional);
+        let target_id = ctx.alloc_label_set(target);
+
+        let mut prev = ReapplyConceptLabelSet::new(INVALID);
+        prev.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+            label_set: target_id,
+            which: AdditionalMapSlot::Additional,
+        });
+        prev.concept_des_dep_map
+            .insert(10, data(ConDescId::new(10)));
+        prev.concept_des_dep_map
+            .insert(11, data(ConDescId::new(11)));
+        let prev_id = ctx.alloc_label_set(prev);
+
+        let mut child = ReapplyConceptLabelSet::new(INVALID);
+        child.init_concept_label_set_in_context(&ctx, Some((prev_id, ctx.label_set(prev_id))));
+
+        assert!(matches!(
+            child.additional_concept_des_dep_map,
+            AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+                label_set,
+                which: AdditionalMapSlot::Additional,
+            }) if label_set == target_id
+        ));
+        assert_eq!(child.additional_size_in_context(&ctx), 40);
+    }
+
+    #[test]
+    fn init_in_context_clones_shared_additional_contents_for_rebuild() {
+        let mut ctx = ProcessContext::new();
+        let mut target = ReapplyConceptLabelSet::new(INVALID);
+        let mut target_additional = HashMap::new();
+        for tag in 2000..2040 {
+            target_additional.insert(tag, data(ConDescId::new(tag)));
+        }
+        target.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(target_additional);
+        let target_id = ctx.alloc_label_set(target);
+
+        let mut prev = ReapplyConceptLabelSet::new(INVALID);
+        prev.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+            label_set: target_id,
+            which: AdditionalMapSlot::Additional,
+        });
+        for tag in 20..30 {
+            prev.concept_des_dep_map
+                .insert(tag, data(ConDescId::new(tag)));
+        }
+        let prev_id = ctx.alloc_label_set(prev);
+
+        let mut child = ReapplyConceptLabelSet::new(INVALID);
+        child.init_concept_label_set_in_context(&ctx, Some((prev_id, ctx.label_set(prev_id))));
+
+        match &child.additional_concept_des_dep_map {
+            AdditionalDesDepMapRef::Owned(m) => {
+                assert_eq!(m.len(), 50);
+                assert_eq!(
+                    m.get(&2000).expect("shared additional").concept_descriptor,
+                    ConDescId::new(2000)
+                );
+                assert_eq!(
+                    m.get(&20).expect("prev main").concept_descriptor,
+                    ConDescId::new(20)
+                );
+            }
+            _ => panic!("rebuild branch must own the cloned additional contents"),
+        }
+    }
+
+    #[test]
+    fn iterator_in_context_snapshots_shared_additional_alias() {
+        let mut ctx = ProcessContext::new();
+        let mut target = ReapplyConceptLabelSet::new(INVALID);
+        let mut target_additional = HashMap::new();
+        target_additional.insert(3000, data(ConDescId::new(300)));
+        target.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(target_additional);
+        let target_id = ctx.alloc_label_set(target);
+
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        set.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+            label_set: target_id,
+            which: AdditionalMapSlot::Additional,
+        });
+        set.concept_count = 1;
+
+        let mut it = set.get_concept_label_set_iterator_in_context(&ctx, true, false, false);
+        assert!(it.has_value());
+        assert_eq!(it.get_concept_descriptor(), ConDescId::new(300));
+        it.move_next(&ctx);
+        assert!(!it.has_value());
+    }
+
+    #[test]
+    fn reapply_iterator_in_context_reads_and_clears_shared_additional_entry() {
+        let mut ctx = ProcessContext::new();
+        let reapply_head = ctx.alloc_cond_reapply_con_desc(CondensedReapplyConceptDescriptor::new(
+            ConDescId::new(400),
+            TrackPointId::NONE,
+            true,
+        ));
+        let mut queue = CondensedReapplyQueue::new();
+        queue.set_dynamic_pos_neg_reapply_des_linker(reapply_head);
+
+        let mut target = ReapplyConceptLabelSet::new(INVALID);
+        let mut target_additional = HashMap::new();
+        target_additional.insert(
+            4000,
+            ConceptDescriptorDependencyReapplyData {
+                concept_descriptor: ConDescId::new(400),
+                pos_neg_reapply_queue: queue,
+            },
+        );
+        target.additional_concept_des_dep_map = AdditionalDesDepMapRef::Owned(target_additional);
+        let target_id = ctx.alloc_label_set(target);
+
+        let mut set = ReapplyConceptLabelSet::new(INVALID);
+        set.additional_concept_des_dep_map = AdditionalDesDepMapRef::Shared(LabelSetMapAlias {
+            label_set: target_id,
+            which: AdditionalMapSlot::Additional,
+        });
+
+        let mut it =
+            set.get_concept_reapply_iterator_in_context(&ctx, ConceptId::new(4000), false, true);
+
+        assert_eq!(it.next(&ctx, true), reapply_head);
+        assert_eq!(
+            set.concept_des_dep_map
+                .get(&4000)
+                .expect("copied into main")
+                .pos_neg_reapply_queue
+                .dynamic_pos_neg_reapply_des_linker(),
+            super::super::reapply_sat::CondensedReapplyConceptDescriptorId::NONE
+        );
     }
 }

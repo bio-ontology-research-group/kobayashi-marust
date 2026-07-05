@@ -18,8 +18,8 @@
 #![allow(dead_code)]
 
 use super::super::model::substrate::{Cint64, Id};
+use super::super::process::databox::ProcessingDataBox;
 use super::adapters::{
-    SaturationIndividualsAnalysingAdapter, SaturationOccurrenceStatisticsCollectingAdapter,
     SatisfiableTaskAnswererBindingPropagationAdapter,
     SatisfiableTaskAnswererInstancePropagationMessageAdapter,
     SatisfiableTaskAnswererQueryingMaterializationAdapter,
@@ -31,8 +31,10 @@ use super::adapters::{
     SatisfiableTaskRealizationMarkedCandidatesMessageAdapter,
     SatisfiableTaskRealizationPossibleAssertionCollectingAdapter,
     SatisfiableTaskRealizationPossibleInstancesMergingAdapter,
-    SatisfiableTaskRepresentativeBackendUpdatingAdapter, TaskPreyingAdapter,
+    SatisfiableTaskRepresentativeBackendUpdatingAdapter, SaturationIndividualsAnalysingAdapter,
+    SaturationOccurrenceStatisticsCollectingAdapter, TaskPreyingAdapter,
 };
+use super::calculation_job::SatisfiableCalculationJobConceptAssertion;
 use super::config::CalculationConfigurationExtension;
 use super::scheduler::{BooleanTaskResult, Task, TaskId, TaskStatus};
 use super::stats::CalculationStatisticsCollector;
@@ -77,6 +79,14 @@ pub struct SatisfiableCalculationTask {
     pub base: Task,
     /// `CSatisfiableCalculationJobInstantiation` base.
     pub job_instantiation: SatisfiableCalculationJobInstantiation,
+    /// `CSortedLinkerBase<CTask*,CTask,CTask>::next` for the branch-task list.
+    ///
+    /// KONCLUDE-PORT-NOTE[ownership]: the only concrete task arena in this port is
+    /// `Arena<SatisfiableCalculationTask>`, so the inherited `CTask*` next-link is
+    /// represented as the typed satisfiable-task id used by the branch creators.
+    pub next: SatTaskId,
+    /// Port-side ordered concept assertions expanded from the query calculation job.
+    pub concept_assertions: Vec<SatisfiableCalculationJobConceptAssertion>,
 
     /// `CBooleanTaskResult mBoolTaskResult` (by value; the SAT/UNSAT result).
     pub bool_task_result: BooleanTaskResult,
@@ -95,6 +105,11 @@ pub struct SatisfiableCalculationTask {
     /// `CProcessingDataBox* mProcessingDataBox`. [memory-pool] opaque handle, same
     /// scheme as `process_context`; branch tasks share the parent's databox.
     pub processing_data_box: Cint64,
+    /// Rust-owned state for `mProcessingDataBox` when a task is materialized in
+    /// this arena. The numeric pointer alias above is preserved for existing call
+    /// sites; this optional value is the dereference target for exact-port code
+    /// that needs the task's databox.
+    pub processing_data_box_state: Option<ProcessingDataBox>,
 
     /// `CCalculationConfigurationExtension* mCalculationConfig`.
     pub calculation_config: Id<CalculationConfigurationExtension>,
@@ -117,7 +132,8 @@ pub struct SatisfiableCalculationTask {
     /// `CSatisfiableTaskRealizationPossibleAssertionCollectingAdapter* mPossAssCollAdapter`.
     pub poss_ass_coll_adapter: Id<SatisfiableTaskRealizationPossibleAssertionCollectingAdapter>,
     /// `CSatisfiableTaskClassificationRoleMarkedMessageAdapter* mClassRoleMarkedMessageAdapter`.
-    pub class_role_marked_message_adapter: Id<SatisfiableTaskClassificationRoleMarkedMessageAdapter>,
+    pub class_role_marked_message_adapter:
+        Id<SatisfiableTaskClassificationRoleMarkedMessageAdapter>,
     /// `CSatisfiableTaskAnswererSubsumptionMessageAdapter* mAnswererSubsumptionMessageAdapter`.
     pub answerer_subsumption_message_adapter: Id<SatisfiableTaskAnswererSubsumptionMessageAdapter>,
     /// `CSatisfiableTaskAnswererBindingPropagationAdapter* mAnswererBindingPropagationAdapter`.
@@ -145,10 +161,13 @@ impl Default for SatisfiableCalculationTask {
         SatisfiableCalculationTask {
             base: Task::default(),
             job_instantiation: SatisfiableCalculationJobInstantiation,
+            next: Id::NONE,
+            concept_assertions: Vec::new(),
             bool_task_result: BooleanTaskResult::default(),
             default_task_result: TaskStatus::default(),
             process_context: -1,
             processing_data_box: -1,
+            processing_data_box_state: None,
             calculation_config: Id::NONE,
             calc_stat_coll: Id::NONE,
             cons_adapter: Id::NONE,
@@ -183,6 +202,42 @@ impl SatisfiableCalculationTask {
         self
     }
 
+    /// Port of the inherited `CSortedLinkerBase::getNext`.
+    pub fn get_next(&self) -> SatTaskId {
+        self.next
+    }
+
+    /// Port of the inherited `CSortedLinkerBase::setNext`.
+    pub fn set_next(&mut self, next: SatTaskId) -> &mut Self {
+        self.next = next;
+        self
+    }
+
+    /// Port-side append for one calculation-job concept assertion.
+    pub fn add_satisfiable_calculation_job_concept_assertion(
+        &mut self,
+        assertion: SatisfiableCalculationJobConceptAssertion,
+    ) -> &mut Self {
+        self.concept_assertions.push(assertion);
+        self
+    }
+
+    /// Replace the ordered calculation-job concept assertions.
+    pub fn set_satisfiable_calculation_job_concept_assertions(
+        &mut self,
+        assertions: Vec<SatisfiableCalculationJobConceptAssertion>,
+    ) -> &mut Self {
+        self.concept_assertions = assertions;
+        self
+    }
+
+    /// Ordered assertions expanded from the query calculation job.
+    pub fn get_satisfiable_calculation_job_concept_assertions(
+        &self,
+    ) -> &[SatisfiableCalculationJobConceptAssertion] {
+        &self.concept_assertions
+    }
+
     /// Port of `CSatisfiableCalculationTask::getTaskContext`
     /// (`return getProcessContext(context);`).
     pub fn get_task_context(&mut self) -> Cint64 {
@@ -205,6 +260,17 @@ impl SatisfiableCalculationTask {
     /// Port of `CSatisfiableCalculationTask::getProcessingDataBox`.
     pub fn get_processing_data_box(&self) -> Cint64 {
         self.processing_data_box
+    }
+
+    /// Port-facing dereference of `mProcessingDataBox`.
+    pub fn processing_data_box_state(&self) -> Option<&ProcessingDataBox> {
+        self.processing_data_box_state.as_ref()
+    }
+
+    /// Install the Rust-owned databox state for this task.
+    pub fn set_processing_data_box_state(&mut self, data_box: ProcessingDataBox) -> &mut Self {
+        self.processing_data_box_state = Some(data_box);
+        self
     }
 
     /// Port of `CSatisfiableCalculationTask::makeTaskReference`.
@@ -231,6 +297,8 @@ impl SatisfiableCalculationTask {
     pub fn init_task(&mut self, parent_task: TaskId) -> &mut Self {
         self.process_context = -1;
         self.processing_data_box = -1;
+        self.processing_data_box_state = None;
+        self.concept_assertions.clear();
         self.cons_adapter = Id::NONE;
         self.indi_anal_adapter = Id::NONE;
         self.occurrence_statistics_collecting_adapter = Id::NONE;
@@ -405,7 +473,10 @@ impl SatisfiableCalculationTask {
     // --- the 16 adapter set*/get* pairs (CSatisfiableCalculationTask.cpp) ---
 
     /// Port of `CSatisfiableCalculationTask::setConsistenceAdapter`.
-    pub fn set_consistence_adapter(&mut self, consistence_adapter: Id<TaskPreyingAdapter>) -> &mut Self {
+    pub fn set_consistence_adapter(
+        &mut self,
+        consistence_adapter: Id<TaskPreyingAdapter>,
+    ) -> &mut Self {
         self.cons_adapter = consistence_adapter;
         self
     }
@@ -415,147 +486,224 @@ impl SatisfiableCalculationTask {
     }
 
     /// Port of `CSatisfiableCalculationTask::setSaturationIndividualsAnalysationObserver`.
-    pub fn set_saturation_individuals_analysation_observer(&mut self, indi_anal_adapter: Id<SaturationIndividualsAnalysingAdapter>) -> &mut Self {
+    pub fn set_saturation_individuals_analysation_observer(
+        &mut self,
+        indi_anal_adapter: Id<SaturationIndividualsAnalysingAdapter>,
+    ) -> &mut Self {
         self.indi_anal_adapter = indi_anal_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSaturationIndividualsAnalysationObserver`.
-    pub fn get_saturation_individuals_analysation_observer(&self) -> Id<SaturationIndividualsAnalysingAdapter> {
+    pub fn get_saturation_individuals_analysation_observer(
+        &self,
+    ) -> Id<SaturationIndividualsAnalysingAdapter> {
         self.indi_anal_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setOccurrenceStatisticsCollectingAdapter`.
-    pub fn set_occurrence_statistics_collecting_adapter(&mut self, coll_adapter: Id<SaturationOccurrenceStatisticsCollectingAdapter>) -> &mut Self {
+    pub fn set_occurrence_statistics_collecting_adapter(
+        &mut self,
+        coll_adapter: Id<SaturationOccurrenceStatisticsCollectingAdapter>,
+    ) -> &mut Self {
         self.occurrence_statistics_collecting_adapter = coll_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getOccurrenceStatisticsCollectingAdapter`.
-    pub fn get_occurrence_statistics_collecting_adapter(&self) -> Id<SaturationOccurrenceStatisticsCollectingAdapter> {
+    pub fn get_occurrence_statistics_collecting_adapter(
+        &self,
+    ) -> Id<SaturationOccurrenceStatisticsCollectingAdapter> {
         self.occurrence_statistics_collecting_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setClassificationMessageAdapter`.
-    pub fn set_classification_message_adapter(&mut self, class_mess_adapter: Id<SatisfiableTaskClassificationMessageAdapter>) -> &mut Self {
+    pub fn set_classification_message_adapter(
+        &mut self,
+        class_mess_adapter: Id<SatisfiableTaskClassificationMessageAdapter>,
+    ) -> &mut Self {
         self.class_mess_adapter = class_mess_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getClassificationMessageAdapter`.
-    pub fn get_classification_message_adapter(&self) -> Id<SatisfiableTaskClassificationMessageAdapter> {
+    pub fn get_classification_message_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskClassificationMessageAdapter> {
         self.class_mess_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setRealizationMarkedCandidatesMessageAdapter`.
-    pub fn set_realization_marked_candidates_message_adapter(&mut self, real_mess_observer: Id<SatisfiableTaskRealizationMarkedCandidatesMessageAdapter>) -> &mut Self {
+    pub fn set_realization_marked_candidates_message_adapter(
+        &mut self,
+        real_mess_observer: Id<SatisfiableTaskRealizationMarkedCandidatesMessageAdapter>,
+    ) -> &mut Self {
         self.real_mess_adapter = real_mess_observer;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getRealizationMarkedCandidatesMessageAdapter`.
-    pub fn get_realization_marked_candidates_message_adapter(&self) -> Id<SatisfiableTaskRealizationMarkedCandidatesMessageAdapter> {
+    pub fn get_realization_marked_candidates_message_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskRealizationMarkedCandidatesMessageAdapter> {
         self.real_mess_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableTaskIncrementalConsistencyTestingAdapter`.
-    pub fn set_satisfiable_task_incremental_consistency_testing_adapter(&mut self, inc_cons_test_adaptor: Id<SatisfiableTaskIncrementalConsistencyTestingAdapter>) -> &mut Self {
+    pub fn set_satisfiable_task_incremental_consistency_testing_adapter(
+        &mut self,
+        inc_cons_test_adaptor: Id<SatisfiableTaskIncrementalConsistencyTestingAdapter>,
+    ) -> &mut Self {
         self.sat_inc_cons_testing_adapter = inc_cons_test_adaptor;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableTaskIncrementalConsistencyTestingAdapter`.
-    pub fn get_satisfiable_task_incremental_consistency_testing_adapter(&self) -> Id<SatisfiableTaskIncrementalConsistencyTestingAdapter> {
+    pub fn get_satisfiable_task_incremental_consistency_testing_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskIncrementalConsistencyTestingAdapter> {
         self.sat_inc_cons_testing_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableTaskIndividualDependenceTrackingAdapter`.
-    pub fn set_satisfiable_task_individual_dependence_tracking_adapter(&mut self, ind_dep_track_adaptor: Id<SatisfiableTaskIndividualDependenceTrackingAdapter>) -> &mut Self {
+    pub fn set_satisfiable_task_individual_dependence_tracking_adapter(
+        &mut self,
+        ind_dep_track_adaptor: Id<SatisfiableTaskIndividualDependenceTrackingAdapter>,
+    ) -> &mut Self {
         self.sat_ind_dep_track_adapter = ind_dep_track_adaptor;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableTaskIndividualDependenceTrackingAdapter`.
-    pub fn get_satisfiable_task_individual_dependence_tracking_adapter(&self) -> Id<SatisfiableTaskIndividualDependenceTrackingAdapter> {
+    pub fn get_satisfiable_task_individual_dependence_tracking_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskIndividualDependenceTrackingAdapter> {
         self.sat_ind_dep_track_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setPossibleAssertionCollectionAdapter`.
-    pub fn set_possible_assertion_collection_adapter(&mut self, poss_ass_coll_adapter: Id<SatisfiableTaskRealizationPossibleAssertionCollectingAdapter>) -> &mut Self {
+    pub fn set_possible_assertion_collection_adapter(
+        &mut self,
+        poss_ass_coll_adapter: Id<SatisfiableTaskRealizationPossibleAssertionCollectingAdapter>,
+    ) -> &mut Self {
         self.poss_ass_coll_adapter = poss_ass_coll_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getPossibleAssertionCollectionAdapter`.
-    pub fn get_possible_assertion_collection_adapter(&self) -> Id<SatisfiableTaskRealizationPossibleAssertionCollectingAdapter> {
+    pub fn get_possible_assertion_collection_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskRealizationPossibleAssertionCollectingAdapter> {
         self.poss_ass_coll_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableClassificationRoleMarkedMessageAdapter`.
-    pub fn set_satisfiable_classification_role_marked_message_adapter(&mut self, class_role_marked_message_adapter: Id<SatisfiableTaskClassificationRoleMarkedMessageAdapter>) -> &mut Self {
+    pub fn set_satisfiable_classification_role_marked_message_adapter(
+        &mut self,
+        class_role_marked_message_adapter: Id<
+            SatisfiableTaskClassificationRoleMarkedMessageAdapter,
+        >,
+    ) -> &mut Self {
         self.class_role_marked_message_adapter = class_role_marked_message_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableClassificationRoleMarkedMessageAdapter`.
-    pub fn get_satisfiable_classification_role_marked_message_adapter(&self) -> Id<SatisfiableTaskClassificationRoleMarkedMessageAdapter> {
+    pub fn get_satisfiable_classification_role_marked_message_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskClassificationRoleMarkedMessageAdapter> {
         self.class_role_marked_message_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableAnswererSubsumptionMessageAdapter`.
-    pub fn set_satisfiable_answerer_subsumption_message_adapter(&mut self, answerer_message_adapter: Id<SatisfiableTaskAnswererSubsumptionMessageAdapter>) -> &mut Self {
+    pub fn set_satisfiable_answerer_subsumption_message_adapter(
+        &mut self,
+        answerer_message_adapter: Id<SatisfiableTaskAnswererSubsumptionMessageAdapter>,
+    ) -> &mut Self {
         self.answerer_subsumption_message_adapter = answerer_message_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableAnswererSubsumptionMessageAdapter`.
-    pub fn get_satisfiable_answerer_subsumption_message_adapter(&self) -> Id<SatisfiableTaskAnswererSubsumptionMessageAdapter> {
+    pub fn get_satisfiable_answerer_subsumption_message_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskAnswererSubsumptionMessageAdapter> {
         self.answerer_subsumption_message_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableAnswererBindingPropagationAdapter`.
-    pub fn set_satisfiable_answerer_binding_propagation_adapter(&mut self, answerer_message_adapter: Id<SatisfiableTaskAnswererBindingPropagationAdapter>) -> &mut Self {
+    pub fn set_satisfiable_answerer_binding_propagation_adapter(
+        &mut self,
+        answerer_message_adapter: Id<SatisfiableTaskAnswererBindingPropagationAdapter>,
+    ) -> &mut Self {
         self.answerer_binding_propagation_adapter = answerer_message_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableAnswererBindingPropagationAdapter`.
-    pub fn get_satisfiable_answerer_binding_propagation_adapter(&self) -> Id<SatisfiableTaskAnswererBindingPropagationAdapter> {
+    pub fn get_satisfiable_answerer_binding_propagation_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskAnswererBindingPropagationAdapter> {
         self.answerer_binding_propagation_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiablePossibleInstancesMergingAdapter`.
-    pub fn set_satisfiable_possible_instances_merging_adapter(&mut self, poss_inst_merging_adapter: Id<SatisfiableTaskRealizationPossibleInstancesMergingAdapter>) -> &mut Self {
+    pub fn set_satisfiable_possible_instances_merging_adapter(
+        &mut self,
+        poss_inst_merging_adapter: Id<SatisfiableTaskRealizationPossibleInstancesMergingAdapter>,
+    ) -> &mut Self {
         self.satisfiable_possible_instances_merging_adapter = poss_inst_merging_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiablePossibleInstancesMergingAdapter`.
-    pub fn get_satisfiable_possible_instances_merging_adapter(&self) -> Id<SatisfiableTaskRealizationPossibleInstancesMergingAdapter> {
+    pub fn get_satisfiable_possible_instances_merging_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskRealizationPossibleInstancesMergingAdapter> {
         self.satisfiable_possible_instances_merging_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableAnswererInstancePropagationMessageAdapter`.
-    pub fn set_satisfiable_answerer_instance_propagation_message_adapter(&mut self, answerer_message_adapter: Id<SatisfiableTaskAnswererInstancePropagationMessageAdapter>) -> &mut Self {
+    pub fn set_satisfiable_answerer_instance_propagation_message_adapter(
+        &mut self,
+        answerer_message_adapter: Id<SatisfiableTaskAnswererInstancePropagationMessageAdapter>,
+    ) -> &mut Self {
         self.answerer_instance_propagation_message_adapter = answerer_message_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableAnswererInstancePropagationMessageAdapter`.
-    pub fn get_satisfiable_answerer_instance_propagation_message_adapter(&self) -> Id<SatisfiableTaskAnswererInstancePropagationMessageAdapter> {
+    pub fn get_satisfiable_answerer_instance_propagation_message_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskAnswererInstancePropagationMessageAdapter> {
         self.answerer_instance_propagation_message_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableRepresentativeBackendCacheUpdatingAdapter`.
-    pub fn set_satisfiable_representative_backend_cache_updating_adapter(&mut self, representative_backend_updating_adapter: Id<SatisfiableTaskRepresentativeBackendUpdatingAdapter>) -> &mut Self {
+    pub fn set_satisfiable_representative_backend_cache_updating_adapter(
+        &mut self,
+        representative_backend_updating_adapter: Id<
+            SatisfiableTaskRepresentativeBackendUpdatingAdapter,
+        >,
+    ) -> &mut Self {
         self.representative_backend_updating_adapter = representative_backend_updating_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableRepresentativeBackendCacheUpdatingAdapter`.
-    pub fn get_satisfiable_representative_backend_cache_updating_adapter(&self) -> Id<SatisfiableTaskRepresentativeBackendUpdatingAdapter> {
+    pub fn get_satisfiable_representative_backend_cache_updating_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskRepresentativeBackendUpdatingAdapter> {
         self.representative_backend_updating_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setSatisfiableAnswererMaterializationAdapter`.
-    pub fn set_satisfiable_answerer_materialization_adapter(&mut self, coll_adapter: Id<SatisfiableTaskAnswererQueryingMaterializationAdapter>) -> &mut Self {
+    pub fn set_satisfiable_answerer_materialization_adapter(
+        &mut self,
+        coll_adapter: Id<SatisfiableTaskAnswererQueryingMaterializationAdapter>,
+    ) -> &mut Self {
         self.answerer_materialization_adapter = coll_adapter;
         self
     }
     /// Port of `CSatisfiableCalculationTask::getSatisfiableAnswererMaterializationAdapter`.
-    pub fn get_satisfiable_answerer_materialization_adapter(&self) -> Id<SatisfiableTaskAnswererQueryingMaterializationAdapter> {
+    pub fn get_satisfiable_answerer_materialization_adapter(
+        &self,
+    ) -> Id<SatisfiableTaskAnswererQueryingMaterializationAdapter> {
         self.answerer_materialization_adapter
     }
 
     /// Port of `CSatisfiableCalculationTask::setCancellationAdapter`.
-    pub fn set_cancellation_adapter(&mut self, cancel_adapter: Id<SatisfiableTaskCancellationAdapter>) -> &mut Self {
+    pub fn set_cancellation_adapter(
+        &mut self,
+        cancel_adapter: Id<SatisfiableTaskCancellationAdapter>,
+    ) -> &mut Self {
         self.cancellation_adapter = cancel_adapter;
         self
     }

@@ -58,14 +58,14 @@
 
 #![allow(dead_code, unused_variables, unused_mut)]
 
+use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::substrate::Cint64;
+use super::super::model::Id;
 use super::super::model::{ConceptId, RoleId};
 use super::super::process::node_resolution::IndividualProcessNodeVector;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::{NodeId, SatNodeId};
-use super::super::model::Id;
 use super::algorithm::SaturationTaskHandleAlgorithm;
-use super::super::completion::context::CalculationAlgorithmContextBase;
 
 // ---------------------------------------------------------------------------
 // Opaque saturation-satellite param aliases (W6-DEFER[api]).
@@ -465,7 +465,13 @@ impl SaturationTaskHandleAlgorithm {
         role_inversed: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (&source_node, &destination_node, role, role_inversed, &calc_alg_context);
+        let _ = (
+            &source_node,
+            &destination_node,
+            role,
+            role_inversed,
+            &calc_alg_context,
+        );
         // W6-DEFER[api]: PORT-PENDING — see the structured transcription above.
     }
 
@@ -537,7 +543,12 @@ impl SaturationTaskHandleAlgorithm {
         cardinality: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (&process_indi, con_pro_linker, cardinality, &calc_alg_context);
+        let _ = (
+            &process_indi,
+            con_pro_linker,
+            cardinality,
+            &calc_alg_context,
+        );
         // W6-DEFER[api]: PORT-PENDING — see the structured transcription above.
     }
 

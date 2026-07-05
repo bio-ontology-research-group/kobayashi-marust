@@ -189,7 +189,10 @@ pub struct IndividualProcessNodeVector {
 impl IndividualProcessNodeVector {
     /// Port of `CIndividualProcessNodeVector::CIndividualProcessNodeVector`.
     pub fn new() -> Self {
-        IndividualProcessNodeVector { pos: Vec::new(), neg: Vec::new() }
+        IndividualProcessNodeVector {
+            pos: Vec::new(),
+            neg: Vec::new(),
+        }
     }
 
     #[inline]
@@ -242,9 +245,13 @@ impl IndividualProcessNodeVector {
     pub fn get_item_min_index(&self) -> Cint64 {
         -((self.neg.len() as Cint64) - 1).max(0)
     }
-    /// Port of `getItemMaxIndex` — one past the highest non-negative stored id.
+    /// Port of `getItemMaxIndex` — the highest non-negative stored id.
     pub fn get_item_max_index(&self) -> Cint64 {
-        self.pos.len() as Cint64
+        if self.pos.is_empty() {
+            -1
+        } else {
+            self.pos.len() as Cint64 - 1
+        }
     }
     /// Port of `getItemCount` — total slots over both sides.
     pub fn get_item_count(&self) -> Cint64 {
@@ -351,14 +358,22 @@ impl CalculationAlgorithmContextBase {
     /// record it in the databox node vector under the individual id.
     pub fn get_localized_individual(&mut self, indi: NodeId, update_individual: bool) -> NodeId {
         let cur_loc_tag = self.current_localization_tag();
-        if self.process_context().node(indi).is_localization_tag_up_to_date(cur_loc_tag) {
+        if self
+            .process_context()
+            .node(indi)
+            .is_localization_tag_up_to_date(cur_loc_tag)
+        {
             return indi;
         }
         let mut indi = indi;
         if update_individual {
             indi = self.get_up_to_date_individual(indi);
         }
-        if self.process_context().node(indi).is_localization_tag_up_to_date(cur_loc_tag) {
+        if self
+            .process_context()
+            .node(indi)
+            .is_localization_tag_up_to_date(cur_loc_tag)
+        {
             return indi;
         }
         // STATINC(INDINODELOCALIZEDLOADCOUNT) — stats elided.
@@ -411,14 +426,21 @@ impl CalculationAlgorithmContextBase {
     /// node vector yields its current node.
     pub fn get_successor_individual(&mut self, indi: &mut NodeId, link: EdgeId) -> NodeId {
         let cur_loc_tag = self.current_localization_tag();
-        if self.process_context().edge(link).is_localization_tag_up_to_date(cur_loc_tag) {
+        if self
+            .process_context()
+            .edge(link)
+            .is_localization_tag_up_to_date(cur_loc_tag)
+        {
             return self.edge_opposite_individual(link, *indi);
         }
         // STATINC(INDINODEUPDATELOADCOUNT) — stats elided.
         let succ_indi = self.edge_opposite_individual(link, *indi);
         let (up_to_date, relocalized) = {
             let node = self.process_context().node(succ_indi);
-            (node.is_localization_tag_up_to_date(cur_loc_tag), node.is_relocalized())
+            (
+                node.is_localization_tag_up_to_date(cur_loc_tag),
+                node.is_relocalized(),
+            )
         };
         if !up_to_date && relocalized {
             let succ_indi_id = self.edge_opposite_individual_id(link, *indi);
@@ -431,9 +453,17 @@ impl CalculationAlgorithmContextBase {
     }
 
     /// Port of `getLocalizedSuccessorIndividual(...)`. `.cpp` 26464–26477.
-    pub fn get_localized_successor_individual(&mut self, indi: &mut NodeId, link: EdgeId) -> NodeId {
+    pub fn get_localized_successor_individual(
+        &mut self,
+        indi: &mut NodeId,
+        link: EdgeId,
+    ) -> NodeId {
         let cur_loc_tag = self.current_localization_tag();
-        if self.process_context().edge(link).is_localization_tag_up_to_date(cur_loc_tag) {
+        if self
+            .process_context()
+            .edge(link)
+            .is_localization_tag_up_to_date(cur_loc_tag)
+        {
             return self.edge_opposite_individual(link, *indi);
         }
         // STATINC(INDINODEUPDATELOADCOUNT) — stats elided.
@@ -469,7 +499,10 @@ impl CalculationAlgorithmContextBase {
         }
         let indi_id = self.process_context().node(indi).individual_node_id();
         let edge = self.process_context().edge(link);
-        let (src, dst) = (edge.get_source_individual(), edge.get_destination_individual());
+        let (src, dst) = (
+            edge.get_source_individual(),
+            edge.get_destination_individual(),
+        );
         let src_id = self.process_context().node(src).individual_node_id();
         if src_id == indi_id {
             dst

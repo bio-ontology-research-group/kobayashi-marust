@@ -87,7 +87,9 @@ pub struct DistinctHash {
 impl DistinctHash {
     /// Port of `CDistinctHash::CDistinctHash(CContext*)` (allocator handle dropped).
     pub fn new() -> Self {
-        DistinctHash { hash: HashMap::new() }
+        DistinctHash {
+            hash: HashMap::new(),
+        }
     }
 
     /// Port of `CDistinctHash::initDistinctHash`.
@@ -105,7 +107,10 @@ impl DistinctHash {
 
     /// Port of `CDistinctHash::getIndividualDistinctEdge` (`value(indiID, nullptr)`).
     pub fn get_individual_distinct_edge(&self, indi_id: Cint64) -> DistinctEdgeId {
-        self.hash.get(&indi_id).copied().unwrap_or(DistinctEdgeId::NONE)
+        self.hash
+            .get(&indi_id)
+            .copied()
+            .unwrap_or(DistinctEdgeId::NONE)
     }
 
     /// Port of `CDistinctHash::isIndividualDistinct` (`contains(indiID)`).
@@ -142,9 +147,7 @@ impl DistinctHash {
     /// `Vec` so the iterator is self-contained (QHash iteration order is itself
     /// unspecified, so the snapshot is content-faithful).
     pub fn get_distinct_iterator(&self) -> DistinctIterator {
-        DistinctIterator::from_entries(
-            self.hash.iter().map(|(k, v)| (*k, *v)).collect(),
-        )
+        DistinctIterator::from_entries(self.hash.iter().map(|(k, v)| (*k, *v)).collect())
     }
 }
 
@@ -164,7 +167,10 @@ pub struct DistinctIterator {
 impl DistinctIterator {
     /// Port of `CDistinctIterator::CDistinctIterator()` (empty).
     pub fn new() -> Self {
-        DistinctIterator { entries: Vec::new(), pos: 0 }
+        DistinctIterator {
+            entries: Vec::new(),
+            pos: 0,
+        }
     }
 
     /// Port of `CDistinctIterator::CDistinctIterator(beginIt, endIt)`.
@@ -543,7 +549,9 @@ pub struct ConnectionSuccessorCorrectionHash {
 impl ConnectionSuccessorCorrectionHash {
     /// Port of `CConnectionSuccessorCorrectionHash::CConnectionSuccessorCorrectionHash`.
     pub fn new() -> Self {
-        ConnectionSuccessorCorrectionHash { hash: HashMap::new() }
+        ConnectionSuccessorCorrectionHash {
+            hash: HashMap::new(),
+        }
     }
 
     /// Port of `CConnectionSuccessorCorrectionHash::initConnectionSuccessorCorrectionHash`.
@@ -610,7 +618,10 @@ impl Default for DisjointSuccessorRoleData {
     /// Port of `CDisjointSuccessorRoleData::CDisjointSuccessorRoleData()`
     /// (`mUseNegDisSet = nullptr; mLocNegDisSet = nullptr`).
     fn default() -> Self {
-        DisjointSuccessorRoleData { use_neg_dis_set: None, located: false }
+        DisjointSuccessorRoleData {
+            use_neg_dis_set: None,
+            located: false,
+        }
     }
 }
 
@@ -646,7 +657,9 @@ pub struct DisjointSuccessorRoleHash {
 impl DisjointSuccessorRoleHash {
     /// Port of `CDisjointSuccessorRoleHash::CDisjointSuccessorRoleHash(CProcessContext*)`.
     pub fn new() -> Self {
-        DisjointSuccessorRoleHash { succ_neg_dis_edge_hash: HashMap::new() }
+        DisjointSuccessorRoleHash {
+            succ_neg_dis_edge_hash: HashMap::new(),
+        }
     }
 
     /// Port of `CDisjointSuccessorRoleHash::initDisjointSuccessorRoleHash`.
@@ -714,7 +727,8 @@ impl DisjointSuccessorRoleHash {
         link: DisjointEdgeId,
     ) -> &mut Self {
         let role = disjoint_edges.get(link).get_link_role();
-        self.get_neg_dis_role_hash_located(succ_indi).insert(role, link);
+        self.get_neg_dis_role_hash_located(succ_indi)
+            .insert(role, link);
         self
     }
 
@@ -735,7 +749,10 @@ impl DisjointSuccessorRoleHash {
     ) -> DisjointEdgeId {
         let mut link = DisjointEdgeId::NONE;
         if let Some(data_hash) = self.get_neg_dis_role_hash_unlocated(succ_indi) {
-            link = data_hash.get(&role).copied().unwrap_or(DisjointEdgeId::NONE);
+            link = data_hash
+                .get(&role)
+                .copied()
+                .unwrap_or(DisjointEdgeId::NONE);
         }
         link
     }
@@ -779,12 +796,20 @@ impl DisjointSuccessorRoleIterator {
     /// Port of `CDisjointSuccessorRoleIterator::CDisjointSuccessorRoleIterator()`
     /// (`mSuccIndi = 0`).
     pub fn new() -> Self {
-        DisjointSuccessorRoleIterator { succ_indi: 0, links: Vec::new(), pos: 0 }
+        DisjointSuccessorRoleIterator {
+            succ_indi: 0,
+            links: Vec::new(),
+            pos: 0,
+        }
     }
 
     /// Port of `CDisjointSuccessorRoleIterator(succIndi, beginIt, endIt)`.
     pub fn from_links(succ_indi: Cint64, links: Vec<DisjointEdgeId>) -> Self {
-        DisjointSuccessorRoleIterator { succ_indi, links, pos: 0 }
+        DisjointSuccessorRoleIterator {
+            succ_indi,
+            links,
+            pos: 0,
+        }
     }
 
     /// The successor id this iterator was built for (`mSuccIndi`).

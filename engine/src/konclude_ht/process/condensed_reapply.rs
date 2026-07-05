@@ -19,10 +19,10 @@
 
 #![allow(dead_code)]
 
+use super::super::model::substrate::Id;
 use super::context::ProcessContext;
 use super::reapply_sat::{CondensedReapplyConceptDescriptorId, CondensedReapplyQueueIterator};
 use super::ConDescId;
-use super::super::model::substrate::Id;
 
 /// Port of `CCondensedReapplyQueue`.
 ///
@@ -57,7 +57,10 @@ impl CondensedReapplyQueue {
     /// prev->mDynamicPosNegReapplyDesLinker` shares the same chain head (the chain
     /// nodes live in the shared per-test pool); here both queues just hold the same
     /// `Id` into `cond_reapply_con_descs`.
-    pub fn init_reapply_queue(&mut self, prev_reapply_queue: Option<&CondensedReapplyQueue>) -> &mut Self {
+    pub fn init_reapply_queue(
+        &mut self,
+        prev_reapply_queue: Option<&CondensedReapplyQueue>,
+    ) -> &mut Self {
         if let Some(prev) = prev_reapply_queue {
             self.dynamic_pos_neg_reapply_des_linker = prev.dynamic_pos_neg_reapply_des_linker;
         } else {
@@ -76,11 +79,25 @@ impl CondensedReapplyQueue {
         self.dynamic_pos_neg_reapply_des_linker
     }
 
+    /// Replace the dynamic descriptor head. Context-threaded callers use this to
+    /// avoid overlapping borrows of a label-set-held queue and `ProcessContext`.
+    pub fn set_dynamic_pos_neg_reapply_des_linker(
+        &mut self,
+        head: CondensedReapplyConceptDescriptorId,
+    ) -> &mut Self {
+        self.dynamic_pos_neg_reapply_des_linker = head;
+        self
+    }
+
     /// Port of `hasConceptDescriptor(CConceptDescriptor* conceptDescriptor)`.
     /// KONCLUDE-PORT-NOTE[pointer-alias]: the `desLinker->hasConceptDescriptor(cd)`
     /// (`getData() == cd`) + `desLinker->getNext()` derefs resolve against the
     /// descriptor arena, hence `&ProcessContext`.
-    pub fn has_concept_descriptor(&self, ctx: &ProcessContext, concept_descriptor: ConDescId) -> bool {
+    pub fn has_concept_descriptor(
+        &self,
+        ctx: &ProcessContext,
+        concept_descriptor: ConDescId,
+    ) -> bool {
         let mut des_linker = self.dynamic_pos_neg_reapply_des_linker;
         while des_linker.is_some() {
             let d = ctx.cond_reapply_con_desc(des_linker);
@@ -102,7 +119,8 @@ impl CondensedReapplyQueue {
         con_pro_des: CondensedReapplyConceptDescriptorId,
     ) -> &mut Self {
         if con_pro_des.is_some() {
-            ctx.cond_reapply_con_desc_mut(con_pro_des).next = self.dynamic_pos_neg_reapply_des_linker;
+            ctx.cond_reapply_con_desc_mut(con_pro_des).next =
+                self.dynamic_pos_neg_reapply_des_linker;
             self.dynamic_pos_neg_reapply_des_linker = con_pro_des;
         }
         self

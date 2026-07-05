@@ -28,11 +28,10 @@
 //! `ctx.processing_data_box{,_mut}()`.
 //!
 //! What ports faithfully here vs. what defers:
-//!   * The 6 `createMERGE*` dependency-node creators ARE the gate `if
-//!     (mConfBuildDependencies) depNode = …DependencyFactory->create…();` — ported
-//!     in full; only the `CDependencyFactory` call is `W6-DEFER[api]` (the
-//!     Algorithm-layer factory has no method bodies yet), so the built node stays
-//!     `Id::NONE` and any out track-point is left for the factory to set.
+//!   * `createMERGEDCONCEPTDependency` is live; the remaining `createMERGE*`
+//!     dependency-node creators preserve the gate `if (mConfBuildDependencies)
+//!     depNode = …DependencyFactory->create…();` but still defer the concrete
+//!     factory allocation.
 //!   * The remaining 7 are `PORT-PENDING`: every one bottoms out in subsystems with
 //!     no port yet — the Task machinery (`CSatisfiableCalculationTask`,
 //!     `createDependendBranchingTaskList`, `createCalculationAlgorithmContext`,
@@ -60,8 +59,9 @@
 #![allow(unused_mut)]
 
 use super::super::model::substrate::{Cint64, Id};
+use super::super::process::dependency::{DepKind, DependencyNode};
 use super::super::process::{
-    ConDescId, ConProcDescId, DependencyId, NodeId, RestrictionSpecId, TrackPointId,
+    ConDescId, ConProcDescId, DepLinkId, DependencyId, NodeId, RestrictionSpecId, TrackPointId,
 };
 use super::context::CalculationAlgorithmContextBase;
 
@@ -316,8 +316,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // getPriorityForTaskReusing, W6), the non-deterministic dependency branch
         // (createNonDeterministicDependencyTrackPointBranch), the per-task databox cloning
         // (initProcessingDataBox / backend-cache-loaded-association hash), and the unit-14/15
-        // merge helper getMergedIndividualNodes. Also calls the in-unit
-        // createMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode (itself RECONCILE-NEED, above).
+        // merge helper getMergedIndividualNodes. The in-unit
+        // createMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode wrapper is live.
         todo!(
             "W3-DEFER: tryPossibleInstanceMerging — Task creation/branching subsystem + \
              per-task databox cloning + getMergedIndividualNodes (unit-14/15) unported \
@@ -414,10 +414,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     //
     // Each is the uniform guard `depNode = nullptr; if (mConfBuildDependencies)
     // depNode = calcAlgContext->getUsedDependencyFactory()->create…(); return
-    // depNode;`. Ported in full; only the `CDependencyFactory` call is
-    // W6-DEFER[api] (the Algorithm-layer factory has no method bodies yet), so the
-    // built node stays `Id::NONE` and any `&mut TrackPointId` continue-track-point
-    // out-param is left for the factory to set.
+    // depNode;`. `createMERGEDCONCEPTDependency` is live; the remaining wrappers
+    // still preserve the guard while their factory bodies are filled incrementally.
     // =======================================================================
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::createMERGEDCONCEPTDependency`.
@@ -432,26 +430,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // Port of CDependencyFactory::createMERGEDCONCEPTDependency: bump-allocate a
-            // DetLink `CMERGEDCONCEPTDependencyNode`, run its init, read back the continue
-            // track point. The three factory pieces now EXIST:
-            //   pc.alloc_det_link_dependency_node(DepKind::MergedConcept)            [dependency_factory.rs]
-            //   node.init_merged_concept_dependency_node(conDes, mergePrev, conceptPrev, dep_links)  [process/dep1.rs]
-            //   pc.materialize_continue_dependency_track_point(dep_node) -> *mergedConceptContinueDepTrackPoint
-            // but `init_*` needs `&mut DependencyNode` + `&mut Arena<DependencyLink>`
-            // simultaneously, which no public ProcessContext accessor exposes, so the
-            // alloc+init+materialize must be one split-borrow method on the shared factory.
-            // RECONCILE-NEED: dependency_factory.rs ProcessContext::create_merged_concept_dependency_node(
-            //   con_des, merge_prev_dtp, concept_prev_dtp) -> (DependencyId, continue TrackPointId)
-            //   (alloc_det_link + init_merged_concept_dependency_node + materialize, internal split borrow).
-            let _ = (
-                &merged_concept_continue_dep_track_point,
-                &process_indi,
-                con_des,
-                merge_prev_dep_track_point,
-                concept_prev_dep_track_point,
-                &calc_alg_context,
-            );
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::MergedConcept);
+            let merge_prev_dep = {
+                let process_context = calc_alg_context.process_context_mut();
+                let dep = process_context.dep_node_mut(dep_node);
+                dep.init_dependency_node(DepKind::MergedConcept, con_des);
+                dep.base_mut().dep_track_point = concept_prev_dep_track_point;
+                if let DependencyNode::DetLink { prev, .. } = dep {
+                    *prev
+                } else {
+                    DepLinkId::NONE
+                }
+            };
+            if merge_prev_dep.is_some() {
+                calc_alg_context
+                    .process_context_mut()
+                    .dep_link_mut(merge_prev_dep)
+                    .init_dependency(merge_prev_dep_track_point);
+            }
+            calc_alg_context
+                .process_context_mut()
+                .update_dependency_branching_tag(dep_node);
+            *merged_concept_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -467,23 +472,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // Port of CDependencyFactory::createMERGEDLINKDependency: DetLink
-            // `CMERGEDLINKDependencyNode` (DepKind::MergedLink). alloc_det_link_dependency_node
-            // + materialize_continue_dependency_track_point now exist, but the dedicated
-            // `init_merged_link_dependency_node` is NOT yet ported in process/dep1.rs (only
-            // init_merged_concept_dependency_node is) and the alloc+init+materialize again
-            // needs a split node+arena borrow.
-            // RECONCILE-NEED: process/dep1.rs DependencyNode::init_merged_link_dependency_node(
-            //   merge_prev_dtp, link_prev_dtp, dep_links) [DetLink: base.dep_track_point=merge_prev,
-            //   prev_link.dep_track_point=link_prev]  +  dependency_factory.rs
-            //   ProcessContext::create_merged_link_dependency_node(...) -> (DependencyId, continue TrackPointId).
-            let _ = (
-                &merged_link_continue_dep_track_point,
-                &process_indi,
-                merge_prev_dep_track_point,
-                link_prev_dep_track_point,
-                &calc_alg_context,
-            );
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .create_merged_link_dependency_node(
+                    merged_link_continue_dep_track_point,
+                    merge_prev_dep_track_point,
+                    link_prev_dep_track_point,
+                );
+            let _ = process_indi;
         }
         dep_node
     }
@@ -503,20 +499,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // Port of CDependencyFactory::createMERGEDINDIVIDUALDependency: DetLink
-            // `CMERGEDINDIVIDUALDependencyNode` (DepKind::MergedIndividual). Same shape as
-            // MERGEDLINK; alloc_det_link/materialize exist but the dedicated
-            // init_merged_individual_dependency_node is not ported.
-            // RECONCILE-NEED: process/dep1.rs DependencyNode::init_merged_individual_dependency_node(
-            //   merge_prev_dtp, individual_prev_dtp, dep_links)  +  dependency_factory.rs
-            //   ProcessContext::create_merged_individual_dependency_node(...) -> (DependencyId, continue TrackPointId).
-            let _ = (
-                &merged_individual_continue_dep_track_point,
-                &process_indi,
-                merge_prev_dep_track_point,
-                individual_prev_dep_track_point,
-                &calc_alg_context,
-            );
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .create_merged_individual_dependency_node(
+                    merged_individual_continue_dep_track_point,
+                    merge_prev_dep_track_point,
+                    individual_prev_dep_track_point,
+                );
+            let _ = process_indi;
         }
         dep_node
     }
@@ -531,18 +521,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // Port of CDependencyFactory::createMERGEDependency: NonDeterministic
-            // `CMERGEDependencyNode` (DepKind::Merge). The pieces exist —
-            // pc.alloc_non_deterministic_dependency_node(DepKind::Merge) +
-            // node.init_non_deterministic_dependency_node(DepKind::Merge, branch_node, con_des, track_points)
-            // with base.dep_track_point = prev_dep_track_point — but init needs the node +
-            // `&mut Arena<DependencyTrackPoint>` together (via setup_non_deterministic), and the
-            // branch_node comes from calcAlgContext->getUsedBranchTreeNode(). No continue-track-point
-            // out-param here (clash track point reachable via the node).
-            // RECONCILE-NEED: dependency_factory.rs ProcessContext::create_merge_dependency_node(
-            //   branch_node, con_des, prev_dep_track_point) -> DependencyId
-            //   (alloc_non_deterministic + init_non_deterministic_dependency_node + base dtp set, split borrow).
-            let _ = (&process_indi, con_des, prev_dep_track_point, &calc_alg_context);
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .create_merge_dependency_node(branch_node, con_des, prev_dep_track_point);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -557,15 +540,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // Port of CDependencyFactory::createMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode:
-            // NonDeterministic `CMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode`
-            // (DepKind::MergePossibleInstanceIndividual). Same NonDeterministic alloc+init shape as
-            // createMERGEDependency, additionally recording `mergingIndi` on the node. alloc/init
-            // pieces exist but need the split node+track_points borrow.
-            // RECONCILE-NEED: dependency_factory.rs ProcessContext::create_merge_possible_instance_individual_dependency_node(
-            //   branch_node, prev_dep_track_point, merging_indi) -> DependencyId
-            //   (alloc_non_deterministic + init_non_deterministic + merging-indi field set, split borrow).
-            let _ = (&process_indi, prev_dep_track_point, merging_indi, &calc_alg_context);
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .create_merge_possible_instance_individual_dependency_node(
+                    branch_node,
+                    *process_indi,
+                    prev_dep_track_point,
+                );
+            // Konclude passes `mergingIndi` through this wrapper, but the concrete
+            // dependency-node init ignores it.
+            let _ = merging_indi;
         }
         dep_node
     }
@@ -581,20 +566,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> DependencyId {
         let mut dep_node: DependencyId = Id::NONE;
         if self.conf_build_dependencies {
-            // Port of CDependencyFactory::createSAMEINDIVIDUALMERGEDependency: DetLink
-            // `CSAMEINDIVIDUALMERGEDependencyNode` (DepKind::SameIndividualsMerge), two-track-point
-            // shape (base.dep_track_point=prev, prev_link.dep_track_point=prev_other), continue out-param.
-            // alloc_det_link/materialize exist; dedicated init not ported.
-            // RECONCILE-NEED: process/dep1.rs DependencyNode::init_same_individual_merge_dependency_node(
-            //   prev_dtp, prev_other_dtp, dep_links)  +  dependency_factory.rs
-            //   ProcessContext::create_same_individual_merge_dependency_node(...) -> (DependencyId, continue TrackPointId).
-            let _ = (
-                &exp_continue_dep_track_point,
-                &process_indi,
-                prev_dep_track_point,
-                prev_other_dep_track_point,
-                &calc_alg_context,
-            );
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .create_same_individual_merge_dependency_node(
+                    exp_continue_dep_track_point,
+                    prev_dep_track_point,
+                    prev_other_dep_track_point,
+                );
+            let _ = process_indi;
         }
         dep_node
     }
@@ -678,8 +657,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (createIndividualMergeCausingDescriptors / isIndividualNodesMergeable), the unit-13
         // createMergeBranchingTask, the role-successor link iterators (getRoleSuccessorLinkIterator /
         // getRoleSuccessorCount), createClashedConceptDescriptor (clash-processing unit), and the
-        // Task communicator (communicateTaskCreation) — none ported. Calls the in-unit
-        // create_merge_dependency (itself RECONCILE-NEED, above) for mergeDependencyNode.
+        // Task communicator (communicateTaskCreation) — none ported. The in-unit
+        // create_merge_dependency wrapper used for mergeDependencyNode is live.
         todo!(
             "W3-DEFER: mergeMergingIndividualNodesPairwise — unit-13/14 merge helpers + \
              role-successor iterators + createClashedConceptDescriptor + Task communicator unported \

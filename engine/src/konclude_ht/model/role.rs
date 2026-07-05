@@ -238,7 +238,10 @@ impl Role {
         for super_role_it in role.super_roles.iter() {
             let super_role = super_role_it.target;
             let negated = super_role_it.negated;
-            let super_role_linker = NegLink { target: super_role, negated };
+            let super_role_linker = NegLink {
+                target: super_role,
+                negated,
+            };
             self.add_super_role_linker(super_role_linker);
         }
 
@@ -989,7 +992,8 @@ impl Role {
             if self.role_chain_sub_sharing_linker.is_empty() {
                 self.role_chain_sub_sharing_linker.push(role_chain_linker);
             } else {
-                self.role_chain_sub_sharing_linker.insert(0, role_chain_linker);
+                self.role_chain_sub_sharing_linker
+                    .insert(0, role_chain_linker);
             }
         }
         self
@@ -1029,7 +1033,8 @@ impl Role {
             if self.role_chain_super_sharing_linker.is_empty() {
                 self.role_chain_super_sharing_linker.push(role_chain_linker);
             } else {
-                self.role_chain_super_sharing_linker.insert(0, role_chain_linker);
+                self.role_chain_super_sharing_linker
+                    .insert(0, role_chain_linker);
             }
         }
         self

@@ -56,12 +56,14 @@
 )]
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
-use super::super::completion::stubs::{CalculationConfigurationExtension, SatisfiableCalculationTask};
+use super::super::completion::stubs::{
+    CalculationConfigurationExtension, SatisfiableCalculationTask,
+};
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::process::SatNodeId;
 use super::stubs::{
-    SaturationNodeBackendAssociationCacheHandler,
     SatisfiableTaskSaturationOccurrenceStatisticsCollector,
+    SaturationNodeBackendAssociationCacheHandler,
 };
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
@@ -160,13 +162,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 self.conf_force_all_concept_insertion = false; // 185
                 self.conf_force_all_copy_instead_of_substituition = false; // 186
                 self.conf_implication_adding_skipping = true; // 187
-                // W6-DEFER[api]: config->isDebuggingWriteDataActivated() etc.
+                                                              // W6-DEFER[api]: config->isDebuggingWriteDataActivated() etc.
                 self.conf_debugging_write_data = false; // 188 (config getter deferred)
                 self.conf_debugging_write_data_saturation_tasks = false; // 189 (deferred)
-                // if (!ontStructureSummary || !ontStructureSummary->hasOnlyELConceptClasses()
-                //     || ontology->getABox()->getIndividualCount() > 0) { ... }
-                // W6-DEFER[api]: structure-summary / ABox individual-count not ported;
-                // reproduce the body (the common non-pure-EL path).
+                                                                         // if (!ontStructureSummary || !ontStructureSummary->hasOnlyELConceptClasses()
+                                                                         //     || ontology->getABox()->getIndividualCount() > 0) { ... }
+                                                                         // W6-DEFER[api]: structure-summary / ABox individual-count not ported;
+                                                                         // reproduce the body (the common non-pure-EL path).
                 {
                     self.conf_force_all_concept_insertion = true; // 191
                     self.conf_implication_adding_skipping = false; // 192
@@ -213,8 +215,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 self.conf_concepts_extension_processing; // 233
 
             self.last_config = config; // 235
-            // W6-DEFER[api]: mBackendAssCaceHandler->readCalculationConfig(config);
-            //                mBackendAssCaceHandler->setWorkingOntology(...);
+                                       // W6-DEFER[api]: mBackendAssCaceHandler->readCalculationConfig(config);
+                                       //                mBackendAssCaceHandler->setWorkingOntology(...);
         }
 
         //mConfForceAllConceptInsertion = true; (commented out in C++)
@@ -286,9 +288,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
             // CProcessContext* processContext = satCalcTask->getProcessContext(processorContext);
             let process_context: Cint64 = INVALID; // W6-DEFER[api]
-            // CCalculationAlgorithmContextBase* calcAlgContext = createCalculationAlgorithmContext(...);
-            let mut calc_alg_context =
-                self.create_calculation_algorithm_context(processor_context, process_context, sat_calc_task);
+                                                   // CCalculationAlgorithmContextBase* calcAlgContext = createCalculationAlgorithmContext(...);
+            let mut calc_alg_context = self.create_calculation_algorithm_context(
+                processor_context,
+                process_context,
+                sat_calc_task,
+            );
             // mCalcAlgContext = calcAlgContext; mProcessingDataBox = satCalcTask->getProcessingDataBox();
             // W4-DEFER[pointer-alias]: the self back-aliases of the by-value-owned
             // context/databox stay opaque; all resolution goes through calc_alg_context.
@@ -331,7 +336,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
                 let mut wrote_extension_proc_debug_string = false; // 328
 
-                while self.has_remaining_merging_critical_extension_processing_nodes(&mut calc_alg_context) {
+                while self.has_remaining_merging_critical_extension_processing_nodes(
+                    &mut calc_alg_context,
+                ) {
                     while self.has_remaining_extension_processing_nodes(&mut calc_alg_context) {
                         while self.has_remaining_processing_nodes(&mut calc_alg_context) {
                             while calc_alg_context
@@ -339,9 +346,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .has_individual_saturation_process_node_linker()
                             {
                                 // linker = take…(); indiProcSatNode = linker->getData();
-                                let mut indi_proc_sat_node = calc_alg_context
+                                let indi_proc_sat_node_linker = calc_alg_context
                                     .processing_data_box_mut()
                                     .take_individual_saturation_process_node_linker();
+                                let mut indi_proc_sat_node = calc_alg_context
+                                    .process_context()
+                                    .indi_sat_process_node_linker(indi_proc_sat_node_linker)
+                                    .get_processing_individual();
                                 if calc_alg_context
                                     .process_context()
                                     .sat_node(indi_proc_sat_node)
@@ -353,20 +364,26 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     .process_context()
                                     .sat_node(indi_proc_sat_node)
                                     .get_individual_id();
-                                if !has_first_processed_node_id || individual_id < first_processed_node_id {
+                                if !has_first_processed_node_id
+                                    || individual_id < first_processed_node_id
+                                {
                                     has_first_processed_node_id = true; // 343
                                     first_processed_node_id = individual_id; // 344
                                 }
 
                                 lastindi_proc_sat_node = indi_proc_sat_node; // 347
-                                // STATINC(INDIVIDUALNODESWITCHCOUNT, calcAlgContext); — W3-DEFER[macro]
+                                                                             // STATINC(INDIVIDUALNODESWITCHCOUNT, calcAlgContext); — W3-DEFER[macro]
                                 indi_processed_count += 1; // 349
-                                // KONCLUCE_..._MODEL_STRING_INSTRUCTION(...) expands to nothing.
-                                if self.individual_node_initializing(&mut indi_proc_sat_node, &mut calc_alg_context) {
+                                                           // KONCLUCE_..._MODEL_STRING_INSTRUCTION(...) expands to nothing.
+                                if self.individual_node_initializing(
+                                    &mut indi_proc_sat_node,
+                                    &mut calc_alg_context,
+                                ) {
                                     let mut concept_saturation_process_linker = calc_alg_context
                                         .process_context_mut()
-                                        .sat_node_mut(indi_proc_sat_node)
-                                        .take_concept_saturation_process_linker();
+                                        .sat_node_take_concept_saturation_process_linker(
+                                            indi_proc_sat_node,
+                                        );
                                     while concept_saturation_process_linker.is_some() {
                                         // STATINC(RULEAPPLICATIONCOUNT, calcAlgContext); — W3-DEFER[macro]
                                         self.apply_tableau_saturation_rule(
@@ -380,45 +397,70 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                         );
                                         concept_saturation_process_linker = calc_alg_context
                                             .process_context_mut()
-                                            .sat_node_mut(indi_proc_sat_node)
-                                            .take_concept_saturation_process_linker();
+                                            .sat_node_take_concept_saturation_process_linker(
+                                                indi_proc_sat_node,
+                                            );
                                     }
                                 }
-                                // indiProcessSaturationNodeLinker->clearProcessingQueued();
-                                // W2-DEFER[api]: the queue-linker queued flag (collapsed model).
-                                self.individual_node_conclusion(&mut indi_proc_sat_node, &mut calc_alg_context); // 363
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .indi_sat_process_node_linker_mut(indi_proc_sat_node_linker)
+                                    .clear_processing_queued();
+                                self.individual_node_conclusion(
+                                    &mut indi_proc_sat_node,
+                                    &mut calc_alg_context,
+                                ); // 363
                             }
 
                             if calc_alg_context
                                 .processing_data_box()
                                 .has_individual_disjunct_common_concept_extract_process_linker()
                             {
-                                let mut indi_proc_sat_node = calc_alg_context
+                                let indi_disj_common_con_ext_process_linker = calc_alg_context
                                     .processing_data_box_mut()
-                                    .take_individual_disjunct_common_concept_extract_process_linker();
-                                // indiDisjCommonConExtProcessLinker->setProcessingQueued(false);
-                                // W2-DEFER[api]: queue-linker queued flag (collapsed model).
+                                    .take_individual_disjunct_common_concept_extract_process_linker(
+                                    );
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .indi_sat_process_node_linker_mut(
+                                        indi_disj_common_con_ext_process_linker,
+                                    )
+                                    .set_processing_queued(false);
+                                let mut indi_proc_sat_node = calc_alg_context
+                                    .process_context()
+                                    .indi_sat_process_node_linker(
+                                        indi_disj_common_con_ext_process_linker,
+                                    )
+                                    .get_processing_individual();
                                 lastindi_proc_sat_node = indi_proc_sat_node; // 375
-                                // STATINC(INDIVIDUALNODESWITCHCOUNT, calcAlgContext); — W3-DEFER[macro]
+                                                                             // STATINC(INDIVIDUALNODESWITCHCOUNT, calcAlgContext); — W3-DEFER[macro]
                                 indi_processed_count += 1; // 377
-                                if self.individual_node_initializing(&mut indi_proc_sat_node, &mut calc_alg_context) {
+                                if self.individual_node_initializing(
+                                    &mut indi_proc_sat_node,
+                                    &mut calc_alg_context,
+                                ) {
                                     self.update_extract_disjunct_common_concept(
                                         &mut indi_proc_sat_node,
                                         &mut calc_alg_context,
                                     ); // 379
                                 }
-                                self.individual_node_conclusion(&mut indi_proc_sat_node, &mut calc_alg_context); // 381
+                                self.individual_node_conclusion(
+                                    &mut indi_proc_sat_node,
+                                    &mut calc_alg_context,
+                                ); // 381
                             }
                         }
 
-                        self.process_next_successor_extensions(&mut calc_alg_context); // 396
+                        self.process_next_successor_extensions(&mut calc_alg_context);
+                        // 396
                     }
 
                     if self.conf_check_critical_concepts
                         && self.has_next_critical_concepts(&mut calc_alg_context)
                     {
                         while self.has_next_critical_concepts(&mut calc_alg_context) {
-                            self.check_next_critical_concepts(&mut calc_alg_context); // 414
+                            self.check_next_critical_concepts(&mut calc_alg_context);
+                            // 414
                         }
                         self.check_critical_individuals(&mut calc_alg_context); // 416
                     }
@@ -427,14 +469,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .processing_data_box()
                         .has_saturation_atmost_merging_process_linker()
                     {
-                        self.try_atmost_concept_successor_merging(&mut calc_alg_context); // 432
+                        self.try_atmost_concept_successor_merging(&mut calc_alg_context);
+                        // 432
                     }
                 }
 
                 self.complete_saturated_individual_nodes(&mut calc_alg_context); // 438
 
-                if self.conf_debugging_write_data && self.conf_debugging_write_data_saturation_tasks {
-                    self.write_individual_saturation_statistics(&mut calc_alg_context); // 443
+                if self.conf_debugging_write_data && self.conf_debugging_write_data_saturation_tasks
+                {
+                    self.write_individual_saturation_statistics(&mut calc_alg_context);
+                    // 443
                     // QString fileName(...); if (separatedSaturation) { ... }
                     // mEndSaturationDebugIndiModelString = writeGeneratedExtendedDebugIndiModelStringList(...);
                     // W6-DEFER[api]: debug-file writing (group O / DBG unit).
@@ -455,8 +500,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 // mSatTaskSaturationIndiAnalyser.analyseSatisfiableTask(satCalcTask, mCalcAlgContext);
                 // mSatTaskSaturationPreyAnalyser.analyseSatisfiableTask(satCalcTask, mCalcAlgContext);
                 // W6-DEFER[api]: the by-value saturation analysers (not ported).
-                self.try_associate_individual_nodes_with_backend_cache(sat_calc_task, &mut calc_alg_context); // 485
-                // satResult->installResult(true);
+                self.try_associate_individual_nodes_with_backend_cache(
+                    sat_calc_task,
+                    &mut calc_alg_context,
+                ); // 485
+                   // satResult->installResult(true);
                 completed = true; // 490
             }
 
@@ -492,15 +540,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         if self.has_remaining_processing_nodes(calc_alg_context) {
             return true; // 691
         }
-        let ext_pro_indi_queue = calc_alg_context
-            .processing_data_box_mut()
-            .saturation_sucessor_extension_individual_node_processing_queue(false); // 693
-        // if (extProIndiQueue && !extProIndiQueue->isEmpty()) { return true; }
+        let ext_pro_indi_queue =
+            calc_alg_context.saturation_sucessor_extension_individual_node_processing_queue(false); // 693
+                                                                                                    // if (extProIndiQueue && !extProIndiQueue->isEmpty()) { return true; }
         if ext_pro_indi_queue.is_some() {
-            // W2-DEFER[api]: the processing-queue's `isEmpty()` is not yet ported;
-            // a present-but-empty queue must NOT report work (it would spin the
-            // handle_task loop), so the `!isEmpty()` conjunct is conservatively false.
-            let not_empty = false;
+            let not_empty = !calc_alg_context
+                .process_context()
+                .sat_succ_ext_ind_node_proc_queue(ext_pro_indi_queue)
+                .is_empty();
             if not_empty {
                 return true; // 695
             }
@@ -544,11 +591,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .has_nominal_delayed_individual_saturation_process_node_linker()
                 {
                     // linker = take…(); indiProcessNode = linker->getProcessingIndividual();
-                    let mut indi_process_node = calc_alg_context
+                    let nominal_delayed_ind_sat_proc_node_linker = calc_alg_context
                         .processing_data_box_mut()
                         .take_nominal_delayed_individual_saturation_process_node_linker();
-                    // nominalDelayedIndSatProcNodeLinker->setProcessingQueued(false);
-                    // W2-DEFER[api]: queue-linker queued flag (collapsed model).
+                    calc_alg_context
+                        .process_context_mut()
+                        .indi_sat_process_node_linker_mut(nominal_delayed_ind_sat_proc_node_linker)
+                        .set_processing_queued(false);
+                    let mut indi_process_node = calc_alg_context
+                        .process_context()
+                        .indi_sat_process_node_linker(nominal_delayed_ind_sat_proc_node_linker)
+                        .get_processing_individual();
 
                     // CCriticalSaturationConceptTypeQueues* criticalConceptQueues =
                     //   indiProcessNode->getCriticalConceptTypeQueues(false);
@@ -576,13 +629,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     // re-queueing `addIndividualToProcessingQueue` is part of that block.
 
                     // indiProcessNode->getIndividualSaturationCompletionNodeLinker(true)->setProcessingQueued(false);
-                    let _completion_linker = calc_alg_context
+                    calc_alg_context
                         .process_context_mut()
-                        .sat_node_mut(indi_process_node)
-                        .get_individual_saturation_completion_node_linker(true); // 747
-                    // W2-DEFER[api]: completion-linker setProcessingQueued(false).
-                    self.add_individual_to_completion_queue(&mut indi_process_node, calc_alg_context); // 748
-                    nominal_delayed_individual_node_processing_continued = true; // 749
+                        .sat_node_set_individual_saturation_completion_node_linker_queued(
+                            indi_process_node,
+                            false,
+                        ); // 747
+                    self.add_individual_to_completion_queue(
+                        &mut indi_process_node,
+                        calc_alg_context,
+                    ); // 748
+                    nominal_delayed_individual_node_processing_continued = true;
+                    // 749
                 }
 
                 calc_alg_context
@@ -611,11 +669,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 let indi_process_node_linker = calc_alg_context
                     .processing_data_box_mut()
                     .take_individual_saturation_completion_node_linker();
-                let indi_process_node = indi_process_node_linker; // getProcessingIndividual() (collapsed)
+                let indi_process_node = calc_alg_context
+                    .process_context()
+                    .indi_sat_process_node_linker(indi_process_node_linker)
+                    .get_processing_individual(); // 765
                 let mut complete_individual = true; // 767
-                // if (indiProcessNode->getIndirectStatusFlags()->hasMissedABoxConsistencyFlag())
-                // W2-DEFER[api]: the `hasMissedABoxConsistencyFlag` status bit is not
-                // yet ported; treated as unset (the common "complete now" path).
+                                                    // if (indiProcessNode->getIndirectStatusFlags()->hasMissedABoxConsistencyFlag())
+                                                    // W2-DEFER[api]: the `hasMissedABoxConsistencyFlag` status bit is not
+                                                    // yet ported; treated as unset (the common "complete now" path).
                 let has_missed_abox_consistency = false;
                 if has_missed_abox_consistency {
                     if !self.is_consistence_data_available(calc_alg_context) {
@@ -625,12 +686,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .add_nominal_delayed_individual_saturation_process_node_linker(
                                 indi_process_node_linker,
                             ); // 771
-                        // if (indiProcessNode->getReapplyConceptSaturationLabelSet(false)) {
-                        //   …->setLastNominalIndependentConceptSaturationDescriptorLinker(
-                        //       …->getConceptSaturationDescriptionLinker());
-                        // }
-                        // W2-DEFER[api]: the label-set last-nominal-independent linker
-                        // accessors are not yet ported.
+                               // if (indiProcessNode->getReapplyConceptSaturationLabelSet(false)) {
+                               //   …->setLastNominalIndependentConceptSaturationDescriptorLinker(
+                               //       …->getConceptSaturationDescriptionLinker());
+                               // }
+                               // W2-DEFER[api]: the label-set last-nominal-independent linker
+                               // accessors are not yet ported.
                     }
                 }
                 if complete_individual {
@@ -698,21 +759,22 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         process_indi: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // CIndividualSaturationProcessNodeLinker* processNodeLinker =
-        //   processIndi->getIndividualSaturationProcessNodeLinker();
-        let _process_node_linker = calc_alg_context
+        let process_node_linker = calc_alg_context
+            .process_context_mut()
+            .sat_node_individual_saturation_process_node_linker(*process_indi, true); // 7120
+        if !calc_alg_context
             .process_context()
-            .sat_node(*process_indi)
-            .get_individual_saturation_process_node_linker(); // 7120
-        // if (!processNodeLinker->isProcessingQueued()) { … }
-        // W2-DEFER[api]: the queue-linker `isProcessingQueued` flag is not yet
-        // ported (collapsed model); treated as not-queued so the add path runs.
-        let is_processing_queued = false;
-        if !is_processing_queued {
-            // processNodeLinker->setProcessingQueued(); — W2-DEFER[api]
+            .indi_sat_process_node_linker(process_node_linker)
+            .is_processing_queued()
+        {
+            calc_alg_context
+                .process_context_mut()
+                .indi_sat_process_node_linker_mut(process_node_linker)
+                .set_processing_queued(true);
             calc_alg_context
                 .processing_data_box_mut()
-                .add_individual_saturation_process_node_linker(*process_indi); // 7123
+                .add_individual_saturation_process_node_linker(process_node_linker);
+            // 7123
         }
     }
 
@@ -727,7 +789,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .sat_node(*process_indi)
             .is_initialized()
         {
-            self.add_individual_to_processing_queue(process_indi, calc_alg_context); // 7129
+            self.add_individual_to_processing_queue(process_indi, calc_alg_context);
+            // 7129
         }
     }
 
@@ -739,19 +802,48 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) {
         if !calc_alg_context
             .process_context()
-            .sat_node(*process_indi)
-            .is_individual_saturation_completion_node_linker_queued()
+            .sat_node_individual_saturation_completion_node_linker_queued(*process_indi)
         {
             // CIndividualSaturationProcessNodeLinker* processNodeLinker =
             //   processIndi->getIndividualSaturationCompletionNodeLinker(true);
-            let _process_node_linker = calc_alg_context
+            calc_alg_context
                 .process_context_mut()
-                .sat_node_mut(*process_indi)
-                .get_individual_saturation_completion_node_linker(true); // 7137
-            // processNodeLinker->setProcessingQueued(); — W2-DEFER[api]
+                .sat_node_set_individual_saturation_completion_node_linker_queued(
+                    *process_indi,
+                    true,
+                ); // 7137
+            let process_node_linker = calc_alg_context
+                .process_context_mut()
+                .sat_node_individual_saturation_completion_node_linker(*process_indi, true);
             calc_alg_context
                 .processing_data_box_mut()
-                .add_individual_saturation_completion_node_linker(*process_indi); // 7139
+                .add_individual_saturation_completion_node_linker(process_node_linker);
+            // 7139
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::*;
+
+    #[test]
+    fn has_remaining_extension_processing_nodes_reads_successor_extension_queue() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(23));
+        let queue = ctx.saturation_sucessor_extension_individual_node_processing_queue(true);
+
+        assert!(!algo.has_remaining_extension_processing_nodes(&mut ctx));
+
+        ctx.process_context_mut()
+            .sat_succ_ext_ind_node_proc_queue_mut(queue)
+            .insert_process_individual(node, 23);
+
+        assert!(algo.has_remaining_extension_processing_nodes(&mut ctx));
     }
 }

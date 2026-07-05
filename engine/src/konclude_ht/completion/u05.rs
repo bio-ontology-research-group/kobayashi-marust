@@ -48,10 +48,28 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::{Id, NegLink};
-use super::super::model::ConceptId;
-use super::super::process::{ConDescId, ConProcDescId, NodeId, TrackPointId};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
+use super::super::model::{ConceptId, RoleId, VariableId};
+use super::super::process::binding_hash::ConceptPropagationBindingSetHash;
+use super::super::process::dependency::DependencyLink;
+use super::super::process::propagation_binding::{
+    PropagationBindingSet, PropagationVariableBindingTransitionExtension,
+};
+use super::super::process::representative::{
+    ConceptRepresentativePropagationSetHash, RepresentativeJoiningAllDataExtension,
+    RepresentativeJoiningHash, RepresentativePropagationDescriptor,
+    RepresentativePropagationMapData, RepresentativePropagationSet,
+    RepresentativeVariableBindingPathSetData, RepresentativeVariableBindingPathSetHash,
+};
+use super::super::process::varbind::{
+    RepresentativeVariableBindingPathMapData, VariableBinding, VariableBindingDescriptor,
+    VariableBindingPath,
+};
+use super::super::process::{
+    ConDescId, ConProcDescId, DepLinkId, EdgeId, LabelSetId, NodeId, TrackPointId,
+};
 use super::context::CalculationAlgorithmContextBase;
+use super::grounding::ConceptNominalSchemaGroundingHandler;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
@@ -172,7 +190,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(*con_pro_des)
@@ -192,8 +213,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (ctx-owned) concept arena, so it is collected to an owned `Vec` before the
         // `&mut self`/`&mut ctx` `add_concept_to_individual` calls (same idiom as
         // `apply_and_rule` in u08); contents and order are identical.
-        let concept_op_linker_it: Vec<NegLink<ConceptId>> =
-            calc_alg_context.ontology_arenas().concept(concept).get_operand_list().to_vec();
+        let concept_op_linker_it: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
         for op_link in &concept_op_linker_it {
             let op_concept: ConceptId = op_link.target; // conceptOpLinkerIt->getData()
             let op_negation: bool = op_link.negated; // conceptOpLinkerIt->isNegated()
@@ -227,10 +251,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(*con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         // conceptNegation = negate; depTrackPoint = conProDes->getDependencyTrackPoint();
         // (both computed in the C++ but unused before the delegation.)
-        self.apply_automat_transactions(process_indi, con_pro_des, concept, negate, calc_alg_context);
+        self.apply_automat_transactions(
+            process_indi,
+            con_pro_des,
+            concept,
+            negate,
+            calc_alg_context,
+        );
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyAutomatTransactions`.
@@ -288,7 +321,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // EMPTY iterator (process/pn3.rs:178) — porting now would silently DROP the
         // per-successor transition application, so the whole driver stays deferred until
         // the reapply-role-successor-hash iterator lands.
-        let _ = (process_indi, con_pro_des, concept, negated, calc_alg_context);
+        let _ = (
+            process_indi,
+            con_pro_des,
+            concept,
+            negated,
+            calc_alg_context,
+        );
         todo!("W3-DEFER: applyAutomatTransactions — blocked on the reapply-role-successor-hash link iterator (process/pn3.rs get_role_successor_link_iterator still W2-DEFER stub)");
     }
 
@@ -322,14 +361,134 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (process_indi, con_pro_des, negate, calc_alg_context);
-        // PORT-PENDING: blocked on the grounding handler — `mGroundingHandler->
-        // getGroundingConceptLinker(...)` (CConceptNominalSchemaGroundingHandler) is
-        // still a zero-size stub (algorithm.rs grounding_handler: Id<…>, no
-        // get_grounding_concept_linker method). The doc above is a control-flow SUMMARY,
-        // not a line-faithful transcription, so the body cannot be filled without the
-        // Konclude source + the ported grounding handler.
-        todo!("W3-DEFER: applyREPRESENTATIVEGROUNDINGRule — grounding handler (get_grounding_concept_linker) unported");
+        let con_pro_des_id = *con_pro_des;
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des_id)
+            .get_concept_descriptor();
+        let _dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des_id)
+            .get_dependency_track_point();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let negated = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .is_negated();
+        let _op_count: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_count();
+        let _con_set = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*process_indi);
+
+        let rep_prop_set_hash = calc_alg_context
+            .process_context()
+            .node(*process_indi)
+            .use_concept_rep_prop_set_hash;
+        let rep_prop_set = if rep_prop_set_hash.is_some() {
+            ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                calc_alg_context.process_context_mut(),
+                rep_prop_set_hash,
+                concept,
+                false,
+            )
+        } else {
+            Id::NONE
+        };
+
+        // W3-DEFER[macro]: STATINC(VARBINDRULEGROUNDINGAPPLICATIONCOUNT, calc_alg_context)
+
+        if rep_prop_set.is_some() {
+            let out_rep_prop_des = calc_alg_context
+                .process_context()
+                .rep_prop_set(rep_prop_set)
+                .get_outgoing_representative_propagation_descriptor_linker();
+            if out_rep_prop_des.is_some() {
+                let rep_var_bind_path_set_data = calc_alg_context
+                    .process_context()
+                    .rep_prop_des(out_rep_prop_des)
+                    .get_representative_variable_binding_path_set_data();
+                if rep_var_bind_path_set_data.is_some() {
+                    let rep_var_bind_path_set_mig_data = calc_alg_context
+                        .process_context()
+                        .rep_var_bind_path_set_data(rep_var_bind_path_set_data)
+                        .use_migrate_data;
+                    if rep_var_bind_path_set_mig_data.is_some() {
+                        // W3-DEFER[macro]: KONCLUCE_TASK_ALGORITHM_MODEL_STRING_INSTRUCTION(mBeforeGroundingDebugIndiModelString = generateExtendedDebugIndiModelStringList(...))
+
+                        let rep_var_bind_path_set_map = calc_alg_context
+                            .process_context()
+                            .rep_var_bind_path_set_migrate_data(rep_var_bind_path_set_mig_data)
+                            .get_representative_variable_binding_path_map()
+                            .clone();
+                        let grounding_hash =
+                            calc_alg_context.processing_data_box().use_grounding_hash;
+                        let mut grounding_handler = ConceptNominalSchemaGroundingHandler::new();
+                        let grounding_result = grounding_handler
+                            .get_grounding_concept_linker_for_representative_varbind_path_map(
+                                *process_indi,
+                                &rep_var_bind_path_set_map,
+                                concept,
+                                negated,
+                                grounding_hash,
+                                &mut calc_alg_context.base,
+                            );
+                        let new_grounded_linker = grounding_result.new_linker;
+
+                        if !new_grounded_linker.is_empty() {
+                            for new_grounded_linker_it in new_grounded_linker.iter() {
+                                // W3-DEFER[macro]: STATINC(VARBINDGROUNDINGCOUNT, calc_alg_context)
+                                self.stat_var_binding_grounding_count += 1;
+                                self.stat_representative_grounding_count += 1;
+                                let new_grounded_concept: ConceptId = new_grounded_linker_it.target;
+                                let new_grounded_concept_negation: bool =
+                                    new_grounded_linker_it.negated;
+
+                                let selected_var_bind_path = grounding_result
+                                    .grounded_con_var_bind_path_hash
+                                    .get(&new_grounded_concept)
+                                    .copied()
+                                    .unwrap_or(Id::NONE);
+                                let prev_dep_track_point = calc_alg_context
+                                    .process_context()
+                                    .rep_prop_des(out_rep_prop_des)
+                                    .get_dependency_track_point();
+                                let mut next_dep_track_point: TrackPointId = Id::NONE;
+                                let _grounding_dep = self
+                                    .create_representative_grounding_dependency(
+                                        &mut next_dep_track_point,
+                                        process_indi,
+                                        con_des,
+                                        prev_dep_track_point,
+                                        selected_var_bind_path,
+                                        calc_alg_context,
+                                    );
+                                if next_dep_track_point.is_none() {
+                                    next_dep_track_point = prev_dep_track_point;
+                                }
+
+                                self.add_concept_to_individual(
+                                    new_grounded_concept,
+                                    new_grounded_concept_negation,
+                                    process_indi,
+                                    next_dep_track_point,
+                                    true,
+                                    false,
+                                    calc_alg_context,
+                                );
+                            }
+                        }
+
+                        // W3-DEFER[macro]: KONCLUCE_TASK_ALGORITHM_MODEL_STRING_INSTRUCTION(mAfterGroundingDebugIndiModelString = generateExtendedDebugIndiModelStringList(...))
+                    }
+                }
+            }
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyREPRESENTATIVEJOINRule`.
@@ -349,10 +508,671 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (process_indi, con_pro_des, negate, calc_alg_context);
-        // PORT-PENDING: representative join — joining hash / key maps / transition
-        // extension / dependency factory unported.
-        todo!("W3-DEFER: applyREPRESENTATIVEJOINRule — representative-propagation subsystem unported");
+        let _ = negate;
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_concept_descriptor();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_dependency_track_point();
+        let op_linker = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+        if op_linker.len() < 3 {
+            return;
+        }
+        let join_concept = op_linker[0].target;
+        let join_concept_negation = op_linker[0].negated;
+        let trigger_linker = &op_linker[1..];
+        let var_linker = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_variable_linker()
+            .to_vec();
+
+        // W3-DEFER[stat]: STATINC(VARBINDRULEJOINAPPLICATIONCOUNT,calcAlgContext).
+        let mut join_con_des: ConDescId = Id::NONE;
+        let mut join_dep_track_point: TrackPointId = Id::NONE;
+        let mut reapply_queue_empty = true;
+        let mut propagate_joins = false;
+        let mut create_join_concept = false;
+
+        let mut con_set = calc_alg_context
+            .process_context()
+            .node(*process_indi)
+            .use_reapply_con_label_set;
+        let join_concept_tag = join_concept.raw;
+        let join_present = con_set.is_some()
+            && calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .get_concept_descriptor_and_reapply_queue_state_by_tag(
+                    join_concept_tag,
+                    &mut join_con_des,
+                    &mut join_dep_track_point,
+                    &mut reapply_queue_empty,
+                );
+
+        if !join_present {
+            let created_con_set = calc_alg_context
+                .process_context_mut()
+                .node_reapply_concept_label_set(*process_indi);
+            con_set = created_con_set;
+            let mut all_triggers_available = true;
+            let mut next_missing_trigger = None;
+            for next_trigger in trigger_linker.iter().copied() {
+                let mut trigger_con_des: ConDescId = Id::NONE;
+                let mut trigger_dep_track_point: TrackPointId = Id::NONE;
+                if calc_alg_context
+                    .process_context()
+                    .label_set(con_set)
+                    .get_concept_descriptor(
+                        next_trigger.target,
+                        &mut trigger_con_des,
+                        &mut trigger_dep_track_point,
+                    )
+                {
+                    if calc_alg_context
+                        .process_context()
+                        .con_desc(trigger_con_des)
+                        .is_negated()
+                        == next_trigger.negated
+                    {
+                        return;
+                    }
+                } else {
+                    all_triggers_available = false;
+                    next_missing_trigger = Some(next_trigger);
+                    break;
+                }
+            }
+
+            if !all_triggers_available {
+                let next_trigger = next_missing_trigger.expect("missing trigger recorded");
+                let trigger_negation = !next_trigger.negated;
+                if !self.is_concept_in_reapply_queue_concept(
+                    con_des,
+                    next_trigger.target,
+                    trigger_negation,
+                    *process_indi,
+                    calc_alg_context,
+                ) {
+                    self.add_concept_to_reapply_queue_concept(
+                        con_des,
+                        next_trigger.target,
+                        trigger_negation,
+                        *process_indi,
+                        false,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+            } else {
+                propagate_joins = true;
+                create_join_concept = true;
+            }
+        } else {
+            propagate_joins = true;
+        }
+
+        let mut propagations_done = false;
+        if propagate_joins {
+            for next_trigger in trigger_linker.iter().copied() {
+                if !self.is_concept_in_reapply_queue_concept(
+                    con_des,
+                    next_trigger.target,
+                    false,
+                    *process_indi,
+                    calc_alg_context,
+                ) {
+                    self.add_concept_to_reapply_queue_concept(
+                        con_des,
+                        next_trigger.target,
+                        false,
+                        *process_indi,
+                        false,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+            }
+
+            let con_prop_binding_set_hash = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .use_concept_prop_binding_set_hash;
+            let rep_prop_set_hash = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .use_concept_rep_prop_set_hash;
+            if con_prop_binding_set_hash.is_some() && rep_prop_set_hash.is_some() {
+                let prop_binding_set =
+                    ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                        calc_alg_context.process_context_mut(),
+                        con_prop_binding_set_hash,
+                        concept.raw,
+                        false,
+                    );
+                if prop_binding_set.is_some() {
+                    let prop_rep_trans_ext = calc_alg_context
+                        .process_context()
+                        .prop_binding_set(prop_binding_set)
+                        .prop_rep_trans_extension;
+                    let left_concept = trigger_linker[0].target;
+                    let right_concept = trigger_linker[1].target;
+                    let left_rep_prop_set =
+                        ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                            calc_alg_context.process_context_mut(),
+                            rep_prop_set_hash,
+                            left_concept,
+                            false,
+                        );
+                    let right_rep_prop_set =
+                        ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                            calc_alg_context.process_context_mut(),
+                            rep_prop_set_hash,
+                            right_concept,
+                            false,
+                        );
+
+                    let left_rep_prop_des = if left_rep_prop_set.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .rep_prop_set(left_rep_prop_set)
+                            .get_outgoing_representative_propagation_descriptor_linker()
+                    } else {
+                        Id::NONE
+                    };
+                    let right_rep_prop_des = if right_rep_prop_set.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .rep_prop_set(right_rep_prop_set)
+                            .get_outgoing_representative_propagation_descriptor_linker()
+                    } else {
+                        Id::NONE
+                    };
+
+                    let mut examine_trans_ext = false;
+                    if left_rep_prop_set.is_some()
+                        && right_rep_prop_set.is_some()
+                        && left_rep_prop_des.is_some()
+                        && right_rep_prop_des.is_some()
+                    {
+                        if prop_rep_trans_ext.is_none() {
+                            examine_trans_ext = true;
+                        } else {
+                            let ext = calc_alg_context
+                                .process_context()
+                                .prop_rep_trans_ext(prop_rep_trans_ext);
+                            let prop_set = calc_alg_context
+                                .process_context()
+                                .prop_binding_set(prop_binding_set);
+                            if ext.get_last_analysed_propagate_all_flag()
+                                != prop_set.get_propagate_all_flag()
+                                || ext.get_last_analysed_propagation_binding_descriptor()
+                                    != prop_set.get_propagation_binding_descriptor_linker()
+                                || ext.get_left_last_representative_joining_descriptor()
+                                    != left_rep_prop_des
+                                || ext.get_right_last_representative_joining_descriptor()
+                                    != right_rep_prop_des
+                            {
+                                examine_trans_ext = true;
+                            }
+                        }
+                    }
+
+                    if examine_trans_ext {
+                        self.stat_representative_join_count += 1;
+
+                        let con_prop_binding_set_hash = calc_alg_context
+                            .process_context_mut()
+                            .node_concept_propagation_binding_set_hash(*process_indi);
+                        let rep_prop_set_hash = calc_alg_context
+                            .process_context_mut()
+                            .node_concept_representative_propagation_set_hash(*process_indi);
+                        let prop_binding_set =
+                            ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                                calc_alg_context.process_context_mut(),
+                                con_prop_binding_set_hash,
+                                concept.raw,
+                                true,
+                            );
+                        let prop_rep_trans_ext =
+                            PropagationBindingSet::get_propagation_representative_transition_extension(
+                                calc_alg_context.process_context_mut(),
+                                prop_binding_set,
+                                true,
+                            );
+                        let mut prop_rep_trans_ext_work = calc_alg_context
+                            .process_context()
+                            .prop_rep_trans_ext(prop_rep_trans_ext)
+                            .clone();
+
+                        let join_rep_prop_set =
+                            ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                                calc_alg_context.process_context_mut(),
+                                rep_prop_set_hash,
+                                join_concept,
+                                true,
+                            );
+                        let prop_bind_des = calc_alg_context
+                            .process_context()
+                            .prop_binding_set(prop_binding_set)
+                            .get_propagation_binding_descriptor_linker();
+                        let prop_all_flag = calc_alg_context
+                            .process_context()
+                            .prop_binding_set(prop_binding_set)
+                            .has_propagate_all_flag();
+                        let mut left_rep_data = calc_alg_context
+                            .process_context()
+                            .rep_prop_des(left_rep_prop_des)
+                            .get_representative_variable_binding_path_set_data();
+                        let mut right_rep_data = calc_alg_context
+                            .process_context()
+                            .rep_prop_des(right_rep_prop_des)
+                            .get_representative_variable_binding_path_set_data();
+
+                        if self.are_representatives_joinable(
+                            process_indi,
+                            left_rep_data,
+                            right_rep_data,
+                            &var_linker,
+                            calc_alg_context,
+                        ) {
+                            let mut join_data = Id::NONE;
+                            let mut loc_join_data = Id::NONE;
+                            let mut rep_joining_hash =
+                                calc_alg_context.processing_data_box().use_rep_joining_hash;
+                            if rep_joining_hash.is_some() {
+                                join_data =
+                                    RepresentativeJoiningHash::get_representative_joining_data(
+                                        calc_alg_context.process_context_mut(),
+                                        rep_joining_hash,
+                                        left_rep_data,
+                                        right_rep_data,
+                                        false,
+                                    );
+                            }
+
+                            if join_data.is_none() {
+                                let mut rep_var_bind_path_set_hash = Id::NONE;
+                                if !RepresentativeVariableBindingPathSetData::has_joining_data(
+                                    calc_alg_context.process_context(),
+                                    left_rep_data,
+                                    concept,
+                                ) {
+                                    rep_var_bind_path_set_hash = calc_alg_context
+                                        .representative_variable_binding_path_set_hash(true);
+                                    left_rep_data = RepresentativeVariableBindingPathSetHash::get_representative_variable_binding_path_set_data_for_data(
+                                        calc_alg_context.process_context_mut(),
+                                        rep_var_bind_path_set_hash,
+                                        left_rep_data,
+                                        true,
+                                    );
+                                }
+                                if !RepresentativeVariableBindingPathSetData::has_joining_data(
+                                    calc_alg_context.process_context(),
+                                    right_rep_data,
+                                    concept,
+                                ) {
+                                    if rep_var_bind_path_set_hash.is_none() {
+                                        rep_var_bind_path_set_hash = calc_alg_context
+                                            .representative_variable_binding_path_set_hash(true);
+                                    }
+                                    right_rep_data = RepresentativeVariableBindingPathSetHash::get_representative_variable_binding_path_set_data_for_data(
+                                        calc_alg_context.process_context_mut(),
+                                        rep_var_bind_path_set_hash,
+                                        right_rep_data,
+                                        true,
+                                    );
+                                }
+
+                                if loc_join_data.is_none() {
+                                    rep_joining_hash =
+                                        calc_alg_context.representative_joining_hash(true);
+                                    loc_join_data =
+                                        RepresentativeJoiningHash::get_representative_joining_data(
+                                            calc_alg_context.process_context_mut(),
+                                            rep_joining_hash,
+                                            left_rep_data,
+                                            right_rep_data,
+                                            true,
+                                        );
+                                    join_data = loc_join_data;
+                                }
+
+                                let left_joining_key_map = self
+                                    .get_representative_joining_key_data(
+                                        left_rep_data,
+                                        concept,
+                                        calc_alg_context,
+                                    );
+                                let right_joining_key_map = self
+                                    .get_representative_joining_key_data(
+                                        right_rep_data,
+                                        concept,
+                                        calc_alg_context,
+                                    );
+
+                                let mut rep_join_common_key_map = calc_alg_context
+                                    .process_context()
+                                    .rep_joining_data(join_data)
+                                    .get_representative_joining_common_key_map()
+                                    .clone();
+                                self.create_common_joining_key_map(
+                                    &mut rep_join_common_key_map,
+                                    &left_joining_key_map,
+                                    left_rep_data,
+                                    &right_joining_key_map,
+                                    right_rep_data,
+                                    true,
+                                    calc_alg_context,
+                                );
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .rep_joining_data_mut(join_data)
+                                    .joining_common_key_map = rep_join_common_key_map;
+                            }
+
+                            let rep_join_common_key_map = calc_alg_context
+                                .process_context()
+                                .rep_joining_data(join_data)
+                                .get_representative_joining_common_key_map()
+                                .clone();
+                            if rep_join_common_key_map.count() > 0 {
+                                self.stat_representative_joined_count += 1;
+
+                                if prop_all_flag {
+                                    let mut join_all_ext_data = calc_alg_context
+                                        .process_context()
+                                        .rep_joining_data(join_data)
+                                        .joining_all_extension
+                                        .clone();
+                                    if join_all_ext_data.is_none() {
+                                        if loc_join_data.is_none() {
+                                            rep_joining_hash =
+                                                calc_alg_context.representative_joining_hash(true);
+                                            loc_join_data =
+                                                RepresentativeJoiningHash::get_representative_joining_data(
+                                                    calc_alg_context.process_context_mut(),
+                                                    rep_joining_hash,
+                                                    left_rep_data,
+                                                    right_rep_data,
+                                                    true,
+                                                );
+                                            join_data = loc_join_data;
+                                        }
+
+                                        let process_context = calc_alg_context
+                                            .process_context()
+                                            .rep_joining_data(join_data)
+                                            .process_context;
+                                        let mut new_ext =
+                                            RepresentativeJoiningAllDataExtension::new(
+                                                process_context,
+                                            );
+                                        self.create_common_joining_all(
+                                            &rep_join_common_key_map,
+                                            &mut new_ext,
+                                            left_rep_data,
+                                            right_rep_data,
+                                            calc_alg_context,
+                                        );
+                                        calc_alg_context
+                                            .process_context_mut()
+                                            .rep_joining_data_mut(join_data)
+                                            .joining_all_extension = Some(new_ext.clone());
+                                        join_all_ext_data = Some(new_ext);
+                                    }
+
+                                    let mut join_all_ext_data =
+                                        join_all_ext_data.expect("joining all extension");
+                                    let joined_rep_data = join_all_ext_data
+                                        .get_representative_variable_binding_path_set_data();
+                                    let left_rep_id = calc_alg_context
+                                        .process_context()
+                                        .rep_var_bind_path_set_data(left_rep_data)
+                                        .get_representative_id();
+                                    if !prop_rep_trans_ext_work
+                                        .get_left_representative_propagation_map()
+                                        .contains(left_rep_id)
+                                    {
+                                        let left_dep = calc_alg_context
+                                            .process_context()
+                                            .rep_prop_des(left_rep_prop_des)
+                                            .get_dependency_track_point();
+                                        let mut next_dep_track_point: TrackPointId = Id::NONE;
+                                        let _rep_prop_dep_node = self
+                                            .create_representative_and_dependency(
+                                                &mut next_dep_track_point,
+                                                process_indi,
+                                                con_des,
+                                                left_dep,
+                                                calc_alg_context,
+                                            );
+                                        if next_dep_track_point.is_none() {
+                                            next_dep_track_point = left_dep;
+                                        }
+                                        let propagate_rep_des = calc_alg_context
+                                            .process_context_mut()
+                                            .alloc_rep_prop_des(
+                                                RepresentativePropagationDescriptor::new(),
+                                            );
+                                        calc_alg_context
+                                            .process_context_mut()
+                                            .rep_prop_des_mut(propagate_rep_des)
+                                            .init_representative_descriptor(
+                                                left_rep_data,
+                                                next_dep_track_point,
+                                            );
+                                        prop_rep_trans_ext_work
+                                            .get_left_representative_propagation_map_mut()
+                                            .map
+                                            .insert(
+                                                left_rep_id,
+                                                RepresentativePropagationMapData::new(
+                                                    propagate_rep_des,
+                                                ),
+                                            );
+                                    }
+                                    let right_rep_id = calc_alg_context
+                                        .process_context()
+                                        .rep_var_bind_path_set_data(right_rep_data)
+                                        .get_representative_id();
+                                    if !prop_rep_trans_ext_work
+                                        .get_right_representative_propagation_map()
+                                        .contains(right_rep_id)
+                                    {
+                                        let right_dep = calc_alg_context
+                                            .process_context()
+                                            .rep_prop_des(right_rep_prop_des)
+                                            .get_dependency_track_point();
+                                        let mut next_dep_track_point: TrackPointId = Id::NONE;
+                                        let _rep_prop_dep_node = self
+                                            .create_representative_and_dependency(
+                                                &mut next_dep_track_point,
+                                                process_indi,
+                                                con_des,
+                                                right_dep,
+                                                calc_alg_context,
+                                            );
+                                        if next_dep_track_point.is_none() {
+                                            next_dep_track_point = right_dep;
+                                        }
+                                        let propagate_rep_des = calc_alg_context
+                                            .process_context_mut()
+                                            .alloc_rep_prop_des(
+                                                RepresentativePropagationDescriptor::new(),
+                                            );
+                                        calc_alg_context
+                                            .process_context_mut()
+                                            .rep_prop_des_mut(propagate_rep_des)
+                                            .init_representative_descriptor(
+                                                right_rep_data,
+                                                next_dep_track_point,
+                                            );
+                                        prop_rep_trans_ext_work
+                                            .get_right_representative_propagation_map_mut()
+                                            .map
+                                            .insert(
+                                                right_rep_id,
+                                                RepresentativePropagationMapData::new(
+                                                    propagate_rep_des,
+                                                ),
+                                            );
+                                    }
+
+                                    let left_resolve_map = join_all_ext_data
+                                        .get_left_resolve_variable_binding_path_map(false)
+                                        .map(|map| map.clone());
+                                    let right_resolve_map = join_all_ext_data
+                                        .get_right_resolve_variable_binding_path_map(false)
+                                        .map(|map| map.clone());
+                                    let left_rep_prop_map = prop_rep_trans_ext_work
+                                        .get_left_representative_propagation_map()
+                                        .clone();
+                                    let right_rep_prop_map = prop_rep_trans_ext_work
+                                        .get_right_representative_propagation_map()
+                                        .clone();
+
+                                    let left_dep = calc_alg_context
+                                        .process_context()
+                                        .rep_prop_des(left_rep_prop_des)
+                                        .get_dependency_track_point();
+                                    let mut left_next_resolve_dep_track_point: TrackPointId =
+                                        Id::NONE;
+                                    let _left_resolve_rep_node = self
+                                        .create_resolve_representative_dependency(
+                                            &mut left_next_resolve_dep_track_point,
+                                            process_indi,
+                                            Id::NONE,
+                                            left_resolve_map.as_ref(),
+                                            Some(&left_rep_prop_map),
+                                            left_dep,
+                                            Id::NONE,
+                                            calc_alg_context,
+                                        );
+                                    if left_next_resolve_dep_track_point.is_none() {
+                                        left_next_resolve_dep_track_point = left_dep;
+                                    }
+
+                                    let right_dep = calc_alg_context
+                                        .process_context()
+                                        .rep_prop_des(right_rep_prop_des)
+                                        .get_dependency_track_point();
+                                    let mut right_next_resolve_dep_track_point: TrackPointId =
+                                        Id::NONE;
+                                    let _right_resolve_rep_node = self
+                                        .create_resolve_representative_dependency(
+                                            &mut right_next_resolve_dep_track_point,
+                                            process_indi,
+                                            Id::NONE,
+                                            right_resolve_map.as_ref(),
+                                            Some(&right_rep_prop_map),
+                                            right_dep,
+                                            Id::NONE,
+                                            calc_alg_context,
+                                        );
+                                    if right_next_resolve_dep_track_point.is_none() {
+                                        right_next_resolve_dep_track_point = right_dep;
+                                    }
+
+                                    let mut join_next_dep_track_point: TrackPointId = Id::NONE;
+                                    let _join_resolve_rep_node = self
+                                        .create_representative_join_dependency(
+                                            &mut join_next_dep_track_point,
+                                            process_indi,
+                                            con_des,
+                                            left_next_resolve_dep_track_point,
+                                            right_next_resolve_dep_track_point,
+                                            calc_alg_context,
+                                        );
+                                    if join_next_dep_track_point.is_none() {
+                                        join_next_dep_track_point =
+                                            left_next_resolve_dep_track_point;
+                                    }
+
+                                    let propagate_rep_des =
+                                        calc_alg_context.process_context_mut().alloc_rep_prop_des(
+                                            RepresentativePropagationDescriptor::new(),
+                                        );
+                                    calc_alg_context
+                                        .process_context_mut()
+                                        .rep_prop_des_mut(propagate_rep_des)
+                                        .init_representative_descriptor(
+                                            joined_rep_data,
+                                            join_next_dep_track_point,
+                                        );
+                                    RepresentativePropagationSet::add_incoming_representative_propagation(
+                                        calc_alg_context.process_context_mut(),
+                                        join_rep_prop_set,
+                                        propagate_rep_des,
+                                    );
+                                    self.update_representative_propagation_set(
+                                        process_indi,
+                                        join_rep_prop_set,
+                                        calc_alg_context,
+                                    );
+
+                                    if join_con_des.is_none() {
+                                        join_dep_track_point = join_next_dep_track_point;
+                                        join_con_des = self
+                                            .add_concept_to_individual_return_concept_descriptor(
+                                                join_concept,
+                                                join_concept_negation,
+                                                process_indi,
+                                                join_next_dep_track_point,
+                                                false,
+                                                false,
+                                                calc_alg_context,
+                                            );
+                                    }
+                                } else {
+                                    // Konclude leaves the non-propagate-all branch as
+                                    // `// ToDo!`; keep that exact semantic gap.
+                                }
+
+                                propagations_done = true;
+                            }
+                        }
+
+                        prop_rep_trans_ext_work
+                            .set_left_last_representative_joining_descriptor(left_rep_prop_des)
+                            .set_right_last_representative_joining_descriptor(right_rep_prop_des)
+                            .set_last_analysed_propagation_binding_descriptor(prop_bind_des)
+                            .set_last_analysed_propagate_all_flag(
+                                calc_alg_context
+                                    .process_context()
+                                    .prop_binding_set(prop_binding_set)
+                                    .has_propagate_all_flag(),
+                            );
+                        *calc_alg_context
+                            .process_context_mut()
+                            .prop_rep_trans_ext_mut(prop_rep_trans_ext) = prop_rep_trans_ext_work;
+                    }
+                }
+            }
+        }
+
+        if propagations_done && !create_join_concept {
+            self.reapply_concept_updated_representative(
+                *process_indi,
+                join_con_des,
+                join_dep_track_point,
+                con_set,
+                0,
+                calc_alg_context,
+            );
+            let _ = reapply_queue_empty;
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyREPRESENTATIVEBINDVARIABLERule`.
@@ -369,10 +1189,329 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (process_indi, con_pro_des, negate, calc_alg_context);
-        // PORT-PENDING: representative bind-variable — variable-binding-path
-        // allocation + propagation-binding set hash + dependency factory unported.
-        todo!("W3-DEFER: applyREPRESENTATIVEBINDVARIABLERule — representative-propagation subsystem unported");
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_concept_descriptor();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let variable: VariableId = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_variable()
+            .unwrap_or(Id::NONE);
+        let dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_dependency_track_point();
+        let op_con_linker = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+        if op_con_linker.is_empty() {
+            return;
+        }
+
+        let binding_trigger_concept = op_con_linker[0].target;
+        let binding_trigger_concept_negation = op_con_linker[0].negated;
+        let binding_trigger_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(binding_trigger_concept)
+            .get_concept_tag();
+        let concept_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+
+        let con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*process_indi);
+        let mut binding_con_des: ConDescId = Id::NONE;
+        let mut binding_dep_track_point: TrackPointId = Id::NONE;
+        let mut reapply_queue_empty = true;
+
+        // W3-DEFER[stat]: STATINC(VARBINDRULEBINDAPPLICATIONCOUNT,calcAlgContext).
+        let mut update_ext = false;
+        let con_prop_binding_set_hash = calc_alg_context
+            .process_context()
+            .node(*process_indi)
+            .use_concept_prop_binding_set_hash;
+        if con_prop_binding_set_hash.is_some() {
+            let prop_binding_set = ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                calc_alg_context.process_context_mut(),
+                con_prop_binding_set_hash,
+                concept_tag,
+                false,
+            );
+            if prop_binding_set.is_some() {
+                let prop_var_bind_trans_ext = calc_alg_context
+                    .process_context()
+                    .prop_binding_set(prop_binding_set)
+                    .prop_var_bind_trans_extension;
+                let processing_not_completed = prop_var_bind_trans_ext.is_none()
+                    || !calc_alg_context
+                        .process_context()
+                        .prop_var_bind_trans_ext(prop_var_bind_trans_ext)
+                        .is_processing_completed();
+                if processing_not_completed {
+                    if prop_var_bind_trans_ext.is_none()
+                        || calc_alg_context
+                            .process_context()
+                            .prop_binding_set(prop_binding_set)
+                            .has_propagate_all_flag()
+                    {
+                        update_ext = true;
+                    } else {
+                        let last_analy_prop_bind_des = calc_alg_context
+                            .process_context()
+                            .prop_var_bind_trans_ext(prop_var_bind_trans_ext)
+                            .get_last_analysed_propagation_binding_descriptor();
+                        let prop_bind_des = calc_alg_context
+                            .process_context()
+                            .prop_binding_set(prop_binding_set)
+                            .get_propagation_binding_descriptor_linker();
+                        if last_analy_prop_bind_des != prop_bind_des {
+                            update_ext = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if update_ext {
+            let con_prop_binding_set_hash = calc_alg_context
+                .process_context_mut()
+                .node_concept_propagation_binding_set_hash(*process_indi);
+            let prop_binding_set = ConceptPropagationBindingSetHash::get_propagation_binding_set(
+                calc_alg_context.process_context_mut(),
+                con_prop_binding_set_hash,
+                concept_tag,
+                true,
+            );
+            let prop_var_bind_trans_ext =
+                PropagationBindingSet::get_propagation_variable_binding_transition_extension(
+                    calc_alg_context.process_context_mut(),
+                    prop_binding_set,
+                    true,
+                );
+
+            let last_analy_prop_bind_des = calc_alg_context
+                .process_context()
+                .prop_var_bind_trans_ext(prop_var_bind_trans_ext)
+                .get_last_analysed_propagation_binding_descriptor();
+            let prop_bind_des = calc_alg_context
+                .process_context()
+                .prop_binding_set(prop_binding_set)
+                .get_propagation_binding_descriptor_linker();
+
+            {
+                let indi_id = calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .individual_node_id();
+                calc_alg_context
+                    .process_context_mut()
+                    .prop_var_bind_trans_ext_mut(prop_var_bind_trans_ext)
+                    .set_triggered_variable_individual_pair_value((variable, indi_id));
+            }
+            let mut create_var_binding = calc_alg_context
+                .process_context()
+                .prop_binding_set(prop_binding_set)
+                .has_propagate_all_flag();
+            let mut prop_bind_des_it = prop_bind_des;
+            while prop_bind_des_it != last_analy_prop_bind_des && prop_bind_des_it.is_some() {
+                if PropagationVariableBindingTransitionExtension::add_analysed_propagation_binding_descriptor_return_matched(
+                    calc_alg_context.process_context_mut(),
+                    prop_var_bind_trans_ext,
+                    prop_bind_des_it,
+                    None,
+                ) {
+                    create_var_binding = true;
+                }
+                prop_bind_des_it = calc_alg_context
+                    .process_context()
+                    .prop_binding_des(prop_bind_des_it)
+                    .get_next();
+            }
+            let propagate_all_flag = calc_alg_context
+                .process_context()
+                .prop_binding_set(prop_binding_set)
+                .has_propagate_all_flag();
+            calc_alg_context
+                .process_context_mut()
+                .prop_var_bind_trans_ext_mut(prop_var_bind_trans_ext)
+                .set_last_analysed_propagation_binding_descriptor(prop_bind_des)
+                .set_last_analysed_propagate_all_flag(propagate_all_flag);
+
+            if create_var_binding {
+                self.stat_representative_created_count += 1;
+                // W3-DEFER[stat]: STATINC(VARBINDVARIABLEBINDCOUNT,calcAlgContext).
+                calc_alg_context
+                    .process_context_mut()
+                    .prop_var_bind_trans_ext_mut(prop_var_bind_trans_ext)
+                    .set_processing_completed(true);
+
+                let con_rep_prop_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_representative_propagation_set_hash(*process_indi);
+                let rep_prop_set =
+                    ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                        calc_alg_context.process_context_mut(),
+                        con_rep_prop_set_hash,
+                        binding_trigger_concept,
+                        true,
+                    );
+
+                let next_path_prop_id = calc_alg_context
+                    .processing_data_box_mut()
+                    .next_variable_binding_path_id(true);
+
+                let mut next_dep_track_point: TrackPointId = Id::NONE;
+                let _bind_dep_node = self.create_representative_bind_variable_dependency(
+                    &mut next_dep_track_point,
+                    process_indi,
+                    con_des,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                if next_dep_track_point.is_none() {
+                    next_dep_track_point = dep_track_point;
+                }
+
+                let has_binding = calc_alg_context
+                    .process_context()
+                    .label_set(con_set)
+                    .get_concept_descriptor_and_reapply_queue_state_by_tag(
+                        binding_trigger_tag,
+                        &mut binding_con_des,
+                        &mut binding_dep_track_point,
+                        &mut reapply_queue_empty,
+                    );
+                if !has_binding {
+                    binding_con_des = self.add_concept_to_individual_return_concept_descriptor(
+                        binding_trigger_concept,
+                        binding_trigger_concept_negation,
+                        process_indi,
+                        next_dep_track_point,
+                        false,
+                        false,
+                        calc_alg_context,
+                    );
+                } else {
+                    self.reapply_concept_updated_representative(
+                        *process_indi,
+                        binding_con_des,
+                        binding_dep_track_point,
+                        con_set,
+                        0,
+                        calc_alg_context,
+                    );
+                    let _ = reapply_queue_empty;
+                }
+
+                calc_alg_context
+                    .process_context_mut()
+                    .rep_prop_set_mut(rep_prop_set)
+                    .set_concept_descriptor(binding_con_des);
+                let var_binding = calc_alg_context
+                    .process_context_mut()
+                    .alloc_var_binding(VariableBinding::new());
+                calc_alg_context
+                    .process_context_mut()
+                    .var_binding_mut(var_binding)
+                    .init_variable_binding(next_dep_track_point, *process_indi, variable);
+                let var_binding_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_var_binding_des(VariableBindingDescriptor::new());
+                calc_alg_context
+                    .process_context_mut()
+                    .var_binding_des_mut(var_binding_des)
+                    .init_variable_binding_descriptor(var_binding);
+                let var_binding_path = calc_alg_context
+                    .process_context_mut()
+                    .alloc_vbpath(VariableBindingPath::new());
+                calc_alg_context
+                    .process_context_mut()
+                    .vbpath_mut(var_binding_path)
+                    .init_variable_binding_path(next_path_prop_id, var_binding_des);
+
+                // W2-DEFER[api]: CRepresentativeVariableBindingPathHash is still a
+                // databox placeholder, so this allocates the equivalent
+                // CRepresentativeVariableBindingPathSetData directly and inserts it
+                // into the live CRepresentativeVariableBindingPathSetHash below.
+                let localization_tag = calc_alg_context
+                    .process_context()
+                    .used_process_tagger()
+                    .get_current_localization_tag();
+                let rep_data = calc_alg_context
+                    .process_context_mut()
+                    .alloc_rep_var_bind_path_set_data(
+                        RepresentativeVariableBindingPathSetData::new(INVALID, localization_tag),
+                    );
+                let rep_id = calc_alg_context
+                    .processing_data_box_mut()
+                    .next_representative_variable_binding_path_id(true);
+                calc_alg_context
+                    .process_context_mut()
+                    .rep_var_bind_path_set_data_mut(rep_data)
+                    .init_representative_variable_binding_path_data(None)
+                    .set_representative_id(rep_id)
+                    .set_migratable(false)
+                    .inc_use_count(1)
+                    .inc_share_count(1)
+                    .add_key_signature_value(rep_id);
+                let rep_migrate_data = RepresentativeVariableBindingPathSetData::get_migrate_data(
+                    calc_alg_context.process_context_mut(),
+                    rep_data,
+                    true,
+                );
+                {
+                    let mut map_data =
+                        RepresentativeVariableBindingPathMapData::new(var_binding_path, rep_data);
+                    map_data.resolve_rep_var_bind_path_set_data_id = rep_id;
+                    calc_alg_context
+                        .process_context_mut()
+                        .rep_var_bind_path_set_migrate_data_mut(rep_migrate_data)
+                        .get_representative_variable_binding_path_map_mut()
+                        .insert(next_path_prop_id, map_data);
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .rep_var_bind_path_set_migrate_data_mut(rep_migrate_data)
+                    .get_representative_containing_map_mut()
+                    .insert_contained_representative(rep_id, rep_data, false);
+
+                let rep_var_bind_path_set_hash =
+                    calc_alg_context.representative_variable_binding_path_set_hash(true);
+                RepresentativeVariableBindingPathSetHash::insert_representative_variable_binding_path_set_data(
+                    calc_alg_context.process_context_mut(),
+                    rep_var_bind_path_set_hash,
+                    rep_data,
+                );
+
+                let rep_prop_des = calc_alg_context
+                    .process_context_mut()
+                    .alloc_rep_prop_des(RepresentativePropagationDescriptor::new());
+                calc_alg_context
+                    .process_context_mut()
+                    .rep_prop_des_mut(rep_prop_des)
+                    .init_representative_descriptor(rep_data, next_dep_track_point);
+                RepresentativePropagationSet::add_incoming_representative_propagation_descriptor_linker(
+                    calc_alg_context.process_context_mut(),
+                    rep_prop_set,
+                    rep_prop_des,
+                );
+                self.update_representative_propagation_set(
+                    process_indi,
+                    rep_prop_set,
+                    calc_alg_context,
+                );
+            }
+        }
+        let _ = negate;
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyREPRESENTATIVEIMPLICATIONRule`.
@@ -391,11 +1530,300 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (process_indi, con_pro_des, negate, calc_alg_context);
-        // PORT-PENDING: representative implication — representative propagation set
-        // hash + CONNECTION/REPRESENTATIVEIMPLICATION dependency creators +
-        // propagateRepresentative / requiresRepresentativePropagation unported.
-        todo!("W3-DEFER: applyREPRESENTATIVEIMPLICATIONRule — representative-propagation subsystem unported");
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_concept_descriptor();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_dependency_track_point();
+        let op_linker = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+        if op_linker.is_empty() {
+            return;
+        }
+
+        let con_set: LabelSetId = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*process_indi);
+        let mut binding_con_des: ConDescId = Id::NONE;
+        let mut binding_dep_track_point: TrackPointId = Id::NONE;
+        let mut reapply_queue_empty = true;
+        let binding_trigger_concept = op_linker[0].target;
+        let binding_trigger_concept_negation = op_linker[0].negated;
+        let trigger_linker = &op_linker[1..];
+        let binding_trigger_tag = calc_alg_context
+            .ontology_arenas()
+            .concept(binding_trigger_concept)
+            .get_concept_tag();
+
+        // W3-DEFER[stat]: STATINC(VARBINDRULEIMPLICATIONAPPLICATIONCOUNT,calcAlgContext).
+        let has_binding = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_concept_descriptor_and_reapply_queue_state_by_tag(
+                binding_trigger_tag,
+                &mut binding_con_des,
+                &mut binding_dep_track_point,
+                &mut reapply_queue_empty,
+            );
+
+        if !has_binding {
+            let con_set = calc_alg_context
+                .process_context_mut()
+                .node_reapply_concept_label_set(*process_indi);
+            let mut all_triggers_available = true;
+            let mut next_missing_trigger = None;
+            for next_trigger in trigger_linker.iter().copied() {
+                let mut trigger_con_des: ConDescId = Id::NONE;
+                let mut trigger_dep_track_point: TrackPointId = Id::NONE;
+                if calc_alg_context
+                    .process_context()
+                    .label_set(con_set)
+                    .get_concept_descriptor(
+                        next_trigger.target,
+                        &mut trigger_con_des,
+                        &mut trigger_dep_track_point,
+                    )
+                {
+                    if calc_alg_context
+                        .process_context()
+                        .con_desc(trigger_con_des)
+                        .is_negated()
+                        == next_trigger.negated
+                    {
+                        return;
+                    }
+                } else {
+                    all_triggers_available = false;
+                    next_missing_trigger = Some(next_trigger);
+                    break;
+                }
+            }
+
+            if !all_triggers_available {
+                let next_trigger = next_missing_trigger.expect("missing trigger recorded");
+                let trigger_negation = !next_trigger.negated;
+                if !self.is_concept_in_reapply_queue_concept(
+                    con_des,
+                    next_trigger.target,
+                    trigger_negation,
+                    *process_indi,
+                    calc_alg_context,
+                ) {
+                    self.add_concept_to_reapply_queue_concept(
+                        con_des,
+                        next_trigger.target,
+                        trigger_negation,
+                        *process_indi,
+                        false,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+            } else {
+                let trigger_deps = self.create_representative_trigger_dependency_chain(
+                    *process_indi,
+                    trigger_linker,
+                    con_set,
+                    calc_alg_context,
+                );
+                self.stat_representative_implication_count += 1;
+
+                let con_rep_prop_set_hash = calc_alg_context
+                    .process_context_mut()
+                    .node_concept_representative_propagation_set_hash(*process_indi);
+                let prev_rep_prop_set =
+                    ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                        calc_alg_context.process_context_mut(),
+                        con_rep_prop_set_hash,
+                        concept,
+                        false,
+                    );
+                let rep_prop_set =
+                    ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                        calc_alg_context.process_context_mut(),
+                        con_rep_prop_set_hash,
+                        binding_trigger_concept,
+                        true,
+                    );
+                let proc_rep_prop_des = if prev_rep_prop_set.is_some() {
+                    calc_alg_context
+                        .process_context()
+                        .rep_prop_set(prev_rep_prop_set)
+                        .get_outgoing_representative_propagation_descriptor_linker()
+                } else {
+                    Id::NONE
+                };
+                if proc_rep_prop_des.is_some() {
+                    let prop_dep_track_point = calc_alg_context
+                        .process_context()
+                        .rep_prop_des(proc_rep_prop_des)
+                        .get_dependency_track_point();
+                    calc_alg_context
+                        .process_context_mut()
+                        .rep_prop_set_mut(rep_prop_set)
+                        .set_concept_descriptor(binding_con_des);
+                    let mut next_dep_track_point: TrackPointId = Id::NONE;
+                    let _impl_dep_node = self.create_representative_implication_dependency(
+                        &mut next_dep_track_point,
+                        process_indi,
+                        con_des,
+                        prop_dep_track_point,
+                        trigger_deps,
+                        calc_alg_context,
+                    );
+                    if next_dep_track_point.is_none() {
+                        next_dep_track_point = prop_dep_track_point;
+                    }
+                    let _binding_con_des = self
+                        .add_concept_to_individual_return_concept_descriptor(
+                            binding_trigger_concept,
+                            binding_trigger_concept_negation,
+                            process_indi,
+                            next_dep_track_point,
+                            true,
+                            false,
+                            calc_alg_context,
+                        );
+                    self.propagate_representative(
+                        process_indi,
+                        proc_rep_prop_des,
+                        rep_prop_set,
+                        next_dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+            }
+        } else {
+            let con_rep_prop_set_hash = calc_alg_context
+                .process_context_mut()
+                .node_concept_representative_propagation_set_hash(*process_indi);
+            let prev_rep_prop_set =
+                ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                    calc_alg_context.process_context_mut(),
+                    con_rep_prop_set_hash,
+                    concept,
+                    false,
+                );
+            let rep_prop_set =
+                ConceptRepresentativePropagationSetHash::get_representative_propagation_set(
+                    calc_alg_context.process_context_mut(),
+                    con_rep_prop_set_hash,
+                    binding_trigger_concept,
+                    true,
+                );
+            let proc_rep_prop_des = if prev_rep_prop_set.is_some() {
+                calc_alg_context
+                    .process_context()
+                    .rep_prop_set(prev_rep_prop_set)
+                    .get_outgoing_representative_propagation_descriptor_linker()
+            } else {
+                Id::NONE
+            };
+            if proc_rep_prop_des.is_some() {
+                let prop_dep_track_point = calc_alg_context
+                    .process_context()
+                    .rep_prop_des(proc_rep_prop_des)
+                    .get_dependency_track_point();
+                if self.requires_representative_propagation(
+                    process_indi,
+                    proc_rep_prop_des,
+                    rep_prop_set,
+                    calc_alg_context,
+                ) {
+                    let trigger_deps = self.create_representative_trigger_dependency_chain(
+                        *process_indi,
+                        trigger_linker,
+                        con_set,
+                        calc_alg_context,
+                    );
+                    self.stat_representative_implication_count += 1;
+                    let mut next_dep_track_point: TrackPointId = Id::NONE;
+                    let _impl_dep_node = self.create_representative_implication_dependency(
+                        &mut next_dep_track_point,
+                        process_indi,
+                        con_des,
+                        prop_dep_track_point,
+                        trigger_deps,
+                        calc_alg_context,
+                    );
+                    if next_dep_track_point.is_none() {
+                        next_dep_track_point = prop_dep_track_point;
+                    }
+                    self.propagate_representative(
+                        process_indi,
+                        proc_rep_prop_des,
+                        rep_prop_set,
+                        next_dep_track_point,
+                        calc_alg_context,
+                    );
+                    self.reapply_concept_updated_representative(
+                        *process_indi,
+                        binding_con_des,
+                        binding_dep_track_point,
+                        con_set,
+                        0,
+                        calc_alg_context,
+                    );
+                    let _ = reapply_queue_empty;
+                }
+            }
+        }
+    }
+
+    fn create_representative_trigger_dependency_chain(
+        &mut self,
+        process_indi: NodeId,
+        trigger_linker: &[NegLink<ConceptId>],
+        con_set: LabelSetId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> DepLinkId {
+        let mut trigger_deps: DepLinkId = Id::NONE;
+        for trigger_linker_it in trigger_linker.iter().copied() {
+            let mut trigger_con_des: ConDescId = Id::NONE;
+            let mut trigger_dep_track_point: TrackPointId = Id::NONE;
+            calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .get_concept_descriptor(
+                    trigger_linker_it.target,
+                    &mut trigger_con_des,
+                    &mut trigger_dep_track_point,
+                );
+            let mut process_indi_ref = process_indi;
+            let conn_dep = self.create_connection_dependency(
+                &mut process_indi_ref,
+                trigger_con_des,
+                trigger_dep_track_point,
+                calc_alg_context,
+            );
+            if conn_dep.is_some() {
+                let conn_dep_track_point = calc_alg_context
+                    .process_context_mut()
+                    .materialize_continue_dependency_track_point(conn_dep);
+                let dep_link = calc_alg_context
+                    .process_context_mut()
+                    .alloc_dep_link(DependencyLink::new());
+                {
+                    let proc_ctx = calc_alg_context.process_context_mut();
+                    proc_ctx
+                        .dep_link_mut(dep_link)
+                        .init_dependency(conn_dep_track_point);
+                    proc_ctx.dep_link_mut(dep_link).next = trigger_deps;
+                }
+                trigger_deps = dep_link;
+            }
+        }
+        trigger_deps
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyREPRESENTATIVEALLRule`.
@@ -412,14 +1840,90 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negate: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (process_indi, con_pro_des, negate, calc_alg_context);
-        // PORT-PENDING: propagateRepresentativeToSuccessor (u33) and the reapply-queue
-        // helpers exist, but the no-restLink arm iterates
-        // `getReapplyRoleSuccessorHash(false)->getRoleSuccessorLinkIterator(role)` and
-        // `get_role_successor_link_iterator` is still a W2-DEFER stub returning an EMPTY
-        // iterator (process/pn3.rs:178) — same blocker as applyAutomatTransactions;
-        // porting now would silently drop the per-successor propagation.
-        let _ = TrackPointId::NONE; // anchor: depTrackPoint is conProDes->getDependencyTrackPoint()
-        todo!("W3-DEFER: applyREPRESENTATIVEALLRule — blocked on reapply-role-successor-hash link iterator (process/pn3.rs still W2-DEFER stub)");
+        let con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_concept_descriptor();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let role: RoleId = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
+        let dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_dependency_track_point();
+        let concept_op_linker = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+
+        // W3-DEFER[stat]: STATINC(VARBINDRULEALLAPPLICATIONCOUNT,calcAlgContext).
+        let rest_link: EdgeId =
+            self.get_link_processing_restriction(*con_pro_des, calc_alg_context);
+        if rest_link.is_some() {
+            let mut succ_indi =
+                self.get_successor_individual(process_indi, rest_link, calc_alg_context);
+            self.propagate_representative_to_successor(
+                *process_indi,
+                &mut succ_indi,
+                &concept_op_linker,
+                negate,
+                con_des,
+                rest_link,
+                calc_alg_context,
+            );
+        } else {
+            let role_succ_hash = calc_alg_context
+                .process_context()
+                .node_reapply_role_successor_hash_existing(*process_indi);
+            if role_succ_hash.is_some() {
+                let mut role_succ_it = {
+                    let proc_ctx = calc_alg_context.process_context();
+                    proc_ctx
+                        .role_succ_hash(role_succ_hash)
+                        .get_role_successor_link_iterator(proc_ctx.edges(), role)
+                };
+                while role_succ_it.has_next() {
+                    let link = role_succ_it.next(true);
+                    let mut succ_indi =
+                        self.get_successor_individual(process_indi, link, calc_alg_context);
+                    self.propagate_representative_to_successor(
+                        *process_indi,
+                        &mut succ_indi,
+                        &concept_op_linker,
+                        negate,
+                        con_des,
+                        link,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
+
+        if !calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .is_concept_reapplied()
+            && !self.is_concept_in_reapply_queue_role(
+                con_des,
+                role,
+                *process_indi,
+                calc_alg_context,
+            )
+        {
+            self.add_concept_to_reapply_queue_role(
+                con_des,
+                role,
+                *process_indi,
+                true,
+                dep_track_point,
+                calc_alg_context,
+            );
+        }
     }
 }

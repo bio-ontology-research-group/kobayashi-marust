@@ -53,9 +53,11 @@
 
 use super::super::model::substrate::{Cint64, NegLink};
 use super::super::model::ConceptId;
-use super::super::process::node::IndividualType;
+use super::super::process::node::{IndividualProcessNode, IndividualType};
 use super::super::process::rs1::RoleSuccessorLinkIterator;
-use super::super::process::{ClashDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId};
+use super::super::process::{
+    ClashDescId, ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId,
+};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -200,12 +202,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::createIndividualMergeCausingDescriptors`.
     ///
-    /// PORT-PENDING: gathers the clash descriptors that explain why a merge would be
-    /// forced — the link dependency (when it differs from the node's) plus, for each
-    /// concept to be added, the descriptor of that concept already present in the
-    /// node's label set. Driven by the not-yet-ported clash-descriptor factory
-    /// (`createClashedIndividualLinkDescriptor` / `createClashedConceptDescriptor`)
-    /// and the `CReapplyConceptLabelSet::getConceptDescriptor` out-param lookup.
+    /// Gathers the clash descriptors that explain why a merge would be forced: the
+    /// link dependency (when it differs from the node's) plus, for each concept to
+    /// be added, the descriptor of that concept already present in the node's label
+    /// set.
     ///
     /// C++ structure (cpp 16690–16713):
     /// ```text
@@ -226,18 +226,60 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         concept_add_linker: &[NegLink<ConceptId>],
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> ClashDescId {
-        let _ = (
-            prev_clashes,
-            process_indi,
-            link,
-            concept_add_linker,
-            calc_alg_context,
-        );
-        // PORT-PENDING: clash-descriptor factory (createClashedIndividualLinkDescriptor /
-        // createClashedConceptDescriptor) + label-set getConceptDescriptor unported.
-        todo!(
-            "W6-DEFER: createIndividualMergeCausingDescriptors — clash-descriptor factory unported"
-        );
+        let mut clash_des = prev_clashes;
+        let link_dep_track_point = calc_alg_context
+            .process_context()
+            .edge(link)
+            .get_dependency_track_point();
+        let node_dep_track_point = calc_alg_context
+            .process_context()
+            .node(*process_indi)
+            .dependency_track_point();
+        if link_dep_track_point != node_dep_track_point {
+            clash_des = self.create_clashed_individual_link_descriptor(
+                clash_des,
+                link,
+                link_dep_track_point,
+                calc_alg_context,
+            );
+        }
+
+        let con_set = calc_alg_context
+            .process_context_mut()
+            .node_mut(*process_indi)
+            .get_reapply_concept_label_set(false);
+        if con_set.is_some() {
+            for concept_link in concept_add_linker {
+                let mut contained_con_des = ConDescId::NONE;
+                let mut contained_dep_track_point = TrackPointId::NONE;
+                let concept_tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept_link.target)
+                    .get_concept_tag();
+                if calc_alg_context
+                    .process_context()
+                    .label_set(con_set)
+                    .get_concept_descriptor_by_tag(
+                        concept_tag,
+                        &mut contained_con_des,
+                        &mut contained_dep_track_point,
+                    )
+                {
+                    contained_dep_track_point = calc_alg_context
+                        .process_context()
+                        .con_desc(contained_con_des)
+                        .get_dependency_track_point();
+                    clash_des = self.create_clashed_concept_descriptor(
+                        clash_des,
+                        process_indi,
+                        contained_con_des,
+                        contained_dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
+        clash_des
     }
 
     // =======================================================================
@@ -557,26 +599,58 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let individual_computation = false;
 
         // Pre-read the node scalars the decision tree compares (all `&self` reads).
-        let prefered_id = calc_alg_context.process_context().node(prefered).individual_node_id();
-        let indiv2_id = calc_alg_context.process_context().node(indiv2).individual_node_id();
-        let prefered_nominal = calc_alg_context.process_context().node(prefered).is_nominal_individual_node();
-        let indiv2_nominal = calc_alg_context.process_context().node(indiv2).is_nominal_individual_node();
-        let prefered_nom_level = calc_alg_context.process_context().node(prefered).individual_nominal_level();
-        let indiv2_nom_level = calc_alg_context.process_context().node(indiv2).individual_nominal_level();
-        let prefered_anc_depth = calc_alg_context.process_context().node(prefered).individual_ancestor_depth();
-        let indiv2_anc_depth = calc_alg_context.process_context().node(indiv2).individual_ancestor_depth();
-        let indiv2_nominal_individual_null =
-            calc_alg_context.process_context().node(indiv2).nominal_individual().is_none();
+        let prefered_id = calc_alg_context
+            .process_context()
+            .node(prefered)
+            .individual_node_id();
+        let indiv2_id = calc_alg_context
+            .process_context()
+            .node(indiv2)
+            .individual_node_id();
+        let prefered_nominal = calc_alg_context
+            .process_context()
+            .node(prefered)
+            .is_nominal_individual_node();
+        let indiv2_nominal = calc_alg_context
+            .process_context()
+            .node(indiv2)
+            .is_nominal_individual_node();
+        let prefered_nom_level = calc_alg_context
+            .process_context()
+            .node(prefered)
+            .individual_nominal_level();
+        let indiv2_nom_level = calc_alg_context
+            .process_context()
+            .node(indiv2)
+            .individual_nominal_level();
+        let prefered_anc_depth = calc_alg_context
+            .process_context()
+            .node(prefered)
+            .individual_ancestor_depth();
+        let indiv2_anc_depth = calc_alg_context
+            .process_context()
+            .node(indiv2)
+            .individual_ancestor_depth();
+        let indiv2_nominal_individual_null = calc_alg_context
+            .process_context()
+            .node(indiv2)
+            .nominal_individual()
+            .is_none();
         let opt_merge_constructed = self.opt_merge_constructed_individual_node;
 
         // `procDataBox->getConstructedIndividualNode()->getIndividualNodeID()`.
-        let constructed_node = calc_alg_context.processing_data_box().constructed_individual_node();
+        let constructed_node = calc_alg_context
+            .processing_data_box()
+            .constructed_individual_node();
         let constructed_id = if constructed_node.is_none() {
             // No constructed node yet ⇒ cannot match either id; matches the C++ where
             // the constructed-node arms are only reached once it has been created.
             Cint64::MIN
         } else {
-            calc_alg_context.process_context().node(constructed_node).individual_node_id()
+            calc_alg_context
+                .process_context()
+                .node(constructed_node)
+                .individual_node_id()
         };
 
         if !individual_computation && !opt_merge_constructed && constructed_id == prefered_id {
@@ -599,17 +673,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             switch_nodes = false;
         } else if indiv2_nominal {
             switch_nodes = true;
-        } else if calc_alg_context
-            .process_context()
-            .node(prefered)
-            .is_individual_ancestor(calc_alg_context.process_context().node(indiv2))
-        {
+        } else if IndividualProcessNode::is_individual_ancestor_in_context(
+            calc_alg_context.process_context(),
+            prefered,
+            indiv2,
+        ) {
             switch_nodes = false;
-        } else if calc_alg_context
-            .process_context()
-            .node(indiv2)
-            .is_individual_ancestor(calc_alg_context.process_context().node(prefered))
-        {
+        } else if IndividualProcessNode::is_individual_ancestor_in_context(
+            calc_alg_context.process_context(),
+            indiv2,
+            prefered,
+        ) {
             switch_nodes = true;
         } else if indiv2_anc_depth < prefered_anc_depth {
             switch_nodes = true;
@@ -654,11 +728,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let new_empty_indi_node = self.create_new_empty_individual(calc_alg_context);
         if !create_as_nominal {
             let merging = *merging_individual_node;
-            let nominal_level = calc_alg_context.process_context().node(merging).individual_nominal_level();
-            let ancestor_depth = calc_alg_context.process_context().node(merging).individual_ancestor_depth();
-            let merging_is_nominal = calc_alg_context.process_context().node(merging).is_nominal_individual_node();
+            let nominal_level = calc_alg_context
+                .process_context()
+                .node(merging)
+                .individual_nominal_level();
+            let ancestor_depth = calc_alg_context
+                .process_context()
+                .node(merging)
+                .individual_ancestor_depth();
+            let merging_is_nominal = calc_alg_context
+                .process_context()
+                .node(merging)
+                .is_nominal_individual_node();
             {
-                let node = calc_alg_context.process_context_mut().node_mut(new_empty_indi_node);
+                let node = calc_alg_context
+                    .process_context_mut()
+                    .node_mut(new_empty_indi_node);
                 node.set_individual_nominal_level(nominal_level);
                 node.set_individual_ancestor_depth(ancestor_depth);
                 if merging_is_nominal {
@@ -668,10 +753,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         } else {
-            let merger_nom_level =
-                calc_alg_context.process_context().node(merger_node).individual_nominal_level();
+            let merger_nom_level = calc_alg_context
+                .process_context()
+                .node(merger_node)
+                .individual_nominal_level();
             {
-                let node = calc_alg_context.process_context_mut().node_mut(new_empty_indi_node);
+                let node = calc_alg_context
+                    .process_context_mut()
+                    .node_mut(new_empty_indi_node);
                 node.set_individual_type(IndividualType::Nominal);
                 node.set_individual_nominal_level(merger_nom_level + 1);
             }

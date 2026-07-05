@@ -29,8 +29,8 @@
 
 #![allow(dead_code)]
 
-use super::super::model::RoleId;
 use super::super::model::substrate::Cint64;
+use super::super::model::RoleId;
 use super::{EdgeId, NodeId, TrackPointId};
 
 /// Port of `CIndividualLinkEdge` (folding bases `CNodeEdge`, `CLinkEdge`).
@@ -89,6 +89,37 @@ impl IndividualLinkEdge {
     /// Port of `CIndividualLinkEdge::CIndividualLinkEdge` (default ctor).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Port of `CIndividualLinkEdge::initIndividualLinkEdge(CIndividualProcessNode*, ...)`.
+    pub fn init_individual_link_edge(
+        &mut self,
+        creator: NodeId,
+        source: NodeId,
+        destination: NodeId,
+        role: RoleId,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
+        self.creator = creator;
+        self.source = source;
+        self.destination = destination;
+        self.role = role;
+        self.dep_track_point = dep_track_point;
+        self.next = EdgeId::NONE;
+        self
+    }
+
+    /// Port of `CIndividualLinkEdge::initIndividualLinkEdge(CIndividualLinkEdge*)`.
+    pub fn init_individual_link_edge_from(&mut self, link: &IndividualLinkEdge) -> &mut Self {
+        self.process_tag = link.process_tag;
+        self.relocalized = link.relocalized;
+        self.dep_track_point = link.dep_track_point;
+        self.source = link.source;
+        self.destination = link.destination;
+        self.role = link.role;
+        self.creator = link.creator;
+        self.next = EdgeId::NONE;
+        self
     }
 
     // --- simple field accessors ---
@@ -158,9 +189,8 @@ impl IndividualLinkEdge {
         self
     }
 
-    // W2 method-batch (edge inits/derived): `initIndividualLinkEdge` (both
-    // overloads), `getCreatorIndividualID`, `isCreatorIndividual`,
-    // `isCreatorIndividualID` (both overloads), and the inherited
+    // W2 method-batch (edge derived): `getCreatorIndividualID`,
+    // `isCreatorIndividual`, `isCreatorIndividualID` (both overloads), and the inherited
     // `CNodeEdge::getSourceIndividualID`/`getDestinationIndividualID`/
     // `getOppositeIndividual(ID)`/`isSourceIndividualID`/`isDestinationIndividualID`/
     // `getCoupledIndividualID` (these dereference the node ids and need the
@@ -205,6 +235,22 @@ impl DistinctEdge {
         Self::default()
     }
 
+    /// Port of `CDistinctEdge::initDistinctEdge`.
+    ///
+    /// C++ assigns the inherited source/destination node pointers and dependency
+    /// track point, then returns `this`.
+    pub fn init_distinct_edge(
+        &mut self,
+        source: NodeId,
+        destination: NodeId,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
+        self.source = source;
+        self.destination = destination;
+        self.dep_track_point = dep_track_point;
+        self
+    }
+
     /// Port of `CNodeEdge::getSourceIndividual`.
     pub fn get_source_individual(&self) -> NodeId {
         self.source
@@ -242,8 +288,8 @@ impl DistinctEdge {
         self
     }
 
-    // W2 method-batch (edge inits/derived): `initDistinctEdge` + the inherited
-    // `CNodeEdge` *ID / opposite / coupled accessors (need the node arena).
+    // W2 method-batch (edge derived): the inherited `CNodeEdge` *ID / opposite /
+    // coupled accessors (need the node arena).
 }
 
 /// Port of `CNegationDisjointEdge` (base `CLinkEdge`).
@@ -292,6 +338,21 @@ impl DisjointEdge {
         Self::default()
     }
 
+    /// Port of `CNegationDisjointEdge::initNegationDisjointEdge`.
+    pub fn init_negation_disjoint_edge(
+        &mut self,
+        source: NodeId,
+        destination: NodeId,
+        role: RoleId,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
+        self.source = source;
+        self.destination = destination;
+        self.role = role;
+        self.dep_track_point = dep_track_point;
+        self
+    }
+
     /// Port of `CNodeEdge::getSourceIndividual`.
     pub fn get_source_individual(&self) -> NodeId {
         self.source
@@ -338,6 +399,6 @@ impl DisjointEdge {
         self
     }
 
-    // W2 method-batch (edge inits/derived): `initNegationDisjointEdge` + the
-    // inherited `CNodeEdge` *ID / opposite / coupled accessors (need the node arena).
+    // W2 method-batch (edge derived): the inherited `CNodeEdge` *ID / opposite /
+    // coupled accessors need the node arena.
 }

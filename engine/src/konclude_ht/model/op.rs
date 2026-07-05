@@ -347,11 +347,19 @@ pub const CCFS_ALL_TYPE: Cint64 =
     CCF_VARPBACKALL | CCF_VARBINDALL | CCF_PBINDALL | CCF_BRANCHALL | CCF_IMPLALL | CCF_ALL;
 
 /// Port of `CConceptOperator::CCFS_AQAND_TYPE`.
-pub const CCFS_AQAND_TYPE: Cint64 =
-    CCF_AQAND | CCF_IMPLAQAND | CCF_BRANCHAQAND | CCF_PBINDAQAND | CCF_VARBINDAQAND | CCF_VARPBACKAQAND;
+pub const CCFS_AQAND_TYPE: Cint64 = CCF_AQAND
+    | CCF_IMPLAQAND
+    | CCF_BRANCHAQAND
+    | CCF_PBINDAQAND
+    | CCF_VARBINDAQAND
+    | CCF_VARPBACKAQAND;
 /// Port of `CConceptOperator::CCFS_AQALL_TYPE`.
-pub const CCFS_AQALL_TYPE: Cint64 =
-    CCF_AQALL | CCF_IMPLAQALL | CCF_BRANCHAQALL | CCF_PBINDAQALL | CCF_VARBINDAQALL | CCF_VARPBACKAQALL;
+pub const CCFS_AQALL_TYPE: Cint64 = CCF_AQALL
+    | CCF_IMPLAQALL
+    | CCF_BRANCHAQALL
+    | CCF_PBINDAQALL
+    | CCF_VARBINDAQALL
+    | CCF_VARPBACKAQALL;
 
 /// Port of `CConceptOperator::CCFS_AQ_TYPE`.
 pub const CCFS_AQ_TYPE: Cint64 = CCFS_AQAND_TYPE | CCFS_AQALL_TYPE;
@@ -408,8 +416,12 @@ pub const CCFS_PROPAGATION_TYPE: Cint64 =
     CCFS_PROPAGATION_BIND_TYPE | CCFS_VARIABLE_BIND_TYPE | CCFS_BACK_PROPAGATION_TYPE;
 
 /// Port of `CConceptOperator::CCFS_PROPAGATION_ALL_TYPE`.
-pub const CCFS_PROPAGATION_ALL_TYPE: Cint64 =
-    CCF_PBINDALL | CCF_VARBINDALL | CCF_VARPBACKALL | CCF_PBINDAQALL | CCF_VARBINDAQALL | CCF_VARPBACKAQALL;
+pub const CCFS_PROPAGATION_ALL_TYPE: Cint64 = CCF_PBINDALL
+    | CCF_VARBINDALL
+    | CCF_VARPBACKALL
+    | CCF_PBINDAQALL
+    | CCF_VARBINDAQALL
+    | CCF_VARPBACKAQALL;
 
 /// Port of `CConceptOperator::CCFS_PROPAGATION_AND_TYPE`.
 pub const CCFS_PROPAGATION_AND_TYPE: Cint64 = CCF_PBINDTRIG
@@ -596,7 +608,10 @@ impl ConceptOperator {
         } else {
             CCF_SPECIAL
         };
-        ConceptOperator { operator_code: op_code, type_flag }
+        ConceptOperator {
+            operator_code: op_code,
+            type_flag,
+        }
     }
 
     /// Port of `CConceptOperator::getOperatorCode()`.
@@ -747,8 +762,14 @@ mod tests {
         assert_eq!(ConceptOperator::new(CCSOME).get_operator_flag(), CCF_SOME);
         assert_eq!(ConceptOperator::new(CCALL).get_operator_flag(), CCF_ALL);
         // Unlisted / disabled codes fall through to CCF_SPECIAL.
-        assert_eq!(ConceptOperator::new(CCNOMINALIMPLI).get_operator_flag(), CCF_SPECIAL);
-        assert_eq!(ConceptOperator::new(CCVARBINDFINALZE).get_operator_flag(), CCF_SPECIAL);
+        assert_eq!(
+            ConceptOperator::new(CCNOMINALIMPLI).get_operator_flag(),
+            CCF_SPECIAL
+        );
+        assert_eq!(
+            ConceptOperator::new(CCVARBINDFINALZE).get_operator_flag(),
+            CCF_SPECIAL
+        );
     }
 
     #[test]

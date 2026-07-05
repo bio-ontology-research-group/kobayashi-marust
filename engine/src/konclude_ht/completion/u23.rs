@@ -227,7 +227,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // (u24) and `initializeNeighbourExpansionWithPropagation` (u27) siblings and
         // the `expandIndividualAllNeighboursFromBackendCache` (this unit) call become
         // live on the reconcile pass.
-        let _ = (indi_node, checking_backend_sync_data_indi_node, calc_alg_context);
+        let _ = (
+            indi_node,
+            checking_backend_sync_data_indi_node,
+            calc_alg_context,
+        );
         false
     }
 

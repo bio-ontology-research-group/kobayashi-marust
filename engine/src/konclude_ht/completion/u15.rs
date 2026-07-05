@@ -38,9 +38,14 @@
 #![allow(dead_code, unused_variables, unused_mut)]
 
 use super::super::model::substrate::Cint64;
-use super::super::process::{NodeId, TrackPointId};
 use super::super::process::distinct::DistinctHashId;
+use super::super::process::edge::DistinctEdge;
 use super::super::process::node::IndividualProcessNode;
+use super::super::process::stubs::{
+    AdditionalProcessDataAssertionsLinker, AdditionalProcessRoleAssertionsLinker,
+    ProcessAssertedDataLiteralLinker,
+};
+use super::super::process::{NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -49,27 +54,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// PARTIALLY PORTED (2026-06-30 merge-core wave): the 553-line merge driver.
     /// The phases whose dependencies now exist are ported with faithful control flow
     /// — the marking sibling (phase 1), the node setters (phase 3), the DISTINCT
-    /// relocation (phase 8), the prune/flag-propagation (phase 9), and the final
+    /// relocation (phase 8), the prune/flag-propagation (phase 9), the
+    /// assertion-linker relocation (phase 11), and the final
     /// `propagateIndividualNodeModified` + `addIndividualToProcessingQueue` (phase
     /// 13). The phases that still bottom out in stub/missing facilities are kept as
     /// structured inline DEFER markers, each naming the exact gap:
     ///   - phase 2  completion-graph cache → `mCompGraphCacheHandler` /
     ///     `clearCompletionGraphCaching` are the unported W6 Cache layer;
     ///   - phase 4  concept-label merge → the `ReapplyConceptLabelSet` iterator
-    ///     constructor (`getConceptLabelSetIterator`) + `containsConcept` +
-    ///     `getConceptCount` are not yet on the label set (RECONCILE-NEED);
-    ///   - phase 5  connection-link relocation → `SuccessorRoleIterator` /
-    ///     `DisjointSuccessorRoleIterator` are pn3 zero-size stubs, and the nominal
+    ///     constructor, `containsConcept`, and `getConceptCount` are live; the
+    ///     phase body is still deferred until the whole label-merge branch is
+    ///     wired through the existing dependency/add-concept helpers;
+    ///   - phase 5  connection-link relocation → the iterator surface exists but
+    ///     still awaits the threaded successor-role hash backends, and the nominal
     ///     neighbour backend-expansion is the W6 Cache layer;
-    ///   - phase 6  nominal `IndividualMergingHash` → the merging hash is a stub `Id`
-    ///     and `CCondensedReapplyQueueIterator` is a placeholder (STILL MISSING);
-    ///   - phase 7  minimize-merging ancestor-link repoint →
-    ///     `getRoleSuccessorToIndividualLink` / `getAncestorLink` not yet on node;
-    ///   - phase 10 exact-nominal connection set → `getSuccessorNominalConnectionSet`
-    ///     not yet on node;
-    ///   - phase 11 assertion-linker relocation → the assertion-linker *getters*
-    ///     (`getAssertionRoleLinker`, …) are not yet on node (the `add*` siblings
-    ///     exist);
+    ///   - phase 6  nominal `IndividualMergingHash` → the merging hash is live,
+    ///     but the `CCondensedReapplyQueueIterator` drain is still missing;
+    ///   - phase 7  minimize-merging ancestor-link repoint → accessor surface is
+    ///     live, but the phase depends on phase 5's per-merge dependency map;
+    ///   - phase 10 exact-nominal connection set → live;
     ///   - phase 12 backend-cache sync transfer → the W6 Cache layer.
     /// The complete phase sequence (the C++ control flow is linear, phase after
     /// phase) is recorded below and mirrored 1:1 in the body:
@@ -184,11 +187,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // so it is not materialised yet (kept as a note for the un-defer wave).
 
         // ---- phase 4: merge the concept label set -------------------------------
-        // RECONCILE-NEED: ReapplyConceptLabelSet::{get_concept_label_set_iterator (the
-        //   CReapplyConceptLabelSetIterator constructor), contains_concept, get_concept_count}
-        //   on the reapply_sat label set — the iterator type + `get_data_tag(ctx,onto)` /
-        //   `get_concept_descriptor` / `get_dependency_track_point(ctx)` already exist, but
-        //   the constructor + containment/count predicates are not yet there.
+        // The ReapplyConceptLabelSet iterator/contains/count surface is live; the
+        // whole phase remains deferred until it is wired end-to-end through the
+        // existing merged-concept dependency and add-concept helpers.
         // Faithful structure (un-defer once the label-set surface lands; the dependency
         // wrapper `create_merged_concept_dependency` and the `add_concept_to_individual_*`
         // sibling already exist and are called here):
@@ -214,43 +215,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   - W6-DEFER[api]: the nominal neighbour backend-expansion sub-block
         //     (`getLocalizedIndividualBackendCacheSnychronisationData` /
         //     `expandIndividualNeighbourNodeFromBackendCache`) is the W6 Cache layer;
-        //   - RECONCILE-NEED: `IndividualProcessNode::{get_successor_role_iterator,
-        //     get_disjoint_successor_role_iterator}` resolve to pn3 zero-size stubs
-        //     (no `has_next`/`next`), so the forward/reverse role-link + neg/disjoint
-        //     relocation (`create_new_individuals_link_reapplyed` /
+        //   - the pn3 role/disjoint-successor iterators and empty-iterator surface
+        //     exist, but still yield empty until the `mUseSuccRoleHash` /
+        //     `mUseDisjointSuccRoleHash` process-hash backends are threaded. Until
+        //     then the forward/reverse role-link + neg/disjoint relocation
+        //     (`create_new_individuals_link_reapplyed` /
         //     `create_individual_node_negation_link` — both already exist as siblings —
         //     `remove_individual_link` / `remove_disjoint_links` /
         //     `remove_individual_connection`) cannot iterate yet.
-        //     (PORTED: pn3.rs — the getters exist; the `has_next`/`next` empty-iterator
-        //     surface is now on `SuccessorRoleIterator`/`DisjointSuccessorRoleIterator`
-        //     (+ `RoleSuccessorIterator`/`RoleSuccessorLinkIterator`/`SuccessorIterator`).
-        //     LEFT: the iterators still yield empty until the `mUseSuccRoleHash` /
-        //     `mUseDisjointSuccRoleHash` process-hash backends (W2-DEFER) are threaded.)
         // Faithful self-loop vs other-node split + the dedup-via-depTrackPointHash +
         // `create_merged_link_dependency` structure is recorded in the doc comment.
 
         // ---- phase 6: nominal merge bookkeeping ---------------------------------
-        // RECONCILE-NEED: `IndividualMergingHash` is a stub `Id` (pn6
-        //   `individual_merging_hash(create)` returns `Id::NONE`) and
-        //   `CCondensedReapplyQueueIterator` is a placeholder (STILL MISSING), so the
-        //   merging-hash init/merge + `apply_reapply_queue_concepts` drain + the
-        //   `create_merged_individual_dependency` per-entry dependency are deferred.
-        //   The node-type promotion (`set_individual_type(NOMINALINDIVIDUALTYPE)` +
-        //   `set_nominal_individual`) and `get_nominal_individual` reads also need the
-        //   node nominal accessors. Full structure in the doc comment (phase 6).
+        // `IndividualMergingHash` and the node nominal accessors are live, but
+        // the CCondensedReapplyQueueIterator drain is still missing. The
+        // merging-hash init/merge + `apply_reapply_queue_concepts` drain + the
+        // `create_merged_individual_dependency` per-entry dependency remain deferred.
+        // Full structure in the doc comment (phase 6).
 
         // ---- phase 7: inherit dep track point + minimize-merging ancestor repoint -
         // if ctx.node(merge_into).dependency_track_point().is_none() {
         //   merge_into.set_dependency_track_point(depTrackPointHash[individual.dep_tp]); }
-        // RECONCILE-NEED: depends on the phase-5 `depTrackPointHash`; and the
-        //   `mConfMinimizeMerging` branch needs `IndividualProcessNode::{get_ancestor_link,
-        //   get_role_successor_to_individual_link, set_ancestor_link, has_individual_ancestor,
-        //   get_individual_ancestor_depth}` (not yet on node) + `get_ancestor_individual`
-        //   (sibling, exists). Deferred with phase 5.
-        //   (PORTED: pn3.rs `get_ancestor_link` / `get_role_successor_to_individual_link`
-        //   / `set_ancestor_link` / `has_individual_ancestor`; node.rs
-        //   `individual_ancestor_depth`. All five node accessors exist; only the
-        //   `depTrackPointHash` dedup (phase-5) remains LEFT.)
+        // The minimize-merging node accessors are live; this phase remains deferred
+        // with phase 5 because it depends on the per-merge `depTrackPointHash` dedup.
         let _ = self.conf_minimize_merging;
 
         // ---- phase 8: add distinct information (PORTED) --------------------------
@@ -295,7 +282,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             for (dis_indi_id, dep_track_point) in dis_entries {
                 // locDisIndiNode = getLocalizedIndividual(disIndiID, calcAlgContext)
-                let loc_dis_indi_node = calc_alg_context.get_localized_individual_by_id(dis_indi_id);
+                let loc_dis_indi_node =
+                    calc_alg_context.get_localized_individual_by_id(dis_indi_id);
                 // disHash = locDisIndiNode->getDistinctHash(true)
                 let dis_hash: DistinctHashId = calc_alg_context
                     .process_context_mut()
@@ -322,18 +310,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         dep_track_point,
                         calc_alg_context,
                     );
-                    // RECONCILE-NEED: ProcessContext::alloc_distinct_edge +
-                    //   DistinctEdge::init_distinct_edge(loc_dis_indi_node, merge_into, new_dtp)
-                    //   are not yet present (edge.rs DistinctEdge has only `new`). Once they
-                    //   land:
-                    //     let dis_edge = ctx.alloc_distinct_edge(DistinctEdge::new());
-                    //     ctx.distinct_edge_mut(dis_edge).init_distinct_edge(
-                    //         loc_dis_indi_node, merge_into_individual_node, new_dep_track_point);
-                    //     ctx.distinct_hash_mut(merge_dis_hash)
-                    //         .insert_distinct_individual(dis_indi_id, dis_edge);
-                    //     ctx.distinct_hash_mut(dis_hash)
-                    //         .insert_distinct_individual(merge_into_node_id, dis_edge);
-                    let _ = (merge_dis_hash, merge_into_node_id, new_dep_track_point);
+                    let dis_edge = calc_alg_context
+                        .process_context_mut()
+                        .alloc_distinct_edge(DistinctEdge::new());
+                    calc_alg_context
+                        .process_context_mut()
+                        .distinct_edge_mut(dis_edge)
+                        .init_distinct_edge(
+                            loc_dis_indi_node,
+                            merge_into_individual_node,
+                            new_dep_track_point,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .distinct_hash_mut(merge_dis_hash)
+                        .insert_distinct_individual(dis_indi_id, dis_edge);
+                    calc_alg_context
+                        .process_context_mut()
+                        .distinct_hash_mut(dis_hash)
+                        .insert_distinct_individual(merge_into_node_id, dis_edge);
 
                     // if (mDatatypeHandler) { notifyDistinctChanges(...) ×2 }
                     // W6-DEFER[api]: `mDatatypeHandler` (the datatype handler) is STILL
@@ -366,47 +361,246 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
             );
         if indi_has_invalid_blocking {
-            // RECONCILE-NEED: IndividualProcessNode::add_processing_restriction_flags
-            //   (the PRF setter) is not yet exposed on the node; faithful call:
-            //   ctx.node_mut(merge_into).add_processing_restriction_flags(
-            //       IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING);
-            //   (PORTED: pn4.rs `add_processing_restriction_flags` exists; un-defer wave
-            //   wires the call site.)
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(merge_into_individual_node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+                );
         }
 
         // ---- phase 10: exact-nominal dependency-tracking connection copy --------
-        // RECONCILE-NEED: `IndividualProcessNode::get_successor_nominal_connection_set`
-        //   + `get_nominal_individual` are not yet on node (the
-        //   `add_successor_connection_to_nominal` sink exists as a pn6 stub).
-        //   (PORTED: pn6.rs `successor_nominal_connection_set` + sat1.rs
-        //   `nominal_individual` both exist; the connection-set backend is W2-DEFER.)
-        //   Faithful
-        //   structure (un-defer once the getters land):
-        //   if self.conf_exact_nominal_dependency_tracking
-        //       && both nodes nominal {
-        //     for nominalID in individual.successor_nominal_connection_set() {
-        //       merge_into.add_successor_connection_to_nominal(nominalID); }
-        //     if let Some(nom) = individual.nominal_individual() {
-        //       merge_into.add_successor_connection_to_nominal(-nom.individual_id()); }
-        //   }
-        let _ = self.conf_exact_nominal_dependency_tracking;
+        if self.conf_exact_nominal_dependency_tracking {
+            let (merge_into_nominal, individual_nominal, individual_nominal_id) = {
+                let pc = calc_alg_context.process_context();
+                (
+                    pc.node(merge_into_individual_node)
+                        .is_nominal_individual_node(),
+                    pc.node(individual).is_nominal_individual_node(),
+                    pc.node(individual).nominal_individual(),
+                )
+            };
+            if merge_into_nominal && individual_nominal {
+                let connected_nominals = calc_alg_context
+                    .process_context()
+                    .node_successor_connected_nominals(individual);
+                for nominal_id in connected_nominals {
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_add_successor_connection_to_nominal(
+                            merge_into_individual_node,
+                            nominal_id,
+                        );
+                }
+                if individual_nominal_id.is_some() {
+                    let nominal_id = calc_alg_context
+                        .ontology_arenas()
+                        .individual(individual_nominal_id)
+                        .get_individual_id();
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_add_successor_connection_to_nominal(
+                            merge_into_individual_node,
+                            -nominal_id,
+                        );
+                }
+            }
+        }
 
         // ---- phase 11: relocate assertion linkers -------------------------------
-        // RECONCILE-NEED: the assertion-linker *getters* on the node
-        //   (`get_assertion_role_linker`, `get_reverse_assertion_role_linker`,
-        //   `get_additional_role_assertions_linker`, `get_process_initializing_concept_linker`,
-        //   `get_assertion_data_linker`, `get_additional_data_assertions_linker`,
-        //   `get_asserted_data_literal_linker`) are not yet on node; the *sink* siblings
-        //   (PORTED: pn2.rs — all seven getters exist under Rust naming, dropping the
-        //   C++ `get_` prefix: `assertion_role_linker` / `reverse_assertion_role_linker`
-        //   / `additional_role_assertions_linker` / `process_initializing_concept_linker`
-        //   / `assertion_data_linker` / `additional_data_assertions_linker` /
-        //   `asserted_data_literal_linker`; un-defer wave wires the relocation loop.)
-        //   (`add_additional_role_assertions_linker`, `add_initializing_concept_linker`,
-        //   `add_additional_data_assertions_linker`, `add_asserted_data_literal_linker`)
-        //   already exist (pn2). Each relocation co-allocates the additional linker (with
-        //   `create_merged_individual_dependency` for the additional ones) and sets
-        //   `new_links_added = true`. Full structure in the doc comment (phase 11).
+        let (
+            nominal_individual,
+            role_ass_linker,
+            reverse_role_ass_linker,
+            initializing_concepts,
+            data_ass_linker,
+            mut additional_role_entries,
+            mut additional_data_entries,
+            mut asserted_data_literal_entries,
+        ) = {
+            let pc = calc_alg_context.process_context();
+            let node = pc.node(individual);
+            let nominal_individual = node.nominal_individual().raw;
+            let role_ass_linker = node.assertion_role_linker();
+            let reverse_role_ass_linker = node.reverse_assertion_role_linker();
+            let initializing_concepts = node.process_initializing_concept_linker().to_vec();
+            let data_ass_linker = node.assertion_data_linker();
+
+            let mut additional_role_entries = Vec::new();
+            let mut role_it = node.additional_role_assertions_linker();
+            while role_it.is_some() {
+                let linker = pc.additional_role_assertion_linker(role_it);
+                additional_role_entries.push((
+                    linker.individual(),
+                    linker.role_assertion_linker(),
+                    linker.reverse_role_assertion_linker(),
+                    linker.dependency_track_point(),
+                ));
+                role_it = linker.next();
+            }
+
+            let mut additional_data_entries = Vec::new();
+            let mut data_it = node.additional_data_assertions_linker();
+            while data_it.is_some() {
+                let linker = pc.additional_data_assertion_linker(data_it);
+                additional_data_entries.push((
+                    linker.individual(),
+                    linker.data_assertion_linker(),
+                    linker.dependency_track_point(),
+                ));
+                data_it = linker.next();
+            }
+
+            let mut asserted_data_literal_entries = Vec::new();
+            let mut literal_it = node.asserted_data_literal_linker();
+            while literal_it.is_some() {
+                let linker = pc.process_asserted_data_literal_linker(literal_it);
+                asserted_data_literal_entries
+                    .push((linker.data_literal(), linker.dependency_track_point()));
+                literal_it = linker.next();
+            }
+
+            (
+                nominal_individual,
+                role_ass_linker,
+                reverse_role_ass_linker,
+                initializing_concepts,
+                data_ass_linker,
+                additional_role_entries,
+                additional_data_entries,
+                asserted_data_literal_entries,
+            )
+        };
+
+        if role_ass_linker.is_some() || reverse_role_ass_linker.is_some() {
+            let mut linker = AdditionalProcessRoleAssertionsLinker::new();
+            linker.init_additional_process_role_assertions_linker(
+                nominal_individual,
+                role_ass_linker,
+                reverse_role_ass_linker,
+                merge_dep_track_point,
+            );
+            let pc = calc_alg_context.process_context_mut();
+            let linker = pc.alloc_additional_role_assertion_linker(linker);
+            let old_head = pc
+                .node(merge_into_individual_node)
+                .additional_role_assertions_linker();
+            pc.additional_role_assertion_linker_mut(linker)
+                .set_next(old_head);
+            pc.node_mut(merge_into_individual_node)
+                .set_additional_role_assertions_linker(linker);
+            new_links_added = true;
+        }
+        for (source_individual, role_linker, reverse_role_linker, dep_track_point) in
+            additional_role_entries.drain(..)
+        {
+            let mut new_indi_dep_track_point = TrackPointId::NONE;
+            let mut merge_into = merge_into_individual_node;
+            self.create_merged_individual_dependency(
+                &mut new_indi_dep_track_point,
+                &mut merge_into,
+                merge_dep_track_point,
+                dep_track_point,
+                calc_alg_context,
+            );
+
+            let mut linker = AdditionalProcessRoleAssertionsLinker::new();
+            linker.init_additional_process_role_assertions_linker(
+                source_individual,
+                role_linker,
+                reverse_role_linker,
+                new_indi_dep_track_point,
+            );
+            let pc = calc_alg_context.process_context_mut();
+            let linker = pc.alloc_additional_role_assertion_linker(linker);
+            let old_head = pc
+                .node(merge_into_individual_node)
+                .additional_role_assertions_linker();
+            pc.additional_role_assertion_linker_mut(linker)
+                .set_next(old_head);
+            pc.node_mut(merge_into_individual_node)
+                .set_additional_role_assertions_linker(linker);
+            new_links_added = true;
+        }
+
+        for init_linker in initializing_concepts {
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(merge_into_individual_node)
+                .add_initializing_concept_linker(vec![init_linker]);
+        }
+
+        if data_ass_linker.is_some() {
+            let mut linker = AdditionalProcessDataAssertionsLinker::new();
+            linker.init_additional_process_data_assertions_linker(
+                nominal_individual,
+                data_ass_linker,
+                merge_dep_track_point,
+            );
+            let pc = calc_alg_context.process_context_mut();
+            let linker = pc.alloc_additional_data_assertion_linker(linker);
+            let old_head = pc
+                .node(merge_into_individual_node)
+                .additional_data_assertions_linker();
+            pc.additional_data_assertion_linker_mut(linker)
+                .set_next(old_head);
+            pc.node_mut(merge_into_individual_node)
+                .set_additional_data_assertions_linker(linker);
+            new_links_added = true;
+        }
+        for (source_individual, data_linker, dep_track_point) in additional_data_entries.drain(..) {
+            let mut new_indi_dep_track_point = TrackPointId::NONE;
+            let mut merge_into = merge_into_individual_node;
+            self.create_merged_individual_dependency(
+                &mut new_indi_dep_track_point,
+                &mut merge_into,
+                merge_dep_track_point,
+                dep_track_point,
+                calc_alg_context,
+            );
+
+            let mut linker = AdditionalProcessDataAssertionsLinker::new();
+            linker.init_additional_process_data_assertions_linker(
+                source_individual,
+                data_linker,
+                new_indi_dep_track_point,
+            );
+            let pc = calc_alg_context.process_context_mut();
+            let linker = pc.alloc_additional_data_assertion_linker(linker);
+            let old_head = pc
+                .node(merge_into_individual_node)
+                .additional_data_assertions_linker();
+            pc.additional_data_assertion_linker_mut(linker)
+                .set_next(old_head);
+            pc.node_mut(merge_into_individual_node)
+                .set_additional_data_assertions_linker(linker);
+            new_links_added = true;
+        }
+
+        for (data_literal, dep_track_point) in asserted_data_literal_entries.drain(..) {
+            let mut new_indi_dep_track_point = TrackPointId::NONE;
+            let mut merge_into = merge_into_individual_node;
+            self.create_merged_individual_dependency(
+                &mut new_indi_dep_track_point,
+                &mut merge_into,
+                merge_dep_track_point,
+                dep_track_point,
+                calc_alg_context,
+            );
+
+            let mut linker = ProcessAssertedDataLiteralLinker::new();
+            linker.init_process_data_literal_linker(data_literal, new_indi_dep_track_point);
+            let pc = calc_alg_context.process_context_mut();
+            let linker = pc.alloc_process_asserted_data_literal_linker(linker);
+            let old_head = pc
+                .node(merge_into_individual_node)
+                .asserted_data_literal_linker();
+            pc.process_asserted_data_literal_linker_mut(linker)
+                .set_next(old_head);
+            pc.node_mut(merge_into_individual_node)
+                .set_asserted_data_literal_linker(linker);
+            new_links_added = true;
+        }
 
         // ---- phase 12: backend-cache sync transfer ------------------------------
         // W6-DEFER[api]: the `PRFSYNCHRONIZEDBACKEN…` flag transfer + the
@@ -651,5 +845,329 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         expansion_blocking_critical
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm;
+    use crate::konclude_ht::completion::context::CalculationAlgorithmContextBase;
+    use crate::konclude_ht::model::individual::Individual;
+    use crate::konclude_ht::model::substrate::{Id, NegLink};
+    use crate::konclude_ht::model::ConceptId;
+    use crate::konclude_ht::process::edge::DistinctEdge;
+    use crate::konclude_ht::process::node::{IndividualProcessNode, IndividualType};
+    use crate::konclude_ht::process::stubs::{
+        AdditionalProcessDataAssertionsLinker, AdditionalProcessRoleAssertionsLinker,
+        DataAssertionLinkerId, ProcessAssertedDataLiteralLinker,
+        ProcessAssertedDataLiteralLinkerId, ReverseRoleAssertionLinkerId, RoleAssertionLinkerId,
+    };
+    use crate::konclude_ht::process::TrackPointId;
+
+    #[test]
+    fn merge_individual_node_into_propagates_invalid_blocking_flag() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+
+        let merge_into = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let individual = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+
+        calc_ctx
+            .process_context_mut()
+            .node_mut(individual)
+            .add_processing_restriction_flags(IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING);
+        assert!(!calc_ctx
+            .process_context()
+            .node(merge_into)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            ));
+
+        algo.merge_individual_node_into(merge_into, individual, TrackPointId::NONE, &mut calc_ctx);
+
+        assert!(calc_ctx
+            .process_context()
+            .node(merge_into)
+            .has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_INVALIDBLOCKINGORCACHING,
+            ));
+    }
+
+    #[test]
+    fn merge_individual_node_into_relocates_distinct_edges() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+
+        let merge_into = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let individual = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let other = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+
+        calc_ctx
+            .process_context_mut()
+            .node_mut(merge_into)
+            .set_individual_node_id(10);
+        calc_ctx
+            .process_context_mut()
+            .node_mut(individual)
+            .set_individual_node_id(20);
+        calc_ctx
+            .process_context_mut()
+            .node_mut(other)
+            .set_individual_node_id(30);
+        calc_ctx
+            .processing_data_box_mut()
+            .individual_process_node_vector_mut()
+            .set_data(10, merge_into)
+            .set_data(20, individual)
+            .set_data(30, other);
+
+        let old_dep_track_point = TrackPointId::new(77);
+        let mut old_edge = DistinctEdge::new();
+        old_edge.init_distinct_edge(individual, other, old_dep_track_point);
+        let old_edge = calc_ctx.process_context_mut().alloc_distinct_edge(old_edge);
+
+        let individual_hash = calc_ctx
+            .process_context_mut()
+            .node_distinct_hash(individual);
+        calc_ctx
+            .process_context_mut()
+            .distinct_hash_mut(individual_hash)
+            .insert_distinct_individual(30, old_edge);
+        let other_hash = calc_ctx.process_context_mut().node_distinct_hash(other);
+        calc_ctx
+            .process_context_mut()
+            .distinct_hash_mut(other_hash)
+            .insert_distinct_individual(20, old_edge);
+
+        algo.merge_individual_node_into(
+            merge_into,
+            individual,
+            TrackPointId::new(88),
+            &mut calc_ctx,
+        );
+
+        let merge_hash = calc_ctx
+            .process_context_mut()
+            .node_distinct_hash(merge_into);
+        let relocated_edge = calc_ctx
+            .process_context()
+            .distinct_hash(merge_hash)
+            .get_individual_distinct_edge(30);
+        assert!(relocated_edge.is_some());
+        assert_eq!(
+            calc_ctx
+                .process_context()
+                .distinct_hash(other_hash)
+                .get_individual_distinct_edge(20),
+            Id::NONE
+        );
+        assert_eq!(
+            calc_ctx
+                .process_context()
+                .distinct_hash(other_hash)
+                .get_individual_distinct_edge(10),
+            relocated_edge
+        );
+
+        let edge = calc_ctx.process_context().distinct_edge(relocated_edge);
+        assert_eq!(edge.get_source_individual(), other);
+        assert_eq!(edge.get_destination_individual(), merge_into);
+    }
+
+    #[test]
+    fn merge_individual_node_into_copies_exact_nominal_connections() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        algo.conf_exact_nominal_dependency_tracking = true;
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+
+        let merge_into_nominal = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(10));
+        let individual_nominal = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(20));
+
+        let merge_into = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let individual = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+
+        calc_ctx
+            .process_context_mut()
+            .node_mut(merge_into)
+            .set_individual_node_id(10)
+            .set_individual_type(IndividualType::Nominal)
+            .set_nominal_individual(merge_into_nominal);
+        calc_ctx
+            .process_context_mut()
+            .node_mut(individual)
+            .set_individual_node_id(20)
+            .set_individual_type(IndividualType::Nominal)
+            .set_nominal_individual(individual_nominal);
+        calc_ctx
+            .process_context_mut()
+            .node_add_successor_connection_to_nominal(individual, -31);
+        calc_ctx
+            .process_context_mut()
+            .node_add_successor_connection_to_nominal(individual, -37);
+
+        algo.merge_individual_node_into(merge_into, individual, TrackPointId::NONE, &mut calc_ctx);
+
+        let mut copied = calc_ctx
+            .process_context()
+            .node_successor_connected_nominals(merge_into);
+        copied.sort_unstable();
+        assert_eq!(copied, vec![-37, -31, -20]);
+    }
+
+    #[test]
+    fn merge_individual_node_into_relocates_assertion_linkers() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+
+        let nominal = calc_ctx
+            .ontology_arenas_mut()
+            .alloc_individual(Individual::new(10));
+        let merge_into = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+        let individual = calc_ctx
+            .process_context_mut()
+            .alloc_node(IndividualProcessNode::new(Id::NONE));
+
+        let direct_role = RoleAssertionLinkerId::new(21);
+        let direct_reverse = ReverseRoleAssertionLinkerId::new(22);
+        let direct_data = DataAssertionLinkerId::new(23);
+        let existing_role = RoleAssertionLinkerId::new(31);
+        let existing_reverse = ReverseRoleAssertionLinkerId::new(32);
+        let existing_data = DataAssertionLinkerId::new(33);
+        let existing_role_dep = TrackPointId::new(41);
+        let existing_data_dep = TrackPointId::new(42);
+        let existing_literal_dep = TrackPointId::new(43);
+        let merge_dep = TrackPointId::new(99);
+
+        let mut role_linker = AdditionalProcessRoleAssertionsLinker::new();
+        role_linker.init_additional_process_role_assertions_linker(
+            101,
+            existing_role,
+            existing_reverse,
+            existing_role_dep,
+        );
+        let role_linker = calc_ctx
+            .process_context_mut()
+            .alloc_additional_role_assertion_linker(role_linker);
+
+        let mut data_linker = AdditionalProcessDataAssertionsLinker::new();
+        data_linker.init_additional_process_data_assertions_linker(
+            102,
+            existing_data,
+            existing_data_dep,
+        );
+        let data_linker = calc_ctx
+            .process_context_mut()
+            .alloc_additional_data_assertion_linker(data_linker);
+
+        let mut literal_linker = ProcessAssertedDataLiteralLinker::new();
+        literal_linker.init_process_data_literal_linker(700, existing_literal_dep);
+        let literal_linker = calc_ctx
+            .process_context_mut()
+            .alloc_process_asserted_data_literal_linker(literal_linker);
+
+        calc_ctx
+            .process_context_mut()
+            .node_mut(individual)
+            .set_nominal_individual(nominal)
+            .set_assertion_role_linker(direct_role)
+            .set_reverse_assertion_role_linker(direct_reverse)
+            .set_assertion_data_linker(direct_data)
+            .set_additional_role_assertions_linker(role_linker)
+            .set_additional_data_assertions_linker(data_linker)
+            .set_asserted_data_literal_linker(literal_linker)
+            .add_initializing_concept_linker(vec![
+                NegLink {
+                    target: ConceptId::new(1),
+                    negated: false,
+                },
+                NegLink {
+                    target: ConceptId::new(2),
+                    negated: true,
+                },
+            ]);
+
+        algo.merge_individual_node_into(merge_into, individual, merge_dep, &mut calc_ctx);
+
+        let role_head = calc_ctx
+            .process_context()
+            .node(merge_into)
+            .additional_role_assertions_linker();
+        let cloned_role = calc_ctx
+            .process_context()
+            .additional_role_assertion_linker(role_head);
+        assert_eq!(cloned_role.individual(), 101);
+        assert_eq!(cloned_role.role_assertion_linker(), existing_role);
+        assert_eq!(
+            cloned_role.reverse_role_assertion_linker(),
+            existing_reverse
+        );
+        let direct_role_head = cloned_role.next();
+        let direct_role_entry = calc_ctx
+            .process_context()
+            .additional_role_assertion_linker(direct_role_head);
+        assert_eq!(direct_role_entry.individual(), nominal.raw);
+        assert_eq!(direct_role_entry.role_assertion_linker(), direct_role);
+        assert_eq!(
+            direct_role_entry.reverse_role_assertion_linker(),
+            direct_reverse
+        );
+        assert_eq!(direct_role_entry.dependency_track_point(), merge_dep);
+
+        let init = calc_ctx
+            .process_context()
+            .node(merge_into)
+            .initializing_concept_linker();
+        assert_eq!(init.len(), 2);
+        assert_eq!(init[0].target, ConceptId::new(2));
+        assert!(init[0].negated);
+        assert_eq!(init[1].target, ConceptId::new(1));
+        assert!(!init[1].negated);
+
+        let data_head = calc_ctx
+            .process_context()
+            .node(merge_into)
+            .additional_data_assertions_linker();
+        let cloned_data = calc_ctx
+            .process_context()
+            .additional_data_assertion_linker(data_head);
+        assert_eq!(cloned_data.individual(), 102);
+        assert_eq!(cloned_data.data_assertion_linker(), existing_data);
+        let direct_data_head = cloned_data.next();
+        let direct_data_entry = calc_ctx
+            .process_context()
+            .additional_data_assertion_linker(direct_data_head);
+        assert_eq!(direct_data_entry.individual(), nominal.raw);
+        assert_eq!(direct_data_entry.data_assertion_linker(), direct_data);
+        assert_eq!(direct_data_entry.dependency_track_point(), merge_dep);
+
+        let literal_head = calc_ctx
+            .process_context()
+            .node(merge_into)
+            .asserted_data_literal_linker();
+        let literal = calc_ctx
+            .process_context()
+            .process_asserted_data_literal_linker(literal_head);
+        assert_eq!(literal.data_literal(), 700);
+        assert_eq!(literal.next(), ProcessAssertedDataLiteralLinkerId::NONE);
     }
 }

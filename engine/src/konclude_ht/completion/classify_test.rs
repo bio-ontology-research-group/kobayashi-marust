@@ -42,6 +42,7 @@ use super::super::process::queues::ConceptProcessingQueue;
 use super::super::process::{NodeId, TrackPointId};
 use super::algorithm::CompletionTaskHandleAlgorithm;
 use super::context::CalculationAlgorithmContextBase;
+use super::strategy::ConceptProcessingPriorityStrategy;
 
 /// A constructed per-thread classification context: the completion algorithm + the
 /// algorithm context (with the static terminology arena), plus a running individual
@@ -57,6 +58,8 @@ struct Env {
 fn new_env() -> Env {
     let algo = CompletionTaskHandleAlgorithm::new();
     let mut ctx = CalculationAlgorithmContextBase::new();
+    ctx.base.used_concept_priority_strategy =
+        Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
     let top = {
         let mut c = Concept::new();
         c.set_concept_tag(1);
@@ -64,7 +67,11 @@ fn new_env() -> Env {
         ctx.ontology_arenas_mut().alloc_concept(c)
     };
     ctx.processing_data_box_mut().ontology_top_concept = top;
-    Env { algo, ctx, next_indi_id: 0 }
+    Env {
+        algo,
+        ctx,
+        next_indi_id: 0,
+    }
 }
 
 impl Env {
@@ -111,7 +118,10 @@ impl Env {
             .ctx
             .process_context_mut()
             .alloc_node(IndividualProcessNode::new(Id::NONE));
-        self.ctx.process_context_mut().node_mut(root).set_individual_node_id(id);
+        self.ctx
+            .process_context_mut()
+            .node_mut(root)
+            .set_individual_node_id(id);
         self.ctx
             .processing_data_box_mut()
             .individual_process_node_vector_mut()
@@ -121,7 +131,12 @@ impl Env {
 
     /// `A ⊑ B` w.r.t. `gcis` holds IFF `A ⊓ ¬B` is unsatisfiable. Seeds a fresh root
     /// with positive `sub` and negated `super` and probes for a clash.
-    fn entails_subsumption(&mut self, sub: ConceptId, super_: ConceptId, gcis: &[ConceptId]) -> bool {
+    fn entails_subsumption(
+        &mut self,
+        sub: ConceptId,
+        super_: ConceptId,
+        gcis: &[ConceptId],
+    ) -> bool {
         is_unsatisfiable(self, &[(sub, false), (super_, true)], gcis)
     }
 }

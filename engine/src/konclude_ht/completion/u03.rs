@@ -34,24 +34,25 @@
 //! ids are therefore `// PORT-PENDING` + `todo!`, with their EXACT C++ control flow
 //! kept as a faithful outline (each not-yet-ported subsystem call tagged
 //! `// W3-DEFER[api]`) so no logic is dropped — they fill in once the arena
-//! plumbing (CProcessContext) lands in a later wave. The pure sibling-delegators
-//! (`propagate*RestrictionTo{Ancestor,Successors}`) and the single-deferred-call
-//! void (`prepareBranchedTaskProcessing`) ARE ported in full here.
+//! plumbing (CProcessContext) lands in a later wave. Some methods in the
+//! processing-restriction cluster now call live process-context accessors; their
+//! lower-level sibling calls retain their own deferral status.
 
 #![allow(unused_variables, dead_code)]
 
+use super::super::model::op;
 use super::super::model::substrate::Cint64;
+use super::super::model::substrate::{Id, NegLink, INVALID};
+use super::super::model::ConceptId;
+use super::super::process::dependency::BranchTreeNode;
+use super::super::process::node::IndividualProcessNode;
 use super::super::process::{
     BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
     TrackPointId,
 };
-use super::super::process::dependency::BranchTreeNode;
 use super::algorithm::{IndiNodeQueueType, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
-use super::super::model::substrate::{Id, INVALID, NegLink};
-use super::super::model::op;
-use super::super::model::ConceptId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::initialNodeInitialize`.
@@ -196,12 +197,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // indiProcNode->setProcessingQueued(false); indiProcNode->setExtendedQueueProcessing(true);
         {
-            let n = calc_alg_context.process_context_mut().node_mut(indi_proc_node);
+            let n = calc_alg_context
+                .process_context_mut()
+                .node_mut(indi_proc_node);
             n.set_processing_queued(false);
             n.set_extended_queue_processing(true);
         }
         // calcAlgContext->setCurrentIndividualNode(indiProcNode);
-        calc_alg_context.base.set_current_individual_node(indi_proc_node);
+        calc_alg_context
+            .base
+            .set_current_individual_node(indi_proc_node);
 
         // switch (mIndiNodeFromQueueType) — clear the queue-specific "queued" flag of
         // the queue the node was taken from (cpp 9070-9123).
@@ -252,13 +257,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         {
             // W8-DEFER[api]: initialNodeInitialize(indiProcNode, true, ctx) — the per-node
             //   cache/signature/backend setup (still a `todo!`); the INQT_CACHETEST /
-            //   INQT_VST* / INQT_BACKENDEXPANSIONREUSE dispatch arms; and
-            //   `if (isIndividualNodeProcessingBlocked(indiProcNode, ctx)) {
-            //       eliminiateBlockedIndividuals(indiProcNode, ctx); return false; }`
-            //   (cascades into unported saturation / signature / CG-cache `detect_*`
-            //   helpers). For the trivial unblocked root these are all no-ops, so the
-            //   node is reported INITIALISED and the concept-queue drain proceeds — the
-            //   faithful result of the C++ unblocked path.
+            //   INQT_VST* / INQT_BACKENDEXPANSIONREUSE dispatch arms.
+            if self.is_individual_node_processing_blocked(indi_proc_node, calc_alg_context) {
+                self.eliminiate_blocked_individuals(indi_proc_node, calc_alg_context);
+                return false;
+            }
             // if (mConfSignatureSaving) addSignatureIndividualNodeBlockerCandidate(...) [W8-DEFER]
             return true;
         }
@@ -289,8 +292,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // W3-DEFER[api]: testIndividualNodeUnsatisfiableCached(indiProcNode, calcAlgContext)
         }
 
-        calc_alg_context.base.set_current_individual_node(NodeId::NONE);
-        // W3-DEFER[api]: addIndividualToProcessingQueue(indiProcNode, calcAlgContext)
+        calc_alg_context
+            .base
+            .set_current_individual_node(NodeId::NONE);
+        self.add_individual_to_processing_queue(indi_proc_node, calc_alg_context);
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::tableauRuleProcessing`.
@@ -385,12 +390,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .con_proc_desc(con_proc_des)
             .get_concept_descriptor();
         // bool conNeg = conDes->getNegation();
-        let con_neg: bool = calc_alg_context.process_context().con_desc(con_des).is_negated();
+        let con_neg: bool = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .is_negated();
         // CConcept* concept = conDes->getConcept();
-        let concept: ConceptId = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         // cint64 conOpCode = concept->getOperatorCode();
-        let con_op_code: Cint64 =
-            calc_alg_context.ontology_arenas().concept(concept).get_operator_code();
+        let con_op_code: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operator_code();
 
         // ++mCurrentRecProcDepth;
         self.current_rec_proc_depth += 1;
@@ -435,7 +448,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
                 op::CCDATATYPE => self.apply_datatype_rule(indi, cpd, false, calc_alg_context),
-                op::CCDATALITERAL => self.apply_data_literal_rule(indi, cpd, false, calc_alg_context),
+                op::CCDATALITERAL => {
+                    self.apply_data_literal_rule(indi, cpd, false, calc_alg_context)
+                }
                 op::CCDATARESTRICTION => {
                     self.apply_data_restriction_rule(indi, cpd, false, calc_alg_context)
                 }
@@ -446,8 +461,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 | op::CCBRANCHAQALL
                 | op::CCIMPLALL
                 | op::CCBRANCHALL => self.apply_all_rule(indi, cpd, false, calc_alg_context),
-                op::CCSOME | op::CCAQSOME => self.apply_some_rule(indi, cpd, false, calc_alg_context),
-                op::CCAQCHOOCE => self.apply_automat_choose_rule(indi, cpd, false, calc_alg_context),
+                op::CCSOME | op::CCAQSOME => {
+                    self.apply_some_rule(indi, cpd, false, calc_alg_context)
+                }
+                op::CCAQCHOOCE => {
+                    self.apply_automat_choose_rule(indi, cpd, false, calc_alg_context)
+                }
                 op::CCNOT => self.apply_neg_and_rule(indi, cpd, false, calc_alg_context),
                 op::CCSELF => self.apply_self_rule(indi, cpd, false, calc_alg_context),
                 op::CCATLEAST => self.apply_atleast_rule(indi, cpd, false, calc_alg_context),
@@ -475,7 +494,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
                 op::CCVARBINDVARIABLE => {
                     if self.conf_representative_propagation_rules {
-                        self.apply_representative_bind_variable_rule(indi, cpd, false, calc_alg_context)
+                        self.apply_representative_bind_variable_rule(
+                            indi,
+                            cpd,
+                            false,
+                            calc_alg_context,
+                        )
                     } else {
                         self.apply_varbind_variable_rule(indi, cpd, false, calc_alg_context)
                     }
@@ -489,7 +513,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
                 op::CCVARBINDIMPL => {
                     if self.conf_representative_propagation_rules {
-                        self.apply_representative_implication_rule(indi, cpd, false, calc_alg_context)
+                        self.apply_representative_implication_rule(
+                            indi,
+                            cpd,
+                            false,
+                            calc_alg_context,
+                        )
                     } else {
                         self.apply_varbind_propagate_implication_rule(
                             indi,
@@ -561,7 +590,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // func = mNegJumpFuncVec[conOpCode];
             match con_op_code {
                 op::CCDATATYPE => self.apply_datatype_rule(indi, cpd, true, calc_alg_context),
-                op::CCDATALITERAL => self.apply_data_literal_rule(indi, cpd, true, calc_alg_context),
+                op::CCDATALITERAL => {
+                    self.apply_data_literal_rule(indi, cpd, true, calc_alg_context)
+                }
                 op::CCDATARESTRICTION => {
                     self.apply_data_restriction_rule(indi, cpd, true, calc_alg_context)
                 }
@@ -665,8 +696,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .con_proc_desc(con_pro_des)
             .get_concept_descriptor();
-        let concept: ConceptId =
-            calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let concept: ConceptId = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
         let dep_track_point: TrackPointId = calc_alg_context
             .process_context()
             .con_proc_desc(con_pro_des)
@@ -702,17 +735,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .first()
             .map(|bp| bp.branch_node)
             .unwrap_or(BranchNodeId::NONE);
-        let or_dependency_node: DependencyId =
-            calc_alg_context.process_context_mut().alloc_or_dependency_node();
+        let or_dependency_node: DependencyId = calc_alg_context
+            .process_context_mut()
+            .alloc_or_dependency_node();
         let branch_node: BranchNodeId =
-            calc_alg_context.process_context_mut().alloc_branch_node(BranchTreeNode {
-                process_tag: 0,
-                parent_node: parent_branch,
-                // a root branch node is its own root (`CBranchTreeNode::mRootNode`).
-                root_node: root_branch,
-                branched_dep_track_point: Id::NONE,
-                sat_calc_task: INVALID,
-            });
+            calc_alg_context
+                .process_context_mut()
+                .alloc_branch_node(BranchTreeNode {
+                    process_tag: 0,
+                    parent_node: parent_branch,
+                    // a root branch node is its own root (`CBranchTreeNode::mRootNode`).
+                    root_node: root_branch,
+                    branched_dep_track_point: Id::NONE,
+                    sat_calc_task: INVALID,
+                });
 
         // Push the open branch point; the FIRST alternative is added now, so the
         // next unexplored alternative is index 1.
@@ -871,11 +907,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_pro_des: ConProcDescId,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> EdgeId {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: getLinkProcessingRestriction — needs descriptor arena read + the \
-             CLinkProcessingRestrictionSpecification subtype (not yet ported)"
-        )
+        let proc_rest_spec = calc_alg_context
+            .process_context()
+            .con_proc_desc(con_pro_des)
+            .get_processing_restriction_specification();
+        if proc_rest_spec.is_some() {
+            calc_alg_context
+                .process_context()
+                .restriction_spec(proc_rest_spec)
+                .get_link_restriction()
+        } else {
+            EdgeId::NONE
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateProcessingRestrictionToAncestor`.
@@ -900,9 +943,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateAddingProcessingRestrictionToAncestor`.
     ///
-    /// PORT-PENDING: walks to the ancestor node and (recursively) adds restriction
-    /// flags; needs `getAncestorIndividual` / `getLocalizedIndividual` + node flag
-    /// ops (arena). Faithful outline (cpp 19767-19778):
+    /// Walks to the ancestor node and (recursively) adds restriction flags.
+    /// cpp 19767-19778.
     ///
     /// ```text
     /// if indi.hasIndividualAncestor():
@@ -920,12 +962,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while_not_contains_flags: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: propagateAddingProcessingRestrictionToAncestor — needs \
-             getAncestorIndividual / getLocalizedIndividual + node restriction-flag \
-             ops via the CProcessContext arena"
-        )
+        if calc_alg_context
+            .process_context()
+            .node(indi)
+            .has_individual_ancestor()
+        {
+            let mut test_indi = indi;
+            let anc_indi = self.get_ancestor_individual(&mut test_indi, calc_alg_context);
+            if anc_indi.is_some()
+                && !calc_alg_context
+                    .process_context()
+                    .node(anc_indi)
+                    .has_partial_processing_restriction_flags(while_not_contains_flags)
+            {
+                let loc_anc_indi = self.get_localized_individual(anc_indi, false, calc_alg_context);
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(loc_anc_indi)
+                    .add_processing_restriction_flags(add_restriction_flags);
+                if recursive {
+                    self.propagate_adding_processing_restriction_to_ancestor(
+                        loc_anc_indi,
+                        add_restriction_flags,
+                        recursive,
+                        while_not_contains_flags,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateProcessingRestrictionToSuccessors`.
@@ -950,21 +1015,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateAddingProcessingRestrictionToSuccessors`.
     ///
-    /// PORT-PENDING: iterates the node's successor links (deeper ancestor-depth only)
-    /// and (recursively) adds restriction flags; needs `CSuccessorIterator` (a process
-    /// placeholder), `getSuccessorIndividual` / `getLocalizedIndividual`, and node
-    /// flag ops (arena). Faithful outline (cpp 19810-19827):
-    ///
-    /// ```text
-    /// succIt = indi.getSuccessorIterator(); ancDepth = indi.getIndividualAncestorDepth()
-    /// while succIt.hasNext():
-    ///     succLink = succIt.nextLink(true); succIndi = getSuccessorIndividual(indi, succLink, ctx)
-    ///     if succIndi.getIndividualAncestorDepth() > ancDepth:
-    ///         if !succIndi.hasPartialProcessingRestrictionFlags(whileNotContainsFlags):
-    ///             locSuccIndi = getLocalizedIndividual(succIndi, false, ctx)
-    ///             locSuccIndi.addProcessingRestrictionFlags(addRestrictionFlags)
-    ///             if recursive: propagateAddingProcessingRestrictionToSuccessors(locSuccIndi, ...)
-    /// ```
+    /// Iterates strictly deeper successor links and recursively adds restriction
+    /// flags while the stop-mask is absent. Uses the existing successor/localization
+    /// siblings for the C++ pointer-resolution steps.
     pub fn propagate_adding_processing_restriction_to_successors(
         &mut self,
         indi: NodeId,
@@ -973,30 +1026,52 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while_not_contains_flags: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: propagateAddingProcessingRestrictionToSuccessors — needs the \
-             CSuccessorIterator iteration API + getSuccessorIndividual / \
-             getLocalizedIndividual + node flag ops (arena)"
-        )
+        let mut succ_it = calc_alg_context
+            .process_context()
+            .node_successor_iterator(indi);
+        let anc_depth = calc_alg_context
+            .process_context()
+            .node(indi)
+            .individual_ancestor_depth();
+        while succ_it.has_next() {
+            let succ_link = succ_it.next_link(true);
+            let mut source_indi = indi;
+            let succ_indi =
+                self.get_successor_individual(&mut source_indi, succ_link, calc_alg_context);
+            if succ_indi.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .individual_ancestor_depth()
+                    > anc_depth
+                && !calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .has_partial_processing_restriction_flags(while_not_contains_flags)
+            {
+                let loc_succ_indi =
+                    self.get_localized_individual(succ_indi, false, calc_alg_context);
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(loc_succ_indi)
+                    .add_processing_restriction_flags(add_restriction_flags);
+                if recursive {
+                    self.propagate_adding_processing_restriction_to_successors(
+                        loc_succ_indi,
+                        add_restriction_flags,
+                        recursive,
+                        while_not_contains_flags,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateClearingProcessingRestrictionToSuccessors`.
     ///
-    /// PORT-PENDING: mirror of the adding variant but CLEARS flags, gated on
-    /// `whileContainsFlags`; same arena/iterator dependencies. Faithful outline
-    /// (cpp 19831-19848):
-    ///
-    /// ```text
-    /// succIt = indi.getSuccessorIterator(); ancDepth = indi.getIndividualAncestorDepth()
-    /// while succIt.hasNext():
-    ///     succLink = succIt.nextLink(true); succIndi = getSuccessorIndividual(indi, succLink, ctx)
-    ///     if succIndi.getIndividualAncestorDepth() > ancDepth:
-    ///         if succIndi.hasPartialProcessingRestrictionFlags(whileContainsFlags):
-    ///             locSuccIndi = getLocalizedIndividual(succIndi, false, ctx)
-    ///             locSuccIndi.clearProcessingRestrictionFlags(clearRestrictionFlags)
-    ///             if recursive: propagateClearingProcessingRestrictionToSuccessors(locSuccIndi, ...)
-    /// ```
+    /// Mirror of the adding variant, clearing flags while the required mask is
+    /// present on strictly deeper successors.
     pub fn propagate_clearing_processing_restriction_to_successors(
         &mut self,
         indi: NodeId,
@@ -1005,38 +1080,93 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while_contains_flags: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: propagateClearingProcessingRestrictionToSuccessors — needs the \
-             CSuccessorIterator iteration API + getSuccessorIndividual / \
-             getLocalizedIndividual + node flag ops (arena)"
-        )
+        let mut succ_it = calc_alg_context
+            .process_context()
+            .node_successor_iterator(indi);
+        let anc_depth = calc_alg_context
+            .process_context()
+            .node(indi)
+            .individual_ancestor_depth();
+        while succ_it.has_next() {
+            let succ_link = succ_it.next_link(true);
+            let mut source_indi = indi;
+            let succ_indi =
+                self.get_successor_individual(&mut source_indi, succ_link, calc_alg_context);
+            if succ_indi.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .individual_ancestor_depth()
+                    > anc_depth
+                && calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .has_partial_processing_restriction_flags(while_contains_flags)
+            {
+                let loc_succ_indi =
+                    self.get_localized_individual(succ_indi, false, calc_alg_context);
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(loc_succ_indi)
+                    .clear_processing_restriction_flags(clear_restriction_flags);
+                if recursive {
+                    self.propagate_clearing_processing_restriction_to_successors(
+                        loc_succ_indi,
+                        clear_restriction_flags,
+                        recursive,
+                        while_contains_flags,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::propagateIndividualProcessedAndReactivate`.
     ///
-    /// PORT-PENDING: marks the node processing-completed and, when its ancestors are
-    /// all processed (or it has none), wakes the next nodes; needs node flag ops +
-    /// `hasAncestorIndividualNode` + the (unit-4) `searchReactivateIndividualsProcessedPropagated`.
-    /// Faithful outline (cpp 19887-19899):
-    ///
-    /// ```text
-    /// if mOptProcessedNodePropagation || (mOptProcessedConsNodePropagation && indi.hasPartialProcessingRestrictionFlags(PRF CONSNODEPREPARATIONINDINODE)):
-    ///     if !indi.hasPartialProcessingRestrictionFlags(PRF PROCESSINGCOMPLETED):
-    ///         indi.addProcessingRestrictionFlags(PRF PROCESSINGCOMPLETED)
-    ///         if indi.hasPartialProcessingRestrictionFlags(PRF ANCESTORALLPROCESSED) || !hasAncestorIndividualNode(indi, ctx):
-    ///             searchReactivateIndividualsProcessedPropagated(indi, ctx)
-    /// ```
+    /// Marks the node processing-completed and, when all ancestors are processed
+    /// (or the node has no ancestor), delegates reactivation to unit 4. The
+    /// delegated `search_reactivate_individuals_processed_propagated` still holds
+    /// its own lower-level W3-DEFERs.
     pub fn propagate_individual_processed_and_reactivate(
         &mut self,
         indi: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING
-        todo!(
-            "W3-DEFER: propagateIndividualProcessedAndReactivate — needs node \
-             restriction-flag ops (arena) + hasAncestorIndividualNode + the unit-4 \
-             searchReactivateIndividualsProcessedPropagated"
-        )
+        if self.opt_processed_node_propagation
+            || (self.opt_processed_cons_node_propagation
+                && calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_CONSNODEPREPARATIONINDINODE,
+                    ))
+        {
+            if !calc_alg_context
+                .process_context()
+                .node(indi)
+                .has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_PROCESSINGCOMPLETED,
+                )
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi)
+                    .add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_PROCESSINGCOMPLETED,
+                    );
+                let mut process_indi = indi;
+                if calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORALLPROCESSED,
+                    )
+                    || !self.has_ancestor_individual_node(&mut process_indi, calc_alg_context)
+                {
+                    self.search_reactivate_individuals_processed_propagated(indi, calc_alg_context);
+                }
+            }
+        }
     }
 }

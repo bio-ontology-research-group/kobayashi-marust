@@ -16,15 +16,20 @@
 //! They are therefore plain owned Rust structs, not `Id<T>`-addressed arena
 //! elements; there are no completion-layer id aliases.
 
-pub mod stubs;     // W3: Algorithm-layer not-yet-ported placeholder markers
-pub mod context;   // W3: CCalculationAlgorithmContext{,Base} — the per-thread context
 pub mod algorithm; // W3: CCalculationTableauCompletionTaskHandleAlgorithm — fields
-pub mod strategy;  // W3: Strategy/ rule-application priority + cache-retrieval policies
-pub mod clash;     // W3c: clash/stop propagation (CCalculation{Clash,Stop}ProcessingException)
-pub mod dependency_factory; // W3c: the create*Dependency allocator (CDependencyFactory)
+pub mod clash; // W3c: clash/stop propagation (CCalculation{Clash,Stop}ProcessingException)
+pub mod computed_cons_handler; // W129: CComputedConsequencesCacheHandler type-write queueing
+pub mod context; // W3: CCalculationAlgorithmContext{,Base} — the per-thread context
+pub mod dependency_factory;
+pub mod grounding; // W44: CConceptNominalSchemaGroundingHandler helper methods
+pub mod sat_node_exp_handler; // W128: CSaturationNodeExpansionCacheHandler concept-unsat queueing
+pub mod strategy; // W3: Strategy/ rule-application priority + cache-retrieval policies
+pub mod stubs; // W3: Algorithm-layer not-yet-ported placeholder markers // W3c: the create*Dependency allocator (CDependencyFactory)
+pub mod unsat_handler; // W120: CUnsatisfiableCacheHandler memo/precheck slices
 
 // W3 method-batch units u01..u36 (the apply*Rule engine bodies). Wired by the
 // W3-RECONCILE integrator; cross-unit disagreements reconciled in pending.rs.
+pub mod pending;
 pub mod u01;
 pub mod u02;
 pub mod u03;
@@ -60,10 +65,9 @@ pub mod u32;
 pub mod u33;
 pub mod u34;
 pub mod u35;
-pub mod u36;
-pub mod pending;   // W3-RECONCILE: minimal PORT-PENDING sibling stubs (api gaps)
+pub mod u36; // W3-RECONCILE: minimal PORT-PENDING sibling stubs (api gaps)
 
 #[cfg(test)]
-mod selftest;      // W5: the first behavioural run — trivial consistency verdicts
+mod classify_test;
 #[cfg(test)]
-mod classify_test; // W13: classification via consistency (subsumption = unsat probe)
+mod selftest; // W5: the first behavioural run — trivial consistency verdicts // W13: classification via consistency (subsumption = unsat probe)

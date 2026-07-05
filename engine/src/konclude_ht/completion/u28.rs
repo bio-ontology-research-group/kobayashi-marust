@@ -40,9 +40,8 @@
 //! through some representative-dependency factories (`CVariableBindingPath*`,
 //! `CRepresentativeVariableBindingPathMap*`, `CRepresentativePropagationMap*`) are
 //! the not-yet-ported representative/answering subsystem; they appear as opaque
-//! `Cint64` handles. `CIndividualProcessNodeVector*` and the
-//! tracking-line / tracked-clashed-descriptor records (Unit 30 + a stack-local
-//! record with no arena) are likewise opaque `Cint64`.
+//! `Cint64` handles. The Unit 30 tracked-clash descriptor and tracking-line
+//! records now have concrete Rust substrate used by `initializeTrackingLine`.
 //!
 //! Deferral landscape. Three subsystems gate most of this unit:
 //!   * the `CDependencyFactory` (`calc_alg_context...used_dep_factory`, a zero-size
@@ -52,8 +51,8 @@
 //!   * the per-task individual-dependence tracking adapter/observer/marker +
 //!     referred-individual tracking vector (Task layer, `W6-DEFER[api]`) that
 //!     `trackIndividualDependence` installs;
-//!   * the Qt debug-string / tracking-line records (`generateDebug*`,
-//!     `initializeTrackingLine`, `writeDebugTrackingLineStringToFile`) — `W3-DEFER`.
+//!   * the Qt debug-string helpers (`generateDebug*`,
+//!     `writeDebugTrackingLineStringToFile`) — `W3-DEFER`.
 //!
 //! Fully ported (substrate-resolvable): the two `trackIndividual*Dependence`
 //! forwarders, `isConceptFromPredecessorDependent`,
@@ -65,25 +64,28 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::collections::{HashSet, VecDeque};
+
 use super::super::model::substrate::{Cint64, Id};
 use super::super::model::{IndividualId, RoleId};
-use super::super::process::dependency::DepKind;
-use super::super::process::{ConDescId, DependencyId, DepLinkId, NodeId, TrackPointId};
+use super::super::process::dependency::{DepKind, DependencyNode};
+use super::super::process::referred_tracking::ReferredIndividualTrackingVector;
+use super::super::process::representative::RepresentativePropagationMap;
+use super::super::process::varbind::{RepresentativeVariableBindingPathMap, VarBindingPathId};
+use super::super::process::{
+    ClashDescId, ConDescId, DepLinkId, DependencyId, NodeId, TrackPointId,
+};
 use super::context::CalculationAlgorithmContextBase;
+use super::u30::TrackedClashedDependencyLine;
 
-/// KONCLUDE-PORT-NOTE[api]: `CVariableBindingPath*` / `CRepresentativeVariableBindingPathMap*`
-/// / `CRepresentativePropagationMap*` — the unported representative/answering
-/// variable-binding-path subsystem; an opaque handle until that wave lands.
-type VarBindPath = Cint64;
-type RepVarBindPathMap = Cint64;
-type RepPropMap = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: `CIndividualProcessNodeVector*` — opaque (the databox
-/// node-tracking vector is a `process::stubs` marker with no `getData` yet).
+/// KONCLUDE-PORT-NOTE[api]: `CIndividualProcessNodeVector*` is kept in the
+/// signature for source alignment. Konclude carries it through recursive calls,
+/// but this helper reads the current graph through
+/// `ctx->getUsedProcessingDataBox()->getIndividualProcessNodeVector()`.
 type IndiNodeVec = Cint64;
-/// KONCLUDE-PORT-NOTE[api]: the stack-local `CTrackedClashedDependencyLine` /
-/// `CTrackedClashedDescriptor` clash-backtracking records (Unit 30) — opaque.
+/// KONCLUDE-PORT-NOTE[api]: debug-only tracking-line helpers still carry opaque
+/// handles until their string-building call sites use the Unit 30 stack record.
 type TrackingLine = Cint64;
-type TrackedClashedDescriptors = Cint64;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
@@ -108,58 +110,169 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         rem_backtrack_count: &mut Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 2873–2932:
-        //
-        //   if --remBacktrackCount < 0: return false;
-        //   depNode = prevConDepTrackPoint.getDependencyNode();
-        //   if depNode:
-        //     assocIndiNode = depNode.getAppropriateIndividualNode();
-        //     if assocIndiNode:
-        //       if assocIndiNode.isBlockableIndividual(): return false;
-        //       locAssIndiNode = ctx.getUsedProcessingDataBox().getIndividualProcessNodeVector()
-        //                            .getData(assocIndiNode.getIndividualNodeID());   // node-vector getData unported
-        //       if locAssIndiNode: return false;
-        //     addRoleExistDep = false;
-        //     for addDep in depNode.getAdditionalDependencyIterator(true,true):
-        //       prevAddDepTrackPoint = addDep.getPreviousDependencyTrackPoint();
-        //       prevAddDepNode = addDep.getPreviousTrackedDependency();
-        //       if prevAddDepNode.getDependencyType() == DNTROLEASSERTIONDEPENDENCY:
-        //         if addRoleExistDep: return false; addRoleExistDep = true;
-        //       elif prevAddDepNode.getDependencyType() == DNTSOMEDEPENDENCY:
-        //         if addRoleExistDep: return false;
-        //         addAssocIndiNode = prevAddDepNode.getAppropriateIndividualNode();
-        //         if addAssocIndiNode && addAssocIndiNode.isBlockableIndividual(): return false;
-        //         if !areAllDependentFactsUnchanged(individualNode, addAssocIndiNode?:backtrackedIndividualNode,
-        //                 prevAddDepTrackPoint, prevIndiNodeVec, remBacktrackCount, ctx): return false;
-        //         addRoleExistDep = true;
-        //       elif prevAddDepTrackPoint:
-        //         if !areAllDependentFactsUnchanged(individualNode, assocIndiNode?:backtrackedIndividualNode,
-        //                 prevAddDepTrackPoint, prevIndiNodeVec, remBacktrackCount, ctx): return false;
-        //     if depNode.getDependencyType() != DNTINDEPENDENTBASE:
-        //       prevDepTrackPoint = depNode.getPreviousDependencyTrackPoint();
-        //       if prevDepTrackPoint:
-        //         if !areAllDependentFactsUnchanged(individualNode, assocIndiNode?:backtrackedIndividualNode,
-        //                 prevDepTrackPoint, prevIndiNodeVec, remBacktrackCount, ctx): return false;
-        //         return true;
-        //     elif backtrackedIndividualNode && backtrackedIndividualNode != individualNode:
-        //       return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: the live individual-process-node vector's `getData`
-        // lookup (the `process::stubs` node-vector marker), and the
-        // `getAdditionalDependencyIterator(true,true)` two-bool selector +
-        // `getPreviousTrackedDependency` over the additional-dependency chain
-        // (W3-DEFER[unclear] — the iterator's flag semantics are not yet ported).
-        // The dep-node / track-point / individual-node accessors it otherwise uses
-        // (getAppropriateIndividualNode/isBlockableIndividual/getIndividualNodeID/
-        // getDependencyType/getPreviousDependencyTrackPoint) are all live.
-        let _ = (
-            individual_node,
-            backtracked_individual_node,
-            prev_con_dep_track_point,
-            prev_indi_node_vec,
-            rem_backtrack_count,
-        );
+        *rem_backtrack_count -= 1;
+        if *rem_backtrack_count < 0 {
+            return false;
+        }
+        if prev_con_dep_track_point.is_none() {
+            return false;
+        }
+
+        let dep_node = calc_alg_context
+            .process_context()
+            .track_point(prev_con_dep_track_point)
+            .dependency_node();
+        if dep_node.is_none() {
+            return false;
+        }
+
+        let assoc_indi_node = calc_alg_context
+            .process_context()
+            .dep_node(dep_node)
+            .individual_node();
+        if assoc_indi_node.is_some() {
+            if calc_alg_context
+                .process_context()
+                .node(assoc_indi_node)
+                .is_blockable_individual()
+            {
+                return false;
+            }
+            let assoc_indi_id = calc_alg_context
+                .process_context()
+                .node(assoc_indi_node)
+                .individual_node_id();
+            if calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(assoc_indi_id)
+                .is_some()
+            {
+                return false;
+            }
+        }
+
+        let mut add_role_exist_dep = false;
+        let mut add_dep_it = calc_alg_context
+            .process_context()
+            .dep_node(dep_node)
+            .additional_after_dependencies();
+        while add_dep_it.is_some() {
+            let prev_add_dep_track_point = calc_alg_context
+                .process_context()
+                .dep_link(add_dep_it)
+                .previous_dependency_track_point();
+            let prev_add_dep_node = if prev_add_dep_track_point.is_some() {
+                calc_alg_context
+                    .process_context()
+                    .track_point(prev_add_dep_track_point)
+                    .dependency_node()
+            } else {
+                Id::NONE
+            };
+
+            if prev_add_dep_node.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .dep_node(prev_add_dep_node)
+                    .kind()
+                    == DepKind::RoleAssertion
+            {
+                if add_role_exist_dep {
+                    return false;
+                }
+                add_role_exist_dep = true;
+            } else if prev_add_dep_node.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .dep_node(prev_add_dep_node)
+                    .kind()
+                    == DepKind::Some
+            {
+                if add_role_exist_dep {
+                    return false;
+                }
+                let add_assoc_indi_node = calc_alg_context
+                    .process_context()
+                    .dep_node(prev_add_dep_node)
+                    .individual_node();
+                if add_assoc_indi_node.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .node(add_assoc_indi_node)
+                        .is_blockable_individual()
+                {
+                    return false;
+                }
+                let next_backtracked = if add_assoc_indi_node.is_some() {
+                    add_assoc_indi_node
+                } else {
+                    backtracked_individual_node
+                };
+                if !self.are_all_dependent_facts_unchanged(
+                    individual_node,
+                    next_backtracked,
+                    prev_add_dep_track_point,
+                    prev_indi_node_vec,
+                    rem_backtrack_count,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+                add_role_exist_dep = true;
+            } else if prev_add_dep_track_point.is_some() {
+                let next_backtracked = if assoc_indi_node.is_some() {
+                    assoc_indi_node
+                } else {
+                    backtracked_individual_node
+                };
+                if !self.are_all_dependent_facts_unchanged(
+                    individual_node,
+                    next_backtracked,
+                    prev_add_dep_track_point,
+                    prev_indi_node_vec,
+                    rem_backtrack_count,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+            }
+
+            add_dep_it = calc_alg_context
+                .process_context()
+                .dep_link(add_dep_it)
+                .next_additional_dependency();
+        }
+
+        if calc_alg_context.process_context().dep_node(dep_node).kind() != DepKind::IndependentBase
+        {
+            let prev_dep_track_point = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .previous_dependency_track_point();
+            if prev_dep_track_point.is_some() {
+                let next_backtracked = if assoc_indi_node.is_some() {
+                    assoc_indi_node
+                } else {
+                    backtracked_individual_node
+                };
+                if !self.are_all_dependent_facts_unchanged(
+                    individual_node,
+                    next_backtracked,
+                    prev_dep_track_point,
+                    prev_indi_node_vec,
+                    rem_backtrack_count,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+                return true;
+            }
+        } else if backtracked_individual_node.is_some()
+            && backtracked_individual_node != individual_node
+        {
+            return true;
+        }
         false
     }
 
@@ -199,7 +312,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_extended: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 3880–3945:
+        // Faithful transcription of cpp 3880–3945:
         //
         //   if ctx.getUsedProcessingDataBox().isIndividualDependenceTrackingRequired():
         //     indiTrackVec = ctx.getUsedProcessingDataBox().getReferredIndividualTrackingVector();
@@ -232,12 +345,111 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //       return true;
         //   return false;
         //
-        // Held PORT-PENDING: `isIndividualDependenceTrackingRequired` (databox
-        // predicate not yet ported), the per-task dependence-tracking
-        // adapter/marker/observer + `CReferredIndividualTrackingVector` (Task layer,
-        // W6-DEFER[api]), and the ontology ABox / consistence-task-data reach.
-        let _ = (indi_id, indi_referred, indi_extended);
-        false
+        if !calc_alg_context
+            .processing_data_box()
+            .is_individual_dependence_tracking_required()
+        {
+            return false;
+        }
+
+        let indi_track_vec = calc_alg_context
+            .processing_data_box()
+            .referred_individual_tracking_vector();
+        let mut indi_track_vec = indi_track_vec;
+        if indi_track_vec.is_none() {
+            let sat_calc_task = calc_alg_context.base.used_sat_calc_task;
+            let indi_dep_track_adapter = calc_alg_context
+                .base
+                .satisfiable_task_individual_dependence_tracking_adapter(sat_calc_task);
+            if indi_dep_track_adapter.is_some() {
+                let marker = calc_alg_context
+                    .base
+                    .individual_dependence_tracking_adapter(indi_dep_track_adapter)
+                    .get_individual_dependence_tracking_marker();
+                if marker.is_some() {
+                    calc_alg_context
+                        .base
+                        .individual_dependence_tracking_marker_mut(marker)
+                        .set_individual_dependence_tracked();
+                }
+                let observer = calc_alg_context
+                    .base
+                    .individual_dependence_tracking_adapter(indi_dep_track_adapter)
+                    .get_individual_dependence_tracking_observer();
+                if observer.is_some() {
+                    let extending_indi_dep_track = calc_alg_context
+                        .base
+                        .individual_dependence_tracking_collector(observer)
+                        .get_extending_individual_dependence_tracking();
+                    if extending_indi_dep_track.is_none() {
+                        let abox_indi_count =
+                            calc_alg_context.base.ontology_arenas().individual_count();
+                        let mut track_indi_count = abox_indi_count;
+                        let cons_data = calc_alg_context
+                            .processing_data_box()
+                            .consistence_model_data();
+                        if cons_data.is_some() {
+                            let cached_sat_task = calc_alg_context
+                                .base
+                                .task_data(cons_data)
+                                .get_deterministic_satisfiable_task();
+                            if cached_sat_task.is_some() {
+                                if let Some(cached_task) =
+                                    calc_alg_context.base.try_sat_calc_task(cached_sat_task)
+                                {
+                                    if let Some(cached_data_box) =
+                                        cached_task.processing_data_box_state()
+                                    {
+                                        track_indi_count = track_indi_count.max(
+                                            cached_data_box
+                                                .individual_process_node_vector()
+                                                .get_item_count(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        let extending_ref_indi_track_vec = calc_alg_context
+                            .process_context_mut()
+                            .alloc_referred_individual_tracking_vector({
+                                let mut vec = ReferredIndividualTrackingVector::new();
+                                vec.init_referred_individual_tracking_vector(
+                                    track_indi_count,
+                                    abox_indi_count,
+                                );
+                                vec
+                            });
+                        indi_track_vec = calc_alg_context
+                            .base
+                            .individual_dependence_tracking_collector_mut(observer)
+                            .install_individual_dependence_tracking(extending_ref_indi_track_vec);
+                    } else {
+                        indi_track_vec = extending_indi_dep_track;
+                    }
+                    calc_alg_context
+                        .processing_data_box_mut()
+                        .set_referred_individual_tracking_vector(indi_track_vec);
+                }
+            }
+        }
+
+        if indi_track_vec.is_none() {
+            return false;
+        }
+
+        if indi_extended {
+            calc_alg_context
+                .process_context_mut()
+                .referred_individual_tracking_vector_mut(indi_track_vec)
+                .set_individual_referred_and_extended(-indi_id);
+        } else if indi_referred {
+            calc_alg_context
+                .process_context_mut()
+                .referred_individual_tracking_vector_mut(indi_track_vec)
+                .set_individual_referred(-indi_id);
+        }
+        true
     }
 
     // =======================================================================
@@ -353,7 +565,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .individual_ancestor_depth();
             if app_indi_anc_depth < anc_depth {
                 dependency_to_ancestor = true;
-            } else if /* mConfDirectRulePreprocessing && */ app_indi_anc_depth == anc_depth {
+            } else if
+            /* mConfDirectRulePreprocessing && */
+            app_indi_anc_depth == anc_depth {
                 dependency_to_ancestor = !calc_alg_context
                     .process_context()
                     .dep_node(dep_node)
@@ -372,7 +586,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     }
 
     // =======================================================================
-    // getConceptDependenciesToSameIndividualNode (cpp 6144–6247). PORT-PENDING.
+    // getConceptDependenciesToSameIndividualNode (cpp 6144–6247).
     // =======================================================================
 
     /// Port of `getConceptDependenciesToSameIndividualNode`. cpp 6144–6247.
@@ -398,53 +612,198 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dep_linker: &mut Vec<ConDescId>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 6144–6247:
-        //
-        //   depNode = depTrackPoint.getDependencyNode();
-        //   dependendConDes = depNode.getConceptDescriptor();
-        //   simpleSameNodeDeps = false;
-        //   if depNode.hasAppropriateIndividualNode():
-        //     if depNode.getAppropriateIndividualNode().getIndividualAncestorDepth()
-        //          == individualNode.getIndividualAncestorDepth(): simpleSameNodeDeps = true;
-        //   else: simpleSameNodeDeps = true;
-        //   if simpleSameNodeDeps && !depTrackPoint.isPointingToIndependentDependencyNode():
-        //     if !dependendConDes || depNode.hasAdditionalDependencies(): simpleSameNodeDeps = false;
-        //   if simpleSameNodeDeps:
-        //     depLinker = new CXLinker(dependendConDes).initLinker(dependendConDes, depLinker);  // prepend
-        //     return true;
-        //   else:
-        //     baseAncDepth = individualNode.getIndividualAncestorDepth();
-        //     depSet/depList seeded with (baseAncDepth, depTrackPoint);
-        //     while !depList.isEmpty():
-        //       (ancDepth, depTrackPoint) = depList.takeFirst();
-        //       if !depTrackPoint.isPointingToDeterministicDependencyNode(): return false;
-        //       depNode = depTrackPoint.getDependencyNode();
-        //       appIndiNode = depNode.getAppropriateIndividualNode();
-        //       newAncDepth = appIndiNode ? appIndiNode.getIndividualAncestorDepth() : ancDepth;
-        //       continueDepLoading = true;
-        //       if newAncDepth == baseAncDepth:
-        //         nextConDes = depNode.getConceptDescriptor();
-        //         if nextConDes: continueDepLoading = false; depLinker = prepend(nextConDes);
-        //       if newAncDepth < baseAncDepth || depTrackPoint.isPointingToIndependentDependencyNode(): return false;
-        //       if continueDepLoading:
-        //         prevDepTrackPoint = depNode.getPreviousDependencyTrackPoint();
-        //         nextAncDepth = prevDepNode&&hasIndi ? indi.depth : newAncDepth;
-        //         if !depSet.contains((nextAncDepth,prevDepTrackPoint)): insert + append;
-        //       for dependency in depNode.getAdditionalDependencyIterator():
-        //         prevDepTrackPoint = dependency.getPreviousDependencyTrackPoint();
-        //         (note: cpp keys the additional-dep entry by `ancDepth`, not the
-        //          recomputed nextAncDepth — preserved verbatim);
-        //         if !depSet.contains((ancDepth,prevDepTrackPoint)): insert + append;
-        //     return true;
-        //
-        // Held PORT-PENDING: the per-task memory-pool `CXLinker<CConceptDescriptor*>`
-        // allocation (the `&mut Vec<ConDescId>` prepend replaces it), the
-        // `CPROCESSINGSET/LIST<QPair<cint64,CDependencyTrackPoint*>>` work queue, and
-        // `getAdditionalDependencyIterator` over the additional-dependency chain.
-        // Every dep-node / track-point / individual-node accessor it uses is live;
-        // the work-queue scaffolding is what defers the body.
-        let _ = (individual_node, con_des, dep_track_point, dep_linker);
-        false
+        let _ = con_des;
+        if dep_track_point.is_none() {
+            return false;
+        }
+
+        let dep_node = calc_alg_context
+            .process_context()
+            .track_point(dep_track_point)
+            .dependency_node();
+        if dep_node.is_none() {
+            return false;
+        }
+
+        let dependend_con_des = calc_alg_context
+            .process_context()
+            .dep_node(dep_node)
+            .concept_descriptor();
+        let base_depth = calc_alg_context
+            .process_context()
+            .node(*individual_node)
+            .individual_ancestor_depth();
+
+        let mut simple_same_node_deps = false;
+        if calc_alg_context
+            .process_context()
+            .dep_node(dep_node)
+            .has_appropriate_individual_node()
+        {
+            let app_indi_node = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .individual_node();
+            let app_indi_depth = calc_alg_context
+                .process_context()
+                .node(app_indi_node)
+                .individual_ancestor_depth();
+            if app_indi_depth == base_depth {
+                simple_same_node_deps = true;
+            }
+        } else {
+            simple_same_node_deps = true;
+        }
+
+        if simple_same_node_deps
+            && !calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .is_independent_base_dependency_type()
+            && (dependend_con_des.is_none()
+                || calc_alg_context
+                    .process_context()
+                    .dep_node(dep_node)
+                    .has_additional_dependencies())
+        {
+            simple_same_node_deps = false;
+        }
+
+        if simple_same_node_deps {
+            dep_linker.insert(0, dependend_con_des);
+            return true;
+        }
+
+        let mut dep_set: HashSet<(Cint64, TrackPointId)> = HashSet::new();
+        let mut dep_list: VecDeque<(Cint64, TrackPointId)> = VecDeque::new();
+        dep_set.insert((base_depth, dep_track_point));
+        dep_list.push_back((base_depth, dep_track_point));
+
+        while let Some((anc_depth, curr_dep_track_point)) = dep_list.pop_front() {
+            if curr_dep_track_point.is_none() {
+                return false;
+            }
+            let dep_node = calc_alg_context
+                .process_context()
+                .track_point(curr_dep_track_point)
+                .dependency_node();
+            if dep_node.is_none()
+                || !calc_alg_context
+                    .process_context()
+                    .dep_node(dep_node)
+                    .is_deterministic()
+            {
+                return false;
+            }
+
+            let app_indi_node = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .individual_node();
+            let mut new_anc_depth = anc_depth;
+            let mut continue_dep_loading = true;
+            if app_indi_node.is_some() {
+                new_anc_depth = calc_alg_context
+                    .process_context()
+                    .node(app_indi_node)
+                    .individual_ancestor_depth();
+            }
+            if new_anc_depth == base_depth {
+                let next_con_des = calc_alg_context
+                    .process_context()
+                    .dep_node(dep_node)
+                    .concept_descriptor();
+                if next_con_des.is_some() {
+                    continue_dep_loading = false;
+                    dep_linker.insert(0, next_con_des);
+                }
+            }
+            if new_anc_depth < base_depth
+                || calc_alg_context
+                    .process_context()
+                    .dep_node(dep_node)
+                    .is_independent_base_dependency_type()
+            {
+                return false;
+            }
+
+            if continue_dep_loading {
+                let prev_dep_track_point = calc_alg_context
+                    .process_context()
+                    .dep_node(dep_node)
+                    .previous_dependency_track_point();
+                if prev_dep_track_point.is_none() {
+                    return false;
+                }
+                let mut next_anc_depth = new_anc_depth;
+                let next_dep_node = calc_alg_context
+                    .process_context()
+                    .track_point(prev_dep_track_point)
+                    .dependency_node();
+                if next_dep_node.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .dep_node(next_dep_node)
+                        .has_appropriate_individual_node()
+                {
+                    let next_app_indi_node = calc_alg_context
+                        .process_context()
+                        .dep_node(next_dep_node)
+                        .individual_node();
+                    next_anc_depth = calc_alg_context
+                        .process_context()
+                        .node(next_app_indi_node)
+                        .individual_ancestor_depth();
+                }
+                if dep_set.insert((next_anc_depth, prev_dep_track_point)) {
+                    dep_list.push_back((next_anc_depth, prev_dep_track_point));
+                }
+            }
+
+            let mut dep_it = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .additional_after_dependencies();
+            while dep_it.is_some() {
+                let prev_dep_track_point = calc_alg_context
+                    .process_context()
+                    .dep_link(dep_it)
+                    .previous_dependency_track_point();
+                if prev_dep_track_point.is_none() {
+                    return false;
+                }
+                // C++ computes a `nextAncDepth` from this dependency, but keys and
+                // enqueues additional dependencies with the current `ancDepth`.
+                let next_dep_node = calc_alg_context
+                    .process_context()
+                    .track_point(prev_dep_track_point)
+                    .dependency_node();
+                if next_dep_node.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .dep_node(next_dep_node)
+                        .has_appropriate_individual_node()
+                {
+                    let next_app_indi_node = calc_alg_context
+                        .process_context()
+                        .dep_node(next_dep_node)
+                        .individual_node();
+                    let _next_anc_depth = calc_alg_context
+                        .process_context()
+                        .node(next_app_indi_node)
+                        .individual_ancestor_depth();
+                }
+                if dep_set.insert((anc_depth, prev_dep_track_point)) {
+                    dep_list.push_back((anc_depth, prev_dep_track_point));
+                }
+
+                dep_it = calc_alg_context
+                    .process_context()
+                    .dep_link(dep_it)
+                    .next_additional_dependency();
+            }
+        }
+        true
     }
 
     // =======================================================================
@@ -473,8 +832,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `generateDebugTrackingLineString`. cpp 6744–6770. W3-DEFER.
     ///
     /// Assembles the six tracked-clash descriptor buckets of a tracking line into a
-    /// human-readable string. Depends on the unported `CTrackedClashedDependencyLine`
-    /// record + `generateDebugTrackedClashedDescriptorString` sibling.
+    /// human-readable string. Depends on the Unit 30 `CTrackedClashedDependencyLine`
+    /// substrate + `generateDebugTrackedClashedDescriptorString` sibling.
     pub fn generate_debug_tracking_line_string(
         &mut self,
         tracking_line: TrackingLine,
@@ -585,7 +944,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     }
 
     // =======================================================================
-    // initializeTrackingLine (cpp 7900–7917). PORT-PENDING.
+    // initializeTrackingLine (cpp 7900–7917).
     // =======================================================================
 
     /// Port of `initializeTrackingLine`. cpp 7900–7917.
@@ -596,28 +955,40 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// in. Returns whether the line initialised (no tracking error).
     pub fn initialize_tracking_line(
         &mut self,
-        tracking_line: TrackingLine,
-        tracking_clashes: TrackedClashedDescriptors,
+        tracking_line: &mut TrackedClashedDependencyLine,
+        tracking_clashes: ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 7900–7917:
-        //
-        //   trackingError = false; nominalOccured = false;
-        //   maxBranchingLevel = CINT64_MIN; minIndividualLevel = CINT64_MAX;
-        //   for d in trackingClashes (until trackingError):
-        //     d.candidateTracking(&trackingError,&nominalOccured,&maxBranchingLevel,&minIndividualLevel);
-        //   if trackingError: return false;
-        //   trackingLine.initTrackedClashedDependencyLine(nominalOccured,minIndividualLevel,maxBranchingLevel);
-        //   trackingLine.analyseInvolvedIndividuals(trackingClashes);
-        //   trackingLine.sortInTrackedClashedDescriptors(trackingClashes, true);
-        //   return true;
-        //
-        // Held PORT-PENDING: the `CTrackedClashedDescriptor::candidateTracking`
-        // scan + the `CTrackedClashedDependencyLine` record
-        // (init/analyseInvolvedIndividuals/sortIn) — Unit 30 + the stack-local
-        // tracking-line record with no arena yet.
-        let _ = (tracking_line, tracking_clashes);
-        false
+        let mut tracking_error = false;
+        let mut nominal_occured = false;
+        let mut max_branching_level = Cint64::MIN;
+        let mut min_individual_level = Cint64::MAX;
+
+        let mut tracking_clash_it = tracking_clashes;
+        while tracking_clash_it.is_some() && !tracking_error {
+            let tracking_clash = calc_alg_context
+                .process_context()
+                .clash_desc(tracking_clash_it);
+            tracking_error |= tracking_clash.is_tracking_error();
+            nominal_occured |= tracking_clash.is_appropriated_individual_nominal();
+            max_branching_level = max_branching_level.max(tracking_clash.get_branching_level_tag());
+            min_individual_level =
+                min_individual_level.min(tracking_clash.get_appropriated_individual_level());
+            tracking_clash_it = tracking_clash.get_next_descriptor();
+        }
+
+        if tracking_error {
+            return false;
+        }
+
+        tracking_line.init_tracked_clashed_dependency_line(
+            nominal_occured,
+            min_individual_level,
+            max_branching_level,
+        );
+        tracking_line.analyse_involved_individuals(tracking_clashes, calc_alg_context);
+        tracking_line.sort_in_tracked_clashed_descriptors(tracking_clashes, true, calc_alg_context);
+        true
     }
 
     // =======================================================================
@@ -701,14 +1072,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: &mut NodeId,
         con_des: ConDescId,
         prev_dep_track_point: TrackPointId,
-        select_var_bind_path: VarBindPath,
+        select_var_bind_path: VarBindingPathId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREPRESENTATIVEGROUNDINGDependency(
-            //     impl_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     select_var_bind_path, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::RepresentativeGrounding);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::RepresentativeGrounding, con_des);
+                dep.base_mut().selected_var_bind_path = select_var_bind_path;
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -723,11 +1106,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         other_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREPRESENTATIVEJOINDependency(
-            //     join_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     other_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::RepresentativeJoin);
+            let other_dep = {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::RepresentativeJoin, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if let DependencyNode::DetLink { prev, .. } = dep {
+                    *prev
+                } else {
+                    DepLinkId::NONE
+                }
+            };
+            if other_dep_track_point.is_some() && other_dep.is_some() {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                proc_ctx
+                    .dep_link_mut(other_dep)
+                    .init_dependency(other_dep_track_point);
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            } else {
+                calc_alg_context
+                    .process_context_mut()
+                    .update_dependency_branching_tag(dep_node);
+            }
+            *join_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -741,10 +1150,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREPRESENTATIVEBINDVARIABLEDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::RepresentativeBindVariable);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(
+                    DepKind::RepresentativeBindVariable,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                // C++ initializes the CRepresentativeSelectDependencyNode base with
+                // selectedVarBindPath = nullptr for this dependency kind.
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -759,11 +1185,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREPRESENTATIVEIMPLICATIONDependency(
-            //     impl_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::RepresentativeImplication);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::RepresentativeImplication, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -778,11 +1218,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREPRESENTATIVEALLDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::RepresentativeAll);
+            let link_dep = {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::RepresentativeAll, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if let DependencyNode::DetLink { prev, .. } = dep {
+                    *prev
+                } else {
+                    DepLinkId::NONE
+                }
+            };
+            if link_dep_track_point.is_some() && link_dep.is_some() {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                proc_ctx
+                    .dep_link_mut(link_dep)
+                    .init_dependency(link_dep_track_point);
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            } else {
+                calc_alg_context
+                    .process_context_mut()
+                    .update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -796,10 +1262,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREPRESENTATIVEANDDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::RepresentativeAnd);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::RepresentativeAnd, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -810,17 +1288,46 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         and_dep_track_point: &mut TrackPointId,
         process_indi: &mut NodeId,
         con_des: ConDescId,
-        resolve_var_bind_path_map: RepVarBindPathMap,
-        resolve_rep_prop_map: RepPropMap,
+        resolve_var_bind_path_map: Option<&RepresentativeVariableBindingPathMap>,
+        resolve_rep_prop_map: Option<&RepresentativePropagationMap>,
         prev_dep_track_point: TrackPointId,
         additional_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createRESOLVEREPRESENTATIVEDependency(
-            //     and_dep_track_point, process_indi, con_des, resolve_var_bind_path_map,
-            //     resolve_rep_prop_map, prev_dep_track_point, additional_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::ResolveRepresentative);
+            let additional_dep = {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::ResolveRepresentative, con_des);
+                dep.base_mut().resolve_var_bind_path_map = resolve_var_bind_path_map.cloned();
+                dep.base_mut().resolve_rep_prop_map = resolve_rep_prop_map.cloned();
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if let DependencyNode::DetLink { prev, .. } = dep {
+                    *prev
+                } else {
+                    DepLinkId::NONE
+                }
+            };
+            if additional_dep_track_point.is_some() && additional_dep.is_some() {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                proc_ctx
+                    .dep_link_mut(additional_dep)
+                    .init_dependency(additional_dep_track_point);
+                proc_ctx.dep_node_mut(dep_node).base_mut().additional_after = additional_dep;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            } else {
+                calc_alg_context
+                    .process_context_mut()
+                    .update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -833,10 +1340,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATEVARIABLECONNECTIONDependency(
-            //     process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::PropagateVariableConnection);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(
+                    DepKind::PropagateVariableConnection,
+                    process_indi,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
         }
         dep_node
     }
@@ -851,11 +1370,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVARBINDPROPAGATEIMPLICATIONDependency(
-            //     impl_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::VarBindPropagateImplication);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(
+                    DepKind::VarBindPropagateImplication,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -870,11 +1406,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVARBINDPROPAGATEGROUNDINGDependency(
-            //     impl_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            // CDependencyFactory::createVARBINDPROPAGATEGROUNDINGDependency allocates a
+            // tag-only deterministic node, initializes its previous/additional
+            // dependencies, then returns its continuation track point.
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::VarBindPropagateGrounding);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::VarBindPropagateGrounding, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -889,11 +1442,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVARBINDPROPAGATEALLDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::VarBindPropagateAll);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(
+                        DepKind::VarBindPropagateAll,
+                        *process_indi,
+                        con_des,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("VARBINDPROPAGATEALL dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = link_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -907,10 +1485,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVARBINDPROPAGATEANDDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::VarBindPropagateAnd);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::VarBindPropagateAnd, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -925,11 +1515,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATEVARIABLEBINDINGDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::PropagateVariableBinding);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::PropagateVariableBinding, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -944,11 +1548,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATEVARIABLEBINDINGSSUCCESSORDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::PropagateVariableBindingSuccessor);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(
+                        DepKind::PropagateVariableBindingSuccessor,
+                        *process_indi,
+                        con_des,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!(
+                            "PROPAGATEVARIABLEBINDINGSSUCCESSOR dependency allocated with DetLink shape"
+                        )
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = link_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -962,10 +1593,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVARBINDVARIABLEDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::VarBindVariable);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::VarBindVariable, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -980,11 +1623,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         other_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVARBINDPROPAGATEJOINDependency(
-            //     continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     other_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::VarBindPropagateJoin);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_deterministic_dependency_node(DepKind::VarBindPropagateJoin, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("VARBINDPROPAGATEJOIN dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = other_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -999,11 +1664,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createBINDPROPAGATEGROUNDINGDependency(
-            //     impl_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::BindPropagateGrounding);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::BindPropagateGrounding, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1016,10 +1695,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATECONNECTIONAWAYDependency(
-            //     process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::PropagateConnectionAway);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(
+                    DepKind::PropagateConnectionAway,
+                    process_indi,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
         }
         dep_node
     }
@@ -1032,10 +1723,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATECONNECTIONDependency(
-            //     process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::PropagateConnection);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(
+                    DepKind::PropagateConnection,
+                    process_indi,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
         }
         dep_node
     }
@@ -1050,11 +1753,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         trigg_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createBINDPROPAGATECYCLEDependency(
-            //     continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     trigg_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::BindPropagateCycle);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_deterministic_dependency_node(DepKind::BindPropagateCycle, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("BINDPROPAGATECYCLE dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = trigg_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1069,11 +1794,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createBINDPROPAGATEALLDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::BindPropagateAll);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(
+                        DepKind::BindPropagateAll,
+                        *process_indi,
+                        con_des,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("BINDPROPAGATEALL dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = link_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1088,11 +1838,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATEBINDINGSSUCCESSORDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::PropagateBindingSuccessor);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(
+                        DepKind::PropagateBindingSuccessor,
+                        *process_indi,
+                        con_des,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!(
+                            "PROPAGATEBINDINGSSUCCESSOR dependency allocated with DetLink shape"
+                        )
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = link_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1107,11 +1884,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createBINDPROPAGATEIMPLICATIONDependency(
-            //     impl_continue_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::BindPropagateImplication);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::BindPropagateImplication, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1125,10 +1916,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createANDDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::And);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::And, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1142,10 +1945,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createBINDPROPAGATEANDDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::BindPropagateAnd);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::BindPropagateAnd, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1160,11 +1975,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createPROPAGATEBINDINGDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::PropagateBinding);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::PropagateBinding, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1178,10 +2007,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createBINDVARIABLEDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::BindVariable);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::BindVariable, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1196,11 +2037,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         nominal_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createNOMINALDependency(
-            //     nominal_cont_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     nominal_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::Nominal);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(DepKind::Nominal, *process_indi, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("NOMINAL dependency allocated with DetLink shape")
+                    }
+                };
+                if nominal_dep_track_point.is_some() {
+                    proc_ctx.dep_link_mut(prev).dep_track_point = nominal_dep_track_point;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *nominal_cont_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1214,10 +2078,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createAUTOMATCHOOSEDependency(
-            //     and_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::AutomatChoose);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::AutomatChoose, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *and_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -1231,10 +2107,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createSOMEDependency(
-            //     some_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::Some);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(DepKind::Some, *process_indi, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *some_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1248,10 +2135,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createSELFDependency(
-            //     some_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::Self_);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(DepKind::Self_, *process_indi, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *some_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1266,11 +2164,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         nominal_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createVALUEDependency(
-            //     value_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     nominal_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::Value);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(DepKind::Value, *process_indi, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("VALUE dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = nominal_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *value_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1286,11 +2205,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         base_assertion_indi: IndividualId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createROLEASSERTIONDependency(
-            //     value_dep_track_point, process_indi, prev_dep_track_point,
-            //     nominal_dep_track_point, base_assertion_role, base_assertion_indi, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::RoleAssertion);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    // CDependencyFactory::createROLEASSERTIONDependency mirrors the
+                    // VALUE/NEGVALUE one-link factory shape, but has no concept
+                    // descriptor argument.
+                    dep.init_dependency_node_indi(
+                        DepKind::RoleAssertion,
+                        process_indi,
+                        ConDescId::NONE,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    dep.base_mut().base_assertion_role = base_assertion_role;
+                    dep.base_mut().base_assertion_individual = base_assertion_indi;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("ROLEASSERTION dependency allocated with DetLink shape")
+                    }
+                };
+                if nominal_dep_track_point.is_some() {
+                    proc_ctx.dep_link_mut(prev).dep_track_point = nominal_dep_track_point;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *value_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1305,11 +2256,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         nominal_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createNEGVALUEDependency(
-            //     neg_value_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     nominal_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::NegValue);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(DepKind::NegValue, *process_indi, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("NEGVALUE dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = nominal_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *neg_value_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1324,11 +2296,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createALLDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::All);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(DepKind::All, *process_indi, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("ALL dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = link_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1344,12 +2337,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_link2_dependency_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createFUNCTIONALDependency(
-            //     functional_continue_dep_track_point, process_indi, con_des,
-            //     prev_dep_track_point, prev_link1_dependency_track_point,
-            //     prev_link2_dependency_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_functional_dependency_node();
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let (prev1, prev2) = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(DepKind::Functional, *process_indi, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink2 {
+                        prev1,
+                        prev2,
+                        ..
+                    } = dep
+                    {
+                        (*prev1, *prev2)
+                    } else {
+                        unreachable!("FUNCTIONAL dependency allocated with DetLink2 shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev1).dep_track_point = prev_link1_dependency_track_point;
+                proc_ctx.dep_link_mut(prev2).dep_track_point = prev_link2_dependency_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *functional_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1363,10 +2379,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createDISTINCTDependency(
-            //     distinct_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::Distinct);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(
+                    DepKind::Distinct,
+                    *process_indi,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *distinct_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1381,11 +2412,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         link_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createAUTOMATTRANSACTIONDependency(
-            //     all_dep_track_point, process_indi, con_des, prev_dep_track_point,
-            //     link_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::AutomatTransaction);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(
+                        DepKind::AutomatTransaction,
+                        *process_indi,
+                        con_des,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let super::super::process::dependency::DependencyNode::DetLink {
+                        prev, ..
+                    } = dep
+                    {
+                        *prev
+                    } else {
+                        unreachable!("AUTOMATTRANSACTION dependency allocated with DetLink shape")
+                    }
+                };
+                proc_ctx.dep_link_mut(prev).dep_track_point = link_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *all_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1399,10 +2455,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createATLEASTDependency(
-            //     atleast_dep_track_point, process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::AtLeast);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node_indi(
+                    DepKind::AtLeast,
+                    *process_indi,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *atleast_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -1415,10 +2486,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createORDependency(
-            //     process_indi, con_des, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_or_dependency_node();
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let clash_track_point = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node(DepKind::Or, con_des);
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    match dep {
+                        super::super::process::dependency::DependencyNode::Or { nd, .. } => {
+                            nd.branch_track_points = nd.clash_track_point;
+                            nd.dependency_clashes = Id::NONE;
+                            nd.branch_node = branch_node;
+                            nd.branch_tag = 0;
+                            nd.closed_track_point = Id::NONE;
+                            nd.closing_track_point = Id::NONE;
+                            nd.clash_track_point
+                        }
+                        _ => unreachable!("OR dependency allocated with Or shape"),
+                    }
+                };
+                proc_ctx
+                    .track_point_mut(clash_track_point)
+                    .clashed_irrelevant = true;
+                proc_ctx.update_dependency_branching_tags(dep_node);
+            }
+            let _ = process_indi;
         }
         dep_node
     }

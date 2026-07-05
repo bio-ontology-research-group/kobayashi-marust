@@ -19,7 +19,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::super::model::substrate::{Cint64, Id, INVALID, NegLink};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::ConceptId;
 use super::super::process::stubs::{
     IndividualConceptBatchProcessingQueue, IndividualCustomPriorityProcessingQueue,
@@ -28,22 +28,26 @@ use super::super::process::stubs::{
     IndividualUnsortedProcessingQueue, ReusingReviewData, SignatureBlockingReviewSet,
 };
 use super::super::process::{BranchNodeId, DependencyId, NodeId, RestrictionSpecId, TrackPointId};
+use super::grounding::ConceptNominalSchemaGroundingHandler;
+use super::strategy::{
+    ConceptProcessingPriorityStrategy,
+    IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy,
+    IndividualProcessingPriorityStrategy, TaskProcessingPriorityStrategy,
+    UnsatisfiableCacheRetrievalStrategy,
+};
 use super::stubs::{
-    ClashDescriptorFactory, ComputedConsequencesCacheHandler, CompletionGraphCacheHandler,
-    ConceptNominalSchemaGroundingHandler, ConceptProcessingPriorityStrategy,
-    CalculationConfigurationExtension, DatatypeIndividualProcessNodeHandler, DependencyFactory,
-    IncrementalCompletionGraphCompatibleExpansionHandler,
-    IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy, IndividualNodeBackendCacheHandler,
-    IndividualNodeManager, IndividualProcessingPriorityStrategy, OccurrenceStatisticsCacheHandler,
-    ReuseCompletionGraphCacheHandler, SatisfiableExpanderCacheHandler,
-    SatisfiableTaskClassificationMessageAnalyser, SatisfiableTaskComplexAnsweringMessageAnalyser,
-    SatisfiableTaskConsistencyPreyingAnalyser,
+    CalculationConfigurationExtension, ClashDescriptorFactory, CompletionGraphCacheHandler,
+    ComputedConsequencesCacheHandler, DatatypeIndividualProcessNodeHandler, DependencyFactory,
+    IncrementalCompletionGraphCompatibleExpansionHandler, IndividualNodeBackendCacheHandler,
+    IndividualNodeManager, OccurrenceStatisticsCacheHandler, ReuseCompletionGraphCacheHandler,
+    SatisfiableExpanderCacheHandler, SatisfiableTaskClassificationMessageAnalyser,
+    SatisfiableTaskComplexAnsweringMessageAnalyser, SatisfiableTaskConsistencyPreyingAnalyser,
     SatisfiableTaskIncrementalConsistencyPreyingAnalyser,
     SatisfiableTaskMarkerIndividualPropagationAnalyser,
     SatisfiableTaskPossibleAssertionCollectingAnalyser,
     SatisfiableTaskPropagationBindingAnsweringMessageAnalyser,
     SatisfiableTaskPropertyClassificationMessageAnalyser, SaturationNodeExpansionCacheHandler,
-    TaskProcessingPriorityStrategy, UnsatisfiableCacheHandler, UnsatisfiableCacheRetrievalStrategy,
+    UnsatisfiableCacheHandler,
 };
 
 /// KONCLUDE-PORT-NOTE[pointer-alias]: `typedef void (...::*TableauRuleFunction)(...)`
@@ -85,7 +89,9 @@ pub enum IndiNodeQueueType {
 }
 
 impl Default for IndiNodeQueueType {
-    fn default() -> Self { IndiNodeQueueType::Inqt_None }
+    fn default() -> Self {
+        IndiNodeQueueType::Inqt_None
+    }
 }
 
 /// Port of the nested class
@@ -203,10 +209,10 @@ pub struct CompletionTaskHandleAlgorithm {
 
     // --- priority strategies (.h 1130–1134) ---
     pub indi_anc_depth_mas_con_proc_pri_str:
-        Id<IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy>,
-    pub concept_priority_strategy: Id<ConceptProcessingPriorityStrategy>,
-    pub individual_priority_strategy: Id<IndividualProcessingPriorityStrategy>,
-    pub task_processing_strategy: Id<TaskProcessingPriorityStrategy>,
+        IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy,
+    pub concept_priority_strategy: ConceptProcessingPriorityStrategy,
+    pub individual_priority_strategy: IndividualProcessingPriorityStrategy,
+    pub task_processing_strategy: TaskProcessingPriorityStrategy,
 
     // --- satisfiable-task message analysers (by value, .h 1136–1143) ---
     pub sat_task_cons_analyser: SatisfiableTaskConsistencyPreyingAnalyser,
@@ -228,7 +234,7 @@ pub struct CompletionTaskHandleAlgorithm {
     pub comp_graph_cache_handler: Id<CompletionGraphCacheHandler>,
     pub reuse_comp_graph_cache_handler: Id<ReuseCompletionGraphCacheHandler>,
     pub grounding_handler: Id<ConceptNominalSchemaGroundingHandler>,
-    pub unsat_cach_ret_strategy: Id<UnsatisfiableCacheRetrievalStrategy>,
+    pub unsat_cach_ret_strategy: UnsatisfiableCacheRetrievalStrategy,
     pub sat_node_exp_cache_handler: Id<SaturationNodeExpansionCacheHandler>,
     pub datatype_handler: Id<DatatypeIndividualProcessNodeHandler>,
     pub comp_cons_cache_handler: Id<ComputedConsequencesCacheHandler>,
@@ -635,10 +641,13 @@ impl CompletionTaskHandleAlgorithm {
             current_rec_proc_depth: 0,
             current_rec_proc_depth_limit: 0,
 
-            indi_anc_depth_mas_con_proc_pri_str: Id::NONE,
-            concept_priority_strategy: Id::NONE,
-            individual_priority_strategy: Id::NONE,
-            task_processing_strategy: Id::NONE,
+            indi_anc_depth_mas_con_proc_pri_str:
+                IndividualAncestorDepthMaximumConceptProcessingPriorityStrategy::new(),
+            concept_priority_strategy: ConceptProcessingPriorityStrategy::new_concrete_operator(),
+            individual_priority_strategy:
+                IndividualProcessingPriorityStrategy::new_ancestor_depth_maximum(),
+            task_processing_strategy:
+                TaskProcessingPriorityStrategy::new_equal_depth_cache_orientated(),
 
             sat_task_cons_analyser: Default::default(),
             sat_task_inc_cons_analyser: Default::default(),
@@ -657,7 +666,8 @@ impl CompletionTaskHandleAlgorithm {
             comp_graph_cache_handler: Id::NONE,
             reuse_comp_graph_cache_handler: Id::NONE,
             grounding_handler: Id::NONE,
-            unsat_cach_ret_strategy: Id::NONE,
+            unsat_cach_ret_strategy:
+                UnsatisfiableCacheRetrievalStrategy::new_generative_non_deterministic(),
             sat_node_exp_cache_handler: Id::NONE,
             datatype_handler: Id::NONE,
             comp_cons_cache_handler: Id::NONE,
@@ -828,7 +838,7 @@ impl CompletionTaskHandleAlgorithm {
 
             conf_generate_queries: false,
             max_blocking_caching_saved_candidate_count: 0,
-            map_comparison_direct_lookup_factor: 0,
+            map_comparison_direct_lookup_factor: 20,
             last_config: Id::NONE,
             unsat_caching_signature_set: HashSet::new(),
             process_rule_to_task_processing_verification_count: 0,
@@ -891,8 +901,10 @@ impl CompletionTaskHandleAlgorithm {
             after_grounding_debug_indi_model_string: String::new(),
             analogous_propagation_blocking_testing_indi_associated_concepts_string: String::new(),
             analogous_propagation_blocking_blocking_indi_associated_concepts_string: String::new(),
-            analogous_propagation_blocking_testing_indi_all_associated_concepts_string: String::new(),
-            analogous_propagation_blocking_blocking_indi_all_associated_concepts_string: String::new(),
+            analogous_propagation_blocking_testing_indi_all_associated_concepts_string: String::new(
+            ),
+            analogous_propagation_blocking_blocking_indi_all_associated_concepts_string:
+                String::new(),
 
             applied_all_rule_count: 0,
             applied_some_rule_count: 0,
@@ -978,21 +990,37 @@ impl CompletionTaskHandleAlgorithm {
     // ----------------------------------------------------------------------
 
     /// Port of `getAppliedANDRuleCount`.
-    pub fn applied_and_rule_count(&self) -> Cint64 { self.applied_and_rule_count }
+    pub fn applied_and_rule_count(&self) -> Cint64 {
+        self.applied_and_rule_count
+    }
     /// Port of `getAppliedORRuleCount`.
-    pub fn applied_or_rule_count(&self) -> Cint64 { self.applied_or_rule_count }
+    pub fn applied_or_rule_count(&self) -> Cint64 {
+        self.applied_or_rule_count
+    }
     /// Port of `getAppliedSOMERuleCount`.
-    pub fn applied_some_rule_count(&self) -> Cint64 { self.applied_some_rule_count }
+    pub fn applied_some_rule_count(&self) -> Cint64 {
+        self.applied_some_rule_count
+    }
     /// Port of `getAppliedATLEASTRuleCount`.
-    pub fn applied_atleast_rule_count(&self) -> Cint64 { self.applied_atleast_rule_count }
+    pub fn applied_atleast_rule_count(&self) -> Cint64 {
+        self.applied_atleast_rule_count
+    }
     /// Port of `getAppliedALLRuleCount`.
-    pub fn applied_all_rule_count(&self) -> Cint64 { self.applied_all_rule_count }
+    pub fn applied_all_rule_count(&self) -> Cint64 {
+        self.applied_all_rule_count
+    }
     /// Port of `getAppliedATMOSTRuleCount`.
-    pub fn applied_atmost_rule_count(&self) -> Cint64 { self.applied_atmost_rule_count }
+    pub fn applied_atmost_rule_count(&self) -> Cint64 {
+        self.applied_atmost_rule_count
+    }
     /// Port of `getAppliedTotalRuleCount`.
-    pub fn applied_total_rule_count(&self) -> Cint64 { self.applied_total_rule_count }
+    pub fn applied_total_rule_count(&self) -> Cint64 {
+        self.applied_total_rule_count
+    }
 }
 
 impl Default for CompletionTaskHandleAlgorithm {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

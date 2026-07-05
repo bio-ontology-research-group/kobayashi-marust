@@ -12,7 +12,8 @@
 #![allow(dead_code)]
 
 use super::super::model::substrate::{Cint64, Id};
-use super::super::model::ConceptId;
+use super::super::model::{ConceptId, IndividualId};
+use super::super::task::task_data::TaskDataId;
 use super::{BranchInstrId, ClashDescId, ConDescId, ConProcDescId, NodeId, SatNodeId};
 
 // KONCLUDE-PORT-NOTE[ownership]: Konclude holds each container/queue/hash/payload
@@ -20,33 +21,131 @@ use super::{BranchInstrId, ClashDescId, ConDescId, ConProcDescId, NodeId, SatNod
 // `Id<T>` into a per-test arena (`Id::NONE` == `nullptr`). The bodies are their own
 // later port units; here they are the shared zero-size marker stubs from
 // `process::stubs` (`ConceptSaturationDescriptor` is shared with `sat_node`).
+use super::grounding_hash::ConceptNominalSchemaGroundingHash;
+use super::individual_process_linker::IndividualProcessNodeLinkerId;
 use super::stubs::{
-    BackendNeighbourExpansionControllingData, BackendNeighbourExpansionQueue,
-    BlockingIndividualNodeLinkedCandidateHash, BranchingTree,
-    ConceptNominalSchemaGroundingHash, ConceptSaturationDescriptor, ConceptSaturationProcess,
-    ConceptVector, CriticalIndividualNodeConceptTestSet, CriticalIndividualNodeProcessingQueue,
+    BackendNeighbourExpansionControllingData, BackendNeighbourExpansionQueue, BranchingTree,
+    ConceptSaturationDescriptor, ConceptSaturationProcess, ConceptVector,
+    CriticalIndividualNodeConceptTestSet, CriticalIndividualNodeProcessingQueue,
     IndividualConceptBatchProcessingQueue, IndividualCustomPriorityProcessingQueue,
     IndividualDelayedBackendInitializationProcessingQueue, IndividualDepthProcessingQueue,
     IndividualLinkerRotationProcessingQueue, IndividualProcessingQueue,
     IndividualReactivationProcessingQueue,
     IndividualRepresentativeBackendCacheConceptSetLabelProcessingHash,
-    IndividualRepresentativeBackendCacheLoadedAssociationHash,
-    IndividualSaturationProcessNodeVector, IndividualSaturationSuccessorLinkData,
-    IndividualUnsortedProcessingQueue, IndividualVector, MarkerIndividualNodeHash,
-    NodeSwitchHistory, NominalCachingLossReactivationHash, ReferredIndividualTrackingVector,
-    RepresentativeJoiningHash, RepresentativeVariableBindingPathHash,
-    RepresentativeVariableBindingPathJoiningKeyHash, RepresentativeVariableBindingPathSetHash,
-    ReusingReviewData, RoleSaturationProcess, SaturationInfluencedNominalSet,
-    SaturationNominalDependentNodeHash, SaturationSuccessorExtensionIndividualNodeProcessingQueue,
-    SignatureBlockingReviewSet, VariableBindingPathMergingHash,
+    IndividualRepresentativeBackendCacheLoadedAssociationHash, IndividualUnsortedProcessingQueue,
+    IndividualVector, NodeSwitchHistory, NominalCachingLossReactivationHash,
+    ReferredIndividualTrackingVector, RepresentativeJoiningHash,
+    RepresentativeVariableBindingPathHash, RepresentativeVariableBindingPathJoiningKeyHash,
+    RepresentativeVariableBindingPathSetHash, ReusingReviewData, RoleSaturationProcess,
+    SaturationInfluencedNominalSet, SaturationNominalDependentNodeHash,
+    SaturationSuccessorExtensionIndividualNodeProcessingQueue, SignatureBlockingReviewSet,
 };
+use super::varbind::VariableBindingPathMergingHash;
 // `CIndividualProcessNodeVector` is a real ported type (node-resolution keystone),
 // held BY VALUE on the databox rather than as an `Id<stub>`.
 use super::node_resolution::IndividualProcessNodeVector;
+use super::sat_node_vector::IndividualSaturationProcessNodeVector;
 // W3.5b/W2.7 reconcile: the blocking-candidate hashes are real ported structs; the
 // databox holds `Id<…>` into their arenas (un-wired from the `stubs` markers).
-use super::blocking_hash::BlockingIndividualNodeCandidateHash;
+use super::super::saturation::satellites::IndividualSaturationSuccessorLinkDataLinkerId;
+use super::blocking_hash::{
+    BlockingIndividualNodeCandidateHash, BlockingIndividualNodeLinkedCandidateHash,
+};
+use super::marker_hash::MarkerIndividualNodeHash;
 use super::reapply_sat::SignatureBlockingCandidateHash;
+use super::sat_linker::IndividualSaturationProcessNodeLinkerId;
+
+/// Port-side staging record for one initialization concept assertion from a
+/// `CSatisfiableCalculationConstruct`.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum ProcessingDataBoxIndividualTarget {
+    /// `satCalcConstruct->getIndividual()`.
+    Individual(IndividualId),
+    /// `satCalcConstruct->getIndividualID()` when no materialized individual exists.
+    FixedIndividualId(Cint64),
+    /// `baseIndiID + satCalcConstruct->getRelativeNewNodeID()`.
+    RelativeNewNodeId(Cint64),
+}
+
+/// Port-side staging record for one initialization concept assertion from a
+/// `CSatisfiableCalculationConstruct`.
+///
+/// The full upstream generator immediately expands these constructs into
+/// individual process nodes and initializing concept linkers. This record keeps
+/// the exact concept/negation/individual triple on the databox while the
+/// surrounding process-node expansion is ported.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ProcessingDataBoxConceptAssertion {
+    concept: ConceptId,
+    negated: bool,
+    target: ProcessingDataBoxIndividualTarget,
+}
+
+impl ProcessingDataBoxConceptAssertion {
+    pub fn new(concept: ConceptId, negated: bool, individual: IndividualId) -> Self {
+        Self::new_for_target(
+            concept,
+            negated,
+            ProcessingDataBoxIndividualTarget::Individual(individual),
+        )
+    }
+
+    pub fn new_for_fixed_individual_id(
+        concept: ConceptId,
+        negated: bool,
+        individual_id: Cint64,
+    ) -> Self {
+        Self::new_for_target(
+            concept,
+            negated,
+            ProcessingDataBoxIndividualTarget::FixedIndividualId(individual_id),
+        )
+    }
+
+    pub fn new_for_relative_new_node_id(
+        concept: ConceptId,
+        negated: bool,
+        relative_new_node_id: Cint64,
+    ) -> Self {
+        Self::new_for_target(
+            concept,
+            negated,
+            ProcessingDataBoxIndividualTarget::RelativeNewNodeId(relative_new_node_id),
+        )
+    }
+
+    pub fn new_for_target(
+        concept: ConceptId,
+        negated: bool,
+        target: ProcessingDataBoxIndividualTarget,
+    ) -> Self {
+        Self {
+            concept,
+            negated,
+            target,
+        }
+    }
+
+    pub fn get_concept(&self) -> ConceptId {
+        self.concept
+    }
+
+    pub fn is_negated(&self) -> bool {
+        self.negated
+    }
+
+    pub fn get_individual(&self) -> IndividualId {
+        match self.target {
+            ProcessingDataBoxIndividualTarget::Individual(individual) => individual,
+            ProcessingDataBoxIndividualTarget::FixedIndividualId(_)
+            | ProcessingDataBoxIndividualTarget::RelativeNewNodeId(_) => IndividualId::NONE,
+        }
+    }
+
+    pub fn get_individual_target(&self) -> ProcessingDataBoxIndividualTarget {
+        self.target
+    }
+}
 
 /// Port of `CProcessingDataBox`.
 ///
@@ -73,6 +172,9 @@ pub struct ProcessingDataBox {
     /// KONCLUDE-PORT-NOTE[api]: `CConcreteOntology*` lives in a not-yet-ported
     /// upstream layer; kept as an opaque `Cint64` handle for now.
     pub ontology: Cint64,
+    /// Rust-owned bridge for
+    /// `ontology->getConsistence()->getConsistenceModelData()`.
+    pub consistence_model_data: TaskDataId,
     pub clashed_descriptor_linker: ClashDescId,
 
     // --- loc/use pair 1: individual vector (.h 573–574) ---
@@ -86,6 +188,9 @@ pub struct ProcessingDataBox {
     /// individual-process-node vector (.h 578). `mIndiProcessVector`: the per-test
     /// map from individual node id → current node. Held BY VALUE (real ported type).
     pub indi_process_vector: IndividualProcessNodeVector,
+    /// Port-side staging for calculation-job concept assertions before the full
+    /// process-node/linker construction tail is live.
+    pub initializing_concept_assertions: Vec<ProcessingDataBoxConceptAssertion>,
 
     // --- triple-buffered processing queues (.h 580–697) ---
     pub indi_imm_process_queue: Id<IndividualUnsortedProcessingQueue>,
@@ -119,8 +224,10 @@ pub struct ProcessingDataBox {
     pub prev_backend_late_individual_reuse_expansion_queue: Id<IndividualUnsortedProcessingQueue>,
 
     pub backend_individual_neighbour_expansion_queue: Id<IndividualLinkerRotationProcessingQueue>,
-    pub use_backend_individual_neighbour_expansion_queue: Id<IndividualLinkerRotationProcessingQueue>,
-    pub prev_backend_individual_neighbour_expansion_queue: Id<IndividualLinkerRotationProcessingQueue>,
+    pub use_backend_individual_neighbour_expansion_queue:
+        Id<IndividualLinkerRotationProcessingQueue>,
+    pub prev_backend_individual_neighbour_expansion_queue:
+        Id<IndividualLinkerRotationProcessingQueue>,
 
     pub backend_direct_influence_expansion_queue: Id<IndividualUnsortedProcessingQueue>,
     pub use_backend_direct_influence_expansion_queue: Id<IndividualUnsortedProcessingQueue>,
@@ -220,7 +327,8 @@ pub struct ProcessingDataBox {
 
     pub blocking_indi_node_linked_candidate_hash: Id<BlockingIndividualNodeLinkedCandidateHash>,
     pub use_blocking_indi_node_linked_candidate_hash: Id<BlockingIndividualNodeLinkedCandidateHash>,
-    pub prev_blocking_indi_node_linked_candidate_hash: Id<BlockingIndividualNodeLinkedCandidateHash>,
+    pub prev_blocking_indi_node_linked_candidate_hash:
+        Id<BlockingIndividualNodeLinkedCandidateHash>,
 
     pub node_switch_history: Id<NodeSwitchHistory>,
     pub use_node_switch_history: Id<NodeSwitchHistory>,
@@ -248,27 +356,28 @@ pub struct ProcessingDataBox {
     pub last_con_des_indi_reapplication: bool,
 
     // --- node-linker work queues (.h 761–797) ---
-    // KONCLUDE-PORT-NOTE[ownership]: intrusive `CXLinker`/`C*Linker` chain heads
-    // become owned `Vec`s of the element id (the work-queue convention). `take*`
-    // == `std::mem::take`, `add*` == `push`.
+    // KONCLUDE-PORT-NOTE[ownership]: intrusive `CXLinker` chain heads that only
+    // carry a node id remain owned `Vec`s. `CIndividualProcessNodeLinker` carries
+    // an additional queued flag, so it is a real arena-backed linker id.
     pub sorted_nominal_non_det_processing_node_linker: Vec<NodeId>,
     pub sorted_nominal_non_det_processing_nodes_sorted: bool,
     pub nominal_non_det_processing_count: Cint64,
     pub individual_node_cache_testing_linker: Vec<NodeId>,
-    pub indi_process_node_linker: Vec<NodeId>,
+    pub indi_process_node_linker: IndividualProcessNodeLinkerId,
 
     // --- saturation linkers / vectors / sets (.h 770–797) ---
-    pub disjunct_common_concept_extract_processing_linker: Vec<SatNodeId>,
-    pub indi_saturation_process_node_linker: Vec<SatNodeId>,
-    pub indi_saturation_completion_node_linker: Vec<SatNodeId>,
-    pub indi_saturation_completed_node_linker: Vec<SatNodeId>,
+    pub disjunct_common_concept_extract_processing_linker:
+        Vec<IndividualSaturationProcessNodeLinkerId>,
+    pub indi_saturation_process_node_linker: Vec<IndividualSaturationProcessNodeLinkerId>,
+    pub indi_saturation_completion_node_linker: Vec<IndividualSaturationProcessNodeLinkerId>,
+    pub indi_saturation_completed_node_linker: Vec<IndividualSaturationProcessNodeLinkerId>,
     pub indi_saturation_analysing_node_linker: Vec<SatNodeId>,
-    pub indi_saturation_process_vector: Id<IndividualSaturationProcessNodeVector>,
+    pub indi_saturation_process_vector: Option<IndividualSaturationProcessNodeVector>,
     /// KONCLUDE-PORT-NOTE[ownership]: status-update linker; per-element status
     /// payload is deferred to DB-5, here just the sat-node chain.
     pub rem_sat_update_linker: Vec<SatNodeId>,
     pub rem_sat_indi_node_linker: Vec<SatNodeId>,
-    pub rem_sat_indi_succ_link_data_linker: Vec<Id<IndividualSaturationSuccessorLinkData>>,
+    pub rem_sat_indi_succ_link_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
     pub rem_con_sat_process_linker: Vec<Id<ConceptSaturationProcess>>,
     pub rem_role_sat_process_linker: Vec<Id<RoleSaturationProcess>>,
     pub rem_con_sat_des: Vec<Id<ConceptSaturationDescriptor>>,
@@ -280,9 +389,11 @@ pub struct ProcessingDataBox {
     pub insufficient_node_occured: bool,
     pub delayed_nominal_processing_occured: bool,
     pub problematic_eq_candidate_node_occured: bool,
-    pub sat_succ_ext_ind_node_proc_queue: Id<SaturationSuccessorExtensionIndividualNodeProcessingQueue>,
-    pub nominal_delayed_indi_saturation_process_node_linker: Vec<SatNodeId>,
-    pub saturation_atmost_merging_process_linker: Vec<SatNodeId>,
+    pub sat_succ_ext_ind_node_proc_queue:
+        Id<SaturationSuccessorExtensionIndividualNodeProcessingQueue>,
+    pub nominal_delayed_indi_saturation_process_node_linker:
+        Vec<IndividualSaturationProcessNodeLinkerId>,
+    pub saturation_atmost_merging_process_linker: IndividualSaturationProcessNodeLinkerId,
     pub separated_saturation_con_ass_resolve_node: SatNodeId,
     pub individual_node_resolve_linker: Vec<NodeId>,
     pub blockable_individual_node_updated_linker: Vec<NodeId>,
@@ -348,8 +459,10 @@ pub struct ProcessingDataBox {
     pub backend_cache_integrated_same_individual_node_count: Cint64,
 
     // loc/use pair 12
-    pub use_backend_loaded_association_hash: Id<IndividualRepresentativeBackendCacheLoadedAssociationHash>,
-    pub loc_backend_loaded_association_hash: Id<IndividualRepresentativeBackendCacheLoadedAssociationHash>,
+    pub use_backend_loaded_association_hash:
+        Id<IndividualRepresentativeBackendCacheLoadedAssociationHash>,
+    pub loc_backend_loaded_association_hash:
+        Id<IndividualRepresentativeBackendCacheLoadedAssociationHash>,
 
     // loc/use pair 13
     pub use_backend_concept_set_label_processing_hash:
@@ -359,12 +472,16 @@ pub struct ProcessingDataBox {
 
     // triple-buffered queue (.h 861–863)
     pub delayed_backend_init_proc_queue: Id<IndividualDelayedBackendInitializationProcessingQueue>,
-    pub use_delayed_backend_init_proc_queue: Id<IndividualDelayedBackendInitializationProcessingQueue>,
-    pub prev_delayed_backend_init_proc_queue: Id<IndividualDelayedBackendInitializationProcessingQueue>,
+    pub use_delayed_backend_init_proc_queue:
+        Id<IndividualDelayedBackendInitializationProcessingQueue>,
+    pub prev_delayed_backend_init_proc_queue:
+        Id<IndividualDelayedBackendInitializationProcessingQueue>,
 
     // loc/use pair 14
-    pub use_backend_neighbour_expansion_controlling_data: Id<BackendNeighbourExpansionControllingData>,
-    pub loc_backend_neighbour_expansion_controlling_data: Id<BackendNeighbourExpansionControllingData>,
+    pub use_backend_neighbour_expansion_controlling_data:
+        Id<BackendNeighbourExpansionControllingData>,
+    pub loc_backend_neighbour_expansion_controlling_data:
+        Id<BackendNeighbourExpansionControllingData>,
 
     // triple-buffered queue (.h 869–871; note the C++ Use/Prev names drop "Queue")
     pub backend_neighbour_expansion_queue: Id<BackendNeighbourExpansionQueue>,
@@ -388,6 +505,7 @@ impl ProcessingDataBox {
             ontology_top_concept: ConceptId::NONE,
             ontology_top_data_range_concept: ConceptId::NONE,
             ontology: Id::<()>::NONE.raw,
+            consistence_model_data: TaskDataId::NONE,
             clashed_descriptor_linker: ClashDescId::NONE,
 
             local_indi_vector: Id::NONE,
@@ -395,6 +513,7 @@ impl ProcessingDataBox {
             use_indi_process_queue: Id::NONE,
             loc_indi_process_queue: Id::NONE,
             indi_process_vector: IndividualProcessNodeVector::new(),
+            initializing_concept_assertions: Vec::new(),
 
             indi_imm_process_queue: Id::NONE,
             use_indi_imm_process_queue: Id::NONE,
@@ -519,17 +638,17 @@ impl ProcessingDataBox {
             sorted_nominal_non_det_processing_nodes_sorted: false,
             nominal_non_det_processing_count: 0,
             individual_node_cache_testing_linker: Vec::new(),
-            indi_process_node_linker: Vec::new(),
+            indi_process_node_linker: IndividualProcessNodeLinkerId::NONE,
 
             disjunct_common_concept_extract_processing_linker: Vec::new(),
             indi_saturation_process_node_linker: Vec::new(),
             indi_saturation_completion_node_linker: Vec::new(),
             indi_saturation_completed_node_linker: Vec::new(),
             indi_saturation_analysing_node_linker: Vec::new(),
-            indi_saturation_process_vector: Id::NONE,
+            indi_saturation_process_vector: None,
             rem_sat_update_linker: Vec::new(),
             rem_sat_indi_node_linker: Vec::new(),
-            rem_sat_indi_succ_link_data_linker: Vec::new(),
+            rem_sat_indi_succ_link_data_linker: IndividualSaturationSuccessorLinkDataLinkerId::NONE,
             rem_con_sat_process_linker: Vec::new(),
             rem_role_sat_process_linker: Vec::new(),
             rem_con_sat_des: Vec::new(),
@@ -543,7 +662,7 @@ impl ProcessingDataBox {
             problematic_eq_candidate_node_occured: false,
             sat_succ_ext_ind_node_proc_queue: Id::NONE,
             nominal_delayed_indi_saturation_process_node_linker: Vec::new(),
-            saturation_atmost_merging_process_linker: Vec::new(),
+            saturation_atmost_merging_process_linker: IndividualSaturationProcessNodeLinkerId::NONE,
             separated_saturation_con_ass_resolve_node: SatNodeId::NONE,
             individual_node_resolve_linker: Vec::new(),
             blockable_individual_node_updated_linker: Vec::new(),
@@ -623,14 +742,101 @@ impl ProcessingDataBox {
     // ----------------------------------------------------------------------
 
     /// Port of `getOntologyTopConcept`.
-    pub fn ontology_top_concept(&self) -> ConceptId { self.ontology_top_concept }
+    pub fn ontology_top_concept(&self) -> ConceptId {
+        self.ontology_top_concept
+    }
     /// Port of `getOntologyTopDataRangeConcept`.
-    pub fn ontology_top_data_range_concept(&self) -> ConceptId { self.ontology_top_data_range_concept }
+    pub fn ontology_top_data_range_concept(&self) -> ConceptId {
+        self.ontology_top_data_range_concept
+    }
+
+    /// Port-facing bridge for
+    /// `getOntology()->getConsistence()->getConsistenceModelData()`.
+    pub fn consistence_model_data(&self) -> TaskDataId {
+        self.consistence_model_data
+    }
+
+    /// Install the current ontology consistence model-data record.
+    pub fn set_consistence_model_data(&mut self, task_data: TaskDataId) -> &mut Self {
+        self.consistence_model_data = task_data;
+        self
+    }
+
+    /// Ordered initialization assertions staged from
+    /// `CSatisfiableCalculationConstruct` entries.
+    pub fn initializing_concept_assertions(&self) -> &[ProcessingDataBoxConceptAssertion] {
+        &self.initializing_concept_assertions
+    }
+
+    /// Replace all staged initialization assertions.
+    pub fn set_initializing_concept_assertions(
+        &mut self,
+        assertions: Vec<ProcessingDataBoxConceptAssertion>,
+    ) -> &mut Self {
+        self.initializing_concept_assertions = assertions;
+        self
+    }
+
+    /// Append one staged initialization assertion.
+    pub fn add_initializing_concept_assertion(
+        &mut self,
+        concept: ConceptId,
+        negated: bool,
+        individual: IndividualId,
+    ) -> &mut Self {
+        self.initializing_concept_assertions
+            .push(ProcessingDataBoxConceptAssertion::new(
+                concept, negated, individual,
+            ));
+        self
+    }
+
+    pub fn add_initializing_concept_assertion_for_fixed_individual_id(
+        &mut self,
+        concept: ConceptId,
+        negated: bool,
+        individual_id: Cint64,
+    ) -> &mut Self {
+        self.initializing_concept_assertions.push(
+            ProcessingDataBoxConceptAssertion::new_for_fixed_individual_id(
+                concept,
+                negated,
+                individual_id,
+            ),
+        );
+        self
+    }
+
+    pub fn add_initializing_concept_assertion_for_relative_new_node_id(
+        &mut self,
+        concept: ConceptId,
+        negated: bool,
+        relative_new_node_id: Cint64,
+    ) -> &mut Self {
+        self.initializing_concept_assertions.push(
+            ProcessingDataBoxConceptAssertion::new_for_relative_new_node_id(
+                concept,
+                negated,
+                relative_new_node_id,
+            ),
+        );
+        self
+    }
+
+    /// Clear staged initialization assertions.
+    pub fn clear_initializing_concept_assertions(&mut self) -> &mut Self {
+        self.initializing_concept_assertions.clear();
+        self
+    }
 
     /// Port of `hasClashedDescriptorLinker`.
-    pub fn has_clashed_descriptor_linker(&self) -> bool { self.clashed_descriptor_linker.is_some() }
+    pub fn has_clashed_descriptor_linker(&self) -> bool {
+        self.clashed_descriptor_linker.is_some()
+    }
     /// Port of `getClashedDescriptorLinker`.
-    pub fn clashed_descriptor_linker(&self) -> ClashDescId { self.clashed_descriptor_linker }
+    pub fn clashed_descriptor_linker(&self) -> ClashDescId {
+        self.clashed_descriptor_linker
+    }
     /// Port of `setClashedDescriptorLinker`.
     pub fn set_clashed_descriptor_linker(&mut self, v: ClashDescId) -> &mut Self {
         self.clashed_descriptor_linker = v;
@@ -658,7 +864,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `getConstructedIndividualNode`.
-    pub fn constructed_individual_node(&self) -> NodeId { self.constructed_indi_node }
+    pub fn constructed_individual_node(&self) -> NodeId {
+        self.constructed_indi_node
+    }
     /// Port of `setConstructedIndividualNode`.
     pub fn set_constructed_individual_node(&mut self, v: NodeId) -> &mut Self {
         self.constructed_indi_node = v;
@@ -675,7 +883,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `getMaximumDeterministicBranchTag`.
-    pub fn maximum_deterministic_branch_tag(&self) -> Cint64 { self.maximum_deterministic_branch_tag }
+    pub fn maximum_deterministic_branch_tag(&self) -> Cint64 {
+        self.maximum_deterministic_branch_tag
+    }
     /// Port of `setMaximumDeterministicBranchTag`.
     pub fn set_maximum_deterministic_branch_tag(&mut self, v: Cint64) -> &mut Self {
         self.maximum_deterministic_branch_tag = v;
@@ -683,7 +893,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `isReapplicationLastConceptDesciptorOnLastIndividualNodeRequired`.
-    pub fn is_reapplication_last_concept_descriptor_on_last_individual_node_required(&self) -> bool {
+    pub fn is_reapplication_last_concept_descriptor_on_last_individual_node_required(
+        &self,
+    ) -> bool {
         self.last_con_des_indi_reapplication
     }
     /// Port of `setReapplicationLastConceptDesciptorOnLastIndividualNodeRequired`.
@@ -706,7 +918,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `isInsufficientNodeOccured`.
-    pub fn is_insufficient_node_occured(&self) -> bool { self.insufficient_node_occured }
+    pub fn is_insufficient_node_occured(&self) -> bool {
+        self.insufficient_node_occured
+    }
     /// Port of `setInsufficientNodeOccured`.
     pub fn set_insufficient_node_occured(&mut self, v: bool) -> &mut Self {
         self.insufficient_node_occured = v;
@@ -714,7 +928,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `isDelayedNominalProcessingOccured`.
-    pub fn is_delayed_nominal_processing_occured(&self) -> bool { self.delayed_nominal_processing_occured }
+    pub fn is_delayed_nominal_processing_occured(&self) -> bool {
+        self.delayed_nominal_processing_occured
+    }
     /// Port of `setDelayedNominalProcessingOccured`.
     pub fn set_delayed_nominal_processing_occured(&mut self, v: bool) -> &mut Self {
         self.delayed_nominal_processing_occured = v;
@@ -722,7 +938,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `isProblematicEQCandidateOccured`.
-    pub fn is_problematic_eq_candidate_occured(&self) -> bool { self.problematic_eq_candidate_node_occured }
+    pub fn is_problematic_eq_candidate_occured(&self) -> bool {
+        self.problematic_eq_candidate_node_occured
+    }
     /// Port of `setProblematicEQCandidateOccured`.
     pub fn set_problematic_eq_candidate_occured(&mut self, v: bool) -> &mut Self {
         self.problematic_eq_candidate_node_occured = v;
@@ -734,13 +952,18 @@ impl ProcessingDataBox {
         self.separated_saturation_con_ass_resolve_node
     }
     /// Port of `setSeparatedSaturationConceptAssertionResolveNode`.
-    pub fn set_separated_saturation_concept_assertion_resolve_node(&mut self, v: SatNodeId) -> &mut Self {
+    pub fn set_separated_saturation_concept_assertion_resolve_node(
+        &mut self,
+        v: SatNodeId,
+    ) -> &mut Self {
         self.separated_saturation_con_ass_resolve_node = v;
         self
     }
 
     /// Port of `isIncrementalExpansionInitialised`.
-    pub fn is_incremental_expansion_initialised(&self) -> bool { self.incremental_expansion_initialized }
+    pub fn is_incremental_expansion_initialised(&self) -> bool {
+        self.incremental_expansion_initialized
+    }
     /// Port of `setIncrementalExpansionInitialised`.
     pub fn set_incremental_expansion_initialised(&mut self, v: bool) -> &mut Self {
         self.incremental_expansion_initialized = v;
@@ -748,7 +971,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `getIncrementalExpansionID`.
-    pub fn incremental_expansion_id(&self) -> Cint64 { self.incremental_exp_id }
+    pub fn incremental_expansion_id(&self) -> Cint64 {
+        self.incremental_exp_id
+    }
     /// Port of `setIncrementalExpansionID`.
     pub fn set_incremental_expansion_id(&mut self, v: Cint64) -> &mut Self {
         self.incremental_exp_id = v;
@@ -760,7 +985,10 @@ impl ProcessingDataBox {
         self.max_inc_prev_comp_graph_node_id
     }
     /// Port of `setMaxIncrementalPreviousCompletionGraphNodeID`.
-    pub fn set_max_incremental_previous_completion_graph_node_id(&mut self, v: Cint64) -> &mut Self {
+    pub fn set_max_incremental_previous_completion_graph_node_id(
+        &mut self,
+        v: Cint64,
+    ) -> &mut Self {
         self.max_inc_prev_comp_graph_node_id = v;
         self
     }
@@ -776,7 +1004,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `isIncrementalExpansionCachingMerged`.
-    pub fn is_incremental_expansion_caching_merged(&self) -> bool { self.incremental_expansion_caching_merged }
+    pub fn is_incremental_expansion_caching_merged(&self) -> bool {
+        self.incremental_expansion_caching_merged
+    }
     /// Port of `setIncrementalExpansionCachingMerged`.
     pub fn set_incremental_expansion_caching_merged(&mut self, v: bool) -> &mut Self {
         self.incremental_expansion_caching_merged = v;
@@ -784,7 +1014,9 @@ impl ProcessingDataBox {
     }
 
     /// Port of `isIndividualDependenceTrackingRequired`.
-    pub fn is_individual_dependence_tracking_required(&self) -> bool { self.indi_dep_tracking_required }
+    pub fn is_individual_dependence_tracking_required(&self) -> bool {
+        self.indi_dep_tracking_required
+    }
     /// Port of `setIndividualDependenceTrackingRequired`.
     pub fn set_individual_dependence_tracking_required(&mut self, v: bool) -> &mut Self {
         self.indi_dep_tracking_required = v;
@@ -792,9 +1024,13 @@ impl ProcessingDataBox {
     }
 
     /// Port of `hasBranchingInstruction`.
-    pub fn has_branching_instruction(&self) -> bool { self.branching_instruction.is_some() }
+    pub fn has_branching_instruction(&self) -> bool {
+        self.branching_instruction.is_some()
+    }
     /// Port of `getBranchingInstruction`.
-    pub fn branching_instruction(&self) -> BranchInstrId { self.branching_instruction }
+    pub fn branching_instruction(&self) -> BranchInstrId {
+        self.branching_instruction
+    }
     /// Port of `setBranchingInstruction`.
     pub fn set_branching_instruction(&mut self, v: BranchInstrId) -> &mut Self {
         self.branching_instruction = v;
@@ -811,7 +1047,10 @@ impl ProcessingDataBox {
         self.remaining_possible_instance_individual_merging_limit
     }
     /// Port of `setRemainingPossibleInstanceIndividualMergingLimit`.
-    pub fn set_remaining_possible_instance_individual_merging_limit(&mut self, v: Cint64) -> &mut Self {
+    pub fn set_remaining_possible_instance_individual_merging_limit(
+        &mut self,
+        v: Cint64,
+    ) -> &mut Self {
         self.remaining_possible_instance_individual_merging_limit = v;
         self
     }
@@ -830,7 +1069,10 @@ impl ProcessingDataBox {
         self.possible_instance_individual_current_merging_count
     }
     /// Port of `setPossibleInstanceIndividualCurrentMergingCount`.
-    pub fn set_possible_instance_individual_current_merging_count(&mut self, v: Cint64) -> &mut Self {
+    pub fn set_possible_instance_individual_current_merging_count(
+        &mut self,
+        v: Cint64,
+    ) -> &mut Self {
         self.possible_instance_individual_current_merging_count = v;
         self
     }
@@ -874,5 +1116,7 @@ impl ProcessingDataBox {
 }
 
 impl Default for ProcessingDataBox {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }

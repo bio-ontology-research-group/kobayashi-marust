@@ -12,9 +12,9 @@
 
 #![allow(dead_code)]
 
+use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::builder::TaskHandleAlgorithmBuilder;
 use super::environment::ConcurrentTaskCalculationEnvironment;
-use super::super::model::substrate::{Cint64, Id, INVALID};
 
 /// Port of `CCalculationEnvironmentFactory`.
 ///

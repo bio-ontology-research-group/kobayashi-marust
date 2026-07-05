@@ -17,8 +17,8 @@
 
 use std::collections::HashMap;
 
-use super::condensed_reapply::CondensedReapplyQueue;
 use super::super::model::substrate::{Cint64, Id};
+use super::condensed_reapply::CondensedReapplyQueue;
 use super::TrackPointId;
 
 /// `CIndividualMergingHash*` → `IndividualMergingHashId` (re-aliased from
@@ -208,5 +208,10 @@ impl IndividualMergingHash {
     /// Qt `contains(key)`.
     pub fn contains(&self, individual_id: Cint64) -> bool {
         self.indi_merging_hash.contains_key(&individual_id)
+    }
+
+    /// Read-only snapshot of the Qt-hash base iterator.
+    pub fn iter(&self) -> impl Iterator<Item = (&Cint64, &IndividualMergingHashData)> {
+        self.indi_merging_hash.iter()
     }
 }

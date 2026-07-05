@@ -10,11 +10,12 @@
 
 #![allow(dead_code)]
 
-pub mod scheduler;          // CTaskScheduler + Task/TaskStatus/TaskResult bases
-pub mod config;             // CCalculationConfigurationExtension
-pub mod satisfiable_task;   // CSatisfiableCalculationTask (the per-job task)
-pub mod task_data;          // CTaskData variants (consistence/saturation/incremental)
-pub mod adapters;           // the 18 observer/message adapter markers
-pub mod status_propagator;  // CSatisfiableCalculationTaskStatusPropagator
-pub mod callback_executer;  // CSatisfiableCalculationTaskJobCallbackExecuter
-pub mod stats;              // CCalculationStatisticsCollector
+pub mod adapters; // the 18 observer/message adapter markers
+pub mod calculation_job; // CSatisfiableCalculationJob (Query-layer job adapter holder)
+pub mod callback_executer; // CSatisfiableCalculationTaskJobCallbackExecuter
+pub mod config; // CCalculationConfigurationExtension
+pub mod satisfiable_task; // CSatisfiableCalculationTask (the per-job task)
+pub mod scheduler; // CTaskScheduler + Task/TaskStatus/TaskResult bases
+pub mod stats;
+pub mod status_propagator; // CSatisfiableCalculationTaskStatusPropagator
+pub mod task_data; // CTaskData variants (consistence/saturation/incremental) // CCalculationStatisticsCollector

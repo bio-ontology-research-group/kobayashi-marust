@@ -79,17 +79,18 @@ use super::super::model::op::{
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, RoleId};
 use super::super::process::node::IndividualProcessNode;
-use super::super::process::reapply_sat::IndividualNodeBlockingTestData;
+use super::super::process::reapply_sat::{
+    BlockingAltDataId, BlockingAlternativeSignatureBlockingCandidateData,
+    IndividualNodeBlockingTestData,
+};
 use super::super::process::stubs::IndiBlockDataId;
-use super::super::process::{ConDescId, LabelSetId, NodeId};
+use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
 
 use super::context::CalculationAlgorithmContextBase;
 
-/// KONCLUDE-PORT-NOTE[api]: `CBlockingAlternativeData*` (and its
-/// `CBlockingAlternativeSignatureBlockingCandidateData` subclass) are not yet
-/// ported; modelled as an opaque handle (`INVALID` == `nullptr`). The C++ `**`
-/// out-parameter becomes a threaded `&mut BlockingAlternativeDataHandle`.
-type BlockingAlternativeDataHandle = Cint64;
+/// The C++ `CBlockingAlternativeData**` out-parameter; the only concrete
+/// subclass currently ported is `CBlockingAlternativeSignatureBlockingCandidateData`.
+type BlockingAlternativeDataHandle = BlockingAltDataId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::hasOptimizedBlockingB2AutomateTransitionOperands`.
@@ -133,7 +134,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         } else if con_operator.has_partial_operator_code_flag(CCFS_AQALL_TYPE) {
-            let con_role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+            let con_role = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_role();
             if con_role == role {
                 let op_list = calc_alg_context
                     .ontology_arenas()
@@ -142,11 +146,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .to_vec();
                 for op_link in op_list {
                     let op_concept = op_link.target;
-                    if !calc_alg_context
-                        .process_context()
-                        .label_set(v_con_set)
-                        .contains_concept(op_concept, false)
-                    {
+                    if !self.label_set_contains_concept_resolved(
+                        v_con_set,
+                        op_concept,
+                        false,
+                        calc_alg_context,
+                    ) {
                         return false;
                     }
                 }
@@ -157,15 +162,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::isLabelConceptOptimizedBlocking`.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the B2/B3/B5/B6/B4 tests iterate the ancestor
-    /// `CSuccessorRoleHash`, the blocker's per-role `CReapplyQueueIterator`, the
-    /// `CRoleSuccessorLinkIterator` successor cardinality, and the
-    /// `CReapplyConceptLabelSetIterator` over `vConSet`/`wPredSuperConSet` — all of
-    /// which are W2-DEFER stub iterators without `hasNext`/`next`. Those loops are
-    /// `// W6-DEFER[api]` (the per-iteration violation/cardinality bookkeeping is
-    /// described inline). The B1 subset test, the ancestor lookup, the
-    /// `getSuccessorRoleHash` short-circuit, the concept-count diff and the
-    /// signature-mirroring candidate gate are reproduced against the ported arenas.
+    /// KONCLUDE-PORT-NOTE[api]: the B2 test now uses the live
+    /// `CSuccessorRoleHash` iterator for the ancestor-role traversal and the live
+    /// per-role `CReapplyQueueIterator` from the blocker's reapply hash. The B3/B5
+    /// blocker-successor cardinality walks use the live `CRoleSuccessorLinkIterator`.
+    /// B4a's successor-count subloop remains deferred. The B6 and B4
+    /// `CReapplyConceptLabelSetIterator` walks are live through LS-1 / W2.7 and are
+    /// reproduced against the ported label/concept arenas; B4a's successor-count
+    /// subloop remains deferred with the role-successor-link iterator.
     pub fn is_label_concept_optimized_blocking(
         &mut self,
         test_indi: NodeId,
@@ -201,7 +205,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
 
-        let v_node = self.get_ancestor_individual(&mut w_node, calc_alg_context);
+        let mut v_node = self.get_ancestor_individual(&mut w_node, calc_alg_context);
         let v_con_set = calc_alg_context
             .process_context_mut()
             .node_mut(v_node)
@@ -209,9 +213,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // B2 test
 
         let anc_role_hash = calc_alg_context
-            .process_context_mut()
-            .node_mut(w_node)
-            .get_successor_role_hash(false);
+            .process_context()
+            .node(w_node)
+            .use_succ_role_hash;
         if anc_role_hash.is_none() {
             // no inverse roles
             return true;
@@ -219,72 +223,328 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // assume blocking is possible
         let mut blocked = true;
 
-        let violating_b2_restrictions: Cint64 = 0;
-        let violating_non_det_b2_restrictions: Cint64 = 0;
+        let mut violating_b2_restrictions: Cint64 = 0;
+        let mut violating_non_det_b2_restrictions: Cint64 = 0;
 
-        // W6-DEFER[api]: baseAncRoleIt = ancRoleHash->getSuccessorRoleIterator(vNode->getIndividualNodeID());
-        //   while ancRoleIt1.hasNext() && blocked:
-        //     link = ancRoleIt1.next(); role = link->getLinkRole();  // w is inv(r)-successor of v
-        //     // B2, (ALL r. C) in w'
-        //     reapplyQuIt = wPredNode->getRoleReapplyIterator(role,false);
-        //     while reapplyQuIt.hasNext() && blocked:
-        //       conDes = reapplyQuIt.next()->getConceptDescriptor(); concept = conDes->getConcept();
-        //       conNeg = conDes->isNegated(); conOpCode = concept->getOperatorCode();
-        //       if (!conNeg && conOperator->hasPartialOperatorCodeFlag(CCFS_ALL_AQALL_TYPE)) || (conNeg && conOpCode == CCSOME):
-        //         // B2a — for each operand opConcept (opConNeg = opLinker->isNegated() ^ conNeg):
-        //         //   if !vConSet->containsConcept(opConcept,opConNeg): blocked=false;
-        //         //     nonDet = conDes->getDependencyTrackPoint()->getBranchingTag() > 0;
-        //         //     ++violatingB2Restrictions; if nonDet: ++violatingNonDetB2Restrictions;
-        //       else if !conNeg && conOperator->hasPartialOperatorCodeFlag(CCFS_AQAND_TYPE):
-        //         // B2b, transitive and automate transitions:
-        //         //   if !hasOptimizedBlockingB2AutomateTransitionOperands(concept,role,vConSet,...): blocked=false; (+violation counters)
-        //   The per-role iterators are stub iterators; the loop is deferred. The
-        //   reusable inner predicate (B2b) is the fully-ported sibling above.
-        let _ = (CCSOME, CCFS_ALL_AQALL_TYPE, CCFS_AQAND_TYPE, v_con_set, anc_role_hash);
+        let v_node_individual_id = calc_alg_context
+            .process_context()
+            .node(v_node)
+            .individual_node_id();
+        let mut anc_role_it1 = calc_alg_context
+            .process_context()
+            .node_successor_role_iterator(w_node, v_node_individual_id);
+        while anc_role_it1.has_next() && blocked {
+            let link = anc_role_it1.next(true);
+            if link.is_none() {
+                continue;
+            }
+            // from w to v is a edge labeled with r, w is an inv(r)-successor of v
+            let role = calc_alg_context
+                .process_context()
+                .edge(link)
+                .get_link_role();
+            // B2, (ALL r. C) in w'
+            let mut reapply_qu_it = calc_alg_context
+                .process_context_mut()
+                .node_role_reapply_iterator(w_pred_node, role, false);
+            while reapply_qu_it.has_next() && blocked {
+                let reapply_con_des = reapply_qu_it.next(calc_alg_context.process_context(), true);
+                if reapply_con_des.is_none() {
+                    continue;
+                }
+                let con_des = calc_alg_context
+                    .process_context()
+                    .reapply_con_desc(reapply_con_des)
+                    .get_concept_descriptor();
+                let concept = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des)
+                    .get_concept();
+                let con_neg = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des)
+                    .is_negated();
+                let con_op_code = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operator_code();
+                let con_operator = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_operator();
+                if (!con_neg && con_operator.has_partial_operator_code_flag(CCFS_ALL_AQALL_TYPE))
+                    || (con_neg && con_op_code == CCSOME)
+                {
+                    let op_linker = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operand_list()
+                        .to_vec();
+                    for op_link in op_linker {
+                        if !blocked {
+                            break;
+                        }
+                        let op_concept = op_link.target;
+                        let op_con_neg = op_link.negated ^ con_neg;
+                        if !self.label_set_contains_concept_resolved(
+                            v_con_set,
+                            op_concept,
+                            op_con_neg,
+                            calc_alg_context,
+                        ) {
+                            blocked = false;
+                            let dep_track_point = calc_alg_context
+                                .process_context()
+                                .con_desc(con_des)
+                                .get_dependency_track_point();
+                            let non_det_dependency = dep_track_point.is_some()
+                                && calc_alg_context
+                                    .process_context()
+                                    .track_point(dep_track_point)
+                                    .get_branching_tag()
+                                    > 0;
+                            violating_b2_restrictions += 1;
+                            if non_det_dependency {
+                                violating_non_det_b2_restrictions += 1;
+                            }
+                        }
+                    }
+                } else if !con_neg
+                    && con_operator.has_partial_operator_code_flag(CCFS_AQAND_TYPE)
+                    && !self.has_optimized_blocking_b2_automate_transition_operands(
+                        concept,
+                        role,
+                        v_con_set,
+                        calc_alg_context,
+                    )
+                {
+                    blocked = false;
+                    let dep_track_point = calc_alg_context
+                        .process_context()
+                        .con_desc(con_des)
+                        .get_dependency_track_point();
+                    let non_det_dependency = dep_track_point.is_some()
+                        && calc_alg_context
+                            .process_context()
+                            .track_point(dep_track_point)
+                            .get_branching_tag()
+                            > 0;
+                    violating_b2_restrictions += 1;
+                    if non_det_dependency {
+                        violating_non_det_b2_restrictions += 1;
+                    }
+                }
+            }
+        }
 
-        // W6-DEFER[api]: wPredSuccHash = wPredNode->getReapplyRoleSuccessorHash(false);
+        let w_pred_succ_hash = calc_alg_context
+            .process_context()
+            .node(w_pred_node)
+            .use_reapply_role_succ_hash;
         if blocked {
             // test c-blocked and a-blocked specific parts (B3, B5)
             let mut c_blocked = true;
             let _a_blocked = true;
-            // W6-DEFER[api]: ancRoleIt2 = baseAncRoleIt; while ancRoleIt2.hasNext() && blocked:
-            //   role = link->getLinkRole();
-            //   reapplyQuIt = wPredNode->getRoleReapplyIterator(role,false);
-            //   while reapplyQuIt.hasNext() && blocked:
-            //     conDes/concept/conNeg/conOpCode as above; opLinker = concept->getOperandList();
-            //     if (!conNeg && conOpCode==CCATMOST) || (conNeg && conOpCode==CCATLEAST):
-            //       cardinality = concept->getParameter(); if conNeg: --cardinality;
-            //       walk opLinker: if !vConSet->containsConcept(opConcept,&containsNeg) || containsNeg==opConNeg:
-            //         cBlocked=false; checkBlockerRoleCardinality=true; blockerMinSuccCardinality=cardinality;
-            //       if !opLinker: cBlocked=false; checkBlockerRoleCardinality=true; blockerMinSuccCardinality=cardinality;
-            //     if checkBlockerRoleCardinality && wPredSuccHash:
-            //       succIt = wPredSuccHash->getRoleSuccessorLinkIterator(role);
-            //       while succIt.hasNext() && blocked:
-            //         succIndiNode = getSuccessorIndividual(wPredNode,succLink,...);
-            //         if succIndiNode->isNominalIndividualNode() || succIndiNode->getNominalIndividual()
-            //            || succIndiNode->getIndividualAncestorDepth() > wPredNode->getIndividualAncestorDepth():
-            //           if !opLinker: ++minRoleCardinality;
-            //           else if containsIndividualNodeConcepts(succIndiNode,opLinker,false,...): ++minRoleCardinality;
-            //           if minRoleCardinality >= blockerMinSuccCardinality: blocked=false;
-            //   The per-role + per-successor iterators are stub iterators; the loop is deferred.
-            let _ = (CCATMOST, CCATLEAST);
+            let mut anc_role_it2 = calc_alg_context
+                .process_context()
+                .node_successor_role_iterator(w_node, v_node_individual_id);
+            while anc_role_it2.has_next() && blocked {
+                let link = anc_role_it2.next(true);
+                if link.is_none() {
+                    continue;
+                }
+                let role = calc_alg_context
+                    .process_context()
+                    .edge(link)
+                    .get_link_role();
+                let mut reapply_qu_it = calc_alg_context
+                    .process_context_mut()
+                    .node_role_reapply_iterator(w_pred_node, role, false);
+                while reapply_qu_it.has_next() && blocked {
+                    let reapply_con_des =
+                        reapply_qu_it.next(calc_alg_context.process_context(), true);
+                    if reapply_con_des.is_none() {
+                        continue;
+                    }
+                    let con_des = calc_alg_context
+                        .process_context()
+                        .reapply_con_desc(reapply_con_des)
+                        .get_concept_descriptor();
+                    let concept = calc_alg_context
+                        .process_context()
+                        .con_desc(con_des)
+                        .get_concept();
+                    let con_neg = calc_alg_context
+                        .process_context()
+                        .con_desc(con_des)
+                        .is_negated();
+                    let con_op_code = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code();
+
+                    let mut check_blocker_role_cardinality = false;
+                    let mut blocker_min_succ_cardinality: Cint64 = 0;
+                    let op_linker = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operand_list()
+                        .to_vec();
+
+                    if (!con_neg && con_op_code == CCATMOST)
+                        || (con_neg && con_op_code == CCATLEAST)
+                    {
+                        let mut cardinality = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_parameter();
+                        if con_neg {
+                            cardinality -= 1;
+                        }
+
+                        if op_linker.is_empty() {
+                            c_blocked = false;
+                            if !check_blocker_role_cardinality {
+                                check_blocker_role_cardinality = true;
+                                blocker_min_succ_cardinality = cardinality;
+                            }
+                        }
+                        for op_link in &op_linker {
+                            let op_concept = op_link.target;
+                            let op_con_neg = op_link.negated;
+                            let mut contains_neg = false;
+                            if !self.label_set_contains_concept_get_negated_resolved(
+                                v_con_set,
+                                op_concept,
+                                Some(&mut contains_neg),
+                                calc_alg_context,
+                            ) {
+                                c_blocked = false;
+                                if !check_blocker_role_cardinality {
+                                    check_blocker_role_cardinality = true;
+                                    blocker_min_succ_cardinality = cardinality;
+                                }
+                            } else if contains_neg == op_con_neg {
+                                c_blocked = false;
+                                if !check_blocker_role_cardinality {
+                                    check_blocker_role_cardinality = true;
+                                    blocker_min_succ_cardinality = cardinality;
+                                }
+                            }
+                        }
+                    }
+
+                    if check_blocker_role_cardinality {
+                        let mut min_role_cardinality: Cint64 = 0;
+                        if w_pred_succ_hash.is_some() {
+                            let mut succ_it = {
+                                let pc = calc_alg_context.process_context();
+                                pc.role_succ_hash(w_pred_succ_hash)
+                                    .get_role_successor_link_iterator(pc.edges(), role)
+                            };
+                            while succ_it.has_next() && blocked {
+                                let succ_link = succ_it.next(true);
+                                if succ_link.is_none() {
+                                    continue;
+                                }
+                                let mut pred_node = w_pred_node;
+                                let mut succ_indi_node = self.get_successor_individual(
+                                    &mut pred_node,
+                                    succ_link,
+                                    calc_alg_context,
+                                );
+                                let succ_qualifies = {
+                                    let pc = calc_alg_context.process_context();
+                                    let succ_node = pc.node(succ_indi_node);
+                                    succ_node.is_nominal_individual_node()
+                                        || succ_node.nominal_individual().is_some()
+                                        || succ_node.individual_ancestor_depth()
+                                            > pc.node(w_pred_node).individual_ancestor_depth()
+                                };
+                                if succ_qualifies {
+                                    if op_linker.is_empty()
+                                        || self.contains_individual_node_concepts(
+                                            &mut succ_indi_node,
+                                            &op_linker,
+                                            calc_alg_context,
+                                        )
+                                    {
+                                        min_role_cardinality += 1;
+                                        if min_role_cardinality >= blocker_min_succ_cardinality {
+                                            blocked = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             if c_blocked {
                 // test whether B6 holds
-                // W6-DEFER[api]: vConSetIt = vConSet->getConceptLabelSetIterator(false,false,false);
-                //   while cBlocked && vConSetIt.hasNext():
-                //     conDes = vConSetIt.next(); concept = conDes->getConcept(); conNeg = conDes->isNegated();
-                //     conOpCode = concept->getOperatorCode();
-                //     if (!conNeg && conOpCode==CCATLEAST) || (conNeg && conOpCode==CCATMOST):
-                //       cardinality = concept->getParameter() + 1*conNeg;
-                //       if cardinality > 1:
-                //         role = concept->getRole();
-                //         if hasIndividualsLink(vNode,wNode,role,false,...):
-                //           opLinker = concept->getOperandList();
-                //           if opLinker: if !containsIndividualNodeConcepts(wSubConSet,opLinker,!conNeg,...): cBlocked=false;
-                //           else: cBlocked=false;
-                //   The label-set iterator is a stub iterator; the loop is deferred.
-                let _ = c_blocked;
+                let mut v_con_set_it = calc_alg_context
+                    .process_context()
+                    .label_set(v_con_set)
+                    .get_concept_label_set_iterator(false, false, false);
+                while c_blocked && v_con_set_it.has_next() {
+                    let con_des = v_con_set_it.next(true, calc_alg_context.process_context());
+                    if con_des.is_none() {
+                        continue;
+                    }
+                    let concept = calc_alg_context
+                        .process_context()
+                        .con_desc(con_des)
+                        .get_concept();
+                    let con_neg = calc_alg_context
+                        .process_context()
+                        .con_desc(con_des)
+                        .is_negated();
+                    let con_op_code = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code();
+                    if (!con_neg && con_op_code == CCATLEAST)
+                        || (con_neg && con_op_code == CCATMOST)
+                    {
+                        let cardinality = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_parameter()
+                            + if con_neg { 1 } else { 0 };
+                        if cardinality > 1 {
+                            let role = calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_role();
+                            if self.has_individuals_link(
+                                &mut v_node,
+                                &mut w_node,
+                                role,
+                                false,
+                                calc_alg_context,
+                            ) {
+                                let op_linker = calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(concept)
+                                    .get_operand_list()
+                                    .to_vec();
+                                if !op_linker.is_empty() {
+                                    if !self.contains_individual_node_concepts_label_negated(
+                                        w_sub_con_set,
+                                        &op_linker,
+                                        !con_neg,
+                                        calc_alg_context,
+                                    ) {
+                                        c_blocked = false;
+                                    }
+                                } else {
+                                    c_blocked = false;
+                                }
+                            }
+                        }
+                    }
+                }
                 if c_blocked {
                     return true;
                 }
@@ -293,37 +553,123 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         if blocked {
             // test whether B4 holds
-            // W6-DEFER[api]: blockerConLabSetIt = wPredSuperConSet->getConceptLabelSetIterator(false,false,false);
-            //   while blockerConLabSetIt.hasNext() && blocked:
-            //     conDes/concept/conNeg/conOpCode; role = concept->getRole();
-            //     cardinality = concept->getParameter(); opLinker = concept->getOperandList();
-            //     needsRestrictionTest=false; negateOps=false;
-            //     if (!conNeg && conOpCode==CCATLEAST) || (conNeg && conOpCode==CCATMOST):
-            //       if conNeg: ++cardinality; needsRestrictionTest=true;
-            //     else if (!conNeg && (conOpCode==CCSOME || conOpCode==CCAQSOME)) || (conNeg && conOpCode==CCALL):
-            //       cardinality=1; needsRestrictionTest=true; negateOps=conNeg;
-            //     if needsRestrictionTest:
-            //       // B4b
-            //       restrictionHolds=false;
-            //       if hasIndividualsLink(wNode,vNode,role,false,...) && containsIndividualNodeConcepts(vConSet,opLinker,negateOps,...):
-            //         restrictionHolds=true;
-            //       if !restrictionHolds:
-            //         // B4a — w' needs m role-successors
-            //         minRoleCardinality=0;
-            //         if wPredSuccHash: succIt = wPredSuccHash->getRoleSuccessorLinkIterator(role);
-            //           while succIt.hasNext():
-            //             succIndi = getSuccessorIndividual(wPredNode,link,...);
-            //             if succIndi->isNominalIndividualNode() || succIndi->getNominalIndividual()
-            //                || succIndi->getIndividualAncestorDepth() > wPredNode->getIndividualAncestorDepth():
-            //               if !opLinker: ++minRoleCardinality;
-            //               else if containsIndividualNodeConcepts(succIndi,opLinker,negateOps,...): ++minRoleCardinality;
-            //         if minRoleCardinality < cardinality: blocked=false;
-            //   The label-set + successor iterators are stub iterators; the loop is deferred.
-            let _ = (CCATLEAST, CCATMOST, CCSOME, CCAQSOME, CCALL);
+            let mut blocker_con_lab_set_it = calc_alg_context
+                .process_context()
+                .label_set(w_pred_super_con_set)
+                .get_concept_label_set_iterator(false, false, false);
+            while blocker_con_lab_set_it.has_next() && blocked {
+                let con_des = blocker_con_lab_set_it.next(true, calc_alg_context.process_context());
+                if con_des.is_none() {
+                    continue;
+                }
+                let concept = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des)
+                    .get_concept();
+                let con_neg = calc_alg_context
+                    .process_context()
+                    .con_desc(con_des)
+                    .is_negated();
+                let con_op_code = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operator_code();
+                let role = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_role();
+                let mut cardinality = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_parameter();
+                let op_linker = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_operand_list()
+                    .to_vec();
+                let mut needs_restriction_test = false;
+                let mut negate_ops = false;
+                if (!con_neg && con_op_code == CCATLEAST) || (con_neg && con_op_code == CCATMOST) {
+                    if con_neg {
+                        cardinality += 1;
+                    }
+                    needs_restriction_test = true;
+                } else if (!con_neg && (con_op_code == CCSOME || con_op_code == CCAQSOME))
+                    || (con_neg && con_op_code == CCALL)
+                {
+                    cardinality = 1;
+                    needs_restriction_test = true;
+                    negate_ops = con_neg;
+                }
+
+                if needs_restriction_test {
+                    // B4b
+                    let mut restriction_holds = false;
+                    if self.has_individuals_link(
+                        &mut w_node,
+                        &mut v_node,
+                        role,
+                        false,
+                        calc_alg_context,
+                    ) && self.contains_individual_node_concepts_label_negated(
+                        v_con_set,
+                        &op_linker,
+                        negate_ops,
+                        calc_alg_context,
+                    ) {
+                        restriction_holds = true;
+                    }
+                    if !restriction_holds {
+                        // B4a
+                        // w' needs m role-successors.
+                        let mut min_role_cardinality: Cint64 = 0;
+                        if w_pred_succ_hash.is_some() {
+                            let mut succ_it = {
+                                let pc = calc_alg_context.process_context();
+                                pc.role_succ_hash(w_pred_succ_hash)
+                                    .get_role_successor_link_iterator(pc.edges(), role)
+                            };
+                            while succ_it.has_next() {
+                                let succ_link = succ_it.next(true);
+                                if succ_link.is_none() {
+                                    continue;
+                                }
+                                let mut pred_node = w_pred_node;
+                                let mut succ_indi = self.get_successor_individual(
+                                    &mut pred_node,
+                                    succ_link,
+                                    calc_alg_context,
+                                );
+                                let succ_qualifies = {
+                                    let pc = calc_alg_context.process_context();
+                                    let succ_node = pc.node(succ_indi);
+                                    succ_node.is_nominal_individual_node()
+                                        || succ_node.nominal_individual().is_some()
+                                        || succ_node.individual_ancestor_depth()
+                                            > pc.node(w_pred_node).individual_ancestor_depth()
+                                };
+                                if succ_qualifies
+                                    && (op_linker.is_empty()
+                                        || self.contains_individual_node_concepts_negated(
+                                            &mut succ_indi,
+                                            &op_linker,
+                                            negate_ops,
+                                            calc_alg_context,
+                                        ))
+                                {
+                                    min_role_cardinality += 1;
+                                }
+                            }
+                        }
+                        if min_role_cardinality < cardinality {
+                            blocked = false;
+                        }
+                    }
+                }
+            }
         }
 
         if !blocked
-            && *block_alt_data != INVALID
             && self.conf_signature_mirroring_blocking
             && self.opt_signature_mirroring_blocking_in_blocking
         {
@@ -337,26 +683,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .get_concept_count();
             let diff_concept_count = w_pred_super_count - w_sub_count;
 
-            // W6-DEFER[api]: the CBlockingAlternativeSignatureBlockingCandidateData allocation /
-            //   scoring hangs off the unported CBlockingAlternativeData hierarchy:
-            //     sigBlockCandData = dynamic_cast<...>(*blockAltData);
-            //     if !sigBlockCandData:
-            //       sigBlockCandData = allocate(tempMemMan);
-            //       sigBlockCandData->initSignatureBlockingCandidateData(wPredNode,violatingB2Restrictions,
-            //          violatingNonDetB2Restrictions,diffConceptCount);
-            //       *blockAltData = sigBlockCandData;
-            //     else:
-            //       newScore = violatingNonDetB2Restrictions*1.2 + violatingB2Restrictions + diffConceptCount*0.1;
-            //       oldScore = sigBlockCandData->getViolatedNonDeterministicRestrictionCount()*1.2
-            //                + sigBlockCandData->getViolatedRestrictionCount()
-            //                + sigBlockCandData->getConceptDifferenceCount()*0.1;
-            //       if newScore > oldScore: sigBlockCandData->initSignatureBlockingCandidateData(...);
-            let _ = (
-                diff_concept_count,
-                violating_b2_restrictions,
-                violating_non_det_b2_restrictions,
-                w_pred_node,
-            );
+            let new_score = violating_non_det_b2_restrictions as f64 * 1.2
+                + violating_b2_restrictions as f64
+                + diff_concept_count as f64 * 0.1;
+            if block_alt_data.is_none() {
+                let mut sig_block_cand_data =
+                    BlockingAlternativeSignatureBlockingCandidateData::new();
+                sig_block_cand_data.init_signature_blocking_candidate_data(
+                    w_pred_node,
+                    violating_b2_restrictions,
+                    violating_non_det_b2_restrictions,
+                    diff_concept_count,
+                );
+                *block_alt_data = calc_alg_context
+                    .process_context_mut()
+                    .alloc_blocking_alt_data(sig_block_cand_data);
+            } else {
+                let old_score = {
+                    let sig_block_cand_data = calc_alg_context
+                        .process_context()
+                        .blocking_alt_data(*block_alt_data);
+                    sig_block_cand_data.get_violated_non_deterministic_restriction_count() as f64
+                        * 1.2
+                        + sig_block_cand_data.get_violated_restriction_count() as f64
+                        + sig_block_cand_data.get_concept_difference_count() as f64 * 0.1
+                };
+                if new_score > old_score {
+                    calc_alg_context
+                        .process_context_mut()
+                        .blocking_alt_data_mut(*block_alt_data)
+                        .init_signature_blocking_candidate_data(
+                            w_pred_node,
+                            violating_b2_restrictions,
+                            violating_non_det_b2_restrictions,
+                            diff_concept_count,
+                        );
+                }
+            }
         }
 
         blocked
@@ -527,11 +890,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context_mut()
                     .node_mut(blocking_indi)
                     .get_reapply_concept_label_set(false);
-                if !calc_alg_context
+                let init_concept = calc_alg_context
+                    .process_context()
+                    .con_desc(init_con_des)
+                    .get_concept();
+                let init_negated = calc_alg_context
+                    .process_context()
+                    .con_desc(init_con_des)
+                    .is_negated();
+                let init_tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(init_concept)
+                    .get_concept_tag();
+                let mut blocking_init_con_des: ConDescId = Id::NONE;
+                let mut blocking_init_dep: TrackPointId = Id::NONE;
+                let blocking_contains_init = calc_alg_context
                     .process_context()
                     .label_set(blocking_label_set)
-                    .contains_concept_descriptor(init_con_des)
-                {
+                    .get_concept_descriptor_by_tag(
+                        init_tag,
+                        &mut blocking_init_con_des,
+                        &mut blocking_init_dep,
+                    )
+                    && calc_alg_context
+                        .process_context()
+                        .con_desc(blocking_init_con_des)
+                        .is_negated()
+                        == init_negated;
+                if !blocking_contains_init {
                     return false;
                 }
             }
@@ -593,21 +979,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut blocking_prop_bindings = false;
         if blocking_concepts {
             if self.opt_analogous_propagation_path_blocking {
-                blocking_prop_bindings = self.is_anonymous_variable_propagation_binding_analogous_path(
-                    &mut test_indi,
-                    &mut blocking_indi,
-                    block_data,
-                    test_continue_blocking,
-                    *block_alt_data,
-                    calc_alg_context,
-                );
+                blocking_prop_bindings = self
+                    .is_anonymous_variable_propagation_binding_analogous_path(
+                        &mut test_indi,
+                        &mut blocking_indi,
+                        block_data,
+                        test_continue_blocking,
+                        INVALID,
+                        calc_alg_context,
+                    );
             } else {
+                let mut propagation_block_alt_data = INVALID;
                 blocking_prop_bindings = self.is_nominal_variable_propagation_binding_sub_set(
                     test_indi,
                     blocking_indi,
                     block_data,
                     test_continue_blocking,
-                    block_alt_data,
+                    &mut propagation_block_alt_data,
                     calc_alg_context,
                 );
             }
@@ -701,7 +1089,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut anc_test_indi = test_indi;
         let mut blocking_indi: NodeId = Id::NONE;
 
-        let mut block_alt_data: BlockingAlternativeDataHandle = INVALID;
+        let mut block_alt_data: BlockingAlternativeDataHandle = Id::NONE;
 
         let mut blocked = false;
 
@@ -752,7 +1140,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.get_localized_individual(anc_test_indi, false, calc_alg_context);
 
             // search blocker node
-            block_alt_data = INVALID;
+            block_alt_data = Id::NONE;
             blocking_indi = Id::NONE;
 
             if self.conf_saturation_caching_testing_during_blocking_tests {
@@ -799,16 +1187,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
             if blocking_indi.is_none() {
                 // W6-DEFER[api]: STATINC(FAILEDBLOCKINGSTATUSDETECTIONCOUNT,calcAlgContext);
-                if block_alt_data != INVALID {
-                    blocked =
-                        self.test_alternative_blocked(loc_anc_test_indi, block_alt_data, calc_alg_context);
+                if block_alt_data.is_some() {
+                    blocked = self.test_alternative_blocked(
+                        loc_anc_test_indi,
+                        block_alt_data,
+                        calc_alg_context,
+                    );
                 }
                 if !blocked {
                     calc_alg_context
                         .process_context_mut()
                         .node_mut(loc_anc_test_indi)
                         .set_blocker_individual_node(Id::NONE);
-                    anc_test_indi = self.get_ancestor_individual(&mut loc_anc_test_indi, calc_alg_context);
+                    anc_test_indi =
+                        self.get_ancestor_individual(&mut loc_anc_test_indi, calc_alg_context);
 
                     if !previous_blocked
                         && !self.comp_graph_cache_handler.is_none()
@@ -1083,7 +1475,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::clearBlockingCache`.
-    pub fn clear_blocking_cache(&mut self, _calc_alg_context: &mut CalculationAlgorithmContextBase) {
+    pub fn clear_blocking_cache(
+        &mut self,
+        _calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
         self.cached_indi_associated_concept_set_hash.clear();
     }
 
@@ -1128,24 +1523,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .init_block_data(Some(&taken));
                 *pc.blocking_test_data_mut(block_data) = taken;
             } else {
-                pc.blocking_test_data_mut(new_block_data).init_block_data(None);
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(None);
             }
             pc.node_mut(blocking_test_indi)
                 .set_individual_block_data(new_block_data);
             loc_block_data = new_block_data;
         }
-        // W3.5b-DEFER[api]: prevNodeSwitchTag = locBlockData->getNodeSwitchTag();
-        //   prevNodeConceptLabelModTag = locBlockData->getConceptLabelSetModificationTag();
-        //   updateNodeSwitchTag/updateConceptLabelSetModificationTag(processTagger) — the
-        //   CNodeSwitchTag / CConceptLabelSetModificationTag tagger protocol is still
-        //   unported (reapply_sat models only the marking word), so the tags stay neutral
-        //   and the nodeSwitchHistory min-bounds below remain 0 (full ancestor walk).
-        let prev_node_switch_tag: Cint64 = 0;
-        let prev_node_concept_label_mod_tag: Cint64 = 0;
-        let min_test_indi_node_id: Cint64 = 0;
-        let min_test_anc_indi_depth: Cint64 = 0;
-        // W6-DEFER[api]: locBlockData->updateNodeSwitchTag(getUsedProcessTagger());
-        //   locBlockData->updateConceptLabelSetModificationTag(getUsedProcessTagger());
+        let prev_node_switch_tag = calc_alg_context
+            .process_context()
+            .blocking_test_data(loc_block_data)
+            .get_node_switch_tag();
+        let prev_node_concept_label_mod_tag = calc_alg_context
+            .process_context()
+            .blocking_test_data(loc_block_data)
+            .get_concept_label_set_modification_tag();
+        let mut min_test_indi_node_id: Cint64 = 0;
+        let mut min_test_anc_indi_depth: Cint64 = 0;
+        let (current_node_switch_tag, current_label_mod_tag) = {
+            let tagger = calc_alg_context.process_context().used_process_tagger();
+            (
+                tagger.get_current_node_switch_tag(),
+                tagger.get_current_concept_label_set_modification_tag(),
+            )
+        };
+        {
+            let loc_block_data_ref = calc_alg_context
+                .process_context_mut()
+                .blocking_test_data_mut(loc_block_data);
+            loc_block_data_ref.update_node_switch_tag(current_node_switch_tag);
+            loc_block_data_ref.update_concept_label_set_modification_tag(current_label_mod_tag);
+        }
 
         let mut continue_blocking_indi_node: NodeId = Id::NONE;
         if self.continue_individual_node_block(
@@ -1171,10 +1579,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             ) {
                 blocker_node = continue_blocking_indi_node;
             } else {
-                // W6-DEFER[api]: if (nodeSwitchHistory && locBlockData && prevNodeSwitchTag>0):
-                //   nodeSwitchHistory->getMinIndividualAncestorDepthAndNodeID(prevNodeSwitchTag,minTestAncIndiDepth,minTestIndiNodeID);
-                //   minTestIndiNodeID = qMax(minTestIndiNodeID,0); minTestAncIndiDepth = qMax(minTestAncIndiDepth,0);
-                let _ = (node_switch_history, prev_node_switch_tag);
+                if node_switch_history.is_some()
+                    && loc_block_data.is_some()
+                    && prev_node_switch_tag > 0
+                {
+                    (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+                        .node_switch_history_min_bounds(
+                            node_switch_history,
+                            prev_node_switch_tag,
+                            0,
+                            0,
+                        );
+                }
                 let mut anc_indi_node =
                     self.get_ancestor_individual(&mut blocking_test_indi, calc_alg_context);
                 while blocker_node.is_none()
@@ -1241,21 +1657,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .node(blocking_test_indi)
             .individual_block_data(false);
-        let loc_block_data = calc_alg_context
+        let mut loc_block_data = calc_alg_context
             .process_context()
             .node(blocking_test_indi)
             .individual_block_data(true);
         if loc_block_data.is_none() {
-            // W6-DEFER[memory-pool]: locBlockData = allocate CIndividualNodeBlockingTestData;
-            //   locBlockData->initBlockData(blockData); blockingTestIndi->setIndividualBlockData(locBlockData);
-            let _ = block_data;
+            // locBlockData = CObjectAllocator<CIndividualNodeBlockingTestData>::allocateAndConstruct(taskMemMan);
+            // locBlockData->initBlockData(blockData); blockingTestIndi->setIndividualBlockData(locBlockData);
+            let pc = calc_alg_context.process_context_mut();
+            let new_block_data = pc.alloc_blocking_test_data(IndividualNodeBlockingTestData::new());
+            if !block_data.is_none() {
+                let taken = std::mem::replace(
+                    pc.blocking_test_data_mut(block_data),
+                    IndividualNodeBlockingTestData::new(),
+                );
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(Some(&taken));
+                *pc.blocking_test_data_mut(block_data) = taken;
+            } else {
+                pc.blocking_test_data_mut(new_block_data)
+                    .init_block_data(None);
+            }
+            pc.node_mut(blocking_test_indi)
+                .set_individual_block_data(new_block_data);
+            loc_block_data = new_block_data;
         }
-        // W6-DEFER[api]: prevNodeSwitchTag / prevNodeConceptLabelModTag = locBlockData->get...();
-        let prev_node_switch_tag: Cint64 = 0;
-        let prev_node_concept_label_mod_tag: Cint64 = 0;
-        let min_test_indi_node_id: Cint64 = 0;
-        let min_test_anc_indi_depth: Cint64 = 0;
-        // W6-DEFER[api]: locBlockData->updateNodeSwitchTag(...); updateConceptLabelSetModificationTag(...);
+        let prev_node_switch_tag = calc_alg_context
+            .process_context()
+            .blocking_test_data(loc_block_data)
+            .get_node_switch_tag();
+        let prev_node_concept_label_mod_tag = calc_alg_context
+            .process_context()
+            .blocking_test_data(loc_block_data)
+            .get_concept_label_set_modification_tag();
+        let mut min_test_indi_node_id: Cint64 = 0;
+        let mut min_test_anc_indi_depth: Cint64 = 0;
+        let (current_node_switch_tag, current_label_mod_tag) = {
+            let tagger = calc_alg_context.process_context().used_process_tagger();
+            (
+                tagger.get_current_node_switch_tag(),
+                tagger.get_current_concept_label_set_modification_tag(),
+            )
+        };
+        {
+            let loc_block_data_ref = calc_alg_context
+                .process_context_mut()
+                .blocking_test_data_mut(loc_block_data);
+            loc_block_data_ref.update_node_switch_tag(current_node_switch_tag);
+            loc_block_data_ref.update_concept_label_set_modification_tag(current_label_mod_tag);
+        }
 
         let mut continue_blocking_indi_node: NodeId = Id::NONE;
         if self.continue_individual_node_block(
@@ -1280,20 +1730,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // W6-DEFER[api]: lastContinueTestedBlockingIndiNodeID = locBlockData->getBlockingIndividualNode()
                 //   ? ...->getIndividualNodeID() : -1;
                 let last_continue_tested_blocking_indi_node_id: Cint64 = -1;
-                // W6-DEFER[api]: if (nodeSwitchHistory && locBlockData && prevNodeSwitchTag>0):
-                //   getMinIndividualAncestorDepthAndNodeID(...); qMax bounds.
-                let _ = (node_switch_history, prev_node_switch_tag, min_test_anc_indi_depth);
+                if node_switch_history.is_some()
+                    && loc_block_data.is_some()
+                    && prev_node_switch_tag > 0
+                {
+                    (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+                        .node_switch_history_min_bounds(
+                            node_switch_history,
+                            prev_node_switch_tag,
+                            0,
+                            0,
+                        );
+                }
                 let mut prev_indi_id = calc_alg_context
                     .process_context()
                     .node(blocking_test_indi)
                     .individual_node_id()
                     - 1;
-                while blocker_node.is_none() && prev_indi_id > 0 && prev_indi_id >= min_test_indi_node_id {
+                while blocker_node.is_none()
+                    && prev_indi_id > 0
+                    && prev_indi_id >= min_test_indi_node_id
+                {
                     if prev_indi_id != last_continue_tested_blocking_indi_node_id {
                         let mut prev_indi_node =
                             self.get_up_to_date_individual_by_id(prev_indi_id, calc_alg_context);
                         if !prev_indi_node.is_none()
-                            && self.is_individual_node_valid_blocker(prev_indi_node, calc_alg_context)
+                            && self
+                                .is_individual_node_valid_blocker(prev_indi_node, calc_alg_context)
                             && self.is_individual_node_concept_label_set_modified(
                                 &mut prev_indi_node,
                                 prev_node_concept_label_mod_tag,
@@ -1334,8 +1797,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     {
                                         invalid_descendant = true;
                                     }
-                                    anc_prev_indi_node = self
-                                        .get_ancestor_individual(&mut anc_prev_indi_node, calc_alg_context);
+                                    anc_prev_indi_node = self.get_ancestor_individual(
+                                        &mut anc_prev_indi_node,
+                                        calc_alg_context,
+                                    );
                                 }
                             }
 

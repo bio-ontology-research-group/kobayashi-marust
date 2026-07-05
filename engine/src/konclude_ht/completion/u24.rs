@@ -66,7 +66,7 @@
 
 use super::super::model::substrate::{Cint64, Id};
 use super::super::model::RoleId;
-use super::super::process::NodeId;
+use super::super::process::{NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -456,7 +456,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .map(|nl| nl.target)
             .collect();
         for sup_role in super_roles {
-            if calc_alg_context.ontology_arenas().role(sup_role).has_disjoint_roles() {
+            if calc_alg_context
+                .ontology_arenas()
+                .role(sup_role)
+                .has_disjoint_roles()
+            {
                 let mut marked = false;
                 // W3-DEFER[api]: sibling helper (other caching unit).
                 marked |= self.mark_individual_node_backend_non_concept_set_related_processing(
@@ -497,7 +501,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .map(|nl| nl.target)
             .collect();
         for sup_role in super_roles {
-            if calc_alg_context.ontology_arenas().role(sup_role).has_disjoint_roles() {
+            if calc_alg_context
+                .ontology_arenas()
+                .role(sup_role)
+                .has_disjoint_roles()
+            {
                 // W3-DEFER[api]: sibling helper (other caching unit).
                 return self.mark_individual_node_backend_non_concept_set_related_processing(
                     indi_node,
@@ -531,7 +539,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .map(|nl| nl.target)
             .collect();
         for sup_role in super_roles {
-            if calc_alg_context.ontology_arenas().role(sup_role).has_disjoint_roles() {
+            if calc_alg_context
+                .ontology_arenas()
+                .role(sup_role)
+                .has_disjoint_roles()
+            {
                 return self
                     .mark_individual_node_backend_non_concept_set_neighbour_label_related_processing(
                         indi_node,
@@ -618,57 +630,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 24803–24881. Outline:
-        //
-        //   expContData = ctx->getUsedProcessingDataBox()->getBackendNeighbourExpansionControllingData(true);
-        //   reuseModesDepNode = expContData->getReuseModesDependencyNode();
-        //   if !reuseModesDepNode:
-        //     processorContext  = ctx->getUsedTaskProcessorContext();
-        //     processingDataBox = ctx->getUsedProcessingDataBox();
-        //     reuseDepNode = createREUSEBACKENDEXPANSIONMODESDependency(nullptr, ctx);          // dep unit
-        //     processingDataBox->getBackendNeighbourExpansionControllingData(true)->setReuseModesDependencyNode(reuseDepNode);
-        //
-        //     repBackCacheUpAdapter = ctx->getSatisfiableCalculationTask()->getSatisfiableRepresentativeBackendCacheUpdatingAdapter();
-        //     if repBackCacheUpAdapter && !repBackCacheUpAdapter->hasExpansionLimitReached():
-        //         processingDataBox->getBackendNeighbourExpansionControllingData(true)->setPrioritizedReuseExpansionMode(true);
-        //         return true;
-        //     else:
-        //         taskCreationCount = 2;
-        //         newTaskList = createDependendBranchingTaskList(taskCreationCount, ctx);        // backtracking unit
-        //         newTaskIt = newTaskList;
-        //         for i in 0..taskCreationCount:
-        //           newSatCalcTask = newTaskIt; fixedReusingAlternative = (i == 0);
-        //           newProcessContext  = newSatCalcTask->getProcessContext(processorContext);
-        //           newCalcAlgContext  = createCalculationAlgorithmContext(processorContext, newProcessContext, newSatCalcTask);  // core unit
-        //           newAllocMemMan     = newCalcAlgContext->getUsedProcessTaskMemoryAllocationManager();
-        //           newProcessingDataBox = newSatCalcTask->getProcessingDataBox();
-        //           newBackendExpControllingData = newProcessingDataBox->getBackendNeighbourExpansionControllingData(true);
-        //           newDependencyTrackPoint = createNonDeterministicDependencyTrackPointBranch(reuseDepNode, false, newCalcAlgContext);  // dep unit
-        //           if fixedReusingAlternative: reuseDepNode->setFixedReuseDependencyTrackPoint(newDependencyTrackPoint);
-        //           else:                       reuseDepNode->setPriorizedReuseDependencyTrackPoint(newDependencyTrackPoint);
-        //           newBackendExpControllingData->setReuseContinuingDependencyTrackPoint(newDependencyTrackPoint);
-        //           if fixedReusingAlternative:
-        //               newBackendExpControllingData->setFixedReuseExpansionMode(true);
-        //               newProcessTagger = newCalcAlgContext->getUsedProcessTagger();
-        //               newProcessTagger->incBranchingTag(); newProcessTagger->incLocalizationTag();
-        //           else: newBackendExpControllingData->setPrioritizedReuseExpansionMode(true);
-        //           newTaskPriority = ctx->getUsedTaskPriorityStrategy()->getPriorityForTaskReusing(
-        //               newSatCalcTask, ctx->getUsedSatisfiableCalculationTask(), fixedReusingAlternative);
-        //           newSatCalcTask->setTaskPriority(newTaskPriority);
-        //           newTaskIt = newTaskIt->getNext();
-        //         processorContext->getTaskProcessorCommunicator()->communicateTaskCreation(newTaskList);
-        //         throw CCalculationStopProcessingException(true);     // [exceptions] -> early return once task-fork wired
-        //   return false;
-        //
-        // Held PORT-PENDING: the `CBackendNeighbourExpansionControllingData`
-        // (process-layer `stub!` marker, no arena/accessors yet), the
-        // `CREUSEBACKENDEXPANSIONMODESDependencyNode` dependency node + its
-        // create/track-point siblings, the satisfiable-task representative-backend
-        // updating adapter, and the whole task-forking path
-        // (`createDependendBranchingTaskList`, `createCalculationAlgorithmContext`,
-        // the task-processor communicator) are W6 / later-unit deferrals. W3-DEFER[exceptions]
-        // for the terminal stop-processing throw.
-        let _ = calc_alg_context;
-        false
+        let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(true);
+        let reuse_modes_dep_node = calc_alg_context
+            .process_context()
+            .backend_neighbour_expansion_controlling_data(exp_cont_data)
+            .get_reuse_modes_dependency_node();
+        if reuse_modes_dep_node.is_some() {
+            return false;
+        }
+
+        let reuse_dep_node = self
+            .create_reuse_backend_expansion_modes_dependency(TrackPointId::NONE, calc_alg_context);
+        calc_alg_context
+            .process_context_mut()
+            .backend_neighbour_expansion_controlling_data_mut(exp_cont_data)
+            .set_reuse_modes_dependency_node(reuse_dep_node);
+
+        // W6-DEFER[api]: the representative-backend updating adapter and the
+        // expansion-limit branch that forks fixed/prioritized dependent tasks are
+        // still not live. This ports the currently reachable no-limit branch.
+        calc_alg_context
+            .process_context_mut()
+            .backend_neighbour_expansion_controlling_data_mut(exp_cont_data)
+            .set_prioritized_reuse_expansion_mode(true);
+        true
     }
 }

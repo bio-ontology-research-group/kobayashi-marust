@@ -112,12 +112,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> CalculationAlgorithmContextBase {
         // CCalculationAlgorithmContextBase* calcAlgContext = CObjectAllocator<...>::allocateAndConstruct(...);
         let mut calc_alg_context = CalculationAlgorithmContextBase::new();
-        // W3-DEFER[api]: calcAlgContext->initTaskProcessContext(processContext, satCalcTask);
-        // W3-DEFER[api]: calcAlgContext->initCalculationAlgorithmContext(processorContext,
-        //   mConceptPriorityStrategy, mIndividualPriorityStrategy, mTaskProcessingStrategy,
-        //   mUnsatCachRetStrategy, mIndiNodeManager, mClashDesFactory, mDependencyFactory,
-        //   mUnsatCacheHandler, mSatExpCacheHandler, mSatNodeExpCacheHandler);
-        // (The init logic is a context-layer method body, ported with `context.rs`.)
+        calc_alg_context.init_task_process_context(process_context, sat_calc_task);
+        calc_alg_context.init_calculation_algorithm_context(
+            processor_context,
+            self.concept_priority_strategy.clone(),
+            self.individual_priority_strategy.clone(),
+            self.task_processing_strategy.clone(),
+            self.unsat_cach_ret_strategy.clone(),
+            self.indi_node_manager,
+            self.clash_des_factory,
+            self.dependency_factory,
+            self.unsat_cache_handler,
+            self.sat_exp_cache_handler,
+            self.sat_node_exp_cache_handler,
+        );
+        // W3-DEFER[ownership]: a fresh by-value Rust context cannot dereference a
+        // scheduler-owned `satCalcTask` id allocated in another task arena, so the
+        // task/databox realization remains blocked until task ownership is shared.
         calc_alg_context
     }
 
@@ -171,8 +182,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let process_context: Cint64 = INVALID;
 
             // CCalculationAlgorithmContextBase* calcAlgContext = createCalculationAlgorithmContext(...);
-            let mut calc_alg_context =
-                self.create_calculation_algorithm_context(processor_context, process_context, sat_calc_task);
+            let mut calc_alg_context = self.create_calculation_algorithm_context(
+                processor_context,
+                process_context,
+                sat_calc_task,
+            );
             // mCalcAlgContext = calcAlgContext;  (opaque back-handle, [ownership])
             // W3-DEFER[api]: mProcessingDataBox = satCalcTask->getProcessingDataBox();
 
@@ -187,8 +201,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // CProcessTagger* processTagger = calcAlgContext->getUsedProcessTagger();
             // CProcessingDataBox* processingDataBox = calcAlgContext->getUsedProcessingDataBox();
             // CNodeSwitchHistory* nodeSwitchHistory = processingDataBox->getNodeSwitchHistory(true);
-            // W3-DEFER[api]: getUsedProcessTagger / getUsedProcessingDataBox / getNodeSwitchHistory
-            // (processTagger + nodeSwitchHistory are reached through deferred accessors.)
+            let node_switch_history = calc_alg_context.node_switch_history(true);
 
             // Reset all cached processing-queue handles (cpp 905-927).
             self.processing_queue = Id::NONE;
@@ -266,8 +279,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         //     getLocalizedIndividual(addConceptBrIn->getAddingIndividualNode(), false, calcAlgContext);
                         // W3-DEFER[api]: addConceptBrIn->getAddingIndividualNode()
                         let adding_individual_node: NodeId = Id::NONE;
-                        let mut new_loc_indi_node: NodeId =
-                            self.get_localized_individual(adding_individual_node, false, &mut calc_alg_context);
+                        let mut new_loc_indi_node: NodeId = self.get_localized_individual(
+                            adding_individual_node,
+                            false,
+                            &mut calc_alg_context,
+                        );
                         // CConceptProcessingQueue* newConProcQueue = newLocIndiNode->getConceptProcessingQueue(true);
                         // W3-DEFER[api]: newLocIndiNode->getConceptProcessingQueue(true)
                         // CDependencyTrackPoint* newDependencyTrackPoint = addConceptBrIn->getAddingDependencyTrackPoint();
@@ -293,7 +309,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             );
                         }
                         // addIndividualToProcessingQueue(newLocIndiNode, calcAlgContext);
-                        self.add_individual_to_processing_queue(new_loc_indi_node, &mut calc_alg_context);
+                        self.add_individual_to_processing_queue(
+                            new_loc_indi_node,
+                            &mut calc_alg_context,
+                        );
                         drain_pending!();
                     }
                     // processingDataBox->clearBranchingInstruction();
@@ -412,20 +431,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     if true {
                         // processTagger->incNodeSwitchTag();
                         // nodeSwitchHistory->addIndividualProcessNodeSwitch(indiProcNode, processTagger->getCurrentNodeSwitchTag());
-                        // W3-DEFER[api]: processTagger->incNodeSwitchTag / nodeSwitchHistory->addIndividualProcessNodeSwitch
                         // mCalcAlgContext->setMinModificationIndividual(indiProcNode);
-                        // W3-DEFER[api]: calcAlgContext->setMinModificationIndividual(indiProcNode)
+                        calc_alg_context.add_node_switch_for_individual(indi_proc_node);
                         // STATINC(INDIVIDUALNODESWITCHCOUNT, mCalcAlgContext); — deferred.
 
                         // initialize individual
-                        let initialized_individual =
-                            self.individual_node_initializing(indi_proc_node, &mut calc_alg_context);
+                        let initialized_individual = self
+                            .individual_node_initializing(indi_proc_node, &mut calc_alg_context);
                         drain_pending!();
                         if initialized_individual {
                             // (indiStartProcessingDebug block is debug-only, deferred.)
 
-                            let mut continue_processing_individual =
-                                self.continue_individual_processing(indi_proc_node, &mut calc_alg_context);
+                            let mut continue_processing_individual = self
+                                .continue_individual_processing(
+                                    indi_proc_node,
+                                    &mut calc_alg_context,
+                                );
                             drain_pending!();
 
                             while continue_processing_individual && !canceled {
@@ -434,10 +455,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .process_context_mut()
                                     .node_concept_processing_queue(indi_proc_node, true);
                                 // conProcDes = conProcQueue->takeNextConceptDescriptorProcess();
-                                con_proc_des = ConceptProcessingQueue::take_next_concept_descriptor_process(
-                                    con_proc_queue,
-                                    calc_alg_context.process_context_mut(),
-                                );
+                                con_proc_des =
+                                    ConceptProcessingQueue::take_next_concept_descriptor_process(
+                                        con_proc_queue,
+                                        calc_alg_context.process_context_mut(),
+                                    );
 
                                 // processingDataBox->setLastProcessingIndividualNodeAndConceptDescriptor(indiProcNode, conProcDes);
                                 // W3-DEFER[api]: processingDataBox->setLastProcessingIndividualNodeAndConceptDescriptor(...)
@@ -460,7 +482,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
                                 if continue_processing_individual {
                                     continue_processing_individual = self
-                                        .continue_individual_processing(indi_proc_node, &mut calc_alg_context);
+                                        .continue_individual_processing(
+                                            indi_proc_node,
+                                            &mut calc_alg_context,
+                                        );
                                     drain_pending!();
                                 } else {
                                     // addConceptToProcessingQueue(conProcDes, conProcQueue, indiProcNode, calcAlgContext);
@@ -517,7 +542,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                             indi_proc_node,
                                             &mut calc_alg_context,
                                         );
-                                        return Err(HandleTaskException::StopProcessing { completed: false });
+                                        return Err(HandleTaskException::StopProcessing {
+                                            completed: false,
+                                        });
                                     }
                                 }
                             }
@@ -527,11 +554,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         }
 
                         // if (mCalcAlgContext->isMinModificationUpdated()) nodeSwitchHistory->updateLastIndividualProcessNodeSwitch(...);
-                        if calc_alg_context.base.is_min_modification_updated() {
-                            // W3-DEFER[api]: nodeSwitchHistory->updateLastIndividualProcessNodeSwitch(
-                            //   calcAlgContext->getMinModificationAncestorDepth(),
-                            //   calcAlgContext->getMinModificationIndividualID())
-                        }
+                        calc_alg_context
+                            .update_latest_node_switch_from_min_modification(node_switch_history);
                     }
 
                     indi_proc_node = Id::NONE;
@@ -583,8 +607,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             // W3-DEFER[api]: processingDataBox->isPossibleInstanceIndividualMergingStopped()
                             let is_possible_instance_individual_merging_stopped = false;
                             if !is_possible_instance_individual_merging_stopped {
-                                let testing_indi_node = self
-                                    .get_corrected_nominal_individual_node(-testing_indi_id, &mut calc_alg_context);
+                                let testing_indi_node = self.get_corrected_nominal_individual_node(
+                                    -testing_indi_id,
+                                    &mut calc_alg_context,
+                                );
                                 // W3-DEFER[api]: possInstanceMergeingData passed to tryPossibleInstanceMerging
                                 self.try_possible_instance_merging(
                                     testing_indi_node,
@@ -624,7 +650,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         self.clashed_backtracking(clash_con_linker, &mut calc_alg_context);
                     }
                 }
-                Err(HandleTaskException::StopProcessing { completed: task_completed }) => {
+                Err(HandleTaskException::StopProcessing {
+                    completed: task_completed,
+                }) => {
                     if task_completed {
                         completed = true;
                     }

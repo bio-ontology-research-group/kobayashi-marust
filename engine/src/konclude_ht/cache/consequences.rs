@@ -24,7 +24,8 @@
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, IndividualId};
 use super::base::SatisfiableCache;
-use super::value::event::WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY;
+use super::context::CacheContext;
+use super::events::{CacheEvent, EVENT_WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY};
 
 // ---------------------------------------------------------------------------
 // Local arena id aliases (this family's per-ontology cache objects).
@@ -134,7 +135,10 @@ impl ComputedConsequencesCacheContext {
         let mut con_linker: Option<NegLink<ConceptId>> = self.con_linker.first().copied();
         // if (!conLinker && create) conLinker = allocateAndConstruct(mMemMan);
         if con_linker.is_none() && create {
-            con_linker = Some(NegLink { target: Id::NONE, negated: false });
+            con_linker = Some(NegLink {
+                target: Id::NONE,
+                negated: false,
+            });
         }
         // conLinker->setNext(nullptr); -- the returned node is detached (Vec-model no-op).
         // KONCLUDE-PORT-NOTE[uninit]: if the free list is empty and !create the C++
@@ -287,9 +291,10 @@ impl Default for ComputedConsequencesCacheWriteDataType {
 pub struct ComputedConsequencesCacheWriteData {
     /// `CCacheEntryWriteData` base (F0).
     /// KONCLUDE-PORT-NOTE[api]: not-yet-ported F0 base (carries a
-    /// `CACHEWRITEDATATYPE mType` enum + a `CLinkerBase` next-pointer); opaque
-    /// `Cint64` handle for now.
+    /// `CACHEWRITEDATATYPE mType` enum); opaque `Cint64` handle for now.
     pub entry_write_data_base: Cint64,
+    /// `CLinkerBase` next write-data link.
+    pub next: ComputedConsequencesCacheWriteDataId,
     /// `COMPUTEDCONSEQUENCESCACHEWRITEDATATYPE mWriteDataType`.
     pub write_data_type: ComputedConsequencesCacheWriteDataType,
 }
@@ -298,6 +303,7 @@ impl Default for ComputedConsequencesCacheWriteData {
     fn default() -> Self {
         ComputedConsequencesCacheWriteData {
             entry_write_data_base: INVALID,
+            next: Id::NONE,
             write_data_type: ComputedConsequencesCacheWriteDataType::default(),
         }
     }
@@ -312,6 +318,17 @@ impl ComputedConsequencesCacheWriteData {
     /// Port of `CComputedConsequencesCacheWriteData::getWriteDataType`.
     pub fn get_write_data_type(&self) -> ComputedConsequencesCacheWriteDataType {
         self.write_data_type
+    }
+
+    /// `CLinkerBase::getNext`.
+    pub fn get_next(&self) -> ComputedConsequencesCacheWriteDataId {
+        self.next
+    }
+
+    /// `CLinkerBase::setNext`.
+    pub fn set_next(&mut self, next: ComputedConsequencesCacheWriteDataId) -> &mut Self {
+        self.next = next;
+        self
     }
 }
 
@@ -406,23 +423,25 @@ impl ComputedConsequencesCacheReader {
     pub fn get_types_cache_entry(
         &self,
         individual: IndividualId,
+        cache_context: &CacheContext,
     ) -> ComputedConsequencesTypesCacheEntryId {
         // CIndividualProcessData* indProData = (CIndividualProcessData*)individual->getIndividualData();
-        // W6-DEFER[api]: individual->getIndividualData() (Ontology CIndividualProcessData)
-        let ind_pro_data: Cint64 = INVALID;
+        // KONCLUDE-PORT-NOTE[api]: `CIndividualProcessData` is not otherwise
+        // materialized in this Rust slice; `CacheContext` stores exactly its
+        // computed-consequences caching-data slot by individual id.
+        let ind_pro_data = individual;
         // CComputedConsequencesCachingData* compConsCachingData = nullptr;
-        let mut comp_cons_caching_data: Cint64 = INVALID;
-        if ind_pro_data != INVALID {
+        let mut comp_cons_caching_data = ComputedConsequencesTypesCacheEntryId::NONE;
+        if ind_pro_data.is_some() {
             // compConsCachingData = indProData->getComputedConsequencesCachingData();
-            // W6-DEFER[api]: indProData->getComputedConsequencesCachingData()
-            comp_cons_caching_data = INVALID;
+            comp_cons_caching_data =
+                cache_context.individual_computed_consequences_types_cache_entry(individual);
         }
         // CComputedConsequencesTypesCacheEntry* cacheEntry = nullptr;
         let mut cache_entry: ComputedConsequencesTypesCacheEntryId = Id::NONE;
-        if comp_cons_caching_data != INVALID {
+        if comp_cons_caching_data.is_some() {
             // cacheEntry = (CComputedConsequencesTypesCacheEntry*)compConsCachingData;
-            // W6-DEFER[api]: downcast of the caching-data mix-in to the types entry
-            cache_entry = Id::NONE;
+            cache_entry = comp_cons_caching_data;
         }
         cache_entry
     }
@@ -453,18 +472,17 @@ impl ComputedConsequencesCacheWriter {
     /// Port of `CComputedConsequencesCacheWriter::writeCacheData`.
     ///
     /// Forwards to the facade's `writeCacheData` (which posts/drains the write).
-    /// KONCLUDE-PORT-NOTE[api]: `self.cache` is an arena `Id`; calling through it
-    /// needs `&mut` access to the `ComputedConsequencesCache` arena (held by the
-    /// owning cache-handler, not by the writer). The forward is deferred until the
-    /// cache arena is threaded in; the single-thread facade drains the write inline.
+    /// KONCLUDE-PORT-NOTE[ownership]: C++ forwards through the raw `mCache`
+    /// back-pointer; the Rust port threads the owning facade explicitly because
+    /// there is no stable raw `this` pointer for the long-lived cache singleton.
     pub fn write_cache_data(
-        &self,
+        &mut self,
+        cache: &mut ComputedConsequencesCache,
         write_data: ComputedConsequencesCacheWriteDataId,
         memory_pools: Cint64,
-    ) -> &Self {
-        // mCache->writeCacheData(writeData,memoryPools);
-        // W6-DEFER[api]: ComputedConsequencesCache arena deref (self.cache: Id)
-        let _ = (write_data, memory_pools);
+        cache_context: &mut CacheContext,
+    ) -> &mut Self {
+        cache.write_cache_data(write_data, memory_pools, cache_context);
         self
     }
 }
@@ -536,11 +554,13 @@ impl ComputedConsequencesCache {
     }
 
     /// Port of `CComputedConsequencesCache::createCacheReader`.
-    pub fn create_cache_reader(&mut self) -> ComputedConsequencesCacheReaderId {
+    pub fn create_cache_reader(
+        &mut self,
+        cache_context: &mut CacheContext,
+    ) -> ComputedConsequencesCacheReaderId {
         // CComputedConsequencesCacheReader* readerLinker = new CComputedConsequencesCacheReader();
-        // W6-DEFER[memory-pool]: reader allocation needs the per-cache reader arena
-        // (not held by this facade struct); id deferred until the arena wires.
-        let reader_linker: ComputedConsequencesCacheReaderId = Id::NONE;
+        let reader_linker =
+            cache_context.alloc_consequences_cache_reader(ComputedConsequencesCacheReader::new());
         // mReaderSyncMutex.lock(); [threading]: facade-granularity lock, inline no-op.
         // mReaderLinker = readerLinker->append(mReaderLinker); -- prepend (head-at-FRONT).
         self.reader_linker.insert(0, reader_linker);
@@ -551,8 +571,8 @@ impl ComputedConsequencesCache {
     /// Port of `CComputedConsequencesCache::createCacheWriter`.
     pub fn create_cache_writer(&self) -> ComputedConsequencesCacheWriter {
         // return new CComputedConsequencesCacheWriter(this);
-        // W6-DEFER[api]: the facade has no handle on its own arena id (`this`); the
-        // writer's `cache` back-reference is left `Id::NONE` until the cache arena wires.
+        // KONCLUDE-PORT-NOTE[ownership]: the C++ writer stores `this`; Rust call
+        // sites pass the owning cache into the forwarding method explicitly.
         ComputedConsequencesCacheWriter::new(Id::NONE)
     }
 
@@ -566,13 +586,14 @@ impl ComputedConsequencesCache {
         &mut self,
         write_data: ComputedConsequencesCacheWriteDataId,
         memory_pools: Cint64,
+        cache_context: &mut CacheContext,
     ) -> &mut Self {
         // postEvent(new CWriteComputedConcequencesCacheEntryEvent(writeData,memoryPools));
         // [threading]: drained inline (== processCustomsEvents handler body).
         // KONCLUDE-PORT-NOTE[ownership]: take the by-value context out to avoid a
         // double `&mut self` borrow while installing through it (restored after).
         let mut context = std::mem::take(&mut self.context);
-        self.install_write_cache_data(write_data, &mut context);
+        self.install_write_cache_data(write_data, &mut context, cache_context);
         self.context = context;
         // W6-DEFER[memory-pool]: mContext.getMemoryPoolAllocationManager()->releaseTemporaryMemoryPools(memoryPools)
         let _ = memory_pools;
@@ -594,23 +615,24 @@ impl ComputedConsequencesCache {
         &mut self,
         write_data: ComputedConsequencesCacheWriteDataId,
         context: &mut ComputedConsequencesCacheContext,
+        cache_context: &mut CacheContext,
     ) -> &mut Self {
         // CComputedConsequencesCacheWriteData* writeDataLinker = writeData;
         let mut write_data_linker = write_data;
         // while (writeDataLinker) { ... writeDataLinker = writeDataLinker->getNext(); }
         while write_data_linker.is_some() {
-            // W6-DEFER[api]: writeDataLinker->getWriteDataType() (CCacheEntryWriteData arena)
-            let write_data_type = ComputedConsequencesCacheWriteDataType::Type;
+            let write_data = cache_context.consequences_cache_write_data(write_data_linker);
+            let write_data_type = write_data.get_write_data_type();
+            let next_write_data = write_data.get_next();
             if write_data_type == ComputedConsequencesCacheWriteDataType::Type {
                 // CComputedConsequencesCacheWriteTypesData* cccwtd = (cast) writeDataLinker;
                 // KONCLUDE-PORT-NOTE[pointer-alias]: C++ reinterprets the base linker as
                 // the derived write-types payload; modelled as a same-index id cast.
                 let cccwtd: ComputedConsequencesCacheWriteTypesDataId =
                     Id::new(write_data_linker.raw);
-                self.add_types_expansion_data(cccwtd, context);
+                self.add_types_expansion_data(cccwtd, context, cache_context);
             }
-            // W6-DEFER[api]: writeDataLinker = (CComputedConsequencesCacheWriteData*)writeDataLinker->getNext()
-            write_data_linker = Id::NONE; // deferred chain advance (terminate the walk)
+            write_data_linker = next_write_data;
         }
         self
     }
@@ -620,16 +642,19 @@ impl ComputedConsequencesCache {
         &mut self,
         cccwtd: ComputedConsequencesCacheWriteTypesDataId,
         context: &mut ComputedConsequencesCacheContext,
+        cache_context: &mut CacheContext,
     ) -> &mut Self {
-        // CIndividual* individual = cccwtd->getIndividual();
-        // CConcept* conceptType = cccwtd->getConcept();
-        // bool conceptNegation = cccwtd->getNegation();
-        // W6-DEFER[api]: cccwtd->getIndividual()/getConcept()/getNegation() (write-data arena)
-        let individual: IndividualId = Id::NONE;
-        let concept_type: ConceptId = Id::NONE;
-        let concept_negation = false;
+        let (individual, concept_type, concept_negation) = {
+            let write_types_data = cache_context.consequences_cache_write_types_data(cccwtd);
+            (
+                write_types_data.get_individual(),
+                write_types_data.get_concept(),
+                write_types_data.get_negation(),
+            )
+        };
         // CComputedConsequencesTypesCacheEntry* cacheEntry = getComputedTypesCacheEntryForNode(individual,context,true);
-        let cache_entry = self.get_computed_types_cache_entry_for_node(individual, context, true);
+        let cache_entry =
+            self.get_computed_types_cache_entry_for_node(individual, context, true, cache_context);
         if cache_entry.is_some() {
             // CSortedNegLinker<CConcept*>* conceptLinker = context->createConceptLinker();
             let mut concept_linker = context.create_concept_linker(true);
@@ -639,8 +664,11 @@ impl ComputedConsequencesCache {
                 cl.negated = concept_negation;
             }
             // cacheEntry->addConceptLinker(conceptLinker);
-            // W6-DEFER[api]: cacheEntry->addConceptLinker(conceptLinker) (types-entry arena)
-            let _ = concept_linker;
+            if let Some(concept_linker) = concept_linker {
+                cache_context
+                    .consequences_types_cache_entry_mut(cache_entry)
+                    .add_concept_linker(concept_linker);
+            }
         }
         self
     }
@@ -656,49 +684,88 @@ impl ComputedConsequencesCache {
         individual: IndividualId,
         context: &mut ComputedConsequencesCacheContext,
         create: bool,
+        cache_context: &mut CacheContext,
     ) -> ComputedConsequencesTypesCacheEntryId {
         // CIndividualProcessData* indProData = (CIndividualProcessData*)individual->getIndividualData();
-        // W6-DEFER[api]: individual->getIndividualData() (Ontology CIndividualProcessData)
-        let ind_pro_data: Cint64 = INVALID;
+        // KONCLUDE-PORT-NOTE[api]: `CIndividualProcessData` is not otherwise
+        // materialized in this Rust slice; `CacheContext` stores exactly its
+        // computed-consequences caching-data slot by individual id.
+        let ind_pro_data = individual;
         // CComputedConsequencesTypesCacheEntry* cacheEntry = nullptr;
         let mut cache_entry: ComputedConsequencesTypesCacheEntryId = Id::NONE;
-        if ind_pro_data != INVALID {
+        if ind_pro_data.is_some() {
             // cacheEntry = (cast) indProData->getComputedConsequencesCachingData();
-            // W6-DEFER[api]: indProData->getComputedConsequencesCachingData()
-            cache_entry = Id::NONE;
+            cache_entry =
+                cache_context.individual_computed_consequences_types_cache_entry(individual);
         }
-        if ind_pro_data != INVALID && cache_entry.is_none() && create {
+        if ind_pro_data.is_some() && cache_entry.is_none() && create {
             // cacheEntry = allocateAndConstructAndParameterize<...>(context->getMemoryAllocationManager(),context);
-            // W6-DEFER[memory-pool]: types-entry allocation needs the per-cache entry arena
+            let mut new_entry = ComputedConsequencesTypesCacheEntry::new(INVALID);
             // cacheEntry->initCacheEntry(individual);
+            new_entry.init_cache_entry(individual);
+            cache_entry = cache_context.alloc_consequences_types_cache_entry(new_entry);
             // indProData->setComputedConsequencesCachingData(cacheEntry);
-            // W6-DEFER[api]: indProData->setComputedConsequencesCachingData(cacheEntry) (cross-subtree binding)
-            cache_entry = Id::NONE;
+            cache_context
+                .set_individual_computed_consequences_types_cache_entry(individual, cache_entry);
         }
         cache_entry
     }
 
-    /// Port of `CComputedConsequencesCache::processCustomsEvents`.
+    /// Typed Rust event drain for
+    /// `CComputedConsequencesCache::processCustomsEvents`.
     ///
-    /// KONCLUDE-PORT-NOTE[threading]: the Qt event-loop drain handler. In the
-    /// single-thread port this is the faithful handler body for the
-    /// `WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY` event (the same install path
-    /// `writeCacheData` collapses to inline). `type_`/`event` are opaque ids.
-    pub fn process_customs_events(&mut self, type_: Cint64, event: Cint64) -> bool {
+    /// Konclude receives a `CWriteComputedConcequencesCacheEntryEvent*`, reads
+    /// `getMemoryPools()` / `getWriteData()`, installs the write-data chain, and
+    /// releases the pools. The F8 port collapses cache events into `CacheEvent`,
+    /// so this method is the typed body of that event branch.
+    pub fn process_customs_cache_event(
+        &mut self,
+        event: &CacheEvent,
+        cache_context: &mut CacheContext,
+    ) -> bool {
+        if event.event_type() == EVENT_WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY {
+            let memory_pools = event.get_memory_pools().unwrap_or(INVALID);
+            let write_data = event
+                .get_computed_consequences_write_data()
+                .unwrap_or(ComputedConsequencesCacheWriteDataId::NONE);
+            let mut context = std::mem::take(&mut self.context);
+            self.install_write_cache_data(write_data, &mut context, cache_context);
+            self.context = context;
+            // W6-DEFER[memory-pool]: memMan->releaseTemporaryMemoryPools(memoryPools)
+            let _ = memory_pools;
+            return true;
+        }
+        false
+    }
+
+    /// Opaque-id compatibility wrapper for
+    /// `CComputedConsequencesCache::processCustomsEvents`.
+    ///
+    /// The faithful typed event branch is live in `process_customs_cache_event`.
+    /// This wrapper remains for legacy call sites that still only have the Qt-style
+    /// event type and an opaque `CCustomEvent*`.
+    pub fn process_customs_events(
+        &mut self,
+        type_: Cint64,
+        event: Cint64,
+        cache_context: &mut CacheContext,
+    ) -> bool {
         // if (CThread::processCustomsEvents(type,event)) return true;
         // [threading]: CThread base handler not ported; inline no-op (treated as false).
         // else if (type == EVENTWRITECOMPUTEDCONSEQUENCESCACHEDATAENTRY) { ... }
-        if type_ == WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY {
+        if type_ == EVENT_WRITE_COMPUTED_CONSEQUENCES_CACHE_DATA_ENTRY {
             // CWriteComputedConcequencesCacheEntryEvent* wscde = (cast) event;
             // CMemoryPool* memoryPools = wscde->getMemoryPools();
-            // W6-DEFER[api]: wscde->getMemoryPools() (F8 cache-event family)
+            // KONCLUDE-PORT-NOTE[api]: opaque legacy wrapper; typed payload extraction
+            // is live in `process_customs_cache_event`.
             let memory_pools: Cint64 = INVALID;
             // CComputedConsequencesCacheWriteData* writeData = wscde->getWriteData();
-            // W6-DEFER[api]: wscde->getWriteData() (F8 cache-event family)
+            // KONCLUDE-PORT-NOTE[api]: opaque legacy wrapper; typed payload extraction
+            // is live in `process_customs_cache_event`.
             let write_data: ComputedConsequencesCacheWriteDataId = Id::NONE;
             // installWriteCacheData(writeData,&mContext);
             let mut context = std::mem::take(&mut self.context);
-            self.install_write_cache_data(write_data, &mut context);
+            self.install_write_cache_data(write_data, &mut context, cache_context);
             self.context = context;
             // mContext.getMemoryPoolAllocationManager()->releaseTemporaryMemoryPools(memoryPools);
             // W6-DEFER[memory-pool]: memMan->releaseTemporaryMemoryPools(memoryPools)
@@ -706,5 +773,216 @@ impl ComputedConsequencesCache {
             return true;
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn computed_consequences_create_cache_reader_prepends_reader_with_context() {
+        let mut ctx = CacheContext::new();
+        let mut cache = ComputedConsequencesCache::new();
+
+        let first = cache.create_cache_reader(&mut ctx);
+        let second = cache.create_cache_reader(&mut ctx);
+
+        assert!(first.is_some());
+        assert!(second.is_some());
+        assert_ne!(first, second);
+        assert_eq!(cache.reader_linker, vec![second, first]);
+    }
+
+    #[test]
+    fn computed_consequences_writer_forwards_write_data_to_cache() {
+        let mut cache = ComputedConsequencesCache::new();
+        let mut writer = cache.create_cache_writer();
+
+        let mut ctx = CacheContext::new();
+        writer.write_cache_data(
+            &mut cache,
+            ComputedConsequencesCacheWriteDataId::NONE,
+            0,
+            &mut ctx,
+        );
+
+        assert_eq!(writer.cache, ComputedConsequencesCacheId::NONE);
+    }
+
+    #[test]
+    fn computed_consequences_install_write_data_walks_next_chain_with_context() {
+        let mut ctx = CacheContext::new();
+        let mut first_base = ComputedConsequencesCacheWriteData::new();
+        let second_base = ComputedConsequencesCacheWriteData::new();
+        let second_types = ctx.alloc_consequences_cache_write_types_data(
+            ComputedConsequencesCacheWriteTypesData::new(),
+        );
+        let second = ctx.alloc_consequences_cache_write_data(second_base);
+        let first_types = ctx.alloc_consequences_cache_write_types_data(
+            ComputedConsequencesCacheWriteTypesData::new(),
+        );
+        first_base.set_next(second);
+        let first = ctx.alloc_consequences_cache_write_data(first_base);
+
+        assert_eq!(
+            Id::<ComputedConsequencesCacheWriteTypesData>::new(first.raw),
+            first_types
+        );
+        assert_eq!(
+            Id::<ComputedConsequencesCacheWriteTypesData>::new(second.raw),
+            second_types
+        );
+
+        let mut cache = ComputedConsequencesCache::new();
+        let mut local_context = ComputedConsequencesCacheContext::new();
+        cache.install_write_cache_data(first, &mut local_context, &mut ctx);
+
+        assert_eq!(ctx.consequences_cache_write_data(first).get_next(), second);
+        assert_eq!(
+            ctx.consequences_cache_write_data(second).get_next(),
+            ComputedConsequencesCacheWriteDataId::NONE
+        );
+    }
+
+    #[test]
+    fn computed_consequences_reader_get_types_cache_entry_returns_bound_entry() {
+        let mut ctx = CacheContext::new();
+        let individual = IndividualId::new(3);
+        let mut entry = ComputedConsequencesTypesCacheEntry::new(INVALID);
+        entry.init_cache_entry(individual);
+        let entry_id = ctx.alloc_consequences_types_cache_entry(entry);
+        ctx.set_individual_computed_consequences_types_cache_entry(individual, entry_id);
+
+        let reader = ComputedConsequencesCacheReader::new();
+
+        assert_eq!(reader.get_types_cache_entry(individual, &ctx), entry_id);
+        assert_eq!(
+            reader.get_types_cache_entry(IndividualId::new(4), &ctx),
+            ComputedConsequencesTypesCacheEntryId::NONE
+        );
+        assert_eq!(
+            reader.get_types_cache_entry(IndividualId::NONE, &ctx),
+            ComputedConsequencesTypesCacheEntryId::NONE
+        );
+    }
+
+    #[test]
+    fn computed_consequences_get_computed_types_cache_entry_for_node_creates_once() {
+        let mut ctx = CacheContext::new();
+        let mut cache = ComputedConsequencesCache::new();
+        let mut local_context = ComputedConsequencesCacheContext::new();
+        let individual = IndividualId::new(11);
+
+        assert_eq!(
+            cache.get_computed_types_cache_entry_for_node(
+                individual,
+                &mut local_context,
+                false,
+                &mut ctx
+            ),
+            ComputedConsequencesTypesCacheEntryId::NONE
+        );
+
+        let created = cache.get_computed_types_cache_entry_for_node(
+            individual,
+            &mut local_context,
+            true,
+            &mut ctx,
+        );
+        assert!(created.is_some());
+        assert_eq!(
+            ctx.individual_computed_consequences_types_cache_entry(individual),
+            created
+        );
+        assert_eq!(
+            ctx.consequences_types_cache_entry(created).individual,
+            individual
+        );
+        assert!(ctx
+            .consequences_types_cache_entry(created)
+            .concept_linker
+            .is_empty());
+
+        let reused = cache.get_computed_types_cache_entry_for_node(
+            individual,
+            &mut local_context,
+            true,
+            &mut ctx,
+        );
+        assert_eq!(reused, created);
+        assert_eq!(ctx.consequences_types_cache_entries.len(), 1);
+    }
+
+    #[test]
+    fn computed_consequences_add_types_expansion_data_creates_entry_and_prepends_concept() {
+        let mut ctx = CacheContext::new();
+        let individual = IndividualId::new(21);
+        let first_concept = ConceptId::new(31);
+        let second_concept = ConceptId::new(32);
+        let first_write = ctx.alloc_consequences_cache_write_types_data({
+            let mut data = ComputedConsequencesCacheWriteTypesData::new();
+            data.init_types_cache_write_data(individual, first_concept, false);
+            data
+        });
+        let second_write = ctx.alloc_consequences_cache_write_types_data({
+            let mut data = ComputedConsequencesCacheWriteTypesData::new();
+            data.init_types_cache_write_data(individual, second_concept, true);
+            data
+        });
+        let mut cache = ComputedConsequencesCache::new();
+        let mut local_context = ComputedConsequencesCacheContext::new();
+
+        cache.add_types_expansion_data(first_write, &mut local_context, &mut ctx);
+        let entry = ctx.individual_computed_consequences_types_cache_entry(individual);
+        assert!(entry.is_some());
+        assert_eq!(
+            ctx.consequences_types_cache_entry(entry)
+                .get_concept_linker(),
+            &[NegLink {
+                target: first_concept,
+                negated: false,
+            }]
+        );
+
+        cache.add_types_expansion_data(second_write, &mut local_context, &mut ctx);
+        assert_eq!(
+            ctx.consequences_types_cache_entry(entry)
+                .get_concept_linker(),
+            &[
+                NegLink {
+                    target: second_concept,
+                    negated: true,
+                },
+                NegLink {
+                    target: first_concept,
+                    negated: false,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn computed_consequences_processes_typed_write_event_payload() {
+        let mut ctx = CacheContext::new();
+        let types = ctx.alloc_consequences_cache_write_types_data(
+            ComputedConsequencesCacheWriteTypesData::new(),
+        );
+        let write_data =
+            ctx.alloc_consequences_cache_write_data(ComputedConsequencesCacheWriteData::new());
+
+        assert_eq!(
+            Id::<ComputedConsequencesCacheWriteTypesData>::new(write_data.raw),
+            types
+        );
+
+        let event = CacheEvent::write_computed_concequences_cache_entry(write_data, 17);
+        let mut cache = ComputedConsequencesCache::new();
+
+        assert!(cache.process_customs_cache_event(&event, &mut ctx));
+        assert!(!cache.process_customs_cache_event(
+            &CacheEvent::initialize_individual_associations_cache(1, 2),
+            &mut ctx
+        ));
     }
 }

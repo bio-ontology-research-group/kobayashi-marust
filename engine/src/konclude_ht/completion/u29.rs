@@ -46,28 +46,35 @@
 //!     `create*Dependency` wrapper bottoms out in one `factory->create*Dependency`
 //!     call; the `mConfBuildDependencies` guard + null return are ported in full,
 //!     the factory call is `W6-DEFER[api]`;
-//!   * the clash-backtracking record types `CTrackedClashedDescriptor` and the
-//!     stack-local `CTrackedClashedDependencyLine` — NOT yet ported (Unit 30 clash
-//!     processing + a tracking-line record with no arena yet). Following the
-//!     struct-wave convention for unported pointer types they appear as opaque
-//!     `Cint64` handles; the methods whose whole body is driven by them are kept
-//!     `// PORT-PENDING` with a faithful structural transcription of the C++ so a
-//!     later wave fills them without re-reading the source. Logic is documented,
-//!     never silently dropped.
+//!   * the clash-backtracking tracked records (`CTrackedClashedDescriptor`,
+//!     `CTrackedClashedDescriptorHasher`, `CTrackedClashedDependencyLine`) now
+//!     exist in Unit 30, and the tracking-line step dispatcher is live. The deeper
+//!     non-deterministic branch task handling and deterministic descriptor
+//!     re-derivation helpers remain `// PORT-PENDING` with faithful C++
+//!     transcriptions. Logic is documented, never silently dropped.
 //!
-//! Fully ported here (substrate-resolvable): `hasNondeterministicDependency`
-//! (the deterministic-branch-tag comparison), the two non-deterministic
-//! backtrack forwarders, `backtrackFromTrackingLine` (the step loop), and the
+//! Fully ported here (substrate-resolvable): `createATMOSTDependency`,
+//! `createREUSEINDIVIDUALDependency`, `createREUSECOMPLETIONGRAPHDependency`,
+//! `createREUSECONCEPTSDependency`, `createQUALIFYDependency`,
+//! `hasNondeterministicDependency` (the deterministic-branch-tag comparison),
+//! `backtrackFromTrackingLine` and `backtrackFromTrackingLineStep` over the live
+//! Unit 30 tracking-line buckets, the two non-deterministic backtrack forwarders,
+//! deterministic current/previous wrapper call points, and the
 //! `mConfBuildDependencies`/`mConfBuildAllBranchingNodes` decision structure of
-//! the `create*` wrappers + `createNonDeterministicDependencyTrackPointBranch`.
+//! the other `create*` wrappers + `createNonDeterministicDependencyTrackPointBranch`.
 
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
-use super::super::process::{ClashDescId, ConDescId, DepLinkId, DependencyId, NodeId, TrackPointId};
+use super::super::process::dependency::{DepKind, DependencyNode};
+use super::super::process::varbind::VarBindingPathId;
+use super::super::process::{
+    ClashDescId, ConDescId, DepLinkId, DependencyId, NodeId, TrackPointId,
+};
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
+use super::u30::TrackedClashedDependencyLine;
 
 /// `Id<SatisfiableCalculationTask>` — the Task-layer handle (W6 stub) the branch
 /// task-list builder returns.
@@ -83,8 +90,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     //       depNode = calcAlgContext->getUsedDependencyFactory()->createXDependency(...);
     //   return depNode;
     // The `mConfBuildDependencies` guard + null (`Id::NONE`) return are ported in
-    // full; the factory dispatch is W6-DEFER[api] (the `CDependencyFactory` is a
-    // zero-size stub with no methods yet). All return the tagged `DependencyId`.
+    // full; wrappers listed as fully ported above use the existing typed arena
+    // allocators directly, while the remaining factory dispatches stay W6-DEFER[api].
+    // All return the tagged `DependencyId`.
     // =======================================================================
 
     /// Port of `createATMOSTDependency`. cpp 10123–10129.
@@ -95,10 +103,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: dep_node = calc_alg_context.used_dep_factory()
-            //     .create_atmost_dependency(process_indi, con_des, prev_dep_track_point, ctx);
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(DepKind::AtMost);
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(DepKind::AtMost, *process_indi, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!("AtMost dependency allocated with non-det shape"),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -111,9 +140,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSEINDIVIDUALDependency(process_indi, con_des, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(DepKind::ReuseIndividual);
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(DepKind::ReuseIndividual, process_indi, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!("ReuseIndividual dependency allocated with non-det shape"),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -126,9 +177,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSECOMPLETIONGRAPHDependency(process_indi, con_des, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(DepKind::ReuseCompletionGraph);
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(
+                    DepKind::ReuseCompletionGraph,
+                    *process_indi,
+                    con_des,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => {
+                        unreachable!("ReuseCompletionGraph dependency allocated with non-det shape")
+                    }
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -141,9 +220,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSECONCEPTSDependency(process_indi, con_des, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(DepKind::ReuseConcepts);
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(DepKind::ReuseConcepts, process_indi, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!("ReuseConcepts dependency allocated with non-det shape"),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -156,9 +257,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createQUALIFYDependency(process_indi, con_des, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(DepKind::Qualify);
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(DepKind::Qualify, *process_indi, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!("Qualify dependency allocated with non-det shape"),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -177,10 +300,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createORONLYOPTIONDependency(or_continue_dep_track_point,
-            //     process_indi, con_des, prev_dep_track_point, prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::OrOnlyOption);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::OrOnlyOption, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *or_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -195,10 +333,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createIMPLICATIONDependency(impl_continue_dep_track_point,
-            //     process_indi, con_des, prev_dep_track_point, prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::Implication);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::Implication, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *impl_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -212,10 +365,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_other_dependencies: DepLinkId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createEXPANDEDDependency(exp_continue_dep_track_point,
-            //     process_indi, prev_dep_track_point, prev_other_dependencies, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::Expanded);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::Expanded, ConDescId::NONE);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                if prev_other_dependencies.is_some() {
+                    dep.base_mut().additional_after = prev_other_dependencies;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *exp_continue_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -228,9 +396,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createCONNECTIONDependency(process_indi, con_des, prev_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_deterministic_dependency_node(DepKind::Connection);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let dep = proc_ctx.dep_node_mut(dep_node);
+                dep.init_deterministic_dependency_node(DepKind::Connection, con_des);
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            let _continue_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
+            let _ = process_indi;
         }
         dep_node
     }
@@ -241,9 +422,49 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSEBACKENDEXPANSIONMODESDependency(prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_reuse_backend_modes_dependency_node();
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(
+                    DepKind::ReuseBackendExpansionModes,
+                    NodeId::NONE,
+                    ConDescId::NONE,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::ReuseBackendModes {
+                        nd,
+                        fixed_reuse_dep_track_point,
+                        priorized_reuse_dep_track_point,
+                        involved,
+                        affected,
+                        ..
+                    } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        *fixed_reuse_dep_track_point = Id::NONE;
+                        *priorized_reuse_dep_track_point = Id::NONE;
+                        involved.clear();
+                        affected.clear();
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!("ReuseBackendModes dependency allocated with wrong shape"),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
+            // KONCLUDE-PORT-NOTE[ownership]: fixed/prioritized/affected side
+            // fields are explicit Rust fields on `ReuseBackendModes`; the
+            // affected atomic linker is modelled as compare-and-set on a Vec.
         }
         dep_node
     }
@@ -255,9 +476,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSEBACKENDFIXEDINDIVIDUALEXPANSIONDependency(process_indi, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(
+                DepKind::ReuseBackendFixedIndividualExpansion,
+            );
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(
+                    DepKind::ReuseBackendFixedIndividualExpansion,
+                    *process_indi,
+                    ConDescId::NONE,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!(
+                        "ReuseBackendFixedIndividualExpansion dependency allocated with non-det shape"
+                    ),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -269,9 +520,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         prev_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSEBACKENDPRIORITIZEDINDIVIDUALEXPANSIONDependency(process_indi, prev_dep_track_point, ctx).
+            let branch_node = calc_alg_context.base.used_branch_tree_node();
+            let pc = calc_alg_context.process_context_mut();
+            dep_node = pc.alloc_non_deterministic_dependency_node(
+                DepKind::ReuseBackendPrioritizedIndividualExpansion,
+            );
+
+            let clash_track_point = {
+                let dep = pc.dep_node_mut(dep_node);
+                dep.init_dependency_node_indi(
+                    DepKind::ReuseBackendPrioritizedIndividualExpansion,
+                    *process_indi,
+                    ConDescId::NONE,
+                );
+                dep.base_mut().dep_track_point = prev_dep_track_point;
+                match dep {
+                    DependencyNode::NonDeterministic { nd, .. } => {
+                        nd.branch_track_points = nd.clash_track_point;
+                        nd.dependency_clashes = Id::NONE;
+                        nd.branch_node = branch_node;
+                        nd.branch_tag = 0;
+                        nd.closed_track_point = Id::NONE;
+                        nd.closing_track_point = Id::NONE;
+                        nd.clash_track_point
+                    }
+                    _ => unreachable!(
+                        "ReuseBackendPrioritizedIndividualExpansion dependency allocated with non-det shape"
+                    ),
+                }
+            };
+            pc.track_point_mut(clash_track_point).clashed_irrelevant = true;
+            pc.update_dependency_branching_tags(dep_node);
         }
         dep_node
     }
@@ -286,10 +567,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         nominal_dep_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> DependencyId {
-        let dep_node = Id::NONE;
+        let mut dep_node = Id::NONE;
         if self.conf_build_dependencies {
-            // W6-DEFER[api]: factory->createREUSEBACKENDVALUEDependency(value_dep_track_point,
-            //     process_indi, con_des, prev_dep_track_point, nominal_dep_track_point, ctx).
+            dep_node = calc_alg_context
+                .process_context_mut()
+                .alloc_det_link_dependency_node(DepKind::ReuseBackendValue);
+            {
+                let proc_ctx = calc_alg_context.process_context_mut();
+                let prev = {
+                    let dep = proc_ctx.dep_node_mut(dep_node);
+                    dep.init_dependency_node_indi(
+                        DepKind::ReuseBackendValue,
+                        *process_indi,
+                        con_des,
+                    );
+                    dep.base_mut().dep_track_point = prev_dep_track_point;
+                    if let DependencyNode::DetLink { prev, .. } = dep {
+                        *prev
+                    } else {
+                        unreachable!("REUSEBACKENDVALUE dependency allocated with DetLink shape")
+                    }
+                };
+                if nominal_dep_track_point.is_some() {
+                    proc_ctx.dep_link_mut(prev).dep_track_point = nominal_dep_track_point;
+                }
+                proc_ctx.update_dependency_branching_tag(dep_node);
+            }
+            *value_dep_track_point = calc_alg_context
+                .process_context_mut()
+                .materialize_continue_dependency_track_point(dep_node);
         }
         dep_node
     }
@@ -307,32 +613,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// is reused. Returns the bound non-deterministic track point.
     ///
     /// The `mConfBuildDependencies && dependencyNode` guard and the
-    /// `singleBranch || mConfBuildAllBranchingNodes` split are ported in full; the
-    /// branch-tree allocation + binding is W3-DEFER[api] (`getNewBranchTreeNode`
-    /// and `CDependencyNode::getDependencyTrackPointBranch` are not yet ported;
-    /// `branchingIncrement`/`initBranch` interleave mutable branch-node/track-point
-    /// borrows that the reconcile pass resolves through `process_context_mut`).
+    /// `singleBranch || mConfBuildAllBranchingNodes` split are ported in full.
     pub fn create_non_deterministic_dependency_track_point_branch(
         &mut self,
         dependency_node: DependencyId,
         single_branch: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> TrackPointId {
-        let non_dep_track_point = Id::NONE;
+        let mut non_dep_track_point = Id::NONE;
         if self.conf_build_dependencies && dependency_node.is_some() {
-            if single_branch || self.conf_build_all_branching_nodes {
-                // W3-DEFER[api]:
-                //   branchNode = calc_alg_context.get_new_branch_tree_node();   // ctx alloc — not ported
-                //   non_dep_track_point = dep_node(dependency_node).get_dependency_track_point_branch();
-                //   branch_node_mut(branchNode).branching_increment(non_dep_track_point);
-                //   track_point_mut(non_dep_track_point).init_branch(branchNode, branches);
+            let branch_node = if single_branch || self.conf_build_all_branching_nodes {
+                calc_alg_context.get_new_branch_tree_node()
             } else {
-                // W3-DEFER[api]:
-                //   branchNode = calc_alg_context.base.used_branch_tree_node();  // ported getter
-                //   non_dep_track_point = dep_node(dependency_node).get_dependency_track_point_branch();
-                //   branch_node_mut(branchNode).branching_increment(non_dep_track_point);
-                //   track_point_mut(non_dep_track_point).init_branch(branchNode, branches);
-            }
+                calc_alg_context.base.used_branch_tree_node()
+            };
+
+            let pc = calc_alg_context.process_context_mut();
+            non_dep_track_point = pc.dependency_track_point_branch(dependency_node);
+            pc.branch_node_mut(branch_node)
+                .branching_increment(non_dep_track_point);
+            let branch_level = pc.branch_node(branch_node).get_branching_level();
+            let track_point = pc.track_point_mut(non_dep_track_point);
+            track_point.branch_node = branch_node;
+            track_point.add_maximum_branching_tag_candidate(branch_level);
         }
         non_dep_track_point
     }
@@ -349,36 +652,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// list.
     ///
     /// KONCLUDE-PORT-NOTE[memory-pool]: each task is bump-allocated from the
-    /// temporary task-memory pool; KONCLUDE-PORT-NOTE[api]: `CSatisfiableCalculationTask`
-    /// is the Task-layer (W6) — held as a zero-size `Id` stub with no allocator
-    /// yet — so the whole construction loop is PORT-PENDING.
+    /// temporary task-memory pool in C++; the port allocates it in the context's
+    /// typed satisfiable-task arena.
     pub fn create_dependend_branching_task_list(
         &mut self,
         new_task_count: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatCalcTaskId {
-        // PORT-PENDING: faithful transcription of cpp 17182–17198:
-        //
-        //   taskList = nullptr;
-        //   taskMemMan = calc_alg_context.used_temporary_memory_allocation_manager();
-        //   for i in 0..new_task_count:
-        //     STATINC(TASKCREATIONCOUNT);
-        //     satCalcTask = alloc CSatisfiableCalculationTask (with memory pool);
-        //     satCalcTask.init_branch_depended_satisfiable_calculation_task(
-        //         calc_alg_context.used_satisfiable_calculation_task(),
-        //         calc_alg_context.task_processor_context());
-        //     if calc_alg_context.used_satisfiable_calculation_task().task_depth() < 90:
-        //         d = calc_alg_context.used_satisfiable_calculation_task().task_depth() + 1;
-        //         satCalcTask.set_task_id(self.debug_task_id_vector[d]); self.debug_task_id_vector[d] += 1;
-        //     taskList = satCalcTask.append(taskList);   // front-splice
-        //   return taskList;
-        //
-        // Held PORT-PENDING: `CSatisfiableCalculationTask` + its task-memory-pool
-        // allocator and `initBranchDependedSatisfiableCalculationTask` are the
-        // unported Task layer (W6-DEFER[api]). The `mDebugTaskIDVector` bump
-        // (`self.debug_task_id_vector`) becomes live on the reconcile pass.
-        let _ = new_task_count;
-        Id::NONE
+        let mut task_list = Id::NONE;
+        let used_sat_calc_task = calc_alg_context.base.used_sat_calc_task;
+        for _ in 0..new_task_count {
+            // W3-DEFER[macro]: STATINC(TASKCREATIONCOUNT, calcAlgContext).
+            let sat_calc_task = calc_alg_context
+                .base
+                .alloc_branch_depended_satisfiable_calculation_task(used_sat_calc_task);
+            let parent_depth = calc_alg_context
+                .base
+                .sat_calc_task(used_sat_calc_task)
+                .base
+                .get_task_depth();
+            if parent_depth < 90 {
+                let debug_slot = (parent_depth + 1) as usize;
+                let task_id = self.debug_task_id_vector[debug_slot];
+                self.debug_task_id_vector[debug_slot] += 1;
+                calc_alg_context
+                    .base
+                    .sat_calc_task_mut(sat_calc_task)
+                    .base
+                    .set_task_id(task_id);
+            }
+            calc_alg_context
+                .base
+                .sat_calc_task_mut(sat_calc_task)
+                .set_next(task_list);
+            task_list = sat_calc_task;
+        }
+        task_list
     }
 
     // =======================================================================
@@ -413,11 +722,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // Clash backtracking (cpp 6774–7896).
     //
     // The driver + tracking-line stepping over the clash-dependency graph. The
-    // record types `CTrackedClashedDescriptor` and the stack-local
-    // `CTrackedClashedDependencyLine` are NOT yet ported (Unit 30 clash processing
-    // + a tracking-line record with no arena); per the struct-wave convention they
-    // appear as opaque `Cint64` handles. `CClashedDependencyDescriptor*` IS ported
-    // (`ClashDescId`). `cint64* minIndiLevel` → `Option<&mut Cint64>`.
+    // record types `CTrackedClashedDescriptor`, `CTrackedClashedDescriptorHasher`,
+    // and the stack-local `CTrackedClashedDependencyLine` now exist in Unit 30.
+    // The remaining methods below still await the branch-filtered/backtracking
+    // integration over those containers. `CClashedDependencyDescriptor*` IS
+    // ported (`ClashDescId`). `cint64* minIndiLevel` → `Option<&mut Cint64>`.
     // =======================================================================
 
     /// Port of `clashedBacktracking`. cpp 6774–6861.
@@ -432,38 +741,53 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         clashes: ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // The one substrate-resolvable head statement is ported; the remainder is
-        // driven by the unported tracking-line / tracked-clashed-descriptor records:
-        //   calcAlgContext->getProcessingDataBox()->setClashedDescriptorLinker(clashes);
         calc_alg_context
             .processing_data_box_mut()
             .set_clashed_descriptor_linker(clashes);
 
-        // PORT-PENDING: faithful transcription of cpp 6791–6860:
-        //
-        //   mTimerBacktracing.start();
-        //   trackedClashDescriptors = createTrackedClashesDescriptors(clashes, ctx);   // Unit 30
-        //   for trackedClashDesIt in trackedClashDescriptors:
-        //     if trackedClashDesIt.getAppropriatedIndividualID() <= ctx.getMaxCompletionGraphCachedIndividualNodeID():
-        //       trackIndividualExtendedDependence(trackedClashDesIt.getAppropriatedIndividualID(), ctx);  // Unit 28
-        //   clashedSet = CPROCESSINGSET<CTrackedClashedDescriptorHasher>(...);
-        //   trackingLine = CTrackedClashedDependencyLine(&clashedSet);   // stack-local, unported
-        //   expContData = ctx.getProcessingDataBox().getBackendNeighbourExpansionControllingData(false);
-        //   if expContData && expContData.isFixedReuseExpansionMode():
-        //     involvedIndividualSet = alloc CPROCESSINGSET<cint64>;
-        //     trackingLine.setInvolvedIndividualTrackingSet(involvedIndividualSet);
-        //   if initializeTrackingLine(&trackingLine, trackedClashDescriptors, ctx):    // Unit 28
-        //     if trackingLine.getBranchingLevel() == 0: cancellationRootTask(ctx);     // Unit 30
-        //     if trackingLine.hasOnlyCurrentIndividualNodeLevelClashesDescriptors():
-        //       writeClashDescriptorsToCache(&trackingLine, ctx);                      // Unit 30
-        //     backtrackFromTrackingLine(&trackingLine, ctx);                           // this unit
-        //   STATINCM(TIMEBACKTRACING, mTimerBacktracing.elapsed());
-        //
-        // Held PORT-PENDING: the tracking-line record, `createTrackedClashesDescriptors`
-        // / `initializeTrackingLine` / `writeClashDescriptorsToCache` /
-        // `cancellationRootTask` siblings (Units 28/30), the backend-neighbour
-        // expansion controlling data, and the Qt backtracking timer.
-        let _ = clashes;
+        // W3-DEFER[instrumentation]: mTimerBacktracing + STATINC/STATINCM and
+        // debug-string generation stay at the Konclude call points.
+        let tracked_clash_descriptors =
+            self.create_tracked_clashes_descriptors(clashes, calc_alg_context, INVALID, false);
+
+        let mut tracked_clash_des_it = tracked_clash_descriptors;
+        while tracked_clash_des_it.is_some() {
+            let indi_id = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clash_des_it)
+                .get_appropriated_individual_id();
+            if indi_id
+                <= calc_alg_context
+                    .base
+                    .max_completion_graph_cached_individual_node_id()
+            {
+                self.track_individual_extended_dependence(indi_id, calc_alg_context);
+            }
+            tracked_clash_des_it = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clash_des_it)
+                .get_next_descriptor();
+        }
+
+        let mut tracking_line = TrackedClashedDependencyLine::new();
+        // W6-DEFER[backend]: if fixed backend-reuse expansion mode is active,
+        // Konclude allocates and installs an involved-individual tracking set here.
+        if self.initialize_tracking_line(
+            &mut tracking_line,
+            tracked_clash_descriptors,
+            calc_alg_context,
+        ) {
+            if tracking_line.get_branching_level() == 0 {
+                self.cancellation_root_task(calc_alg_context);
+            }
+            if tracking_line.has_only_current_individual_node_level_clashes_descriptors() {
+                self.write_clash_descriptors_to_cache_from_line(
+                    &mut tracking_line,
+                    calc_alg_context,
+                );
+            }
+            self.backtrack_from_tracking_line(&mut tracking_line, calc_alg_context);
+        }
     }
 
     /// Port of `backtrackFromTrackingLine`. cpp 6963–6974.
@@ -472,7 +796,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// ported in full; the per-step debug tracking-line-string write is deferred.
     pub fn backtrack_from_tracking_line(
         &mut self,
-        tracking_line: Cint64,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let mut _backtrack_step: Cint64 = 0;
@@ -494,51 +818,79 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// independent clashes remain). Returns whether tracking should continue.
     pub fn backtrack_from_tracking_line_step(
         &mut self,
-        tracking_line: Cint64,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 6976–7073:
-        //
-        //   trackingSuccess = true; prevLevelBacktracked = false;
-        //   // step 1: deterministic dependencies in previous individual-node levels
-        //   while trackingLine.hasPerviousLevelTrackedClashedDescriptors() && trackingSuccess:
-        //     d = trackingLine.takeNextPerviousLevelTrackedClashedDescriptor();
-        //     trackingSuccess &= backtrackDeterministicClashedDescriptorFromPreviousIndividualNodeLevels(d, trackingLine, ctx);
-        //     prevLevelBacktracked = true;
-        //   if prevLevelBacktracked && trackingLine.hasOnlyCurrentIndividualNodeLevelClashesDescriptors():
-        //     writeClashDescriptorsToCache(trackingLine, ctx);                     // Unit 30
-        //   // step 2: non-deterministic previous-level branching clashes
-        //   if trackingLine.hasPerviousLevelTrackedNonDeterministicBranchingClashedDescriptors():
-        //     d = trackingLine.takeNextPerviousLevelTrackedNonDeterministicBranchingClashedDescriptor();
-        //     trackingSuccess &= backtrackNonDeterministicBranchingClashedDescriptorFromPreviousIndividualNodeLevel(d, trackingLine, ctx);
-        //   else if trackingLine.hasLevelTrackedBranchingClashedDescriptors():     // step 3
-        //     d = trackingLine.takeNextLevelTrackedBranchingClashedDescriptor();
-        //     if d.isPointingToNonDeterministicDependencyNode():
-        //       trackingSuccess &= backtrackNonDeterministicBranchingClashedDescriptorFromCurrentIndividualNodeLevel(d, trackingLine, ctx);
-        //     else:
-        //       trackingSuccess &= backtrackDeterministicBranchingClashedDescriptorFromCurrentIndividualNodeLevel(d, trackingLine, ctx);
-        //   else:
-        //     if trackingLine.hasOnlyIndependentTrackedClashedDescriptorsRemaining():
-        //       writeClashDescriptorsToCache(trackingLine, ctx);                   // Unit 30
-        //       trackingSuccess = false;
-        //     else:
-        //       trackingSuccess = false;   // should never happen
-        //   return trackingSuccess;
-        //
-        // Held PORT-PENDING: the tracking-line record's queue accessors and
-        // `writeClashDescriptorsToCache` (Unit 30). The four `backtrack*` callees
-        // are ported in this unit and become live once the tracking-line record
-        // lands.
-        let _ = tracking_line;
-        false
+        let mut tracking_success = true;
+        let mut prev_level_backtracked = false;
+
+        while tracking_line.has_pervious_level_tracked_clashed_descriptors() && tracking_success {
+            let tracked_clashed_des =
+                tracking_line.take_next_pervious_level_tracked_clashed_descriptor(calc_alg_context);
+            tracking_success &= self
+                .backtrack_deterministic_clashed_descriptor_from_previous_individual_node_levels(
+                    tracked_clashed_des,
+                    tracking_line,
+                    calc_alg_context,
+                );
+            prev_level_backtracked = true;
+        }
+        if prev_level_backtracked
+            && tracking_line.has_only_current_individual_node_level_clashes_descriptors()
+        {
+            self.write_clash_descriptors_to_cache_from_line(tracking_line, calc_alg_context);
+        }
+
+        if tracking_line
+            .has_pervious_level_tracked_non_deterministic_branching_clashed_descriptors()
+        {
+            let tracked_clashed_des = tracking_line
+                .take_next_pervious_level_tracked_non_deterministic_branching_clashed_descriptor(
+                    calc_alg_context,
+                );
+            tracking_success &= self
+                .backtrack_non_deterministic_branching_clashed_descriptor_from_previous_individual_node_level(
+                    tracked_clashed_des,
+                    tracking_line,
+                    calc_alg_context,
+                );
+        } else if tracking_line.has_level_tracked_branching_clashed_descriptors() {
+            let tracked_clashed_des = tracking_line
+                .take_next_level_tracked_branching_clashed_descriptor(calc_alg_context);
+            if calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_des)
+                .is_pointing_to_non_deterministic_dependency_node()
+            {
+                tracking_success &= self
+                    .backtrack_non_deterministic_branching_clashed_descriptor_from_current_individual_node_level(
+                        tracked_clashed_des,
+                        tracking_line,
+                        calc_alg_context,
+                    );
+            } else {
+                tracking_success &= self
+                    .backtrack_deterministic_branching_clashed_descriptor_from_current_individual_node_level(
+                        tracked_clashed_des,
+                        tracking_line,
+                        calc_alg_context,
+                    );
+            }
+        } else {
+            if tracking_line.has_only_independent_tracked_clashed_descriptors_remaining() {
+                self.write_clash_descriptors_to_cache_from_line(tracking_line, calc_alg_context);
+            }
+            tracking_success = false;
+        }
+        tracking_success
     }
 
     /// Port of `backtrackNonDeterministicBranchingClashedDescriptorFromCurrentIndividualNodeLevel`.
     /// cpp 7075–7077. Pure delegation.
     pub fn backtrack_non_deterministic_branching_clashed_descriptor_from_current_individual_node_level(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         self.backtrack_non_deterministic_branching_clashed_descriptor(
@@ -552,8 +904,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// cpp 7080–7082. Pure delegation.
     pub fn backtrack_non_deterministic_branching_clashed_descriptor_from_previous_individual_node_level(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         self.backtrack_non_deterministic_branching_clashed_descriptor(
@@ -576,74 +928,168 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// level 0). Returns whether backtracking continues.
     pub fn backtrack_non_deterministic_branching_clashed_descriptor(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 7085–7349:
-        //
-        //   depTrackPoint = trackedClashedDes.getDependencyTrackPoint();
-        //   nonDetDepTrackPoint = (CNonDeterministicDependencyTrackPoint*)depTrackPoint;
-        //   nonDetDependencyNode = (CNonDeterministicDependencyNode*)nonDetDepTrackPoint.getDependencyNode();
-        //   nonDetAccTask  = nonDetDependencyNode.getBranchNode().getSatisfiableCalculationTask();
-        //   branchAccTask  = nonDetDepTrackPoint.getBranchNode().getSatisfiableCalculationTask();
-        //   cancellationTask(branchAccTask, ctx);                                 // Unit 30
-        //   if nonDetDepTrackPoint.isClashedOrIrelevantBranch(): return false;     // clash set by other thread
-        //   procTag = nonDetDependencyNode.getProcessingTag();
-        //   // collect deterministic clashes before procTag across all tracked lists:
-        //   trackedClashedDescriptorBeforeProcTagList = nullptr;
-        //   while trackingLine.hasMoreTrackedClashedList():
-        //     l = trackingLine.takeNextTrackedClashedList();
-        //     before = getBacktrackedDeterministicClashedDescriptorsBeforeProcessingTag(l, procTag, trackingLine, ctx);  // this unit
-        //     if before: trackedClashedDescriptorBeforeProcTagList = before.append(trackedClashedDescriptorBeforeProcTagList);
-        //   writeClashDescriptorsToCache(trackedClashedDescriptorBeforeProcTagList, trackedClashedDes, trackingLine, ctx);  // Unit 30
-        //   // fixed-reuse expansion-mode involved-individual reporting (cpp 7144–7190):
-        //   expContData = ctx.getUsedProcessingDataBox().getBackendNeighbourExpansionControllingData(false);
-        //   if expContData && expContData.isFixedReuseExpansionMode():
-        //     modesDepNode = ...getReuseModesDependencyNode();
-        //     if nonDetDependencyNode.getDependencyType() == DNTREUSEBACKENDFIXEDINDIVIDUALEXPANSIONDEPENDENCY:
-        //       trackingLine.addInvolvedIndividual(reuseFixedIndiExpDepNode.getAppropriateIndividualNode());
-        //     build existingInvolvedIndiSet from modesDepNode.getAffectedIndividualIdLinker();
-        //     newInvolvedIndiLinker = diff(trackingLine.getInvolvedIndividualTrackingSet(), existing);
-        //     if foundNewInvolvedIndis && modesDepNode.addAffectedIndividualIdLinker(existing, new):
-        //        communicateTaskAdditionalAllocation(...); else release memory pool;
-        //   // copy involved individuals to a sent-along memory pool (cpp 7197–7212);
-        //   if expContData fixed-reuse && nonDetDependencyNode.getDependencyType()==DNTREUSEBACKENDEXPANSIONMODESDEPENDENCY:
-        //     modesDepNode.setInvolvedIndividualIdLinker(newInvolvedIndiLinker);
-        //     communicateTaskAdditionalAllocation(nonDetAccTask, ...); return false;
-        //   branchMemConClashedDesList = createTrackedClashesDescriptors(trackedClashedDescriptorBeforeProcTagList, ctx, &conBranchMemMan, true);  // Unit 30
-        //   if nonDetDepTrackPoint.isClashedOrIrelevantBranch(): release pool; return false;
-        //   nonDetDepTrackPoint.setClashes(branchMemConClashedDesList, true);
-        //   if newInvolvedIndiLinker: nonDetDepTrackPoint.setInvolvedIndividualIdsLinker(newInvolvedIndiLinker);
-        //   if mConfBranchingStatisticsAnalysing:
-        //     ... inc disjunct/disjunction expanded + clash-involved counts up the branch tree from
-        //         mLastAnalysingBranchNodeTree to nonDetDepTrackPoint.getBranchNode();
-        //   if trackedClashedDescriptorBeforeProcTagList:
-        //     communicateTaskAdditionalAllocation(nonDetAccTask, conBranchMemMan pools);
-        //   otherOpenedTrackPoints = nonDetDependencyNode.hasOtherOpenedDependencyTrackingPoints(nonDetDepTrackPoint);
-        //   if !otherOpenedTrackPoints:
-        //     if mConfBranchingStatisticsAnalysing && OR-dependency: inc expanded + clash-fully-involved;
-        //     ++mRelevantNonDeterministicDecisionCount;
-        //     collected = getCollectedFilteredClashedDescriptorsFromBranch(trackedClashedDes, nonDetDependencyNode, trackingLine, ctx);  // Unit 30
-        //     if initializeTrackingLine(trackingLine, collected, ctx):            // Unit 28
-        //       if trackingLine.getBranchingLevel() == 0: cancellationRootTask(ctx);   // Unit 30
-        //       if trackingLine.hasOnlyCurrentIndividualNodeLevelClashesDescriptors(): writeClashDescriptorsToCache(trackingLine, ctx);
-        //       return true;
-        //   return false;
-        //
-        // Substrate-resolvable members touched on the reconcile pass:
-        //   self.conf_branching_statistics_analysing, self.relevant_non_deterministic_decision_count,
-        //   self.last_analysing_branch_node_tree (++ / branch-tree walk).
-        // Held PORT-PENDING: the tracking-line + tracked-clashed-descriptor records,
-        // the non-deterministic dependency track-point/node accessors
-        // (getBranchNode/getProcessingTag/isClashedOrIrelevantBranch/setClashes/
-        // hasOtherOpenedDependencyTrackingPoints), the Task layer
-        // (cancellationTask/communicateTaskAdditionalAllocation), the backend
-        // expansion controlling data, the disjunct branching statistics, and the
-        // Units 28/30 siblings (createTrackedClashesDescriptors / initializeTrackingLine
-        // / writeClashDescriptorsToCache / getCollectedFilteredClashedDescriptorsFromBranch).
-        let _ = (tracked_clashed_des, tracking_line);
+        let dep_track_point = calc_alg_context
+            .process_context()
+            .clash_desc(tracked_clashed_des)
+            .get_dependency_track_point();
+        let non_det_dependency_node = calc_alg_context
+            .process_context()
+            .track_point(dep_track_point)
+            .dependency_node();
+
+        // W6-DEFER[task]: Konclude cancels the branch accumulating task here via
+        // `nonDetDepTrackPoint->getBranchNode()->getSatisfiableCalculationTask()`.
+        if calc_alg_context
+            .process_context()
+            .track_point(dep_track_point)
+            .is_clashed_or_irelevant_branch()
+        {
+            return false;
+        }
+
+        let proc_tag = calc_alg_context
+            .process_context()
+            .dep_node(non_det_dependency_node)
+            .base()
+            .process_tag;
+        let mut tracked_clashed_descriptor_before_proc_tag_list = ClashDescId::NONE;
+        while tracking_line.has_more_tracked_clashed_list() {
+            let tracked_clashed_des_list = tracking_line.take_next_tracked_clashed_list();
+            let tracked_clashed_descriptors_before_proc_tag = self
+                .get_backtracked_deterministic_clashed_descriptors_before_processing_tag(
+                    tracked_clashed_des_list,
+                    proc_tag,
+                    tracking_line,
+                    calc_alg_context,
+                );
+            tracked_clashed_descriptor_before_proc_tag_list = self.append_tracked_clash_chain(
+                tracked_clashed_descriptors_before_proc_tag,
+                tracked_clashed_descriptor_before_proc_tag_list,
+                calc_alg_context,
+            );
+        }
+
+        self.write_clash_descriptors_to_cache_with_additional(
+            &mut tracked_clashed_descriptor_before_proc_tag_list,
+            tracked_clashed_des,
+            tracking_line,
+            calc_alg_context,
+        );
+
+        // W6-DEFER[backend/task]: fixed-reuse expansion-mode involved-individual
+        // reporting and memory-pool communication are task/backend-cache substrate.
+        let new_involved_indi_linker: Vec<Cint64> = tracking_line
+            .get_involved_individual_tracking_set()
+            .map(|set| set.iter().copied().collect())
+            .unwrap_or_default();
+
+        let branch_mem_con_clashed_des_list = self.create_tracked_clashes_descriptors(
+            tracked_clashed_descriptor_before_proc_tag_list,
+            calc_alg_context,
+            INVALID,
+            true,
+        );
+
+        if calc_alg_context
+            .process_context()
+            .track_point(dep_track_point)
+            .is_clashed_or_irelevant_branch()
+        {
+            return false;
+        }
+        calc_alg_context
+            .process_context_mut()
+            .track_point_mut(dep_track_point)
+            .set_clashes(branch_mem_con_clashed_des_list, true);
+        if !new_involved_indi_linker.is_empty() {
+            calc_alg_context
+                .process_context_mut()
+                .track_point_mut(dep_track_point)
+                .set_involved_individual_ids_linker(new_involved_indi_linker);
+        }
+
+        // W3/W6-DEFER[statistics/task]: disjunct/disjunction branching statistics
+        // and task memory-pool communication stay at the Konclude call points.
+        let other_opened_track_points = {
+            let proc_ctx = calc_alg_context.process_context();
+            let mut other_opened = false;
+            let mut track_point_it = proc_ctx
+                .dep_node(non_det_dependency_node)
+                .branch_track_points();
+            while track_point_it.is_some() && !other_opened {
+                let track_point = proc_ctx.track_point(track_point_it);
+                if track_point_it != dep_track_point
+                    && !track_point.is_clashed_or_irelevant_branch()
+                {
+                    other_opened = true;
+                }
+                track_point_it = track_point.next;
+            }
+            other_opened
+        };
+        if !other_opened_track_points {
+            self.relevant_non_deterministic_decision_count += 1;
+            let collected_tracked_clashed_des = self
+                .get_collected_filtered_clashed_descriptors_from_branch(
+                    tracked_clashed_des,
+                    non_det_dependency_node,
+                    tracking_line,
+                    calc_alg_context,
+                    INVALID,
+                );
+
+            if self.initialize_tracking_line(
+                tracking_line,
+                collected_tracked_clashed_des,
+                calc_alg_context,
+            ) {
+                if tracking_line.get_branching_level() == 0 {
+                    self.cancellation_root_task(calc_alg_context);
+                }
+                if tracking_line.has_only_current_individual_node_level_clashes_descriptors() {
+                    self.write_clash_descriptors_to_cache_from_line(
+                        tracking_line,
+                        calc_alg_context,
+                    );
+                }
+                return true;
+            }
+        } else {
+            // C++ keeps this branch as a relevance-marking placeholder:
+            // `trackedClashedDescriptorBeforeProcTagList;`
+        }
         false
+    }
+
+    fn append_tracked_clash_chain(
+        &mut self,
+        chain: ClashDescId,
+        head: ClashDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> ClashDescId {
+        if chain.is_none() {
+            return head;
+        }
+        let mut tail = chain;
+        loop {
+            let next = calc_alg_context
+                .process_context()
+                .clash_desc(tail)
+                .get_next_descriptor();
+            if next.is_none() {
+                break;
+            }
+            tail = next;
+        }
+        calc_alg_context
+            .process_context_mut()
+            .clash_desc_mut(tail)
+            .set_next(head);
+        chain
     }
 
     /// Port of `backtrackDeterministicBranchingClashedDescriptorFromCurrentIndividualNodeLevel`.
@@ -656,8 +1102,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// descriptors back into the line.
     pub fn backtrack_deterministic_branching_clashed_descriptor_from_current_individual_node_level(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // PORT-PENDING: faithful transcription of cpp 7655–7665:
@@ -670,11 +1116,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   trackingLine.sortInTrackedClashedDescriptors(newList);
         //   return true;
         //
-        // Held PORT-PENDING: the tracking-line record's
-        // add-free/getIndividualNodeLevel/moveToNextIndividualNodeLevel/sortIn
-        // accessors. `getBacktrackedDeterministicClashedDescriptors` is ported in
-        // this unit.
-        let _ = (tracked_clashed_des, tracking_line);
+        let mut min_indi_level = Cint64::MAX;
+        let new_list = self.get_backtracked_deterministic_clashed_descriptors(
+            tracked_clashed_des,
+            tracking_line,
+            Some(&mut min_indi_level),
+            calc_alg_context,
+        );
+        tracking_line.add_free_tracked_clashed_descriptor(tracked_clashed_des, calc_alg_context);
+        if min_indi_level < tracking_line.get_individual_node_level() {
+            tracking_line.move_to_next_individual_node_level(min_indi_level, calc_alg_context);
+        }
+        tracking_line.sort_in_tracked_clashed_descriptors(new_list, false, calc_alg_context);
         true
     }
 
@@ -682,8 +1135,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// cpp 7669–7674.
     pub fn backtrack_deterministic_clashed_descriptor_from_previous_individual_node_levels(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // PORT-PENDING: faithful transcription of cpp 7669–7674:
@@ -693,8 +1146,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   trackingLine.sortInTrackedClashedDescriptors(newList);
         //   return true;
         //
-        // Held PORT-PENDING: the tracking-line record accessors.
-        let _ = (tracked_clashed_des, tracking_line);
+        let new_list = self.get_backtracked_deterministic_clashed_descriptors(
+            tracked_clashed_des,
+            tracking_line,
+            None,
+            calc_alg_context,
+        );
+        tracking_line.add_free_tracked_clashed_descriptor(tracked_clashed_des, calc_alg_context);
+        tracking_line.sort_in_tracked_clashed_descriptors(new_list, false, calc_alg_context);
         true
     }
 
@@ -710,49 +1169,192 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// forward. Returns the new before-tag descriptor list.
     pub fn get_backtracked_deterministic_clashed_descriptors_before_processing_tag(
         &mut self,
-        tracked_clashed_descriptors: Cint64,
+        mut tracked_clashed_descriptors: ClashDescId,
         processing_tag: Cint64,
-        tracking_line: Cint64,
+        tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
-        // PORT-PENDING: faithful transcription of cpp 7677–7772:
-        //
-        //   testClashedSet = trackingLine.getTrackedClashedDescriptorSet();
-        //   newList = nullptr; it = trackedClashedDescriptors;
-        //   while it:
-        //     d = it; it = it.getNextDescriptor(); d.clearNext();
-        //     if d.isPointingToNonDeterministicDependencyNode():
-        //       assert !d.isProcessedAfter(processingTag);
-        //       newList = d.append(newList);
-        //     else if d.isProcessedAfter(processingTag):
-        //       for nd in getBacktrackedDeterministicClashedDescriptors(d, trackingLine, nullptr, ctx):  // this unit
-        //         hasher = CTrackedClashedDescriptorHasher(nd);
-        //         if !testClashedSet.contains(hasher): testClashedSet.insert(hasher); it = nd.append(it);
-        //         else: trackingLine.addFreeTrackedClashedDescriptor(nd);
-        //       trackingLine.addFreeTrackedClashedDescriptor(d);
-        //     else if !d.getConceptDescriptor() && !d.isPointingToIndependentDependencyNode():
-        //       continuedIndiID = d.getAppropriatedIndividualID(); allIndiIDContinued = true;
-        //       newDescriptors = getBacktrackedDeterministicClashedDescriptors(d, trackingLine, nullptr, ctx);
-        //       for x in newDescriptors: if x.getAppropriatedIndividualID() != continuedIndiID: allIndiIDContinued = false;
-        //       if !allIndiIDContinued:
-        //         newList = d.append(newList); free all newDescriptors;
-        //       else:
-        //         for x in newDescriptors:
-        //           hasher = CTrackedClashedDescriptorHasher(x);
-        //           if !testClashedSet.contains(hasher): testClashedSet.insert(hasher); it = x.append(it);
-        //           else: trackingLine.addFreeTrackedClashedDescriptor(x);
-        //         trackingLine.addFreeTrackedClashedDescriptor(d);
-        //     else:
-        //       newList = d.append(newList);
-        //   return newList;
-        //
-        // Held PORT-PENDING: the tracked-clashed-descriptor record (getNextDescriptor/
-        // clearNext/append/isProcessedAfter/isPointingTo*/getConceptDescriptor/
-        // getAppropriatedIndividualID), the `CTrackedClashedDescriptorHasher`
-        // dedup set on the tracking line. `getBacktrackedDeterministicClashedDescriptors`
-        // is ported in this unit.
-        let _ = (tracked_clashed_descriptors, processing_tag, tracking_line);
-        INVALID
+    ) -> ClashDescId {
+        let mut new_tracked_clashed_descriptor_list = ClashDescId::NONE;
+
+        while tracked_clashed_descriptors.is_some() {
+            let tracked_clashed_descriptor = tracked_clashed_descriptors;
+            tracked_clashed_descriptors = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_descriptor)
+                .get_next_descriptor();
+            calc_alg_context
+                .process_context_mut()
+                .clash_desc_mut(tracked_clashed_descriptor)
+                .set_next(ClashDescId::NONE);
+
+            if calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_descriptor)
+                .is_pointing_to_non_deterministic_dependency_node()
+            {
+                assert!(
+                    calc_alg_context
+                        .process_context()
+                        .clash_desc(tracked_clashed_descriptor)
+                        .get_processing_tag()
+                        <= processing_tag,
+                    "non-deterministic dependency is processed after max branching leveled dependency"
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .clash_desc_mut(tracked_clashed_descriptor)
+                    .set_next(new_tracked_clashed_descriptor_list);
+                new_tracked_clashed_descriptor_list = tracked_clashed_descriptor;
+            } else if calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_descriptor)
+                .get_processing_tag()
+                > processing_tag
+            {
+                let mut new_tracked_clashed_descriptor_it = self
+                    .get_backtracked_deterministic_clashed_descriptors(
+                        tracked_clashed_descriptor,
+                        tracking_line,
+                        None,
+                        calc_alg_context,
+                    );
+                while new_tracked_clashed_descriptor_it.is_some() {
+                    let new_tracked_clashed_descriptor = new_tracked_clashed_descriptor_it;
+                    new_tracked_clashed_descriptor_it = calc_alg_context
+                        .process_context()
+                        .clash_desc(new_tracked_clashed_descriptor)
+                        .get_next_descriptor();
+                    calc_alg_context
+                        .process_context_mut()
+                        .clash_desc_mut(new_tracked_clashed_descriptor)
+                        .set_next(ClashDescId::NONE);
+
+                    if tracking_line.insert_tracked_clashed_descriptor_hasher(
+                        new_tracked_clashed_descriptor,
+                        calc_alg_context,
+                    ) {
+                        calc_alg_context
+                            .process_context_mut()
+                            .clash_desc_mut(new_tracked_clashed_descriptor)
+                            .set_next(tracked_clashed_descriptors);
+                        tracked_clashed_descriptors = new_tracked_clashed_descriptor;
+                    } else {
+                        tracking_line.add_free_tracked_clashed_descriptor(
+                            new_tracked_clashed_descriptor,
+                            calc_alg_context,
+                        );
+                    }
+                }
+                tracking_line.add_free_tracked_clashed_descriptor(
+                    tracked_clashed_descriptor,
+                    calc_alg_context,
+                );
+            } else if calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_descriptor)
+                .get_concept_descriptor()
+                .is_none()
+                && !calc_alg_context
+                    .process_context()
+                    .clash_desc(tracked_clashed_descriptor)
+                    .is_pointing_to_independent_dependency_node()
+            {
+                let continued_indi_id = calc_alg_context
+                    .process_context()
+                    .clash_desc(tracked_clashed_descriptor)
+                    .get_appropriated_individual_id();
+                let new_tracked_clashed_descriptors = self
+                    .get_backtracked_deterministic_clashed_descriptors(
+                        tracked_clashed_descriptor,
+                        tracking_line,
+                        None,
+                        calc_alg_context,
+                    );
+
+                let mut all_indi_id_continued = true;
+                let mut new_tracked_clashed_descriptor_it = new_tracked_clashed_descriptors;
+                while new_tracked_clashed_descriptor_it.is_some() && all_indi_id_continued {
+                    if calc_alg_context
+                        .process_context()
+                        .clash_desc(new_tracked_clashed_descriptor_it)
+                        .get_appropriated_individual_id()
+                        != continued_indi_id
+                    {
+                        all_indi_id_continued = false;
+                    }
+                    new_tracked_clashed_descriptor_it = calc_alg_context
+                        .process_context()
+                        .clash_desc(new_tracked_clashed_descriptor_it)
+                        .get_next_descriptor();
+                }
+
+                if !all_indi_id_continued {
+                    calc_alg_context
+                        .process_context_mut()
+                        .clash_desc_mut(tracked_clashed_descriptor)
+                        .set_next(new_tracked_clashed_descriptor_list);
+                    new_tracked_clashed_descriptor_list = tracked_clashed_descriptor;
+
+                    new_tracked_clashed_descriptor_it = new_tracked_clashed_descriptors;
+                    while new_tracked_clashed_descriptor_it.is_some() {
+                        let new_tracked_clashed_descriptor = new_tracked_clashed_descriptor_it;
+                        new_tracked_clashed_descriptor_it = calc_alg_context
+                            .process_context()
+                            .clash_desc(new_tracked_clashed_descriptor)
+                            .get_next_descriptor();
+                        calc_alg_context
+                            .process_context_mut()
+                            .clash_desc_mut(new_tracked_clashed_descriptor)
+                            .set_next(ClashDescId::NONE);
+                        tracking_line.add_free_tracked_clashed_descriptor(
+                            new_tracked_clashed_descriptor,
+                            calc_alg_context,
+                        );
+                    }
+                } else {
+                    new_tracked_clashed_descriptor_it = new_tracked_clashed_descriptors;
+                    while new_tracked_clashed_descriptor_it.is_some() {
+                        let new_tracked_clashed_descriptor = new_tracked_clashed_descriptor_it;
+                        new_tracked_clashed_descriptor_it = calc_alg_context
+                            .process_context()
+                            .clash_desc(new_tracked_clashed_descriptor)
+                            .get_next_descriptor();
+                        calc_alg_context
+                            .process_context_mut()
+                            .clash_desc_mut(new_tracked_clashed_descriptor)
+                            .set_next(ClashDescId::NONE);
+
+                        if tracking_line.insert_tracked_clashed_descriptor_hasher(
+                            new_tracked_clashed_descriptor,
+                            calc_alg_context,
+                        ) {
+                            calc_alg_context
+                                .process_context_mut()
+                                .clash_desc_mut(new_tracked_clashed_descriptor)
+                                .set_next(tracked_clashed_descriptors);
+                            tracked_clashed_descriptors = new_tracked_clashed_descriptor;
+                        } else {
+                            tracking_line.add_free_tracked_clashed_descriptor(
+                                new_tracked_clashed_descriptor,
+                                calc_alg_context,
+                            );
+                        }
+                    }
+                    tracking_line.add_free_tracked_clashed_descriptor(
+                        tracked_clashed_descriptor,
+                        calc_alg_context,
+                    );
+                }
+            } else {
+                calc_alg_context
+                    .process_context_mut()
+                    .clash_desc_mut(tracked_clashed_descriptor)
+                    .set_next(new_tracked_clashed_descriptor_list);
+                new_tracked_clashed_descriptor_list = tracked_clashed_descriptor;
+            }
+        }
+
+        new_tracked_clashed_descriptor_list
     }
 
     /// Port of `getBacktrackedDeterministicClashedDescriptors`. cpp 7779–7863.
@@ -766,11 +1368,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// new descriptor list.
     pub fn get_backtracked_deterministic_clashed_descriptors(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
-        min_indi_level: Option<&mut Cint64>,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
+        mut min_indi_level: Option<&mut Cint64>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
+    ) -> ClashDescId {
         // PORT-PENDING: faithful transcription of cpp 7779–7863:
         //
         //   depNode = trackedClashedDes.getDependencyTrackPoint().getDependencyNode();
@@ -804,13 +1406,213 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //     newList = newTrackedClashedDes.append(newList);
         //   return newList;
         //
-        // Held PORT-PENDING: the tracked-clashed-descriptor record + free-list on
-        // the tracking line (Unit 30), `getCoresspondingIndividualNodeFromDependency`
-        // (Unit 28), the representative-select/resolve variable-binding maps, and
-        // the dependency-node previous-track-point / additional-dependency-iterator
-        // accessors. `tryGetInvalid...` is ported in this unit.
-        let _ = (tracked_clashed_des, tracking_line, min_indi_level);
-        INVALID
+        // Held PORT-PENDING: only the uncommon representative-resolve remapping
+        // branch is still gated if its stored maps are absent. The ordinary
+        // deterministic previous-track-point and additional-dependency paths are
+        // live below.
+        let mut new_tracked_clashed_des_list = ClashDescId::NONE;
+        if let Some(min_indi_level) = min_indi_level.as_deref_mut() {
+            *min_indi_level = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_des)
+                .get_appropriated_individual_level();
+        }
+
+        let dep_track_point = calc_alg_context
+            .process_context()
+            .clash_desc(tracked_clashed_des)
+            .get_dependency_track_point();
+        if dep_track_point.is_none() {
+            return ClashDescId::NONE;
+        }
+        let dep_node = calc_alg_context
+            .process_context()
+            .track_point(dep_track_point)
+            .dependency_node();
+        if dep_node.is_none() {
+            return ClashDescId::NONE;
+        }
+
+        let (con_des, has_appropriate, mut var_bind_path, mut prev_dep_track_point) = {
+            let dep = calc_alg_context.process_context().dep_node(dep_node);
+            (
+                dep.concept_descriptor(),
+                dep.has_appropriate_individual_node(),
+                calc_alg_context
+                    .process_context()
+                    .clash_desc(tracked_clashed_des)
+                    .get_variable_binding_path(),
+                dep.previous_dependency_track_point(),
+            )
+        };
+
+        let mut new_indi_node = NodeId::NONE;
+        if has_appropriate {
+            let appropriate = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .individual_node();
+            tracking_line.add_involved_individual_node(appropriate, calc_alg_context);
+            new_indi_node = self
+                .get_coressponding_individual_node_from_dependency_node(dep_node, calc_alg_context);
+            tracking_line.add_involved_individual_node(new_indi_node, calc_alg_context);
+            if let Some(min_indi_level) = min_indi_level.as_deref_mut() {
+                if new_indi_node.is_some() {
+                    let new_level = calc_alg_context
+                        .process_context()
+                        .node(new_indi_node)
+                        .individual_nominal_level_or_ancestor_depth();
+                    *min_indi_level = (*min_indi_level).min(new_level);
+                }
+            }
+        }
+
+        let (is_rep_select, is_rep_resolve) = {
+            let dep = calc_alg_context.process_context().dep_node(dep_node);
+            (
+                dep.is_representative_select_dependency_node(),
+                dep.is_representative_resolve_dependency_node(),
+            )
+        };
+        if is_rep_select {
+            var_bind_path = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .selected_variable_binding_path();
+        } else if is_rep_resolve && var_bind_path.is_some() {
+            let remap = {
+                let proc_ctx = calc_alg_context.process_context();
+                let dep = proc_ctx.dep_node(dep_node);
+                let prop_id = proc_ctx.vbpath(var_bind_path).get_propagation_id();
+                dep.resolve_representative_variable_binding_path_map()
+                    .map(|rep_var_bind_path_map| rep_var_bind_path_map.value(prop_id))
+                    .and_then(|rep_var_bind_path_map_data| {
+                        dep.resolve_representative_propagation_map().map(|rep_prop_map| {
+                            (
+                                rep_var_bind_path_map_data.get_resolve_variable_binding_path(),
+                                rep_prop_map
+                                    .value(
+                                        rep_var_bind_path_map_data
+                                            .get_resolve_representative_variable_binding_path_set_data_id(),
+                                    )
+                                    .get_representative_propagation_descriptor(),
+                            )
+                        })
+                    })
+            };
+            if let Some((resolved_var_bind_path, rep_prop_des)) = remap {
+                var_bind_path = resolved_var_bind_path;
+                if rep_prop_des.is_some() {
+                    prev_dep_track_point = calc_alg_context
+                        .process_context()
+                        .rep_prop_des(rep_prop_des)
+                        .get_dependency_track_point();
+                }
+            }
+        }
+
+        let mut new_tracked_clashed_des =
+            self.get_free_tracked_clashed_descriptor(tracking_line, calc_alg_context);
+        let init_indi = if new_indi_node.is_some() {
+            new_indi_node
+        } else {
+            calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_des)
+                .get_appropriated_individual()
+        };
+        self.init_backtracked_tracked_clashed_descriptor(
+            new_tracked_clashed_des,
+            init_indi,
+            con_des,
+            var_bind_path,
+            prev_dep_track_point,
+            calc_alg_context,
+        );
+        new_tracked_clashed_des = self
+            .try_get_invalid_same_individual_node_level_backtracked_deterministic_clashed_descriptors(
+                new_tracked_clashed_des,
+                tracking_line,
+                None,
+                calc_alg_context,
+            );
+        new_tracked_clashed_des_list = self.append_tracked_clash_chain(
+            new_tracked_clashed_des,
+            new_tracked_clashed_des_list,
+            calc_alg_context,
+        );
+
+        let mut dep_it = calc_alg_context
+            .process_context()
+            .dep_node(dep_node)
+            .additional_after_dependencies();
+        while dep_it.is_some() {
+            let add_dep_track_point = calc_alg_context
+                .process_context()
+                .dep_link(dep_it)
+                .previous_dependency_track_point();
+            let add_dep_new_indi_node = if add_dep_track_point.is_some() {
+                self.get_coressponding_individual_node_from_dependency(
+                    add_dep_track_point,
+                    calc_alg_context,
+                )
+            } else {
+                NodeId::NONE
+            };
+            tracking_line.add_involved_individual_node(add_dep_new_indi_node, calc_alg_context);
+
+            let mut new_tracked_clashed_des =
+                self.get_free_tracked_clashed_descriptor(tracking_line, calc_alg_context);
+            if add_dep_new_indi_node.is_some() {
+                if let Some(min_indi_level) = min_indi_level.as_deref_mut() {
+                    let new_level = calc_alg_context
+                        .process_context()
+                        .node(add_dep_new_indi_node)
+                        .individual_nominal_level_or_ancestor_depth();
+                    *min_indi_level = (*min_indi_level).min(new_level);
+                }
+                self.init_backtracked_tracked_clashed_descriptor(
+                    new_tracked_clashed_des,
+                    add_dep_new_indi_node,
+                    ConDescId::NONE,
+                    var_bind_path,
+                    add_dep_track_point,
+                    calc_alg_context,
+                );
+            } else {
+                let init_indi = calc_alg_context
+                    .process_context()
+                    .clash_desc(tracked_clashed_des)
+                    .get_appropriated_individual();
+                self.init_backtracked_tracked_clashed_descriptor(
+                    new_tracked_clashed_des,
+                    init_indi,
+                    ConDescId::NONE,
+                    var_bind_path,
+                    add_dep_track_point,
+                    calc_alg_context,
+                );
+            }
+            new_tracked_clashed_des = self
+                .try_get_invalid_same_individual_node_level_backtracked_deterministic_clashed_descriptors(
+                    new_tracked_clashed_des,
+                    tracking_line,
+                    None,
+                    calc_alg_context,
+                );
+            new_tracked_clashed_des_list = self.append_tracked_clash_chain(
+                new_tracked_clashed_des,
+                new_tracked_clashed_des_list,
+                calc_alg_context,
+            );
+
+            dep_it = calc_alg_context
+                .process_context()
+                .dep_link(dep_it)
+                .next_additional_dependency();
+        }
+
+        new_tracked_clashed_des_list
     }
 
     /// Port of `tryGetInvalidSameIndividualNodeLevelBacktrackedDeterministicClashedDescriptors`.
@@ -823,11 +1625,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// descriptor that does not match the precondition is returned as-is.
     pub fn try_get_invalid_same_individual_node_level_backtracked_deterministic_clashed_descriptors(
         &mut self,
-        tracked_clashed_des: Cint64,
-        tracking_line: Cint64,
-        min_indi_level: Option<&mut Cint64>,
+        tracked_clashed_des: ClashDescId,
+        tracking_line: &mut TrackedClashedDependencyLine,
+        mut min_indi_level: Option<&mut Cint64>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
-    ) -> Cint64 {
+    ) -> ClashDescId {
         // PORT-PENDING: faithful transcription of cpp 7866–7896:
         //
         //   if trackedClashedDes.getConceptDescriptor() == nullptr
@@ -846,11 +1648,161 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //     return getBacktrackedDeterministicClashedDescriptors(trackedClashedDes, trackingLine, minIndiLevel, ctx);  // this unit
         //   return trackedClashedDes;
         //
-        // Held PORT-PENDING: the tracked-clashed-descriptor record predicates,
-        // `getCoresspondingIndividualNodeFromDependency` (Unit 28), and the
-        // dependency-node additional-dependency iterator. The terminal recursion is
-        // ported in this unit.
-        let _ = (tracking_line, min_indi_level, calc_alg_context);
+        let should_backtrack = {
+            let tracked = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_des);
+            tracked.get_concept_descriptor().is_none()
+                && tracked.is_pointing_to_deterministic_dependency_node()
+                && !tracked.is_pointing_to_independent_dependency_node()
+        };
+        if should_backtrack {
+            let dep_track_point = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_des)
+                .get_dependency_track_point();
+            if dep_track_point.is_none() {
+                return tracked_clashed_des;
+            }
+            let dep_node = calc_alg_context
+                .process_context()
+                .track_point(dep_track_point)
+                .dependency_node();
+            if dep_node.is_none() {
+                return tracked_clashed_des;
+            }
+            let curr_level = calc_alg_context
+                .process_context()
+                .clash_desc(tracked_clashed_des)
+                .get_appropriated_individual_level();
+            if let Some(min_indi_level) = min_indi_level.as_deref_mut() {
+                *min_indi_level = curr_level;
+            }
+            if calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .has_appropriate_individual_node()
+            {
+                let indi_node = self.get_coressponding_individual_node_from_dependency_node(
+                    dep_node,
+                    calc_alg_context,
+                );
+                if indi_node.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .node(indi_node)
+                        .individual_nominal_level_or_ancestor_depth()
+                        != curr_level
+                {
+                    return tracked_clashed_des;
+                }
+            }
+
+            let mut dep_it = calc_alg_context
+                .process_context()
+                .dep_node(dep_node)
+                .additional_after_dependencies();
+            while dep_it.is_some() {
+                let add_dep_track_point = calc_alg_context
+                    .process_context()
+                    .dep_link(dep_it)
+                    .previous_dependency_track_point();
+                let add_dep_new_indi_node = if add_dep_track_point.is_some() {
+                    self.get_coressponding_individual_node_from_dependency(
+                        add_dep_track_point,
+                        calc_alg_context,
+                    )
+                } else {
+                    NodeId::NONE
+                };
+                tracking_line.add_involved_individual_node(add_dep_new_indi_node, calc_alg_context);
+                if add_dep_new_indi_node.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .node(add_dep_new_indi_node)
+                        .individual_nominal_level_or_ancestor_depth()
+                        != curr_level
+                {
+                    return tracked_clashed_des;
+                }
+                dep_it = calc_alg_context
+                    .process_context()
+                    .dep_link(dep_it)
+                    .next_additional_dependency();
+            }
+            return self.get_backtracked_deterministic_clashed_descriptors(
+                tracked_clashed_des,
+                tracking_line,
+                min_indi_level,
+                calc_alg_context,
+            );
+        }
         tracked_clashed_des
+    }
+
+    fn init_backtracked_tracked_clashed_descriptor(
+        &mut self,
+        tracked_clashed_des: ClashDescId,
+        individual_node: NodeId,
+        concept_descriptor: ConDescId,
+        var_bind_path: VarBindingPathId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let mut individual_node_id = INVALID;
+        let mut individual_node_level = INVALID;
+        let mut nominal_individual = false;
+        let mut error = false;
+        if individual_node.is_some() {
+            let node = calc_alg_context.process_context().node(individual_node);
+            individual_node_id = node.individual_node_id();
+            individual_node_level = node.individual_nominal_level_or_ancestor_depth();
+            nominal_individual = node.is_nominal_individual_node();
+        } else {
+            error = true;
+        }
+
+        let mut deterministic = false;
+        let mut independent = false;
+        let mut processing_tag = INVALID;
+        let mut branching_level_tag = INVALID;
+        if dep_track_point.is_some() {
+            let track_point = calc_alg_context
+                .process_context()
+                .track_point(dep_track_point);
+            branching_level_tag = track_point.get_branching_tag();
+            let dep_node = track_point.dependency_node();
+            if dep_node.is_some() {
+                let dep_node = calc_alg_context.process_context().dep_node(dep_node);
+                processing_tag = dep_node.base().process_tag;
+                deterministic = dep_node.is_deterministic();
+                independent = dep_node.is_independent_base_dependency_type();
+            } else {
+                error = true;
+            }
+            if branching_level_tag <= -1 {
+                error = true;
+            }
+        } else {
+            error = true;
+        }
+
+        calc_alg_context
+            .process_context_mut()
+            .clash_desc_mut(tracked_clashed_des)
+            .init_tracked_clashed_descriptor(
+                individual_node,
+                individual_node_id,
+                individual_node_level,
+                nominal_individual,
+                concept_descriptor,
+                var_bind_path,
+                dep_track_point,
+                deterministic,
+                independent,
+                processing_tag,
+                branching_level_tag,
+                error,
+            );
     }
 }

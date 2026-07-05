@@ -562,7 +562,7 @@ impl Task {
         // initLinker(this,nullptr);
         self.task_status = Id::NONE; // mTaskStatus = nullptr
         self.task_result = INVALID; // mTaskResult = nullptr
-        // mRootTask = this;  // W6-DEFER[api]: needs self's own TaskId
+                                    // mRootTask = this;  // W6-DEFER[api]: needs self's own TaskId
         self.parent_task = Id::NONE;
         self.task_context = INVALID;
         self.completion_negator = INVALID;
@@ -592,7 +592,10 @@ impl Task {
     }
 
     /// Port of `CTask::setReferencedTaskLinker`.
-    pub fn set_referenced_task_linker(&mut self, referenced_task_linker: Vec<NegLink<TaskId>>) -> &mut Self {
+    pub fn set_referenced_task_linker(
+        &mut self,
+        referenced_task_linker: Vec<NegLink<TaskId>>,
+    ) -> &mut Self {
         self.referenced_task_linker = referenced_task_linker;
         self
     }
@@ -602,7 +605,10 @@ impl Task {
     /// KONCLUDE-PORT-NOTE[ownership]: C++ splices the passed chain in FRONT
     /// (`linker->getLastListLink()->setNext(mReferencedTaskLinker)`); head-front
     /// Vec ⇒ prepend the chain, keeping its head as the new head.
-    pub fn append_referenced_task_linker(&mut self, mut referenced_task_linker: Vec<NegLink<TaskId>>) -> &mut Self {
+    pub fn append_referenced_task_linker(
+        &mut self,
+        mut referenced_task_linker: Vec<NegLink<TaskId>>,
+    ) -> &mut Self {
         referenced_task_linker.append(&mut self.referenced_task_linker);
         self.referenced_task_linker = referenced_task_linker;
         self

@@ -36,16 +36,26 @@
 #![allow(dead_code)]
 
 use super::super::model::substrate::{Cint64, Id};
+use super::super::saturation::satellites::IndividualSaturationSuccessorLinkDataLinkerId;
+use super::context::ProcessContext;
 use super::databox::ProcessingDataBox;
 use super::stubs::{
     BackendNeighbourExpansionControllingData, BackendNeighbourExpansionQueue,
-    IndividualDelayedBackendInitializationProcessingQueue, IndividualSaturationSuccessorLinkData,
+    IndividualDelayedBackendInitializationProcessingQueue,
     IndividualRepresentativeBackendCacheConceptSetLabelProcessingHash,
     IndividualRepresentativeBackendCacheLoadedAssociationHash, ReferredIndividualTrackingVector,
 };
 use super::{NodeId, SatNodeId};
 
 impl ProcessingDataBox {
+    fn next_placeholder_local_id<T>(previous: Id<T>) -> Id<T> {
+        if previous.is_some() {
+            Id::new(previous.raw + 1)
+        } else {
+            Id::new(0)
+        }
+    }
+
     // ----------------------------------------------------------------------
     // id counters with optional increment (`.cpp` 2174–2189)
     // ----------------------------------------------------------------------
@@ -112,7 +122,8 @@ impl ProcessingDataBox {
         &mut self,
         indi_process_node_linker: SatNodeId,
     ) -> &mut Self {
-        self.rem_sat_indi_node_linker.insert(0, indi_process_node_linker);
+        self.rem_sat_indi_node_linker
+            .insert(0, indi_process_node_linker);
         self
     }
 
@@ -132,34 +143,43 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getRemainingIndividualSuccessorLinkDataLinker`.
     pub fn remaining_individual_successor_link_data_linker(
         &self,
-    ) -> &[Id<IndividualSaturationSuccessorLinkData>] {
-        &self.rem_sat_indi_succ_link_data_linker
+    ) -> IndividualSaturationSuccessorLinkDataLinkerId {
+        self.rem_sat_indi_succ_link_data_linker
     }
 
     /// Port of `CProcessingDataBox::takeRemainingIndividualSuccessorLinkDataLinker`.
     pub fn take_remaining_individual_successor_link_data_linker(
         &mut self,
-    ) -> Id<IndividualSaturationSuccessorLinkData> {
-        if self.rem_sat_indi_succ_link_data_linker.is_empty() {
-            Id::NONE
-        } else {
-            self.rem_sat_indi_succ_link_data_linker.remove(0)
+        ctx: &mut ProcessContext,
+    ) -> IndividualSaturationSuccessorLinkDataLinkerId {
+        let head = self.rem_sat_indi_succ_link_data_linker;
+        if head.is_some() {
+            self.rem_sat_indi_succ_link_data_linker =
+                ctx.indi_sat_succ_link_data_linker(head).get_next();
+            ctx.indi_sat_succ_link_data_linker_mut(head).clear_next();
         }
+        head
     }
 
     /// Port of `CProcessingDataBox::addRemainingIndividualSuccessorLinkDataLinker`.
     pub fn add_remaining_individual_successor_link_data_linker(
         &mut self,
-        succ_link_data_linker: Id<IndividualSaturationSuccessorLinkData>,
+        ctx: &mut ProcessContext,
+        succ_link_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
     ) -> &mut Self {
-        self.rem_sat_indi_succ_link_data_linker.insert(0, succ_link_data_linker);
+        if succ_link_data_linker.is_some() {
+            let old_head = self.rem_sat_indi_succ_link_data_linker;
+            ctx.indi_sat_succ_link_data_linker_mut(succ_link_data_linker)
+                .set_next(old_head);
+            self.rem_sat_indi_succ_link_data_linker = succ_link_data_linker;
+        }
         self
     }
 
     /// Port of `CProcessingDataBox::setRemainingIndividualSuccessorLinkDataLinker`.
     pub fn set_remaining_individual_successor_link_data_linker(
         &mut self,
-        succ_link_data_linker: Vec<Id<IndividualSaturationSuccessorLinkData>>,
+        succ_link_data_linker: IndividualSaturationSuccessorLinkDataLinkerId,
     ) -> &mut Self {
         self.rem_sat_indi_succ_link_data_linker = succ_link_data_linker;
         self
@@ -203,7 +223,10 @@ impl ProcessingDataBox {
     // ----------------------------------------------------------------------
 
     /// Port of `CProcessingDataBox::incBackendCacheIntegratedIndividualNodeCount`.
-    pub fn inc_backend_cache_integrated_individual_node_count(&mut self, count: Cint64) -> &mut Self {
+    pub fn inc_backend_cache_integrated_individual_node_count(
+        &mut self,
+        count: Cint64,
+    ) -> &mut Self {
         self.backend_cache_integrated_individual_node_count += count;
         self
     }
@@ -261,7 +284,9 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::setBackendCacheLoadedAssociationHash`.
     pub fn set_backend_cache_loaded_association_hash(
         &mut self,
-        backend_cache_loaded_association_hash: Id<IndividualRepresentativeBackendCacheLoadedAssociationHash>,
+        backend_cache_loaded_association_hash: Id<
+            IndividualRepresentativeBackendCacheLoadedAssociationHash,
+        >,
     ) -> &mut Self {
         self.use_backend_loaded_association_hash = backend_cache_loaded_association_hash;
         self.loc_backend_loaded_association_hash = backend_cache_loaded_association_hash;
@@ -274,12 +299,9 @@ impl ProcessingDataBox {
         create_or_force_localisation: bool,
     ) -> Id<IndividualRepresentativeBackendCacheLoadedAssociationHash> {
         if create_or_force_localisation && self.loc_backend_loaded_association_hash.is_none() {
-            // W2-DEFER[api]: mLocBackendLoadedAssociationHash =
-            //   CObjectParameterizingAllocator<…>::allocateAndConstructAndParameterize(…);
-            //   mLocBackendLoadedAssociationHash->initIndividualRepresentativeBackendCacheLoadedAssociationHash(
-            //       mUseBackendLoadedAssociationHash);
-            //   mUseBackendLoadedAssociationHash = mLocBackendLoadedAssociationHash;
-            // (lazy pool alloc + init on the not-yet-ported hash container.)
+            self.loc_backend_loaded_association_hash =
+                Self::next_placeholder_local_id(self.use_backend_loaded_association_hash);
+            self.use_backend_loaded_association_hash = self.loc_backend_loaded_association_hash;
         }
         self.use_backend_loaded_association_hash
     }
@@ -293,13 +315,13 @@ impl ProcessingDataBox {
         &mut self,
         create_or_force_localisation: bool,
     ) -> Id<IndividualRepresentativeBackendCacheConceptSetLabelProcessingHash> {
-        if create_or_force_localisation && self.loc_backend_concept_set_label_processing_hash.is_none() {
-            // W2-DEFER[api]: mLocBackendConceptSetLabelProcessingHash =
-            //   CObjectParameterizingAllocator<…>::allocateAndConstructAndParameterize(…);
-            //   mLocBackendConceptSetLabelProcessingHash
-            //       ->initIndividualRepresentativeBackendCacheConceptSetLabelProcessingHash(
-            //           mUseBackendConceptSetLabelProcessingHash);
-            //   mUseBackendConceptSetLabelProcessingHash = mLocBackendConceptSetLabelProcessingHash;
+        if create_or_force_localisation
+            && self.loc_backend_concept_set_label_processing_hash.is_none()
+        {
+            self.loc_backend_concept_set_label_processing_hash =
+                Self::next_placeholder_local_id(self.use_backend_concept_set_label_processing_hash);
+            self.use_backend_concept_set_label_processing_hash =
+                self.loc_backend_concept_set_label_processing_hash;
         }
         self.use_backend_concept_set_label_processing_hash
     }
@@ -314,10 +336,9 @@ impl ProcessingDataBox {
         create: bool,
     ) -> Id<IndividualDelayedBackendInitializationProcessingQueue> {
         if self.delayed_backend_init_proc_queue.is_none() && create {
-            // W2-DEFER[api]: mDelayedBackendInitProcQueue =
-            //   CObjectParameterizingAllocator<…>::allocateAndConstructAndParameterize(…);
-            //   mDelayedBackendInitProcQueue->initProcessingQueue(mPrevDelayedBackendInitProcQueue);
-            //   mUseDelayedBackendInitProcQueue = mDelayedBackendInitProcQueue;
+            self.delayed_backend_init_proc_queue =
+                Self::next_placeholder_local_id(self.prev_delayed_backend_init_proc_queue);
+            self.use_delayed_backend_init_proc_queue = self.delayed_backend_init_proc_queue;
         }
         self.use_delayed_backend_init_proc_queue
     }
@@ -339,14 +360,20 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getBackendNeighbourExpansionControllingData`.
     pub fn backend_neighbour_expansion_controlling_data(
         &mut self,
+        ctx: &mut ProcessContext,
         create_or_localize: bool,
     ) -> Id<BackendNeighbourExpansionControllingData> {
-        if create_or_localize && self.loc_backend_neighbour_expansion_controlling_data.is_none() {
-            // W2-DEFER[api]: mLocBackendNeighbourExpansionControllingData =
-            //   CObjectParameterizingAllocator<…>::allocateAndConstructAndParameterize(…);
-            //   mLocBackendNeighbourExpansionControllingData->initExpansionControllingData(
-            //       mUseBackendNeighbourExpansionControllingData);
-            //   mUseBackendNeighbourExpansionControllingData = mLocBackendNeighbourExpansionControllingData;
+        if create_or_localize
+            && self
+                .loc_backend_neighbour_expansion_controlling_data
+                .is_none()
+        {
+            self.loc_backend_neighbour_expansion_controlling_data = ctx
+                .alloc_backend_neighbour_expansion_controlling_data_from_prev(
+                    self.use_backend_neighbour_expansion_controlling_data,
+                );
+            self.use_backend_neighbour_expansion_controlling_data =
+                self.loc_backend_neighbour_expansion_controlling_data;
         }
         self.use_backend_neighbour_expansion_controlling_data
     }
@@ -361,10 +388,9 @@ impl ProcessingDataBox {
         create: bool,
     ) -> Id<BackendNeighbourExpansionQueue> {
         if self.backend_neighbour_expansion_queue.is_none() && create {
-            // W2-DEFER[api]: mBackendNeighbourExpansionQueue =
-            //   CObjectParameterizingAllocator<…>::allocateAndConstructAndParameterize(…);
-            //   mBackendNeighbourExpansionQueue->initBackendNeighbourExpansionQueue(mPrevBackendNeighbourExpansion);
-            //   mUseBackendNeighbourExpansion = mBackendNeighbourExpansionQueue;
+            self.backend_neighbour_expansion_queue =
+                Self::next_placeholder_local_id(self.prev_backend_neighbour_expansion);
+            self.use_backend_neighbour_expansion = self.backend_neighbour_expansion_queue;
         }
         self.use_backend_neighbour_expansion
     }
@@ -398,5 +424,110 @@ impl ProcessingDataBox {
         new_head.append(&mut self.representative_neighbour_expansion_individual_node_linker);
         self.representative_neighbour_expansion_individual_node_linker = new_head;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::saturation::satellites::IndividualSaturationSuccessorLinkDataLinker;
+    use super::*;
+
+    #[test]
+    fn db6_backend_hash_getters_localize_once() {
+        let mut data_box = ProcessingDataBox::new();
+
+        assert!(data_box
+            .backend_cache_loaded_association_hash(false)
+            .is_none());
+        let loaded = data_box.backend_cache_loaded_association_hash(true);
+        assert_eq!(loaded, Id::new(0));
+        assert_eq!(data_box.backend_cache_loaded_association_hash(true), loaded);
+        assert_eq!(data_box.loc_backend_loaded_association_hash, loaded);
+
+        let concept = data_box.backend_cache_concept_set_label_processing_hash(true);
+        assert_eq!(concept, Id::new(0));
+        assert_eq!(
+            data_box.backend_cache_concept_set_label_processing_hash(true),
+            concept
+        );
+        assert_eq!(
+            data_box.loc_backend_concept_set_label_processing_hash,
+            concept
+        );
+    }
+
+    #[test]
+    fn db6_backend_queues_create_from_previous_and_clear() {
+        let mut data_box = ProcessingDataBox::new();
+        data_box.prev_delayed_backend_init_proc_queue = Id::new(7);
+        data_box.prev_backend_neighbour_expansion = Id::new(11);
+
+        assert!(data_box
+            .delayed_backend_concept_set_label_processing_initialization_queue(false)
+            .is_none());
+        let delayed =
+            data_box.delayed_backend_concept_set_label_processing_initialization_queue(true);
+        assert_eq!(delayed, Id::new(8));
+        assert_eq!(data_box.delayed_backend_init_proc_queue, delayed);
+        assert_eq!(data_box.use_delayed_backend_init_proc_queue, delayed);
+
+        let expansion = data_box.backend_neighbour_expansion_queue(true);
+        assert_eq!(expansion, Id::new(12));
+        assert_eq!(data_box.backend_neighbour_expansion_queue(true), expansion);
+        assert_eq!(data_box.use_backend_neighbour_expansion, expansion);
+
+        data_box.clear_delayed_backend_concept_set_label_processing_initialization_queue();
+        assert!(data_box.delayed_backend_init_proc_queue.is_none());
+        assert!(data_box.use_delayed_backend_init_proc_queue.is_none());
+        assert!(data_box.prev_delayed_backend_init_proc_queue.is_none());
+
+        data_box.clear_backend_neighbour_expansion_queue();
+        assert!(data_box.backend_neighbour_expansion_queue.is_none());
+        assert!(data_box.use_backend_neighbour_expansion.is_none());
+        assert!(data_box.prev_backend_neighbour_expansion.is_none());
+    }
+
+    #[test]
+    fn db6_remaining_successor_link_data_linker_uses_intrusive_next_chain() {
+        let mut data_box = ProcessingDataBox::new();
+        let mut ctx = ProcessContext::new();
+
+        let first = ctx.alloc_indi_sat_succ_link_data_linker(
+            IndividualSaturationSuccessorLinkDataLinker::new(),
+        );
+        let second = ctx.alloc_indi_sat_succ_link_data_linker(
+            IndividualSaturationSuccessorLinkDataLinker::new(),
+        );
+
+        data_box.set_remaining_individual_successor_link_data_linker(first);
+        data_box.add_remaining_individual_successor_link_data_linker(&mut ctx, second);
+
+        assert_eq!(
+            data_box.remaining_individual_successor_link_data_linker(),
+            second
+        );
+        assert_eq!(ctx.indi_sat_succ_link_data_linker(second).get_next(), first);
+
+        assert_eq!(
+            data_box.take_remaining_individual_successor_link_data_linker(&mut ctx),
+            second
+        );
+        assert_eq!(
+            ctx.indi_sat_succ_link_data_linker(second).get_next(),
+            Id::NONE
+        );
+        assert_eq!(
+            data_box.remaining_individual_successor_link_data_linker(),
+            first
+        );
+
+        assert_eq!(
+            data_box.take_remaining_individual_successor_link_data_linker(&mut ctx),
+            first
+        );
+        assert_eq!(
+            data_box.take_remaining_individual_successor_link_data_linker(&mut ctx),
+            Id::NONE
+        );
     }
 }

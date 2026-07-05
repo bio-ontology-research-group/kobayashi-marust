@@ -37,11 +37,12 @@
 use std::collections::HashMap;
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
-use super::value::CacheValue;
 use super::backend::{
-    BackendRepresentativeMemoryCachingFlags, BackendRepresentativeMemoryCacheOntologyContext,
+    BackendRepresentativeMemoryCacheOntologyContext, BackendRepresentativeMemoryCachingFlags,
     OntologyContextId,
 };
+use super::context::CacheContext;
+use super::value::CacheValue;
 
 // ===========================================================================
 // Label-cache-item type / extension-type code constants (from
@@ -76,7 +77,9 @@ pub enum LabelCacheItemType {
 }
 
 impl Default for LabelCacheItemType {
-    fn default() -> Self { LabelCacheItemType::DeterministicConceptSetLabel }
+    fn default() -> Self {
+        LabelCacheItemType::DeterministicConceptSetLabel
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryLabelCacheItemExtensionData::LABEL_CACHE_ITEM_EXTENSION_TYPE`.
@@ -91,7 +94,9 @@ pub enum LabelCacheItemExtensionType {
 }
 
 impl Default for LabelCacheItemExtensionType {
-    fn default() -> Self { LabelCacheItemExtensionType::IndividualAssociationMap }
+    fn default() -> Self {
+        LabelCacheItemExtensionType::IndividualAssociationMap
+    }
 }
 
 /// `LABEL_CACHE_ITEM_EXTENSION_TYPE_COUNT`.
@@ -112,12 +117,14 @@ pub type TagLabelResolvingDataLinkerId = Id<LabelCacheItemTagLabelResolvingDataL
 pub type IndividualNeighbourRoleSetHashId = Id<IndividualNeighbourRoleSetHash>;
 pub type IndividualRoleSetNeighbourArrayId = Id<IndividualRoleSetNeighbourArray>;
 pub type IndividualRoleSetNeighbourDataId = Id<IndividualRoleSetNeighbourData>;
-pub type IndividualRoleSetNeighbourIndividualIdLinkerId = Id<IndividualRoleSetNeighbourIndividualIdLinker>;
+pub type IndividualRoleSetNeighbourIndividualIdLinkerId =
+    Id<IndividualRoleSetNeighbourIndividualIdLinker>;
 pub type NominalIndividualIndirectConnectionDataId = Id<NominalIndividualIndirectConnectionData>;
 pub type ItemIndividualDataAssociationLinkerId = Id<ItemIndividualDataAssociationLinker>;
 pub type RoleAssertionLinkerId = Id<RoleAssertionLinker>;
 pub type OntologyDataRecomputationReferenceLinkerId = Id<OntologyDataRecomputationReferenceLinker>;
-pub type CoordinationHashDataId = Id<BackendIndividualRetrievalComputationUpdateCoordinationHashData>;
+pub type CoordinationHashDataId =
+    Id<BackendIndividualRetrievalComputationUpdateCoordinationHashData>;
 /// the collapsed temporary-write-data linker chains (`BackendTempWriteRecord` enum).
 pub type BackendTempWriteRecordId = Id<BackendTempWriteRecord>;
 
@@ -133,7 +140,9 @@ pub struct LabelValueLinker {
     pub cache_value: CacheValue,
 }
 impl LabelValueLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `CBackendRepresentativeMemoryLabelValueLinker::initLabelValueLinker`
     /// (`setData(cacheValue); return this;`).
@@ -142,7 +151,9 @@ impl LabelValueLinker {
         self
     }
     /// Port of `::getCacheValue` (`return getData();`).
-    pub fn get_cache_value(&self) -> &CacheValue { &self.cache_value }
+    pub fn get_cache_value(&self) -> &CacheValue {
+        &self.cache_value
+    }
     /// Port of `::setCacheValue` (`setData(cacheValue); return this;`).
     pub fn set_cache_value(&mut self, cache_value: CacheValue) -> &mut Self {
         self.cache_value = cache_value;
@@ -161,7 +172,9 @@ pub struct CardinalityValueLinker {
     pub minimal_restricting_cardinality: Cint64,
 }
 impl CardinalityValueLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `CBackendRepresentativeMemoryCardinalityValueLinker::initCardinalityValueLinker`.
     pub fn init_cardinality_value_linker(
@@ -176,19 +189,33 @@ impl CardinalityValueLinker {
         self
     }
     /// Port of `::getRoleTag` (`return getData();`).
-    pub fn get_role_tag(&self) -> Cint64 { self.tag }
+    pub fn get_role_tag(&self) -> Cint64 {
+        self.tag
+    }
     /// Port of `::getExistentialMaxUsedCardinality`.
-    pub fn get_existential_max_used_cardinality(&self) -> Cint64 { self.existential_max_used_cardinality }
+    pub fn get_existential_max_used_cardinality(&self) -> Cint64 {
+        self.existential_max_used_cardinality
+    }
     /// Port of `::getMinimalRestrictingCardinality`.
-    pub fn get_minimal_restricting_cardinality(&self) -> Cint64 { self.minimal_restricting_cardinality }
+    pub fn get_minimal_restricting_cardinality(&self) -> Cint64 {
+        self.minimal_restricting_cardinality
+    }
     /// Port of `::updateExistentialMaxUsedCardinality` (`qMax(...)`).
-    pub fn update_existential_max_used_cardinality(&mut self, existential_max_used_cardinality: Cint64) -> &mut Self {
-        self.existential_max_used_cardinality = existential_max_used_cardinality.max(self.existential_max_used_cardinality);
+    pub fn update_existential_max_used_cardinality(
+        &mut self,
+        existential_max_used_cardinality: Cint64,
+    ) -> &mut Self {
+        self.existential_max_used_cardinality =
+            existential_max_used_cardinality.max(self.existential_max_used_cardinality);
         self
     }
     /// Port of `::updateMinimalRestrictingCardinality` (`qMax(...)`).
-    pub fn update_minimal_restricting_cardinality(&mut self, minimal_restricting_cardinality: Cint64) -> &mut Self {
-        self.minimal_restricting_cardinality = minimal_restricting_cardinality.max(self.minimal_restricting_cardinality);
+    pub fn update_minimal_restricting_cardinality(
+        &mut self,
+        minimal_restricting_cardinality: Cint64,
+    ) -> &mut Self {
+        self.minimal_restricting_cardinality =
+            minimal_restricting_cardinality.max(self.minimal_restricting_cardinality);
         self
     }
 }
@@ -203,7 +230,9 @@ pub struct LabelSignatureResolveCacheItem {
     pub label_item_count: Cint64,
 }
 impl LabelSignatureResolveCacheItem {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::appendLabelItem`
     /// (`mLabelItemCount += linker->getCount(); mLabelItemLinker = linker->append(mLabelItemLinker);`).
@@ -217,9 +246,13 @@ impl LabelSignatureResolveCacheItem {
         self
     }
     /// Port of `::getLabelItems` (`return mLabelItemLinker;`).
-    pub fn get_label_items(&self) -> &[LabelCacheItemId] { &self.label_item_linker }
+    pub fn get_label_items(&self) -> &[LabelCacheItemId] {
+        &self.label_item_linker
+    }
     /// Port of `::getLabelItemCount`.
-    pub fn get_label_item_count(&self) -> Cint64 { self.label_item_count }
+    pub fn get_label_item_count(&self) -> Cint64 {
+        self.label_item_count
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCardinalitySignatureResolveCacheItem`.
@@ -231,12 +264,17 @@ pub struct CardinalitySignatureResolveCacheItem {
     pub cardinality_item_count: Cint64,
 }
 impl CardinalitySignatureResolveCacheItem {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::appendCardinalityCacheItem`
     /// (`mCardinalityItemCount += linker->getCount(); mCardinalityCachetemLinker = linker->append(mCardinalityCachetemLinker);`).
     /// KONCLUDE-PORT-NOTE[ownership]: head-front chain prepend (see `LabelSignatureResolveCacheItem`).
-    pub fn append_cardinality_cache_item(&mut self, linker: &[CardinalityCacheItemId]) -> &mut Self {
+    pub fn append_cardinality_cache_item(
+        &mut self,
+        linker: &[CardinalityCacheItemId],
+    ) -> &mut Self {
         self.cardinality_item_count += linker.len() as Cint64;
         let mut new_chain = linker.to_vec();
         new_chain.append(&mut self.cardinality_cache_item_linker);
@@ -244,9 +282,13 @@ impl CardinalitySignatureResolveCacheItem {
         self
     }
     /// Port of `::getCardinalityCacheItems` (`return mCardinalityCachetemLinker;`).
-    pub fn get_cardinality_cache_items(&self) -> &[CardinalityCacheItemId] { &self.cardinality_cache_item_linker }
+    pub fn get_cardinality_cache_items(&self) -> &[CardinalityCacheItemId] {
+        &self.cardinality_cache_item_linker
+    }
     /// Port of `::getCardinalityCacheItemCount`.
-    pub fn get_cardinality_cache_item_count(&self) -> Cint64 { self.cardinality_item_count }
+    pub fn get_cardinality_cache_item_count(&self) -> Cint64 {
+        self.cardinality_item_count
+    }
 }
 
 // ===========================================================================
@@ -304,10 +346,18 @@ impl Default for LabelCacheItem {
 impl LabelCacheItem {
     /// Port of `CBackendRepresentativeMemoryLabelCacheItem::CBackendRepresentativeMemoryLabelCacheItem(context)`.
     pub fn new(context: Cint64) -> Self {
-        LabelCacheItem { context, ..Default::default() }
+        LabelCacheItem {
+            context,
+            ..Default::default()
+        }
     }
     /// Port of `::initCacheEntry`.
-    pub fn init_cache_entry(&mut self, signature: Cint64, entry_id: Cint64, type_: LabelCacheItemType) -> &mut Self {
+    pub fn init_cache_entry(
+        &mut self,
+        signature: Cint64,
+        entry_id: Cint64,
+        type_: LabelCacheItemType,
+    ) -> &mut Self {
         // C++: initCachingStatusFlags() — base flag reset (inlined; sibling method
         // CBackendRepresentativeMemoryCachingFlags::initCachingStatusFlags lives in
         // backend.rs's pending batch). [api]
@@ -325,15 +375,27 @@ impl LabelCacheItem {
         self
     }
     /// Port of `::getLabelType`.
-    pub fn get_label_type(&self) -> LabelCacheItemType { self.cache_item_type }
+    pub fn get_label_type(&self) -> LabelCacheItemType {
+        self.cache_item_type
+    }
     /// Port of `::getCacheEntryID` (`return getData();`).
-    pub fn get_cache_entry_id(&self) -> Cint64 { self.cache_entry_id }
+    pub fn get_cache_entry_id(&self) -> Cint64 {
+        self.cache_entry_id
+    }
     /// Port of `::setCacheEntryID` (`setData(entryID)`).
-    pub fn set_cache_entry_id(&mut self, entry_id: Cint64) -> &mut Self { self.cache_entry_id = entry_id; self }
+    pub fn set_cache_entry_id(&mut self, entry_id: Cint64) -> &mut Self {
+        self.cache_entry_id = entry_id;
+        self
+    }
     /// Port of `::getSignature`.
-    pub fn get_signature(&self) -> Cint64 { self.signature }
+    pub fn get_signature(&self) -> Cint64 {
+        self.signature
+    }
     /// Port of `::setSignature`.
-    pub fn set_signature(&mut self, signature: Cint64) -> &mut Self { self.signature = signature; self }
+    pub fn set_signature(&mut self, signature: Cint64) -> &mut Self {
+        self.signature = signature;
+        self
+    }
     /// Port of `::addCacheValueLinker`
     /// (`mValueCount += linker->getCount(); mValueLinker = linker->append(mValueLinker);`).
     /// KONCLUDE-PORT-NOTE[ownership]: head-front chain prepend; `getCount()` == chain length.
@@ -345,37 +407,61 @@ impl LabelCacheItem {
         self
     }
     /// Port of `::getCacheValueLinker` (`return mValueLinker;`).
-    pub fn get_cache_value_linker(&self) -> &[LabelValueLinkerId] { &self.value_linker }
+    pub fn get_cache_value_linker(&self) -> &[LabelValueLinkerId] {
+        &self.value_linker
+    }
     /// Port of `::getTagCacheValueHash(create)`.
     /// KONCLUDE-PORT-NOTE[memory-pool]: C++ lazily allocates the hash when `create`;
     /// the port's inline `tag_value_hash` is always present, so `create` is inert.
-    pub fn get_tag_cache_value_hash(&mut self, _create: bool) -> &mut HashMap<Cint64, LabelValueLinkerId> {
+    pub fn get_tag_cache_value_hash(
+        &mut self,
+        _create: bool,
+    ) -> &mut HashMap<Cint64, LabelValueLinkerId> {
         &mut self.tag_value_hash
     }
     /// Port of `::setTagCacheValueHash` (`mTagValueHash = hash;`).
-    pub fn set_tag_cache_value_hash(&mut self, hash: HashMap<Cint64, LabelValueLinkerId>) -> &mut Self {
+    pub fn set_tag_cache_value_hash(
+        &mut self,
+        hash: HashMap<Cint64, LabelValueLinkerId>,
+    ) -> &mut Self {
         self.tag_value_hash = hash;
         self
     }
     /// Port of `::getCacheValueCount`.
-    pub fn get_cache_value_count(&self) -> Cint64 { self.value_count }
+    pub fn get_cache_value_count(&self) -> Cint64 {
+        self.value_count
+    }
     /// Port of `::hasCachedTagValue` (`if (mTagValueHash) return mTagValueHash->contains(tag); return false;`).
-    pub fn has_cached_tag_value(&self, tag: Cint64) -> bool { self.tag_value_hash.contains_key(&tag) }
+    pub fn has_cached_tag_value(&self, tag: Cint64) -> bool {
+        self.tag_value_hash.contains_key(&tag)
+    }
     /// Port of `::getExtensionData` (`return mExtensionData[extensionType];`).
     pub fn get_extension_data(&self, extension_type: Cint64) -> LabelCacheItemExtensionDataId {
         self.extension_data[extension_type as usize]
     }
     /// Port of `::setExtensionData` (`mExtensionData[extensionType] = extensionData;`).
-    pub fn set_extension_data(&mut self, extension_type: Cint64, extension_data: LabelCacheItemExtensionDataId) -> &mut Self {
+    pub fn set_extension_data(
+        &mut self,
+        extension_type: Cint64,
+        extension_data: LabelCacheItemExtensionDataId,
+    ) -> &mut Self {
         self.extension_data[extension_type as usize] = extension_data;
         self
     }
     /// Port of `::incIndividualAssociationCount`.
-    pub fn inc_individual_association_count(&mut self, count: Cint64) -> &mut Self { self.indi_association_count += count; self }
+    pub fn inc_individual_association_count(&mut self, count: Cint64) -> &mut Self {
+        self.indi_association_count += count;
+        self
+    }
     /// Port of `::decIndividualAssociationCount`.
-    pub fn dec_individual_association_count(&mut self, count: Cint64) -> &mut Self { self.indi_association_count -= count; self }
+    pub fn dec_individual_association_count(&mut self, count: Cint64) -> &mut Self {
+        self.indi_association_count -= count;
+        self
+    }
     /// Port of `::getIndividualAssociationCount`.
-    pub fn get_individual_association_count(&self) -> Cint64 { self.indi_association_count }
+    pub fn get_individual_association_count(&self) -> Cint64 {
+        self.indi_association_count
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCardinalityCacheItem` (`: CLinkerBase<cint64,...>`).
@@ -411,7 +497,10 @@ impl Default for CardinalityCacheItem {
 impl CardinalityCacheItem {
     /// Port of `CBackendRepresentativeMemoryCardinalityCacheItem::CBackendRepresentativeMemoryCardinalityCacheItem(context)`.
     pub fn new(context: Cint64) -> Self {
-        CardinalityCacheItem { context, ..Default::default() }
+        CardinalityCacheItem {
+            context,
+            ..Default::default()
+        }
     }
 
     /// Port of `::initCacheEntry`.
@@ -424,16 +513,29 @@ impl CardinalityCacheItem {
         self
     }
     /// Port of `::getCacheEntryID` (`return getData();`).
-    pub fn get_cache_entry_id(&self) -> Cint64 { self.cache_entry_id }
+    pub fn get_cache_entry_id(&self) -> Cint64 {
+        self.cache_entry_id
+    }
     /// Port of `::setCacheEntryID` (`setData(entryID)`).
-    pub fn set_cache_entry_id(&mut self, entry_id: Cint64) -> &mut Self { self.cache_entry_id = entry_id; self }
+    pub fn set_cache_entry_id(&mut self, entry_id: Cint64) -> &mut Self {
+        self.cache_entry_id = entry_id;
+        self
+    }
     /// Port of `::getSignature`.
-    pub fn get_signature(&self) -> Cint64 { self.signature }
+    pub fn get_signature(&self) -> Cint64 {
+        self.signature
+    }
     /// Port of `::setSignature`.
-    pub fn set_signature(&mut self, signature: Cint64) -> &mut Self { self.signature = signature; self }
+    pub fn set_signature(&mut self, signature: Cint64) -> &mut Self {
+        self.signature = signature;
+        self
+    }
     /// Port of `::addCardinalityCacheValueLinker`
     /// (`mCardinalityValueCount += linker->getCount(); mCardinalityValueLinker = linker->append(mCardinalityValueLinker);`).
-    pub fn add_cardinality_cache_value_linker(&mut self, linker: &[CardinalityValueLinkerId]) -> &mut Self {
+    pub fn add_cardinality_cache_value_linker(
+        &mut self,
+        linker: &[CardinalityValueLinkerId],
+    ) -> &mut Self {
         self.cardinality_value_count += linker.len() as Cint64;
         let mut new_chain = linker.to_vec();
         new_chain.append(&mut self.cardinality_value_linker);
@@ -441,18 +543,28 @@ impl CardinalityCacheItem {
         self
     }
     /// Port of `::getCardinalityCacheValueLinker`.
-    pub fn get_cardinality_cache_value_linker(&self) -> &[CardinalityValueLinkerId] { &self.cardinality_value_linker }
+    pub fn get_cardinality_cache_value_linker(&self) -> &[CardinalityValueLinkerId] {
+        &self.cardinality_value_linker
+    }
     /// Port of `::getTagCardinalityCacheValueHash(create)` (inline map; `create` inert, [memory-pool]).
-    pub fn get_tag_cardinality_cache_value_hash(&mut self, _create: bool) -> &mut HashMap<Cint64, CardinalityValueLinkerId> {
+    pub fn get_tag_cardinality_cache_value_hash(
+        &mut self,
+        _create: bool,
+    ) -> &mut HashMap<Cint64, CardinalityValueLinkerId> {
         &mut self.tag_card_value_hash
     }
     /// Port of `::setTagCardinalityCacheValueHash`.
-    pub fn set_tag_cardinality_cache_value_hash(&mut self, hash: HashMap<Cint64, CardinalityValueLinkerId>) -> &mut Self {
+    pub fn set_tag_cardinality_cache_value_hash(
+        &mut self,
+        hash: HashMap<Cint64, CardinalityValueLinkerId>,
+    ) -> &mut Self {
         self.tag_card_value_hash = hash;
         self
     }
     /// Port of `::getCardinalityCacheValueCount`.
-    pub fn get_cardinality_cache_value_count(&self) -> Cint64 { self.cardinality_value_count }
+    pub fn get_cardinality_cache_value_count(&self) -> Cint64 {
+        self.cardinality_value_count
+    }
 }
 
 // ===========================================================================
@@ -471,30 +583,46 @@ pub struct LabelCacheItemCardinalityData {
 }
 
 impl LabelCacheItemCardinalityData {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `CBackendRepresentativeMemoryLabelCacheItemCardinalityData::initCardinalityData`
     /// (`mExistentialMaxUsedCardinality.store(...); mMinimumRestrictingCardinality.store(...);`).
-    pub fn init_cardinality_data(&mut self, existential_max_used_cardinality: Cint64, minimum_restricting_cardinality: Cint64) -> &mut Self {
+    pub fn init_cardinality_data(
+        &mut self,
+        existential_max_used_cardinality: Cint64,
+        minimum_restricting_cardinality: Cint64,
+    ) -> &mut Self {
         self.existential_max_used_cardinality = existential_max_used_cardinality;
         self.minimum_restricting_cardinality = minimum_restricting_cardinality;
         self
     }
     /// Port of `::getExistentialMaxUsedCardinality`.
-    pub fn get_existential_max_used_cardinality(&self) -> Cint64 { self.existential_max_used_cardinality }
+    pub fn get_existential_max_used_cardinality(&self) -> Cint64 {
+        self.existential_max_used_cardinality
+    }
     /// Port of `::updateExistentialMaxUsedCardinality`.
     /// KONCLUDE-PORT-NOTE[threading]: the C++ CAS loop (`testAndSetOrdered`) reduces to a
     /// monotone max under the single-thread staging.
-    pub fn update_existential_max_used_cardinality(&mut self, existential_max_used_cardinality: Cint64) -> &mut Self {
+    pub fn update_existential_max_used_cardinality(
+        &mut self,
+        existential_max_used_cardinality: Cint64,
+    ) -> &mut Self {
         if self.existential_max_used_cardinality < existential_max_used_cardinality {
             self.existential_max_used_cardinality = existential_max_used_cardinality;
         }
         self
     }
     /// Port of `::getMinimumRestrictingCardinality`.
-    pub fn get_minimum_restricting_cardinality(&self) -> Cint64 { self.minimum_restricting_cardinality }
+    pub fn get_minimum_restricting_cardinality(&self) -> Cint64 {
+        self.minimum_restricting_cardinality
+    }
     /// Port of `::updateMinimumRestrictingCardinality` ([threading] CAS → monotone max).
-    pub fn update_minimum_restricting_cardinality(&mut self, minimum_restricting_cardinality: Cint64) -> &mut Self {
+    pub fn update_minimum_restricting_cardinality(
+        &mut self,
+        minimum_restricting_cardinality: Cint64,
+    ) -> &mut Self {
         if self.minimum_restricting_cardinality < minimum_restricting_cardinality {
             self.minimum_restricting_cardinality = minimum_restricting_cardinality;
         }
@@ -506,6 +634,8 @@ impl LabelCacheItemCardinalityData {
 /// (`: CLinkerBase<CBackendRepresentativeMemoryLabelCacheItem*,...>`).
 #[derive(Debug, Clone)]
 pub struct LabelCacheItemTagLabelResolvingDataLinker {
+    /// Intrusive `CLinkerBase` next pointer.
+    pub next: TagLabelResolvingDataLinkerId,
     /// the `CLinkerBase` payload — the resolved label item.
     pub label_item: LabelCacheItemId,
     /// `cint64 mIndex`.
@@ -515,27 +645,55 @@ pub struct LabelCacheItemTagLabelResolvingDataLinker {
 }
 impl Default for LabelCacheItemTagLabelResolvingDataLinker {
     fn default() -> Self {
-        LabelCacheItemTagLabelResolvingDataLinker { label_item: Id::NONE, index: 0, deterministic: false }
+        LabelCacheItemTagLabelResolvingDataLinker {
+            next: Id::NONE,
+            label_item: Id::NONE,
+            index: 0,
+            deterministic: false,
+        }
     }
 }
 
 impl LabelCacheItemTagLabelResolvingDataLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initTagLabelResolvingData`
     /// (`setData(labelCacheItem); mIndex = index; mDeterministic = deterministic;`).
-    pub fn init_tag_label_resolving_data(&mut self, label_cache_item: LabelCacheItemId, index: Cint64, deterministic: bool) -> &mut Self {
+    pub fn init_tag_label_resolving_data(
+        &mut self,
+        label_cache_item: LabelCacheItemId,
+        index: Cint64,
+        deterministic: bool,
+    ) -> &mut Self {
+        self.next = Id::NONE;
         self.label_item = label_cache_item; // the CLinkerBase payload.
         self.index = index;
         self.deterministic = deterministic;
         self
     }
+    /// Port of the CLinker `getNext`.
+    pub fn get_next(&self) -> TagLabelResolvingDataLinkerId {
+        self.next
+    }
+    /// Port of the CLinker `setNext`.
+    pub fn set_next(&mut self, next: TagLabelResolvingDataLinkerId) -> &mut Self {
+        self.next = next;
+        self
+    }
     /// Port of `::getLabelCacheItem` (`return getData();`).
-    pub fn get_label_cache_item(&self) -> LabelCacheItemId { self.label_item }
+    pub fn get_label_cache_item(&self) -> LabelCacheItemId {
+        self.label_item
+    }
     /// Port of `::getIndex`.
-    pub fn get_index(&self) -> Cint64 { self.index }
+    pub fn get_index(&self) -> Cint64 {
+        self.index
+    }
     /// Port of `::isDeterministic`.
-    pub fn is_deterministic(&self) -> bool { self.deterministic }
+    pub fn is_deterministic(&self) -> bool {
+        self.deterministic
+    }
 }
 
 /// Port of the `CBackendRepresentativeMemoryLabelCacheItemExtensionData` hierarchy
@@ -586,7 +744,9 @@ pub enum LabelCacheItemExtensionData {
 }
 
 impl Default for LabelCacheItemExtensionData {
-    fn default() -> Self { LabelCacheItemExtensionData::Base { context: INVALID } }
+    fn default() -> Self {
+        LabelCacheItemExtensionData::Base { context: INVALID }
+    }
 }
 
 impl LabelCacheItemExtensionData {
@@ -598,11 +758,21 @@ impl LabelCacheItemExtensionData {
     /// in C++ (never on the same label type), so both fold to `TagResolvingHash`.
     pub fn get_extension_type(&self) -> LabelCacheItemExtensionType {
         match self {
-            LabelCacheItemExtensionData::IndividualAssociationMap { .. } => LabelCacheItemExtensionType::IndividualAssociationMap,
-            LabelCacheItemExtensionData::NeighbourArrayIndex { .. } => LabelCacheItemExtensionType::IndividualNeighbourArrayIndex,
-            LabelCacheItemExtensionData::TagLabelResolving { .. } => LabelCacheItemExtensionType::TagResolvingHash,
-            LabelCacheItemExtensionData::Cardinality { .. } => LabelCacheItemExtensionType::TagResolvingHash,
-            LabelCacheItemExtensionData::Base { .. } => LabelCacheItemExtensionType::IndividualAssociationMap,
+            LabelCacheItemExtensionData::IndividualAssociationMap { .. } => {
+                LabelCacheItemExtensionType::IndividualAssociationMap
+            }
+            LabelCacheItemExtensionData::NeighbourArrayIndex { .. } => {
+                LabelCacheItemExtensionType::IndividualNeighbourArrayIndex
+            }
+            LabelCacheItemExtensionData::TagLabelResolving { .. } => {
+                LabelCacheItemExtensionType::TagResolvingHash
+            }
+            LabelCacheItemExtensionData::Cardinality { .. } => {
+                LabelCacheItemExtensionType::TagResolvingHash
+            }
+            LabelCacheItemExtensionData::Base { .. } => {
+                LabelCacheItemExtensionType::IndividualAssociationMap
+            }
         }
     }
 
@@ -611,9 +781,22 @@ impl LabelCacheItemExtensionData {
     /// Port of `::addIndividualIdAssociation(indiId, sameIndividualMerged)`
     /// (`QMap::insert(indiId, DummyValue())` into the base / same-merged map).
     /// KONCLUDE-PORT-NOTE[ownership]: the ordered `QMap` key set → sorted-deduped `Vec<Cint64>`.
-    pub fn add_individual_id_association(&mut self, indi_id: Cint64, same_individual_merged: bool) -> &mut Self {
-        if let LabelCacheItemExtensionData::IndividualAssociationMap { base_indi_asso_map, same_indi_merged_asso_map, .. } = self {
-            let map = if !same_individual_merged { base_indi_asso_map } else { same_indi_merged_asso_map };
+    pub fn add_individual_id_association(
+        &mut self,
+        indi_id: Cint64,
+        same_individual_merged: bool,
+    ) -> &mut Self {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map,
+            same_indi_merged_asso_map,
+            ..
+        } = self
+        {
+            let map = if !same_individual_merged {
+                base_indi_asso_map
+            } else {
+                same_indi_merged_asso_map
+            };
             if let Err(pos) = map.binary_search(&indi_id) {
                 map.insert(pos, indi_id);
             }
@@ -621,9 +804,22 @@ impl LabelCacheItemExtensionData {
         self
     }
     /// Port of `::removeIndividualIdAssociation(indiId, sameIndividualMerged)` (`QMap::remove`).
-    pub fn remove_individual_id_association(&mut self, indi_id: Cint64, same_individual_merged: bool) -> &mut Self {
-        if let LabelCacheItemExtensionData::IndividualAssociationMap { base_indi_asso_map, same_indi_merged_asso_map, .. } = self {
-            let map = if !same_individual_merged { base_indi_asso_map } else { same_indi_merged_asso_map };
+    pub fn remove_individual_id_association(
+        &mut self,
+        indi_id: Cint64,
+        same_individual_merged: bool,
+    ) -> &mut Self {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map,
+            same_indi_merged_asso_map,
+            ..
+        } = self
+        {
+            let map = if !same_individual_merged {
+                base_indi_asso_map
+            } else {
+                same_indi_merged_asso_map
+            };
             if let Ok(pos) = map.binary_search(&indi_id) {
                 map.remove(pos);
             }
@@ -633,16 +829,33 @@ impl LabelCacheItemExtensionData {
     /// Port of `::addIndividualIdAssociation(indiAssocData)`
     /// (`addIndividualIdAssociation(indiAssocData->getAssociatedIndividualId(), indiAssocData->hasRepresentativeSameIndividualMerging())`).
     /// KONCLUDE-PORT-NOTE[ownership]: C++ takes a pointer; the port takes the sibling by ref.
-    pub fn add_individual_id_association_data(&mut self, indi_assoc_data: &IndividualAssociationData) -> &mut Self {
-        self.add_individual_id_association(indi_assoc_data.get_associated_individual_id(), indi_assoc_data.has_representative_same_individual_merging())
+    pub fn add_individual_id_association_data(
+        &mut self,
+        indi_assoc_data: &IndividualAssociationData,
+    ) -> &mut Self {
+        self.add_individual_id_association(
+            indi_assoc_data.get_associated_individual_id(),
+            indi_assoc_data.has_representative_same_individual_merging(),
+        )
     }
     /// Port of `::removeIndividualIdAssociation(indiAssocData)`.
-    pub fn remove_individual_id_association_data(&mut self, indi_assoc_data: &IndividualAssociationData) -> &mut Self {
-        self.remove_individual_id_association(indi_assoc_data.get_associated_individual_id(), indi_assoc_data.has_representative_same_individual_merging())
+    pub fn remove_individual_id_association_data(
+        &mut self,
+        indi_assoc_data: &IndividualAssociationData,
+    ) -> &mut Self {
+        self.remove_individual_id_association(
+            indi_assoc_data.get_associated_individual_id(),
+            indi_assoc_data.has_representative_same_individual_merging(),
+        )
     }
     /// Port of `::getIndividualIdAssociationCount` (`mBaseIndiAssoMap.size() + mSameIndiMergedAssoMap.size()`).
     pub fn get_individual_id_association_count(&self) -> Cint64 {
-        if let LabelCacheItemExtensionData::IndividualAssociationMap { base_indi_asso_map, same_indi_merged_asso_map, .. } = self {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map,
+            same_indi_merged_asso_map,
+            ..
+        } = self
+        {
             (base_indi_asso_map.len() + same_indi_merged_asso_map.len()) as Cint64
         } else {
             0
@@ -652,10 +865,20 @@ impl LabelCacheItemExtensionData {
     /// KONCLUDE-PORT-NOTE[api]: `function<bool(...)>` → `&mut dyn FnMut`; the C++ `continueVisiting`
     /// is computed but never used to break (faithfully reproduced — visiting is unconditional).
     /// The `if (visitSameMergedIndividuals) itMerged = itMergedEnd;` line is a verbatim C++ quirk.
-    pub fn visit_individual_id_associations_ascending(&self, visit_func: &mut dyn FnMut(Cint64, bool) -> bool, visit_base_individuals: bool, visit_same_merged_individuals: bool) -> bool {
+    pub fn visit_individual_id_associations_ascending(
+        &self,
+        visit_func: &mut dyn FnMut(Cint64, bool) -> bool,
+        visit_base_individuals: bool,
+        visit_same_merged_individuals: bool,
+    ) -> bool {
         let mut visited = false;
         let mut continue_visiting = true;
-        if let LabelCacheItemExtensionData::IndividualAssociationMap { base_indi_asso_map: base, same_indi_merged_asso_map: same, .. } = self {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map: base,
+            same_indi_merged_asso_map: same,
+            ..
+        } = self
+        {
             let base_end = base.len();
             let same_end = same.len();
             let mut bi = 0usize;
@@ -695,10 +918,20 @@ impl LabelCacheItemExtensionData {
     /// KONCLUDE-PORT-NOTE[unclear]: the C++ unconditionally `toBack()`s both reverse iterators, so
     /// the `visitBaseIndividuals` / `visitSameMergedIndividuals` flags have NO effect here (faithfully
     /// reproduced — both maps are always visited in full).
-    pub fn visit_individual_id_associations_descending(&self, visit_func: &mut dyn FnMut(Cint64, bool) -> bool, _visit_base_individuals: bool, _visit_same_merged_individuals: bool) -> bool {
+    pub fn visit_individual_id_associations_descending(
+        &self,
+        visit_func: &mut dyn FnMut(Cint64, bool) -> bool,
+        _visit_base_individuals: bool,
+        _visit_same_merged_individuals: bool,
+    ) -> bool {
         let mut visited = false;
         let mut continue_visiting = true;
-        if let LabelCacheItemExtensionData::IndividualAssociationMap { base_indi_asso_map: base, same_indi_merged_asso_map: same, .. } = self {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map: base,
+            same_indi_merged_asso_map: same,
+            ..
+        } = self
+        {
             let mut bi = base.len(); // hasPrevious() == bi > 0; previous() == base[bi-1].
             let mut mi = same.len();
             while bi > 0 || mi > 0 {
@@ -727,50 +960,159 @@ impl LabelCacheItemExtensionData {
         visited
     }
     /// Port of `::visitIndividualIdAssociations(visitFunc, ascending, ...)`.
-    pub fn visit_individual_id_associations(&self, visit_func: &mut dyn FnMut(Cint64, bool) -> bool, ascending: bool, visit_base_individuals: bool, visit_same_merged_individuals: bool) -> bool {
+    pub fn visit_individual_id_associations(
+        &self,
+        visit_func: &mut dyn FnMut(Cint64, bool) -> bool,
+        ascending: bool,
+        visit_base_individuals: bool,
+        visit_same_merged_individuals: bool,
+    ) -> bool {
         if ascending {
-            self.visit_individual_id_associations_ascending(visit_func, visit_base_individuals, visit_same_merged_individuals)
+            self.visit_individual_id_associations_ascending(
+                visit_func,
+                visit_base_individuals,
+                visit_same_merged_individuals,
+            )
         } else {
-            self.visit_individual_id_associations_descending(visit_func, visit_base_individuals, visit_same_merged_individuals)
+            self.visit_individual_id_associations_descending(
+                visit_func,
+                visit_base_individuals,
+                visit_same_merged_individuals,
+            )
         }
     }
-    /// Port of `::getIterator(ascending, ...)` / `::getIterator(cursorId, moveOverCursor, ascending, ...)`.
-    /// KONCLUDE-PORT-NOTE[api]: the C++ builds a `...MapIterator` from `QMap::const_iterator`
-    /// begin/end (and `upperBound`/`lowerBound` cursors). That iterator class carries no ported
-    /// behaviour yet, so the cursor→position construction is deferred and a default iterator is
-    /// returned. W6-DEFER[api].
-    pub fn get_iterator(&self, ascending: bool, _visit_base_individuals: bool, _visit_same_merged_individuals: bool) -> LabelCacheItemIndividualAssociationMapIterator {
-        let mut it = LabelCacheItemIndividualAssociationMapIterator::default();
-        it.iterate_ascending = ascending;
-        it
+    /// Port of `::getIterator(ascending, ...)`.
+    pub fn get_iterator(
+        &self,
+        ascending: bool,
+        visit_base_individuals: bool,
+        visit_same_merged_individuals: bool,
+    ) -> LabelCacheItemIndividualAssociationMapIterator {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map,
+            same_indi_merged_asso_map,
+            ..
+        } = self
+        {
+            LabelCacheItemIndividualAssociationMapIterator::new(
+                if visit_base_individuals {
+                    base_indi_asso_map.clone()
+                } else {
+                    Vec::new()
+                },
+                if visit_same_merged_individuals {
+                    same_indi_merged_asso_map.clone()
+                } else {
+                    Vec::new()
+                },
+                ascending,
+                None,
+                false,
+            )
+        } else {
+            LabelCacheItemIndividualAssociationMapIterator::default()
+        }
     }
-    /// Port of `::getIterator(cursorId, ...)` (cursor variant; see note above). W6-DEFER[api].
-    pub fn get_iterator_from_cursor(&self, _cursor_id: Cint64, _move_over_cursor: bool, ascending: bool, _visit_base_individuals: bool, _visit_same_merged_individuals: bool) -> LabelCacheItemIndividualAssociationMapIterator {
-        let mut it = LabelCacheItemIndividualAssociationMapIterator::default();
-        it.iterate_ascending = ascending;
-        it
+    /// Port of `::getIterator(cursorId, ...)`.
+    pub fn get_iterator_from_cursor(
+        &self,
+        cursor_id: Cint64,
+        move_over_cursor: bool,
+        ascending: bool,
+        visit_base_individuals: bool,
+        visit_same_merged_individuals: bool,
+    ) -> LabelCacheItemIndividualAssociationMapIterator {
+        if let LabelCacheItemExtensionData::IndividualAssociationMap {
+            base_indi_asso_map,
+            same_indi_merged_asso_map,
+            ..
+        } = self
+        {
+            LabelCacheItemIndividualAssociationMapIterator::new(
+                if visit_base_individuals {
+                    base_indi_asso_map.clone()
+                } else {
+                    Vec::new()
+                },
+                if visit_same_merged_individuals {
+                    same_indi_merged_asso_map.clone()
+                } else {
+                    Vec::new()
+                },
+                ascending,
+                Some(cursor_id),
+                move_over_cursor,
+            )
+        } else {
+            LabelCacheItemIndividualAssociationMapIterator::default()
+        }
     }
 
     // ===== CBackendRepresentativeMemoryLabelCacheItemIndividualRoleSetNeighbourArrayIndexExtensionData =====
 
     /// Port of `::initNeighbourArrayIndexData(combinedNeighbourRoleSetLabel)`.
-    pub fn init_neighbour_array_index_data(&mut self, combined_neighbour_role_set_label: LabelCacheItemId) -> &mut Self {
-        if let LabelCacheItemExtensionData::NeighbourArrayIndex { combined_neighbour_role_set_label: c, .. } = self {
+    pub fn init_neighbour_array_index_data(
+        &mut self,
+        combined_neighbour_role_set_label: LabelCacheItemId,
+        cache_context: &CacheContext,
+    ) -> &mut Self {
+        if let LabelCacheItemExtensionData::NeighbourArrayIndex {
+            combined_neighbour_role_set_label: c,
+            array_size,
+            index_neighbour_role_set_label_array,
+            neighbour_role_set_label_index_hash,
+            ..
+        } = self
+        {
             *c = combined_neighbour_role_set_label;
-            // W6-DEFER[api]: `mArraySize = combined->getCacheValueCount()` plus the per-index fill of
-            // `mIndexNeighbourRoleSetLabelArray` / `mNeighbourRoleSetLabelIndexHash` by walking the
-            // combined label's value-linker chain need the LabelCacheItem / LabelValueLinker arenas
-            // (not threaded into this struct). The array/hash build is deferred; control flow preserved.
+            *array_size = if combined_neighbour_role_set_label.is_some() {
+                cache_context
+                    .label_cache_item(combined_neighbour_role_set_label)
+                    .get_cache_value_count()
+            } else {
+                0
+            };
+            index_neighbour_role_set_label_array.clear();
+            index_neighbour_role_set_label_array.resize(*array_size as usize, Id::NONE);
+            neighbour_role_set_label_index_hash.clear();
+
+            let cache_value_linkers = if combined_neighbour_role_set_label.is_some() {
+                cache_context
+                    .label_cache_item(combined_neighbour_role_set_label)
+                    .get_cache_value_linker()
+                    .to_vec()
+            } else {
+                Vec::new()
+            };
+            for i in 0..*array_size {
+                if let Some(cache_value_linker) = cache_value_linkers.get(i as usize) {
+                    let neighbour_role_set_label = LabelCacheItemId::new(
+                        cache_context
+                            .label_value_linker(*cache_value_linker)
+                            .get_cache_value()
+                            .get_identification(),
+                    );
+                    index_neighbour_role_set_label_array[i as usize] = neighbour_role_set_label;
+                    neighbour_role_set_label_index_hash.insert(neighbour_role_set_label, i);
+                }
+            }
         }
         self
     }
     /// Port of `::initNeighbourArrayIndexData(neighArrayIndexData)` — C++ body is `return this;` (no-op).
-    pub fn init_neighbour_array_index_data_from(&mut self, _neigh_array_index_data: LabelCacheItemExtensionDataId) -> &mut Self {
+    pub fn init_neighbour_array_index_data_from(
+        &mut self,
+        _neigh_array_index_data: LabelCacheItemExtensionDataId,
+    ) -> &mut Self {
         self
     }
     /// Port of `::getCombinedNeighbourRoleSetLabel`.
     pub fn get_combined_neighbour_role_set_label(&self) -> LabelCacheItemId {
-        if let LabelCacheItemExtensionData::NeighbourArrayIndex { combined_neighbour_role_set_label, .. } = self {
+        if let LabelCacheItemExtensionData::NeighbourArrayIndex {
+            combined_neighbour_role_set_label,
+            ..
+        } = self
+        {
             *combined_neighbour_role_set_label
         } else {
             Id::NONE
@@ -787,8 +1129,16 @@ impl LabelCacheItemExtensionData {
     /// Port of `::getNeighbourRoleSetLabel(index)`
     /// (`if (index >= 0 && index < mArraySize) return mIndexNeighbourRoleSetLabelArray[index]; return nullptr;`).
     pub fn get_neighbour_role_set_label(&self, index: Cint64) -> LabelCacheItemId {
-        if let LabelCacheItemExtensionData::NeighbourArrayIndex { array_size, index_neighbour_role_set_label_array, .. } = self {
-            if index >= 0 && index < *array_size && (index as usize) < index_neighbour_role_set_label_array.len() {
+        if let LabelCacheItemExtensionData::NeighbourArrayIndex {
+            array_size,
+            index_neighbour_role_set_label_array,
+            ..
+        } = self
+        {
+            if index >= 0
+                && index < *array_size
+                && (index as usize) < index_neighbour_role_set_label_array.len()
+            {
                 return index_neighbour_role_set_label_array[index as usize];
             }
         }
@@ -796,8 +1146,14 @@ impl LabelCacheItemExtensionData {
     }
     /// Port of `::getIndex(neighbourRoleSetLabel)` (`mNeighbourRoleSetLabelIndexHash->value(label, -1)`).
     pub fn get_index(&self, neighbour_role_set_label: LabelCacheItemId) -> Cint64 {
-        if let LabelCacheItemExtensionData::NeighbourArrayIndex { neighbour_role_set_label_index_hash, .. } = self {
-            *neighbour_role_set_label_index_hash.get(&neighbour_role_set_label).unwrap_or(&-1)
+        if let LabelCacheItemExtensionData::NeighbourArrayIndex {
+            neighbour_role_set_label_index_hash,
+            ..
+        } = self
+        {
+            *neighbour_role_set_label_index_hash
+                .get(&neighbour_role_set_label)
+                .unwrap_or(&-1)
         } else {
             -1
         }
@@ -805,23 +1161,58 @@ impl LabelCacheItemExtensionData {
 
     // ===== CBackendRepresentativeMemoryLabelCacheItemTagLabelResolvingExtensionData =====
 
-    /// Port of `::initTagLabelResolvingExtensionData` (C++ allocates the hash; the inline map is
-    /// always present, so this is a no-op, [memory-pool]).
-    pub fn init_tag_label_resolving_extension_data(&mut self) -> &mut Self { self }
+    /// Port of `::initTagLabelResolvingExtensionData` (C++ allocates a fresh hash;
+    /// the Rust inline map is cleared to the same empty state, [memory-pool]).
+    pub fn init_tag_label_resolving_extension_data(&mut self) -> &mut Self {
+        if let LabelCacheItemExtensionData::TagLabelResolving {
+            tag_label_resolving_data_linker_hash,
+            ..
+        } = self
+        {
+            tag_label_resolving_data_linker_hash.clear();
+        }
+        self
+    }
     /// Port of `::getTagLabelResolvingDataLinker(tag)` (`mTagLabelResolvingDataLinkerHash->value(tag)`).
-    pub fn get_tag_label_resolving_data_linker(&self, tag: Cint64) -> TagLabelResolvingDataLinkerId {
-        if let LabelCacheItemExtensionData::TagLabelResolving { tag_label_resolving_data_linker_hash, .. } = self {
-            tag_label_resolving_data_linker_hash.get(&tag).copied().unwrap_or(Id::NONE)
+    pub fn get_tag_label_resolving_data_linker(
+        &self,
+        tag: Cint64,
+    ) -> TagLabelResolvingDataLinkerId {
+        if let LabelCacheItemExtensionData::TagLabelResolving {
+            tag_label_resolving_data_linker_hash,
+            ..
+        } = self
+        {
+            tag_label_resolving_data_linker_hash
+                .get(&tag)
+                .copied()
+                .unwrap_or(Id::NONE)
         } else {
             Id::NONE
         }
     }
     /// Port of `::appendTagLabelResolvingDataLinker(tag, linker)`
     /// (`exLinker = linker->append(exLinker);` where `exLinker = (*hash)[tag]`).
-    pub fn append_tag_label_resolving_data_linker(&mut self, tag: Cint64, linker: TagLabelResolvingDataLinkerId) -> &mut Self {
-        if let LabelCacheItemExtensionData::TagLabelResolving { tag_label_resolving_data_linker_hash, .. } = self {
-            // `linker` becomes the new chain head; its tail re-links to the prior head in the linker
-            // arena (W6-DEFER[api]: the arena next-pointer is not threaded here — only the head id is stored).
+    pub fn append_tag_label_resolving_data_linker(
+        &mut self,
+        tag: Cint64,
+        linker: TagLabelResolvingDataLinkerId,
+        cache_context: &mut CacheContext,
+    ) -> &mut Self {
+        if let LabelCacheItemExtensionData::TagLabelResolving {
+            tag_label_resolving_data_linker_hash,
+            ..
+        } = self
+        {
+            let ex_linker = tag_label_resolving_data_linker_hash
+                .get(&tag)
+                .copied()
+                .unwrap_or(Id::NONE);
+            if linker.is_some() {
+                cache_context
+                    .tag_label_resolving_data_linker_mut(linker)
+                    .set_next(ex_linker);
+            }
             tag_label_resolving_data_linker_hash.insert(tag, linker);
         }
         self
@@ -829,26 +1220,57 @@ impl LabelCacheItemExtensionData {
 
     // ===== CBackendRepresentativeMemoryLabelCacheItemCardinalityExtensionData =====
 
-    /// Port of `::initCardinalityExtensionData` (inline map; no-op, [memory-pool]).
-    pub fn init_cardinality_extension_data(&mut self) -> &mut Self { self }
+    /// Port of `::initCardinalityExtensionData` (C++ allocates a fresh hash; the
+    /// Rust inline map is cleared to the same empty state, [memory-pool]).
+    pub fn init_cardinality_extension_data(&mut self) -> &mut Self {
+        if let LabelCacheItemExtensionData::Cardinality {
+            role_cardinality_data_hash,
+            ..
+        } = self
+        {
+            role_cardinality_data_hash.clear();
+        }
+        self
+    }
     /// Port of `::getRoleCardinalityData(roleTag)` (`mRoleCardinalityDataHash->value(roleTag)`).
-    pub fn get_role_cardinality_data(&self, role_tag: Cint64) -> Option<&LabelCacheItemCardinalityData> {
-        if let LabelCacheItemExtensionData::Cardinality { role_cardinality_data_hash, .. } = self {
+    pub fn get_role_cardinality_data(
+        &self,
+        role_tag: Cint64,
+    ) -> Option<&LabelCacheItemCardinalityData> {
+        if let LabelCacheItemExtensionData::Cardinality {
+            role_cardinality_data_hash,
+            ..
+        } = self
+        {
             role_cardinality_data_hash.get(&role_tag)
         } else {
             None
         }
     }
     /// Port of `::setRoleCardinalityData(roleTag, cardinalityData)` (`mRoleCardinalityDataHash->insert(...)`).
-    pub fn set_role_cardinality_data(&mut self, role_tag: Cint64, cardinality_data: LabelCacheItemCardinalityData) -> &mut Self {
-        if let LabelCacheItemExtensionData::Cardinality { role_cardinality_data_hash, .. } = self {
+    pub fn set_role_cardinality_data(
+        &mut self,
+        role_tag: Cint64,
+        cardinality_data: LabelCacheItemCardinalityData,
+    ) -> &mut Self {
+        if let LabelCacheItemExtensionData::Cardinality {
+            role_cardinality_data_hash,
+            ..
+        } = self
+        {
             role_cardinality_data_hash.insert(role_tag, cardinality_data);
         }
         self
     }
     /// Port of `::getRoleCardinalityDataHash` (`return mRoleCardinalityDataHash;`).
-    pub fn get_role_cardinality_data_hash(&mut self) -> Option<&mut HashMap<Cint64, LabelCacheItemCardinalityData>> {
-        if let LabelCacheItemExtensionData::Cardinality { role_cardinality_data_hash, .. } = self {
+    pub fn get_role_cardinality_data_hash(
+        &mut self,
+    ) -> Option<&mut HashMap<Cint64, LabelCacheItemCardinalityData>> {
+        if let LabelCacheItemExtensionData::Cardinality {
+            role_cardinality_data_hash,
+            ..
+        } = self
+        {
             Some(role_cardinality_data_hash)
         } else {
             None
@@ -862,6 +1284,8 @@ impl LabelCacheItemExtensionData {
 /// cursors become plain index positions.
 #[derive(Debug, Default, Clone)]
 pub struct LabelCacheItemIndividualAssociationMapIterator {
+    base_indi_asso_map: Vec<Cint64>,
+    same_indi_merged_asso_map: Vec<Cint64>,
     /// `bool mIterateAscending`.
     pub iterate_ascending: bool,
     /// `bool mHasCurrentIndiId`.
@@ -875,6 +1299,171 @@ pub struct LabelCacheItemIndividualAssociationMapIterator {
     /// KONCLUDE-PORT-NOTE[api]: STL/Qt iterators → `Cint64` positions into the
     /// extension's ordered key vectors.
     pub map_iterator_positions: [Cint64; 6],
+}
+
+impl LabelCacheItemIndividualAssociationMapIterator {
+    fn new(
+        base_indi_asso_map: Vec<Cint64>,
+        same_indi_merged_asso_map: Vec<Cint64>,
+        iterate_ascending: bool,
+        cursor_id: Option<Cint64>,
+        move_over_cursor: bool,
+    ) -> Self {
+        let base_start = if let Some(cursor) = cursor_id {
+            if iterate_ascending {
+                if move_over_cursor {
+                    upper_bound(&base_indi_asso_map, cursor)
+                } else {
+                    lower_bound(&base_indi_asso_map, cursor)
+                }
+            } else if move_over_cursor {
+                lower_bound(&base_indi_asso_map, cursor)
+            } else {
+                upper_bound(&base_indi_asso_map, cursor)
+            }
+        } else if iterate_ascending {
+            0
+        } else {
+            base_indi_asso_map.len()
+        };
+        let same_start = if let Some(cursor) = cursor_id {
+            if iterate_ascending {
+                if move_over_cursor {
+                    upper_bound(&same_indi_merged_asso_map, cursor)
+                } else {
+                    lower_bound(&same_indi_merged_asso_map, cursor)
+                }
+            } else if move_over_cursor {
+                lower_bound(&same_indi_merged_asso_map, cursor)
+            } else {
+                upper_bound(&same_indi_merged_asso_map, cursor)
+            }
+        } else if iterate_ascending {
+            0
+        } else {
+            same_indi_merged_asso_map.len()
+        };
+        let mut it = Self {
+            map_iterator_positions: [
+                base_start as Cint64,
+                0,
+                base_indi_asso_map.len() as Cint64,
+                same_start as Cint64,
+                0,
+                same_indi_merged_asso_map.len() as Cint64,
+            ],
+            base_indi_asso_map,
+            same_indi_merged_asso_map,
+            iterate_ascending,
+            has_current_indi_id: false,
+            current_indi_same_merged: false,
+            current_indi_id: 0,
+        };
+        it.move_next();
+        it
+    }
+
+    /// Port of `getCurrentAssociatedIndividualID`.
+    pub fn current_associated_individual_id(&self) -> Cint64 {
+        self.current_indi_id
+    }
+
+    /// Port of `getCurrentAssociatedIndividualSameMerged`.
+    pub fn current_associated_individual_same_merged(&self) -> bool {
+        self.current_indi_same_merged
+    }
+
+    /// Port of `moveNext`.
+    pub fn move_next(&mut self) -> bool {
+        if self.iterate_ascending {
+            self.move_next_ascending()
+        } else {
+            self.move_next_descending()
+        }
+    }
+
+    /// Port of `atEnd`.
+    pub fn at_end(&self) -> bool {
+        !self.has_current_indi_id
+    }
+
+    fn move_next_ascending(&mut self) -> bool {
+        let base_pos = self.map_iterator_positions[0] as usize;
+        let base_end = self.map_iterator_positions[2] as usize;
+        let same_pos = self.map_iterator_positions[3] as usize;
+        let same_end = self.map_iterator_positions[5] as usize;
+
+        if base_pos >= base_end && same_pos >= same_end {
+            self.has_current_indi_id = false;
+            return false;
+        }
+
+        if base_pos >= base_end {
+            self.current_indi_id = self.same_indi_merged_asso_map[same_pos];
+            self.current_indi_same_merged = true;
+            self.map_iterator_positions[3] += 1;
+        } else if same_pos >= same_end {
+            self.current_indi_id = self.base_indi_asso_map[base_pos];
+            self.current_indi_same_merged = false;
+            self.map_iterator_positions[0] += 1;
+        } else if self.base_indi_asso_map[base_pos] < self.same_indi_merged_asso_map[same_pos] {
+            self.current_indi_id = self.base_indi_asso_map[base_pos];
+            self.current_indi_same_merged = false;
+            self.map_iterator_positions[0] += 1;
+        } else {
+            self.current_indi_id = self.same_indi_merged_asso_map[same_pos];
+            self.current_indi_same_merged = true;
+            self.map_iterator_positions[3] += 1;
+        }
+        self.has_current_indi_id = true;
+        true
+    }
+
+    fn move_next_descending(&mut self) -> bool {
+        let base_pos = self.map_iterator_positions[0] as usize;
+        let base_begin = self.map_iterator_positions[1] as usize;
+        let same_pos = self.map_iterator_positions[3] as usize;
+        let same_begin = self.map_iterator_positions[4] as usize;
+
+        if base_pos <= base_begin && same_pos <= same_begin {
+            self.has_current_indi_id = false;
+            return false;
+        }
+
+        if base_pos <= base_begin {
+            let next_pos = same_pos - 1;
+            self.current_indi_id = self.same_indi_merged_asso_map[next_pos];
+            self.current_indi_same_merged = true;
+            self.map_iterator_positions[3] -= 1;
+        } else if same_pos <= same_begin {
+            let next_pos = base_pos - 1;
+            self.current_indi_id = self.base_indi_asso_map[next_pos];
+            self.current_indi_same_merged = false;
+            self.map_iterator_positions[0] -= 1;
+        } else if self.base_indi_asso_map[base_pos - 1]
+            < self.same_indi_merged_asso_map[same_pos - 1]
+        {
+            let next_pos = same_pos - 1;
+            self.current_indi_id = self.same_indi_merged_asso_map[next_pos];
+            self.current_indi_same_merged = true;
+            self.map_iterator_positions[3] -= 1;
+        } else {
+            let next_pos = base_pos - 1;
+            self.current_indi_id = self.base_indi_asso_map[next_pos];
+            self.current_indi_same_merged = false;
+            self.map_iterator_positions[0] -= 1;
+        }
+        self.has_current_indi_id = true;
+        true
+    }
+}
+
+fn lower_bound(values: &[Cint64], cursor: Cint64) -> usize {
+    values.partition_point(|value| *value < cursor)
+}
+
+fn upper_bound(values: &[Cint64], cursor: Cint64) -> usize {
+    values.partition_point(|value| *value <= cursor)
 }
 
 // ===========================================================================
@@ -892,39 +1481,66 @@ pub struct IndividualNeighbourRoleSetHash {
     pub prev_neighbour_role_set_label_hash: HashMap<Cint64, LabelCacheItemId>,
 }
 impl IndividualNeighbourRoleSetHash {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initNeighbourRoleSetHash(neighbourRoleSetHash, detach)` — the prev-hash COW logic.
     /// KONCLUDE-PORT-NOTE[ownership]: C++ aliases the source's prev-hash by bare pointer; the
     /// inline-map port COPIES instead, and models `mPrevNeighbourRoleSetLabelHash == nullptr`
     /// as an EMPTY prev map. Lookups / counts are identical; only the sharing is by-copy.
-    pub fn init_neighbour_role_set_hash(&mut self, neighbour_role_set_hash: &IndividualNeighbourRoleSetHash, detach: bool) -> &mut Self {
-        let src_has_prev = !neighbour_role_set_hash.prev_neighbour_role_set_label_hash.is_empty();
+    pub fn init_neighbour_role_set_hash(
+        &mut self,
+        neighbour_role_set_hash: &IndividualNeighbourRoleSetHash,
+        detach: bool,
+    ) -> &mut Self {
+        let src_has_prev = !neighbour_role_set_hash
+            .prev_neighbour_role_set_label_hash
+            .is_empty();
         if detach {
             if src_has_prev {
-                self.neighbour_role_set_label_hash = neighbour_role_set_hash.prev_neighbour_role_set_label_hash.clone();
+                self.neighbour_role_set_label_hash = neighbour_role_set_hash
+                    .prev_neighbour_role_set_label_hash
+                    .clone();
                 for (k, v) in neighbour_role_set_hash.neighbour_role_set_label_hash.iter() {
                     self.neighbour_role_set_label_hash.insert(*k, *v);
                 }
             } else {
-                self.neighbour_role_set_label_hash = neighbour_role_set_hash.neighbour_role_set_label_hash.clone();
+                self.neighbour_role_set_label_hash = neighbour_role_set_hash
+                    .neighbour_role_set_label_hash
+                    .clone();
             }
             self.prev_neighbour_role_set_label_hash.clear();
-        } else if !src_has_prev && neighbour_role_set_hash.neighbour_role_set_label_hash.len() <= 20 {
-            self.neighbour_role_set_label_hash = neighbour_role_set_hash.neighbour_role_set_label_hash.clone();
+        } else if !src_has_prev && neighbour_role_set_hash.neighbour_role_set_label_hash.len() <= 20
+        {
+            self.neighbour_role_set_label_hash = neighbour_role_set_hash
+                .neighbour_role_set_label_hash
+                .clone();
             self.prev_neighbour_role_set_label_hash.clear();
         } else if !src_has_prev {
             // size > 20: keep the source's main hash as prev.
-            self.prev_neighbour_role_set_label_hash = neighbour_role_set_hash.neighbour_role_set_label_hash.clone();
-        } else if neighbour_role_set_hash.neighbour_role_set_label_hash.len() > neighbour_role_set_hash.prev_neighbour_role_set_label_hash.len() {
-            self.neighbour_role_set_label_hash = neighbour_role_set_hash.prev_neighbour_role_set_label_hash.clone();
+            self.prev_neighbour_role_set_label_hash = neighbour_role_set_hash
+                .neighbour_role_set_label_hash
+                .clone();
+        } else if neighbour_role_set_hash.neighbour_role_set_label_hash.len()
+            > neighbour_role_set_hash
+                .prev_neighbour_role_set_label_hash
+                .len()
+        {
+            self.neighbour_role_set_label_hash = neighbour_role_set_hash
+                .prev_neighbour_role_set_label_hash
+                .clone();
             for (k, v) in neighbour_role_set_hash.neighbour_role_set_label_hash.iter() {
                 self.neighbour_role_set_label_hash.insert(*k, *v);
             }
             self.prev_neighbour_role_set_label_hash.clear();
         } else {
-            self.neighbour_role_set_label_hash = neighbour_role_set_hash.neighbour_role_set_label_hash.clone();
-            self.prev_neighbour_role_set_label_hash = neighbour_role_set_hash.prev_neighbour_role_set_label_hash.clone();
+            self.neighbour_role_set_label_hash = neighbour_role_set_hash
+                .neighbour_role_set_label_hash
+                .clone();
+            self.prev_neighbour_role_set_label_hash = neighbour_role_set_hash
+                .prev_neighbour_role_set_label_hash
+                .clone();
         }
         self
     }
@@ -938,15 +1554,28 @@ impl IndividualNeighbourRoleSetHash {
     }
     /// Port of `::getNeighbourRoleSetLabel(neighbourIndiId)` (main, falling back to prev).
     pub fn get_neighbour_role_set_label(&self, neighbour_indi_id: Cint64) -> LabelCacheItemId {
-        let mut item = self.neighbour_role_set_label_hash.get(&neighbour_indi_id).copied().unwrap_or(Id::NONE);
+        let mut item = self
+            .neighbour_role_set_label_hash
+            .get(&neighbour_indi_id)
+            .copied()
+            .unwrap_or(Id::NONE);
         if item.is_none() && !self.prev_neighbour_role_set_label_hash.is_empty() {
-            item = self.prev_neighbour_role_set_label_hash.get(&neighbour_indi_id).copied().unwrap_or(Id::NONE);
+            item = self
+                .prev_neighbour_role_set_label_hash
+                .get(&neighbour_indi_id)
+                .copied()
+                .unwrap_or(Id::NONE);
         }
         item
     }
     /// Port of `::setNeighbourRoleSetLabel` (`mNeighbourRoleSetLabelHash->insert(...)`).
-    pub fn set_neighbour_role_set_label(&mut self, neighbour_indi_id: Cint64, neighbour_role_set_label: LabelCacheItemId) -> &mut Self {
-        self.neighbour_role_set_label_hash.insert(neighbour_indi_id, neighbour_role_set_label);
+    pub fn set_neighbour_role_set_label(
+        &mut self,
+        neighbour_indi_id: Cint64,
+        neighbour_role_set_label: LabelCacheItemId,
+    ) -> &mut Self {
+        self.neighbour_role_set_label_hash
+            .insert(neighbour_indi_id, neighbour_role_set_label);
         self
     }
 }
@@ -958,39 +1587,79 @@ pub struct IndividualRoleSetNeighbourArray {
     pub context: Cint64,
     /// `CBackendRepresentativeMemoryLabelCacheItemIndividualRoleSetNeighbourArrayIndexExtensionData* mIndexData`.
     pub index_data: LabelCacheItemExtensionDataId,
-    /// `CBackendRepresentativeMemoryCacheIndividualRoleSetNeighbourData* mDataArray` (array head).
-    pub data_array: IndividualRoleSetNeighbourDataId,
+    /// `CBackendRepresentativeMemoryCacheIndividualRoleSetNeighbourData* mDataArray` (per-index array).
+    pub data_array: Vec<IndividualRoleSetNeighbourDataId>,
 }
 impl Default for IndividualRoleSetNeighbourArray {
     fn default() -> Self {
-        IndividualRoleSetNeighbourArray { context: INVALID, index_data: Id::NONE, data_array: Id::NONE }
+        IndividualRoleSetNeighbourArray {
+            context: INVALID,
+            index_data: Id::NONE,
+            data_array: Vec::new(),
+        }
     }
 }
 impl IndividualRoleSetNeighbourArray {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initNeighbourArray(neighArray)`.
-    /// KONCLUDE-PORT-NOTE[api]: C++ allocates a NeighbourData array of `mIndexData->getArraySize()`
-    /// and copies each element from `neighArray->at(i)`; the data array lives in the cache pool
-    /// (arena), not threaded into this struct. The element copy is deferred (W6-DEFER[api]); the
-    /// index-data + array head are carried.
-    pub fn init_neighbour_array(&mut self, neigh_array: &IndividualRoleSetNeighbourArray) -> &mut Self {
+    pub fn init_neighbour_array(
+        &mut self,
+        neigh_array: &IndividualRoleSetNeighbourArray,
+        cache_context: &mut CacheContext,
+    ) -> &mut Self {
         self.index_data = neigh_array.index_data;
-        self.data_array = neigh_array.data_array;
+        self.data_array.clear();
+        for data_id in neigh_array.data_array.iter().copied() {
+            let data_copy = if data_id.is_some() {
+                cache_context
+                    .individual_role_set_neighbour_data(data_id)
+                    .clone()
+            } else {
+                IndividualRoleSetNeighbourData::new()
+            };
+            self.data_array
+                .push(cache_context.alloc_individual_role_set_neighbour_data(data_copy));
+        }
         self
     }
-    /// Port of `::initNeighbourArray(indexData)` (allocates the per-index array — pool, W6-DEFER[api]).
-    pub fn init_neighbour_array_from_index(&mut self, index_data: LabelCacheItemExtensionDataId) -> &mut Self {
+    /// Port of `::initNeighbourArray(indexData)`.
+    pub fn init_neighbour_array_from_index(
+        &mut self,
+        index_data: LabelCacheItemExtensionDataId,
+        cache_context: &mut CacheContext,
+    ) -> &mut Self {
         self.index_data = index_data;
+        let array_size = cache_context
+            .label_cache_item_ext_data(index_data)
+            .get_array_size()
+            .max(0) as usize;
+        self.data_array.clear();
+        for _ in 0..array_size {
+            self.data_array.push(
+                cache_context.alloc_individual_role_set_neighbour_data(
+                    IndividualRoleSetNeighbourData::new(),
+                ),
+            );
+        }
         self
     }
     /// Port of `::at(index)` (`return mDataArray[index];`).
-    /// W6-DEFER[api]: needs the pooled NeighbourData array (arena); returns the array head id.
-    pub fn at(&self, _index: Cint64) -> IndividualRoleSetNeighbourDataId {
+    pub fn at(&self, index: Cint64) -> IndividualRoleSetNeighbourDataId {
+        if index < 0 {
+            return Id::NONE;
+        }
         self.data_array
+            .get(index as usize)
+            .copied()
+            .unwrap_or(Id::NONE)
     }
     /// Port of `::getIndexData`.
-    pub fn get_index_data(&self) -> LabelCacheItemExtensionDataId { self.index_data }
+    pub fn get_index_data(&self) -> LabelCacheItemExtensionDataId {
+        self.index_data
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCacheIndividualRoleSetNeighbourData`.
@@ -1002,25 +1671,68 @@ pub struct IndividualRoleSetNeighbourData {
     pub indi_id_linker: Vec<IndividualRoleSetNeighbourIndividualIdLinkerId>,
 }
 impl IndividualRoleSetNeighbourData {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::visitNeighbourIndividualIds(visitFunc)` — walks `mIndiIdLinker` calling `getIndividualId()`.
-    /// W6-DEFER[api]: resolving each `IndividualRoleSetNeighbourIndividualIdLinkerId` → its indi id needs
-    /// the linker arena (not threaded here). Faithful stub: no nodes resolvable ⇒ reports unvisited.
-    pub fn visit_neighbour_individual_ids(&self, _visit_func: &mut dyn FnMut(Cint64) -> bool) -> bool {
-        let _ = &self.indi_id_linker;
-        false
+    pub fn visit_neighbour_individual_ids(
+        &self,
+        visit_func: &mut dyn FnMut(Cint64) -> bool,
+        cache_context: &CacheContext,
+    ) -> bool {
+        let mut visited = false;
+        for linker in self.indi_id_linker.iter().copied() {
+            let indi_id = cache_context
+                .individual_role_set_neighbour_id_linker(linker)
+                .get_individual_id();
+            visited = true;
+            if !visit_func(indi_id) {
+                break;
+            }
+        }
+        visited
     }
-    /// Port of `::visitNeighbourIndividualIdsFromCursor(visitFunc, cursor)` (cursor variant). W6-DEFER[api].
-    pub fn visit_neighbour_individual_ids_from_cursor(&self, _visit_func: &mut dyn FnMut(Cint64, Cint64) -> bool, _cursor: Cint64) -> bool {
-        let _ = &self.indi_id_linker;
-        false
+    /// Port of `::visitNeighbourIndividualIdsFromCursor(visitFunc, cursor)` (cursor variant).
+    /// KONCLUDE-PORT-NOTE[ownership]: C++ exposes the current linker pointer as the
+    /// next cursor. Rust uses a 1-based chain position so `0` can remain the null
+    /// cursor even when an arena id has raw value 0.
+    pub fn visit_neighbour_individual_ids_from_cursor(
+        &self,
+        visit_func: &mut dyn FnMut(Cint64, Cint64) -> bool,
+        cursor: Cint64,
+        cache_context: &CacheContext,
+    ) -> bool {
+        let start_pos = if cursor <= 0 { 0 } else { cursor as usize };
+        let mut visited = false;
+        for (pos, linker) in self
+            .indi_id_linker
+            .iter()
+            .copied()
+            .enumerate()
+            .skip(start_pos)
+        {
+            let indi_id = cache_context
+                .individual_role_set_neighbour_id_linker(linker)
+                .get_individual_id();
+            visited = true;
+            if !visit_func(indi_id, (pos + 1) as Cint64) {
+                break;
+            }
+        }
+        visited
     }
     /// Port of `::getIndividualIdLinker`.
-    pub fn get_individual_id_linker(&self) -> &[IndividualRoleSetNeighbourIndividualIdLinkerId] { &self.indi_id_linker }
+    pub fn get_individual_id_linker(&self) -> &[IndividualRoleSetNeighbourIndividualIdLinkerId] {
+        &self.indi_id_linker
+    }
     /// Port of `::setIndividualIdLinker(indiIdLinker, updateCounter)`
     /// (`mIndiIdLinker = indiIdLinker; if (updateCounter) mCount = mIndiIdLinker->getCount();`).
-    pub fn set_individual_id_linker(&mut self, indi_id_linker: &[IndividualRoleSetNeighbourIndividualIdLinkerId], update_counter: bool) -> &mut Self {
+    pub fn set_individual_id_linker(
+        &mut self,
+        indi_id_linker: &[IndividualRoleSetNeighbourIndividualIdLinkerId],
+        update_counter: bool,
+    ) -> &mut Self {
         self.indi_id_linker = indi_id_linker.to_vec();
         if update_counter {
             self.count = self.indi_id_linker.len() as Cint64;
@@ -1029,7 +1741,11 @@ impl IndividualRoleSetNeighbourData {
     }
     /// Port of `::addIndividualIdLinker(indiIdLinker, incCounter)`
     /// (`if (incCounter) mCount += indiIdLinker->getCount(); mIndiIdLinker = indiIdLinker->append(mIndiIdLinker);`).
-    pub fn add_individual_id_linker(&mut self, indi_id_linker: &[IndividualRoleSetNeighbourIndividualIdLinkerId], inc_counter: bool) -> &mut Self {
+    pub fn add_individual_id_linker(
+        &mut self,
+        indi_id_linker: &[IndividualRoleSetNeighbourIndividualIdLinkerId],
+        inc_counter: bool,
+    ) -> &mut Self {
         if inc_counter {
             self.count += indi_id_linker.len() as Cint64;
         }
@@ -1039,11 +1755,19 @@ impl IndividualRoleSetNeighbourData {
         self
     }
     /// Port of `::getIndividualCount`.
-    pub fn get_individual_count(&self) -> Cint64 { self.count }
+    pub fn get_individual_count(&self) -> Cint64 {
+        self.count
+    }
     /// Port of `::incIndividualCount`.
-    pub fn inc_individual_count(&mut self, count: Cint64) -> &mut Self { self.count += count; self }
+    pub fn inc_individual_count(&mut self, count: Cint64) -> &mut Self {
+        self.count += count;
+        self
+    }
     /// Port of `::decIndividualCount`.
-    pub fn dec_individual_count(&mut self, count: Cint64) -> &mut Self { self.count -= count; self }
+    pub fn dec_individual_count(&mut self, count: Cint64) -> &mut Self {
+        self.count -= count;
+        self
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCacheIndividualRoleSetNeighbourIndividualIdLinker`
@@ -1054,7 +1778,9 @@ pub struct IndividualRoleSetNeighbourIndividualIdLinker {
     pub indi_id: Cint64,
 }
 impl IndividualRoleSetNeighbourIndividualIdLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initIndividualIdLinker(indiId, nextLinker)` (`initLinker(indiId, nextLinker)`).
     /// KONCLUDE-PORT-NOTE[ownership]: the `nextLinker` chain pointer is dropped (owner holds the
@@ -1064,7 +1790,9 @@ impl IndividualRoleSetNeighbourIndividualIdLinker {
         self
     }
     /// Port of `::getIndividualId` (`return getData();`).
-    pub fn get_individual_id(&self) -> Cint64 { self.indi_id }
+    pub fn get_individual_id(&self) -> Cint64 {
+        self.indi_id
+    }
 }
 
 // ===========================================================================
@@ -1080,41 +1808,59 @@ pub struct NominalIndividualIndirectConnectionData {
     pub last_change_id: Cint64,
 }
 impl NominalIndividualIndirectConnectionData {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initNominalIndividualIndirectConnectionData(data)`.
     /// KONCLUDE-PORT-NOTE[ownership]: C++ shares the source linker by pointer; the port copies the
     /// owned `Vec<cint64>`.
-    pub fn init_nominal_individual_indirect_connection_data(&mut self, data: Option<&NominalIndividualIndirectConnectionData>) -> &mut Self {
+    pub fn init_nominal_individual_indirect_connection_data(
+        &mut self,
+        data: Option<&NominalIndividualIndirectConnectionData>,
+    ) -> &mut Self {
         self.indirectly_connected_individual_id_linker.clear(); // nullptr
         self.last_change_id = 0;
         if let Some(data) = data {
-            self.indirectly_connected_individual_id_linker = data.indirectly_connected_individual_id_linker.clone();
+            self.indirectly_connected_individual_id_linker =
+                data.indirectly_connected_individual_id_linker.clone();
             self.last_change_id = data.last_change_id;
         }
         self
     }
     /// Port of `::getIndirectlyConnectedIndividualIdLinker`.
-    pub fn get_indirectly_connected_individual_id_linker(&self) -> &[Cint64] { &self.indirectly_connected_individual_id_linker }
+    pub fn get_indirectly_connected_individual_id_linker(&self) -> &[Cint64] {
+        &self.indirectly_connected_individual_id_linker
+    }
     /// Port of `::setIndirectlyConnectedIndividualIdLinker`.
-    pub fn set_indirectly_connected_individual_id_linker(&mut self, indirectly_connected_individual_id_linker: Vec<Cint64>) -> &mut Self {
+    pub fn set_indirectly_connected_individual_id_linker(
+        &mut self,
+        indirectly_connected_individual_id_linker: Vec<Cint64>,
+    ) -> &mut Self {
         self.indirectly_connected_individual_id_linker = indirectly_connected_individual_id_linker;
         self
     }
     /// Port of `::addIndirectlyConnectedIndividualIdLinker`
     /// (`mLinker = indirectlyConnectedIndividualIdLinker->append(mLinker);` — head-front prepend).
-    pub fn add_indirectly_connected_individual_id_linker(&mut self, indirectly_connected_individual_id_linker: &[Cint64]) -> &mut Self {
+    pub fn add_indirectly_connected_individual_id_linker(
+        &mut self,
+        indirectly_connected_individual_id_linker: &[Cint64],
+    ) -> &mut Self {
         let mut new_chain = indirectly_connected_individual_id_linker.to_vec();
         new_chain.append(&mut self.indirectly_connected_individual_id_linker);
         self.indirectly_connected_individual_id_linker = new_chain;
         self
     }
     /// Port of `::getLastChangeId`.
-    pub fn get_last_change_id(&self) -> Cint64 { self.last_change_id }
+    pub fn get_last_change_id(&self) -> Cint64 {
+        self.last_change_id
+    }
     /// Port of `::setLastChangeId(id)`.
     /// KONCLUDE-PORT-NOTE[unclear]: the C++ body does NOT assign `mLastChangeId` (it only
     /// `return this;`) — faithfully reproduced as a no-op on the field.
-    pub fn set_last_change_id(&mut self, _id: Cint64) -> &mut Self { self }
+    pub fn set_last_change_id(&mut self, _id: Cint64) -> &mut Self {
+        self
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCacheItemIndividualDataAssociationLinker`
@@ -1128,24 +1874,39 @@ pub struct ItemIndividualDataAssociationLinker {
 }
 impl Default for ItemIndividualDataAssociationLinker {
     fn default() -> Self {
-        ItemIndividualDataAssociationLinker { association_data: Id::NONE, association_valid: false }
+        ItemIndividualDataAssociationLinker {
+            association_data: Id::NONE,
+            association_valid: false,
+        }
     }
 }
 impl ItemIndividualDataAssociationLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initIndividualDataAssociationLinker(data)` (`setData(data); mAssociationValid = true;`).
-    pub fn init_individual_data_association_linker(&mut self, data: IndividualAssociationDataId) -> &mut Self {
+    pub fn init_individual_data_association_linker(
+        &mut self,
+        data: IndividualAssociationDataId,
+    ) -> &mut Self {
         self.association_data = data; // the CLinkerBase payload.
         self.association_valid = true;
         self
     }
     /// Port of `::getAssociatedIndividualData` (`return getData();`).
-    pub fn get_associated_individual_data(&self) -> IndividualAssociationDataId { self.association_data }
+    pub fn get_associated_individual_data(&self) -> IndividualAssociationDataId {
+        self.association_data
+    }
     /// Port of `::isAssociationValid`.
-    pub fn is_association_valid(&self) -> bool { self.association_valid }
+    pub fn is_association_valid(&self) -> bool {
+        self.association_valid
+    }
     /// Port of `::invalidateAssociation` (`mAssociationValid = false;`).
-    pub fn invalidate_association(&mut self) -> &mut Self { self.association_valid = false; self }
+    pub fn invalidate_association(&mut self) -> &mut Self {
+        self.association_valid = false;
+        self
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCacheRoleAssertionLinker` (`: CSortedNegLinker<CRole*>`).
@@ -1153,6 +1914,8 @@ impl ItemIndividualDataAssociationLinker {
 pub struct RoleAssertionLinker {
     /// the `CSortedNegLinker<CRole*>` payload — the role.  [api] cross-family → opaque.
     pub role: Cint64,
+    /// `CSortedNegLinker<CRole*>::isNegated()` — role inversion flag.
+    pub inversed: bool,
     /// `bool mABoxAsserted`.
     pub abox_asserted: bool,
     /// `bool mNominalConnected`.
@@ -1161,37 +1924,65 @@ pub struct RoleAssertionLinker {
     pub nondeterministic: bool,
 }
 impl RoleAssertionLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initRoleAssertionLinker(role, inversed, asserted, connected, nondeterministic)`
     /// (`init(role, inversed); mABoxAsserted = asserted; mNominalConnected = connected; mNondeterministic = nondeterministic;`).
-    /// KONCLUDE-PORT-NOTE[api]: the `CSortedNegLinker<CRole*>` base stores the role pointer + its
-    /// `inversed`/neg flag; the cross-family `CRole*` is opaque `Cint64` and the `inversed` neg-flag
-    /// of the sorted-neg-linker base is not modelled on this struct (dropped, [api]).
-    pub fn init_role_assertion_linker(&mut self, role: Cint64, _inversed: bool, asserted: bool, connected: bool, nondeterministic: bool) -> &mut Self {
+    pub fn init_role_assertion_linker(
+        &mut self,
+        role: Cint64,
+        inversed: bool,
+        asserted: bool,
+        connected: bool,
+        nondeterministic: bool,
+    ) -> &mut Self {
         self.role = role; // init(role, inversed) — the CSortedNegLinker payload.
+        self.inversed = inversed;
         self.abox_asserted = asserted;
         self.nominal_connected = connected;
         self.nondeterministic = nondeterministic;
         self
     }
+    /// Port of `CSortedNegLinker<CRole*>::isNegated`.
+    pub fn is_inversed(&self) -> bool {
+        self.inversed
+    }
     /// Port of `::isABoxAsserted`.
-    pub fn is_abox_asserted(&self) -> bool { self.abox_asserted }
+    pub fn is_abox_asserted(&self) -> bool {
+        self.abox_asserted
+    }
     /// Port of `::setABoxAsserted`.
-    pub fn set_abox_asserted(&mut self, asserted: bool) -> &mut Self { self.abox_asserted = asserted; self }
+    pub fn set_abox_asserted(&mut self, asserted: bool) -> &mut Self {
+        self.abox_asserted = asserted;
+        self
+    }
     /// Port of `::isNominalConnected`.
-    pub fn is_nominal_connected(&self) -> bool { self.nominal_connected }
+    pub fn is_nominal_connected(&self) -> bool {
+        self.nominal_connected
+    }
     /// Port of `::setNominalConnected`.
-    pub fn set_nominal_connected(&mut self, connected: bool) -> &mut Self { self.nominal_connected = connected; self }
+    pub fn set_nominal_connected(&mut self, connected: bool) -> &mut Self {
+        self.nominal_connected = connected;
+        self
+    }
     /// Port of `::isNondeterministic`.
-    pub fn is_nondeterministic(&self) -> bool { self.nondeterministic }
+    pub fn is_nondeterministic(&self) -> bool {
+        self.nondeterministic
+    }
     /// Port of `::setNondeterministic`.
-    pub fn set_nondeterministic(&mut self, nondeterministic: bool) -> &mut Self { self.nondeterministic = nondeterministic; self }
+    pub fn set_nondeterministic(&mut self, nondeterministic: bool) -> &mut Self {
+        self.nondeterministic = nondeterministic;
+        self
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCacheOntologyDataRecomputationReferenceLinker`.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct OntologyDataRecomputationReferenceLinker {
+    /// Intrusive `CLinkerBase` next pointer.
+    pub next: OntologyDataRecomputationReferenceLinkerId,
     /// `cint64 mOntologyDataUpdateId`.
     pub ontology_data_update_id: Cint64,
     /// `bool mOntologyDataActive`.
@@ -1203,17 +1994,44 @@ pub struct OntologyDataRecomputationReferenceLinker {
     /// `QAtomicInteger<cint64> mMaxUsedRecomputationId`.  [threading] → opaque.
     pub max_used_recomputation_id: Cint64,
 }
+impl Default for OntologyDataRecomputationReferenceLinker {
+    fn default() -> Self {
+        Self {
+            next: Id::NONE,
+            ontology_data_update_id: 0,
+            ontology_data_active: false,
+            next_ontology_data_all_inactive: false,
+            min_used_recomputation_id: 0,
+            max_used_recomputation_id: 0,
+        }
+    }
+}
 impl OntologyDataRecomputationReferenceLinker {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of the ctor `(cint64 ontologyDataUpdateId)`
     /// (`mOntologyDataUpdateId = ...; setData(this); mOntologyDataActive = true; mNextOntologyDataAllInactive = false;`).
     /// KONCLUDE-PORT-NOTE[api]: the skeleton's `new()` takes no id; this `init_*` carries the ctor's
     /// field setup (`setData(this)` self-linker drop per CLinker convention).
-    pub fn init_recomputation_reference_linker(&mut self, ontology_data_update_id: Cint64) -> &mut Self {
+    pub fn init_recomputation_reference_linker(
+        &mut self,
+        ontology_data_update_id: Cint64,
+    ) -> &mut Self {
+        self.next = Id::NONE;
         self.ontology_data_update_id = ontology_data_update_id;
         self.ontology_data_active = true;
         self.next_ontology_data_all_inactive = false;
+        self
+    }
+    /// Port of the CLinker `getNext`.
+    pub fn get_next(&self) -> OntologyDataRecomputationReferenceLinkerId {
+        self.next
+    }
+    /// Port of the CLinker `setNext`.
+    pub fn set_next(&mut self, next: OntologyDataRecomputationReferenceLinkerId) -> &mut Self {
+        self.next = next;
         self
     }
     /// Port of `::updateUsedRecomputationId(recomputationId)`.
@@ -1225,19 +2043,35 @@ impl OntologyDataRecomputationReferenceLinker {
         self
     }
     /// Port of `::getMinUsedRecomputationId`.
-    pub fn get_min_used_recomputation_id(&self) -> Cint64 { self.min_used_recomputation_id }
+    pub fn get_min_used_recomputation_id(&self) -> Cint64 {
+        self.min_used_recomputation_id
+    }
     /// Port of `::getMaxUsedRecomputationId`.
-    pub fn get_max_used_recomputation_id(&self) -> Cint64 { self.max_used_recomputation_id }
+    pub fn get_max_used_recomputation_id(&self) -> Cint64 {
+        self.max_used_recomputation_id
+    }
     /// Port of `::getOntologyDataUpdateId`.
-    pub fn get_ontology_data_update_id(&self) -> Cint64 { self.ontology_data_update_id }
+    pub fn get_ontology_data_update_id(&self) -> Cint64 {
+        self.ontology_data_update_id
+    }
     /// Port of `::isOntologyDataActive`.
-    pub fn is_ontology_data_active(&self) -> bool { self.ontology_data_active }
+    pub fn is_ontology_data_active(&self) -> bool {
+        self.ontology_data_active
+    }
     /// Port of `::setOntologyDataInactive`.
-    pub fn set_ontology_data_inactive(&mut self) -> &mut Self { self.ontology_data_active = false; self }
+    pub fn set_ontology_data_inactive(&mut self) -> &mut Self {
+        self.ontology_data_active = false;
+        self
+    }
     /// Port of `::isNextOntologyDataAllInactive`.
-    pub fn is_next_ontology_data_all_inactive(&self) -> bool { self.next_ontology_data_all_inactive }
+    pub fn is_next_ontology_data_all_inactive(&self) -> bool {
+        self.next_ontology_data_all_inactive
+    }
     /// Port of `::setNextOntologyDataAllInactive`.
-    pub fn set_next_ontology_data_all_inactive(&mut self) -> &mut Self { self.next_ontology_data_all_inactive = true; self }
+    pub fn set_next_ontology_data_all_inactive(&mut self) -> &mut Self {
+        self.next_ontology_data_all_inactive = true;
+        self
+    }
 }
 
 // ===========================================================================
@@ -1340,20 +2174,29 @@ impl Default for IndividualAssociationData {
 
 impl IndividualAssociationData {
     /// Port of `CBackendRepresentativeMemoryCacheIndividualAssociationData::CBackendRepresentativeMemoryCacheIndividualAssociationData`.
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initAssociationData(assData, increaseUpdateId)`.
     /// KONCLUDE-PORT-NOTE[ownership]: C++ stores `mPrevData = assData` (the source pointer); the
     /// arena id `ass_data_id` is passed alongside the borrow so the prev link survives. The
     /// `KONCLUDE_CACHE_DEBUGGING` debug fields are omitted (build-flag only).
-    pub fn init_association_data(&mut self, ass_data: &IndividualAssociationData, ass_data_id: IndividualAssociationDataId, increase_update_id: bool) -> &mut Self {
+    pub fn init_association_data(
+        &mut self,
+        ass_data: &IndividualAssociationData,
+        ass_data_id: IndividualAssociationDataId,
+        increase_update_id: bool,
+    ) -> &mut Self {
         self.flags.status_flags = ass_data.flags.status_flags; // initCachingStatusFlags(assData->getStatusFlags())
         self.indi_id = ass_data.indi_id;
         self.representative_same_indi_id = ass_data.representative_same_indi_id;
         self.deterministic_same_indi_id = ass_data.deterministic_same_indi_id;
         self.incompletely_marked = ass_data.incompletely_marked;
-        self.indirectly_connected_nominal_individual = ass_data.indirectly_connected_nominal_individual;
-        self.indirectly_connected_individual_integration = ass_data.indirectly_connected_individual_integration;
+        self.indirectly_connected_nominal_individual =
+            ass_data.indirectly_connected_nominal_individual;
+        self.indirectly_connected_individual_integration =
+            ass_data.indirectly_connected_individual_integration;
         self.cardinality_cache_entry = ass_data.cardinality_cache_entry;
         for i in 0..LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT {
             self.label_cache_entries[i] = ass_data.label_cache_entries[i];
@@ -1367,12 +2210,15 @@ impl IndividualAssociationData {
         self.problematic_level = ass_data.problematic_level;
         self.cache_update_id = 0;
         self.cache_touch_id = 0;
-        self.last_integrated_indirectly_connected_individuals_change_id = ass_data.last_integrated_indirectly_connected_individuals_change_id;
+        self.last_integrated_indirectly_connected_individuals_change_id =
+            ass_data.last_integrated_indirectly_connected_individuals_change_id;
         self.prev_data = ass_data_id;
         self.problematic_leveled_neighbour = ass_data.problematic_leveled_neighbour;
-        self.det_merged_same_considered_label_cache_entry = ass_data.det_merged_same_considered_label_cache_entry;
+        self.det_merged_same_considered_label_cache_entry =
+            ass_data.det_merged_same_considered_label_cache_entry;
         self.last_propagation_cutting_update_id = ass_data.last_propagation_cutting_update_id;
-        self.prop_cut_removed_neighbour_indi_linker = ass_data.prop_cut_removed_neighbour_indi_linker.clone();
+        self.prop_cut_removed_neighbour_indi_linker =
+            ass_data.prop_cut_removed_neighbour_indi_linker.clone();
         self
     }
     /// Port of `::initAssociationData(indiId)`.
@@ -1402,22 +2248,34 @@ impl IndividualAssociationData {
         self
     }
     /// Port of `::setIndividualId`.
-    pub fn set_individual_id(&mut self, indi_id: Cint64) -> &mut Self { self.indi_id = indi_id; self }
+    pub fn set_individual_id(&mut self, indi_id: Cint64) -> &mut Self {
+        self.indi_id = indi_id;
+        self
+    }
     /// Port of `::getDeterministicConceptSetLabelCacheEntry`
     /// (`getLabelCacheEntry(DETERMINISTIC_CONCEPT_SET_LABEL)`).
     pub fn get_deterministic_concept_set_label_cache_entry(&self) -> LabelCacheItemId {
         self.get_label_cache_entry(LabelCacheItemType::DeterministicConceptSetLabel as Cint64)
     }
     /// Port of `::setDeterministicConceptSetLabelCacheEntry`.
-    pub fn set_deterministic_concept_set_label_cache_entry(&mut self, cache_entry: LabelCacheItemId) -> &mut Self {
-        self.set_label_cache_entry(LabelCacheItemType::DeterministicConceptSetLabel as Cint64, cache_entry)
+    pub fn set_deterministic_concept_set_label_cache_entry(
+        &mut self,
+        cache_entry: LabelCacheItemId,
+    ) -> &mut Self {
+        self.set_label_cache_entry(
+            LabelCacheItemType::DeterministicConceptSetLabel as Cint64,
+            cache_entry,
+        )
     }
     /// Port of `::getDeterministicMergedSameConsideredLabelCacheEntry`.
     pub fn get_deterministic_merged_same_considered_label_cache_entry(&self) -> LabelCacheItemId {
         self.det_merged_same_considered_label_cache_entry
     }
     /// Port of `::setDeterministicMergedSameConsideredLabelCacheEntry`.
-    pub fn set_deterministic_merged_same_considered_label_cache_entry(&mut self, cache_entry: LabelCacheItemId) -> &mut Self {
+    pub fn set_deterministic_merged_same_considered_label_cache_entry(
+        &mut self,
+        cache_entry: LabelCacheItemId,
+    ) -> &mut Self {
         self.det_merged_same_considered_label_cache_entry = cache_entry;
         self
     }
@@ -1426,41 +2284,71 @@ impl IndividualAssociationData {
         self.label_cache_entries[label_type as usize]
     }
     /// Port of `::setLabelCacheEntry(labelType, cacheEntry)`.
-    pub fn set_label_cache_entry(&mut self, label_type: Cint64, cache_entry: LabelCacheItemId) -> &mut Self {
+    pub fn set_label_cache_entry(
+        &mut self,
+        label_type: Cint64,
+        cache_entry: LabelCacheItemId,
+    ) -> &mut Self {
         self.label_cache_entries[label_type as usize] = cache_entry;
         self
     }
     /// Port of `::getBackendCardinalityCacheEntry`.
-    pub fn get_backend_cardinality_cache_entry(&self) -> CardinalityCacheItemId { self.cardinality_cache_entry }
+    pub fn get_backend_cardinality_cache_entry(&self) -> CardinalityCacheItemId {
+        self.cardinality_cache_entry
+    }
     /// Port of `::setBackendCardinalityCacheEntry`.
-    pub fn set_backend_cardinality_cache_entry(&mut self, cache_entry: CardinalityCacheItemId) -> &mut Self {
+    pub fn set_backend_cardinality_cache_entry(
+        &mut self,
+        cache_entry: CardinalityCacheItemId,
+    ) -> &mut Self {
         self.cardinality_cache_entry = cache_entry;
         self
     }
     /// Port of `::isIncompletelyMarked`.
-    pub fn is_incompletely_marked(&self) -> bool { self.incompletely_marked }
+    pub fn is_incompletely_marked(&self) -> bool {
+        self.incompletely_marked
+    }
     /// Port of `::setIncompletelyMarked`.
-    pub fn set_incompletely_marked(&mut self, marked: bool) -> &mut Self { self.incompletely_marked = marked; self }
+    pub fn set_incompletely_marked(&mut self, marked: bool) -> &mut Self {
+        self.incompletely_marked = marked;
+        self
+    }
     /// Port of `::getNeighbourRoleSetHash`.
-    pub fn get_neighbour_role_set_hash(&self) -> IndividualNeighbourRoleSetHashId { self.neighbour_role_set_hash }
+    pub fn get_neighbour_role_set_hash(&self) -> IndividualNeighbourRoleSetHashId {
+        self.neighbour_role_set_hash
+    }
     /// Port of `::setNeighbourRoleSetHash`.
-    pub fn set_neighbour_role_set_hash(&mut self, neighbour_role_set_hash: IndividualNeighbourRoleSetHashId) -> &mut Self {
+    pub fn set_neighbour_role_set_hash(
+        &mut self,
+        neighbour_role_set_hash: IndividualNeighbourRoleSetHashId,
+    ) -> &mut Self {
         self.neighbour_role_set_hash = neighbour_role_set_hash;
         self
     }
     /// Port of `::getRoleSetNeighbourArray`.
-    pub fn get_role_set_neighbour_array(&self) -> IndividualRoleSetNeighbourArrayId { self.role_set_neighbour_array }
+    pub fn get_role_set_neighbour_array(&self) -> IndividualRoleSetNeighbourArrayId {
+        self.role_set_neighbour_array
+    }
     /// Port of `::setRoleSetNeighbourArray`.
-    pub fn set_role_set_neighbour_array(&mut self, role_set_neighbour_array: IndividualRoleSetNeighbourArrayId) -> &mut Self {
+    pub fn set_role_set_neighbour_array(
+        &mut self,
+        role_set_neighbour_array: IndividualRoleSetNeighbourArrayId,
+    ) -> &mut Self {
         self.role_set_neighbour_array = role_set_neighbour_array;
         self
     }
     /// Port of `::getAssociationDataUpdateId`.
-    pub fn get_association_data_update_id(&self) -> Cint64 { self.association_data_update_id }
+    pub fn get_association_data_update_id(&self) -> Cint64 {
+        self.association_data_update_id
+    }
     /// Port of `::getCacheUpdateId`.
-    pub fn get_cache_update_id(&self) -> Cint64 { self.cache_update_id }
+    pub fn get_cache_update_id(&self) -> Cint64 {
+        self.cache_update_id
+    }
     /// Port of `::getCacheTouchId`.
-    pub fn get_cache_touch_id(&self) -> Cint64 { self.cache_touch_id }
+    pub fn get_cache_touch_id(&self) -> Cint64 {
+        self.cache_touch_id
+    }
     /// Port of `::setCacheUpdateId` (`mCacheUpdateId = updateId; mCacheTouchId = updateId;`).
     pub fn set_cache_update_id(&mut self, update_id: Cint64) -> &mut Self {
         self.cache_update_id = update_id;
@@ -1468,69 +2356,113 @@ impl IndividualAssociationData {
         self
     }
     /// Port of `::setCacheTouchId`.
-    pub fn set_cache_touch_id(&mut self, update_id: Cint64) -> &mut Self { self.cache_touch_id = update_id; self }
+    pub fn set_cache_touch_id(&mut self, update_id: Cint64) -> &mut Self {
+        self.cache_touch_id = update_id;
+        self
+    }
     /// Port of `::getLastIntegratedIndirectlyConnectedIndividualsChangeId`.
     pub fn get_last_integrated_indirectly_connected_individuals_change_id(&self) -> Cint64 {
         self.last_integrated_indirectly_connected_individuals_change_id
     }
     /// Port of `::setLastIntegratedIndirectlyConnectedIndividualsChangeId`.
-    pub fn set_last_integrated_indirectly_connected_individuals_change_id(&mut self, last_integrated_change_id: Cint64) -> &mut Self {
+    pub fn set_last_integrated_indirectly_connected_individuals_change_id(
+        &mut self,
+        last_integrated_change_id: Cint64,
+    ) -> &mut Self {
         self.last_integrated_indirectly_connected_individuals_change_id = last_integrated_change_id;
         self
     }
     /// Port of `::isIndirectlyConnectedNominalIndividual`.
-    pub fn is_indirectly_connected_nominal_individual(&self) -> bool { self.indirectly_connected_nominal_individual }
+    pub fn is_indirectly_connected_nominal_individual(&self) -> bool {
+        self.indirectly_connected_nominal_individual
+    }
     /// Port of `::setIndirectlyConnectedNominalIndividual`.
-    pub fn set_indirectly_connected_nominal_individual(&mut self, indirectly_connected: bool) -> &mut Self {
+    pub fn set_indirectly_connected_nominal_individual(
+        &mut self,
+        indirectly_connected: bool,
+    ) -> &mut Self {
         self.indirectly_connected_nominal_individual = indirectly_connected;
         self
     }
     /// Port of `::hasIndirectlyConnectedIndividualIntegration`.
-    pub fn has_indirectly_connected_individual_integration(&self) -> bool { self.indirectly_connected_individual_integration }
+    pub fn has_indirectly_connected_individual_integration(&self) -> bool {
+        self.indirectly_connected_individual_integration
+    }
     /// Port of `::setIndirectlyConnectedIndividualIntegration`.
-    pub fn set_indirectly_connected_individual_integration(&mut self, indirectly_connected_individual_integration: bool) -> &mut Self {
-        self.indirectly_connected_individual_integration = indirectly_connected_individual_integration;
+    pub fn set_indirectly_connected_individual_integration(
+        &mut self,
+        indirectly_connected_individual_integration: bool,
+    ) -> &mut Self {
+        self.indirectly_connected_individual_integration =
+            indirectly_connected_individual_integration;
         self
     }
     /// Port of `::getRepresentativeSameIndividualId`.
-    pub fn get_representative_same_individual_id(&self) -> Cint64 { self.representative_same_indi_id }
+    pub fn get_representative_same_individual_id(&self) -> Cint64 {
+        self.representative_same_indi_id
+    }
     /// Port of `::setRepresentativeSameIndividualId`.
     pub fn set_representative_same_individual_id(&mut self, indi_id: Cint64) -> &mut Self {
         self.representative_same_indi_id = indi_id;
         self
     }
     /// Port of `::hasRepresentativeSameIndividualMerging` (`mIndiID != mRepresentativeSameIndiId`).
-    pub fn has_representative_same_individual_merging(&self) -> bool { self.indi_id != self.representative_same_indi_id }
+    pub fn has_representative_same_individual_merging(&self) -> bool {
+        self.indi_id != self.representative_same_indi_id
+    }
     /// Port of `::getDeterministicSameIndividualId`.
-    pub fn get_deterministic_same_individual_id(&self) -> Cint64 { self.deterministic_same_indi_id }
+    pub fn get_deterministic_same_individual_id(&self) -> Cint64 {
+        self.deterministic_same_indi_id
+    }
     /// Port of `::setDeterministicSameIndividualId`.
     pub fn set_deterministic_same_individual_id(&mut self, indi_id: Cint64) -> &mut Self {
         self.deterministic_same_indi_id = indi_id;
         self
     }
     /// Port of `::hasDeterministicSameIndividualMerging` (`mIndiID != mDeterministicSameIndiId`).
-    pub fn has_deterministic_same_individual_merging(&self) -> bool { self.indi_id != self.deterministic_same_indi_id }
+    pub fn has_deterministic_same_individual_merging(&self) -> bool {
+        self.indi_id != self.deterministic_same_indi_id
+    }
     /// Port of `::getAssociatedIndividualId` (`return mIndiID;`).
-    pub fn get_associated_individual_id(&self) -> Cint64 { self.indi_id }
+    pub fn get_associated_individual_id(&self) -> Cint64 {
+        self.indi_id
+    }
     /// Port of `::hasProblematicLevel` (`mProblematicLevel > 0`).
-    pub fn has_problematic_level(&self) -> bool { self.problematic_level > 0 }
+    pub fn has_problematic_level(&self) -> bool {
+        self.problematic_level > 0
+    }
     /// Port of `::getProblematicLevel`.
-    pub fn get_problematic_level(&self) -> Cint64 { self.problematic_level }
+    pub fn get_problematic_level(&self) -> Cint64 {
+        self.problematic_level
+    }
     /// Port of `::setProblematicLevel`.
-    pub fn set_problematic_level(&mut self, level: Cint64) -> &mut Self { self.problematic_level = level; self }
+    pub fn set_problematic_level(&mut self, level: Cint64) -> &mut Self {
+        self.problematic_level = level;
+        self
+    }
     /// Port of `::incProblematicLevel`.
-    pub fn inc_problematic_level(&mut self, count: Cint64) -> &mut Self { self.problematic_level += count; self }
+    pub fn inc_problematic_level(&mut self, count: Cint64) -> &mut Self {
+        self.problematic_level += count;
+        self
+    }
     /// Port of `::hasProblematicLeveledNeigbour`.
-    pub fn has_problematic_leveled_neigbour(&self) -> bool { self.problematic_leveled_neighbour }
+    pub fn has_problematic_leveled_neigbour(&self) -> bool {
+        self.problematic_leveled_neighbour
+    }
     /// Port of `::setProblematicLeveledNeigbour`.
     pub fn set_problematic_leveled_neigbour(&mut self, neighbour_prop_leveled: bool) -> &mut Self {
         self.problematic_leveled_neighbour = neighbour_prop_leveled;
         self
     }
     /// Port of `::getIndividualAssociationMemoryContext`.
-    pub fn get_individual_association_memory_context(&self) -> IndividualAssociationContextId { self.mem_context }
+    pub fn get_individual_association_memory_context(&self) -> IndividualAssociationContextId {
+        self.mem_context
+    }
     /// Port of `::setIndividualAssociationMemoryContext`.
-    pub fn set_individual_association_memory_context(&mut self, mem_con: IndividualAssociationContextId) -> &mut Self {
+    pub fn set_individual_association_memory_context(
+        &mut self,
+        mem_con: IndividualAssociationContextId,
+    ) -> &mut Self {
         self.mem_context = mem_con;
         self
     }
@@ -1540,17 +2472,28 @@ impl IndividualAssociationData {
         self
     }
     /// Port of `::getLastPropagationCuttingUpdateId`.
-    pub fn get_last_propagation_cutting_update_id(&self) -> Cint64 { self.last_propagation_cutting_update_id }
+    pub fn get_last_propagation_cutting_update_id(&self) -> Cint64 {
+        self.last_propagation_cutting_update_id
+    }
     /// Port of `::hasLastPropagationCuttingUpdateId` (`mLastPropagationCuttingUpdateId != -1`).
-    pub fn has_last_propagation_cutting_update_id(&self) -> bool { self.last_propagation_cutting_update_id != -1 }
+    pub fn has_last_propagation_cutting_update_id(&self) -> bool {
+        self.last_propagation_cutting_update_id != -1
+    }
     /// Port of `::getPreviousData`.
-    pub fn get_previous_data(&self) -> IndividualAssociationDataId { self.prev_data }
+    pub fn get_previous_data(&self) -> IndividualAssociationDataId {
+        self.prev_data
+    }
     /// Port of `::getPropagationCutRemovedNeighbourIndividualLinker`.
-    pub fn get_propagation_cut_removed_neighbour_individual_linker(&self) -> &[IndividualRoleSetNeighbourIndividualIdLinkerId] {
+    pub fn get_propagation_cut_removed_neighbour_individual_linker(
+        &self,
+    ) -> &[IndividualRoleSetNeighbourIndividualIdLinkerId] {
         &self.prop_cut_removed_neighbour_indi_linker
     }
     /// Port of `::setPropagationCutRemovedNeighbourIndividualLinker` (sets the chain head).
-    pub fn set_propagation_cut_removed_neighbour_individual_linker(&mut self, linker: Vec<IndividualRoleSetNeighbourIndividualIdLinkerId>) -> &mut Self {
+    pub fn set_propagation_cut_removed_neighbour_individual_linker(
+        &mut self,
+        linker: Vec<IndividualRoleSetNeighbourIndividualIdLinkerId>,
+    ) -> &mut Self {
         self.prop_cut_removed_neighbour_indi_linker = linker;
         self
     }
@@ -1599,43 +2542,66 @@ impl Default for IndividualAssociationContext {
 impl IndividualAssociationContext {
     /// Port of `CBackendRepresentativeMemoryCacheIndividualAssociationContext::CBackendRepresentativeMemoryCacheIndividualAssociationContext(cacheContext)`.
     pub fn new(cache_context: Cint64) -> Self {
-        IndividualAssociationContext { cache_context, ..Default::default() }
+        IndividualAssociationContext {
+            cache_context,
+            ..Default::default()
+        }
     }
 
     /// Port of `::getMemoryAllocationManager` (`return &mMemMan;`).
     /// KONCLUDE-PORT-NOTE[memory-pool]: the pool managers are opaque `Cint64` handles.
-    pub fn get_memory_allocation_manager(&self) -> Cint64 { self.mem_man }
+    pub fn get_memory_allocation_manager(&self) -> Cint64 {
+        self.mem_man
+    }
     /// Port of `::getMemoryPoolProvider` (`return mMemoryPoolProvider;`).  [memory-pool]
-    pub fn get_memory_pool_provider(&self) -> Cint64 { self.memory_pool_provider }
+    pub fn get_memory_pool_provider(&self) -> Cint64 {
+        self.memory_pool_provider
+    }
     /// Port of `::getMemoryPoolContainer` (`return &mMemPoolContainer;`).  [memory-pool]
-    pub fn get_memory_pool_container(&self) -> Cint64 { self.mem_pool_container }
+    pub fn get_memory_pool_container(&self) -> Cint64 {
+        self.mem_pool_container
+    }
     /// Port of `::getLastRecomputationReferenceLinker`.
-    pub fn get_last_recomputation_reference_linker(&self) -> OntologyDataRecomputationReferenceLinkerId {
+    pub fn get_last_recomputation_reference_linker(
+        &self,
+    ) -> OntologyDataRecomputationReferenceLinkerId {
         self.last_recomputation_reference_linker
     }
     /// Port of `::getFirstRecomputationReferenceLinker`.
-    pub fn get_first_recomputation_reference_linker(&self) -> OntologyDataRecomputationReferenceLinkerId {
+    pub fn get_first_recomputation_reference_linker(
+        &self,
+    ) -> OntologyDataRecomputationReferenceLinkerId {
         self.first_recomputation_reference_linker
     }
     /// Port of `::setLastRecomputationReferenceLinker`.
-    pub fn set_last_recomputation_reference_linker(&mut self, recomputation_reference_linker: OntologyDataRecomputationReferenceLinkerId) -> &mut Self {
+    pub fn set_last_recomputation_reference_linker(
+        &mut self,
+        recomputation_reference_linker: OntologyDataRecomputationReferenceLinkerId,
+    ) -> &mut Self {
         self.last_recomputation_reference_linker = recomputation_reference_linker;
         self
     }
     /// Port of `::setFirstRecomputationReferenceLinker`.
-    pub fn set_first_recomputation_reference_linker(&mut self, recomputation_reference_linker: OntologyDataRecomputationReferenceLinkerId) -> &mut Self {
+    pub fn set_first_recomputation_reference_linker(
+        &mut self,
+        recomputation_reference_linker: OntologyDataRecomputationReferenceLinkerId,
+    ) -> &mut Self {
         self.first_recomputation_reference_linker = recomputation_reference_linker;
         self
     }
     /// Port of `::getIndividualAssociationDataUsageCount`.
-    pub fn get_individual_association_data_usage_count(&self) -> Cint64 { self.individual_association_data_usage_count }
+    pub fn get_individual_association_data_usage_count(&self) -> Cint64 {
+        self.individual_association_data_usage_count
+    }
     /// Port of `::incIndividualAssociationDataUsageCount`.
     pub fn inc_individual_association_data_usage_count(&mut self, count: Cint64) -> &mut Self {
         self.individual_association_data_usage_count += count;
         self
     }
     /// Port of `::getPreviousMemoryManagementCount`.
-    pub fn get_previous_memory_management_count(&self) -> Cint64 { self.previous_memory_management_count }
+    pub fn get_previous_memory_management_count(&self) -> Cint64 {
+        self.previous_memory_management_count
+    }
     /// Port of `::setPreviousMemoryManagementCount`.
     pub fn set_previous_memory_management_count(&mut self, previous_count: Cint64) -> &mut Self {
         self.previous_memory_management_count = previous_count;
@@ -1668,7 +2634,8 @@ pub struct OntologyData {
     /// `CCACHINGHASH<cint64, CBackendRepresentativeMemoryCacheIndividualAssociationData*>* mIndiIdAssoDataHash`.
     pub indi_id_asso_data_hash: HashMap<Cint64, IndividualAssociationDataId>,
     /// `CCACHINGHASH<cint64, CBackendRepresentativeMemoryCacheNominalIndividualIndirectConnectionData*>* mNominalIndiIdIndirectConnectionDataHash`.
-    pub nominal_indi_id_indirect_connection_data_hash: HashMap<Cint64, NominalIndividualIndirectConnectionDataId>,
+    pub nominal_indi_id_indirect_connection_data_hash:
+        HashMap<Cint64, NominalIndividualIndirectConnectionDataId>,
 
     /// `cint64 mMaxStoredIndvidualiId`.
     pub max_stored_indvidual_id: Cint64,
@@ -1754,7 +2721,8 @@ pub struct OntologyData {
     /// `cint64 mOntologyDataUpdateId`.
     pub ontology_data_update_id: Cint64,
     /// `CCACHINGMAP<cint64, CBackendRepresentativeMemoryCacheIndividualAssociationContext*>* mRecomputationIdReleasingIndividualAssociationMap`.
-    pub recomputation_id_releasing_individual_association_map: HashMap<Cint64, IndividualAssociationContextId>,
+    pub recomputation_id_releasing_individual_association_map:
+        HashMap<Cint64, IndividualAssociationContextId>,
     /// `CBackendRepresentativeMemoryCacheIndividualAssociationContext* mReleaseQueuedIndividualAssociationContextLinker` (chain).
     pub release_queued_individual_association_context_linker: Vec<IndividualAssociationContextId>,
 }
@@ -1813,12 +2781,18 @@ impl Default for OntologyData {
 
 impl OntologyData {
     /// Port of `CBackendRepresentativeMemoryCacheOntologyData::CBackendRepresentativeMemoryCacheOntologyData(baseContext)`.
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::initOntologyData(ontologyIdentifer, directIndexing)`.
     /// KONCLUDE-PORT-NOTE[ownership]: the C++ raw pointers / hashes set to `nullptr` become the
     /// cleared inline containers; `CINT64_MAX` → `i64::MAX`.
-    pub fn init_ontology_data(&mut self, ontology_identifer: Cint64, direct_indexing: bool) -> &mut Self {
+    pub fn init_ontology_data(
+        &mut self,
+        ontology_identifer: Cint64,
+        direct_indexing: bool,
+    ) -> &mut Self {
         self.ontology_identifer = ontology_identifer;
         for h in self.sig_label_item_hash.iter_mut() {
             h.clear();
@@ -1861,8 +2835,10 @@ impl OntologyData {
         self.minimum_valid_recomputation_id = 0;
         self.next_update_minimum_valid_recomputation_id = 0;
         self.ontology_data_update_id = 1;
-        self.release_queued_individual_association_context_linker.clear();
-        self.recomputation_id_releasing_individual_association_map.clear();
+        self.release_queued_individual_association_context_linker
+            .clear();
+        self.recomputation_id_releasing_individual_association_map
+            .clear();
         self
     }
     /// Port of `::copyOntologyData(data)`.
@@ -1877,54 +2853,88 @@ impl OntologyData {
         self.max_stored_indvidual_id = data.max_stored_indvidual_id;
         self.individual_label_association_indexed = data.individual_label_association_indexed;
         self.individual_associations_count = data.individual_associations_count;
-        self.first_incompletely_handled_individuals_retrieved = data.first_incompletely_handled_individuals_retrieved;
+        self.first_incompletely_handled_individuals_retrieved =
+            data.first_incompletely_handled_individuals_retrieved;
         self.next_slot_update_waiting_count = data.next_slot_update_waiting_count;
         self.basic_precomputation_mode = data.basic_precomputation_mode;
-        self.basic_precompuation_indi_id_asso_data_vector = data.basic_precompuation_indi_id_asso_data_vector.clone();
-        self.basic_precompuation_indi_id_asso_data_vector_size = data.basic_precompuation_indi_id_asso_data_vector_size;
-        self.basic_precompuation_retrieval_indi_id_pos = data.basic_precompuation_retrieval_indi_id_pos;
+        self.basic_precompuation_indi_id_asso_data_vector =
+            data.basic_precompuation_indi_id_asso_data_vector.clone();
+        self.basic_precompuation_indi_id_asso_data_vector_size =
+            data.basic_precompuation_indi_id_asso_data_vector_size;
+        self.basic_precompuation_retrieval_indi_id_pos =
+            data.basic_precompuation_retrieval_indi_id_pos;
         self.basic_precomputation_mode_activation = data.basic_precomputation_mode_activation;
-        self.individual_association_data_direct_update_count = data.individual_association_data_direct_update_count;
-        self.individual_association_data_update_count = data.individual_association_data_update_count;
+        self.individual_association_data_direct_update_count =
+            data.individual_association_data_direct_update_count;
+        self.individual_association_data_update_count =
+            data.individual_association_data_update_count;
         self.individual_association_merging_count = data.individual_association_merging_count;
         self.involved_individual_count = data.involved_individual_count;
-        self.incompletely_handled_individuals_retrieval_count = data.incompletely_handled_individuals_retrieval_count;
+        self.incompletely_handled_individuals_retrieval_count =
+            data.incompletely_handled_individuals_retrieval_count;
         self.cache_data_update_writing_count = data.cache_data_update_writing_count;
         self.recomputation_reference_linker = data.recomputation_reference_linker;
         self.last_active_recomputation_reference_linker = Id::NONE;
         self.minimum_valid_recomputation_id = data.minimum_valid_recomputation_id;
-        self.next_update_minimum_valid_recomputation_id = data.next_update_minimum_valid_recomputation_id;
+        self.next_update_minimum_valid_recomputation_id =
+            data.next_update_minimum_valid_recomputation_id;
         self.ontology_data_update_id = data.ontology_data_update_id + 1;
-        self.release_queued_individual_association_context_linker = data.release_queued_individual_association_context_linker.clone();
-        self.recomputation_id_releasing_individual_association_map = data.recomputation_id_releasing_individual_association_map.clone();
-        self.prioritized_propagation_marked_neighbour_label_item = data.prioritized_propagation_marked_neighbour_label_item;
+        self.release_queued_individual_association_context_linker = data
+            .release_queued_individual_association_context_linker
+            .clone();
+        self.recomputation_id_releasing_individual_association_map = data
+            .recomputation_id_releasing_individual_association_map
+            .clone();
+        self.prioritized_propagation_marked_neighbour_label_item =
+            data.prioritized_propagation_marked_neighbour_label_item;
         self
     }
 
     /// Port of `::getOntologyIdentifer`.
-    pub fn get_ontology_identifer(&self) -> Cint64 { self.ontology_identifer }
+    pub fn get_ontology_identifer(&self) -> Cint64 {
+        self.ontology_identifer
+    }
     /// Port of `::getUsageCount`.
-    pub fn get_usage_count(&self) -> Cint64 { self.usage_count }
+    pub fn get_usage_count(&self) -> Cint64 {
+        self.usage_count
+    }
     /// Port of `::incUsageCount`.
-    pub fn inc_usage_count(&mut self, count: Cint64) -> &mut Self { self.usage_count += count; self }
+    pub fn inc_usage_count(&mut self, count: Cint64) -> &mut Self {
+        self.usage_count += count;
+        self
+    }
     /// Port of `::decUsageCount`.
-    pub fn dec_usage_count(&mut self, count: Cint64) -> &mut Self { self.usage_count -= count; self }
+    pub fn dec_usage_count(&mut self, count: Cint64) -> &mut Self {
+        self.usage_count -= count;
+        self
+    }
 
     /// Port of `::getSignatureLabelItemHash(labelType)`.  [ownership] inline container.
-    pub fn get_signature_label_item_hash(&mut self, label_type: Cint64) -> &mut HashMap<Cint64, LabelSignatureResolveCacheItem> {
+    pub fn get_signature_label_item_hash(
+        &mut self,
+        label_type: Cint64,
+    ) -> &mut HashMap<Cint64, LabelSignatureResolveCacheItem> {
         &mut self.sig_label_item_hash[label_type as usize]
     }
     /// Port of `::setSignatureLabelItemHash`. [api] inline container — the pointer assign is inert.
-    pub fn set_signature_label_item_hash(&mut self, _label_type: Cint64) -> &mut Self { self }
+    pub fn set_signature_label_item_hash(&mut self, _label_type: Cint64) -> &mut Self {
+        self
+    }
     /// Port of `::getNominaIIndividualdIndirectConnectionDataHash`.  [ownership] inline container.
-    pub fn get_nominal_individual_indirect_connection_data_hash(&mut self) -> &mut HashMap<Cint64, NominalIndividualIndirectConnectionDataId> {
+    pub fn get_nominal_individual_indirect_connection_data_hash(
+        &mut self,
+    ) -> &mut HashMap<Cint64, NominalIndividualIndirectConnectionDataId> {
         &mut self.nominal_indi_id_indirect_connection_data_hash
     }
     /// Port of `::setNominaIIndividualdIndirectConnectionDataHash`. [api] inline container — inert.
-    pub fn set_nominal_individual_indirect_connection_data_hash(&mut self) -> &mut Self { self }
+    pub fn set_nominal_individual_indirect_connection_data_hash(&mut self) -> &mut Self {
+        self
+    }
 
     /// Port of `::hasSameIndividualsMergings`.
-    pub fn has_same_individuals_mergings(&self) -> bool { self.same_merged_indis_in_cache }
+    pub fn has_same_individuals_mergings(&self) -> bool {
+        self.same_merged_indis_in_cache
+    }
     /// Port of `::setSameIndividualsMergings`.
     pub fn set_same_individuals_mergings(&mut self, same_indis_mergings: bool) -> &mut Self {
         self.same_merged_indis_in_cache = same_indis_mergings;
@@ -1932,23 +2942,35 @@ impl OntologyData {
     }
 
     /// Port of `::getIndividualIdAssociationDataHash`.  [ownership] inline container.
-    pub fn get_individual_id_association_data_hash(&mut self) -> &mut HashMap<Cint64, IndividualAssociationDataId> {
+    pub fn get_individual_id_association_data_hash(
+        &mut self,
+    ) -> &mut HashMap<Cint64, IndividualAssociationDataId> {
         &mut self.indi_id_asso_data_hash
     }
     /// Port of `::setIndividualIdAssociationDataHash`. [api] inline container — inert.
-    pub fn set_individual_id_association_data_hash(&mut self) -> &mut Self { self }
+    pub fn set_individual_id_association_data_hash(&mut self) -> &mut Self {
+        self
+    }
 
     /// Port of `::getIndividualIdAssoiationDataVectorSize`.
-    pub fn get_individual_id_assoiation_data_vector_size(&self) -> Cint64 { self.indi_id_asso_data_vector_size }
+    pub fn get_individual_id_assoiation_data_vector_size(&self) -> Cint64 {
+        self.indi_id_asso_data_vector_size
+    }
     /// Port of `::setIndividualIdAssoiationDataVectorSize`.
     pub fn set_individual_id_assoiation_data_vector_size(&mut self, size: Cint64) -> &mut Self {
         self.indi_id_asso_data_vector_size = size;
         self
     }
     /// Port of `::getIndividualIdAssoiationDataVector`.
-    pub fn get_individual_id_assoiation_data_vector(&self) -> &[IndividualAssociationDataId] { &self.indi_id_asso_data_vector }
+    pub fn get_individual_id_assoiation_data_vector(&self) -> &[IndividualAssociationDataId] {
+        &self.indi_id_asso_data_vector
+    }
     /// Port of `::setIndividualIdAssoiationDataVector(size, vector)`.
-    pub fn set_individual_id_assoiation_data_vector(&mut self, indi_id_asso_data_vector_size: Cint64, indi_id_asso_data_vector: Vec<IndividualAssociationDataId>) -> &mut Self {
+    pub fn set_individual_id_assoiation_data_vector(
+        &mut self,
+        indi_id_asso_data_vector_size: Cint64,
+        indi_id_asso_data_vector: Vec<IndividualAssociationDataId>,
+    ) -> &mut Self {
         self.indi_id_asso_data_vector = indi_id_asso_data_vector;
         self.indi_id_asso_data_vector_size = indi_id_asso_data_vector_size;
         self
@@ -1963,10 +2985,15 @@ impl OntologyData {
         next_entry_id
     }
     /// Port of `::setNextEntryID`.
-    pub fn set_next_entry_id(&mut self, next_entry_id: Cint64) -> &mut Self { self.next_entry_id = next_entry_id; self }
+    pub fn set_next_entry_id(&mut self, next_entry_id: Cint64) -> &mut Self {
+        self.next_entry_id = next_entry_id;
+        self
+    }
 
     /// Port of `::getMaxStoredIndvidualiId`.
-    pub fn get_max_stored_indvidual_id(&self) -> Cint64 { self.max_stored_indvidual_id }
+    pub fn get_max_stored_indvidual_id(&self) -> Cint64 {
+        self.max_stored_indvidual_id
+    }
     /// Port of `::updateMaxStoredIndvidualiId` (`qMax`).
     pub fn update_max_stored_indvidual_id(&mut self, id: Cint64) -> &mut Self {
         self.max_stored_indvidual_id = id.max(self.max_stored_indvidual_id);
@@ -1974,7 +3001,9 @@ impl OntologyData {
     }
 
     /// Port of `::getLastMinIncompletelyHandledIndvidualiId`.
-    pub fn get_last_min_incompletely_handled_indvidual_id(&self) -> Cint64 { self.last_min_incompletely_handled_indi_id }
+    pub fn get_last_min_incompletely_handled_indvidual_id(&self) -> Cint64 {
+        self.last_min_incompletely_handled_indi_id
+    }
     /// Port of `::setLastMinIncompletelyHandledIndvidualiId`.
     pub fn set_last_min_incompletely_handled_indvidual_id(&mut self, id: Cint64) -> &mut Self {
         self.last_min_incompletely_handled_indi_id = id;
@@ -1987,7 +3016,9 @@ impl OntologyData {
     }
 
     /// Port of `::getIncompletelyHandledIndividualIdCount`.
-    pub fn get_incompletely_handled_individual_id_count(&self) -> Cint64 { self.incompletely_handled_indi_id_count }
+    pub fn get_incompletely_handled_individual_id_count(&self) -> Cint64 {
+        self.incompletely_handled_indi_id_count
+    }
     /// Port of `::setIncompletelyHandledIndividualIdCount`.
     pub fn set_incompletely_handled_individual_id_count(&mut self, count: Cint64) -> &mut Self {
         self.incompletely_handled_indi_id_count = count;
@@ -2005,27 +3036,47 @@ impl OntologyData {
     }
 
     /// Port of `::getIndividualAssociationsCount`.
-    pub fn get_individual_associations_count(&self) -> Cint64 { self.individual_associations_count }
+    pub fn get_individual_associations_count(&self) -> Cint64 {
+        self.individual_associations_count
+    }
     /// Port of `::setIndividualAssociationsCount`.
-    pub fn set_individual_associations_count(&mut self, count: Cint64) -> &mut Self { self.individual_associations_count = count; self }
+    pub fn set_individual_associations_count(&mut self, count: Cint64) -> &mut Self {
+        self.individual_associations_count = count;
+        self
+    }
     /// Port of `::incIndividualAssociationsCount`.
-    pub fn inc_individual_associations_count(&mut self, count: Cint64) -> &mut Self { self.individual_associations_count += count; self }
+    pub fn inc_individual_associations_count(&mut self, count: Cint64) -> &mut Self {
+        self.individual_associations_count += count;
+        self
+    }
 
     /// Port of `::isAssociationCompleted`.
-    pub fn is_association_completed(&self) -> bool { self.association_completed }
+    pub fn is_association_completed(&self) -> bool {
+        self.association_completed
+    }
     /// Port of `::setAssociationCompleted`.
-    pub fn set_association_completed(&mut self, completed: bool) -> &mut Self { self.association_completed = completed; self }
+    pub fn set_association_completed(&mut self, completed: bool) -> &mut Self {
+        self.association_completed = completed;
+        self
+    }
 
     /// Port of `::isFirstIncompletelyHandledIndividualsRetrieved`.
-    pub fn is_first_incompletely_handled_individuals_retrieved(&self) -> bool { self.first_incompletely_handled_individuals_retrieved }
+    pub fn is_first_incompletely_handled_individuals_retrieved(&self) -> bool {
+        self.first_incompletely_handled_individuals_retrieved
+    }
     /// Port of `::setFirstIncompletelyHandledIndividualsRetrieved`.
-    pub fn set_first_incompletely_handled_individuals_retrieved(&mut self, retrieved: bool) -> &mut Self {
+    pub fn set_first_incompletely_handled_individuals_retrieved(
+        &mut self,
+        retrieved: bool,
+    ) -> &mut Self {
         self.first_incompletely_handled_individuals_retrieved = retrieved;
         self
     }
 
     /// Port of `::getMaxIndividualAssociationDataUpdateCount`.
-    pub fn get_max_individual_association_data_update_count(&self) -> Cint64 { self.max_indi_assoc_data_update_count }
+    pub fn get_max_individual_association_data_update_count(&self) -> Cint64 {
+        self.max_indi_assoc_data_update_count
+    }
     /// Port of `::setMaxIndividualAssociationDataUpdateCount`.
     pub fn set_max_individual_association_data_update_count(&mut self, count: Cint64) -> &mut Self {
         self.max_indi_assoc_data_update_count = count;
@@ -2033,27 +3084,47 @@ impl OntologyData {
     }
 
     /// Port of `::getProblematicIncompletelyHandledIndividualSet`.  [ownership] inline container.
-    pub fn get_problematic_incompletely_handled_individual_set(&mut self) -> &mut Vec<Cint64> { &mut self.problematic_incompletely_handled_indi_set }
+    pub fn get_problematic_incompletely_handled_individual_set(&mut self) -> &mut Vec<Cint64> {
+        &mut self.problematic_incompletely_handled_indi_set
+    }
     /// Port of `::setProblematicIncompletelyHandledIndividualSet`. [api] inline container — inert.
-    pub fn set_problematic_incompletely_handled_individual_set(&mut self) -> &mut Self { self }
+    pub fn set_problematic_incompletely_handled_individual_set(&mut self) -> &mut Self {
+        self
+    }
 
     /// Port of `::getTemporaryContext` (`return &mTemporaryContext;`).
-    pub fn get_temporary_context(&mut self) -> &mut BackendRepresentativeMemoryCacheOntologyContext { &mut self.temporary_context }
+    pub fn get_temporary_context(
+        &mut self,
+    ) -> &mut BackendRepresentativeMemoryCacheOntologyContext {
+        &mut self.temporary_context
+    }
     /// Port of `::getOntologyContext`.
-    pub fn get_ontology_context(&self) -> OntologyContextId { self.ontology_context }
+    pub fn get_ontology_context(&self) -> OntologyContextId {
+        self.ontology_context
+    }
     /// Port of `::setOntologyContext`.
-    pub fn set_ontology_context(&mut self, ont_context: OntologyContextId) -> &mut Self { self.ontology_context = ont_context; self }
+    pub fn set_ontology_context(&mut self, ont_context: OntologyContextId) -> &mut Self {
+        self.ontology_context = ont_context;
+        self
+    }
 
     /// Port of `::getPrioritizedPropagationMarkedNeighbourLabelItem`.
-    pub fn get_prioritized_propagation_marked_neighbour_label_item(&self) -> LabelCacheItemId { self.prioritized_propagation_marked_neighbour_label_item }
+    pub fn get_prioritized_propagation_marked_neighbour_label_item(&self) -> LabelCacheItemId {
+        self.prioritized_propagation_marked_neighbour_label_item
+    }
     /// Port of `::setPrioritizedPropagationMarkedNeighbourLabelItem`.
-    pub fn set_prioritized_propagation_marked_neighbour_label_item(&mut self, label_item: LabelCacheItemId) -> &mut Self {
+    pub fn set_prioritized_propagation_marked_neighbour_label_item(
+        &mut self,
+        label_item: LabelCacheItemId,
+    ) -> &mut Self {
         self.prioritized_propagation_marked_neighbour_label_item = label_item;
         self
     }
 
     /// Port of `::isIndividualLabelAssociationIndexed`.
-    pub fn is_individual_label_association_indexed(&self) -> bool { self.individual_label_association_indexed }
+    pub fn is_individual_label_association_indexed(&self) -> bool {
+        self.individual_label_association_indexed
+    }
     /// Port of `::setIndividualLabelAssociationIndexed`.
     pub fn set_individual_label_association_indexed(&mut self, indexed: bool) -> &mut Self {
         self.individual_label_association_indexed = indexed;
@@ -2067,7 +3138,11 @@ impl OntologyData {
     /// Port of `::updateIndividualLabelAssociationIndexed(releaseWaiting, memoryPools)`.
     /// KONCLUDE-PORT-NOTE[threading]: the `QMutex`/`QSemaphore` guard drops under the single-thread
     /// staging; [memory-pool] the `appendMemoryPool(memoryPools)` is deferred.
-    pub fn update_individual_label_association_indexed(&mut self, release_waiting: bool, _memory_pools: Cint64) -> Cint64 {
+    pub fn update_individual_label_association_indexed(
+        &mut self,
+        release_waiting: bool,
+        _memory_pools: Cint64,
+    ) -> Cint64 {
         self.individual_label_association_indexing_count -= 1; // mIndividualLabelAssociationIndexingCount.deref()
         let remaining_count = self.individual_label_association_indexing_count;
         if self.individual_label_association_indexing_count <= 0 {
@@ -2081,33 +3156,50 @@ impl OntologyData {
     }
     /// Port of `::waitIndividualLabelAssociationIndexed`.
     /// KONCLUDE-PORT-NOTE[threading]: single-thread — no blocking wait/acquire.
-    pub fn wait_individual_label_association_indexed(&mut self) -> &mut Self { self }
+    pub fn wait_individual_label_association_indexed(&mut self) -> &mut Self {
+        self
+    }
 
     /// Port of `::getNextSlotUpdateWaitingCount`.
-    pub fn get_next_slot_update_waiting_count(&self) -> Cint64 { self.next_slot_update_waiting_count }
+    pub fn get_next_slot_update_waiting_count(&self) -> Cint64 {
+        self.next_slot_update_waiting_count
+    }
     /// Port of `::setNextSlotUpdateWaitingCount`.
     pub fn set_next_slot_update_waiting_count(&mut self, update_count: Cint64) -> &mut Self {
         self.next_slot_update_waiting_count = update_count;
         self
     }
     /// Port of `::isSlotUpdateIntegrated`.
-    pub fn is_slot_update_integrated(&self) -> bool { self.slot_update_integrated }
+    pub fn is_slot_update_integrated(&self) -> bool {
+        self.slot_update_integrated
+    }
     /// Port of `::setSlotUpdateIntegrated`.
-    pub fn set_slot_update_integrated(&mut self, integrated: bool) -> &mut Self { self.slot_update_integrated = integrated; self }
+    pub fn set_slot_update_integrated(&mut self, integrated: bool) -> &mut Self {
+        self.slot_update_integrated = integrated;
+        self
+    }
 
     /// Port of `::isBasicPrecomputationMode`.
-    pub fn is_basic_precomputation_mode(&self) -> bool { self.basic_precomputation_mode }
+    pub fn is_basic_precomputation_mode(&self) -> bool {
+        self.basic_precomputation_mode
+    }
     /// Port of `::setBasicPrecomputationMode`.
     pub fn set_basic_precomputation_mode(&mut self, basic_precomputation: bool) -> &mut Self {
         self.basic_precomputation_mode = basic_precomputation;
         self
     }
     /// Port of `::getBasicPrecomputationIndividualIdAssoiationDataVector`.
-    pub fn get_basic_precomputation_individual_id_assoiation_data_vector(&self) -> &[IndividualAssociationDataId] {
+    pub fn get_basic_precomputation_individual_id_assoiation_data_vector(
+        &self,
+    ) -> &[IndividualAssociationDataId] {
         &self.basic_precompuation_indi_id_asso_data_vector
     }
     /// Port of `::setBasicPrecomputationIndividualIdAssoiationDataVector(size, vector)`.
-    pub fn set_basic_precomputation_individual_id_assoiation_data_vector(&mut self, indi_id_asso_data_vector_size: Cint64, indi_id_asso_data_vector: Vec<IndividualAssociationDataId>) -> &mut Self {
+    pub fn set_basic_precomputation_individual_id_assoiation_data_vector(
+        &mut self,
+        indi_id_asso_data_vector_size: Cint64,
+        indi_id_asso_data_vector: Vec<IndividualAssociationDataId>,
+    ) -> &mut Self {
         self.basic_precompuation_indi_id_asso_data_vector = indi_id_asso_data_vector;
         self.basic_precompuation_indi_id_asso_data_vector_size = indi_id_asso_data_vector_size;
         self
@@ -2117,57 +3209,90 @@ impl OntologyData {
         self.basic_precompuation_indi_id_asso_data_vector_size
     }
     /// Port of `::getBasicPrecompuationRetrievalIndividualIdPosition`.
-    pub fn get_basic_precompuation_retrieval_individual_id_position(&self) -> Cint64 { self.basic_precompuation_retrieval_indi_id_pos }
+    pub fn get_basic_precompuation_retrieval_individual_id_position(&self) -> Cint64 {
+        self.basic_precompuation_retrieval_indi_id_pos
+    }
     /// Port of `::setBasicPrecompuationRetrievalIndividualIdPosition`.
-    pub fn set_basic_precompuation_retrieval_individual_id_position(&mut self, indi_pos: Cint64) -> &mut Self {
+    pub fn set_basic_precompuation_retrieval_individual_id_position(
+        &mut self,
+        indi_pos: Cint64,
+    ) -> &mut Self {
         self.basic_precompuation_retrieval_indi_id_pos = indi_pos;
         self
     }
     /// Port of `::hasBasicPrecomputationModeActivation`.
-    pub fn has_basic_precomputation_mode_activation(&self) -> bool { self.basic_precomputation_mode_activation }
+    pub fn has_basic_precomputation_mode_activation(&self) -> bool {
+        self.basic_precomputation_mode_activation
+    }
     /// Port of `::setBasicPrecomputationModeActivation`.
-    pub fn set_basic_precomputation_mode_activation(&mut self, basic_precomputation_activation: bool) -> &mut Self {
+    pub fn set_basic_precomputation_mode_activation(
+        &mut self,
+        basic_precomputation_activation: bool,
+    ) -> &mut Self {
         self.basic_precomputation_mode_activation = basic_precomputation_activation;
         self
     }
 
     /// Port of `::getIndividualAssociationDataUpdateCount`.
-    pub fn get_individual_association_data_update_count(&self) -> Cint64 { self.individual_association_data_update_count }
+    pub fn get_individual_association_data_update_count(&self) -> Cint64 {
+        self.individual_association_data_update_count
+    }
     /// Port of `::incIndividualAssociationDataUpdateCount`.
     pub fn inc_individual_association_data_update_count(&mut self, count: Cint64) -> &mut Self {
         self.individual_association_data_update_count += count;
         self
     }
     /// Port of `::getIndividualAssociationDataDirectUpdateCount`.
-    pub fn get_individual_association_data_direct_update_count(&self) -> Cint64 { self.individual_association_data_direct_update_count }
+    pub fn get_individual_association_data_direct_update_count(&self) -> Cint64 {
+        self.individual_association_data_direct_update_count
+    }
     /// Port of `::incIndividualAssociationDataDirectUpdateCount`.
-    pub fn inc_individual_association_data_direct_update_count(&mut self, count: Cint64) -> &mut Self {
+    pub fn inc_individual_association_data_direct_update_count(
+        &mut self,
+        count: Cint64,
+    ) -> &mut Self {
         self.individual_association_data_direct_update_count += count;
         self
     }
     /// Port of `::getIndividualAssociationMergingCount`.
-    pub fn get_individual_association_merging_count(&self) -> Cint64 { self.individual_association_merging_count }
+    pub fn get_individual_association_merging_count(&self) -> Cint64 {
+        self.individual_association_merging_count
+    }
     /// Port of `::incIndividualAssociationMergingCount`.
     pub fn inc_individual_association_merging_count(&mut self, count: Cint64) -> &mut Self {
         self.individual_association_merging_count += count;
         self
     }
     /// Port of `::getInvolvedIndividualCount`.
-    pub fn get_involved_individual_count(&self) -> Cint64 { self.involved_individual_count }
+    pub fn get_involved_individual_count(&self) -> Cint64 {
+        self.involved_individual_count
+    }
     /// Port of `::hasInvolvedIndividuals` (`mInvolvedIndividualCount > 0`).
-    pub fn has_involved_individuals(&self) -> bool { self.involved_individual_count > 0 }
+    pub fn has_involved_individuals(&self) -> bool {
+        self.involved_individual_count > 0
+    }
     /// Port of `::incInvolvedIndividualCount`.
-    pub fn inc_involved_individual_count(&mut self, count: Cint64) -> &mut Self { self.involved_individual_count += count; self }
+    pub fn inc_involved_individual_count(&mut self, count: Cint64) -> &mut Self {
+        self.involved_individual_count += count;
+        self
+    }
 
     /// Port of `::getIncompletelyHandledIndividualsRetrievalCount`.
-    pub fn get_incompletely_handled_individuals_retrieval_count(&self) -> Cint64 { self.incompletely_handled_individuals_retrieval_count }
+    pub fn get_incompletely_handled_individuals_retrieval_count(&self) -> Cint64 {
+        self.incompletely_handled_individuals_retrieval_count
+    }
     /// Port of `::incIncompletelyHandledIndividualsRetrievalCount`.
-    pub fn inc_incompletely_handled_individuals_retrieval_count(&mut self, count: Cint64) -> &mut Self {
+    pub fn inc_incompletely_handled_individuals_retrieval_count(
+        &mut self,
+        count: Cint64,
+    ) -> &mut Self {
         self.incompletely_handled_individuals_retrieval_count += count;
         self
     }
     /// Port of `::getCacheDataUpdateWritingCount`.
-    pub fn get_cache_data_update_writing_count(&self) -> Cint64 { self.cache_data_update_writing_count }
+    pub fn get_cache_data_update_writing_count(&self) -> Cint64 {
+        self.cache_data_update_writing_count
+    }
     /// Port of `::incCacheDataUpdateWritingCount`.
     pub fn inc_cache_data_update_writing_count(&mut self, count: Cint64) -> &mut Self {
         self.cache_data_update_writing_count += count;
@@ -2175,61 +3300,145 @@ impl OntologyData {
     }
 
     /// Port of `::getLastActiveRecomputationReferenceLinker`.
-    /// KONCLUDE-PORT-NOTE[api]: the lazy compute walks the `mRecomputationReferenceLinker` chain
-    /// (active/next-all-inactive flags) which needs the recomputation-linker arena (not threaded
-    /// here); the chain walk is deferred (W6-DEFER[api]) — the cached field is returned.
-    pub fn get_last_active_recomputation_reference_linker(&self) -> OntologyDataRecomputationReferenceLinkerId {
+    pub fn get_last_active_recomputation_reference_linker(
+        &mut self,
+        cache_context: &mut CacheContext,
+    ) -> OntologyDataRecomputationReferenceLinkerId {
+        if self.last_active_recomputation_reference_linker.is_none() {
+            let mut linker_it = self.recomputation_reference_linker;
+            let mut last_linker = linker_it;
+            while linker_it.is_some() {
+                if cache_context
+                    .ontology_data_recomp_ref_linker(linker_it)
+                    .is_ontology_data_active()
+                {
+                    self.last_active_recomputation_reference_linker = linker_it;
+                }
+                if cache_context
+                    .ontology_data_recomp_ref_linker(linker_it)
+                    .is_next_ontology_data_all_inactive()
+                {
+                    break;
+                }
+                last_linker = linker_it;
+                linker_it = cache_context
+                    .ontology_data_recomp_ref_linker(linker_it)
+                    .get_next();
+            }
+            if self.last_active_recomputation_reference_linker.is_none() {
+                self.last_active_recomputation_reference_linker = last_linker;
+            }
+
+            if self.last_active_recomputation_reference_linker.is_some() {
+                linker_it = cache_context
+                    .ontology_data_recomp_ref_linker(
+                        self.last_active_recomputation_reference_linker,
+                    )
+                    .get_next();
+                while linker_it.is_some()
+                    && !cache_context
+                        .ontology_data_recomp_ref_linker(linker_it)
+                        .is_next_ontology_data_all_inactive()
+                {
+                    cache_context
+                        .ontology_data_recomp_ref_linker_mut(linker_it)
+                        .set_next_ontology_data_all_inactive();
+                    linker_it = cache_context
+                        .ontology_data_recomp_ref_linker(linker_it)
+                        .get_next();
+                }
+            }
+        }
         self.last_active_recomputation_reference_linker
     }
     /// Port of `::getRecomputationReferenceLinker`.
-    pub fn get_recomputation_reference_linker(&self) -> OntologyDataRecomputationReferenceLinkerId { self.recomputation_reference_linker }
+    pub fn get_recomputation_reference_linker(&self) -> OntologyDataRecomputationReferenceLinkerId {
+        self.recomputation_reference_linker
+    }
     /// Port of `::setRecomputationReferenceLinker`
     /// (`mRecomputationReferenceLinker = linker->append(mRecomputationReferenceLinker);`).
-    /// W6-DEFER[api]: `linker` becomes the new head; its tail re-links to the prior head in the arena.
-    pub fn set_recomputation_reference_linker(&mut self, linker: OntologyDataRecomputationReferenceLinkerId) -> &mut Self {
+    pub fn set_recomputation_reference_linker(
+        &mut self,
+        linker: OntologyDataRecomputationReferenceLinkerId,
+        cache_context: &mut CacheContext,
+    ) -> &mut Self {
+        if linker.is_some() {
+            cache_context
+                .ontology_data_recomp_ref_linker_mut(linker)
+                .set_next(self.recomputation_reference_linker);
+        }
         self.recomputation_reference_linker = linker;
         self
     }
 
     /// Port of `::getOntologyDataUpdateId`.
-    pub fn get_ontology_data_update_id(&self) -> Cint64 { self.ontology_data_update_id }
+    pub fn get_ontology_data_update_id(&self) -> Cint64 {
+        self.ontology_data_update_id
+    }
     /// Port of `::getMinimumValidRecomputationId`.
-    pub fn get_minimum_valid_recomputation_id(&self) -> Cint64 { self.minimum_valid_recomputation_id }
+    pub fn get_minimum_valid_recomputation_id(&self) -> Cint64 {
+        self.minimum_valid_recomputation_id
+    }
     /// Port of `::getNextUpdateMinimumValidRecomputationId`.
-    pub fn get_next_update_minimum_valid_recomputation_id(&self) -> Cint64 { self.next_update_minimum_valid_recomputation_id }
+    pub fn get_next_update_minimum_valid_recomputation_id(&self) -> Cint64 {
+        self.next_update_minimum_valid_recomputation_id
+    }
     /// Port of `::setMinimumValidRecomputationId`.
     pub fn set_minimum_valid_recomputation_id(&mut self, recomputation_id: Cint64) -> &mut Self {
         self.minimum_valid_recomputation_id = recomputation_id;
         self
     }
     /// Port of `::setNextUpdateMinimumValidRecomputationId`.
-    pub fn set_next_update_minimum_valid_recomputation_id(&mut self, recomputation_id: Cint64) -> &mut Self {
+    pub fn set_next_update_minimum_valid_recomputation_id(
+        &mut self,
+        recomputation_id: Cint64,
+    ) -> &mut Self {
         self.next_update_minimum_valid_recomputation_id = recomputation_id;
         self
     }
 
     /// Port of `::getRecomputationIdReleasingIndividualAssociationContextMap`.  [ownership] inline container.
-    pub fn get_recomputation_id_releasing_individual_association_context_map(&mut self) -> &mut HashMap<Cint64, IndividualAssociationContextId> {
+    pub fn get_recomputation_id_releasing_individual_association_context_map(
+        &mut self,
+    ) -> &mut HashMap<Cint64, IndividualAssociationContextId> {
         &mut self.recomputation_id_releasing_individual_association_map
     }
     /// Port of `::setRecomputationIdReleasingIndividualAssociationContextMap`. [api] inline container — inert.
-    pub fn set_recomputation_id_releasing_individual_association_context_map(&mut self) -> &mut Self { self }
+    pub fn set_recomputation_id_releasing_individual_association_context_map(
+        &mut self,
+    ) -> &mut Self {
+        self
+    }
     /// Port of `::getReleaseQueuedIndividualAssociationContextLinker` (chain head).
-    pub fn get_release_queued_individual_association_context_linker(&self) -> IndividualAssociationContextId {
-        self.release_queued_individual_association_context_linker.first().copied().unwrap_or(Id::NONE)
+    pub fn get_release_queued_individual_association_context_linker(
+        &self,
+    ) -> IndividualAssociationContextId {
+        self.release_queued_individual_association_context_linker
+            .first()
+            .copied()
+            .unwrap_or(Id::NONE)
     }
     /// Port of `::setReleaseQueuedIndividualAssociationContextLinker`.
-    pub fn set_release_queued_individual_association_context_linker(&mut self, linker: IndividualAssociationContextId) -> &mut Self {
-        self.release_queued_individual_association_context_linker.clear();
+    pub fn set_release_queued_individual_association_context_linker(
+        &mut self,
+        linker: IndividualAssociationContextId,
+    ) -> &mut Self {
+        self.release_queued_individual_association_context_linker
+            .clear();
         if linker.is_some() {
-            self.release_queued_individual_association_context_linker.push(linker);
+            self.release_queued_individual_association_context_linker
+                .push(linker);
         }
         self
     }
     /// Port of `::addReleaseQueuedIndividualAssociationContextLinker`
     /// (`mReleaseQueued = linker->append(mReleaseQueued);` — head-front prepend).
-    pub fn add_release_queued_individual_association_context_linker(&mut self, linker: IndividualAssociationContextId) -> &mut Self {
-        self.release_queued_individual_association_context_linker.insert(0, linker);
+    pub fn add_release_queued_individual_association_context_linker(
+        &mut self,
+        linker: IndividualAssociationContextId,
+    ) -> &mut Self {
+        self.release_queued_individual_association_context_linker
+            .insert(0, linker);
         self
     }
 }
@@ -2255,34 +3464,69 @@ pub struct BackendIndividualRetrievalComputationUpdateCoordinationHashData {
     pub usage_count: Cint64,
 }
 impl BackendIndividualRetrievalComputationUpdateCoordinationHashData {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::getAssociationUpdateId`.
-    pub fn get_association_update_id(&self) -> Cint64 { self.association_update_id }
+    pub fn get_association_update_id(&self) -> Cint64 {
+        self.association_update_id
+    }
     /// Port of `::setAssociationUpdateId`.
-    pub fn set_association_update_id(&mut self, update_id: Cint64) -> &mut Self { self.association_update_id = update_id; self }
+    pub fn set_association_update_id(&mut self, update_id: Cint64) -> &mut Self {
+        self.association_update_id = update_id;
+        self
+    }
     /// Port of `::isProcessed`.
-    pub fn is_processed(&self) -> bool { self.processed }
+    pub fn is_processed(&self) -> bool {
+        self.processed
+    }
     /// Port of `::setProcessed`.
-    pub fn set_processed(&mut self, processed: bool) -> &mut Self { self.processed = processed; self }
+    pub fn set_processed(&mut self, processed: bool) -> &mut Self {
+        self.processed = processed;
+        self
+    }
     /// Port of `::setComputationOrdered`.
-    pub fn set_computation_ordered(&mut self, ordered: bool) -> &mut Self { self.computation_ordered = ordered; self }
+    pub fn set_computation_ordered(&mut self, ordered: bool) -> &mut Self {
+        self.computation_ordered = ordered;
+        self
+    }
     /// Port of `::setComputationIntegrated`.
-    pub fn set_computation_integrated(&mut self, integrated: bool) -> &mut Self { self.computation_integrated = integrated; self }
+    pub fn set_computation_integrated(&mut self, integrated: bool) -> &mut Self {
+        self.computation_integrated = integrated;
+        self
+    }
     /// Port of `::setNewlyRetrieved`.
-    pub fn set_newly_retrieved(&mut self, retrieved: bool) -> &mut Self { self.newly_retrieved = retrieved; self }
+    pub fn set_newly_retrieved(&mut self, retrieved: bool) -> &mut Self {
+        self.newly_retrieved = retrieved;
+        self
+    }
     /// Port of `::isComputationOrdered`.
-    pub fn is_computation_ordered(&self) -> bool { self.computation_ordered }
+    pub fn is_computation_ordered(&self) -> bool {
+        self.computation_ordered
+    }
     /// Port of `::isComputationIntegrated`.
-    pub fn is_computation_integrated(&self) -> bool { self.computation_integrated }
+    pub fn is_computation_integrated(&self) -> bool {
+        self.computation_integrated
+    }
     /// Port of `::isNewlyRetrieved`.
-    pub fn is_newly_retrieved(&self) -> bool { self.newly_retrieved }
+    pub fn is_newly_retrieved(&self) -> bool {
+        self.newly_retrieved
+    }
     /// Port of `::incUsageCount`.
-    pub fn inc_usage_count(&mut self, count: Cint64) -> &mut Self { self.usage_count += count; self }
+    pub fn inc_usage_count(&mut self, count: Cint64) -> &mut Self {
+        self.usage_count += count;
+        self
+    }
     /// Port of `::decUsageCount`.
-    pub fn dec_usage_count(&mut self, count: Cint64) -> &mut Self { self.usage_count -= count; self }
+    pub fn dec_usage_count(&mut self, count: Cint64) -> &mut Self {
+        self.usage_count -= count;
+        self
+    }
     /// Port of `::getUsageCount`.
-    pub fn get_usage_count(&self) -> Cint64 { self.usage_count }
+    pub fn get_usage_count(&self) -> Cint64 {
+        self.usage_count
+    }
 }
 
 /// Port of `CBackendIndividualRetrievalComputationUpdateCoordinationHash`
@@ -2316,7 +3560,9 @@ pub struct BackendIndividualRetrievalComputationUpdateCoordinationHash {
     pub basic_precomputation_finished: bool,
 }
 impl BackendIndividualRetrievalComputationUpdateCoordinationHash {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Port of `::getApproximateRemainingIncompletelyHandledCount`
     /// (`qMax(total + correction - (processed - removed) - computation, 0)`).
@@ -2327,52 +3573,103 @@ impl BackendIndividualRetrievalComputationUpdateCoordinationHash {
             .max(0)
     }
     /// Port of `::getHashProcessedCount`.
-    pub fn get_hash_processed_count(&self) -> Cint64 { self.hash_processed_count }
+    pub fn get_hash_processed_count(&self) -> Cint64 {
+        self.hash_processed_count
+    }
     /// Port of `::incHashProcessedCount`.
-    pub fn inc_hash_processed_count(&mut self, count: Cint64) -> &mut Self { self.hash_processed_count += count; self }
+    pub fn inc_hash_processed_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_processed_count += count;
+        self
+    }
     /// Port of `::decHashProcessedCount`.
-    pub fn dec_hash_processed_count(&mut self, count: Cint64) -> &mut Self { self.hash_processed_count -= count; self }
+    pub fn dec_hash_processed_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_processed_count -= count;
+        self
+    }
     /// Port of `::getHashComputationCount`.
-    pub fn get_hash_computation_count(&self) -> Cint64 { self.hash_computation_count }
+    pub fn get_hash_computation_count(&self) -> Cint64 {
+        self.hash_computation_count
+    }
     /// Port of `::incHashComputationCount`.
-    pub fn inc_hash_computation_count(&mut self, count: Cint64) -> &mut Self { self.hash_computation_count += count; self }
+    pub fn inc_hash_computation_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_computation_count += count;
+        self
+    }
     /// Port of `::decHashComputationCount`.
-    pub fn dec_hash_computation_count(&mut self, count: Cint64) -> &mut Self { self.hash_computation_count -= count; self }
+    pub fn dec_hash_computation_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_computation_count -= count;
+        self
+    }
     /// Port of `::getHashRemainingCount`.
-    pub fn get_hash_remaining_count(&self) -> Cint64 { self.hash_remaining_count }
+    pub fn get_hash_remaining_count(&self) -> Cint64 {
+        self.hash_remaining_count
+    }
     /// Port of `::incHashRemainingCount`.
-    pub fn inc_hash_remaining_count(&mut self, count: Cint64) -> &mut Self { self.hash_remaining_count += count; self }
+    pub fn inc_hash_remaining_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_remaining_count += count;
+        self
+    }
     /// Port of `::decHashRemainingCount`.
-    pub fn dec_hash_remaining_count(&mut self, count: Cint64) -> &mut Self { self.hash_remaining_count -= count; self }
+    pub fn dec_hash_remaining_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_remaining_count -= count;
+        self
+    }
     /// Port of `::setHashRemainingCount`.
-    pub fn set_hash_remaining_count(&mut self, count: Cint64) -> &mut Self { self.hash_remaining_count = count; self }
+    pub fn set_hash_remaining_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_remaining_count = count;
+        self
+    }
     /// Port of `::getHashRemovedCount`.
-    pub fn get_hash_removed_count(&self) -> Cint64 { self.hash_removed_count }
+    pub fn get_hash_removed_count(&self) -> Cint64 {
+        self.hash_removed_count
+    }
     /// Port of `::incHashRemovedCount`.
-    pub fn inc_hash_removed_count(&mut self, count: Cint64) -> &mut Self { self.hash_removed_count += count; self }
+    pub fn inc_hash_removed_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_removed_count += count;
+        self
+    }
     /// Port of `::decHashRemovedCount`.
-    pub fn dec_hash_removed_count(&mut self, count: Cint64) -> &mut Self { self.hash_removed_count -= count; self }
+    pub fn dec_hash_removed_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_removed_count -= count;
+        self
+    }
     /// Port of `::setHashRemovedCount`.
-    pub fn set_hash_removed_count(&mut self, count: Cint64) -> &mut Self { self.hash_removed_count = count; self }
+    pub fn set_hash_removed_count(&mut self, count: Cint64) -> &mut Self {
+        self.hash_removed_count = count;
+        self
+    }
     /// Port of `::getApproximateCorrectionIncompletelyHandledCount`.
-    pub fn get_approximate_correction_incompletely_handled_count(&self) -> Cint64 { self.correction_incompletely_handled_count }
+    pub fn get_approximate_correction_incompletely_handled_count(&self) -> Cint64 {
+        self.correction_incompletely_handled_count
+    }
     /// Port of `::incApproximateCorrectionIncompletelyHandledCount`.
-    pub fn inc_approximate_correction_incompletely_handled_count(&mut self, count: Cint64) -> &mut Self {
+    pub fn inc_approximate_correction_incompletely_handled_count(
+        &mut self,
+        count: Cint64,
+    ) -> &mut Self {
         self.correction_incompletely_handled_count += count;
         self
     }
     /// Port of `::decApproximateCorrectionIncompletelyHandledCount`.
-    pub fn dec_approximate_correction_incompletely_handled_count(&mut self, count: Cint64) -> &mut Self {
+    pub fn dec_approximate_correction_incompletely_handled_count(
+        &mut self,
+        count: Cint64,
+    ) -> &mut Self {
         self.correction_incompletely_handled_count -= count;
         self
     }
     /// Port of `::setApproximateCorrectionIncompletelyHandledCount`.
-    pub fn set_approximate_correction_incompletely_handled_count(&mut self, count: Cint64) -> &mut Self {
+    pub fn set_approximate_correction_incompletely_handled_count(
+        &mut self,
+        count: Cint64,
+    ) -> &mut Self {
         self.correction_incompletely_handled_count = count;
         self
     }
     /// Port of `::getApproximateTotalIncompletelyHandledCount`.
-    pub fn get_approximate_total_incompletely_handled_count(&self) -> Cint64 { self.total_incompletely_handled_count }
+    pub fn get_approximate_total_incompletely_handled_count(&self) -> Cint64 {
+        self.total_incompletely_handled_count
+    }
     /// Port of `::incApproximateTotalIncompletelyHandledCount`.
     pub fn inc_approximate_total_incompletely_handled_count(&mut self, count: Cint64) -> &mut Self {
         self.total_incompletely_handled_count += count;
@@ -2391,26 +3688,43 @@ impl BackendIndividualRetrievalComputationUpdateCoordinationHash {
     /// Port of `::createCoordinationData` (`return new ...HashData();`).
     /// KONCLUDE-PORT-NOTE[memory-pool]: the arena/pool allocation is deferred; returns a fresh
     /// default by value.
-    pub fn create_coordination_data(&self) -> BackendIndividualRetrievalComputationUpdateCoordinationHashData {
+    pub fn create_coordination_data(
+        &self,
+    ) -> BackendIndividualRetrievalComputationUpdateCoordinationHashData {
         BackendIndividualRetrievalComputationUpdateCoordinationHashData::new()
     }
     /// Port of `::getUsageCount`.
-    pub fn get_usage_count(&self) -> Cint64 { self.usage_count }
+    pub fn get_usage_count(&self) -> Cint64 {
+        self.usage_count
+    }
     /// Port of `::incUsageCount`.
-    pub fn inc_usage_count(&mut self, count: Cint64) -> &mut Self { self.usage_count += count; self }
+    pub fn inc_usage_count(&mut self, count: Cint64) -> &mut Self {
+        self.usage_count += count;
+        self
+    }
     /// Port of `::decUsageCount`.
-    pub fn dec_usage_count(&mut self, count: Cint64) -> &mut Self { self.usage_count -= count; self }
+    pub fn dec_usage_count(&mut self, count: Cint64) -> &mut Self {
+        self.usage_count -= count;
+        self
+    }
     /// Port of `::setBasicPrecomputationMode`.
-    pub fn set_basic_precomputation_mode(&mut self, basic_mode: bool) -> &mut Self { self.basic_precomputation_mode = basic_mode; self }
+    pub fn set_basic_precomputation_mode(&mut self, basic_mode: bool) -> &mut Self {
+        self.basic_precomputation_mode = basic_mode;
+        self
+    }
     /// Port of `::hasBasicPrecomputationMode`.
-    pub fn has_basic_precomputation_mode(&self) -> bool { self.basic_precomputation_mode }
+    pub fn has_basic_precomputation_mode(&self) -> bool {
+        self.basic_precomputation_mode
+    }
     /// Port of `::setBasicPrecomputationFinished`.
     pub fn set_basic_precomputation_finished(&mut self, basic_mode_finished: bool) -> &mut Self {
         self.basic_precomputation_finished = basic_mode_finished;
         self
     }
     /// Port of `::hasBasicPrecomputationFinished`.
-    pub fn has_basic_precomputation_finished(&self) -> bool { self.basic_precomputation_finished }
+    pub fn has_basic_precomputation_finished(&self) -> bool {
+        self.basic_precomputation_finished
+    }
 }
 
 // ===========================================================================
@@ -2427,7 +3741,9 @@ pub enum TempUpdateType {
     Removal,
 }
 impl Default for TempUpdateType {
-    fn default() -> Self { TempUpdateType::Addition }
+    fn default() -> Self {
+        TempUpdateType::Addition
+    }
 }
 
 /// Port of `CBackendRepresentativeMemoryCacheTemporaryLabelReference`
@@ -2442,24 +3758,40 @@ pub struct TempLabelReference {
 }
 impl Default for TempLabelReference {
     fn default() -> Self {
-        TempLabelReference { temp_label_write: Id::NONE, label_item: Id::NONE }
+        TempLabelReference {
+            temp_label_write: Id::NONE,
+            label_item: Id::NONE,
+        }
     }
 }
 
 impl TempLabelReference {
     /// Port of `CBackendRepresentativeMemoryCacheTemporaryLabelReference::CBackendRepresentativeMemoryCacheTemporaryLabelReference()`.
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
     /// Port of the ctor `(CBackendRepresentativeMemoryLabelCacheItem* referredLabelData)` (`QPair(nullptr, referredLabelData)`).
     pub fn from_referred_label_data(referred_label_data: LabelCacheItemId) -> Self {
-        TempLabelReference { temp_label_write: Id::NONE, label_item: referred_label_data }
+        TempLabelReference {
+            temp_label_write: Id::NONE,
+            label_item: referred_label_data,
+        }
     }
     /// Port of the ctor `(CBackendRepresentativeMemoryCacheTemporaryLabelWriteDataLinker* referredTmpLabelData)` (`QPair(referredTmpLabelData, nullptr)`).
-    pub fn from_referred_temporary_label_data(referred_tmp_label_data: BackendTempWriteRecordId) -> Self {
-        TempLabelReference { temp_label_write: referred_tmp_label_data, label_item: Id::NONE }
+    pub fn from_referred_temporary_label_data(
+        referred_tmp_label_data: BackendTempWriteRecordId,
+    ) -> Self {
+        TempLabelReference {
+            temp_label_write: referred_tmp_label_data,
+            label_item: Id::NONE,
+        }
     }
     /// Port of `::initLabelReferenceData(labelReferenceData)`
     /// (`first = nullptr; second = nullptr; if (labelReferenceData) *this = *labelReferenceData;`).
-    pub fn init_label_reference_data(&mut self, label_reference_data: Option<&TempLabelReference>) -> &mut Self {
+    pub fn init_label_reference_data(
+        &mut self,
+        label_reference_data: Option<&TempLabelReference>,
+    ) -> &mut Self {
         self.temp_label_write = Id::NONE;
         self.label_item = Id::NONE;
         if let Some(other) = label_reference_data {
@@ -2468,7 +3800,10 @@ impl TempLabelReference {
         self
     }
     /// Port of `::setReferredTemporaryLabelData` (`first = referredTmpLabelData;`).
-    pub fn set_referred_temporary_label_data(&mut self, referred_tmp_label_data: BackendTempWriteRecordId) -> &mut Self {
+    pub fn set_referred_temporary_label_data(
+        &mut self,
+        referred_tmp_label_data: BackendTempWriteRecordId,
+    ) -> &mut Self {
         self.temp_label_write = referred_tmp_label_data;
         self
     }
@@ -2478,9 +3813,13 @@ impl TempLabelReference {
         self
     }
     /// Port of `::getReferredTemporaryLabelData` (`return first;`).
-    pub fn get_referred_temporary_label_data(&self) -> BackendTempWriteRecordId { self.temp_label_write }
+    pub fn get_referred_temporary_label_data(&self) -> BackendTempWriteRecordId {
+        self.temp_label_write
+    }
     /// Port of `::getReferredLabelData` (`return second;`).
-    pub fn get_referred_label_data(&self) -> LabelCacheItemId { self.label_item }
+    pub fn get_referred_label_data(&self) -> LabelCacheItemId {
+        self.label_item
+    }
 }
 
 /// Port of the ~13 `CBackendRepresentativeMemoryCacheTemporary*DataLinker` /
@@ -2583,19 +3922,28 @@ pub enum BackendTempWriteRecord {
 
 impl Default for BackendTempWriteRecord {
     fn default() -> Self {
-        BackendTempWriteRecord::AssociationUse { individual_id: 0, association_update_id: 0 }
+        BackendTempWriteRecord::AssociationUse {
+            individual_id: 0,
+            association_update_id: 0,
+        }
     }
 }
 
 impl BackendTempWriteRecord {
     /// Port of the `CBackendRepresentativeMemoryCacheTemporary*DataLinker` ctors;
     /// the variant selects which C++ chain node is being constructed.
-    pub fn new(record: BackendTempWriteRecord) -> Self { record }
+    pub fn new(record: BackendTempWriteRecord) -> Self {
+        record
+    }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryAssociationWriteDataLinker =====
 
     /// Port of `::initAccociationWriteData(individualID, labelUpdateType, linksUpdateType)`.
-    pub fn new_association_write(individual_id: Cint64, label_update_type: TempUpdateType, links_update_type: TempUpdateType) -> Self {
+    pub fn new_association_write(
+        individual_id: Cint64,
+        label_update_type: TempUpdateType,
+        links_update_type: TempUpdateType,
+    ) -> Self {
         let mut flags = BackendRepresentativeMemoryCachingFlags::new();
         flags.status_flags = BackendRepresentativeMemoryCachingFlags::FLAG_COMPLETELY_HANDLED
             | BackendRepresentativeMemoryCachingFlags::FLAG_COMPLETELY_SATURATED;
@@ -2621,45 +3969,86 @@ impl BackendTempWriteRecord {
         }
     }
     /// Port of `::setReferredTemporaryLabelData(labelType, referredTmpLabelData)`.
-    pub fn set_referred_temporary_label_data(&mut self, label_type: Cint64, referred_tmp_label_data: BackendTempWriteRecordId) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { referred_tmp_label_data: arr, .. } = self {
+    pub fn set_referred_temporary_label_data(
+        &mut self,
+        label_type: Cint64,
+        referred_tmp_label_data: BackendTempWriteRecordId,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_tmp_label_data: arr,
+            ..
+        } = self
+        {
             arr[label_type as usize] = referred_tmp_label_data;
         }
         self
     }
     /// Port of `::setReferredLabelData(labelType, referredLabelData)`.
-    pub fn set_referred_label_data(&mut self, label_type: Cint64, referred_label_data: LabelCacheItemId) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { referred_label_data: arr, .. } = self {
+    pub fn set_referred_label_data(
+        &mut self,
+        label_type: Cint64,
+        referred_label_data: LabelCacheItemId,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_label_data: arr,
+            ..
+        } = self
+        {
             arr[label_type as usize] = referred_label_data;
         }
         self
     }
     /// Port of `::setReferredLabel(labelType, labelRef)`
     /// (`if (labelRef.getReferredLabelData()) setReferredLabelData(...); else setReferredTemporaryLabelData(...);`).
-    pub fn set_referred_label(&mut self, label_type: Cint64, label_ref: &TempLabelReference) -> &mut Self {
+    pub fn set_referred_label(
+        &mut self,
+        label_type: Cint64,
+        label_ref: &TempLabelReference,
+    ) -> &mut Self {
         if label_ref.get_referred_label_data().is_some() {
             self.set_referred_label_data(label_type, label_ref.get_referred_label_data())
         } else {
-            self.set_referred_temporary_label_data(label_type, label_ref.get_referred_temporary_label_data())
+            self.set_referred_temporary_label_data(
+                label_type,
+                label_ref.get_referred_temporary_label_data(),
+            )
         }
     }
     /// Port of `::setReferredTemporaryCardinalityData`.
-    pub fn set_referred_temporary_cardinality_data(&mut self, referred_tmp_card_data: BackendTempWriteRecordId) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { referred_tmp_card_data: c, .. } = self {
+    pub fn set_referred_temporary_cardinality_data(
+        &mut self,
+        referred_tmp_card_data: BackendTempWriteRecordId,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_tmp_card_data: c,
+            ..
+        } = self
+        {
             *c = referred_tmp_card_data;
         }
         self
     }
     /// Port of `::setReferredCardinalityData`.
-    pub fn set_referred_cardinality_data(&mut self, referred_card_data: CardinalityCacheItemId) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { referred_card_data: c, .. } = self {
+    pub fn set_referred_cardinality_data(
+        &mut self,
+        referred_card_data: CardinalityCacheItemId,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_card_data: c,
+            ..
+        } = self
+        {
             *c = referred_card_data;
         }
         self
     }
     /// Port of `::getIndividual` (the cross-family `CIndividual*`, opaque).
     pub fn get_individual(&self) -> Cint64 {
-        if let BackendTempWriteRecord::AssociationWrite { individual, .. } = self { *individual } else { INVALID }
+        if let BackendTempWriteRecord::AssociationWrite { individual, .. } = self {
+            *individual
+        } else {
+            INVALID
+        }
     }
     /// Port of the `getIndividualID` of AssociationWrite / AssociationUse / NominalIndirectConnection /
     /// PropagationCut (the same-named per-class getters fold to one over the variants that carry an id).
@@ -2667,14 +4056,23 @@ impl BackendTempWriteRecord {
         match self {
             BackendTempWriteRecord::AssociationWrite { individual_id, .. } => *individual_id,
             BackendTempWriteRecord::AssociationUse { individual_id, .. } => *individual_id,
-            BackendTempWriteRecord::NominalIndirectConnection { nominal_indi_id, .. } => *nominal_indi_id,
+            BackendTempWriteRecord::NominalIndirectConnection {
+                nominal_indi_id, ..
+            } => *nominal_indi_id,
             BackendTempWriteRecord::PropagationCut { individual_id, .. } => *individual_id,
             _ => 0,
         }
     }
     /// Port of `::getReferredTemporaryLabelData(labelType)` (AssociationWrite).
-    pub fn get_referred_temporary_label_data(&self, label_type: Cint64) -> BackendTempWriteRecordId {
-        if let BackendTempWriteRecord::AssociationWrite { referred_tmp_label_data, .. } = self {
+    pub fn get_referred_temporary_label_data(
+        &self,
+        label_type: Cint64,
+    ) -> BackendTempWriteRecordId {
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_tmp_label_data,
+            ..
+        } = self
+        {
             referred_tmp_label_data[label_type as usize]
         } else {
             Id::NONE
@@ -2682,7 +4080,11 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getReferredLabelData(labelType)` (AssociationWrite).
     pub fn get_referred_label_data(&self, label_type: Cint64) -> LabelCacheItemId {
-        if let BackendTempWriteRecord::AssociationWrite { referred_label_data, .. } = self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_label_data,
+            ..
+        } = self
+        {
             referred_label_data[label_type as usize]
         } else {
             Id::NONE
@@ -2690,112 +4092,285 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getReferredTemporaryCardinalityData`.
     pub fn get_referred_temporary_cardinality_data(&self) -> BackendTempWriteRecordId {
-        if let BackendTempWriteRecord::AssociationWrite { referred_tmp_card_data, .. } = self { *referred_tmp_card_data } else { Id::NONE }
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_tmp_card_data,
+            ..
+        } = self
+        {
+            *referred_tmp_card_data
+        } else {
+            Id::NONE
+        }
     }
     /// Port of `::getReferredCardinalityData`.
     pub fn get_referred_cardinality_data(&self) -> CardinalityCacheItemId {
-        if let BackendTempWriteRecord::AssociationWrite { referred_card_data, .. } = self { *referred_card_data } else { Id::NONE }
+        if let BackendTempWriteRecord::AssociationWrite {
+            referred_card_data, ..
+        } = self
+        {
+            *referred_card_data
+        } else {
+            Id::NONE
+        }
     }
     /// Port of `::getLabelUpdateType`.
     pub fn get_label_update_type(&self) -> TempUpdateType {
-        if let BackendTempWriteRecord::AssociationWrite { label_update_type, .. } = self { *label_update_type } else { TempUpdateType::default() }
+        if let BackendTempWriteRecord::AssociationWrite {
+            label_update_type, ..
+        } = self
+        {
+            *label_update_type
+        } else {
+            TempUpdateType::default()
+        }
     }
     /// Port of `::getLinksUpdateType`.
     pub fn get_links_update_type(&self) -> TempUpdateType {
-        if let BackendTempWriteRecord::AssociationWrite { links_update_type, .. } = self { *links_update_type } else { TempUpdateType::default() }
+        if let BackendTempWriteRecord::AssociationWrite {
+            links_update_type, ..
+        } = self
+        {
+            *links_update_type
+        } else {
+            TempUpdateType::default()
+        }
     }
     /// Port of `::setLinksUpdateType`.
     pub fn set_links_update_type(&mut self, update_type: TempUpdateType) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { links_update_type, .. } = self { *links_update_type = update_type; }
+        if let BackendTempWriteRecord::AssociationWrite {
+            links_update_type, ..
+        } = self
+        {
+            *links_update_type = update_type;
+        }
         self
     }
     /// Port of `::getRoleSetNeighbourUpdateDataLinker`.
     pub fn get_role_set_neighbour_update_data_linker(&self) -> BackendTempWriteRecordId {
-        if let BackendTempWriteRecord::AssociationWrite { role_set_neighbour_update_data_linker, .. } = self { *role_set_neighbour_update_data_linker } else { Id::NONE }
+        if let BackendTempWriteRecord::AssociationWrite {
+            role_set_neighbour_update_data_linker,
+            ..
+        } = self
+        {
+            *role_set_neighbour_update_data_linker
+        } else {
+            Id::NONE
+        }
     }
     /// Port of `::setRoleSetNeighbourUpdateDataLinker`.
-    pub fn set_role_set_neighbour_update_data_linker(&mut self, role_set_neighbour_update_data_linker: BackendTempWriteRecordId) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { role_set_neighbour_update_data_linker: r, .. } = self { *r = role_set_neighbour_update_data_linker; }
+    pub fn set_role_set_neighbour_update_data_linker(
+        &mut self,
+        role_set_neighbour_update_data_linker: BackendTempWriteRecordId,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            role_set_neighbour_update_data_linker: r,
+            ..
+        } = self
+        {
+            *r = role_set_neighbour_update_data_linker;
+        }
         self
     }
     /// Port of the `getUsedAssociationUpdateId` of AssociationWrite / AssociationUse.
     pub fn get_used_association_update_id(&self) -> Cint64 {
         match self {
-            BackendTempWriteRecord::AssociationWrite { association_update_id, .. } => *association_update_id,
-            BackendTempWriteRecord::AssociationUse { association_update_id, .. } => *association_update_id,
+            BackendTempWriteRecord::AssociationWrite {
+                association_update_id,
+                ..
+            } => *association_update_id,
+            BackendTempWriteRecord::AssociationUse {
+                association_update_id,
+                ..
+            } => *association_update_id,
             _ => 0,
         }
     }
     /// Port of the `setUsedAssociationUpdateId` of AssociationWrite / AssociationUse.
     pub fn set_used_association_update_id(&mut self, id: Cint64) -> &mut Self {
         match self {
-            BackendTempWriteRecord::AssociationWrite { association_update_id, .. } => *association_update_id = id,
-            BackendTempWriteRecord::AssociationUse { association_update_id, .. } => *association_update_id = id,
+            BackendTempWriteRecord::AssociationWrite {
+                association_update_id,
+                ..
+            } => *association_update_id = id,
+            BackendTempWriteRecord::AssociationUse {
+                association_update_id,
+                ..
+            } => *association_update_id = id,
             _ => {}
         }
         self
     }
     /// Port of `::getIntegratedIndirectlyConnectedIndividualsChangeId`.
     pub fn get_integrated_indirectly_connected_individuals_change_id(&self) -> Cint64 {
-        if let BackendTempWriteRecord::AssociationWrite { integrated_indirectly_connected_individuals_change_id, .. } = self { *integrated_indirectly_connected_individuals_change_id } else { 0 }
+        if let BackendTempWriteRecord::AssociationWrite {
+            integrated_indirectly_connected_individuals_change_id,
+            ..
+        } = self
+        {
+            *integrated_indirectly_connected_individuals_change_id
+        } else {
+            0
+        }
     }
     /// Port of `::setIntegratedIndirectlyConnectedIndividualsChangeId`.
-    pub fn set_integrated_indirectly_connected_individuals_change_id(&mut self, integrated_change_id: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { integrated_indirectly_connected_individuals_change_id: c, .. } = self { *c = integrated_change_id; }
+    pub fn set_integrated_indirectly_connected_individuals_change_id(
+        &mut self,
+        integrated_change_id: Cint64,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            integrated_indirectly_connected_individuals_change_id: c,
+            ..
+        } = self
+        {
+            *c = integrated_change_id;
+        }
         self
     }
     /// Port of `::isIndirectlyConnectedNominalIndividual`.
     pub fn is_indirectly_connected_nominal_individual(&self) -> bool {
-        if let BackendTempWriteRecord::AssociationWrite { indirectly_connected_nominal_individual, .. } = self { *indirectly_connected_nominal_individual } else { false }
+        if let BackendTempWriteRecord::AssociationWrite {
+            indirectly_connected_nominal_individual,
+            ..
+        } = self
+        {
+            *indirectly_connected_nominal_individual
+        } else {
+            false
+        }
     }
     /// Port of `::setIndirectlyConnectedNominalIndividual`.
-    pub fn set_indirectly_connected_nominal_individual(&mut self, indirectly_connected: bool) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { indirectly_connected_nominal_individual, .. } = self { *indirectly_connected_nominal_individual = indirectly_connected; }
+    pub fn set_indirectly_connected_nominal_individual(
+        &mut self,
+        indirectly_connected: bool,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            indirectly_connected_nominal_individual,
+            ..
+        } = self
+        {
+            *indirectly_connected_nominal_individual = indirectly_connected;
+        }
         self
     }
     /// Port of `::hasIndirectlyConnectedIndividualIntegration`.
     pub fn has_indirectly_connected_individual_integration(&self) -> bool {
-        if let BackendTempWriteRecord::AssociationWrite { indirectly_connected_individual_integration, .. } = self { *indirectly_connected_individual_integration } else { false }
+        if let BackendTempWriteRecord::AssociationWrite {
+            indirectly_connected_individual_integration,
+            ..
+        } = self
+        {
+            *indirectly_connected_individual_integration
+        } else {
+            false
+        }
     }
     /// Port of `::setIndirectlyConnectedIndividualIntegration`.
-    pub fn set_indirectly_connected_individual_integration(&mut self, indirectly_connected_individual_integration: bool) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { indirectly_connected_individual_integration: c, .. } = self { *c = indirectly_connected_individual_integration; }
+    pub fn set_indirectly_connected_individual_integration(
+        &mut self,
+        indirectly_connected_individual_integration: bool,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            indirectly_connected_individual_integration: c,
+            ..
+        } = self
+        {
+            *c = indirectly_connected_individual_integration;
+        }
         self
     }
     /// Port of `::getRepresentativeSameIndividualId`.
     pub fn get_representative_same_individual_id(&self) -> Cint64 {
-        if let BackendTempWriteRecord::AssociationWrite { representative_same_indi_id, .. } = self { *representative_same_indi_id } else { 0 }
+        if let BackendTempWriteRecord::AssociationWrite {
+            representative_same_indi_id,
+            ..
+        } = self
+        {
+            *representative_same_indi_id
+        } else {
+            0
+        }
     }
     /// Port of `::setRepresentativeSameIndividualId`.
     pub fn set_representative_same_individual_id(&mut self, indi_id: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { representative_same_indi_id, .. } = self { *representative_same_indi_id = indi_id; }
+        if let BackendTempWriteRecord::AssociationWrite {
+            representative_same_indi_id,
+            ..
+        } = self
+        {
+            *representative_same_indi_id = indi_id;
+        }
         self
     }
     /// Port of `::getDeterministicSameIndividualId`.
     pub fn get_deterministic_same_individual_id(&self) -> Cint64 {
-        if let BackendTempWriteRecord::AssociationWrite { deterministic_same_indi_id, .. } = self { *deterministic_same_indi_id } else { 0 }
+        if let BackendTempWriteRecord::AssociationWrite {
+            deterministic_same_indi_id,
+            ..
+        } = self
+        {
+            *deterministic_same_indi_id
+        } else {
+            0
+        }
     }
     /// Port of `::setDeterministicSameIndividualId`.
     pub fn set_deterministic_same_individual_id(&mut self, indi_id: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { deterministic_same_indi_id, .. } = self { *deterministic_same_indi_id = indi_id; }
+        if let BackendTempWriteRecord::AssociationWrite {
+            deterministic_same_indi_id,
+            ..
+        } = self
+        {
+            *deterministic_same_indi_id = indi_id;
+        }
         self
     }
     /// Port of `::requireSameAsNeighboursCompletion`.
     pub fn require_same_as_neighbours_completion(&self) -> bool {
-        if let BackendTempWriteRecord::AssociationWrite { require_same_as_neighbours_completion, .. } = self { *require_same_as_neighbours_completion } else { false }
+        if let BackendTempWriteRecord::AssociationWrite {
+            require_same_as_neighbours_completion,
+            ..
+        } = self
+        {
+            *require_same_as_neighbours_completion
+        } else {
+            false
+        }
     }
     /// Port of `::setRequireSameAsNeighboursCompletion`.
-    pub fn set_require_same_as_neighbours_completion(&mut self, require_completion: bool) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { require_same_as_neighbours_completion, .. } = self { *require_same_as_neighbours_completion = require_completion; }
+    pub fn set_require_same_as_neighbours_completion(
+        &mut self,
+        require_completion: bool,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::AssociationWrite {
+            require_same_as_neighbours_completion,
+            ..
+        } = self
+        {
+            *require_same_as_neighbours_completion = require_completion;
+        }
         self
     }
     /// Port of `::isScheduledIndividual`.
     pub fn is_scheduled_individual(&self) -> bool {
-        if let BackendTempWriteRecord::AssociationWrite { scheduled_individual, .. } = self { *scheduled_individual } else { false }
+        if let BackendTempWriteRecord::AssociationWrite {
+            scheduled_individual,
+            ..
+        } = self
+        {
+            *scheduled_individual
+        } else {
+            false
+        }
     }
     /// Port of `::setScheduledIndividual`.
     pub fn set_scheduled_individual(&mut self, scheduled: bool) -> &mut Self {
-        if let BackendTempWriteRecord::AssociationWrite { scheduled_individual, .. } = self { *scheduled_individual = scheduled; }
+        if let BackendTempWriteRecord::AssociationWrite {
+            scheduled_individual,
+            ..
+        } = self
+        {
+            *scheduled_individual = scheduled;
+        }
         self
     }
 
@@ -2803,7 +4378,10 @@ impl BackendTempWriteRecord {
 
     /// Port of `::initAccociationUseData(individualID)`.
     pub fn new_association_use(individual_id: Cint64) -> Self {
-        BackendTempWriteRecord::AssociationUse { individual_id, association_update_id: 0 }
+        BackendTempWriteRecord::AssociationUse {
+            individual_id,
+            association_update_id: 0,
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryLabelWriteDataLinker =====
@@ -2821,17 +4399,28 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getSignature` (LabelWrite).
     pub fn get_signature(&self) -> Cint64 {
-        if let BackendTempWriteRecord::LabelWrite { signature, .. } = self { *signature } else { 0 }
+        if let BackendTempWriteRecord::LabelWrite { signature, .. } = self {
+            *signature
+        } else {
+            0
+        }
     }
     /// Port of `::setSignature` (LabelWrite).
     pub fn set_signature(&mut self, signature: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::LabelWrite { signature: s, .. } = self { *s = signature; }
+        if let BackendTempWriteRecord::LabelWrite { signature: s, .. } = self {
+            *s = signature;
+        }
         self
     }
     /// Port of `::appendCacheValueLinker(linker)`
     /// (`while(linkerIt) { ++mDetValueCount; next } mDetValueLinker = linker->append(mDetValueLinker);`).
     pub fn append_cache_value_linker(&mut self, linker: &[LabelValueLinkerId]) -> &mut Self {
-        if let BackendTempWriteRecord::LabelWrite { det_value_linker, det_value_count, .. } = self {
+        if let BackendTempWriteRecord::LabelWrite {
+            det_value_linker,
+            det_value_count,
+            ..
+        } = self
+        {
             *det_value_count += linker.len() as Cint64;
             let mut new_chain = linker.to_vec();
             new_chain.append(det_value_linker);
@@ -2841,29 +4430,55 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getCacheValueLinker` (LabelWrite).
     pub fn get_cache_value_linker(&self) -> &[LabelValueLinkerId] {
-        if let BackendTempWriteRecord::LabelWrite { det_value_linker, .. } = self { det_value_linker } else { &[] }
+        if let BackendTempWriteRecord::LabelWrite {
+            det_value_linker, ..
+        } = self
+        {
+            det_value_linker
+        } else {
+            &[]
+        }
     }
     /// Port of `::getCacheValueCount` (LabelWrite).
     pub fn get_cache_value_count(&self) -> Cint64 {
-        if let BackendTempWriteRecord::LabelWrite { det_value_count, .. } = self { *det_value_count } else { 0 }
+        if let BackendTempWriteRecord::LabelWrite {
+            det_value_count, ..
+        } = self
+        {
+            *det_value_count
+        } else {
+            0
+        }
     }
     /// Port of `::getTemporaryData` (opaque `void*`).
     pub fn get_temporary_data(&self) -> Cint64 {
-        if let BackendTempWriteRecord::LabelWrite { tmp_data, .. } = self { *tmp_data } else { INVALID }
+        if let BackendTempWriteRecord::LabelWrite { tmp_data, .. } = self {
+            *tmp_data
+        } else {
+            INVALID
+        }
     }
     /// Port of `::setTemporaryData`.
     pub fn set_temporary_data(&mut self, tmp_data: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::LabelWrite { tmp_data: t, .. } = self { *t = tmp_data; }
+        if let BackendTempWriteRecord::LabelWrite { tmp_data: t, .. } = self {
+            *t = tmp_data;
+        }
         self
     }
     /// Port of `::clearTemporaryData` (`mTmpData = nullptr;`).
     pub fn clear_temporary_data(&mut self) -> &mut Self {
-        if let BackendTempWriteRecord::LabelWrite { tmp_data, .. } = self { *tmp_data = INVALID; }
+        if let BackendTempWriteRecord::LabelWrite { tmp_data, .. } = self {
+            *tmp_data = INVALID;
+        }
         self
     }
     /// Port of the `getLabelType` of LabelWrite.
     pub fn get_label_type(&self) -> Cint64 {
-        if let BackendTempWriteRecord::LabelWrite { label_type, .. } = self { *label_type } else { 0 }
+        if let BackendTempWriteRecord::LabelWrite { label_type, .. } = self {
+            *label_type
+        } else {
+            0
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryLabelReferenceDataLinker =====
@@ -2874,11 +4489,19 @@ impl BackendTempWriteRecord {
     }
     /// Port of `LabelReferenceDataLinker::getReferredTemporaryLabelData` (`getData().getReferredTemporaryLabelData()`).
     pub fn label_reference_get_referred_temporary_label_data(&self) -> BackendTempWriteRecordId {
-        if let BackendTempWriteRecord::LabelReference(r) = self { r.get_referred_temporary_label_data() } else { Id::NONE }
+        if let BackendTempWriteRecord::LabelReference(r) = self {
+            r.get_referred_temporary_label_data()
+        } else {
+            Id::NONE
+        }
     }
     /// Port of `LabelReferenceDataLinker::getReferredLabelData` (`getData().getReferredLabelData()`).
     pub fn label_reference_get_referred_label_data(&self) -> LabelCacheItemId {
-        if let BackendTempWriteRecord::LabelReference(r) = self { r.get_referred_label_data() } else { Id::NONE }
+        if let BackendTempWriteRecord::LabelReference(r) = self {
+            r.get_referred_label_data()
+        } else {
+            Id::NONE
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryCardinalityWriteDataLinker =====
@@ -2893,8 +4516,16 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::appendCardinalityCacheValueLinker(linker)`
     /// (`mCardValueCount += linker->getCount(); mCardValueLinker = linker->append(mCardValueLinker);`).
-    pub fn append_cardinality_cache_value_linker(&mut self, linker: &[CardinalityValueLinkerId]) -> &mut Self {
-        if let BackendTempWriteRecord::CardinalityWrite { card_value_linker, card_value_count, .. } = self {
+    pub fn append_cardinality_cache_value_linker(
+        &mut self,
+        linker: &[CardinalityValueLinkerId],
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::CardinalityWrite {
+            card_value_linker,
+            card_value_count,
+            ..
+        } = self
+        {
             *card_value_count += linker.len() as Cint64;
             let mut new_chain = linker.to_vec();
             new_chain.append(card_value_linker);
@@ -2904,45 +4535,98 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getCardinalityCacheValueLinker`.
     pub fn get_cardinality_cache_value_linker(&self) -> &[CardinalityValueLinkerId] {
-        if let BackendTempWriteRecord::CardinalityWrite { card_value_linker, .. } = self { card_value_linker } else { &[] }
+        if let BackendTempWriteRecord::CardinalityWrite {
+            card_value_linker, ..
+        } = self
+        {
+            card_value_linker
+        } else {
+            &[]
+        }
     }
     /// Port of `::getCardinalityCacheValueCount`.
     pub fn get_cardinality_cache_value_count(&self) -> Cint64 {
-        if let BackendTempWriteRecord::CardinalityWrite { card_value_count, .. } = self { *card_value_count } else { 0 }
+        if let BackendTempWriteRecord::CardinalityWrite {
+            card_value_count, ..
+        } = self
+        {
+            *card_value_count
+        } else {
+            0
+        }
     }
     /// Port of `::getLabelWriteDataLinker`.
     pub fn get_label_write_data_linker(&self) -> BackendTempWriteRecordId {
-        if let BackendTempWriteRecord::CardinalityWrite { label_write_data_linker, .. } = self { *label_write_data_linker } else { Id::NONE }
+        if let BackendTempWriteRecord::CardinalityWrite {
+            label_write_data_linker,
+            ..
+        } = self
+        {
+            *label_write_data_linker
+        } else {
+            Id::NONE
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryIndividualRoleSetNeighbourUpdateDataLinker =====
 
     /// Port of `::initRoleSetNeighbourUpdateDataLinker(roleSetCombinationLabelRef, neighbourIndi)`
     /// (`setData(neighbourIndi); mRoleSetCombinationLabelRef = roleSetCombinationLabelRef;`).
-    pub fn new_individual_role_set_neighbour_update(role_set_combination_label_ref: TempLabelReference, neighbour_indi: Cint64) -> Self {
+    pub fn new_individual_role_set_neighbour_update(
+        role_set_combination_label_ref: TempLabelReference,
+        neighbour_indi: Cint64,
+    ) -> Self {
         BackendTempWriteRecord::IndividualRoleSetNeighbourUpdate {
             individual_reference: neighbour_indi, // the CLinkerBase<CIndividualReference> payload (opaque id).
             role_set_combination_label_ref,
         }
     }
     /// Port of `::getNeighbourRoleInstantiatedCompinationLabelReference`.
-    pub fn get_neighbour_role_instantiated_compination_label_reference(&self) -> TempLabelReference {
-        if let BackendTempWriteRecord::IndividualRoleSetNeighbourUpdate { role_set_combination_label_ref, .. } = self { *role_set_combination_label_ref } else { TempLabelReference::default() }
+    pub fn get_neighbour_role_instantiated_compination_label_reference(
+        &self,
+    ) -> TempLabelReference {
+        if let BackendTempWriteRecord::IndividualRoleSetNeighbourUpdate {
+            role_set_combination_label_ref,
+            ..
+        } = self
+        {
+            *role_set_combination_label_ref
+        } else {
+            TempLabelReference::default()
+        }
     }
     /// Port of `::getNeighbourIndividualReference` (`return getData();`).
     pub fn get_neighbour_individual_reference(&self) -> Cint64 {
-        if let BackendTempWriteRecord::IndividualRoleSetNeighbourUpdate { individual_reference, .. } = self { *individual_reference } else { INVALID }
+        if let BackendTempWriteRecord::IndividualRoleSetNeighbourUpdate {
+            individual_reference,
+            ..
+        } = self
+        {
+            *individual_reference
+        } else {
+            INVALID
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryInvolvedIndividualDataLinker =====
 
     /// Port of `::initInvolvedIndividualData(involvedIndividualIdsLinker)`.
     pub fn new_involved_individual(involved_individual_ids_linker: Vec<Cint64>) -> Self {
-        BackendTempWriteRecord::InvolvedIndividual { involved_individual_ids_linker }
+        BackendTempWriteRecord::InvolvedIndividual {
+            involved_individual_ids_linker,
+        }
     }
     /// Port of `::getInvolvedIndividualIdsLinker`.
     pub fn get_involved_individual_ids_linker(&self) -> &[Cint64] {
-        if let BackendTempWriteRecord::InvolvedIndividual { involved_individual_ids_linker, .. } = self { involved_individual_ids_linker } else { &[] }
+        if let BackendTempWriteRecord::InvolvedIndividual {
+            involved_individual_ids_linker,
+            ..
+        } = self
+        {
+            involved_individual_ids_linker
+        } else {
+            &[]
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryNominalIndirectConnectionDataLinker =====
@@ -2958,16 +4642,40 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getIndirectlyConnectedIndividualIdLinker` (NominalIndirectConnection).
     pub fn get_indirectly_connected_individual_id_linker(&self) -> &[Cint64] {
-        if let BackendTempWriteRecord::NominalIndirectConnection { indirectly_connected_individual_id_linker, .. } = self { indirectly_connected_individual_id_linker } else { &[] }
+        if let BackendTempWriteRecord::NominalIndirectConnection {
+            indirectly_connected_individual_id_linker,
+            ..
+        } = self
+        {
+            indirectly_connected_individual_id_linker
+        } else {
+            &[]
+        }
     }
     /// Port of `::setIndirectlyConnectedIndividualIdLinker` (NominalIndirectConnection).
-    pub fn set_indirectly_connected_individual_id_linker(&mut self, indirectly_connected_individual_id_linker: Vec<Cint64>) -> &mut Self {
-        if let BackendTempWriteRecord::NominalIndirectConnection { indirectly_connected_individual_id_linker: l, .. } = self { *l = indirectly_connected_individual_id_linker; }
+    pub fn set_indirectly_connected_individual_id_linker(
+        &mut self,
+        indirectly_connected_individual_id_linker: Vec<Cint64>,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::NominalIndirectConnection {
+            indirectly_connected_individual_id_linker: l,
+            ..
+        } = self
+        {
+            *l = indirectly_connected_individual_id_linker;
+        }
         self
     }
     /// Port of `::addIndirectlyConnectedIndividualIdLinker` (head-front prepend).
-    pub fn add_indirectly_connected_individual_id_linker(&mut self, indirectly_connected_individual_id_linker: &[Cint64]) -> &mut Self {
-        if let BackendTempWriteRecord::NominalIndirectConnection { indirectly_connected_individual_id_linker: l, .. } = self {
+    pub fn add_indirectly_connected_individual_id_linker(
+        &mut self,
+        indirectly_connected_individual_id_linker: &[Cint64],
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::NominalIndirectConnection {
+            indirectly_connected_individual_id_linker: l,
+            ..
+        } = self
+        {
             let mut new_chain = indirectly_connected_individual_id_linker.to_vec();
             new_chain.append(l);
             *l = new_chain;
@@ -2976,11 +4684,25 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getLastChangeIntegrationId`.
     pub fn get_last_change_integration_id(&self) -> Cint64 {
-        if let BackendTempWriteRecord::NominalIndirectConnection { last_integration_id, .. } = self { *last_integration_id } else { 0 }
+        if let BackendTempWriteRecord::NominalIndirectConnection {
+            last_integration_id,
+            ..
+        } = self
+        {
+            *last_integration_id
+        } else {
+            0
+        }
     }
     /// Port of `::setLastChangeIntegrationId`.
     pub fn set_last_change_integration_id(&mut self, integration_id: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::NominalIndirectConnection { last_integration_id, .. } = self { *last_integration_id = integration_id; }
+        if let BackendTempWriteRecord::NominalIndirectConnection {
+            last_integration_id,
+            ..
+        } = self
+        {
+            *last_integration_id = integration_id;
+        }
         self
     }
 
@@ -2988,7 +4710,11 @@ impl BackendTempWriteRecord {
 
     /// Port of `::initNominalRoleConnectionData(connectionRole, inversedConnection, connectedIndi)`
     /// (`setData(connectionRole); mConnectedIndividual = connectedIndi; mInversedConnection = inversedConnection;`).
-    pub fn new_nominal_role_connection(connection_role: Cint64, inversed_connection: bool, connected_indi: Cint64) -> Self {
+    pub fn new_nominal_role_connection(
+        connection_role: Cint64,
+        inversed_connection: bool,
+        connected_indi: Cint64,
+    ) -> Self {
         BackendTempWriteRecord::NominalRoleConnection {
             role: connection_role, // the CLinkerBase<CRole*> payload (opaque, [api]).
             connected_individual: connected_indi,
@@ -2997,15 +4723,35 @@ impl BackendTempWriteRecord {
     }
     /// Port of `::getConnectionRole` (`return getData();`).
     pub fn get_connection_role(&self) -> Cint64 {
-        if let BackendTempWriteRecord::NominalRoleConnection { role, .. } = self { *role } else { INVALID }
+        if let BackendTempWriteRecord::NominalRoleConnection { role, .. } = self {
+            *role
+        } else {
+            INVALID
+        }
     }
     /// Port of `::getConnectedIndividual`.
     pub fn get_connected_individual(&self) -> Cint64 {
-        if let BackendTempWriteRecord::NominalRoleConnection { connected_individual, .. } = self { *connected_individual } else { INVALID }
+        if let BackendTempWriteRecord::NominalRoleConnection {
+            connected_individual,
+            ..
+        } = self
+        {
+            *connected_individual
+        } else {
+            INVALID
+        }
     }
     /// Port of `::isInversedConnection`.
     pub fn is_inversed_connection(&self) -> bool {
-        if let BackendTempWriteRecord::NominalRoleConnection { inversed_connection, .. } = self { *inversed_connection } else { false }
+        if let BackendTempWriteRecord::NominalRoleConnection {
+            inversed_connection,
+            ..
+        } = self
+        {
+            *inversed_connection
+        } else {
+            false
+        }
     }
 
     // ===== CBackendRepresentativeMemoryCacheTemporaryPropagationCutDataLinker =====
@@ -3035,40 +4781,437 @@ impl BackendTempWriteRecord {
     }
     /// Port of the `getAssociationUpdateId` of PropagationCut.
     pub fn get_association_update_id(&self) -> Cint64 {
-        if let BackendTempWriteRecord::PropagationCut { association_update_id, .. } = self { *association_update_id } else { 0 }
+        if let BackendTempWriteRecord::PropagationCut {
+            association_update_id,
+            ..
+        } = self
+        {
+            *association_update_id
+        } else {
+            0
+        }
     }
     /// Port of `::setAssociationUpdateId` (PropagationCut).
     pub fn set_association_update_id(&mut self, id: Cint64) -> &mut Self {
-        if let BackendTempWriteRecord::PropagationCut { association_update_id, .. } = self { *association_update_id = id; }
+        if let BackendTempWriteRecord::PropagationCut {
+            association_update_id,
+            ..
+        } = self
+        {
+            *association_update_id = id;
+        }
         self
     }
     /// Port of `::getExpandedIndividualIdsLinker`.
     pub fn get_expanded_individual_ids_linker(&self) -> &[Cint64] {
-        if let BackendTempWriteRecord::PropagationCut { expanded_individual_ids_linker, .. } = self { expanded_individual_ids_linker } else { &[] }
+        if let BackendTempWriteRecord::PropagationCut {
+            expanded_individual_ids_linker,
+            ..
+        } = self
+        {
+            expanded_individual_ids_linker
+        } else {
+            &[]
+        }
     }
     /// Port of `::getArrayIndex`.
     pub fn get_array_index(&self) -> Cint64 {
-        if let BackendTempWriteRecord::PropagationCut { array_index, .. } = self { *array_index } else { 0 }
+        if let BackendTempWriteRecord::PropagationCut { array_index, .. } = self {
+            *array_index
+        } else {
+            0
+        }
     }
     /// Port of `::getConceptPropagationValue`.
     pub fn get_concept_propagation_value(&self) -> CacheValue {
-        if let BackendTempWriteRecord::PropagationCut { concept_propagation_value, .. } = self { *concept_propagation_value } else { CacheValue::default() }
+        if let BackendTempWriteRecord::PropagationCut {
+            concept_propagation_value,
+            ..
+        } = self
+        {
+            *concept_propagation_value
+        } else {
+            CacheValue::default()
+        }
     }
     /// Port of `::getNeighbourPropagationCutCursor`.
     pub fn get_neighbour_propagation_cut_cursor(&self) -> Cint64 {
-        if let BackendTempWriteRecord::PropagationCut { neighbour_propagation_cut_cursor, .. } = self { *neighbour_propagation_cut_cursor } else { 0 }
+        if let BackendTempWriteRecord::PropagationCut {
+            neighbour_propagation_cut_cursor,
+            ..
+        } = self
+        {
+            *neighbour_propagation_cut_cursor
+        } else {
+            0
+        }
     }
     /// Port of `::getPropagationMarkingRoleValue`.
     pub fn get_propagation_marking_role_value(&self) -> CacheValue {
-        if let BackendTempWriteRecord::PropagationCut { prop_mark_role_value, .. } = self { *prop_mark_role_value } else { CacheValue::default() }
+        if let BackendTempWriteRecord::PropagationCut {
+            prop_mark_role_value,
+            ..
+        } = self
+        {
+            *prop_mark_role_value
+        } else {
+            CacheValue::default()
+        }
     }
     /// Port of `::isMissingNondeterministicExpansionPropagation`.
     pub fn is_missing_nondeterministic_expansion_propagation(&self) -> bool {
-        if let BackendTempWriteRecord::PropagationCut { missing_nondeterministic_expansion_propagation, .. } = self { *missing_nondeterministic_expansion_propagation } else { false }
+        if let BackendTempWriteRecord::PropagationCut {
+            missing_nondeterministic_expansion_propagation,
+            ..
+        } = self
+        {
+            *missing_nondeterministic_expansion_propagation
+        } else {
+            false
+        }
     }
     /// Port of `::setMissingNondeterministicExpansionPropagation`.
-    pub fn set_missing_nondeterministic_expansion_propagation(&mut self, missing_prop: bool) -> &mut Self {
-        if let BackendTempWriteRecord::PropagationCut { missing_nondeterministic_expansion_propagation, .. } = self { *missing_nondeterministic_expansion_propagation = missing_prop; }
+    pub fn set_missing_nondeterministic_expansion_propagation(
+        &mut self,
+        missing_prop: bool,
+    ) -> &mut Self {
+        if let BackendTempWriteRecord::PropagationCut {
+            missing_nondeterministic_expansion_propagation,
+            ..
+        } = self
+        {
+            *missing_nondeterministic_expansion_propagation = missing_prop;
+        }
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn association_map() -> LabelCacheItemExtensionData {
+        let mut data = LabelCacheItemExtensionData::IndividualAssociationMap {
+            context: INVALID,
+            base_indi_asso_map: Vec::new(),
+            same_indi_merged_asso_map: Vec::new(),
+        };
+        data.add_individual_id_association(1, false)
+            .add_individual_id_association(3, false)
+            .add_individual_id_association(5, false)
+            .add_individual_id_association(3, true)
+            .add_individual_id_association(4, true);
+        data
+    }
+
+    fn collect_iterator(
+        mut it: LabelCacheItemIndividualAssociationMapIterator,
+    ) -> Vec<(Cint64, bool)> {
+        let mut values = Vec::new();
+        while !it.at_end() {
+            values.push((
+                it.current_associated_individual_id(),
+                it.current_associated_individual_same_merged(),
+            ));
+            it.move_next();
+        }
+        values
+    }
+
+    fn neighbour_data_with_ids(
+        ctx: &mut CacheContext,
+        ids: &[Cint64],
+    ) -> IndividualRoleSetNeighbourDataId {
+        let mut linkers = Vec::new();
+        for &id in ids {
+            let mut linker = IndividualRoleSetNeighbourIndividualIdLinker::new();
+            linker.init_individual_id_linker(id);
+            linkers.push(ctx.alloc_individual_role_set_neighbour_id_linker(linker));
+        }
+        let mut data = IndividualRoleSetNeighbourData::new();
+        data.set_individual_id_linker(&linkers, true);
+        ctx.alloc_individual_role_set_neighbour_data(data)
+    }
+
+    fn collect_neighbour_ids(
+        ctx: &CacheContext,
+        data_id: IndividualRoleSetNeighbourDataId,
+    ) -> Vec<Cint64> {
+        let mut ids = Vec::new();
+        ctx.individual_role_set_neighbour_data(data_id)
+            .visit_neighbour_individual_ids(
+                &mut |id| {
+                    ids.push(id);
+                    true
+                },
+                ctx,
+            );
+        ids
+    }
+
+    fn recomputation_linker(
+        ctx: &mut CacheContext,
+        update_id: Cint64,
+        active: bool,
+    ) -> OntologyDataRecomputationReferenceLinkerId {
+        let mut linker = OntologyDataRecomputationReferenceLinker::new();
+        linker.init_recomputation_reference_linker(update_id);
+        if !active {
+            linker.set_ontology_data_inactive();
+        }
+        ctx.alloc_ontology_data_recomp_ref_linker(linker)
+    }
+
+    fn tag_label_linker(
+        ctx: &mut CacheContext,
+        label_item: LabelCacheItemId,
+        index: Cint64,
+        deterministic: bool,
+    ) -> TagLabelResolvingDataLinkerId {
+        let mut linker = LabelCacheItemTagLabelResolvingDataLinker::new();
+        linker.init_tag_label_resolving_data(label_item, index, deterministic);
+        ctx.alloc_tag_label_resolving_data_linker(linker)
+    }
+
+    #[test]
+    fn tag_label_resolving_extension_append_relinks_existing_head() {
+        let mut ctx = CacheContext::new();
+        let first = tag_label_linker(&mut ctx, LabelCacheItemId::new(11), 1, true);
+        let second = tag_label_linker(&mut ctx, LabelCacheItemId::new(22), 2, false);
+        let other = tag_label_linker(&mut ctx, LabelCacheItemId::new(33), 3, true);
+        let mut extension = LabelCacheItemExtensionData::TagLabelResolving {
+            context: INVALID,
+            tag_label_resolving_data_linker_hash: HashMap::new(),
+        };
+
+        extension
+            .append_tag_label_resolving_data_linker(91, first, &mut ctx)
+            .append_tag_label_resolving_data_linker(91, second, &mut ctx)
+            .append_tag_label_resolving_data_linker(7, other, &mut ctx);
+
+        assert_eq!(extension.get_tag_label_resolving_data_linker(91), second);
+        assert_eq!(
+            ctx.tag_label_resolving_data_linker(second).get_next(),
+            first
+        );
+        assert!(ctx
+            .tag_label_resolving_data_linker(first)
+            .get_next()
+            .is_none());
+        assert_eq!(extension.get_tag_label_resolving_data_linker(7), other);
+        assert!(ctx
+            .tag_label_resolving_data_linker(other)
+            .get_next()
+            .is_none());
+    }
+
+    #[test]
+    fn tag_label_resolving_extension_init_resets_inline_hash() {
+        let mut ctx = CacheContext::new();
+        let first = tag_label_linker(&mut ctx, LabelCacheItemId::new(11), 1, true);
+        let second = tag_label_linker(&mut ctx, LabelCacheItemId::new(22), 2, false);
+        let mut extension = LabelCacheItemExtensionData::TagLabelResolving {
+            context: INVALID,
+            tag_label_resolving_data_linker_hash: HashMap::new(),
+        };
+
+        extension.append_tag_label_resolving_data_linker(91, first, &mut ctx);
+        assert_eq!(extension.get_tag_label_resolving_data_linker(91), first);
+
+        extension.init_tag_label_resolving_extension_data();
+        assert!(extension.get_tag_label_resolving_data_linker(91).is_none());
+
+        extension.append_tag_label_resolving_data_linker(91, second, &mut ctx);
+        assert_eq!(extension.get_tag_label_resolving_data_linker(91), second);
+        assert!(ctx
+            .tag_label_resolving_data_linker(second)
+            .get_next()
+            .is_none());
+    }
+
+    #[test]
+    fn cardinality_extension_init_resets_inline_hash() {
+        let mut extension = LabelCacheItemExtensionData::Cardinality {
+            context: INVALID,
+            role_cardinality_data_hash: HashMap::new(),
+        };
+        let mut old_data = LabelCacheItemCardinalityData::new();
+        old_data.init_cardinality_data(3, 5);
+        let mut new_data = LabelCacheItemCardinalityData::new();
+        new_data.init_cardinality_data(7, 11);
+
+        extension.set_role_cardinality_data(17, old_data);
+        assert_eq!(
+            extension
+                .get_role_cardinality_data(17)
+                .unwrap()
+                .get_existential_max_used_cardinality(),
+            3
+        );
+
+        extension.init_cardinality_extension_data();
+        assert!(extension.get_role_cardinality_data(17).is_none());
+
+        extension.set_role_cardinality_data(17, new_data);
+        assert_eq!(
+            extension
+                .get_role_cardinality_data(17)
+                .unwrap()
+                .get_minimum_restricting_cardinality(),
+            11
+        );
+    }
+
+    #[test]
+    fn neighbour_array_init_from_array_copies_data_entries() {
+        let mut ctx = CacheContext::new();
+        let first = neighbour_data_with_ids(&mut ctx, &[10, 11]);
+        let second = neighbour_data_with_ids(&mut ctx, &[20]);
+        let mut source = IndividualRoleSetNeighbourArray::new();
+        source.index_data = LabelCacheItemExtensionDataId::new(7);
+        source.data_array = vec![first, second];
+
+        let mut copied = IndividualRoleSetNeighbourArray::new();
+        copied.init_neighbour_array(&source, &mut ctx);
+
+        assert_eq!(copied.get_index_data(), source.get_index_data());
+        assert_eq!(copied.data_array.len(), 2);
+        assert_ne!(copied.at(0), source.at(0));
+        assert_ne!(copied.at(1), source.at(1));
+        assert_eq!(collect_neighbour_ids(&ctx, copied.at(0)), vec![10, 11]);
+        assert_eq!(collect_neighbour_ids(&ctx, copied.at(1)), vec![20]);
+
+        let copied_first = copied.at(0);
+        ctx.individual_role_set_neighbour_data_mut(copied_first)
+            .inc_individual_count(5);
+        assert_eq!(
+            ctx.individual_role_set_neighbour_data(first)
+                .get_individual_count(),
+            2
+        );
+        assert_eq!(
+            ctx.individual_role_set_neighbour_data(copied_first)
+                .get_individual_count(),
+            7
+        );
+    }
+
+    #[test]
+    fn ontology_data_recomputation_reference_linker_prepends_and_finds_last_active() {
+        let mut ctx = CacheContext::new();
+        let first = recomputation_linker(&mut ctx, 1, false);
+        let second = recomputation_linker(&mut ctx, 2, false);
+        let third = recomputation_linker(&mut ctx, 3, true);
+        let fourth = recomputation_linker(&mut ctx, 4, false);
+        let mut ontology_data = OntologyData::new();
+
+        ontology_data
+            .set_recomputation_reference_linker(first, &mut ctx)
+            .set_recomputation_reference_linker(second, &mut ctx)
+            .set_recomputation_reference_linker(third, &mut ctx)
+            .set_recomputation_reference_linker(fourth, &mut ctx);
+
+        assert_eq!(ontology_data.get_recomputation_reference_linker(), fourth);
+        assert_eq!(
+            ctx.ontology_data_recomp_ref_linker(fourth).get_next(),
+            third
+        );
+        assert_eq!(
+            ctx.ontology_data_recomp_ref_linker(third).get_next(),
+            second
+        );
+        assert_eq!(
+            ctx.ontology_data_recomp_ref_linker(second).get_next(),
+            first
+        );
+
+        assert_eq!(
+            ontology_data.get_last_active_recomputation_reference_linker(&mut ctx),
+            third
+        );
+        assert!(ctx
+            .ontology_data_recomp_ref_linker(second)
+            .is_next_ontology_data_all_inactive());
+        assert!(ctx
+            .ontology_data_recomp_ref_linker(first)
+            .is_next_ontology_data_all_inactive());
+    }
+
+    #[test]
+    fn ontology_data_recomputation_reference_linker_falls_back_to_last_inactive() {
+        let mut ctx = CacheContext::new();
+        let first = recomputation_linker(&mut ctx, 1, false);
+        let second = recomputation_linker(&mut ctx, 2, false);
+        let mut ontology_data = OntologyData::new();
+
+        ontology_data
+            .set_recomputation_reference_linker(first, &mut ctx)
+            .set_recomputation_reference_linker(second, &mut ctx);
+
+        assert_eq!(
+            ontology_data.get_last_active_recomputation_reference_linker(&mut ctx),
+            first
+        );
+        assert!(!ctx
+            .ontology_data_recomp_ref_linker(second)
+            .is_next_ontology_data_all_inactive());
+    }
+
+    #[test]
+    fn individual_association_map_iterator_merges_ascending_with_same_merged_tie_first() {
+        let data = association_map();
+        let values = collect_iterator(data.get_iterator(true, true, true));
+
+        assert_eq!(
+            values,
+            vec![(1, false), (3, true), (3, false), (4, true), (5, false)]
+        );
+    }
+
+    #[test]
+    fn individual_association_map_iterator_merges_descending_with_base_tie_first() {
+        let data = association_map();
+        let values = collect_iterator(data.get_iterator(false, true, true));
+
+        assert_eq!(
+            values,
+            vec![(5, false), (4, true), (3, false), (3, true), (1, false)]
+        );
+    }
+
+    #[test]
+    fn individual_association_map_iterator_respects_map_filters() {
+        let data = association_map();
+
+        assert_eq!(
+            collect_iterator(data.get_iterator(true, true, false)),
+            vec![(1, false), (3, false), (5, false)]
+        );
+        assert_eq!(
+            collect_iterator(data.get_iterator(true, false, true)),
+            vec![(3, true), (4, true)]
+        );
+    }
+
+    #[test]
+    fn individual_association_map_iterator_applies_cursor_bounds() {
+        let data = association_map();
+
+        assert_eq!(
+            collect_iterator(data.get_iterator_from_cursor(3, true, true, true, true)),
+            vec![(4, true), (5, false)]
+        );
+        assert_eq!(
+            collect_iterator(data.get_iterator_from_cursor(3, false, true, true, true)),
+            vec![(3, true), (3, false), (4, true), (5, false)]
+        );
+        assert_eq!(
+            collect_iterator(data.get_iterator_from_cursor(3, true, false, true, true)),
+            vec![(1, false)]
+        );
+        assert_eq!(
+            collect_iterator(data.get_iterator_from_cursor(3, false, false, true, true)),
+            vec![(3, false), (3, true), (1, false)]
+        );
     }
 }

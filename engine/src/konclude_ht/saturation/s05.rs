@@ -156,7 +156,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let data_literal: Cint64 = INVALID;
         let datatype: Cint64 = INVALID;
 
-        self.associate_data_literal_with_node(process_indi, data_literal, datatype, calc_alg_context);
+        self.associate_data_literal_with_node(
+            process_indi,
+            data_literal,
+            datatype,
+            calc_alg_context,
+        );
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::handleDatatypeValueSpaceTriggers`

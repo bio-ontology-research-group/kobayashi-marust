@@ -304,7 +304,7 @@ impl BackendRepresentativeMemoryCache {
                 true,
             );
             let mut requies_data_copying = false;
-            let context = self.get_individual_association_data_memory_context(
+            let context = self.get_individual_association_data_memory_context_deferred(
                 loc_association_data,
                 ontology_data,
                 Some(&mut requies_data_copying),
@@ -492,7 +492,12 @@ impl BackendRepresentativeMemoryCache {
                 //   //         reducedArray = alloc; reducedArray->initNeighbourArray(reducedArrayIndexData); copy rows by label; newArray = reducedArray; newArrayIndexData = reducedArrayIndexData; } } }
                 //
                 //   // commit (cpp 2561–2563): locAssoc->setNeighbourRoleSetHash(newHash); locAssoc->setRoleSetNeighbourArray(newArray); associationsUpdated = true;
-                let _ = (context, requies_data_copying, prop_cut, det_same_neighbour_completion);
+                let _ = (
+                    context,
+                    requies_data_copying,
+                    prop_cut,
+                    det_same_neighbour_completion,
+                );
                 let _ = (
                     &mut new_completing_det_same_neighbours,
                     &mut newly_completed_det_same_neighbours,

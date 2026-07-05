@@ -71,14 +71,15 @@
 
 use super::super::model::substrate::{Cint64, INVALID};
 use super::backend::{
-    BackendRepresentativeMemoryCache, ReaderId, WriterId, SlotItemId, BaseContextId,
-    CacheWriteDataId,
+    BackendRepresentativeMemoryCache, BackendRepresentativeMemoryCacheReader,
+    BackendRepresentativeMemoryCacheSlotItem, BaseContextId, CacheWriteDataId, ReaderId,
+    SlotItemId, WriterId,
 };
 use super::backend_data::{
-    OntologyDataId, IndividualAssociationDataId, IndividualAssociationContextId,
-    LabelCacheItemId, BackendTempWriteRecordId,
-    LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT,
+    BackendTempWriteRecordId, IndividualAssociationContextId, IndividualAssociationDataId,
+    LabelCacheItemId, OntologyDataId, LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT,
 };
+use super::context::CacheContext;
 use super::value::{CacheStatistics, CacheValue, CacheValueIdentifier};
 
 impl BackendRepresentativeMemoryCache {
@@ -165,9 +166,11 @@ impl BackendRepresentativeMemoryCache {
         &mut self,
         indi_ass_mem_context: IndividualAssociationContextId,
         ontology_data: OntologyDataId,
+        cache_context: &mut CacheContext,
     ) {
-        // W6-DEFER[api]: ontologyData->addReleaseQueuedIndividualAssociationContextLinker(indiAssMemContext);
-        let _ = (indi_ass_mem_context, ontology_data);
+        cache_context
+            .ontology_data_mut(ontology_data)
+            .add_release_queued_individual_association_context_linker(indi_ass_mem_context);
         self.stat_individual_association_separate_memory_managment_slot_referred_checking_queuing_count += 1;
         self.stat_memory_managment_queued_checking_count += 1;
     }
@@ -184,14 +187,20 @@ impl BackendRepresentativeMemoryCache {
     pub fn create_reader_slot_update(
         &mut self,
         ontology_data: OntologyDataId,
-        context: BaseContextId,
+        cache_context: &mut CacheContext,
     ) {
-        // W6-DEFER[api]: ontologyData->setMinimumValidRecomputationId(ontologyData->getNextUpdateMinimumValidRecomputationId());
-        //               ontologyData->setSlotUpdateIntegrated(true);
-        // [memory-pool]: slot = allocateAndConstructWithMemroyPool(memProv); a fresh
-        //   ontologyIdentifierDataHash = *mOntologyIdentifierDataHash (detached);
-        //   slot->setOntologyIdentifierDataHash(ontologyIdentifierDataHash);
-        let new_slot: SlotItemId = SlotItemId::NONE; // W6-DEFER[api]: alloc pooled SlotItem.
+        let next_update_minimum = cache_context
+            .ontology_data(ontology_data)
+            .get_next_update_minimum_valid_recomputation_id();
+        cache_context
+            .ontology_data_mut(ontology_data)
+            .set_minimum_valid_recomputation_id(next_update_minimum)
+            .set_slot_update_integrated(true);
+
+        let ontology_identifier_data_hash = self.ontology_identifier_data_hash.clone();
+        let mut slot = BackendRepresentativeMemoryCacheSlotItem::new();
+        slot.set_ontology_identifier_data_hash(ontology_identifier_data_hash.clone());
+        let new_slot = cache_context.alloc_backend_slot_item(slot);
 
         self.reader_slot_update_count += 1;
 
@@ -201,15 +210,25 @@ impl BackendRepresentativeMemoryCache {
         self.slot_linker.insert(0, new_slot);
 
         // for each (id,data) in ontologyIdentifierDataHash: data->incUsageCount();
-        // W6-DEFER[api]: per-entry OntologyData usage bump.
+        for &ontology_data in ontology_identifier_data_hash.values() {
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .inc_usage_count(1);
+        }
 
         // for each reader in mReaderLinker: slot->incReader(); reader->updateSlot(slot);
         for &reader in &self.reader_linker {
-            // W6-DEFER[api]: ctx.slot_mut(new_slot).inc_reader();
-            //               ctx.reader_mut(reader).update_slot(new_slot);
-            let _ = reader;
+            cache_context.backend_slot_item_mut(new_slot).inc_reader();
+            let prev_slot = {
+                let reader = cache_context.backend_cache_reader_mut(reader);
+                let prev_slot = reader.updated_slot;
+                reader.updated_slot = new_slot;
+                prev_slot
+            };
+            if prev_slot.is_some() {
+                cache_context.backend_slot_item_mut(prev_slot).dec_reader();
+            }
         }
-        let _ = (ontology_data, context);
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::prepareOntologyDataUpdate`.
@@ -265,7 +284,7 @@ impl BackendRepresentativeMemoryCache {
     /// KONCLUDE-PORT-NOTE[ownership]: the C++ in-place singly-linked unlink becomes
     /// a `retain`-style filter over `self.slot_linker` (head-front); the
     /// `hasCacheReaders` test + the pooled releases are `W6-DEFER[api]`.
-    pub fn clean_unused_slots(&mut self, context: BaseContextId) {
+    pub fn clean_unused_slots(&mut self, cache_context: &mut CacheContext) {
         // CMemoryPoolAllocationManager* memMan = context->getMemoryPoolAllocationManager();
         // KONCLUDE-PORT-NOTE[ownership]: take the chain out so the per-slot release
         // counters can mutate `self` while we re-filter (no aliasing borrow).
@@ -273,23 +292,38 @@ impl BackendRepresentativeMemoryCache {
         let mut kept: Vec<SlotItemId> = Vec::with_capacity(slots.len());
         for slot in slots {
             // if (!slotLinkerIt->hasCacheReaders()) { remove + release } else keep.
-            let has_cache_readers = true; // W6-DEFER[api]: slot->hasCacheReaders()
+            let has_cache_readers = cache_context.backend_slot_item(slot).has_cache_readers();
             if has_cache_readers {
                 kept.push(slot);
             } else {
-                // for each (id,data) in slot->getOntologyIdentifierDataHash():
-                //   data->decUsageCount();
-                //   if (data->getUsageCount() <= 0) {
-                //     ++mOntologyDataReleasedCount; ++mOntologyDataReleasedWhileSlotUpdateCount;
-                //     data->getRecomputationReferenceLinker()->setOntologyDataInactive();
-                //     releaseTemporaryMemoryPools(data->…->getMemoryPools()); delete data; }
+                let ontology_data_ids: Vec<OntologyDataId> = cache_context
+                    .backend_slot_item(slot)
+                    .get_ontology_identifier_data_hash()
+                    .values()
+                    .copied()
+                    .collect();
+                for ontology_data in ontology_data_ids {
+                    cache_context
+                        .ontology_data_mut(ontology_data)
+                        .dec_usage_count(1);
+                    if cache_context.ontology_data(ontology_data).get_usage_count() <= 0 {
+                        self.ontology_data_released_count += 1;
+                        self.ontology_data_released_while_slot_update_count += 1;
+                        let rec_ref = cache_context
+                            .ontology_data(ontology_data)
+                            .get_recomputation_reference_linker();
+                        if rec_ref.is_some() {
+                            cache_context
+                                .ontology_data_recomp_ref_linker_mut(rec_ref)
+                                .set_ontology_data_inactive();
+                        }
+                    }
+                }
                 // releaseTemporaryMemoryPools(slot->getMemoryPools());
                 self.reader_slot_released_count += 1; // ++mReaderSlotReleasedCount
-                // W6-DEFER[api]: the usage-count decrements + pooled releases above.
             }
         }
         self.slot_linker = kept;
-        let _ = context;
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::createCacheReader`.
@@ -300,9 +334,9 @@ impl BackendRepresentativeMemoryCache {
     /// KONCLUDE-PORT-NOTE[threading]: `mReaderSyncMutex.lock()/unlock()` → inline
     /// (single-threaded). KONCLUDE-PORT-NOTE[ownership]: `reader->append(mReaderLinker)`
     /// makes the reader the new head → `self.reader_linker.insert(0, reader)`.
-    pub fn create_cache_reader(&mut self) -> ReaderId {
-        // CBackendRepresentativeMemoryCacheReader* reader = new CBackendRepresentativeMemoryCacheReader();
-        let reader: ReaderId = ReaderId::NONE; // W6-DEFER[api]: alloc a Reader into the cache reader arena.
+    pub fn create_cache_reader(&mut self, cache_context: &mut CacheContext) -> ReaderId {
+        let reader =
+            cache_context.alloc_backend_cache_reader(BackendRepresentativeMemoryCacheReader::new());
         // mReaderSyncMutex.lock(); [threading] inline
         self.reader_linker.insert(0, reader);
         // mReaderSyncMutex.unlock();
@@ -317,8 +351,13 @@ impl BackendRepresentativeMemoryCache {
     ///
     /// KONCLUDE-PORT-NOTE[threading]: `mFixedOntologyIdentifierDataHashLock` /
     /// `waitIndividualLabelAssociationIndexed()` → inline (single-threaded).
-    pub fn create_ontology_fixed_cache_reader(&mut self, ontology_identifier: Cint64) -> ReaderId {
-        let reader: ReaderId = ReaderId::NONE; // W6-DEFER[api]: alloc a Reader.
+    pub fn create_ontology_fixed_cache_reader(
+        &mut self,
+        ontology_identifier: Cint64,
+        cache_context: &mut CacheContext,
+    ) -> ReaderId {
+        let reader =
+            cache_context.alloc_backend_cache_reader(BackendRepresentativeMemoryCacheReader::new());
         // mFixedOntologyIdentifierDataHashLock.lockForRead(); [threading] inline
         let ontology_data: OntologyDataId = self
             .fixed_ontology_identifier_data_hash
@@ -326,12 +365,17 @@ impl BackendRepresentativeMemoryCache {
             .copied()
             .unwrap_or(OntologyDataId::NONE);
         if ontology_data != OntologyDataId::NONE {
-            // ontologyData->incUsageCount(); — W6-DEFER[api]
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .inc_usage_count(1);
+            cache_context
+                .ontology_data_mut(ontology_data)
+                .wait_individual_label_association_indexed();
         }
-        // reader->fixOntologyData(ontologyData); — W6-DEFER[api]
+        cache_context
+            .backend_cache_reader_mut(reader)
+            .fix_ontology_data(ontology_data);
         // mFixedOntologyIdentifierDataHashLock.unlock(); [threading] inline
-        // ontologyData->waitIndividualLabelAssociationIndexed(); [threading] inline
-        let _ = ontology_data;
         reader
     }
 
@@ -360,7 +404,11 @@ impl BackendRepresentativeMemoryCache {
     /// posted/handled `CWriteBackendAssociationCachedEvent` is cross-family
     /// (`events.rs`) → `W6-DEFER[api]`; the inline drain forwards to the sibling
     /// `process_customs_events` (facade3).
-    pub fn write_cached_data(&mut self, write_data: CacheWriteDataId, memory_pools: Cint64) -> &mut Self {
+    pub fn write_cached_data(
+        &mut self,
+        write_data: CacheWriteDataId,
+        memory_pools: Cint64,
+    ) -> &mut Self {
         if self.stat_collect_statistics {
             self.pending_update_count += 1; // mPendingUpdateCount.ref();
         }
@@ -461,15 +509,18 @@ impl BackendRepresentativeMemoryCache {
     /// Bumps the per-type and overall label-count / max-value-count / all-value-count
     /// statistics for a newly created label item.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the only deref is `label->getCacheValueCount()`
-    /// (`W6-DEFER[api]`); all five statistic updates on `self` are ported verbatim.
+    /// KONCLUDE-PORT-NOTE[ownership]: `label->getCacheValueCount()` resolves through
+    /// `CacheContext` because C++ stores the label as a raw pointer.
     pub fn add_created_label_statistics(
         &mut self,
         label_type: Cint64,
         label: LabelCacheItemId,
         ontology_data: OntologyDataId,
+        cache_context: &CacheContext,
     ) -> &mut Self {
-        let cache_value_count: Cint64 = 0; // W6-DEFER[api]: ctx.label(label).get_cache_value_count()
+        let cache_value_count = cache_context
+            .label_cache_item(label)
+            .get_cache_value_count();
         let lt = label_type as usize;
         self.stat_label_count += 1;
         self.stat_max_label_value_count = self.stat_max_label_value_count.max(cache_value_count);
@@ -477,7 +528,7 @@ impl BackendRepresentativeMemoryCache {
         self.stat_label_type_max_value_count[lt] =
             self.stat_label_type_max_value_count[lt].max(cache_value_count);
         self.stat_label_type_all_value_count[lt] += cache_value_count;
-        let _ = (label, ontology_data);
+        let _ = ontology_data;
         self
     }
 
@@ -623,11 +674,21 @@ impl BackendRepresentativeMemoryCache {
         //   else { repAssociationData = ontologyData->…[associationData->getRepresentativeSameIndividualId()];
         //     return self.mark_individual_association_incompletely_handled(repAssociationData->getRepresentativeSameIndividualId(), repAssociationData, ontologyData); }
         let has_representative_same_individual_merging = false; // W6-DEFER[api]
-        if association_data == IndividualAssociationDataId::NONE || !has_representative_same_individual_merging {
-            self.mark_individual_association_incompletely_handled(indi_id, association_data, ontology_data)
+        if association_data == IndividualAssociationDataId::NONE
+            || !has_representative_same_individual_merging
+        {
+            self.mark_individual_association_incompletely_handled(
+                indi_id,
+                association_data,
+                ontology_data,
+            )
         } else {
             // W6-DEFER[api]: redirect to representative-same association data.
-            self.mark_individual_association_incompletely_handled(indi_id, association_data, ontology_data)
+            self.mark_individual_association_incompletely_handled(
+                indi_id,
+                association_data,
+                ontology_data,
+            )
         }
     }
 
@@ -652,10 +713,16 @@ impl BackendRepresentativeMemoryCache {
         let is_completely_handled = true; // W6-DEFER[api]: associationData->isCompletelyHandled()
         if association_data == IndividualAssociationDataId::NONE || is_completely_handled {
             let loc_association_data = self.create_localized_individual_association_data(
-                individual_id, association_data, ontology_data, false, true,
+                individual_id,
+                association_data,
+                ontology_data,
+                false,
+                true,
             );
-            let _context = self.get_individual_association_data_memory_context(
-                loc_association_data, ontology_data, None,
+            let _context = self.get_individual_association_data_memory_context_deferred(
+                loc_association_data,
+                ontology_data,
+                None,
             );
             let cache_update_id = self.next_indi_update_id;
             self.next_indi_update_id += 1;
@@ -668,7 +735,11 @@ impl BackendRepresentativeMemoryCache {
             associations_updated = true;
             // storeIndividualIncompletelyMarked(locAssociationData, !locAssociationData->isCompletelyHandled(), ontologyData);
             self.store_individual_incompletely_marked(loc_association_data, true, ontology_data);
-            self.set_updated_individual_association_data(individual_id, loc_association_data, ontology_data);
+            self.set_updated_individual_association_data(
+                individual_id,
+                loc_association_data,
+                ontology_data,
+            );
         }
         associations_updated
     }
@@ -688,10 +759,16 @@ impl BackendRepresentativeMemoryCache {
         let is_completely_handled = false; // W6-DEFER[api]: associationData->isCompletelyHandled()
         if association_data == IndividualAssociationDataId::NONE || !is_completely_handled {
             let loc_association_data = self.create_localized_individual_association_data(
-                individual_id, association_data, ontology_data, false, true,
+                individual_id,
+                association_data,
+                ontology_data,
+                false,
+                true,
             );
-            let _context = self.get_individual_association_data_memory_context(
-                loc_association_data, ontology_data, None,
+            let _context = self.get_individual_association_data_memory_context_deferred(
+                loc_association_data,
+                ontology_data,
+                None,
             );
             let cache_update_id = self.next_indi_update_id;
             self.next_indi_update_id += 1;
@@ -701,7 +778,11 @@ impl BackendRepresentativeMemoryCache {
             associations_updated = true;
             // storeIndividualIncompletelyMarked(locAssociationData, !locAssociationData->isCompletelyHandled(), ontologyData);
             self.store_individual_incompletely_marked(loc_association_data, false, ontology_data);
-            self.set_updated_individual_association_data(individual_id, loc_association_data, ontology_data);
+            self.set_updated_individual_association_data(
+                individual_id,
+                loc_association_data,
+                ontology_data,
+            );
         }
         associations_updated
     }
@@ -738,8 +819,11 @@ impl BackendRepresentativeMemoryCache {
         //               && neighbourLinkCount > that) rejection = true;
         //           if ((double)neighbourLinkCount/totalIndiCount > self.conf_update_rejecting_incompatible_propagation_cutted_individual_linked_neighbour_ratio) rejection = true;
         //         } } } }
-        let incom_update_ratio = (incompatible_indi_update_count as f64) / (indi_update_count as f64);
-        if incom_update_ratio > self.conf_update_rejecting_incompatible_individual_associations_ratio {
+        let incom_update_ratio =
+            (incompatible_indi_update_count as f64) / (indi_update_count as f64);
+        if incom_update_ratio
+            > self.conf_update_rejecting_incompatible_individual_associations_ratio
+        {
             rejection = true;
         }
         let _ = (temp_ass_write_data_linker, ontology_data);
@@ -852,9 +936,6 @@ impl BackendRepresentativeMemoryCache {
     /// neighbour array, completely-handled flag, and all associatable label entries
     /// already match the target's.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: all comparisons are `IndividualAssociationData`
-    /// derefs → faithful `W6-DEFER[api]` (returns the C++ default `false`, the
-    /// "already matches" outcome; the conservative `true` early-outs are documented).
     pub fn check_requires_deterministic_same_as_association_update_installation(
         &self,
         association_data: IndividualAssociationDataId,
@@ -862,16 +943,36 @@ impl BackendRepresentativeMemoryCache {
         det_same_as_association_data: IndividualAssociationDataId,
         same_as_individual_id: Cint64,
         ontology_data: OntologyDataId,
+        cache_context: &CacheContext,
     ) -> bool {
-        // W6-DEFER[api]: faithful control flow (C++ 1344–1362):
-        //   if (associationData->getDeterministicSameIndividualId() != sameAsIndividualId) return true;
-        //   if (associationData->getRepresentativeSameIndividualId() != detSameAsAssociationData->getRepresentativeSameIndividualId()) return true;
-        //   if (associationData->getRoleSetNeighbourArray() != detSameAsAssociationData->getRoleSetNeighbourArray()) return true;
-        //   if (!associationData->isCompletelyHandled()) return true;
-        //   for (i in 0..LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT)
-        //     if (associationData->getLabelCacheEntry(i) != detSameAsAssociationData->getLabelCacheEntry(i)) return true;
-        //   return false;
-        let _ = (association_data, individual_id, det_same_as_association_data, same_as_individual_id, ontology_data);
+        let _ = (individual_id, ontology_data);
+        let association_data_ref = cache_context.individual_assoc_data(association_data);
+        let det_same_as_association_data_ref =
+            cache_context.individual_assoc_data(det_same_as_association_data);
+
+        if association_data_ref.get_deterministic_same_individual_id() != same_as_individual_id {
+            return true;
+        }
+        if association_data_ref.get_representative_same_individual_id()
+            != det_same_as_association_data_ref.get_representative_same_individual_id()
+        {
+            return true;
+        }
+        if association_data_ref.get_role_set_neighbour_array()
+            != det_same_as_association_data_ref.get_role_set_neighbour_array()
+        {
+            return true;
+        }
+        if association_data_ref.is_incompletely_marked() {
+            return true;
+        }
+        for i in 0..LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT {
+            if association_data_ref.get_label_cache_entry(i as Cint64)
+                != det_same_as_association_data_ref.get_label_cache_entry(i as Cint64)
+            {
+                return true;
+            }
+        }
         false
     }
 
@@ -898,10 +999,16 @@ impl BackendRepresentativeMemoryCache {
         ontology_data: OntologyDataId,
     ) -> bool {
         let loc_association_data = self.create_localized_individual_association_data(
-            individual_id, association_data, ontology_data, false, true,
+            individual_id,
+            association_data,
+            ontology_data,
+            false,
+            true,
         );
-        let _context = self.get_individual_association_data_memory_context(
-            loc_association_data, ontology_data, None,
+        let _context = self.get_individual_association_data_memory_context_deferred(
+            loc_association_data,
+            ontology_data,
+            None,
         );
         let cache_update_id = self.next_indi_update_id;
         self.next_indi_update_id += 1;
@@ -930,7 +1037,11 @@ impl BackendRepresentativeMemoryCache {
         //   into two names — left as a deferred sibling call here.
         let _ = LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT;
         self.store_individual_incompletely_marked(loc_association_data, false, ontology_data);
-        self.set_updated_individual_association_data(individual_id, loc_association_data, ontology_data);
+        self.set_updated_individual_association_data(
+            individual_id,
+            loc_association_data,
+            ontology_data,
+        );
         let _ = (det_same_as_association_data, same_as_individual_id);
         true
     }
@@ -1001,7 +1112,13 @@ impl BackendRepresentativeMemoryCache {
         //       self.stat_individual_association_without_separate_memory_managment_count += 1; }
         //   if (associationData) locAssociationData->initAssociationData(associationData, incrementUpdateId);
         //   else locAssociationData->initAssociationData(individualID);
-        let _ = (individual_id, association_data, ontology_data, allow_separated_management, increment_update_id);
+        let _ = (
+            individual_id,
+            association_data,
+            ontology_data,
+            allow_separated_management,
+            increment_update_id,
+        );
         IndividualAssociationDataId::NONE // W6-DEFER[api]: the freshly allocated localised association data.
     }
 
@@ -1012,26 +1129,50 @@ impl BackendRepresentativeMemoryCache {
     /// down to a single user that was previously separately managed), otherwise the
     /// shared ontology context.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `requiresDataCopying` (C++ default `nullptr`) → an
-    /// `Option<&mut bool>`. The returned context pointer (`CBackendRepresentativeMemo
-    /// ryCacheContext*`, an `IndividualAssociationContext` or the ontology context)
-    /// → opaque `Cint64`; the body is `IndividualAssociationContext` derefs →
-    /// faithful `W6-DEFER[api]`.
+    /// KONCLUDE-PORT-NOTE[ownership]: the returned
+    /// `CBackendRepresentativeMemoryCacheContext*` may point at either an
+    /// individual-association context or an ontology context. Until that base
+    /// pointer has a Rust enum, the method returns the selected arena id's raw
+    /// handle as the existing opaque `Cint64`.
     pub fn get_individual_association_data_memory_context(
         &self,
         association_data: IndividualAssociationDataId,
         ontology_data: OntologyDataId,
         requires_data_copying: Option<&mut bool>,
+        cache_context: &CacheContext,
     ) -> Cint64 {
-        // W6-DEFER[api]: faithful control flow (C++ 1534–1541):
-        //   context = associationData->getIndividualAssociationMemoryContext();
-        //   if (context) {
-        //     if (requiresDataCopying && context->getIndividualAssociationDataUsageCount() <= 1
-        //         && context->getPreviousMemoryManagementCount() > 0) *requiresDataCopying = true;
-        //     return context; }
-        //   return ontologyData->getOntologyContext();
+        let individual_context = cache_context
+            .individual_assoc_data(association_data)
+            .get_individual_association_memory_context();
+        if individual_context.is_some() {
+            let context_ref = cache_context.individual_assoc_context(individual_context);
+            if let Some(requires_data_copying) = requires_data_copying {
+                if context_ref.get_individual_association_data_usage_count() <= 1
+                    && context_ref.get_previous_memory_management_count() > 0
+                {
+                    *requires_data_copying = true;
+                }
+            }
+            return individual_context.raw;
+        }
+        cache_context
+            .ontology_data(ontology_data)
+            .get_ontology_context()
+            .raw
+    }
+
+    /// Compatibility wrapper for deferred callers that have not yet been threaded
+    /// with `CacheContext`.
+    pub fn get_individual_association_data_memory_context_deferred(
+        &self,
+        association_data: IndividualAssociationDataId,
+        ontology_data: OntologyDataId,
+        requires_data_copying: Option<&mut bool>,
+    ) -> Cint64 {
+        // W6-DEFER[api]: call the context-threaded overload once the surrounding
+        // facade method receives `CacheContext`.
         let _ = (association_data, ontology_data, requires_data_copying);
-        INVALID // opaque Cint64 context handle (W6-DEFER[api]).
+        INVALID
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::isCacheValueRoleInverse`.
@@ -1044,8 +1185,12 @@ impl BackendRepresentativeMemoryCache {
             || id == CacheValueIdentifier::CacheValTagAndInversedAssertedRole as Cint64
             || id == CacheValueIdentifier::CacheValTagAndInversedNominalConnectedRole as Cint64
             || id == CacheValueIdentifier::CacheValTagAndNondeterministicInversedRole as Cint64
-            || id == CacheValueIdentifier::CacheValTagAndNondeterministicInversedAssertedRole as Cint64
-            || id == CacheValueIdentifier::CacheValTagAndNondeterministicInversedNominalConnectedRole as Cint64
+            || id
+                == CacheValueIdentifier::CacheValTagAndNondeterministicInversedAssertedRole
+                    as Cint64
+            || id
+                == CacheValueIdentifier::CacheValTagAndNondeterministicInversedNominalConnectedRole
+                    as Cint64
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::isCacheValueRoleNondeterministic`.
@@ -1057,9 +1202,15 @@ impl BackendRepresentativeMemoryCache {
         id == CacheValueIdentifier::CacheValTagAndNondeterministicRole as Cint64
             || id == CacheValueIdentifier::CacheValTagAndNondeterministicInversedRole as Cint64
             || id == CacheValueIdentifier::CacheValTagAndNondeterministicAssertedRole as Cint64
-            || id == CacheValueIdentifier::CacheValTagAndNondeterministicInversedAssertedRole as Cint64
-            || id == CacheValueIdentifier::CacheValTagAndNondeterministicNominalConnectedRole as Cint64
-            || id == CacheValueIdentifier::CacheValTagAndNondeterministicInversedNominalConnectedRole as Cint64
+            || id
+                == CacheValueIdentifier::CacheValTagAndNondeterministicInversedAssertedRole
+                    as Cint64
+            || id
+                == CacheValueIdentifier::CacheValTagAndNondeterministicNominalConnectedRole
+                    as Cint64
+            || id
+                == CacheValueIdentifier::CacheValTagAndNondeterministicInversedNominalConnectedRole
+                    as Cint64
     }
 
     /// Port of `CBackendRepresentativeMemoryCache::isRoleNeighbourLinkLabelItemCompatibility`.
@@ -1076,22 +1227,172 @@ impl BackendRepresentativeMemoryCache {
         &self,
         item_prev: LabelCacheItemId,
         item_new: LabelCacheItemId,
+        cache_context: &CacheContext,
     ) -> bool {
-        // W6-DEFER[api]: faithful control flow (C++ 1589–1611):
-        //   if (itemPrev->getCacheValueCount() != itemNew->getCacheValueCount()) return false;
-        //   sameRolesCompatible = true;
-        //   for each linkerIt in itemNew->getCacheValueLinker() (while sameRolesCompatible):
-        //     tag = linkerIt->getCacheValue().getTag();
-        //     if (!itemPrev->getTagCacheValueHash(false)->contains(tag)) sameRolesCompatible = false;
-        //     else {
-        //       prevCacheValue = itemPrev->getTagCacheValueHash(false)->value(tag)->getCacheValue();
-        //       newCacheValue = linkerIt->getCacheValue();
-        //       if (self.is_cache_value_role_inverse(&prevCacheValue) != self.is_cache_value_role_inverse(&newCacheValue)) sameRolesCompatible = false;
-        //       prevNondeterministic = self.is_cache_value_role_nondeterministic(&prevCacheValue);
-        //       newNondeterministic = self.is_cache_value_role_nondeterministic(&newCacheValue);
-        //       if (!prevNondeterministic && newNondeterministic) sameRolesCompatible = false; }
-        //   return sameRolesCompatible;
-        let _ = (item_prev, item_new);
+        let item_prev_ref = cache_context.label_cache_item(item_prev);
+        let item_new_ref = cache_context.label_cache_item(item_new);
+        if item_prev_ref.get_cache_value_count() != item_new_ref.get_cache_value_count() {
+            return false;
+        }
+
+        for linker_it in item_new_ref.get_cache_value_linker().iter().copied() {
+            let new_cache_value = *cache_context
+                .label_value_linker(linker_it)
+                .get_cache_value();
+            let tag = new_cache_value.get_tag();
+            let Some(prev_linker) = item_prev_ref.tag_value_hash.get(&tag).copied() else {
+                return false;
+            };
+            let prev_cache_value = cache_context
+                .label_value_linker(prev_linker)
+                .get_cache_value();
+            if self.is_cache_value_role_inverse(prev_cache_value)
+                != self.is_cache_value_role_inverse(&new_cache_value)
+            {
+                return false;
+            }
+            let prev_nondeterministic = self.is_cache_value_role_nondeterministic(prev_cache_value);
+            let new_nondeterministic = self.is_cache_value_role_nondeterministic(&new_cache_value);
+            if !prev_nondeterministic && new_nondeterministic {
+                return false;
+            }
+        }
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::backend::BackendRepresentativeMemoryCacheOntologyContext;
+    use super::super::backend_data::{
+        IndividualAssociationContext, IndividualAssociationData, OntologyData,
+    };
+    use super::super::backend_data::{LabelCacheItem, LabelCacheItemType};
+    use super::*;
+
+    fn label_with_value_count(
+        cache_context: &mut CacheContext,
+        value_count: Cint64,
+    ) -> LabelCacheItemId {
+        let mut label = LabelCacheItem::new(INVALID);
+        label.init_cache_entry(0, value_count, LabelCacheItemType::FullConceptSetLabel);
+        label.value_count = value_count;
+        cache_context.alloc_label_cache_item(label)
+    }
+
+    #[test]
+    fn add_created_label_statistics_uses_label_cache_value_count() {
+        let mut cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
+        let mut cache_context = CacheContext::new();
+        let label_type = LabelCacheItemType::FullConceptSetLabel as Cint64;
+        let first = label_with_value_count(&mut cache_context, 3);
+        let second = label_with_value_count(&mut cache_context, 5);
+
+        cache.add_created_label_statistics(label_type, first, OntologyDataId::NONE, &cache_context);
+        cache.add_created_label_statistics(
+            label_type,
+            second,
+            OntologyDataId::NONE,
+            &cache_context,
+        );
+
+        let lt = label_type as usize;
+        assert_eq!(cache.stat_label_count, 2);
+        assert_eq!(cache.stat_max_label_value_count, 5);
+        assert_eq!(cache.stat_label_type_count[lt], 2);
+        assert_eq!(cache.stat_label_type_max_value_count[lt], 5);
+        assert_eq!(cache.stat_label_type_all_value_count[lt], 8);
+    }
+
+    #[test]
+    fn queue_individual_association_memory_context_deletion_prepends_to_ontology_queue() {
+        let mut cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
+        let mut cache_context = CacheContext::new();
+        let ontology_data = cache_context.alloc_ontology_data(OntologyData::new());
+        let first =
+            cache_context.alloc_individual_assoc_context(IndividualAssociationContext::new(1));
+        let second =
+            cache_context.alloc_individual_assoc_context(IndividualAssociationContext::new(2));
+
+        cache.queue_individual_association_memory_context_deletion(
+            first,
+            ontology_data,
+            &mut cache_context,
+        );
+        cache.queue_individual_association_memory_context_deletion(
+            second,
+            ontology_data,
+            &mut cache_context,
+        );
+
+        let ontology = cache_context.ontology_data(ontology_data);
+        assert_eq!(
+            ontology.get_release_queued_individual_association_context_linker(),
+            second
+        );
+        assert_eq!(
+            ontology.release_queued_individual_association_context_linker,
+            vec![second, first]
+        );
+        assert_eq!(
+            cache.stat_individual_association_separate_memory_managment_slot_referred_checking_queuing_count,
+            2
+        );
+        assert_eq!(cache.stat_memory_managment_queued_checking_count, 2);
+    }
+
+    #[test]
+    fn individual_association_data_memory_context_falls_back_to_ontology_context() {
+        let cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
+        let mut cache_context = CacheContext::new();
+        let ontology_context = cache_context.alloc_backend_ontology_context(
+            BackendRepresentativeMemoryCacheOntologyContext::new(BaseContextId::NONE),
+        );
+        let mut ontology = OntologyData::new();
+        ontology.set_ontology_context(ontology_context);
+        let ontology_data = cache_context.alloc_ontology_data(ontology);
+        let association_data =
+            cache_context.alloc_individual_assoc_data(IndividualAssociationData::new());
+        let mut requires_data_copying = false;
+
+        let context = cache.get_individual_association_data_memory_context(
+            association_data,
+            ontology_data,
+            Some(&mut requires_data_copying),
+            &cache_context,
+        );
+
+        assert_eq!(context, ontology_context.raw);
+        assert!(!requires_data_copying);
+    }
+
+    #[test]
+    fn individual_association_data_memory_context_flags_copying_for_last_previous_context() {
+        let cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
+        let mut cache_context = CacheContext::new();
+        let ontology_context = cache_context.alloc_backend_ontology_context(
+            BackendRepresentativeMemoryCacheOntologyContext::new(BaseContextId::NONE),
+        );
+        let mut ontology = OntologyData::new();
+        ontology.set_ontology_context(ontology_context);
+        let ontology_data = cache_context.alloc_ontology_data(ontology);
+        let mut individual_context = IndividualAssociationContext::new(INVALID);
+        individual_context.inc_individual_association_data_usage_count(1);
+        individual_context.set_previous_memory_management_count(2);
+        let individual_context = cache_context.alloc_individual_assoc_context(individual_context);
+        let mut association = IndividualAssociationData::new();
+        association.set_individual_association_memory_context(individual_context);
+        let association_data = cache_context.alloc_individual_assoc_data(association);
+        let mut requires_data_copying = false;
+
+        let context = cache.get_individual_association_data_memory_context(
+            association_data,
+            ontology_data,
+            Some(&mut requires_data_copying),
+            &cache_context,
+        );
+
+        assert_eq!(context, individual_context.raw);
+        assert!(requires_data_copying);
     }
 }

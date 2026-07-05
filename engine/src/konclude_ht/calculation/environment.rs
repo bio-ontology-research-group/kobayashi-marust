@@ -336,7 +336,8 @@ impl ConcurrentTaskCalculationEnvironment {
         let mut remaining_tasks_count: f64 = 0.0;
 
         self.task_created_depth_count_vec.resize(VECCOUNTERSIZE, 0);
-        self.task_processed_depth_count_vec.resize(VECCOUNTERSIZE, 0);
+        self.task_processed_depth_count_vec
+            .resize(VECCOUNTERSIZE, 0);
         self.task_relative_increase_task_per_depth_vec
             .resize(VECCOUNTERSIZE, 0.0);
         self.task_total_increase_task_per_depth_vec
@@ -367,8 +368,7 @@ impl ConcurrentTaskCalculationEnvironment {
                     processed_task_count = 1;
                     self.task_processed_depth_count_vec[i] = processed_task_count;
                 }
-                rel_inc_task_rate =
-                    next_depth_created_count as f64 / processed_task_count as f64;
+                rel_inc_task_rate = next_depth_created_count as f64 / processed_task_count as f64;
             }
             self.task_relative_increase_task_per_depth_vec[i] = rel_inc_task_rate;
         }

@@ -18,12 +18,11 @@
 //! `head->append(tail)` (prepend-new, return-new-head) becomes `Vec::append`
 //! (move `tail` onto the end of `new`). Iteration order is preserved.
 //!
-//! KONCLUDE-PORT-NOTE[ownership]: the assertion / asserted-data-literal /
-//! additional-assertion linker chains are not-yet-ported `Process/` classes, so
-//! `node.rs` holds only the head-of-chain `Id<T>` (`Id::NONE` == `nullptr`). The
-//! plain get/set/has/clear accessors port exactly; the `add*` methods that call
-//! the C++ linker `->append(...)` need the not-yet-ported chain op and carry a
-//! `// W2-DEFER[api]` marker over a minimal head-overwrite stub.
+//! KONCLUDE-PORT-NOTE[ownership]: the asserted-data-literal and additional
+//! assertion linker chains use concrete `CLinkerBase`-style records in
+//! `process::stubs` plus per-test arenas on `ProcessContext`. Their `add*`
+//! methods therefore take the ambient context so the incoming linker can be
+//! prepended with `next = old_head`, matching C++ `linker->append(oldHead)`.
 //!
 //! SKIPPED (already ported elsewhere, NOT re-defined here to avoid duplicate
 //! inherent methods):
@@ -39,7 +38,11 @@
 
 #![allow(dead_code)]
 
+use super::super::model::individual::{
+    ConceptAssertion, DataAssertion, ReverseRoleAssertion, RoleAssertion,
+};
 use super::super::model::{Cint64, ConceptId, NegLink};
+use super::context::ProcessContext;
 use super::node::IndividualProcessNode;
 use super::stubs::{
     AdditionalDataAssertionsLinkerId, AdditionalRoleAssertionsLinkerId, ConceptAssertionLinkerId,
@@ -155,6 +158,20 @@ impl IndividualProcessNode {
         self
     }
 
+    /// Rust-owned bridge for `setAssertionConceptLinker`.
+    pub fn assertion_concept_assertions(&self) -> &[ConceptAssertion] {
+        &self.assertion_concept_assertions
+    }
+
+    /// Replace the value-backed assertion concept chain.
+    pub fn set_assertion_concept_assertions(
+        &mut self,
+        assertion_concepts: Vec<ConceptAssertion>,
+    ) -> &mut Self {
+        self.assertion_concept_assertions = assertion_concepts;
+        self
+    }
+
     // ===================================================================
     // Assertion data.
     // ===================================================================
@@ -181,6 +198,20 @@ impl IndividualProcessNode {
         assertion_data_linker: DataAssertionLinkerId,
     ) -> &mut Self {
         self.assertion_data_linker = assertion_data_linker;
+        self
+    }
+
+    /// Rust-owned bridge for `setAssertionDataLinker`.
+    pub fn assertion_data_assertions(&self) -> &[DataAssertion] {
+        &self.assertion_data_assertions
+    }
+
+    /// Replace the value-backed assertion data chain.
+    pub fn set_assertion_data_assertions(
+        &mut self,
+        assertion_data: Vec<DataAssertion>,
+    ) -> &mut Self {
+        self.assertion_data_assertions = assertion_data;
         self
     }
 
@@ -239,10 +270,14 @@ impl IndividualProcessNode {
     pub fn add_asserted_data_literal_linker(
         &mut self,
         data_literal_linker: ProcessAssertedDataLiteralLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         // mAssertedDataLiteralLinker = dataLiteralLinker->append(mAssertedDataLiteralLinker);
-        // W2-DEFER[api]: ProcessAssertedDataLiteralLinker::append — the intrusive
-        // linker chain class is not yet ported; minimal stub overwrites the head.
+        if data_literal_linker.is_some() {
+            process_context
+                .process_asserted_data_literal_linker_mut(data_literal_linker)
+                .set_next(self.asserted_data_literal_linker);
+        }
         self.asserted_data_literal_linker = data_literal_linker;
         self
     }
@@ -279,6 +314,20 @@ impl IndividualProcessNode {
         assertion_role_linker: RoleAssertionLinkerId,
     ) -> &mut Self {
         self.assertion_role_linker = assertion_role_linker;
+        self
+    }
+
+    /// Rust-owned bridge for `setAssertionRoleLinker`.
+    pub fn assertion_role_assertions(&self) -> &[RoleAssertion] {
+        &self.assertion_role_assertions
+    }
+
+    /// Replace the value-backed assertion role chain.
+    pub fn set_assertion_role_assertions(
+        &mut self,
+        assertion_roles: Vec<RoleAssertion>,
+    ) -> &mut Self {
+        self.assertion_role_assertions = assertion_roles;
         self
     }
 
@@ -322,6 +371,20 @@ impl IndividualProcessNode {
         self
     }
 
+    /// Rust-owned bridge for `setReverseAssertionRoleLinker`.
+    pub fn reverse_assertion_role_assertions(&self) -> &[ReverseRoleAssertion] {
+        &self.reverse_assertion_role_assertions
+    }
+
+    /// Replace the value-backed reverse assertion role chain.
+    pub fn set_reverse_assertion_role_assertions(
+        &mut self,
+        reverse_assertion_roles: Vec<ReverseRoleAssertion>,
+    ) -> &mut Self {
+        self.reverse_assertion_role_assertions = reverse_assertion_roles;
+        self
+    }
+
     // ===================================================================
     // Additional role assertions.
     // ===================================================================
@@ -355,10 +418,14 @@ impl IndividualProcessNode {
     pub fn add_additional_role_assertions_linker(
         &mut self,
         reverse_role_assertions_linker: AdditionalRoleAssertionsLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         // mAdditionalRoleAssertionsLinker = reverseRoleAssertionsLinker->append(mAdditionalRoleAssertionsLinker);
-        // W2-DEFER[api]: AdditionalProcessRoleAssertionsLinker::append — chain class
-        // not yet ported; minimal stub overwrites the head.
+        if reverse_role_assertions_linker.is_some() {
+            process_context
+                .additional_role_assertion_linker_mut(reverse_role_assertions_linker)
+                .set_next(self.additional_role_assertions_linker);
+        }
         self.additional_role_assertions_linker = reverse_role_assertions_linker;
         self
     }
@@ -396,16 +463,22 @@ impl IndividualProcessNode {
     pub fn add_additional_data_assertions_linker(
         &mut self,
         add_data_assertions_linker: AdditionalDataAssertionsLinkerId,
+        process_context: &mut ProcessContext,
     ) -> &mut Self {
         // mAdditionalDataAssertionsLinker = addDataAssertionsLinker->append(mAdditionalDataAssertionsLinker);
-        // W2-DEFER[api]: AdditionalProcessDataAssertionsLinker::append — chain class
-        // not yet ported; minimal stub overwrites the head.
+        if add_data_assertions_linker.is_some() {
+            process_context
+                .additional_data_assertion_linker_mut(add_data_assertions_linker)
+                .set_next(self.additional_data_assertions_linker);
+        }
         self.additional_data_assertions_linker = add_data_assertions_linker;
         self
     }
 
     /// Port of `CIndividualProcessNode::getLastProcessedAdditionalDataAssertionLinker`.
-    pub fn last_processed_additional_data_assertion_linker(&self) -> AdditionalDataAssertionsLinkerId {
+    pub fn last_processed_additional_data_assertion_linker(
+        &self,
+    ) -> AdditionalDataAssertionsLinkerId {
         self.last_processed_additional_data_assertions_linker
     }
 
@@ -515,4 +588,139 @@ impl IndividualProcessNode {
     // module-level doc note (incl. the `set_individual_node_id` merge-guard
     // deviation flagged for later reconciliation).
     // ===================================================================
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::konclude_ht::process::stubs::{
+        AdditionalProcessDataAssertionsLinker, AdditionalProcessRoleAssertionsLinker,
+        ProcessAssertedDataLiteralLinker, ProcessContextId,
+    };
+    use crate::konclude_ht::process::TrackPointId;
+
+    #[test]
+    fn process_assertion_linker_asserted_data_literal_prepends_and_preserves_payload() {
+        let mut ctx = ProcessContext::new();
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+        let dep = TrackPointId::new(9);
+
+        let mut first = ProcessAssertedDataLiteralLinker::new();
+        first.init_process_data_literal_linker(11, dep);
+        let first_id = ctx.alloc_process_asserted_data_literal_linker(first);
+        let mut second = ProcessAssertedDataLiteralLinker::new();
+        second.init_process_data_literal_linker(12, TrackPointId::new(10));
+        let second_id = ctx.alloc_process_asserted_data_literal_linker(second);
+
+        node.add_asserted_data_literal_linker(first_id, &mut ctx)
+            .add_asserted_data_literal_linker(second_id, &mut ctx);
+
+        assert_eq!(node.asserted_data_literal_linker(), second_id);
+        assert_eq!(
+            ctx.process_asserted_data_literal_linker(second_id).next(),
+            first_id
+        );
+        assert_eq!(
+            ctx.process_asserted_data_literal_linker(first_id).next(),
+            ProcessAssertedDataLiteralLinkerId::NONE
+        );
+        assert_eq!(
+            ctx.process_asserted_data_literal_linker(first_id)
+                .data_literal(),
+            11
+        );
+        assert_eq!(
+            ctx.process_asserted_data_literal_linker(first_id)
+                .dependency_track_point(),
+            dep
+        );
+    }
+
+    #[test]
+    fn process_assertion_linker_additional_role_prepends_and_preserves_payload() {
+        let mut ctx = ProcessContext::new();
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+        let dep = TrackPointId::new(13);
+        let role_head = RoleAssertionLinkerId::new(21);
+        let reverse_head = ReverseRoleAssertionLinkerId::new(22);
+
+        let mut first = AdditionalProcessRoleAssertionsLinker::new();
+        first.init_additional_process_role_assertions_linker(31, role_head, reverse_head, dep);
+        let first_id = ctx.alloc_additional_role_assertion_linker(first);
+        let second_id = ctx
+            .alloc_additional_role_assertion_linker(AdditionalProcessRoleAssertionsLinker::new());
+
+        node.add_additional_role_assertions_linker(first_id, &mut ctx)
+            .add_additional_role_assertions_linker(second_id, &mut ctx);
+
+        assert_eq!(node.additional_role_assertions_linker(), second_id);
+        assert_eq!(
+            ctx.additional_role_assertion_linker(second_id).next(),
+            first_id
+        );
+        assert_eq!(
+            ctx.additional_role_assertion_linker(first_id).next(),
+            AdditionalRoleAssertionsLinkerId::NONE
+        );
+        assert_eq!(
+            ctx.additional_role_assertion_linker(first_id).individual(),
+            31
+        );
+        assert_eq!(
+            ctx.additional_role_assertion_linker(first_id)
+                .role_assertion_linker(),
+            role_head
+        );
+        assert_eq!(
+            ctx.additional_role_assertion_linker(first_id)
+                .reverse_role_assertion_linker(),
+            reverse_head
+        );
+        assert_eq!(
+            ctx.additional_role_assertion_linker(first_id)
+                .dependency_track_point(),
+            dep
+        );
+    }
+
+    #[test]
+    fn process_assertion_linker_additional_data_prepends_and_preserves_payload() {
+        let mut ctx = ProcessContext::new();
+        let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
+        let dep = TrackPointId::new(17);
+        let data_head = DataAssertionLinkerId::new(41);
+
+        let mut first = AdditionalProcessDataAssertionsLinker::new();
+        first.init_additional_process_data_assertions_linker(51, data_head, dep);
+        let first_id = ctx.alloc_additional_data_assertion_linker(first);
+        let second_id = ctx
+            .alloc_additional_data_assertion_linker(AdditionalProcessDataAssertionsLinker::new());
+
+        node.add_additional_data_assertions_linker(first_id, &mut ctx)
+            .add_additional_data_assertions_linker(second_id, &mut ctx);
+
+        assert_eq!(node.additional_data_assertions_linker(), second_id);
+        assert_eq!(
+            ctx.additional_data_assertion_linker(second_id).next(),
+            first_id
+        );
+        assert_eq!(
+            ctx.additional_data_assertion_linker(first_id).next(),
+            AdditionalDataAssertionsLinkerId::NONE
+        );
+        assert_eq!(
+            ctx.additional_data_assertion_linker(first_id).individual(),
+            51
+        );
+        assert_eq!(
+            ctx.additional_data_assertion_linker(first_id)
+                .data_assertion_linker(),
+            data_head
+        );
+        assert_eq!(
+            ctx.additional_data_assertion_linker(first_id)
+                .dependency_track_point(),
+            dep
+        );
+    }
 }

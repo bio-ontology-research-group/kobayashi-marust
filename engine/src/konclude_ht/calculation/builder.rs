@@ -20,8 +20,8 @@
 #![allow(dead_code)]
 
 use super::super::completion::algorithm::CompletionTaskHandleAlgorithm;
-use super::super::saturation::algorithm::SaturationTaskHandleAlgorithm;
 use super::super::model::substrate::{Cint64, INVALID};
+use super::super::saturation::algorithm::SaturationTaskHandleAlgorithm;
 
 /// Port of `CTaskHandleAlgorithmBuilder`.
 ///

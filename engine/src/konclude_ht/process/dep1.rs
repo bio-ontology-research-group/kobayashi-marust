@@ -27,11 +27,10 @@
 //! a parameter (the ambient `CProcessContext` is not an object here). `nullptr`
 //! → `Id::NONE`. See `model/substrate.rs` for the single global decision.
 //!
-//! Branching-tag machinery (`CBranchingTag::addMaximumBranchingTagCandidate` /
-//! `getBranchingTag`, `updateBranchingTag(s)`, `getDependedBranchingTag`) and the
-//! allocating branch openers (`getDependencyTrackPointBranch`) belong to the
-//! backjumping spine ported in **DEP-2**; calls into them are marked
-//! `// W2-DEFER[api]` and stubbed here.
+//! Branching-tag propagation (`getDependedBranchingTag`,
+//! `updateBranchingTag(s)`) is implemented here against the DEP-2 track-point
+//! substrate. The allocating branch openers (`getDependencyTrackPointBranch`)
+//! are also live over the folded non-deterministic track-point arena.
 
 #![allow(dead_code)]
 
@@ -39,7 +38,9 @@ use super::super::model::substrate::{Arena, Cint64};
 use super::dependency::{
     DepKind, DependencyLink, DependencyNode, DependencyTrackPoint, NonDetData,
 };
-use super::{BranchNodeId, ClashDescId, ConDescId, DependencyId, DepLinkId, NodeId, TrackPointId};
+use super::representative::RepresentativePropagationMap;
+use super::varbind::RepresentativeVariableBindingPathMap;
+use super::{BranchNodeId, ClashDescId, ConDescId, DepLinkId, DependencyId, NodeId, TrackPointId};
 
 // ===========================================================================
 // CDependencyNode — ctors / accessors  (CDependencyNode.cpp 232–422)
@@ -162,7 +163,11 @@ impl DependencyNode {
     /// (`mAdditionalAfterDepLinker = linkDependency->append(mAdditionalAfterDepLinker)`).
     /// `append` splices the old chain onto the *tail* of `link` and makes `link`
     /// the new head — the prepend Konclude relies on.
-    pub fn add_after_dependency(&mut self, link: DepLinkId, dep_arena: &mut Arena<DependencyLink>) -> &mut Self {
+    pub fn add_after_dependency(
+        &mut self,
+        link: DepLinkId,
+        dep_arena: &mut Arena<DependencyLink>,
+    ) -> &mut Self {
         let old_head = self.base().additional_after;
         let new_head = link_append(link, old_head, dep_arena);
         self.base_mut().additional_after = new_head;
@@ -196,16 +201,23 @@ impl DependencyNode {
     /// Port of the `getContinueDependencyTrackPoint()` virtual.
     /// `CDeterministicDependencyNode` returns `this` (the det node *is* its own
     /// track point); `CNonDeterministicDependencyNode` returns `&mClashTrackPoint`.
-    pub fn continue_dependency_track_point(&self) -> TrackPointId {
+    pub fn continue_dependency_track_point(
+        &self,
+        this: DependencyId,
+        tp_arena: &mut Arena<DependencyTrackPoint>,
+    ) -> TrackPointId {
         match self {
             DependencyNode::NonDeterministic { nd, .. }
             | DependencyNode::Or { nd, .. }
             | DependencyNode::ReuseBackendModes { nd, .. } => nd.clash_track_point,
-            // Deterministic family: `return this;`. The det node is its own track
-            // point, materialised lazily from the node in the unified TrackPointId
-            // space. W2-DEFER[api]: lazy det-node→track-point materialisation lands
-            // with the branch save/restore plumbing in DEP-2.
-            _ => TrackPointId::NONE,
+            // CDeterministicDependencyNode multiply-inherits CDependencyTrackPoint,
+            // so `this` is the continuation point. The split arenas materialise
+            // that inherited track-point half as a record pointing back to `this`.
+            _ => {
+                let mut track_point = DependencyTrackPoint::new(this);
+                track_point.process_tag = self.base().process_tag;
+                tp_arena.push(track_point)
+            }
         }
     }
 }
@@ -318,6 +330,7 @@ impl DependencyNode {
         individual_node: NodeId,
         prev_concept_dep_track_point: TrackPointId,
         prev_link_dep_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
         dep_arena: &mut Arena<DependencyLink>,
     ) -> &mut Self {
         self.init_dependency_node_indi(DepKind::All, individual_node, concept_descriptor);
@@ -326,7 +339,7 @@ impl DependencyNode {
             // mPrevLinkDep.initDependency(prevLinkDependencyTrackPoint);
             dep_arena.get_mut(*prev).dep_track_point = prev_link_dep_track_point;
         }
-        // W2-DEFER[api]: updateBranchingTag() — CBranchingTag machinery (DEP-2).
+        self.update_branching_tag(tp_arena, dep_arena);
         self
     }
 
@@ -339,6 +352,7 @@ impl DependencyNode {
         concept_descriptor: ConDescId,
         prev_merging_step_dep_track_point: TrackPointId,
         prev_concept_dep_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
         dep_arena: &mut Arena<DependencyLink>,
     ) -> &mut Self {
         self.init_dependency_node(DepKind::MergedConcept, concept_descriptor);
@@ -346,8 +360,125 @@ impl DependencyNode {
         if let DependencyNode::DetLink { prev, .. } = self {
             dep_arena.get_mut(*prev).dep_track_point = prev_merging_step_dep_track_point;
         }
-        // W2-DEFER[api]: updateBranchingTag() (DEP-2).
+        self.update_branching_tag(tp_arena, dep_arena);
         self
+    }
+
+    /// Port of `CMERGEDLINKDependencyNode::initMERGEDLINKDependencyNode`.
+    pub fn init_merged_link_dependency_node(
+        &mut self,
+        prev_merging_step_dep_track_point: TrackPointId,
+        prev_link_dep_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &mut Arena<DependencyLink>,
+    ) -> &mut Self {
+        self.init_dependency_node(DepKind::MergedLink, ConDescId::NONE);
+        self.base_mut().dep_track_point = prev_merging_step_dep_track_point;
+        if let DependencyNode::DetLink { prev, .. } = self {
+            dep_arena.get_mut(*prev).dep_track_point = prev_link_dep_track_point;
+        }
+        self.update_branching_tag(tp_arena, dep_arena);
+        self
+    }
+
+    /// Port of `CMERGEDINDIVIDUALDependencyNode::initMERGEDINDIVIDUALDependencyNode`.
+    pub fn init_merged_individual_dependency_node(
+        &mut self,
+        prev_merging_step_dep_track_point: TrackPointId,
+        prev_individual_dep_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &mut Arena<DependencyLink>,
+    ) -> &mut Self {
+        self.init_dependency_node(DepKind::MergedIndividual, ConDescId::NONE);
+        self.base_mut().dep_track_point = prev_merging_step_dep_track_point;
+        if let DependencyNode::DetLink { prev, .. } = self {
+            dep_arena.get_mut(*prev).dep_track_point = prev_individual_dep_track_point;
+        }
+        self.update_branching_tag(tp_arena, dep_arena);
+        self
+    }
+
+    /// Port of `CSAMEINDIVIDUALMERGEDependencyNode::initSAMEINDIVIDUALMERGEDependencyNode`.
+    pub fn init_same_individual_merge_dependency_node(
+        &mut self,
+        prev_dep_track_point: TrackPointId,
+        prev_other_dep_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &mut Arena<DependencyLink>,
+    ) -> &mut Self {
+        self.init_dependency_node(DepKind::SameIndividualsMerge, ConDescId::NONE);
+        self.base_mut().dep_track_point = prev_dep_track_point;
+        if let DependencyNode::DetLink { prev, .. } = self {
+            dep_arena.get_mut(*prev).dep_track_point = prev_other_dep_track_point;
+        }
+        self.update_branching_tag(tp_arena, dep_arena);
+        self
+    }
+
+    /// Port of `CMERGEDependencyNode::initMERGEDependencyNode`.
+    ///
+    /// Returns the inline clash track point so a `ProcessContext` caller can mark
+    /// it clashed/irrelevant without needing direct access to both arenas here.
+    pub fn init_merge_dependency_node(
+        &mut self,
+        branch_node: BranchNodeId,
+        concept_descriptor: ConDescId,
+        prev_dep_track_point: TrackPointId,
+    ) -> TrackPointId {
+        self.init_dependency_node(DepKind::Merge, concept_descriptor);
+        self.base_mut().dep_track_point = prev_dep_track_point;
+        let nd = self.non_det_mut();
+        let clash_track_point = nd.clash_track_point;
+        nd.branch_track_points = clash_track_point;
+        nd.dependency_clashes = ClashDescId::NONE;
+        nd.branch_node = branch_node;
+        nd.branch_tag = 0;
+        nd.closed_track_point = TrackPointId::NONE;
+        nd.closing_track_point = TrackPointId::NONE;
+        clash_track_point
+    }
+
+    /// Port of `CRESOLVEREPRESENTATIVEDependencyNode::initRESOLVEREPRESENTATIVEDependencyNode`.
+    ///
+    /// This is the representative resolve **DetLink** shape: `mDepTrackPoint`
+    /// stores the previous concept dependency, and the inline `CDependency
+    /// mAdditionalDep` stores the additional dependency track point.
+    pub fn init_resolve_representative_dependency_node(
+        &mut self,
+        concept_descriptor: ConDescId,
+        resolve_var_bind_path_map: Option<&RepresentativeVariableBindingPathMap>,
+        resolve_rep_prop_map: Option<&RepresentativePropagationMap>,
+        prev_dependency_track_point: TrackPointId,
+        additional_dependency_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &mut Arena<DependencyLink>,
+    ) -> &mut Self {
+        self.init_dependency_node(DepKind::ResolveRepresentative, concept_descriptor);
+        self.base_mut().resolve_var_bind_path_map = resolve_var_bind_path_map.cloned();
+        self.base_mut().resolve_rep_prop_map = resolve_rep_prop_map.cloned();
+        self.base_mut().dep_track_point = prev_dependency_track_point;
+        let additional_dep = if let DependencyNode::DetLink { prev, .. } = self {
+            *prev
+        } else {
+            DepLinkId::NONE
+        };
+        if additional_dependency_track_point.is_some() && additional_dep.is_some() {
+            self.base_mut().additional_after = additional_dep;
+            dep_arena
+                .get_mut(additional_dep)
+                .init_dependency(additional_dependency_track_point);
+        }
+        self.update_branching_tag(tp_arena, dep_arena);
+        self
+    }
+
+    /// Port of `CRESOLVEREPRESENTATIVEDependencyNode::getAdditionalDependency`.
+    pub fn resolve_representative_additional_dependency(&self) -> DepLinkId {
+        if let DependencyNode::DetLink { prev, .. } = self {
+            *prev
+        } else {
+            DepLinkId::NONE
+        }
     }
 
     /// Port of `CFUNCTIONALDependencyNode::initFUNCTIONALDependencyNode` — the
@@ -359,6 +490,7 @@ impl DependencyNode {
         prev_concept_dep_track_point: TrackPointId,
         prev_link1_dep_track_point: TrackPointId,
         prev_link2_dep_track_point: TrackPointId,
+        tp_arena: &Arena<DependencyTrackPoint>,
         dep_arena: &mut Arena<DependencyLink>,
     ) -> &mut Self {
         self.init_dependency_node_indi(DepKind::Functional, individual_node, concept_descriptor);
@@ -367,7 +499,7 @@ impl DependencyNode {
             dep_arena.get_mut(*prev1).dep_track_point = prev_link1_dep_track_point;
             dep_arena.get_mut(*prev2).dep_track_point = prev_link2_dep_track_point;
         }
-        // W2-DEFER[api]: updateBranchingTag() (DEP-2).
+        self.update_branching_tag(tp_arena, dep_arena);
         self
     }
 
@@ -379,6 +511,7 @@ impl DependencyNode {
         concept_descriptor: ConDescId,
         dep_track_point: TrackPointId,
         tp_arena: &mut Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
     ) -> &mut Self {
         self.init_non_deterministic_dependency_node(
             DepKind::Or,
@@ -387,7 +520,32 @@ impl DependencyNode {
             tp_arena,
         );
         self.base_mut().dep_track_point = dep_track_point;
-        // W2-DEFER[api]: updateBranchingTags() (DEP-2).
+        self.update_branching_tags(tp_arena, dep_arena);
+        self
+    }
+
+    /// Port of `CMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode::initMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode`.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: Konclude's signature accepts
+    /// `mergingIndividualNode`, but the C++ body does not store or read it; the
+    /// wrapper keeps that parameter and discards it before calling this exact init.
+    pub fn init_merge_possible_instance_individual_dependency_node(
+        &mut self,
+        branch_node: BranchNodeId,
+        individual_node: NodeId,
+        dep_track_point: TrackPointId,
+        tp_arena: &mut Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
+    ) -> &mut Self {
+        self.init_non_deterministic_dependency_node_indi(
+            DepKind::MergePossibleInstanceIndividual,
+            branch_node,
+            individual_node,
+            ConDescId::NONE,
+            tp_arena,
+        );
+        self.base_mut().dep_track_point = dep_track_point;
+        self.update_branching_tags(tp_arena, dep_arena);
         self
     }
 
@@ -398,6 +556,7 @@ impl DependencyNode {
         branch_node: BranchNodeId,
         dep_track_point: TrackPointId,
         tp_arena: &mut Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
     ) -> &mut Self {
         self.init_non_deterministic_dependency_node_indi(
             DepKind::ReuseBackendExpansionModes,
@@ -407,15 +566,119 @@ impl DependencyNode {
             tp_arena,
         );
         self.base_mut().dep_track_point = dep_track_point;
-        // W2-DEFER[api]: updateBranchingTags() (DEP-2).
-        if let DependencyNode::ReuseBackendModes { involved, .. } = self {
+        self.update_branching_tags(tp_arena, dep_arena);
+        if let DependencyNode::ReuseBackendModes {
+            fixed_reuse_dep_track_point,
+            priorized_reuse_dep_track_point,
+            involved,
+            affected,
+            ..
+        } = self
+        {
+            // mFixedReuseDepTrackPoint = nullptr;
+            *fixed_reuse_dep_track_point = TrackPointId::NONE;
+            // mPriorizedReuseDepTrackPoint = nullptr;
+            *priorized_reuse_dep_track_point = TrackPointId::NONE;
             // mInvolvedIndividualIdLinker = nullptr;
             involved.clear();
+            // mAffectedIndividualIdLinker = nullptr;
+            affected.clear();
         }
-        // W2-DEFER[api]: mFixedReuseDepTrackPoint / mPriorizedReuseDepTrackPoint /
-        // mAffectedIndividualIdLinker (the QAtomicPointer side fields) — reachable
-        // through `nd.branch_track_points` per the dependency.rs fold; their
-        // [threading] init lands with the reuse-backend method unit.
+        self
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::getFixedReuseDependencyTrackPoint`.
+    pub fn fixed_reuse_dependency_track_point(&self) -> TrackPointId {
+        match self {
+            DependencyNode::ReuseBackendModes {
+                fixed_reuse_dep_track_point,
+                ..
+            } => *fixed_reuse_dep_track_point,
+            _ => TrackPointId::NONE,
+        }
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::setFixedReuseDependencyTrackPoint`.
+    pub fn set_fixed_reuse_dependency_track_point(
+        &mut self,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
+        if let DependencyNode::ReuseBackendModes {
+            fixed_reuse_dep_track_point,
+            ..
+        } = self
+        {
+            *fixed_reuse_dep_track_point = dep_track_point;
+        }
+        self
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::getPriorizedReuseDependencyTrackPoint`.
+    pub fn priorized_reuse_dependency_track_point(&self) -> TrackPointId {
+        match self {
+            DependencyNode::ReuseBackendModes {
+                priorized_reuse_dep_track_point,
+                ..
+            } => *priorized_reuse_dep_track_point,
+            _ => TrackPointId::NONE,
+        }
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::setPriorizedReuseDependencyTrackPoint`.
+    pub fn set_priorized_reuse_dependency_track_point(
+        &mut self,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
+        if let DependencyNode::ReuseBackendModes {
+            priorized_reuse_dep_track_point,
+            ..
+        } = self
+        {
+            *priorized_reuse_dep_track_point = dep_track_point;
+        }
+        self
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::getAffectedIndividualIdLinker`.
+    pub fn affected_individual_id_linker(&self) -> &[Cint64] {
+        match self {
+            DependencyNode::ReuseBackendModes { affected, .. } => affected,
+            _ => &[],
+        }
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::addAffectedIndividualIdLinker`.
+    pub fn add_affected_individual_id_linker(
+        &mut self,
+        expected_linker: &[Cint64],
+        new_linker: Vec<Cint64>,
+    ) -> bool {
+        match self {
+            DependencyNode::ReuseBackendModes { affected, .. } => {
+                if affected.as_slice() == expected_linker {
+                    *affected = new_linker;
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::getInvolvedIndividualIdLinker`.
+    pub fn involved_individual_id_linker(&self) -> &[Cint64] {
+        match self {
+            DependencyNode::ReuseBackendModes { involved, .. } => involved,
+            _ => &[],
+        }
+    }
+
+    /// Port of `CREUSEBACKENDEXPANSIONMODESDependencyNode::setInvolvedIndividualIdLinker`.
+    pub fn set_involved_individual_id_linker(&mut self, new_linker: Vec<Cint64>) -> &mut Self {
+        if let DependencyNode::ReuseBackendModes { involved, .. } = self {
+            *involved = new_linker;
+        }
         self
     }
 }
@@ -467,6 +730,31 @@ impl DependencyNode {
         self.non_det().branch_track_points
     }
 
+    /// Port of `CNonDeterministicDependencyNode::getDependencyTrackPointBranch`
+    /// and the `CORDependencyNode` override.
+    ///
+    /// Both variants allocate a fresh non-deterministic track point, prepend it
+    /// to `mBranchTrackPoints`, and copy the dependency node's current branch
+    /// tag into the new point. In the folded Rust representation the OR-specific
+    /// `CORDisjunctDependencyTrackPoint` fields already live on every
+    /// `DependencyTrackPoint`, so the override reduces to the same allocation.
+    pub fn get_dependency_track_point_branch(
+        &mut self,
+        this: DependencyId,
+        tp_arena: &mut Arena<DependencyTrackPoint>,
+    ) -> TrackPointId {
+        let (old_head, branch_tag) = {
+            let nd = self.non_det();
+            (nd.branch_track_points, nd.branch_tag)
+        };
+        let mut non_det_track_point = DependencyTrackPoint::new(this);
+        non_det_track_point.next = old_head;
+        non_det_track_point.add_maximum_branching_tag_candidate(branch_tag);
+        let non_det_track_point = tp_arena.push(non_det_track_point);
+        self.non_det_mut().branch_track_points = non_det_track_point;
+        non_det_track_point
+    }
+
     /// Port of `CNonDeterministicDependencyNode::getClashTrackPoint`
     /// (`return &mClashTrackPoint;`).
     pub fn clash_track_point(&self) -> TrackPointId {
@@ -489,13 +777,19 @@ impl DependencyNode {
     }
 
     /// Port of `CNonDeterministicDependencyNode::setClosingDependencyTrackPoint`.
-    pub fn set_closing_dependency_track_point(&mut self, dep_track_point: TrackPointId) -> &mut Self {
+    pub fn set_closing_dependency_track_point(
+        &mut self,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
         self.non_det_mut().closing_track_point = dep_track_point;
         self
     }
 
     /// Port of `CNonDeterministicDependencyNode::setClosedDependencyTrackPoint`.
-    pub fn set_closed_dependency_track_point(&mut self, dep_track_point: TrackPointId) -> &mut Self {
+    pub fn set_closed_dependency_track_point(
+        &mut self,
+        dep_track_point: TrackPointId,
+    ) -> &mut Self {
         self.non_det_mut().closed_track_point = dep_track_point;
         self
     }
@@ -576,12 +870,90 @@ impl DependencyNode {
         false
     }
 
-    // W2-DEFER[api]: getDependencyTrackPointBranch() (allocates a new
-    // CNonDeterministicDependencyTrackPoint / CORDisjunctDependencyTrackPoint and
-    // appends it to mBranchTrackPoints, then updates branching tags), addBranchClashes(),
-    // updateBranchingTags(), and CDeterministicDependencyNode::updateBranchingTag() —
-    // these open/relabel branch track points and drive the branching-tag spine,
-    // ported in DEP-2.
+    /// Port of `CDependencyNode::getDependedBranchingTag`.
+    pub fn depended_branching_tag(
+        &self,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
+    ) -> Cint64 {
+        let mut branch_level_tag: Cint64 = 0;
+        let dep_track_point = self.base().dep_track_point;
+        if dep_track_point.is_some() {
+            branch_level_tag =
+                branch_level_tag.max(tp_arena.get(dep_track_point).get_branching_tag());
+        }
+        let mut link_dep_linker_it = self.base().additional_after;
+        while link_dep_linker_it.is_some() && branch_level_tag >= 0 {
+            let track_point = dep_arena
+                .get(link_dep_linker_it)
+                .previous_dependency_track_point();
+            if track_point.is_some() {
+                branch_level_tag =
+                    branch_level_tag.max(tp_arena.get(track_point).get_branching_tag());
+            } else {
+                branch_level_tag = -1;
+            }
+            link_dep_linker_it = dep_arena
+                .get(link_dep_linker_it)
+                .next_additional_dependency();
+        }
+        branch_level_tag
+    }
+
+    /// Port of `CDependencyNode::getDependedBranchingLevel`.
+    pub fn depended_branching_level(
+        &self,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
+    ) -> Cint64 {
+        self.depended_branching_tag(tp_arena, dep_arena)
+    }
+
+    /// Port of `CDependencyNode::updateDependencyTrackPointBranchingTag`.
+    pub fn update_dependency_track_point_branching_tag(
+        dep_track_point: TrackPointId,
+        branching_level_tag: Cint64,
+        tp_arena: &mut Arena<DependencyTrackPoint>,
+    ) -> bool {
+        tp_arena
+            .get_mut(dep_track_point)
+            .add_maximum_branching_tag_candidate(branching_level_tag)
+    }
+
+    /// Port of `CDeterministicDependencyNode::updateBranchingTag`.
+    pub fn update_branching_tag(
+        &mut self,
+        tp_arena: &Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
+    ) -> bool {
+        let branch_tag = self.depended_branching_level(tp_arena, dep_arena);
+        if branch_tag > self.base().process_tag || branch_tag < 0 {
+            self.base_mut().process_tag = branch_tag;
+            return true;
+        }
+        false
+    }
+
+    /// Port of `CNonDeterministicDependencyNode::updateBranchingTags`.
+    pub fn update_branching_tags(
+        &mut self,
+        tp_arena: &mut Arena<DependencyTrackPoint>,
+        dep_arena: &Arena<DependencyLink>,
+    ) -> bool {
+        let branch_tag = self.depended_branching_level(tp_arena, dep_arena);
+        self.non_det_mut().branch_tag = branch_tag;
+        let mut changed = false;
+        let mut branch_track_points_it = self.non_det().branch_track_points;
+        while branch_track_points_it.is_some() {
+            changed |= Self::update_dependency_track_point_branching_tag(
+                branch_track_points_it,
+                branch_tag,
+                tp_arena,
+            );
+            branch_track_points_it = tp_arena.get(branch_track_points_it).next;
+        }
+        changed
+    }
 }
 
 // ===========================================================================
@@ -698,12 +1070,337 @@ fn link_append(
 
 /// Port of `CLinkerBase::insertNext(nextLink)`
 /// (`tmpNext = next; next = nextLink; if (tmpNext) nextLink->append(tmpNext);`).
-fn link_insert_next(this_link: DepLinkId, next_link: DepLinkId, dep_arena: &mut Arena<DependencyLink>) {
+fn link_insert_next(
+    this_link: DepLinkId,
+    next_link: DepLinkId,
+    dep_arena: &mut Arena<DependencyLink>,
+) {
     if next_link.is_some() {
         let tmp_next = dep_arena.get(this_link).next;
         dep_arena.get_mut(this_link).next = next_link;
         if tmp_next.is_some() {
             link_append(next_link, tmp_next, dep_arena);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::super::model::{IndividualId, RoleId, INVALID};
+    use super::super::dependency::{DepNodeBase, OrDisjunctTrackData};
+    use super::super::varbind::VarBindingPathId;
+    use super::*;
+
+    fn empty_base(kind: DepKind) -> DepNodeBase {
+        DepNodeBase {
+            process_tag: 0,
+            concept_descriptor: ConDescId::NONE,
+            individual_node: NodeId::NONE,
+            kind,
+            dep_track_point: TrackPointId::NONE,
+            additional_after: DepLinkId::NONE,
+            selected_var_bind_path: VarBindingPathId::NONE,
+            resolve_var_bind_path_map: None,
+            resolve_rep_prop_map: None,
+            base_assertion_role: RoleId::NONE,
+            base_assertion_individual: IndividualId::NONE,
+        }
+    }
+
+    fn non_det_data(clash_track_point: TrackPointId) -> NonDetData {
+        NonDetData {
+            branch_track_points: TrackPointId::NONE,
+            clash_track_point,
+            dependency_clashes: ClashDescId::NONE,
+            branch_node: BranchNodeId::NONE,
+            branch_tag: 0,
+            closing_track_point: TrackPointId::NONE,
+            closed_track_point: TrackPointId::NONE,
+        }
+    }
+
+    fn track_point_with_tag(
+        tp_arena: &mut Arena<DependencyTrackPoint>,
+        tag: Cint64,
+    ) -> TrackPointId {
+        let mut track_point = DependencyTrackPoint::new(DependencyId::NONE);
+        track_point.add_maximum_branching_tag_candidate(tag);
+        tp_arena.push(track_point)
+    }
+
+    fn det_link_node(prev: DepLinkId) -> DependencyNode {
+        DependencyNode::DetLink {
+            base: empty_base(DepKind::Undefined),
+            prev,
+        }
+    }
+
+    #[test]
+    fn dep1_branch_continue_track_point_materializes_deterministic_node() {
+        let mut tp_arena = Arena::new();
+        let mut node = DependencyNode::Deterministic {
+            base: empty_base(DepKind::And),
+        };
+        node.base_mut().process_tag = 11;
+
+        let continue_tp =
+            node.continue_dependency_track_point(DependencyId::new(23), &mut tp_arena);
+
+        let track_point = tp_arena.get(continue_tp);
+        assert_eq!(track_point.dependency_node(), DependencyId::new(23));
+        assert_eq!(track_point.get_branching_tag(), 11);
+    }
+
+    #[test]
+    fn dep1_branch_continue_track_point_returns_non_det_clash_track_point() {
+        let mut tp_arena = Arena::new();
+        let clash_tp = tp_arena.push(DependencyTrackPoint::new(DependencyId::NONE));
+        let node = DependencyNode::NonDeterministic {
+            base: empty_base(DepKind::Or),
+            nd: non_det_data(clash_tp),
+        };
+
+        let continue_tp =
+            node.continue_dependency_track_point(DependencyId::new(29), &mut tp_arena);
+
+        assert_eq!(continue_tp, clash_tp);
+        assert_eq!(
+            tp_arena.get(continue_tp).dependency_node(),
+            DependencyId::NONE
+        );
+        assert_eq!(tp_arena.len(), 1);
+    }
+
+    #[test]
+    fn dep1_branch_all_init_uses_previous_concept_branching_tag() {
+        let mut tp_arena = Arena::new();
+        let concept_tp = track_point_with_tag(&mut tp_arena, 3);
+        let link_tp = track_point_with_tag(&mut tp_arena, 7);
+        let mut dep_arena = Arena::new();
+        let prev = dep_arena.push(DependencyLink::new());
+        let mut node = det_link_node(prev);
+
+        node.init_all_dependency_node(
+            ConDescId::NONE,
+            NodeId::NONE,
+            concept_tp,
+            link_tp,
+            &tp_arena,
+            &mut dep_arena,
+        );
+
+        assert_eq!(node.base().process_tag, 3);
+        assert_eq!(node.base().dep_track_point, concept_tp);
+        assert_eq!(
+            dep_arena.get(prev).previous_dependency_track_point(),
+            link_tp
+        );
+    }
+
+    #[test]
+    fn dep1_branch_resolve_representative_counts_additional_dependency() {
+        let mut tp_arena = Arena::new();
+        let previous_tp = track_point_with_tag(&mut tp_arena, 2);
+        let additional_tp = track_point_with_tag(&mut tp_arena, 9);
+        let mut dep_arena = Arena::new();
+        let prev = dep_arena.push(DependencyLink::new());
+        let mut node = det_link_node(prev);
+
+        node.init_resolve_representative_dependency_node(
+            ConDescId::NONE,
+            None,
+            None,
+            previous_tp,
+            additional_tp,
+            &tp_arena,
+            &mut dep_arena,
+        );
+
+        assert_eq!(node.base().process_tag, 9);
+        assert_eq!(node.additional_after_dependencies(), prev);
+        assert_eq!(
+            dep_arena.get(prev).previous_dependency_track_point(),
+            additional_tp
+        );
+    }
+
+    #[test]
+    fn dep1_merge_det_link_inits_preserve_konclude_track_point_wiring() {
+        let mut tp_arena = Arena::new();
+        let merge_tp = track_point_with_tag(&mut tp_arena, 3);
+        let other_tp = track_point_with_tag(&mut tp_arena, 7);
+        let mut dep_arena = Arena::new();
+
+        let merged_link_prev = dep_arena.push(DependencyLink::new());
+        let mut merged_link = det_link_node(merged_link_prev);
+        merged_link.init_merged_link_dependency_node(merge_tp, other_tp, &tp_arena, &mut dep_arena);
+        assert_eq!(merged_link.kind(), DepKind::MergedLink);
+        assert_eq!(merged_link.base().dep_track_point, merge_tp);
+        assert_eq!(
+            dep_arena
+                .get(merged_link_prev)
+                .previous_dependency_track_point(),
+            other_tp
+        );
+        assert_eq!(merged_link.base().process_tag, 3);
+
+        let merged_individual_prev = dep_arena.push(DependencyLink::new());
+        let mut merged_individual = det_link_node(merged_individual_prev);
+        merged_individual.init_merged_individual_dependency_node(
+            merge_tp,
+            other_tp,
+            &tp_arena,
+            &mut dep_arena,
+        );
+        assert_eq!(merged_individual.kind(), DepKind::MergedIndividual);
+        assert_eq!(
+            dep_arena
+                .get(merged_individual_prev)
+                .previous_dependency_track_point(),
+            other_tp
+        );
+
+        let same_prev = dep_arena.push(DependencyLink::new());
+        let mut same_merge = det_link_node(same_prev);
+        same_merge.init_same_individual_merge_dependency_node(
+            merge_tp,
+            other_tp,
+            &tp_arena,
+            &mut dep_arena,
+        );
+        assert_eq!(same_merge.kind(), DepKind::SameIndividualsMerge);
+        assert_eq!(same_merge.base().dep_track_point, merge_tp);
+        assert_eq!(
+            dep_arena.get(same_prev).previous_dependency_track_point(),
+            other_tp
+        );
+    }
+
+    #[test]
+    fn dep1_branch_missing_additional_dependency_sets_negative_tag() {
+        let tp_arena = Arena::new();
+        let mut dep_arena = Arena::new();
+        let missing_dep = dep_arena.push(DependencyLink::new());
+        let mut node = DependencyNode::Deterministic {
+            base: empty_base(DepKind::And),
+        };
+        node.add_after_dependency(missing_dep, &mut dep_arena);
+
+        assert!(node.update_branching_tag(&tp_arena, &dep_arena));
+        assert_eq!(node.base().process_tag, -1);
+    }
+
+    #[test]
+    fn dep1_branch_or_init_updates_clash_and_opened_track_points() {
+        let mut tp_arena = Arena::new();
+        let main_tp = track_point_with_tag(&mut tp_arena, 4);
+        let clash_tp = tp_arena.push(DependencyTrackPoint::new(DependencyId::NONE));
+        let mut dep_arena = Arena::new();
+        let mut node = DependencyNode::Or {
+            base: empty_base(DepKind::Undefined),
+            nd: non_det_data(clash_tp),
+            disj: OrDisjunctTrackData::default(),
+        };
+
+        node.init_or_dependency_node(
+            BranchNodeId::new(1),
+            ConDescId::NONE,
+            main_tp,
+            &mut tp_arena,
+            &dep_arena,
+        );
+
+        assert_eq!(node.non_det().branch_tag, 4);
+        assert_eq!(tp_arena.get(clash_tp).get_branching_tag(), 4);
+        assert_eq!(node.branch_track_points(), clash_tp);
+
+        let opened_tp =
+            node.get_dependency_track_point_branch(DependencyId::new(17), &mut tp_arena);
+        assert_eq!(tp_arena.get(opened_tp).get_branching_tag(), 4);
+        let high_tp = track_point_with_tag(&mut tp_arena, 8);
+        node.base_mut().dep_track_point = high_tp;
+
+        assert!(node.update_branching_tags(&mut tp_arena, &dep_arena));
+        assert_eq!(node.non_det().branch_tag, 8);
+        assert_eq!(tp_arena.get(opened_tp).get_branching_tag(), 8);
+        assert_eq!(tp_arena.get(clash_tp).get_branching_tag(), 8);
+    }
+
+    #[test]
+    fn dep1_branch_reuse_backend_init_updates_branch_tag() {
+        let mut tp_arena = Arena::new();
+        let main_tp = track_point_with_tag(&mut tp_arena, 6);
+        let clash_tp = tp_arena.push(DependencyTrackPoint::new(DependencyId::NONE));
+        let dep_arena = Arena::new();
+        let mut node = DependencyNode::ReuseBackendModes {
+            base: empty_base(DepKind::Undefined),
+            nd: non_det_data(clash_tp),
+            fixed_reuse_dep_track_point: TrackPointId::new(101),
+            priorized_reuse_dep_track_point: TrackPointId::new(103),
+            involved: vec![1, 2, 3],
+            affected: vec![4, 5, 6],
+        };
+
+        node.init_reuse_backend_expansion_modes_dependency_node(
+            BranchNodeId::new(2),
+            main_tp,
+            &mut tp_arena,
+            &dep_arena,
+        );
+
+        assert_eq!(node.non_det().branch_tag, 6);
+        assert_eq!(tp_arena.get(clash_tp).get_branching_tag(), 6);
+        if let DependencyNode::ReuseBackendModes {
+            fixed_reuse_dep_track_point,
+            priorized_reuse_dep_track_point,
+            involved,
+            affected,
+            ..
+        } = node
+        {
+            assert_eq!(fixed_reuse_dep_track_point, TrackPointId::NONE);
+            assert_eq!(priorized_reuse_dep_track_point, TrackPointId::NONE);
+            assert!(involved.is_empty());
+            assert!(affected.is_empty());
+        } else {
+            unreachable!("{}", INVALID);
+        }
+    }
+
+    #[test]
+    fn dep1_reuse_backend_side_field_accessors_follow_konclude() {
+        let clash_tp = TrackPointId::new(11);
+        let fixed_tp = TrackPointId::new(13);
+        let priorized_tp = TrackPointId::new(17);
+        let mut node = DependencyNode::ReuseBackendModes {
+            base: empty_base(DepKind::ReuseBackendExpansionModes),
+            nd: non_det_data(clash_tp),
+            fixed_reuse_dep_track_point: TrackPointId::NONE,
+            priorized_reuse_dep_track_point: TrackPointId::NONE,
+            involved: Vec::new(),
+            affected: Vec::new(),
+        };
+
+        assert_eq!(
+            node.fixed_reuse_dependency_track_point(),
+            TrackPointId::NONE
+        );
+        assert_eq!(
+            node.priorized_reuse_dependency_track_point(),
+            TrackPointId::NONE
+        );
+        node.set_fixed_reuse_dependency_track_point(fixed_tp)
+            .set_priorized_reuse_dependency_track_point(priorized_tp)
+            .set_involved_individual_id_linker(vec![3, 5]);
+        assert_eq!(node.fixed_reuse_dependency_track_point(), fixed_tp);
+        assert_eq!(node.priorized_reuse_dependency_track_point(), priorized_tp);
+        assert_eq!(node.involved_individual_id_linker(), &[3, 5]);
+
+        assert!(node.add_affected_individual_id_linker(&[], vec![7, 11]));
+        assert_eq!(node.affected_individual_id_linker(), &[7, 11]);
+        assert!(!node.add_affected_individual_id_linker(&[], vec![13]));
+        assert_eq!(node.affected_individual_id_linker(), &[7, 11]);
+        assert!(node.add_affected_individual_id_linker(&[7, 11], vec![13]));
+        assert_eq!(node.affected_individual_id_linker(), &[13]);
     }
 }

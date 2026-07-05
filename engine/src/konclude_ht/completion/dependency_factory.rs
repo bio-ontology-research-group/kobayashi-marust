@@ -90,6 +90,11 @@ fn empty_base(kind: DepKind) -> DepNodeBase {
         kind,
         dep_track_point: TrackPointId::NONE,
         additional_after: DepLinkId::NONE,
+        selected_var_bind_path: super::super::process::varbind::VarBindingPathId::NONE,
+        resolve_var_bind_path_map: None,
+        resolve_rep_prop_map: None,
+        base_assertion_role: super::super::model::RoleId::NONE,
+        base_assertion_individual: super::super::model::IndividualId::NONE,
     }
 }
 
@@ -159,6 +164,175 @@ impl ProcessContext {
         })
     }
 
+    /// Port of `CDependencyFactory::createDATAASSERTIONDependency`.
+    /// Upstream `CDependencyFactory.cpp` 380–388.
+    ///
+    /// The algorithm-layer wrapper owns the `mConfBuildDependencies` guard; this
+    /// is the factory body shape after that guard: allocate the
+    /// `CDATAASSERTIONDependencyNode`, run `initDATAASSERTIONDependencyNode`, and
+    /// read back the continuation track point.
+    pub fn create_dataassertion_dependency(
+        &mut self,
+        value_dep_track_point: &mut TrackPointId,
+        process_indi: &mut NodeId,
+        prev_dep_track_point: TrackPointId,
+    ) -> DependencyId {
+        let dep_node = self.alloc_det_link_dependency_node(DepKind::DataAssertion);
+        {
+            let dep = self.dep_node_mut(dep_node);
+            dep.init_deterministic_dependency_node_indi(
+                DepKind::DataAssertion,
+                *process_indi,
+                ConDescId::NONE,
+            );
+            dep.base_mut().dep_track_point = prev_dep_track_point;
+        }
+        self.update_dependency_branching_tag(dep_node);
+        *value_dep_track_point = self.materialize_continue_dependency_track_point(dep_node);
+        dep_node
+    }
+
+    /// Port of `CDependencyFactory::createMERGEDLINKDependency`.
+    /// Upstream `CDependencyFactory.cpp` has the standard alloc/init/read-back body.
+    pub fn create_merged_link_dependency_node(
+        &mut self,
+        merged_link_continue_dep_track_point: &mut TrackPointId,
+        merge_prev_dep_track_point: TrackPointId,
+        link_prev_dep_track_point: TrackPointId,
+    ) -> DependencyId {
+        let dep_node = self.alloc_det_link_dependency_node(DepKind::MergedLink);
+        let prev_link = {
+            let dep = self.dep_node_mut(dep_node);
+            dep.init_dependency_node(DepKind::MergedLink, ConDescId::NONE);
+            dep.base_mut().dep_track_point = merge_prev_dep_track_point;
+            if let DependencyNode::DetLink { prev, .. } = dep {
+                *prev
+            } else {
+                DepLinkId::NONE
+            }
+        };
+        if prev_link.is_some() {
+            self.dep_link_mut(prev_link)
+                .init_dependency(link_prev_dep_track_point);
+        }
+        self.update_dependency_branching_tag(dep_node);
+        *merged_link_continue_dep_track_point =
+            self.materialize_continue_dependency_track_point(dep_node);
+        dep_node
+    }
+
+    /// Port of `CDependencyFactory::createMERGEDINDIVIDUALDependency`.
+    pub fn create_merged_individual_dependency_node(
+        &mut self,
+        merged_individual_continue_dep_track_point: &mut TrackPointId,
+        merge_prev_dep_track_point: TrackPointId,
+        individual_prev_dep_track_point: TrackPointId,
+    ) -> DependencyId {
+        let dep_node = self.alloc_det_link_dependency_node(DepKind::MergedIndividual);
+        let prev_link = {
+            let dep = self.dep_node_mut(dep_node);
+            dep.init_dependency_node(DepKind::MergedIndividual, ConDescId::NONE);
+            dep.base_mut().dep_track_point = merge_prev_dep_track_point;
+            if let DependencyNode::DetLink { prev, .. } = dep {
+                *prev
+            } else {
+                DepLinkId::NONE
+            }
+        };
+        if prev_link.is_some() {
+            self.dep_link_mut(prev_link)
+                .init_dependency(individual_prev_dep_track_point);
+        }
+        self.update_dependency_branching_tag(dep_node);
+        *merged_individual_continue_dep_track_point =
+            self.materialize_continue_dependency_track_point(dep_node);
+        dep_node
+    }
+
+    /// Port of `CDependencyFactory::createMERGEDependency`.
+    pub fn create_merge_dependency_node(
+        &mut self,
+        branch_node: BranchNodeId,
+        concept_descriptor: ConDescId,
+        prev_dep_track_point: TrackPointId,
+    ) -> DependencyId {
+        let dep_node = self.alloc_non_deterministic_dependency_node(DepKind::Merge);
+        let clash_track_point = self.dep_node_mut(dep_node).init_merge_dependency_node(
+            branch_node,
+            concept_descriptor,
+            prev_dep_track_point,
+        );
+        if clash_track_point.is_some() {
+            let tp = self.track_point_mut(clash_track_point);
+            tp.clashed_irrelevant = true;
+        }
+        self.update_dependency_branching_tags(dep_node);
+        dep_node
+    }
+
+    /// Port of `CDependencyFactory::createMERGEPOSSIBLEINSTANCEINDIVIDUALDependencyNode`.
+    pub fn create_merge_possible_instance_individual_dependency_node(
+        &mut self,
+        branch_node: BranchNodeId,
+        individual_node: NodeId,
+        prev_dep_track_point: TrackPointId,
+    ) -> DependencyId {
+        let dep_node =
+            self.alloc_non_deterministic_dependency_node(DepKind::MergePossibleInstanceIndividual);
+        let clash_track_point = {
+            let dep = self.dep_node_mut(dep_node);
+            dep.init_dependency_node_indi(
+                DepKind::MergePossibleInstanceIndividual,
+                individual_node,
+                ConDescId::NONE,
+            );
+            dep.base_mut().dep_track_point = prev_dep_track_point;
+            if let DependencyNode::NonDeterministic { nd, .. } = dep {
+                nd.branch_track_points = nd.clash_track_point;
+                nd.dependency_clashes = ClashDescId::NONE;
+                nd.branch_node = branch_node;
+                nd.branch_tag = 0;
+                nd.closed_track_point = TrackPointId::NONE;
+                nd.closing_track_point = TrackPointId::NONE;
+                nd.clash_track_point
+            } else {
+                TrackPointId::NONE
+            }
+        };
+        if clash_track_point.is_some() {
+            self.track_point_mut(clash_track_point).clashed_irrelevant = true;
+        }
+        self.update_dependency_branching_tags(dep_node);
+        dep_node
+    }
+
+    /// Port of `CDependencyFactory::createSAMEINDIVIDUALMERGEDependency`.
+    pub fn create_same_individual_merge_dependency_node(
+        &mut self,
+        exp_continue_dep_track_point: &mut TrackPointId,
+        prev_dep_track_point: TrackPointId,
+        prev_other_dep_track_point: TrackPointId,
+    ) -> DependencyId {
+        let dep_node = self.alloc_det_link_dependency_node(DepKind::SameIndividualsMerge);
+        let prev_link = {
+            let dep = self.dep_node_mut(dep_node);
+            dep.init_dependency_node(DepKind::SameIndividualsMerge, ConDescId::NONE);
+            dep.base_mut().dep_track_point = prev_dep_track_point;
+            if let DependencyNode::DetLink { prev, .. } = dep {
+                *prev
+            } else {
+                DepLinkId::NONE
+            }
+        };
+        if prev_link.is_some() {
+            self.dep_link_mut(prev_link)
+                .init_dependency(prev_other_dep_track_point);
+        }
+        self.update_dependency_branching_tag(dep_node);
+        *exp_continue_dep_track_point = self.materialize_continue_dependency_track_point(dep_node);
+        dep_node
+    }
+
     /// Allocate the two-back-edge `CFUNCTIONALDependencyNode` (`DNTFUNCTIONAL`),
     /// the only `DetLink2`. Co-allocates both inline `CDependency` back-edges
     /// (`mPrevLink1Dep`, `mPrevLink2Dep`).
@@ -210,7 +384,10 @@ impl ProcessContext {
         let dep = self.alloc_dep_node(DependencyNode::ReuseBackendModes {
             base: empty_base(DepKind::ReuseBackendExpansionModes),
             nd: empty_non_det(clash_tp),
+            fixed_reuse_dep_track_point: TrackPointId::NONE,
+            priorized_reuse_dep_track_point: TrackPointId::NONE,
             involved: Vec::new(),
+            affected: Vec::new(),
         });
         self.track_point_mut(clash_tp).dep_node = dep;
         dep
@@ -229,21 +406,122 @@ impl ProcessContext {
     /// `CDependencyTrackPoint`, so the node IS its own continuation point and `this`
     /// is returned. The arena split keeps node and track point in separate pools, so
     /// the det case materialises a `DependencyTrackPoint` bound back to the node here
-    /// (the dep1.rs `continue_dependency_track_point` returned `Id::NONE` with a
-    /// `W2-DEFER[api]` for exactly this lazy materialisation, which needs the
-    /// `ProcessContext` to allocate). The non-det case returns the pre-allocated
-    /// `nd.clash_track_point` directly. The factory calls this once per `create*`
-    /// (matching the single C++ read-back), so the det allocation is not duplicated.
-    pub fn materialize_continue_dependency_track_point(&mut self, dep: DependencyId) -> TrackPointId {
+    /// because this factory has the `ProcessContext` needed to allocate it. The
+    /// non-det case returns the pre-allocated `nd.clash_track_point` directly. The
+    /// factory calls this once per `create*` (matching the single C++ read-back), so
+    /// the det allocation is not duplicated.
+    pub fn materialize_continue_dependency_track_point(
+        &mut self,
+        dep: DependencyId,
+    ) -> TrackPointId {
         // Each `self.dep_node(dep)` is a fresh temporary borrow ending at the
         // statement, so the det branch's `&mut self` alloc does not alias it.
         if self.dep_node(dep).is_deterministic() {
             // CDeterministicDependencyNode::getContinueDependencyTrackPoint → `this`.
-            self.alloc_track_point(DependencyTrackPoint::new(dep))
+            let process_tag = self.dep_node(dep).base().process_tag;
+            let mut track_point = DependencyTrackPoint::new(dep);
+            track_point.process_tag = process_tag;
+            self.alloc_track_point(track_point)
         } else {
             // CNonDeterministicDependencyNode::getContinueDependencyTrackPoint
             //   → &mClashTrackPoint.
             self.dep_node(dep).clash_track_point()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tagged_track_point(ctx: &mut ProcessContext, tag: i64) -> TrackPointId {
+        let mut track_point = DependencyTrackPoint::new(DependencyId::NONE);
+        track_point.add_maximum_branching_tag_candidate(tag);
+        ctx.alloc_track_point(track_point)
+    }
+
+    fn det_link_previous(ctx: &ProcessContext, dep_node: DependencyId) -> DepLinkId {
+        if let DependencyNode::DetLink { prev, .. } = ctx.dep_node(dep_node) {
+            *prev
+        } else {
+            DepLinkId::NONE
+        }
+    }
+
+    #[test]
+    fn dependency_factory_creates_merged_link_and_same_individual_nodes() {
+        let mut ctx = ProcessContext::new();
+        let merge_tp = tagged_track_point(&mut ctx, 3);
+        let other_tp = tagged_track_point(&mut ctx, 7);
+
+        let mut merged_link_continue = TrackPointId::NONE;
+        let merged_link =
+            ctx.create_merged_link_dependency_node(&mut merged_link_continue, merge_tp, other_tp);
+        assert_eq!(ctx.dep_node(merged_link).kind(), DepKind::MergedLink);
+        assert_eq!(ctx.dep_node(merged_link).base().dep_track_point, merge_tp);
+        assert_eq!(
+            ctx.dep_link(det_link_previous(&ctx, merged_link))
+                .previous_dependency_track_point(),
+            other_tp
+        );
+        assert_eq!(ctx.dep_node(merged_link).base().process_tag, 3);
+        assert_eq!(
+            ctx.track_point(merged_link_continue).dependency_node(),
+            merged_link
+        );
+
+        let mut same_continue = TrackPointId::NONE;
+        let same = ctx.create_same_individual_merge_dependency_node(
+            &mut same_continue,
+            merge_tp,
+            other_tp,
+        );
+        assert_eq!(ctx.dep_node(same).kind(), DepKind::SameIndividualsMerge);
+        assert_eq!(
+            ctx.dep_link(det_link_previous(&ctx, same))
+                .previous_dependency_track_point(),
+            other_tp
+        );
+        assert_eq!(ctx.track_point(same_continue).dependency_node(), same);
+    }
+
+    #[test]
+    fn dependency_factory_creates_merged_individual_and_merge_nodes() {
+        let mut ctx = ProcessContext::new();
+        let merge_tp = tagged_track_point(&mut ctx, 5);
+        let individual_tp = tagged_track_point(&mut ctx, 11);
+
+        let mut merged_individual_continue = TrackPointId::NONE;
+        let merged_individual = ctx.create_merged_individual_dependency_node(
+            &mut merged_individual_continue,
+            merge_tp,
+            individual_tp,
+        );
+        assert_eq!(
+            ctx.dep_node(merged_individual).kind(),
+            DepKind::MergedIndividual
+        );
+        assert_eq!(
+            ctx.dep_link(det_link_previous(&ctx, merged_individual))
+                .previous_dependency_track_point(),
+            individual_tp
+        );
+        assert_eq!(
+            ctx.track_point(merged_individual_continue)
+                .dependency_node(),
+            merged_individual
+        );
+
+        let merge =
+            ctx.create_merge_dependency_node(BranchNodeId::new(13), ConDescId::new(17), merge_tp);
+        assert_eq!(ctx.dep_node(merge).kind(), DepKind::Merge);
+        assert_eq!(ctx.dep_node(merge).concept_descriptor(), ConDescId::new(17));
+        assert_eq!(ctx.dep_node(merge).base().dep_track_point, merge_tp);
+        assert_eq!(ctx.dep_node(merge).branch_node(), BranchNodeId::new(13));
+        let clash_tp = ctx.dep_node(merge).clash_track_point();
+        assert_eq!(ctx.dep_node(merge).branch_track_points(), clash_tp);
+        assert_eq!(ctx.track_point(clash_tp).dependency_node(), merge);
+        assert!(ctx.track_point(clash_tp).clashed_irrelevant);
+        assert_eq!(ctx.track_point(clash_tp).get_branching_tag(), 5);
     }
 }

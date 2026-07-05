@@ -62,9 +62,12 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use super::super::model::substrate::Cint64;
+use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
-use super::super::process::NodeId;
+use super::super::process::node::IndividualProcessNode;
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
+use super::super::process::stubs::BackendSyncDataId;
+use super::super::process::{ConDescId, NodeId, SatNodeId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -230,28 +233,56 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_proc_node: &mut NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 24889–24913. Outline:
-        //
-        //   expContData = ctx->getUsedProcessingDataBox()->getBackendNeighbourExpansionControllingData(true);
-        //   reuseModesDepNode = expContData->getReuseModesDependencyNode();
-        //   if reuseModesDepNode:
-        //     reuseDepNode = createREUSEBACKENDFIXEDINDIVIDUALEXPANSIONDependency(indiProcNode,
-        //                       expContData->getReuseContinuingDependencyTrackPoint(), ctx);          // dep unit
-        //     newDependencyTrackPoint = createNonDeterministicDependencyTrackPointBranch(reuseDepNode, true, ctx);  // dep unit
-        //     newIndiProcNode = getLocalizedIndividual(indiProcNode, false, ctx);                     // u17 (sibling)
-        //     newIndiProcNode->addProcessingRestrictionFlags(PRFBACKENDEXPANSIONREUSINGINDIVIDUAL);
-        //     locBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(newIndiProcNode, ctx);  // u17
-        //     locBackendSyncData->setBackendExpansionReuseDependencyTrackPoint(newDependencyTrackPoint);
-        //     // directly do reuse expansion here, clashes are not problematic
-        //     return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: `CBackendNeighbourExpansionControllingData` +
-        // `CREUSEBACKENDEXPANSIONMODESDependencyNode` (process-layer `stub!` marker /
-        // dep-node create siblings), the reuse-dependency create + track-point branch
-        // (dep unit), `getLocalizedIndividual` / the localized backend sync data (u17),
-        // and `PRFBACKENDEXPANSIONREUSINGINDIVIDUAL` (W6) are deferred.
-        let _ = (&mut *indi_proc_node, calc_alg_context);
+        // expContData = ctx->getUsedProcessingDataBox()->getBackendNeighbourExpansionControllingData(true);
+        let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(true);
+        // reuseModesDepNode = expContData->getReuseModesDependencyNode();
+        let reuse_modes_dep_node = calc_alg_context
+            .process_context()
+            .backend_neighbour_expansion_controlling_data(exp_cont_data)
+            .get_reuse_modes_dependency_node();
+        if reuse_modes_dep_node.is_some() {
+            let reuse_continuing_dependency_track_point = calc_alg_context
+                .process_context()
+                .backend_neighbour_expansion_controlling_data(exp_cont_data)
+                .get_reuse_continuing_dependency_track_point();
+            // reuseDepNode = createREUSEBACKENDFIXEDINDIVIDUALEXPANSIONDependency(indiProcNode,
+            //               expContData->getReuseContinuingDependencyTrackPoint(), ctx);
+            let reuse_dep_node = self.create_reuse_backend_fixed_individual_expansion_dependency(
+                indi_proc_node,
+                reuse_continuing_dependency_track_point,
+                calc_alg_context,
+            );
+            // newDependencyTrackPoint = createNonDeterministicDependencyTrackPointBranch(reuseDepNode, true, ctx);
+            let new_dependency_track_point = self
+                .create_non_deterministic_dependency_track_point_branch(
+                    reuse_dep_node,
+                    true,
+                    calc_alg_context,
+                );
+
+            // newIndiProcNode = getLocalizedIndividual(indiProcNode, false, ctx);
+            let new_indi_proc_node =
+                self.get_localized_individual(*indi_proc_node, false, calc_alg_context);
+            // newIndiProcNode->addProcessingRestrictionFlags(PRFBACKENDEXPANSIONREUSINGINDIVIDUAL);
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(new_indi_proc_node)
+                .add_processing_restriction_flags(
+                    IndividualProcessNode::PRF_BACKENDEXPANSIONREUSINGINDIVIDUAL,
+                );
+            // locBackendSyncData = getLocalizedIndividualBackendCacheSnychronisationData(newIndiProcNode, ctx);
+            let loc_backend_sync_data = self
+                .get_localized_individual_backend_cache_snychronisation_data(
+                    new_indi_proc_node,
+                    calc_alg_context,
+                );
+            calc_alg_context
+                .process_context_mut()
+                .backend_sync_data_mut(loc_backend_sync_data)
+                .set_backend_expansion_reuse_dependency_track_point(new_dependency_track_point);
+            // directly do reuse expansion here, clashes are not problematic
+            return true;
+        }
         false
     }
 
@@ -275,7 +306,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_proc_node: &mut NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 24916–25003. Outline:
+        // Faithful transcription of cpp 24916–25003. The branch-local task/context
+        // split remains deferred, but the process-side dependency/flag/queue effects
+        // for the two alternatives are live below.
         //
         //   expContData = ctx->getUsedProcessingDataBox()->getBackendNeighbourExpansionControllingData(true);
         //   reuseModesDepNode = expContData->getReuseModesDependencyNode();
@@ -320,15 +353,84 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //     throw CCalculationStopProcessingException(true);   // [exceptions] -> early return once task-fork wired
         //   return false;
         //
-        // Held PORT-PENDING: the whole task-forking path
-        // (`createDependendBranchingTaskList`, `createCalculationAlgorithmContext`,
-        // the per-task process tagger / priority strategy / communicator),
-        // `CBackendNeighbourExpansionControllingData` + the reuse dep-node siblings,
-        // `getLocalizedIndividual` / localized backend sync data (u17), the two
-        // databox backend expansion queues + `insertIndiviudalProcessNode` (process
-        // stubs), and the terminal stop-processing throw (W3-DEFER[exceptions]).
-        let _ = (&mut *indi_proc_node, calc_alg_context);
-        false
+        // W3-DEFER[task]: real dependent child task contexts, per-child process
+        // tagger branch/localization increments, task priorities, scheduler
+        // communication, and the terminal stop-processing throw.
+        let exp_cont_data = calc_alg_context.backend_neighbour_expansion_controlling_data(true);
+        let reuse_modes_dep_node = calc_alg_context
+            .process_context()
+            .backend_neighbour_expansion_controlling_data(exp_cont_data)
+            .get_reuse_modes_dependency_node();
+        if reuse_modes_dep_node.is_none() {
+            return false;
+        }
+
+        let reuse_continuing_dependency_track_point = calc_alg_context
+            .process_context()
+            .backend_neighbour_expansion_controlling_data(exp_cont_data)
+            .get_reuse_continuing_dependency_track_point();
+        let reuse_dep_node = self.create_reuse_backend_prioritized_individual_expansion_dependency(
+            indi_proc_node,
+            reuse_continuing_dependency_track_point,
+            calc_alg_context,
+        );
+
+        // fixed-reusing alternative (i == 0)
+        let reuse_dependency_track_point = self
+            .create_non_deterministic_dependency_track_point_branch(
+                reuse_dep_node,
+                false,
+                calc_alg_context,
+            );
+        let new_indi_proc_node =
+            self.get_localized_individual(*indi_proc_node, false, calc_alg_context);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(new_indi_proc_node)
+            .add_processing_restriction_flags(
+                IndividualProcessNode::PRF_BACKENDEXPANSIONREUSINGINDIVIDUAL,
+            );
+        let loc_backend_sync_data = self
+            .get_localized_individual_backend_cache_snychronisation_data(
+                new_indi_proc_node,
+                calc_alg_context,
+            );
+        calc_alg_context
+            .process_context_mut()
+            .backend_sync_data_mut(loc_backend_sync_data)
+            .set_backend_expansion_reuse_dependency_track_point(reuse_dependency_track_point);
+        let reuse_queue = calc_alg_context.get_backend_individual_reuse_expansion_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_unsorted_proc_queue_mut(reuse_queue)
+            .insert_indiviudal_process_node(new_indi_proc_node);
+
+        // reuse-discarding alternative (i == 1)
+        let _discard_dependency_track_point = self
+            .create_non_deterministic_dependency_track_point_branch(
+                reuse_dep_node,
+                false,
+                calc_alg_context,
+            );
+        let discard_indi_proc_node =
+            self.get_localized_individual(*indi_proc_node, false, calc_alg_context);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(discard_indi_proc_node)
+            .add_processing_restriction_flags(
+                IndividualProcessNode::PRF_BACKENDEXPANSIONREUSEDISCARDED,
+            );
+        let indirect_queue =
+            calc_alg_context.get_backend_indirect_compatibility_expansion_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_unsorted_proc_queue_mut(indirect_queue)
+            .insert_indiviudal_process_node(discard_indi_proc_node);
+
+        // W3-DEFER[core]: prepareBranchedTaskProcessing(...) for both alternatives.
+        // W3-DEFER[exceptions]: CCalculationStopProcessingException(true).
+        *indi_proc_node = new_indi_proc_node;
+        true
     }
 
     // =======================================================================
@@ -535,7 +637,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 26283–26362. Outline:
+        // Faithful transcription of cpp 26283–26362. The live process-side
+        // backend-sync state is wired below; W6 cache association/label semantics
+        // are still held at their exact Konclude call sites.
         //
         //   backendSynched = true;
         //   backendSyncData    = indiNode->getIndividualBackendCacheSynchronisationData(false);
@@ -581,15 +685,114 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   else: backendSynched = false;
         //   return backendSynched;
         //
-        // Held PORT-PENDING: the per-node backend sync data, association/label cache
-        // items, `testIndividualNodeBackendCacheNewMergings` +
-        // `visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData`
-        // (merge unit), the `mBackendCacheHandler` concept-membership query, and the
-        // concept-descriptor linker traversal. The sibling
-        // `has_nondeterministic_dependency` (dep unit) becomes live on the reconcile
-        // pass. NB the C++ has a (dead) duplicated `return backendSynched;`.
-        let _ = (indi_node, calc_alg_context);
-        true
+        // Held W6-DEFER[api]: assocData->isCompletelyHandled(),
+        // assocData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL), the backend
+        // cache-handler concept-membership query, nominal-concept filtering, and
+        // the newly-merged deterministic representative visitor's association
+        // label comparison. NB the C++ has a dead duplicated `return backendSynched;`.
+        let mut backend_synched = true;
+        let mut backend_sync_data = calc_alg_context
+            .process_context()
+            .node(indi_node)
+            .individual_backend_cache_synchronisation_data(false);
+
+        if backend_sync_data.is_some()
+            && calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .is_backend_cache_synchron()
+        {
+            let assoc_data = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_associtaion_data();
+            if assoc_data.is_none() {
+                backend_synched = false;
+            } else {
+                // W6-DEFER[api]: assocData->isCompletelyHandled() and the
+                // FULL_CONCEPT_SET_LABEL cache item read.
+                self.test_individual_node_backend_cache_new_mergings(indi_node, calc_alg_context);
+                backend_sync_data = calc_alg_context
+                    .process_context()
+                    .node(indi_node)
+                    .individual_backend_cache_synchronisation_data(false);
+
+                let (merged_linker, last_synchronized_merged_linker) = {
+                    let sync_data = calc_alg_context
+                        .process_context()
+                        .backend_sync_data(backend_sync_data);
+                    (
+                        sync_data.get_merged_individual_node_linker().to_vec(),
+                        sync_data
+                            .get_last_synchronized_concepts_tested_merged_node_linker()
+                            .to_vec(),
+                    )
+                };
+                if merged_linker != last_synchronized_merged_linker {
+                    // W6-DEFER[api]: visitNewlyMergedOnlyDeterministicRepresentativeIndividualsBackendSynchronisationData(...)
+                    // and merged association full-concept-label equality check.
+                    let loc_backend_sync_data = self
+                        .get_localized_individual_backend_cache_snychronisation_data(
+                            indi_node,
+                            calc_alg_context,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .backend_sync_data_mut(loc_backend_sync_data)
+                        .set_last_synchronized_concepts_tested_merged_node_linker(merged_linker);
+                    backend_sync_data = loc_backend_sync_data;
+                }
+
+                let last_tested_con_des = calc_alg_context
+                    .process_context()
+                    .backend_sync_data(backend_sync_data)
+                    .get_last_synchronization_tested_concept_descriptor();
+                let con_set = calc_alg_context
+                    .process_context_mut()
+                    .node_mut(indi_node)
+                    .get_reapply_concept_label_set(false);
+                if con_set.is_some() && backend_synched {
+                    let con_des_linker = calc_alg_context
+                        .process_context()
+                        .label_set(con_set)
+                        .get_adding_sorted_concept_description_linker();
+                    if con_des_linker != last_tested_con_des {
+                        // W6-DEFER[api]: nominalConcept lookup, exact descriptor-chain
+                        // scan, nondeterminism test, and
+                        // mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(...).
+                        // Until that query is live, preserve Konclude's cursor writes
+                        // at this update point over the real backend-sync object.
+                        let loc_backend_sync_data = self
+                            .get_localized_individual_backend_cache_snychronisation_data(
+                                indi_node,
+                                calc_alg_context,
+                            );
+                        calc_alg_context
+                            .process_context_mut()
+                            .backend_sync_data_mut(loc_backend_sync_data)
+                            .set_last_synchronization_tested_concept_descriptor(con_des_linker)
+                            .set_last_synched_concept_descriptor(con_des_linker);
+                        backend_sync_data = loc_backend_sync_data;
+                    }
+                } else {
+                    backend_synched = false;
+                }
+            }
+            if !backend_synched {
+                let loc_backend_sync_data = self
+                    .get_localized_individual_backend_cache_snychronisation_data(
+                        indi_node,
+                        calc_alg_context,
+                    );
+                calc_alg_context
+                    .process_context_mut()
+                    .backend_sync_data_mut(loc_backend_sync_data)
+                    .set_backend_cache_synchron(backend_synched);
+            }
+        } else {
+            backend_synched = false;
+        }
+        backend_synched
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::validateBackendSynchronisationContinued`.
@@ -602,58 +805,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// advances the last-synched / last-tested cursors and writes the
     /// `backendCacheSynchron` flag. Returns the (continued) synchronisation verdict.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: `backendSyncData` is the opaque per-node backend sync
-    /// handle (`Cint64`); `addedConcept` is a `ConceptId`.
+    /// KONCLUDE-PORT-NOTE[api]: backend-sync state and label-set head access are
+    /// live. The backend-cache-handler membership query and the exact descriptor
+    /// chain scan remain deferred.
     pub fn validate_backend_synchronisation_continued(
         &mut self,
         indi: NodeId,
-        backend_sync_data: Cint64,
+        backend_sync_data: BackendSyncDataId,
         added_concept: ConceptId,
         added_concept_negation: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 26368–26407. Outline:
-        //
-        //   backendSynched = true;
-        //   if backendSyncData && backendSyncData->isBackendCacheSynchron():
-        //     lastTestedConDes = backendSyncData->getLastSynchronizationTestedConceptDescriptor();
-        //     conSet = indi->getReapplyConceptLabelSet(false);
-        //     assocData = backendSyncData->getAssocitaionData();
-        //     if conSet && assocData:
-        //       conDesLinker = conSet->getAddingSortedConceptDescriptionLinker();
-        //       conDesIt = conDesLinker;
-        //       if addedConcept && conDesIt != lastTestedConDes:
-        //         if conDesIt->getConcept() == addedConcept || conDesIt->isNegated() == addedConceptNegation:
-        //           conDesIt = conDesIt->getNext();
-        //       nominalConcept = indi->getNominalIndividual()->getIndividualNominalConcept();
-        //       while conDesIt != lastTestedConDes && backendSynched && conDesIt:
-        //         if conDesIt->getConcept() != nominalConcept || conDesIt->isNegated():
-        //           nondeterministic = hasNondeterministicDependency(conDesIt->getDependencyTrackPoint(), ctx);
-        //           if !mBackendCacheHandler || !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
-        //                   assocData, assocData->getLabelCacheEntry(FULL_CONCEPT_SET_LABEL),
-        //                   conDesIt->getConcept(), conDesIt->isNegated(), !nondeterministic, ctx):
-        //             backendSynched = false;
-        //         if backendSynched: backendSyncData->setLastSynchedConceptDescriptor(conDesIt);
-        //         conDesIt = conDesIt->getNext();
-        //       backendSyncData->setLastSynchronizationTestedConceptDescriptor(conDesLinker);
-        //     else: backendSynched = false;
-        //     backendSyncData->setBackendCacheSynchron(backendSynched);
-        //   else: backendSynched = false;
-        //   return backendSynched;
-        //
-        // Held PORT-PENDING: the per-node backend sync data + association/label cache
-        // items, the concept-descriptor linker traversal, and the
-        // `mBackendCacheHandler` concept-membership query. The sibling
-        // `has_nondeterministic_dependency` (dep unit) becomes live on the reconcile
-        // pass.
-        let _ = (
-            indi,
-            backend_sync_data,
-            added_concept,
-            added_concept_negation,
-            calc_alg_context,
-        );
-        true
+        let mut backend_synched = true;
+        if backend_sync_data.is_some()
+            && calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .is_backend_cache_synchron()
+        {
+            let last_tested_con_des = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_last_synchronization_tested_concept_descriptor();
+            let con_set = calc_alg_context
+                .process_context_mut()
+                .node_mut(indi)
+                .get_reapply_concept_label_set(false);
+            let assoc_data = calc_alg_context
+                .process_context()
+                .backend_sync_data(backend_sync_data)
+                .get_associtaion_data();
+            if con_set.is_some() && assoc_data.is_some() {
+                let con_des_linker = calc_alg_context
+                    .process_context()
+                    .label_set(con_set)
+                    .get_adding_sorted_concept_description_linker();
+                let mut con_des_it: ConDescId = con_des_linker;
+                if added_concept.is_some()
+                    && con_des_it.is_some()
+                    && con_des_it != last_tested_con_des
+                {
+                    if calc_alg_context
+                        .process_context()
+                        .con_desc(con_des_it)
+                        .get_concept()
+                        == added_concept
+                        || calc_alg_context
+                            .process_context()
+                            .con_desc(con_des_it)
+                            .is_negated()
+                            == added_concept_negation
+                    {
+                        con_des_it = calc_alg_context.process_context().con_desc(con_des_it).next;
+                    }
+                }
+
+                // W6-DEFER[api]: nominalConcept lookup, exact con-descriptor chain scan,
+                // and mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(...).
+                // With the cache-membership query still deferred, preserve the cursor
+                // writes over the live backend-sync object at Konclude's update points.
+                if backend_synched {
+                    calc_alg_context
+                        .process_context_mut()
+                        .backend_sync_data_mut(backend_sync_data)
+                        .set_last_synched_concept_descriptor(con_des_it);
+                }
+                calc_alg_context
+                    .process_context_mut()
+                    .backend_sync_data_mut(backend_sync_data)
+                    .set_last_synchronization_tested_concept_descriptor(con_des_linker);
+            } else {
+                backend_synched = false;
+            }
+            calc_alg_context
+                .process_context_mut()
+                .backend_sync_data_mut(backend_sync_data)
+                .set_backend_cache_synchron(backend_synched);
+        } else {
+            backend_synched = false;
+        }
+        backend_synched
     }
 
     // =======================================================================
@@ -670,38 +901,52 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// indirect status flags carry the clashed flag. Returns `false` when any hop is
     /// absent.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the whole chain (`CConceptData` →
-    /// `CConceptProcessData` → `CConceptReferenceLinking` →
-    /// `CConceptSaturationReferenceLinkingData` → `CIndividualSaturationProcessNode`)
-    /// belongs to the saturation subsystem (W4) and the concept-data reference
-    /// linking, which the completion layer cannot yet resolve.
     pub fn is_concept_unsatisfiability_saturated(
         &mut self,
         concept: ConceptId,
         negation: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 26900–26921. Outline:
-        //
         //   conceptData = concept->getConceptData();
         //   saturationIndiNode = nullptr;
-        //   if conceptData:
-        //     conProcData = (CConceptProcessData*)conceptData;
-        //     conRefLinking = conProcData->getConceptReferenceLinking();
-        //     if conRefLinking:
-        //       confSatRefLinkingData = (CConceptSaturationReferenceLinkingData*)conRefLinking;
-        //       satCalcRefLinkData = confSatRefLinkingData->getConceptSaturationReferenceLinkingData(negation);
-        //       if satCalcRefLinkData:
-        //         saturationIndiNode = satCalcRefLinkData->getIndividualProcessNodeForConcept();
-        //   if saturationIndiNode:
-        //     if saturationIndiNode->getIndirectStatusFlags()->hasClashedFlag(): return true;
-        //   return false;
-        //
-        // Held PORT-PENDING: `CConceptData`/`CConceptProcessData`/the concept
-        // reference-linking chain and the `CIndividualSaturationProcessNode` indirect
-        // status flags are the saturation subsystem (W4) — not yet reachable from the
-        // completion layer. Default verdict (no saturation clash) is `false`.
-        let _ = (concept, negation, calc_alg_context);
+        let concept_data = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_data();
+        let mut saturation_indi_node = SatNodeId::NONE;
+        if concept_data != INVALID {
+            // conProcData = (CConceptProcessData*)conceptData;
+            let con_proc_data = Id::new(concept_data);
+            // conRefLinking = conProcData->getConceptReferenceLinking();
+            let con_ref_linking = calc_alg_context
+                .ontology_arenas()
+                .concept_process_data(con_proc_data)
+                .get_concept_reference_linking();
+            if con_ref_linking.is_some() {
+                // confSatRefLinkingData = (CConceptSaturationReferenceLinkingData*)conRefLinking;
+                let sat_calc_ref_link_data = calc_alg_context
+                    .ontology_arenas()
+                    .concept_saturation_reference_linking_data(con_ref_linking)
+                    .get_concept_saturation_reference_linking_data(negation);
+                if sat_calc_ref_link_data.is_some() {
+                    saturation_indi_node = calc_alg_context
+                        .ontology_arenas()
+                        .saturation_concept_reference_linking(sat_calc_ref_link_data)
+                        .get_individual_process_node_for_concept();
+                }
+            }
+        }
+
+        if saturation_indi_node.is_some() {
+            return calc_alg_context
+                .process_context()
+                .sat_node(saturation_indi_node)
+                .indirect_status_flags
+                .has_flags_code(
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+                    false,
+                );
+        }
         false
     }
 
@@ -734,16 +979,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !calc_alg_context
             .process_context()
             .node(individual)
-            .backend_synchron_retest_processing_queued
+            .is_backend_synchron_retest_processing_queued()
         {
             calc_alg_context
                 .process_context_mut()
                 .node_mut(individual)
-                .backend_synchron_retest_processing_queued = true;
-            // W3-DEFER[api]: the databox `getBackendCacheSynchronizationProcessingQueue`
-            // getter + `CIndividualUnsortedProcessingQueue::insertIndiviudalProcessNode`
-            // are process-layer stubs (no arena yet); the queue insert lands on the
-            // reconcile pass.
+                .set_backend_synchron_retest_processing_queued(true);
+            let backend_cache_sync_queue =
+                calc_alg_context.get_backend_cache_synchronization_processing_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(backend_cache_sync_queue)
+                .insert_indiviudal_process_node(individual);
             // W3-DEFER[api]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, calcAlgContext);
             return true;
         }
@@ -767,14 +1014,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !calc_alg_context
             .process_context()
             .node(individual)
-            .backend_direct_influence_expansion_queued
+            .is_backend_direct_influence_expansion_queued()
         {
             calc_alg_context
                 .process_context_mut()
                 .node_mut(individual)
-                .backend_direct_influence_expansion_queued = true;
-            // W3-DEFER[api]: databox `getBackendDirectInfluenceExpansionQueue` +
-            // `insertIndiviudalProcessNode` (process-layer stubs, no arena).
+                .set_backend_direct_influence_expansion_queued(true);
+            let backend_cache_sync_queue =
+                calc_alg_context.get_backend_direct_influence_expansion_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(backend_cache_sync_queue)
+                .insert_indiviudal_process_node(individual);
             // W3-DEFER[api]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, calcAlgContext);
             return true;
         }
@@ -798,14 +1049,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !calc_alg_context
             .process_context()
             .node(individual)
-            .backend_indirect_compatibility_expansion_queued
+            .is_backend_indirect_compatibility_expansion_queued()
         {
             calc_alg_context
                 .process_context_mut()
                 .node_mut(individual)
-                .backend_indirect_compatibility_expansion_queued = true;
-            // W3-DEFER[api]: databox `getBackendIndirectCompatibilityExpansionQueue` +
-            // `insertIndiviudalProcessNode` (process-layer stubs, no arena).
+                .set_backend_indirect_compatibility_expansion_queued(true);
+            let backend_cache_sync_queue =
+                calc_alg_context.get_backend_indirect_compatibility_expansion_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(backend_cache_sync_queue)
+                .insert_indiviudal_process_node(individual);
             // W3-DEFER[api]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, calcAlgContext);
             return true;
         }
@@ -834,9 +1089,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             calc_alg_context
                 .process_context_mut()
                 .node_mut(individual)
-                .backend_reuse_expansion_queued = true;
-            // W3-DEFER[api]: databox `getBackendIndividualReuseExpansionQueue` +
-            // `insertIndiviudalProcessNode` (process-layer stubs, no arena).
+                .set_backend_reuse_expansion_queued(true);
+            let backend_cache_sync_queue =
+                calc_alg_context.get_backend_individual_reuse_expansion_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(backend_cache_sync_queue)
+                .insert_indiviudal_process_node(individual);
             // W3-DEFER[api]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, calcAlgContext);
             return true;
         }
@@ -864,15 +1123,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !calc_alg_context
             .process_context()
             .node(individual)
-            .backend_neighbour_expansion_queued
+            .is_backend_neighbour_expansion_queued()
         {
             calc_alg_context
                 .process_context_mut()
                 .node_mut(individual)
-                .backend_neighbour_expansion_queued = true;
-            // W3-DEFER[api]: databox `getBackendIndividualNeighbourExpansionQueue`
-            // (the `CIndividualLinkerRotationProcessingQueue`) +
-            // `insertIndiviudalProcessNode` (process-layer stubs, no arena).
+                .set_backend_neighbour_expansion_queued(true);
+            let backend_cache_sync_queue =
+                calc_alg_context.get_backend_individual_neighbour_expansion_queue(true);
+            calc_alg_context
+                .process_context_mut()
+                .indi_rotation_proc_queue_mut(backend_cache_sync_queue)
+                .insert_indiviudal_process_node(individual);
             // W3-DEFER[api]: STATINC(INDINODESADDEDPROCESSINGQUEUECOUNT, calcAlgContext);
             return true;
         }
