@@ -25,10 +25,14 @@ universal marker concept asserted as a ⊤-fact with a max-CardMeta whose marker
 and filler are that concept, so the HT `≤n` merge folds functionality instead
 of branching over the raw `R(x,y0) ∧ R(x,y1) → y0 = y1` Eq clause (which is
 kept: the CB engine consumes it, and it is redundant-but-sound on the HT).
-**ore_ont_541: timeout in every prior config → 21 s, gold-exact.** Gated
-opt-in pending its own corpus panel: the tagging makes every functional-role
-ontology card-routable, which needs regression validation before a default
-flip.
+**ore_ont_541: timeout in every prior config → 21 s, gold-exact.** Kept gated
+OFF: its own 584-ont corpus panel (48080229) found the flag NET-NEGATIVE —
+572 gold-MATCH vs 573 for the default (card without CARD_FN), because tagging
+every functional-role ontology card-routable regresses ore_ont_1016
+(MATCH → DIFF, a correctness break on 1016's functional roles) and ore_ont_7581
+(MATCH → timeout, the extra markers + emelim-disable push it over budget) to
+recover only 541. So 541 is not cleanly recoverable this way; CARD_FN remains a
+diagnostic opt-in, not a default.
 
 Also: `transitive_close_subs` now closes the confirmed subsumption relation at
 the HT worker's serialization boundary (both the Ht and legacy-Tableau paths).

@@ -20,7 +20,7 @@ environment set, confirming the default flip is behaviorally identical.
 
 | ont | class | recoverable |
 |-----|-------|-------------|
-| 541 | functional + disjunction | **opt-in `KM_HT_CARD_FN`** (21 s gold-exact; corpus panel 48080229) |
+| 541 | functional + disjunction | `KM_HT_CARD_FN` recovers it (21 s gold-exact) but panel 48080229 found the flag net-negative (572 vs 573 MATCH; regresses 1016 to DIFF + 7581 to timeout) → kept gated OFF |
 | 2669, 15516 | SWRL DL-safe rules | **opt-in `KM_HT_RULES`** (KM correctly inconsistent; contested gold — HermiT agrees) |
 | 14817 | transitive role chains | needs Konclude role-automaton ∀-propagation |
 | 10621, 12653 | datatype cardinality | needs concrete-domain oracle in HT |
