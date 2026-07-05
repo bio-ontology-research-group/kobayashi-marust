@@ -542,6 +542,313 @@ impl RoleChainAutomataTransformationPreProcess {
     pub fn begin(&mut self, arenas: &OntologyArenas) {
         self.next_concept_tag = arenas.concept_count();
     }
+
+    // ---------------------------------------------------------------------
+    // chain relevance / recursive-traversal analysis (step 6)
+    // ---------------------------------------------------------------------
+
+    /// Port of `isChainLinkerImplicit`: element-wise, every role of the
+    /// testing chain must have the corresponding role of `chain_linker` as an
+    /// (indirect) super role with the required inversion; both chains must
+    /// have equal length.
+    pub fn is_chain_linker_implicit(
+        &self,
+        arenas: &OntologyArenas,
+        testing_implicit_chain_linker: &[RoleId],
+        chain_linker: &[RoleId],
+        inversed_testing: bool,
+    ) -> bool {
+        if testing_implicit_chain_linker.len() != chain_linker.len() {
+            return false;
+        }
+        for (&testing_chain_role, &chain_role) in
+            testing_implicit_chain_linker.iter().zip(chain_linker.iter())
+        {
+            if !self.has_super_role3(arenas, testing_chain_role, chain_role, inversed_testing) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Port of `isTransitiveChainData`: every chain element IS the chain's
+    /// super role and the chain has exactly 2 elements (`R ∘ R ⊑ R`).
+    pub fn is_transitive_chain_data(
+        &self,
+        arenas: &OntologyArenas,
+        chain_data: &RoleSubRoleChainData,
+    ) -> bool {
+        let chain_super_role = chain_data.role;
+        let mut trans_chained_role_count = 0;
+        for &chained_role in arenas
+            .role_chain(chain_data.role_chain)
+            .get_role_chain_linker()
+        {
+            if chained_role != chain_super_role {
+                return false;
+            }
+            trans_chained_role_count += 1;
+        }
+        trans_chained_role_count == 2
+    }
+
+    /// Port of `isChainDataImplicit`: `testing` is implicit when its super
+    /// role is (inversed or not, per the combined inversion flag) below
+    /// `chain_data`'s super role and its chain is element-wise below
+    /// `chain_data`'s (inverse-)chain.
+    pub fn is_chain_data_implicit(
+        &self,
+        arenas: &OntologyArenas,
+        testing_implicit_chain_data: &RoleSubRoleChainData,
+        chain_data: &RoleSubRoleChainData,
+    ) -> bool {
+        let testing_chain_super_role = testing_implicit_chain_data.role;
+        let chain_super_role = chain_data.role;
+        let inversed_testing = chain_data.inverse ^ testing_implicit_chain_data.inverse;
+        if !self.has_inversed_or_non_inversed_super_role(
+            arenas,
+            testing_chain_super_role,
+            chain_super_role,
+        ) {
+            return false;
+        }
+        if !inversed_testing
+            && self.has_non_inversed_super_role(arenas, testing_chain_super_role, chain_super_role)
+        {
+            let testing_chain = arenas
+                .role_chain(testing_implicit_chain_data.role_chain)
+                .get_role_chain_linker();
+            let chain = arenas
+                .role_chain(chain_data.role_chain)
+                .get_role_chain_linker();
+            if self.is_chain_linker_implicit(arenas, testing_chain, chain, false) {
+                return true;
+            }
+        }
+        if inversed_testing
+            && self.has_inversed_super_role(arenas, testing_chain_super_role, chain_super_role)
+        {
+            let testing_chain = arenas
+                .role_chain(testing_implicit_chain_data.role_chain)
+                .get_role_chain_linker();
+            let inv_chain = arenas
+                .role_chain(chain_data.role_chain)
+                .get_inverse_role_chain_linker();
+            if self.is_chain_linker_implicit(arenas, testing_chain, inv_chain, true) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Port of `getRelevantChainDataList`: drop every chain that is implicit
+    /// in a LATER list entry or in an already-kept one.
+    pub fn get_relevant_chain_data_list(
+        &self,
+        arenas: &OntologyArenas,
+        _role: RoleId,
+        role_sub_chain_data_list: &[RoleSubRoleChainData],
+    ) -> Vec<RoleSubRoleChainData> {
+        let mut relevant: Vec<RoleSubRoleChainData> = Vec::new();
+        for (i, chain_data) in role_sub_chain_data_list.iter().enumerate() {
+            let mut has_implicit = false;
+            for chain_data2 in role_sub_chain_data_list.iter().skip(i + 1) {
+                if self.is_chain_data_implicit(arenas, chain_data, chain_data2) {
+                    has_implicit = true;
+                    break;
+                }
+            }
+            if !has_implicit {
+                for chain_data2 in &relevant {
+                    if self.is_chain_data_implicit(arenas, chain_data, chain_data2) {
+                        has_implicit = true;
+                        break;
+                    }
+                }
+            }
+            if !has_implicit {
+                relevant.push(*chain_data);
+            }
+        }
+        relevant
+    }
+
+    /// Port of `isChainDataRecursiveTraversalCritical`: the chain's super role
+    /// is a DIFFERENT role that is not above `role`, and the chain starts or
+    /// ends with that super role (so inlining it would loop).
+    pub fn is_chain_data_recursive_traversal_critical(
+        &self,
+        arenas: &OntologyArenas,
+        role: RoleId,
+        chain_data: &RoleSubRoleChainData,
+    ) -> bool {
+        let chain_super_role = chain_data.role;
+        if chain_super_role == role {
+            return false;
+        }
+        if self.has_inversed_or_non_inversed_super_role(arenas, role, chain_super_role) {
+            return false;
+        }
+        let chain = arenas
+            .role_chain(chain_data.role_chain)
+            .get_role_chain_linker();
+        if let (Some(&first), Some(&last)) = (chain.first(), chain.last()) {
+            if first == chain_super_role || last == chain_super_role {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Port of `collectRecursiveTraversalCriticalRoles`.
+    pub fn collect_recursive_traversal_critical_roles(
+        &self,
+        arenas: &OntologyArenas,
+        role: RoleId,
+        chain_data: &RoleSubRoleChainData,
+        critical_role_negation_hash: &mut HashMap<RoleId, bool>,
+    ) -> bool {
+        if self.is_chain_data_recursive_traversal_critical(arenas, role, chain_data) {
+            critical_role_negation_hash.insert(chain_data.role, chain_data.inverse);
+            return true;
+        }
+        false
+    }
+
+    /// Port of `getRelevantRecursiveTraversalCriticalRoles`: keep only the
+    /// most general critical roles (those with no critical strict super role).
+    pub fn get_relevant_recursive_traversal_critical_roles(
+        &self,
+        arenas: &OntologyArenas,
+        critical_role_negation_hash: &HashMap<RoleId, bool>,
+    ) -> HashMap<RoleId, bool> {
+        // deterministic iteration (QHash order is arbitrary; result depends
+        // only on the SET of survivors, but sort for reproducible builds).
+        let mut entries: Vec<(RoleId, bool)> = critical_role_negation_hash
+            .iter()
+            .map(|(k, v)| (*k, *v))
+            .collect();
+        entries.sort_by_key(|(r, _)| r.index());
+        let mut critical_general: HashMap<RoleId, bool> = HashMap::new();
+        for (i, &(role, role_inversed)) in entries.iter().enumerate() {
+            let mut has_critical_super_role = false;
+            for &(role2, _) in entries.iter().skip(i + 1) {
+                if role != role2
+                    && self.has_inversed_or_non_inversed_super_role(arenas, role, role2)
+                {
+                    has_critical_super_role = true;
+                    break;
+                }
+            }
+            if !has_critical_super_role {
+                for (&role2, _) in critical_general.iter() {
+                    if role != role2
+                        && self.has_inversed_or_non_inversed_super_role(arenas, role, role2)
+                    {
+                        has_critical_super_role = true;
+                        break;
+                    }
+                }
+            }
+            if !has_critical_super_role {
+                critical_general.insert(role, role_inversed);
+            }
+        }
+        critical_general
+    }
+
+    /// Port of `requiresRecursiveTraversalForRole`: the chain's super role has
+    /// an (indirect) super role in the critical set.
+    pub fn requires_recursive_traversal_for_role(
+        &self,
+        arenas: &OntologyArenas,
+        _role: RoleId,
+        chain_data: &RoleSubRoleChainData,
+        critical_role_negation_hash: &HashMap<RoleId, bool>,
+    ) -> bool {
+        let chain_super_role = chain_data.role;
+        for link in &arenas.role(chain_super_role).indirect_super_roles {
+            if critical_role_negation_hash.contains_key(&link.target) {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Port of `addRecursiveTraversalData`.
+    pub fn add_recursive_traversal_data(
+        &mut self,
+        arenas: &OntologyArenas,
+        role: RoleId,
+        role_sub_chain_data_list: &[RoleSubRoleChainData],
+    ) {
+        let relevant = self.get_relevant_chain_data_list(arenas, role, role_sub_chain_data_list);
+        let mut item = RecTravSubRoleChainDataItem {
+            role,
+            ..Default::default()
+        };
+        let mut critical_role_negation_hash: HashMap<RoleId, bool> = HashMap::new();
+        let mut critical = false;
+        for chain_data in &relevant {
+            critical |= self.collect_recursive_traversal_critical_roles(
+                arenas,
+                role,
+                chain_data,
+                &mut critical_role_negation_hash,
+            );
+        }
+        if !critical {
+            item.direct_sub_role_chain_data_list = relevant;
+        } else {
+            let relevant_critical = self
+                .get_relevant_recursive_traversal_critical_roles(
+                    arenas,
+                    &critical_role_negation_hash,
+                );
+            for chain_data in &relevant {
+                if !self.requires_recursive_traversal_for_role(
+                    arenas,
+                    role,
+                    chain_data,
+                    &relevant_critical,
+                ) {
+                    item.direct_sub_role_chain_data_list.push(*chain_data);
+                }
+            }
+            // deterministic order for the recursion list too.
+            let mut crit_entries: Vec<(RoleId, bool)> = relevant_critical
+                .iter()
+                .map(|(k, v)| (*k, *v))
+                .collect();
+            crit_entries.sort_by_key(|(r, _)| r.index());
+            for (crit_role, inversed) in crit_entries {
+                let outer = arenas.role(item.role);
+                if outer.is_symmetric() && outer.get_inverse_role() == item.role {
+                    item.rec_traversal_sub_role_list.push((crit_role, !inversed));
+                }
+                item.rec_traversal_sub_role_list.push((crit_role, inversed));
+            }
+        }
+        self.role_rec_trav_sub_role_chain_data_hash.insert(role, item);
+    }
+
+    /// Port of `createRecursiveTraversalData`: group the multi-hash per role
+    /// and analyse each group.
+    pub fn create_recursive_traversal_data(&mut self, arenas: &OntologyArenas) {
+        // Konclude walks the QHash grouped by key (same-key values adjacent,
+        // most-recent-first). The per-key grouping is what matters; iterate
+        // keys deterministically and hand each full group over.
+        let mut keys: Vec<RoleId> = self.role_sub_role_chain_data_hash.keys().copied().collect();
+        keys.sort_by_key(|r| r.index());
+        for role in keys {
+            // QHash multi-values iterate most-recently-inserted first; our Vec
+            // holds insertion order, so reverse for the exact Konclude order
+            // (mutually-implicit chain pairs keep the same survivor).
+            let mut list = self.role_sub_role_chain_data_hash[&role].clone();
+            list.reverse();
+            self.add_recursive_traversal_data(arenas, role, &list);
+        }
+    }
 }
 
 impl Default for RoleChainAutomataTransformationPreProcess {
