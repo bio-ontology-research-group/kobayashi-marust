@@ -849,6 +849,383 @@ impl RoleChainAutomataTransformationPreProcess {
             self.add_recursive_traversal_data(arenas, role, &list);
         }
     }
+
+    // ---------------------------------------------------------------------
+    // the automaton transformation (steps 7 + 8 + 9)
+    // ---------------------------------------------------------------------
+
+    /// Port of `transformFORALLPropagations`: every `∀`/`∃`-family concept on a
+    /// COMPLEX role becomes an automaton. Incremental via
+    /// `mLastConceptForallId` (`continuePreprocessing` re-enters here).
+    pub fn transform_forall_propagations(&mut self, arenas: &mut OntologyArenas) {
+        let con_count = arenas.concept_count();
+        for i in self.last_concept_forall_id..con_count {
+            let concept_id = ConceptId::new(i);
+            let (op_code, role_id) = {
+                let concept = arenas.concept(concept_id);
+                (concept.get_operator_code(), concept.get_role())
+            };
+            let is_forall_family = op_code == op::CCALL
+                || op_code == op::CCSOME
+                || op_code == op::CCIMPLALL
+                || op_code == op::CCBRANCHALL
+                || op_code == op::CCVARBINDALL
+                || op_code == op::CCPBINDALL
+                || op_code == op::CCVARPBACKALL;
+            if !is_forall_family || role_id == RoleId::NONE {
+                continue;
+            }
+            if !arenas.role(role_id).is_complex_role() {
+                continue;
+            }
+            self.stat_automate_transformed_concept_count += 1;
+            self.convert_automat_concept(arenas, concept_id);
+        }
+        self.last_concept_forall_id = con_count;
+    }
+
+    /// Port of `convertAutomatConcept` — the heart of the transformation.
+    ///
+    /// `∀R.C` (`CCALL`, and the IMPL/BRANCH/…∀ variants) with complex `R`
+    /// becomes:
+    ///   - TTNORMAL: the concept itself turns into `CCAQCHOOCE` whose operands
+    ///     are a fresh `CCAQSOME` generating concept (negated per the ∃/∀
+    ///     duality) and the automaton's begin state;
+    ///   - non-normal variants: the concept itself BECOMES the begin state
+    ///     (`CC*AQAND`, role cleared).
+    /// The begin state fires a `CC*AQALL` transition on `R` into the end state
+    /// (which carries the original filler operands), and
+    /// `generateRoleChainAutomatConcept` glues in one sub-automaton per
+    /// relevant sub-role chain — transitive chains become loops between the
+    /// states, which is exactly what lets a single concept chase `R`-paths of
+    /// unbounded length.
+    pub fn convert_automat_concept(&mut self, arenas: &mut OntologyArenas, concept_id: ConceptId) {
+        let (op_con_linker, role): (Vec<(ConceptId, bool)>, RoleId) = {
+            let concept = arenas.concept(concept_id);
+            (
+                concept
+                    .get_operand_list()
+                    .iter()
+                    .map(|l| (l.target, l.negated))
+                    .collect(),
+                concept.get_role(),
+            )
+        };
+        let op_code = arenas.concept(concept_id).get_operator_code();
+        let exist_negation = op_code == op::CCSOME;
+
+        let trans_type = if op_code == op::CCIMPLALL {
+            TranslationType::Impl
+        } else if op_code == op::CCBRANCHALL {
+            TranslationType::Branch
+        } else if op_code == op::CCPBINDALL {
+            TranslationType::PropBind
+        } else if op_code == op::CCVARPBACKALL {
+            TranslationType::BackProp
+        } else if op_code == op::CCVARBINDALL {
+            TranslationType::VarBind
+        } else {
+            TranslationType::Normal
+        };
+
+        let mut generating_concept = ConceptId::NONE;
+        let begin_state;
+
+        if trans_type == TranslationType::Normal {
+            arenas
+                .concept_mut(concept_id)
+                .set_operator_code(op::CCAQCHOOCE);
+            generating_concept = self.create_automat_generating_concept(
+                arenas,
+                &op_con_linker,
+                !exist_negation,
+                role,
+            );
+            begin_state = self.create_state_concept(arenas, trans_type);
+        } else {
+            // the ∀ concept itself becomes the begin state.
+            begin_state = concept_id;
+            let aqand_code = match trans_type {
+                TranslationType::Impl => op::CCIMPLAQAND,
+                TranslationType::Branch => op::CCBRANCHAQAND,
+                TranslationType::PropBind => op::CCPBINDAQAND,
+                TranslationType::BackProp => op::CCVARPBACKAQAND,
+                TranslationType::VarBind => op::CCVARBINDAQAND,
+                TranslationType::Normal => op::CCAQAND,
+            };
+            let c = arenas.concept_mut(concept_id);
+            c.set_operator_code(aqand_code);
+            c.set_role(RoleId::NONE);
+        }
+        {
+            let c = arenas.concept_mut(concept_id);
+            c.set_operand_list(Vec::new());
+            c.set_operand_count(0);
+        }
+
+        let prop_con = self.create_transition_concept(arenas, role, trans_type);
+        let end_state = self.create_state_concept(arenas, trans_type);
+
+        for &(op_concept, op_neg) in &op_con_linker {
+            self.append_transition_operand(arenas, end_state, op_concept, op_neg ^ exist_negation);
+        }
+
+        if trans_type == TranslationType::Normal {
+            self.append_transition_operand(
+                arenas,
+                concept_id,
+                generating_concept,
+                !exist_negation,
+            );
+            self.append_transition_operand(arenas, concept_id, begin_state, exist_negation);
+        }
+
+        self.append_transition_operand(arenas, begin_state, prop_con, false);
+        self.append_transition_operand(arenas, prop_con, end_state, false);
+
+        if arenas.role(role).get_role_tag() == 1 {
+            // the TOP/universal role: everything reachable — a plain self-loop.
+            self.append_transition_operand(arenas, end_state, begin_state, false);
+        } else {
+            let rec_trav_item = self
+                .role_rec_trav_sub_role_chain_data_hash
+                .get(&role)
+                .cloned()
+                .unwrap_or_default();
+            let mut loc_unfold: HashSet<RoleId> = HashSet::new();
+            self.generate_role_chain_automat_concept_rec(
+                arenas,
+                role,
+                &rec_trav_item,
+                &mut loc_unfold,
+                begin_state,
+                end_state,
+                trans_type,
+            );
+        }
+    }
+
+    /// Port of `generateRoleChainAutomatConcept(lastRole, recTravItem, …)` —
+    /// unfold the direct chains, then give each recursive-traversal critical
+    /// sub role its own begin/end state pair and recurse into ITS automaton.
+    #[allow(clippy::too_many_arguments)]
+    pub fn generate_role_chain_automat_concept_rec(
+        &mut self,
+        arenas: &mut OntologyArenas,
+        last_role: RoleId,
+        rec_trav_item: &RecTravSubRoleChainDataItem,
+        already_unfold_role_set: &mut HashSet<RoleId>,
+        begin_concept: ConceptId,
+        end_concept: ConceptId,
+        trans_type: TranslationType,
+    ) -> bool {
+        self.generate_role_chain_automat_concept_list(
+            arenas,
+            last_role,
+            &rec_trav_item.direct_sub_role_chain_data_list,
+            already_unfold_role_set,
+            begin_concept,
+            end_concept,
+            trans_type,
+        );
+
+        for &(rec_trav_sub_role0, inversed) in &rec_trav_item.rec_traversal_sub_role_list {
+            if already_unfold_role_set.contains(&rec_trav_sub_role0) {
+                continue;
+            }
+            let rec_trav_sub_role = if inversed {
+                match self.get_inverse_role(arenas, rec_trav_sub_role0, true) {
+                    Some(r) => r,
+                    // createMissingInverseChainedRoles guarantees existence in
+                    // Konclude; degrade gracefully if the RBox lacks it.
+                    None => continue,
+                }
+            } else {
+                rec_trav_sub_role0
+            };
+
+            let mut loc_unfold: HashSet<RoleId> = already_unfold_role_set.clone();
+            loc_unfold.insert(rec_trav_sub_role);
+            for link in &arenas.role(rec_trav_sub_role).indirect_super_roles {
+                loc_unfold.insert(link.target);
+            }
+
+            let rec_begin = self.create_state_concept(arenas, trans_type);
+            let rec_end = self.create_state_concept(arenas, trans_type);
+            self.append_transition_operand(arenas, begin_concept, rec_begin, false);
+            self.append_transition_operand(arenas, rec_end, end_concept, false);
+            let rec_prop = self.create_transition_concept(arenas, rec_trav_sub_role, trans_type);
+            self.append_transition_operand(arenas, rec_begin, rec_prop, false);
+            self.append_transition_operand(arenas, rec_prop, rec_end, false);
+            let next_item = self
+                .role_rec_trav_sub_role_chain_data_hash
+                .get(&rec_trav_sub_role)
+                .cloned()
+                .unwrap_or_default();
+            self.generate_role_chain_automat_concept_rec(
+                arenas,
+                rec_trav_sub_role,
+                &next_item,
+                &mut loc_unfold,
+                rec_begin,
+                rec_end,
+                trans_type,
+            );
+        }
+        true
+    }
+
+    /// Port of `generateRoleChainAutomatConcept(lastRole, subRoleChainDataList, …)`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn generate_role_chain_automat_concept_list(
+        &mut self,
+        arenas: &mut OntologyArenas,
+        last_role: RoleId,
+        sub_role_chain_data_list: &[RoleSubRoleChainData],
+        already_unfold_role_set: &mut HashSet<RoleId>,
+        begin_concept: ConceptId,
+        end_concept: ConceptId,
+        trans_type: TranslationType,
+    ) -> bool {
+        for chain_data in sub_role_chain_data_list {
+            let mut loc_unfold: HashSet<RoleId> = already_unfold_role_set.clone();
+            loc_unfold.insert(last_role);
+            for link in &arenas.role(chain_data.role).indirect_super_roles {
+                loc_unfold.insert(link.target);
+            }
+            self.generate_role_chain_automat_concept_chain(
+                arenas,
+                last_role,
+                chain_data.role,
+                chain_data.role_chain,
+                chain_data.inverse,
+                &mut loc_unfold,
+                begin_concept,
+                end_concept,
+                trans_type,
+            );
+        }
+        true
+    }
+
+    /// Port of `generateRoleChainAutomatConcept(lastRole, superRole, chain, …)`
+    /// — one chain `S1 ∘ … ∘ Sn ⊑ superRole` glued between `begin_concept` and
+    /// `end_concept`. A chain that STARTS with its own super role loops through
+    /// the end state (`transStart`), one that ENDS with it loops through the
+    /// begin state (`transEnd`); the pure transitive chain `R ∘ R ⊑ R` reduces
+    /// to the ε-transition `end → begin`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn generate_role_chain_automat_concept_chain(
+        &mut self,
+        arenas: &mut OntologyArenas,
+        last_role: RoleId,
+        super_role: RoleId,
+        descending_role_chain: RoleChainId,
+        negated_chain: bool,
+        already_unfold_role_set: &mut HashSet<RoleId>,
+        begin_concept: ConceptId,
+        end_concept: ConceptId,
+        trans_type: TranslationType,
+    ) -> bool {
+        let use_inverse_roles = negated_chain;
+        let chained_roles: Vec<RoleId> = if !negated_chain {
+            arenas
+                .role_chain(descending_role_chain)
+                .get_role_chain_linker()
+                .to_vec()
+        } else {
+            arenas
+                .role_chain(descending_role_chain)
+                .get_inverse_role_chain_linker()
+                .to_vec()
+        };
+
+        let mut connect_begin_con = ConceptId::NONE;
+        let mut connect_end_con = ConceptId::NONE;
+        let mut first_concept = ConceptId::NONE;
+        let mut trans_start = false;
+        let mut trans_end = false;
+
+        let test_role = if use_inverse_roles && last_role != super_role {
+            self.get_inverse_role(arenas, super_role, true)
+                .unwrap_or(super_role)
+        } else {
+            super_role
+        };
+
+        let n = chained_roles.len();
+        for (idx, &chained_role) in chained_roles.iter().enumerate() {
+            let sub_role = if use_inverse_roles {
+                match self.get_inverse_role(arenas, chained_role, true) {
+                    Some(r) => r,
+                    None => continue,
+                }
+            } else {
+                chained_role
+            };
+            let is_last = idx + 1 == n;
+
+            if first_concept == ConceptId::NONE && sub_role == test_role && !trans_start {
+                trans_start = true;
+            } else if is_last && sub_role == test_role {
+                trans_end = true;
+            } else if !already_unfold_role_set.contains(&sub_role) {
+                let sub_begin = self.create_state_concept(arenas, trans_type);
+                let prop_con = self.create_transition_concept(arenas, sub_role, trans_type);
+                let sub_end = self.create_state_concept(arenas, trans_type);
+                if connect_begin_con == ConceptId::NONE {
+                    connect_begin_con = sub_begin;
+                }
+                if connect_end_con != ConceptId::NONE {
+                    self.append_transition_operand(arenas, connect_end_con, sub_begin, false);
+                }
+                connect_end_con = sub_end;
+                if first_concept == ConceptId::NONE {
+                    first_concept = prop_con;
+                }
+                self.append_transition_operand(arenas, sub_begin, prop_con, false);
+                self.append_transition_operand(arenas, prop_con, sub_end, false);
+
+                let next_item = self
+                    .role_rec_trav_sub_role_chain_data_hash
+                    .get(&sub_role)
+                    .cloned()
+                    .unwrap_or_default();
+                self.generate_role_chain_automat_concept_rec(
+                    arenas,
+                    sub_role,
+                    &next_item,
+                    already_unfold_role_set,
+                    sub_begin,
+                    sub_end,
+                    trans_type,
+                );
+            } else {
+                // Konclude: "error, not allowed construct" (a chain element
+                // already being unfolded above) — silently skipped there too.
+            }
+        }
+
+        if trans_start && !trans_end {
+            self.append_transition_operand(arenas, end_concept, connect_begin_con, false);
+            self.append_transition_operand(arenas, connect_end_con, end_concept, false);
+        } else if trans_end && !trans_start {
+            self.append_transition_operand(arenas, connect_end_con, begin_concept, false);
+            self.append_transition_operand(arenas, begin_concept, connect_begin_con, false);
+        } else if trans_start && trans_end && first_concept == ConceptId::NONE {
+            // pure transitivity `R ∘ R ⊑ R`: the ε-loop end → begin.
+            self.append_transition_operand(arenas, end_concept, begin_concept, false);
+        } else if !trans_start && !trans_end {
+            if connect_begin_con != ConceptId::NONE && connect_end_con != ConceptId::NONE {
+                self.append_transition_operand(arenas, begin_concept, connect_begin_con, false);
+                self.append_transition_operand(arenas, connect_end_con, end_concept, false);
+            }
+        } else {
+            // error, not allowed construct (transStart && transEnd with inner
+            // concepts) — Konclude falls through silently.
+        }
+        true
+    }
 }
 
 impl Default for RoleChainAutomataTransformationPreProcess {
