@@ -100,11 +100,13 @@ pub struct Config {
     /// feature. Validated clean on the 584-ont card panel (48067625): +3 gold
     /// recoveries (1603, 9540, 7499), 0 MATCH→DIFF regressions.
     pub ht_card: bool,
-    /// KM_HT_RULES (Stage 2 of SWRL DL-safe rule support): when set AND the
-    /// ontology has DL-safe rules, route it to the rule-aware HT consistency check
-    /// (ABox seeded as named nominal nodes + rules fired over named individuals).
-    /// Default OFF: with the flag unset the whole feature is inert and the output
-    /// is byte-identical to the no-rules build.
+    /// SWRL DL-safe rule support (Stage 2): route an ontology that carries
+    /// DL-safe rules to the rule-aware HT consistency check (ABox seeded as named
+    /// nominal nodes + rules fired over named individuals). Default ON, opt out
+    /// with KM_NO_HT_RULES. The feature is gated INTERNALLY on actual rule
+    /// presence (`rules_active` in cb_to_ht), so on a rule-free ontology it is
+    /// completely inert (emelim runs, output byte-identical to the no-rules
+    /// build); only the SWRL onts see any change.
     pub ht_rules: bool,
 }
 
@@ -180,7 +182,12 @@ impl Config {
             qo_router: std::env::var_os("KM_NO_HT_QO_ROUTER").is_none(),
             ht_shoq: std::env::var_os("KM_NO_HT_SHOQ").is_none(),
             ht_card: std::env::var_os("KM_NO_HT_CARD").is_none(),
-            ht_rules: std::env::var_os("KM_HT_RULES").is_some(),
+            // Default ON, but internally gated on actual DL-safe-rule presence
+            // (cb_to_ht `rules_active`): inert on every rule-free ont (emelim
+            // still runs, no ABox reseeding), active only on the SWRL onts where
+            // firing the sound DL-safe rules is strictly more correct. Opt out
+            // with KM_NO_HT_RULES.
+            ht_rules: std::env::var_os("KM_NO_HT_RULES").is_none(),
         }
     }
 

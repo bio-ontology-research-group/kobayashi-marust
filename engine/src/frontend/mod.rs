@@ -136,12 +136,13 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
             ontology.rules().count()
         );
     }
-    // KM_HT_RULES (Stage 2): carry the parsed DL-safe rules to cb_to_ht and (when
-    // any rule is present) keep the ground ABox in the clause set so cb_to_ht can
-    // seed it as named-individual nominal nodes. Gated, so the default output is
-    // unchanged. `ht_rules` stays false when the flag is off OR the ontology has no
-    // rule, so a normal ABox ontology under the flag is also unchanged.
-    let rules: Vec<crate::json_io::JRule> = if std::env::var_os("KM_HT_RULES").is_some() {
+    // SWRL DL-safe rule support (Stage 2): carry the parsed DL-safe rules to
+    // cb_to_ht and (when any rule is present) keep the ground ABox in the clause
+    // set so cb_to_ht can seed it as named-individual nominal nodes. Default ON,
+    // opt out with KM_NO_HT_RULES. `collect_rules` returns EMPTY on a rule-free
+    // ontology, so `ht_rules` stays false there and the output is byte-identical
+    // to before — only ontologies that actually carry DL-safe rules change.
+    let rules: Vec<crate::json_io::JRule> = if std::env::var_os("KM_NO_HT_RULES").is_none() {
         collect_rules(&ontology)
     } else {
         Vec::new()

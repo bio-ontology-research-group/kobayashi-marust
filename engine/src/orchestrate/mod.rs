@@ -203,23 +203,28 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         });
     }
 
-    // KM_HT_RULES (Stage 2): if the ontology has DL-safe rules, route it to the
-    // rule-aware HT consistency check (ABox seeded as named nominal nodes; rules
-    // fired over named individuals). Returns a consistency verdict; we report it
-    // directly (a SWRL ontology's value here is its consistency — Konclude cannot
-    // even parse these, and the CB engine drops the ABox). Inert when the flag is
-    // off (default) or the ontology has no rule, so all other paths are unchanged.
+    // SWRL DL-safe rule support (Stage 2): if the ontology has DL-safe rules, run
+    // the rule-aware HT consistency check (ABox seeded as named nominal nodes;
+    // rules fired over named individuals). We short-circuit ONLY on a detected
+    // INCONSISTENCY: then ⊥ subsumes everything and `consistent=false` with an
+    // empty subsumption set is the complete, correct answer (this is the
+    // 2669/15516 contested-gold case — genuinely inconsistent, gold wrong; see
+    // docs/CONTESTED-GOLD.md). A CONSISTENT rule ontology falls THROUGH to normal
+    // classification so its class hierarchy is still computed — the rules are
+    // DL-safe (range only over named individuals) and so cannot change any TBox
+    // class subsumption, making the fall-through sound and complete. Inert when
+    // the ontology has no rule (`rules_consistency` returns None). Opt out with
+    // KM_NO_HT_RULES.
     if cfg.ht_rules {
-        if let Some(consistent) = rules_consistency(cfg, clauses_path.path(), &meta)? {
+        if let Some(false) = rules_consistency(cfg, clauses_path.path(), &meta)? {
             if timing {
                 eprintln!(
-                    "KM_TIMING rules-consistency done @ {:.2}s consistent={}",
+                    "KM_TIMING rules-consistency done @ {:.2}s consistent=false",
                     t_start.elapsed().as_secs_f64(),
-                    consistent
                 );
             }
             return Ok(Classification {
-                consistent,
+                consistent: false,
                 subsumptions: vec![],
                 unsatisfiable: vec![],
                 dropped: 0,

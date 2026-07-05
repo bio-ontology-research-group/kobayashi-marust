@@ -108,7 +108,9 @@ fn cb_to_ht_cmd() {
         &input.cardinalities,
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &input.rules,
-        std::env::var_os("KM_HT_RULES").is_some(),
+        // Default ON; cb_to_ht's `rules_active` makes it inert unless the ont
+        // actually carries DL-safe rules (opt out with KM_NO_HT_RULES).
+        std::env::var_os("KM_NO_HT_RULES").is_none(),
     );
     let stdout = std::io::stdout();
     if let Err(e) = serde_json::to_writer(stdout.lock(), &tin) {

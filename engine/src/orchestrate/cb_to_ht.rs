@@ -1122,6 +1122,17 @@ pub fn convert(
     // dropped as un-clausifiable ground clauses), seeded as nominal nodes below.
     let mut abox_facts: Vec<AboxFact> = Vec::new();
 
+    // The rule machinery (ABox-as-nominal seeding + DL-safe rule firing + the
+    // emelim suppression that keeps the rule's complementary markers intact) is
+    // active ONLY when the ontology actually carries DL-safe rules. Gating on
+    // `!rules.is_empty()` (not on `ht_rules` alone) makes `ht_rules` INERT on
+    // every rule-free ontology: no ABox reseeding, and emelim still runs exactly
+    // as before. So `ht_rules` can default-on with zero blast radius outside the
+    // SWRL onts (2669/15516), where firing the rules is strictly more correct
+    // (they are DL-safe Horn — sound — and reveal a real inconsistency the gold
+    // reasoner misses; HermiT agrees. See docs/CONTESTED-GOLD.md).
+    let rules_active = ht_rules && !rules.is_empty();
+
     // KM_HT_CARD: the frontend tagged each `≥n`/`≤n` restriction with a `CardMeta`.
     // Install the Konclude first-class number rule (built below into `card_defs`)
     // and DROP exactly the clausal pigeonhole the frontend emitted for those
@@ -1276,7 +1287,7 @@ pub fn convert(
         {
             continue;
         }
-        if ht_rules {
+        if rules_active {
             if let Some(f) = abox_fact(c) {
                 abox_facts.push(f);
                 continue;
@@ -1748,7 +1759,7 @@ pub fn convert(
     // Every named node also carries the O-guard `__O__`, and every rule variable is
     // guarded by `__O__` so it only binds to a named individual (DL-safety): firing
     // over an anonymous ∃-successor would be unsound.
-    if ht_rules {
+    if rules_active {
         use std::collections::BTreeSet;
         let mut individuals: BTreeSet<String> = BTreeSet::new();
         let mut note = |ind: &str, individuals: &mut BTreeSet<String>| {
@@ -2109,7 +2120,7 @@ pub fn convert(
     // KM_NO_HT_EMELIM. Disabled under KM_HT_CARD: the `q`/`NQ` recognition markers
     // are a complementary pair (`⊤⊑q∨NQ`, `q⊓NQ⊑⊥`) that emelim would fold, which
     // would drop the NQ concept that carries the `≥(n+1)` recognition card_def.
-    if card_defs.is_empty() && !ht_rules && std::env::var_os("KM_NO_HT_EMELIM").is_none() {
+    if card_defs.is_empty() && !rules_active && std::env::var_os("KM_NO_HT_EMELIM").is_none() {
         let (out, n_elim) = elim_complements(ht, &ids.con_names);
         ht = out;
         if std::env::var_os("KM_HT_STATS").is_some() {
