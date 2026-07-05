@@ -1226,6 +1226,509 @@ impl RoleChainAutomataTransformationPreProcess {
         }
         true
     }
+
+    // ---------------------------------------------------------------------
+    // missing inverse roles (step 2)
+    // ---------------------------------------------------------------------
+
+    /// Port of `createMissingInverseChainedRoles`: every role that the
+    /// chain/domain machinery will need inverted gets a synthesized inverse
+    /// role wired through NEGATED super-role linkers (Konclude models
+    /// inversion that way; `getInverseRole` finds it via the reciprocity
+    /// check). Re-collects the chains afterwards when anything was created.
+    pub fn create_missing_inverse_chained_roles(&mut self, arenas: &mut OntologyArenas) {
+        // collect direct and indirect sub roles (super-tag → (sub-tag, neg)).
+        let item_counts = arenas.role_count();
+        let mut indirect_sub: HashMap<Cint64, Vec<(Cint64, bool)>> = HashMap::new();
+        let mut direct_sub: HashMap<Cint64, Vec<(Cint64, bool)>> = HashMap::new();
+        for i in 0..item_counts {
+            let role_id = RoleId::new(i);
+            let role = arenas.role(role_id);
+            let role_tag = role.get_role_tag();
+            for link in &role.indirect_super_roles {
+                indirect_sub
+                    .entry(arenas.role(link.target).get_role_tag())
+                    .or_default()
+                    .push((role_tag, link.negated));
+            }
+            for link in &arenas.role(role_id).super_roles {
+                direct_sub
+                    .entry(arenas.role(link.target).get_role_tag())
+                    .or_default()
+                    .push((role_tag, link.negated));
+            }
+        }
+
+        // roles that need an inverse.
+        let mut needs_inverse: HashSet<RoleId> = HashSet::new();
+        for i in 0..item_counts {
+            let role_id = RoleId::new(i);
+            if !arenas.role(role_id).is_complex_role() {
+                continue;
+            }
+            if !arenas.role(role_id).get_domain_concept_list().is_empty() {
+                needs_inverse.insert(role_id);
+            }
+            let has_dom_range = !arenas.role(role_id).get_domain_concept_list().is_empty()
+                || !arenas.role(role_id).get_range_concept_list().is_empty();
+            if self.has_inverse_role(arenas, role_id, true) || has_dom_range {
+                // BFS over the chain graph: every chain super role and every
+                // chained sub role will be traversed inverted.
+                let mut search_list: Vec<RoleId> = vec![role_id];
+                let mut search_set: HashSet<RoleId> = HashSet::new();
+                search_set.insert(role_id);
+                while let Some(search_role) = search_list.pop() {
+                    let datas: Vec<RoleSubRoleChainData> = self
+                        .role_sub_role_chain_data_hash
+                        .get(&search_role)
+                        .cloned()
+                        .unwrap_or_default();
+                    for data in datas {
+                        needs_inverse.insert(data.role);
+                        let chained: Vec<RoleId> = arenas
+                            .role_chain(data.role_chain)
+                            .get_role_chain_linker()
+                            .to_vec();
+                        for sub_role in chained {
+                            needs_inverse.insert(sub_role);
+                            if search_set.insert(sub_role) {
+                                search_list.push(sub_role);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut updated_inverse_roles = false;
+        let mut needs: Vec<RoleId> = needs_inverse.into_iter().collect();
+        needs.sort_by_key(|r| r.index());
+        for role_id in needs {
+            if self.has_inverse_role(arenas, role_id, true) {
+                continue;
+            }
+            updated_inverse_roles = true;
+            let role_tag = arenas.role(role_id).get_role_tag();
+            let complexity = arenas.role(role_id).get_role_complexity();
+
+            let mut inverse = super::super::model::role::Role::new();
+            let inverse_role_tag = arenas.role_count();
+            inverse.set_role_tag(inverse_role_tag);
+            inverse.set_role_complexity(complexity);
+            let inverse_id = arenas.alloc_role(inverse);
+
+            // the defining pair of NEGATED super-role linkers.
+            arenas.role_mut(inverse_id).super_roles.push(
+                super::super::model::substrate::NegLink {
+                    target: role_id,
+                    negated: true,
+                },
+            );
+            arenas.role_mut(role_id).super_roles.push(
+                super::super::model::substrate::NegLink {
+                    target: inverse_id,
+                    negated: true,
+                },
+            );
+
+            // every direct sub role of `role` gets the new inverse as an
+            // INVERTED super role (and dito the indirect ones).
+            for &(sub_tag, neg) in direct_sub.get(&role_tag).map(|v| v.as_slice()).unwrap_or(&[])
+            {
+                let sub_id = RoleId::new(sub_tag);
+                arenas.role_mut(sub_id).super_roles.push(
+                    super::super::model::substrate::NegLink {
+                        target: inverse_id,
+                        negated: !neg,
+                    },
+                );
+            }
+            for &(sub_tag, neg) in indirect_sub
+                .get(&role_tag)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
+            {
+                let sub_id = RoleId::new(sub_tag);
+                arenas.role_mut(sub_id).indirect_super_roles.push(
+                    super::super::model::substrate::NegLink {
+                        target: inverse_id,
+                        negated: !neg,
+                    },
+                );
+            }
+
+            // copy `role`'s (indirect) super lists onto the inverse, inverted,
+            // and register the inverse as their sub role in the tag hashes.
+            let indirect_of_role: Vec<(RoleId, bool)> = arenas
+                .role(role_id)
+                .indirect_super_roles
+                .iter()
+                .map(|l| (l.target, l.negated))
+                .collect();
+            for (super_role, neg) in indirect_of_role {
+                arenas.role_mut(inverse_id).indirect_super_roles.push(
+                    super::super::model::substrate::NegLink {
+                        target: super_role,
+                        negated: !neg,
+                    },
+                );
+                indirect_sub
+                    .entry(arenas.role(super_role).get_role_tag())
+                    .or_default()
+                    .push((inverse_role_tag, !neg));
+            }
+            let supers_of_role: Vec<(RoleId, bool)> = arenas
+                .role(role_id)
+                .super_roles
+                .iter()
+                .map(|l| (l.target, l.negated))
+                .collect();
+            for (super_role, neg) in supers_of_role {
+                arenas.role_mut(inverse_id).super_roles.push(
+                    super::super::model::substrate::NegLink {
+                        target: super_role,
+                        negated: !neg,
+                    },
+                );
+                direct_sub
+                    .entry(arenas.role(super_role).get_role_tag())
+                    .or_default()
+                    .push((inverse_role_tag, !neg));
+            }
+        }
+
+        if updated_inverse_roles {
+            self.role_sub_role_chain_data_hash.clear();
+            self.collect_sub_role_chains(arenas);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // domain / range propagation down chains (step 5)
+    // ---------------------------------------------------------------------
+
+    /// Port of `hasPropagatedConcept`: the concept already sits directly in
+    /// the relevant domain/range list of some (indirect) super role.
+    pub fn has_propagated_concept(
+        &mut self,
+        arenas: &OntologyArenas,
+        negated: bool,
+        concept: ConceptId,
+        role_list: &[(RoleId, bool)],
+        inverse_dom_range: bool,
+    ) -> bool {
+        for &(super_role, super_neg) in role_list {
+            let switch_domain_range = inverse_dom_range ^ super_neg;
+            for link in arenas
+                .role(super_role)
+                .get_domain_range_concept_list(!switch_domain_range)
+            {
+                if link.target == concept && link.negated == negated {
+                    self.stat_propagated_already_in_domain_range_count += 1;
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Port of `hasPropagationConcept`: some (indirect) super role already
+    /// carries a `∀role.concept`-shaped propagation in the relevant
+    /// domain/range list.
+    ///
+    /// KONCLUDE-PORT-NOTE[fidelity]: the operand test keeps the C++ operator
+    /// precedence exactly as written — `opNeg ^ conNeg == negated` parses as
+    /// `opNeg ^ (conNeg == negated)` (== binds tighter than ^). Both helpers
+    /// only dedup already-present propagations, so this affects redundancy,
+    /// never soundness.
+    pub fn has_propagation_concept(
+        &mut self,
+        arenas: &OntologyArenas,
+        negated: bool,
+        concept: ConceptId,
+        role: RoleId,
+        role_list: &[(RoleId, bool)],
+        inverse_dom_range: bool,
+    ) -> bool {
+        for &(super_role, super_neg) in role_list {
+            let switch_domain_range = inverse_dom_range ^ super_neg;
+            for link in arenas
+                .role(super_role)
+                .get_domain_range_concept_list(switch_domain_range)
+            {
+                let con = link.target;
+                let con_neg = link.negated;
+                if arenas.concept(con).get_role() != role {
+                    continue;
+                }
+                let con_code = arenas.concept(con).get_operator_code();
+                let all_shaped = (con_code == op::CCALL
+                    || con_code == op::CCAQALL
+                    || con_code == op::CCIMPLALL)
+                    && !con_neg
+                    || con_neg && con_code == op::CCSOME;
+                if !all_shaped {
+                    continue;
+                }
+                for op_link in arenas.concept(con).get_operand_list() {
+                    if op_link.target == concept && (op_link.negated ^ (con_neg == negated)) {
+                        self.stat_propagation_already_in_domain_range_count += 1;
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    /// Port of `createDomainRangePropagations`: push each complex role's
+    /// domain down to the LAST role of every entailing chain (as a range
+    /// `∀inv(R).dom` propagation) and its range down to the FIRST role (as a
+    /// domain `∀R.range` propagation), transitively through re-enqueued
+    /// chains.
+    pub fn create_domain_range_propagations(&mut self, arenas: &mut OntologyArenas) {
+        let mut dom_range_prop_concept_set: HashSet<ConceptId> = HashSet::new();
+        let item_counts = arenas.role_count();
+        for i in 0..item_counts {
+            let role_id = RoleId::new(i);
+            if !arenas.role(role_id).is_complex_role() {
+                continue;
+            }
+            let mut inverse_role: Option<RoleId> = None;
+
+            // --- domain concepts → range propagations on chain-last roles ---
+            let domain_list: Vec<(ConceptId, bool)> = arenas
+                .role(role_id)
+                .get_domain_concept_list()
+                .iter()
+                .map(|l| (l.target, l.negated))
+                .collect();
+            for (dom_con, dom_con_neg) in domain_list {
+                if !dom_con_neg && dom_range_prop_concept_set.contains(&dom_con) {
+                    continue;
+                }
+                self.stat_range_propagation_count += 1;
+                if inverse_role.is_none() {
+                    inverse_role = self.get_inverse_role(arenas, role_id, true);
+                }
+                let Some(inv_role) = inverse_role else {
+                    continue; // guaranteed by createMissingInverseChainedRoles
+                };
+                let mut worklist: Vec<RoleSubRoleChainDataItem> = self
+                    .role_sub_role_chain_data_hash
+                    .get(&role_id)
+                    .map(|v| v.iter().map(|d| RoleSubRoleChainDataItem::new(*d)).collect())
+                    .unwrap_or_default();
+                let mut prop_concept = ConceptId::NONE;
+
+                while let Some(item) = (!worklist.is_empty()).then(|| worklist.remove(0)) {
+                    let data = item.chain_data;
+                    let inversed_to_original = item.negated ^ data.inverse;
+                    let chain = arenas.role_chain(data.role_chain);
+                    let (first_sub, last_sub) = if inversed_to_original {
+                        let inv = chain.get_inverse_role_chain_linker();
+                        let (Some(&f), Some(&l)) = (inv.first(), inv.last()) else {
+                            continue;
+                        };
+                        let (Some(fi), Some(li)) = (
+                            self.get_inverse_role(arenas, f, true),
+                            self.get_inverse_role(arenas, l, true),
+                        ) else {
+                            continue;
+                        };
+                        (fi, li)
+                    } else {
+                        let fwd = chain.get_role_chain_linker();
+                        let (Some(&f), Some(&l)) = (fwd.first(), fwd.last()) else {
+                            continue;
+                        };
+                        (f, l)
+                    };
+
+                    let last_supers: Vec<(RoleId, bool)> = arenas
+                        .role(last_sub)
+                        .indirect_super_roles
+                        .iter()
+                        .map(|l| (l.target, l.negated))
+                        .collect();
+                    let first_supers: Vec<(RoleId, bool)> = arenas
+                        .role(first_sub)
+                        .indirect_super_roles
+                        .iter()
+                        .map(|l| (l.target, l.negated))
+                        .collect();
+                    if self.has_propagation_concept(
+                        arenas,
+                        dom_con_neg,
+                        dom_con,
+                        inv_role,
+                        &last_supers,
+                        true,
+                    ) || (item.allow_propagated
+                        && self.has_propagated_concept(
+                            arenas,
+                            dom_con_neg,
+                            dom_con,
+                            &first_supers,
+                            true,
+                        ))
+                    {
+                        continue;
+                    }
+                    if prop_concept == ConceptId::NONE {
+                        prop_concept =
+                            self.create_transition_concept(arenas, inv_role, TranslationType::Normal);
+                        arenas.concept_mut(prop_concept).set_operator_code(op::CCALL);
+                        self.append_transition_operand(arenas, prop_concept, dom_con, dom_con_neg);
+                    }
+                    dom_range_prop_concept_set.insert(prop_concept);
+                    arenas.role_mut(last_sub).add_range_concept_linker(
+                        super::super::model::substrate::NegLink {
+                            target: prop_concept,
+                            negated: false,
+                        },
+                    );
+                    self.stat_created_domain_propagation_count += 1;
+                    if let Some(datas) = self.role_sub_role_chain_data_hash.get(&last_sub) {
+                        for d in datas.clone() {
+                            worklist.push(RoleSubRoleChainDataItem::new_negated(d, false));
+                        }
+                    }
+                }
+            }
+
+            // --- range concepts → domain propagations on chain-first roles ---
+            let range_list: Vec<(ConceptId, bool)> = arenas
+                .role(role_id)
+                .get_range_concept_list()
+                .iter()
+                .map(|l| (l.target, l.negated))
+                .collect();
+            for (range_con, range_con_neg) in range_list {
+                if !range_con_neg && dom_range_prop_concept_set.contains(&range_con) {
+                    continue;
+                }
+                self.stat_domain_propagation_count += 1;
+                let mut worklist: Vec<RoleSubRoleChainDataItem> = self
+                    .role_sub_role_chain_data_hash
+                    .get(&role_id)
+                    .map(|v| v.iter().map(|d| RoleSubRoleChainDataItem::new(*d)).collect())
+                    .unwrap_or_default();
+                let mut prop_concept = ConceptId::NONE;
+
+                while let Some(item) = (!worklist.is_empty()).then(|| worklist.remove(0)) {
+                    let data = item.chain_data;
+                    let inversed_to_original = item.negated ^ data.inverse;
+                    let chain = arenas.role_chain(data.role_chain);
+                    let (first_sub, last_sub) = if inversed_to_original {
+                        let inv = chain.get_inverse_role_chain_linker();
+                        let (Some(&f), Some(&l)) = (inv.first(), inv.last()) else {
+                            continue;
+                        };
+                        let (Some(fi), Some(li)) = (
+                            self.get_inverse_role(arenas, f, true),
+                            self.get_inverse_role(arenas, l, true),
+                        ) else {
+                            continue;
+                        };
+                        (fi, li)
+                    } else {
+                        let fwd = chain.get_role_chain_linker();
+                        let (Some(&f), Some(&l)) = (fwd.first(), fwd.last()) else {
+                            continue;
+                        };
+                        (f, l)
+                    };
+
+                    let first_supers: Vec<(RoleId, bool)> = arenas
+                        .role(first_sub)
+                        .indirect_super_roles
+                        .iter()
+                        .map(|l| (l.target, l.negated))
+                        .collect();
+                    let last_supers: Vec<(RoleId, bool)> = arenas
+                        .role(last_sub)
+                        .indirect_super_roles
+                        .iter()
+                        .map(|l| (l.target, l.negated))
+                        .collect();
+                    if self.has_propagation_concept(
+                        arenas,
+                        range_con_neg,
+                        range_con,
+                        role_id,
+                        &first_supers,
+                        false,
+                    ) || (item.allow_propagated
+                        && self.has_propagated_concept(
+                            arenas,
+                            range_con_neg,
+                            range_con,
+                            &last_supers,
+                            false,
+                        ))
+                    {
+                        continue;
+                    }
+                    if prop_concept == ConceptId::NONE {
+                        prop_concept =
+                            self.create_transition_concept(arenas, role_id, TranslationType::Normal);
+                        arenas.concept_mut(prop_concept).set_operator_code(op::CCALL);
+                        self.append_transition_operand(
+                            arenas,
+                            prop_concept,
+                            range_con,
+                            range_con_neg,
+                        );
+                    }
+                    dom_range_prop_concept_set.insert(prop_concept);
+                    arenas.role_mut(first_sub).add_domain_concept_linker(
+                        super::super::model::substrate::NegLink {
+                            target: prop_concept,
+                            negated: false,
+                        },
+                    );
+                    self.stat_created_range_propagation_count += 1;
+                    if let Some(datas) = self.role_sub_role_chain_data_hash.get(&first_sub) {
+                        for d in datas.clone() {
+                            worklist.push(RoleSubRoleChainDataItem::new_negated(d, false));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // the driver
+    // ---------------------------------------------------------------------
+
+    /// Port of `preprocess(ontology, context)`: run every pass in Konclude's
+    /// order. The `isComplexRoleUsed` build flag becomes a scan (the arenas
+    /// carry no build-construct flags).
+    pub fn preprocess(&mut self, arenas: &mut OntologyArenas) {
+        let complex_used =
+            (0..arenas.role_count()).any(|i| arenas.role(RoleId::new(i)).is_complex_role());
+        if !complex_used {
+            return;
+        }
+        self.begin(arenas);
+        self.collect_sub_role_chains(arenas);
+        self.create_missing_inverse_chained_roles(arenas);
+        self.create_inverse_role_chain_linkers(arenas);
+        self.transform_value_restrictions(arenas);
+        self.create_domain_range_propagations(arenas);
+        self.create_recursive_traversal_data(arenas);
+        self.transform_forall_propagations(arenas);
+    }
+
+    /// Port of `continuePreprocessing` (incremental re-entry after new
+    /// concepts were added).
+    pub fn continue_preprocessing(&mut self, arenas: &mut OntologyArenas) {
+        self.next_concept_tag = arenas.concept_count();
+        self.transform_value_restrictions(arenas);
+        self.transform_forall_propagations(arenas);
+    }
 }
 
 impl Default for RoleChainAutomataTransformationPreProcess {
