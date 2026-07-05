@@ -347,14 +347,14 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                     // fails or runs past budget (monotone-safe). This reaches the
                     // union of the HT and elc-portfolio recoveries in one pass.
                     race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
-                        race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)
+                        race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), th)
                     })?
                 } else if portfolio_on {
                     // race the certified EL path against the context engine; both
                     // are sound+complete so the first finisher wins. Reserve a core
                     // (only when KM_THREADS is unset) for the certificate racer.
                     let th = race::elc_portfolio_threads(cfg);
-                    race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)?
+                    race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), th)?
                 } else if cfg.ht_race {
                     // race the whole CB stack against the KM_HT hypertableau.
                     race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {

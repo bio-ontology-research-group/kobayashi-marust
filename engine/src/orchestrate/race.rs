@@ -293,13 +293,22 @@ fn spawn_elc_cert(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tm
 /// is not forfeited. Port of `_race_adaptive_vs_elc`.
 pub fn race_adaptive_vs_elc(
     cfg: &Config,
+    ont: &Path,
     clauses_path: &Path,
     engine_threads: Option<usize>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
-        Some(x) => x,
-        // elc could not start: the engine answers alone.
-        None => {
+    // The CB arm must run through the SAME absorbed-plain path `cb_stack` uses
+    // (an 8s plain probe, then the absorbed set), NOT `run_engine_adaptive` on
+    // the absorbed clauses directly. Measured: on onts where absorption makes the
+    // clause set harder for CB (e.g. ore_ont_1082), the absorbed-only run is
+    // 44s/8.7GB where the plain probe finishes in 2.9s/130MB — that mismatch, not
+    // the elc process, is why the portfolio path lost speed/memory vs cb_stack.
+    // Both paths are the same sound+complete engine on output-preserving clause
+    // encodings, so the CB answer is unchanged.
+    let cb_run = move || -> Result<EngineOut, OrchestrateError> {
+        if cfg.absorb_portfolio && cfg.absorb_on {
+            race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
+        } else {
             let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
             if res.code != 0 {
                 return Err(OrchestrateError::Worker {
@@ -308,8 +317,14 @@ pub fn race_adaptive_vs_elc(
                     stderr: res.stderr,
                 });
             }
-            return parse_out(&res);
+            parse_out(&res)
         }
+    };
+
+    let (mut elc, elc_out) = match spawn_elc_cert(cfg, clauses_path) {
+        Some(x) => x,
+        // elc could not start: the engine answers alone.
+        None => return cb_run(),
     };
     let cap_bytes = (cfg.elc_port_mem_gb * (1u64 << 30) as f64) as u64;
 
@@ -322,7 +337,7 @@ pub fn race_adaptive_vs_elc(
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
         let cd = cb_done.clone();
         let cb = s.spawn(move || {
-            let r = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads);
+            let r = cb_run();
             cd.store(true, Ordering::SeqCst);
             r
         });
@@ -438,15 +453,7 @@ pub fn race_adaptive_vs_elc(
         let _ = elc.kill();
         let _ = elc.wait();
         engine_run::cancel_and_kill_engines();
-        let res = cb.join().expect("engine thread panicked")?;
-        if res.code != 0 {
-            return Err(OrchestrateError::Worker {
-                bin: "engine".into(),
-                code: res.code,
-                stderr: res.stderr,
-            });
-        }
-        parse_out(&res)
+        cb.join().expect("engine thread panicked")
     });
     result
 }
