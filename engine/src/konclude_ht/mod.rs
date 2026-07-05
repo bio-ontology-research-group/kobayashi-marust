@@ -15,6 +15,7 @@ pub mod classifier; // Optimized classifier caller seams
 pub mod completion; // W3: the apply*Rule expansion engine (struct fields; bodies u01..u36)
 pub mod generator; // Query-job → kernel-task generator seams
 pub mod model; // W1: ontology concept/role/individual model
+pub mod preprocess; // Reasoner/Preprocess ports (role-chain automata)
 pub mod process; // W1/W2: the runtime completion-graph data model
 pub mod realizer; // Optimized realizer caller seams
 pub mod saturation; // W4: approximate saturation
