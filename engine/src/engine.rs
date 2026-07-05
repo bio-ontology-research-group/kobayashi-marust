@@ -866,6 +866,15 @@ pub struct Engine {
     seed_from_subset: bool,
     todo_units_first: bool,
     early_unsat: bool,
+    /// Hot-path env flags cached at `new` — reading them per call (saturate is
+    /// invoked ~10^6 times on a mid ontology) turned `std::env::var` lookups
+    /// into a measurable slice of wall time. `prof`/`trace_sat` gate the
+    /// per-iteration profiling prints; `trigskip` is the redundant-trigger-skip
+    /// default (KM_NO_TRIGSKIP to disable). Env cannot change during a run, so
+    /// caching is behaviour-identical.
+    prof: bool,
+    trace_sat: bool,
+    trigskip: bool,
     /// Context-independent closure: the worked-off clauses of an empty-core,
     /// non-root context saturated from the ontology facts + TBox alone (no Succ
     /// hypotheses, no incoming edges).  These consequences are entailed by the
@@ -1097,6 +1106,9 @@ impl Engine {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0),
             seed_from_subset: std::env::var_os("KM_SEED_FROM_SUBSET").is_some(),
+            prof: std::env::var_os("KM_PROF").is_some(),
+            trace_sat: std::env::var_os("KM_SAT").is_some(),
+            trigskip: std::env::var_os("KM_NO_TRIGSKIP").is_none(),
             // Default ON (sound: units-first is confluent scheduling, early-unsat
             // is a ⊥-subsumes-all short-circuit). Validated gold-clean + net
             // faster + recovers 10908 across the full ORE corpus (IBEX 47526798,
@@ -1397,8 +1409,8 @@ impl Engine {
     /// Saturate a single context (apply Hyper/Pred/Eq until todo is empty).
     fn saturate(&mut self, id: usize) {
         self.stat_saturate += 1;
-        let trace_sat = std::env::var("KM_SAT").is_ok();
-        let prof = std::env::var("KM_PROF").is_ok();
+        let trace_sat = self.trace_sat;
+        let prof = self.prof;
         let (
             mut iters,
             mut subsumed,
@@ -2804,7 +2816,7 @@ impl Engine {
                 // overruns the message budget on transitive/role-chain onts.
                 // Genuinely-new concepts (not yet derived by the successor) still
                 // grow the core, so completeness is preserved.
-                let trigskip = std::env::var_os("KM_NO_TRIGSKIP").is_none();
+                let trigskip = self.trigskip;
                 let mut redundant: Vec<Pred> = Vec::new();
                 if trigskip {
                     for (p, _) in &new_succ {
