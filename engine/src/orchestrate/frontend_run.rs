@@ -25,8 +25,79 @@ pub struct Meta {
 
 /// Returns the clauses temp file (caller owns it; reasoners read it as stdin)
 /// and the parsed meta. The meta temp file is unlinked before returning.
+/// The clauses temp file the reasoners consume (`{clauses, cardinalities,
+/// rules}` — matches `cli::OfnClausesOnly` exactly, the format the `ofn`
+/// subprocess writes).
+#[derive(serde::Serialize)]
+struct ClausesFile {
+    clauses: Vec<crate::json_io::JClause>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    cardinalities: Vec<crate::json_io::CardMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rules: Vec<crate::json_io::JRule>,
+}
+
+/// Below this ontology-file size, run the frontend IN-PROCESS (call
+/// `ofn_to_clauses` directly) instead of forking the `ofn` subprocess. Measured:
+/// on trivial onts the subprocess fork/exec + meta round-trip is ~15-25 ms of
+/// the ~0.12 s total — the difference between a WIN and a tie against Konclude on
+/// the ~125 near-tie onts. Kept SMALL so the frontend's transient parse peak
+/// (multi-GB on the giants) stays isolated in the subprocess: at 2 MB the
+/// in-process transient peak is only tens of MB and is freed before the engine
+/// runs, so the classify RSS high-water-mark is unaffected.
+const IN_PROCESS_OFN_MAX: u64 = 2 << 20;
+
+/// In-process port of the `ofn --meta` subprocess: parse + clausify directly,
+/// write the clauses file the engine reads, and return the parsed `Meta`. The
+/// clause set is dropped before returning, so no frontend memory is held during
+/// the engine run. `ofn_to_clauses` is the SAME function the subprocess calls,
+/// so the output is byte-for-byte identical.
+fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, OrchestrateError> {
+    let text = std::fs::read_to_string(ont).map_err(|e| OrchestrateError::Spawn {
+        bin: "ofn".into(),
+        source: e,
+    })?;
+    let result = match crate::frontend::ofn_to_clauses(&text) {
+        Ok(r) => r,
+        Err(e) => return Err(OrchestrateError::OutOfFragment(e.0)),
+    };
+    let meta = Meta {
+        iri_map: result.iri_map,
+        named: result.named,
+        el_rbox_safe: result.el_rbox_safe,
+        abox_inconsistent: result.abox_inconsistent,
+        asserted_classes: result.asserted_classes,
+    };
+    let out = ClausesFile {
+        clauses: result.clauses,
+        cardinalities: result.cardinalities,
+        rules: result.rules,
+    };
+    let f = File::create(clauses_path)?;
+    let mut w = std::io::BufWriter::new(f);
+    serde_json::to_writer(&mut w, &out)?;
+    std::io::Write::flush(&mut w)?;
+    Ok(meta)
+}
+
 pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), OrchestrateError> {
     let clauses = TempPath::new(".clauses.json");
+
+    // In-process fast path for small ontologies (avoids the ofn subprocess).
+    // Any failure falls through to the subprocess path below (identical output).
+    let small = std::fs::metadata(ont)
+        .map(|m| m.len() < IN_PROCESS_OFN_MAX)
+        .unwrap_or(false);
+    if small && std::env::var_os("KM_NO_INPROC_OFN").is_none() {
+        match run_ofn_in_process(ont, clauses.path()) {
+            Ok(meta) => return Ok((clauses, meta)),
+            // OutOfFragment is a real verdict (not a transient failure): surface it
+            // exactly as the subprocess exit-3 path does, don't silently retry.
+            Err(e @ OrchestrateError::OutOfFragment(_)) => return Err(e),
+            Err(_) => { /* fall through to the subprocess path */ }
+        }
+    }
+
     let meta = TempPath::new(".meta.json");
     let stderr = TempPath::new(".ofn.err");
 
