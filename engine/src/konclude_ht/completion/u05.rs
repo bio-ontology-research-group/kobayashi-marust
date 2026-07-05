@@ -266,10 +266,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
     }
 
-    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyAutomatTransactions`.
-    ///
-    /// PORT-PENDING: the qualified-`∀` automaton transition driver. Faithful
-    /// structure (cpp 9634–9752):
+    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::applyAutomatTransactions`
+    /// — the qualified-`∀` automaton transition driver (cpp 9634–9752), LIVE since the
+    /// role-chain-automata preprocessor landed as its producer. C++ structure for
+    /// reference:
     /// ```text
     /// STATINC(AUTOMATERULEAPPLICATIONCOUNT)
     /// baseConDes = conProDes->getConceptDescriptor(); reapplied = conProDes->isConceptReapplied()
@@ -311,24 +311,148 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         negated: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: most helpers now exist (concept arena operator-code/role/operand
-        // reads, createAUTOMATTRANSACTIONDependency in u28, getSuccessorIndividual /
-        // getLocalizedIndividual in node_resolution, isRestrictedTopObjectPropertyPropagation
-        // in u33, addConceptToIndividual in u36, addIndividualToProcessingQueue in u04,
-        // addConceptToReapplyQueue in u10), BUT the AQALL no-restLink arm iterates
-        // `processIndi->getReapplyRoleSuccessorHash(false)->getRoleSuccessorLinkIterator(role)`
-        // and `get_role_successor_link_iterator` is still a W2-DEFER stub returning an
-        // EMPTY iterator (process/pn3.rs:178) — porting now would silently DROP the
-        // per-successor transition application, so the whole driver stays deferred until
-        // the reapply-role-successor-hash iterator lands.
-        let _ = (
-            process_indi,
-            con_pro_des,
-            concept,
-            negated,
-            calc_alg_context,
-        );
-        todo!("W3-DEFER: applyAutomatTransactions — blocked on the reapply-role-successor-hash link iterator (process/pn3.rs get_role_successor_link_iterator still W2-DEFER stub)");
+        use super::super::model::op;
+        // W3-DEFER[macro]: STATINC(AUTOMATERULEAPPLICATIONCOUNT, calcAlgContext)
+
+        let base_con_des: ConDescId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_concept_descriptor();
+        let reapplied: bool = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .is_concept_reapplied();
+        // KONCLUDE-PORT-NOTE[api]: getLinkProcessingRestriction(conProDes) is W2-DEFER
+        // (the CLinkProcessingRestrictionSpecification subtype is unported), so
+        // restLink == NONE and the all-successors arm always runs; the per-link
+        // restLink arm (the reapply queue re-firing a state over ONE new edge,
+        // cpp 9662–9700) is realised instead by the ∃-rule's
+        // `ht_reapply_universal_restrictions` (u08), which re-walks the
+        // predecessor's automaton states when a new edge is installed.
+        let dep_track_point: TrackPointId = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .get_dependency_track_point();
+
+        let op_code: Cint64 = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operator_code();
+        let op_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+
+        if op_code == op::CCAQAND || op_code == op::CCIMPLAQAND || op_code == op::CCBRANCHAQAND {
+            for op_link in &op_concepts {
+                self.applied_all_rule_count += 1;
+                // W3-DEFER[macro]: STATINC(AUTOMATESTATECOUNT, calcAlgContext)
+                self.apply_automat_transactions(
+                    process_indi,
+                    con_pro_des,
+                    op_link.target,
+                    op_link.negated,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
+        } else if op_code == op::CCAQALL
+            || op_code == op::CCIMPLAQALL
+            || op_code == op::CCBRANCHAQALL
+        {
+            let role: RoleId = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_role();
+            // KONCLUDE-PORT-NOTE[api]: the C++ iterates
+            // `processIndi->getReapplyRoleSuccessorHash(false)
+            //     ->getRoleSuccessorLinkIterator(role)` — edges registered under
+            // every indirect super role on install. The port resolves the role
+            // hierarchy + the inverse direction at lookup via `ht_all_rule_targets`
+            // (u10), exactly as `apply_all_rule` (u09) does.
+            let role_targets = self.ht_all_rule_targets(*process_indi, role, calc_alg_context);
+            for succ_indi in role_targets {
+                self.applied_all_rule_count += 1;
+                // W3-DEFER[macro]: STATINC(AUTOMATETRANSACTIONCOUNT, calcAlgContext)
+                // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation — false (no
+                // answerer binding-propagation adapter in this fragment).
+                let mut next_dep_track_point: TrackPointId = Id::NONE;
+                let mut all_dep_node_created = false;
+                let mut loc_succ_indi: NodeId =
+                    self.get_localized_individual(succ_indi, false, calc_alg_context);
+                for op_link in &op_concepts {
+                    let op_concept: ConceptId = op_link.target;
+                    let op_con_neg: bool = op_link.negated ^ negated;
+                    // conLabelSet->containsConcept(opConcept, opConNeg)
+                    let has_concept = {
+                        let ls: LabelSetId = calc_alg_context
+                            .process_context()
+                            .node(loc_succ_indi)
+                            .use_reapply_con_label_set;
+                        ls != Id::NONE
+                            && calc_alg_context
+                                .process_context()
+                                .label_set(ls)
+                                .has_concept(op_concept, op_con_neg)
+                    };
+                    if !has_concept {
+                        if !all_dep_node_created {
+                            all_dep_node_created = true;
+                            // KONCLUDE-PORT-NOTE[api]: the link's own dependency track
+                            // point (`link->getDependencyTrackPoint()`) is not threaded
+                            // through `ht_all_rule_targets`; the descriptor's track
+                            // point stands in (the same deferral `apply_all_rule`
+                            // documents for createALLDependency).
+                            let _all_dep_node = self.create_automat_transaction_dependency(
+                                &mut next_dep_track_point,
+                                process_indi,
+                                base_con_des,
+                                dep_track_point,
+                                dep_track_point,
+                                calc_alg_context,
+                            );
+                        }
+                        self.add_concept_to_individual(
+                            op_concept,
+                            op_con_neg,
+                            &mut loc_succ_indi,
+                            next_dep_track_point,
+                            true,
+                            true,
+                            calc_alg_context,
+                        );
+                        if calc_alg_context.has_pending_signal() {
+                            return;
+                        }
+                    }
+                }
+                self.add_individual_to_processing_queue(loc_succ_indi, calc_alg_context);
+            }
+            if !reapplied {
+                // addConceptToReapplyQueue(baseConDes, role, processIndi, true, depTrackPoint, ...)
+                self.add_concept_to_reapply_queue_role(
+                    base_con_des,
+                    role,
+                    *process_indi,
+                    true,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+            }
+        } else if !reapplied {
+            self.add_concept_to_individual(
+                concept,
+                negated,
+                process_indi,
+                dep_track_point,
+                true,
+                true,
+                calc_alg_context,
+            );
+        }
     }
 
     // =======================================================================

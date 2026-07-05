@@ -8,3 +8,6 @@
 //! `completion/u05.rs`.
 
 pub mod role_chain_automata;
+
+#[cfg(test)]
+mod automata_test;

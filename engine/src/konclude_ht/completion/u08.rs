@@ -611,7 +611,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// link-processing-restriction `applyALLRule(restLink)` path (W2-DEFER). It scans
     /// `source`'s concept label set for `CCALL` concepts on `role` and adds their
     /// operands, which is exactly the set of `∀role.C` consequences a new R-edge must
-    /// receive.
+    /// receive. Two extensions keep the stand-in faithful to the reapply queue:
+    ///  - the role match is HIERARCHY-resolved (`edge role == r` or the edge role has
+    ///    `r` as an indirect super role) — Konclude registers a new edge under every
+    ///    indirect super role, so a `∀S.C` re-fires on a fresh `R ⊑ S` edge;
+    ///  - the role-automaton family re-fires too: `CCAQALL`-family transition concepts
+    ///    in the label (the non-specialized `apply_and_rule` route puts them there),
+    ///    and `CCAQAND`-family STATE concepts, whose transitions never enter the label
+    ///    under `conf_specialized_automate_rules` (`apply_automat_transactions`
+    ///    recurses inline) — for those the state graph is walked here, mirroring the
+    ///    reapply-queue re-run of the state descriptor over the single new link.
     pub fn ht_reapply_universal_restrictions(
         &mut self,
         source: NodeId,
@@ -633,6 +642,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         {
             let pc = calc_alg_context.process_context();
             let onto = calc_alg_context.ontology_arenas();
+            // `∀r.C` on `source` reaches the new `role`-edge when the edge role is r
+            // or r is one of its indirect super roles (self is in the list per the
+            // Konclude convention; the == check covers hand-built fixtures too).
+            let role_matches = |r: RoleId| -> bool {
+                r == role || (role.is_some() && onto.role(role).has_indirect_super_role(r))
+            };
             let mut it = pc
                 .label_set(ls)
                 .get_concept_label_set_iterator(true, false, false);
@@ -645,11 +660,48 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     continue;
                 }
                 let con: ConceptId = pc.con_desc(cd).get_concept();
-                if onto.concept(con).get_operator_code() == op::CCALL
-                    && onto.concept(con).get_role() == role
+                let oc = onto.concept(con).get_operator_code();
+                if (oc == op::CCALL
+                    || oc == op::CCAQALL
+                    || oc == op::CCIMPLAQALL
+                    || oc == op::CCBRANCHAQALL)
+                    && role_matches(onto.concept(con).get_role())
                 {
                     for nl in onto.concept(con).get_operand_list() {
                         ops.push((nl.target, nl.negated));
+                    }
+                } else if oc == op::CCAQAND || oc == op::CCIMPLAQAND || oc == op::CCBRANCHAQAND {
+                    // Walk the automaton state graph exactly as
+                    // `apply_automat_transactions` recurses: an AQALL operand on a
+                    // matching role contributes its operands XOR-ed with its own
+                    // linker negation; a nested AQAND is entered (its incoming
+                    // negation is ignored there, as in the C++ AQAND arm). The
+                    // visited set is defensive only (the preprocessor builds no
+                    // AQAND-cycle; ε-loops go through AQALL).
+                    let mut visited: std::collections::HashSet<ConceptId> =
+                        std::collections::HashSet::new();
+                    let mut stack: Vec<ConceptId> = vec![con];
+                    while let Some(state) = stack.pop() {
+                        if !visited.insert(state) {
+                            continue;
+                        }
+                        for nl in onto.concept(state).get_operand_list() {
+                            let op_oc = onto.concept(nl.target).get_operator_code();
+                            if op_oc == op::CCAQAND
+                                || op_oc == op::CCIMPLAQAND
+                                || op_oc == op::CCBRANCHAQAND
+                            {
+                                stack.push(nl.target);
+                            } else if (op_oc == op::CCAQALL
+                                || op_oc == op::CCIMPLAQALL
+                                || op_oc == op::CCBRANCHAQALL)
+                                && role_matches(onto.concept(nl.target).get_role())
+                            {
+                                for tl in onto.concept(nl.target).get_operand_list() {
+                                    ops.push((tl.target, tl.negated ^ nl.negated));
+                                }
+                            }
+                        }
                     }
                 }
             }
