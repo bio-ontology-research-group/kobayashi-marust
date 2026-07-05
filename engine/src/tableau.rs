@@ -35,17 +35,28 @@ fn stat_expand() {
         let (e, t, b) = s.get();
         s.set((e + 1, t, b));
         if (e + 1) % 200_000 == 0 && std::env::var_os("KM_TAB_STATS").is_some() {
-            eprintln!("KM_TAB_STATS progress expands={} branch_tries={} backtracks={}", e + 1, t, b);
+            eprintln!(
+                "KM_TAB_STATS progress expands={} branch_tries={} backtracks={}",
+                e + 1,
+                t,
+                b
+            );
         }
     });
 }
 #[inline]
 fn stat_try() {
-    STATS.with(|s| { let (e, t, b) = s.get(); s.set((e, t + 1, b)); });
+    STATS.with(|s| {
+        let (e, t, b) = s.get();
+        s.set((e, t + 1, b));
+    });
 }
 #[inline]
 fn stat_backtrack() {
-    STATS.with(|s| { let (e, t, b) = s.get(); s.set((e, t, b + 1)); });
+    STATS.with(|s| {
+        let (e, t, b) = s.get();
+        s.set((e, t, b + 1));
+    });
 }
 thread_local! {
     /// (decision-on-demand unit survivors asserted, DOD clashes). Only printed
@@ -54,7 +65,10 @@ thread_local! {
 }
 #[inline]
 fn stat_unit(applied: u64, clashed: bool) {
-    UNITS.with(|s| { let (a, c) = s.get(); s.set((a + applied, c + clashed as u64)); });
+    UNITS.with(|s| {
+        let (a, c) = s.get();
+        s.set((a + applied, c + clashed as u64));
+    });
 }
 
 /// Atomic concept id, atomic role id, clause variable, completion-graph node.
@@ -87,7 +101,10 @@ impl CLit {
         CLit { neg: true, c }
     }
     fn complement(&self) -> CLit {
-        CLit { neg: !self.neg, c: self.c }
+        CLit {
+            neg: !self.neg,
+            c: self.c,
+        }
     }
 }
 
@@ -242,7 +259,10 @@ impl Graph {
     fn raw_edge_remove(&mut self, r: R, s: Node, t: Node) -> bool {
         let existed = self.edges.remove(&(r, s, t));
         if existed {
-            if let Some(i) = self.out_edges[s].iter().position(|&(rr, tt)| rr == r && tt == t) {
+            if let Some(i) = self.out_edges[s]
+                .iter()
+                .position(|&(rr, tt)| rr == r && tt == t)
+            {
                 self.out_edges[s].swap_remove(i);
             }
         }
@@ -292,7 +312,14 @@ impl Graph {
     /// representative, moves its concepts / obligations / edges / children back,
     /// and removes only the entries the merge freshly created on the survivor.
     fn undo_merge(&mut self, m: MergeUndo) {
-        let MergeUndo { keep, gone, moved_concepts, moved_exobl, moved_edges, moved_pred } = m;
+        let MergeUndo {
+            keep,
+            gone,
+            moved_concepts,
+            moved_exobl,
+            moved_edges,
+            moved_pred,
+        } = m;
         self.repr[gone] = gone;
         for n in moved_pred {
             self.pred[n] = Some(gone);
@@ -488,7 +515,8 @@ impl Subst {
     }
     /// Binding of `k`; panics if unbound (mirrors `HashMap`'s `Index`).
     fn lookup(&self, k: Var) -> Node {
-        self.get(k).expect("unbound clause variable in substitution")
+        self.get(k)
+            .expect("unbound clause variable in substitution")
     }
     fn insert(&mut self, k: Var, n: Node) {
         for e in self.v.iter_mut() {
@@ -718,7 +746,10 @@ fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
                 .filter(|(j, _)| *j != i)
                 .map(|(_, l)| Atom::Concept { lit: *l, t: v })
                 .collect();
-            let head = vec![Atom::Concept { lit: lits[i].complement(), t: v }];
+            let head = vec![Atom::Concept {
+                lit: lits[i].complement(),
+                t: v,
+            }];
             extra.push(Clause::new(body, head));
         }
     }
@@ -751,7 +782,12 @@ impl Tableau {
                     }
                 }
                 let disjunctive = cl.head.len() >= 2;
-                ClauseInfo { cl, body_lits, body_roles, disjunctive }
+                ClauseInfo {
+                    cl,
+                    body_lits,
+                    body_roles,
+                    disjunctive,
+                }
             })
             .collect::<Vec<_>>();
         // Build the semi-naive index over non-disjunctive clauses.
@@ -1104,7 +1140,11 @@ impl Tableau {
         loop {
             hs_iter += 1;
             if prog && hs_iter % 200 == 0 {
-                eprintln!("KM_TAB_STATS horn_saturate iter={} nodes={}", hs_iter, g.n());
+                eprintln!(
+                    "KM_TAB_STATS horn_saturate iter={} nodes={}",
+                    hs_iter,
+                    g.n()
+                );
             }
             let mut changed = false;
             for info in &self.clauses {
@@ -1146,8 +1186,9 @@ impl Tableau {
         let mut merged = false;
         for &nc in &self.nominals {
             let lit = CLit::pos(nc);
-            let carriers: Vec<Node> =
-                (0..g.n()).filter(|&u| g.alive(u) && g.concepts[u].contains(&lit)).collect();
+            let carriers: Vec<Node> = (0..g.n())
+                .filter(|&u| g.alive(u) && g.concepts[u].contains(&lit))
+                .collect();
             if carriers.len() < 2 {
                 continue;
             }
@@ -1171,7 +1212,11 @@ impl Tableau {
         loop {
             sat_round += 1;
             if prog {
-                eprintln!("KM_TAB_STATS saturate round={} nodes={} (entering horn_saturate)", sat_round, g.n());
+                eprintln!(
+                    "KM_TAB_STATS saturate round={} nodes={} (entering horn_saturate)",
+                    sat_round,
+                    g.n()
+                );
             }
             if !self.horn_saturate(g) {
                 return false;
@@ -1280,7 +1325,12 @@ impl Tableau {
             }
             let mut found: Option<Subst> = None;
             self.match_visit(&info.cl, g, &mut |subst| {
-                if info.cl.head.iter().all(|v| !self.head_atom_present(g, v, subst)) {
+                if info
+                    .cl
+                    .head
+                    .iter()
+                    .all(|v| !self.head_atom_present(g, v, subst))
+                {
                     if blockskip && self.disj_all_blocked(g, &info.cl.head, subst) {
                         return true; // every target node blocked: skip, keep searching
                     }
@@ -1324,12 +1374,15 @@ impl Tableau {
         match v {
             Atom::Concept { lit, t } => g.concepts[g.find(subst.lookup(*t))].contains(lit),
             Atom::Role { r, s, t } => {
-                g.edges.contains(&(*r, g.find(subst.lookup(*s)), g.find(subst.lookup(*t))))
+                g.edges
+                    .contains(&(*r, g.find(subst.lookup(*s)), g.find(subst.lookup(*t))))
             }
             Atom::Exists { r, fil, t } => {
                 let s = g.find(subst.lookup(*t));
                 g.exobl[s].contains(&(*r, *fil))
-                    || g.out_edges[s].iter().any(|&(rr, u)| rr == *r && g.concepts[u].contains(fil))
+                    || g.out_edges[s]
+                        .iter()
+                        .any(|&(rr, u)| rr == *r && g.concepts[u].contains(fil))
             }
             // Already satisfied iff the two terms denote the same (merged) node.
             Atom::Eq { s, t } => g.find(subst.lookup(*s)) == g.find(subst.lookup(*t)),
@@ -1407,7 +1460,8 @@ impl Tableau {
         match &cl.body[i] {
             Atom::Concept { lit, t } => {
                 if let Some(nd) = subst.get(*t) {
-                    if g.concepts[nd].contains(lit) && !self.match_rec(cl, g, i + 1, subst, vars, f) {
+                    if g.concepts[nd].contains(lit) && !self.match_rec(cl, g, i + 1, subst, vars, f)
+                    {
                         return false;
                     }
                 } else {
@@ -1637,7 +1691,8 @@ impl Tableau {
                         for &(ci, var) in es {
                             let mut seed = Subst::new();
                             seed.insert(var, node);
-                            if let Some(c) = self.fire_clause(&self.clauses[ci], g, seed, &mut pending)
+                            if let Some(c) =
+                                self.fire_clause(&self.clauses[ci], g, seed, &mut pending)
                             {
                                 return Some(c);
                             }
@@ -1650,7 +1705,8 @@ impl Tableau {
                             let mut seed = Subst::new();
                             seed.insert(sv, s);
                             seed.insert(tv, t);
-                            if let Some(c) = self.fire_clause(&self.clauses[ci], g, seed, &mut pending)
+                            if let Some(c) =
+                                self.fire_clause(&self.clauses[ci], g, seed, &mut pending)
                             {
                                 return Some(c);
                             }
@@ -1675,13 +1731,22 @@ impl Tableau {
         loop {
             inc_round += 1;
             if prog {
-                eprintln!("KM_TAB_STATS saturate_inc round={} nodes={} queue={} (entering horn_inc)", inc_round, g.n(), queue.len());
+                eprintln!(
+                    "KM_TAB_STATS saturate_inc round={} nodes={} queue={} (entering horn_inc)",
+                    inc_round,
+                    g.n(),
+                    queue.len()
+                );
             }
             if let Some(c) = self.horn_inc(g, &mut queue) {
                 return Some(c);
             }
             if prog {
-                eprintln!("KM_TAB_STATS saturate_inc round={} horn_inc DONE nodes={}", inc_round, g.n());
+                eprintln!(
+                    "KM_TAB_STATS saturate_inc round={} horn_inc DONE nodes={}",
+                    inc_round,
+                    g.n()
+                );
             }
             // Decision-on-demand: propagate forced disjunction survivors before any
             // ∃ round or branch. A unit survivor is a deterministic consequence, so
@@ -1889,7 +1954,10 @@ impl Tableau {
                 stat_try();
                 st.n_try += 1;
                 if st.stats && st.n_try % 20000 == 0 {
-                    eprintln!("KM_TAB_STATS nogood heartbeat tries={} learned={} hits={} skips={} dl={}", st.n_try, st.n_learn, st.n_hit, st.n_skip, dl);
+                    eprintln!(
+                        "KM_TAB_STATS nogood heartbeat tries={} learned={} hits={} skips={} dl={}",
+                        st.n_try, st.n_learn, st.n_hit, st.n_skip, dl
+                    );
                 }
                 let cp = g.checkpoint();
                 let mut ddep = bdep.clone();
@@ -1910,7 +1978,10 @@ impl Tableau {
                     if let Some(c) = st.check(d, level) {
                         st.n_hit += 1;
                         if st.stats && st.n_hit % 20000 == 0 {
-                            eprintln!("KM_TAB_STATS nogood hits={} learned={} skips={}", st.n_hit, st.n_learn, st.n_skip);
+                            eprintln!(
+                                "KM_TAB_STATS nogood hits={} learned={} skips={}",
+                                st.n_hit, st.n_learn, st.n_skip
+                            );
                         }
                         Some(c)
                     } else {
@@ -2195,7 +2266,6 @@ enum PendHead {
     Exobl(Node, R, CLit, DepSet),
 }
 
-
 impl Tableau {
     /// Classify the named concepts. Returns `(consistent, unsatisfiable, subs)`:
     /// `consistent` = the ontology has a model; `unsatisfiable` = named concepts
@@ -2224,7 +2294,10 @@ impl Tableau {
             }
         }
         if std::env::var_os("KM_TAB_STATS").is_some() {
-            eprintln!("KM_TAB_STATS classify START: {} named, checking consistent([])", named.len());
+            eprintln!(
+                "KM_TAB_STATS classify START: {} named, checking consistent([])",
+                named.len()
+            );
         }
         let consistent = self.consistent(&[]);
         if std::env::var_os("KM_TAB_STATS").is_some() {
@@ -2297,7 +2370,11 @@ impl Tableau {
                 if self.exact.len() < Self::CAP {
                     self.exact.insert(key.clone(), verdict);
                 }
-                let bucket = if verdict { &mut self.sat } else { &mut self.unsat };
+                let bucket = if verdict {
+                    &mut self.sat
+                } else {
+                    &mut self.unsat
+                };
                 if bucket.len() < Self::CAP {
                     bucket.push(key);
                 }
@@ -2332,7 +2409,12 @@ impl Tableau {
         let prog = std::env::var_os("KM_TAB_STATS").is_some();
         for (ai, &a) in named.iter().enumerate() {
             if prog && ai % 25 == 0 {
-                eprintln!("KM_TAB_STATS classify phase1 concept {}/{} subs_so_far={}", ai, named.len(), subs.len());
+                eprintln!(
+                    "KM_TAB_STATS classify phase1 concept {}/{} subs_so_far={}",
+                    ai,
+                    named.len(),
+                    subs.len()
+                );
             }
             let key = SatCache::key(&[CLit::pos(a)]);
             if cache.query(&key) == Some(false) {
@@ -2386,7 +2468,10 @@ impl Tableau {
         let definite = subs.len();
         let total_cand: usize = cand.iter().map(|(_, s)| s.len()).sum();
         if prog {
-            eprintln!("KM_TAB_STATS classify phase1 DONE: definite={} candidates_to_confirm={}", definite, total_cand);
+            eprintln!(
+                "KM_TAB_STATS classify phase1 DONE: definite={} candidates_to_confirm={}",
+                definite, total_cand
+            );
         }
 
         // ---- P2: KPSet classification gate (KM_HT_PMMERGE) ----
@@ -2463,7 +2548,10 @@ impl Tableau {
                 }
                 confirmed += 1;
                 if prog && confirmed % 200 == 0 {
-                    eprintln!("KM_TAB_STATS classify phase2 confirm {}/{}", confirmed, total_cand);
+                    eprintln!(
+                        "KM_TAB_STATS classify phase2 confirm {}/{}",
+                        confirmed, total_cand
+                    );
                 }
                 let key = SatCache::key(&[CLit::pos(*a), CLit::neg(b)]);
                 let sat = match cache.query(&key) {
@@ -2587,7 +2675,7 @@ struct CProg {
     horn_by_lit: HashMap<CLit, Vec<usize>>, // node_horn idx, keyed by each body lit
     horn_empty: Vec<CLit>,                  // heads of empty-body node_horn (⊤ ⊑ h)
     clash_by_lit: HashMap<CLit, Vec<usize>>, // node_clash idx, keyed by each body lit
-    clash_empty: bool,                       // an empty-body ⊥-clause (KB ⊨ ⊥)
+    clash_empty: bool,                      // an empty-body ⊥-clause (KB ⊨ ⊥)
     // synthetic-marker metadata: marker concept id → role r of its `∀r.L`
     // disjunct. A marker disjunct asserts `∀r.L` (forbids `¬L` on r-successors);
     // when the node has no live r-obligation the disjunct is vacuous, so trying
@@ -2658,7 +2746,10 @@ impl Tableau {
                 if dbg {
                     eprintln!(
                         "KM_TAB_STATS build_cprog FENCE clause#{} ({}): body={} head={}",
-                        $ci, $why, self.clauses[$ci].cl.body.len(), self.clauses[$ci].cl.head.len()
+                        $ci,
+                        $why,
+                        self.clauses[$ci].cl.body.len(),
+                        self.clauses[$ci].cl.head.len()
                     );
                 }
                 return None;
@@ -2697,8 +2788,18 @@ impl Tableau {
             let cl = &info.cl;
             // ---- subrole detection: body=[Role], head=[Role], same direction ----
             if cl.body.len() == 1 && cl.head.len() == 1 {
-                if let (Atom::Role { r: rb, s: sb, t: tb }, Atom::Role { r: rh, s: sh, t: th }) =
-                    (&cl.body[0], &cl.head[0])
+                if let (
+                    Atom::Role {
+                        r: rb,
+                        s: sb,
+                        t: tb,
+                    },
+                    Atom::Role {
+                        r: rh,
+                        s: sh,
+                        t: th,
+                    },
+                ) = (&cl.body[0], &cl.head[0])
                 {
                     if sb == sh && tb == th {
                         subrole.push((*rb, *rh)); // r ⊑ s
@@ -2812,7 +2913,12 @@ impl Tableau {
                         }
                     } else {
                         // universal `xbody(x) ∧ r ∧ ybody(y) → hy(y)` (hy empty = ⊥).
-                        uni.push(Uni { xbody: bx, role: r, ybody: by, yhead: hy });
+                        uni.push(Uni {
+                            xbody: bx,
+                            role: r,
+                            ybody: by,
+                            yhead: hy,
+                        });
                     }
                 }
             }
@@ -2910,18 +3016,42 @@ impl Tableau {
         for info in &self.clauses {
             let cl = &info.cl;
             // (a) raw R∘R⊑R
-            let rb: Vec<&Atom> = cl.body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
-            if cl.body.len() == 2 && cl.head.len() == 1
+            let rb: Vec<&Atom> = cl
+                .body
+                .iter()
+                .filter(|a| matches!(a, Atom::Role { .. }))
+                .collect();
+            if cl.body.len() == 2
+                && cl.head.len() == 1
                 && matches!(cl.body[0], Atom::Role { .. })
                 && matches!(cl.body[1], Atom::Role { .. })
                 && matches!(cl.head[0], Atom::Role { .. })
             {
-                if let (Atom::Role { r: r1, s: r1s, t: r1t },
-                         Atom::Role { r: r2, s: r2s, t: r2t },
-                         Atom::Role { r: hr, s: hs, t: ht_ }) =
-                    (rb[0], rb[1], &cl.head[0])
+                if let (
+                    Atom::Role {
+                        r: r1,
+                        s: r1s,
+                        t: r1t,
+                    },
+                    Atom::Role {
+                        r: r2,
+                        s: r2s,
+                        t: r2t,
+                    },
+                    Atom::Role {
+                        r: hr,
+                        s: hs,
+                        t: ht_,
+                    },
+                ) = (rb[0], rb[1], &cl.head[0])
                 {
-                    if r1 == r2 && r2 == hr && r1t == r2s && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t {
+                    if r1 == r2
+                        && r2 == hr
+                        && r1t == r2s
+                        && *hs == *r1s
+                        && *ht_ == *r2t
+                        && *r1s != *r2t
+                    {
                         transitive.insert(*hr);
                     }
                 }
@@ -2932,7 +3062,8 @@ impl Tableau {
             // the SHAPE: 2-body (1 role + 1 concept on the role target), 1-head concept
             // on the role source, where the body concept and head concept are the SAME
             // marker.  This is the transitive-propagation shape; its role is transitive.
-            if cl.body.len() == 2 && cl.head.len() == 1
+            if cl.body.len() == 2
+                && cl.head.len() == 1
                 && matches!(cl.head[0], Atom::Concept { t: 0, .. })
             {
                 let mut role_atom: Option<(&R, Var, Var)> = None;
@@ -2984,21 +3115,46 @@ impl Tableau {
         let mut chains: Vec<(R, R, R)> = Vec::new();
         for info in &self.clauses {
             let cl = &info.cl;
-            let rb: Vec<&Atom> = cl.body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
-            if cl.body.len() == 2 && cl.head.len() == 1
+            let rb: Vec<&Atom> = cl
+                .body
+                .iter()
+                .filter(|a| matches!(a, Atom::Role { .. }))
+                .collect();
+            if cl.body.len() == 2
+                && cl.head.len() == 1
                 && matches!(cl.body[0], Atom::Role { .. })
                 && matches!(cl.body[1], Atom::Role { .. })
                 && matches!(cl.head[0], Atom::Role { .. })
             {
-                if let (Atom::Role { r: r1, s: r1s, t: r1t },
-                         Atom::Role { r: r2, s: r2s, t: r2t },
-                         Atom::Role { r: hr, s: hs, t: ht_ }) =
-                    (rb[0], rb[1], &cl.head[0])
+                if let (
+                    Atom::Role {
+                        r: r1,
+                        s: r1s,
+                        t: r1t,
+                    },
+                    Atom::Role {
+                        r: r2,
+                        s: r2s,
+                        t: r2t,
+                    },
+                    Atom::Role {
+                        r: hr,
+                        s: hs,
+                        t: ht_,
+                    },
+                ) = (rb[0], rb[1], &cl.head[0])
                 {
-                    let (fr, sr, mid_ok) = if r1t == r2s { (*r1, *r2, true) }
-                        else if r2t == r1s { (*r2, *r1, true) }
-                        else { (0, 0, false) };
-                    if mid_ok && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t
+                    let (fr, sr, mid_ok) = if r1t == r2s {
+                        (*r1, *r2, true)
+                    } else if r2t == r1s {
+                        (*r2, *r1, true)
+                    } else {
+                        (0, 0, false)
+                    };
+                    if mid_ok
+                        && *hs == *r1s
+                        && *ht_ == *r2t
+                        && *r1s != *r2t
                         && !(fr == sr && sr == *hr)
                     {
                         chains.push((fr, sr, *hr));
@@ -3012,8 +3168,12 @@ impl Tableau {
             // marker_by_role: R -> Vec<(M, neg_cy)>
             let mut marker_by_role: HashMap<R, Vec<(C, CLit)>> = HashMap::new();
             for u in &uni {
-                if u.xbody.len() == 1 && !u.xbody[0].neg && u.ybody.is_empty() && u.yhead.len() == 1 {
-                    marker_by_role.entry(u.role).or_default().push((u.xbody[0].c, u.yhead[0]));
+                if u.xbody.len() == 1 && !u.xbody[0].neg && u.ybody.is_empty() && u.yhead.len() == 1
+                {
+                    marker_by_role
+                        .entry(u.role)
+                        .or_default()
+                        .push((u.xbody[0].c, u.yhead[0]));
                 }
             }
             // sub-role closure (R ⊑* R'): a chain R1∘R2⊑U with U⊑*R also unfolds
@@ -3087,9 +3247,20 @@ impl Tableau {
             uni.extend(new_uni);
         }
         Some(CProg {
-            node_horn, node_clash, node_disj, node_exists, uni, domain, supers,
-            horn_by_lit, horn_empty, clash_by_lit, clash_empty, marker_role,
-            trigger_lits, uni_for_role,
+            node_horn,
+            node_clash,
+            node_disj,
+            node_exists,
+            uni,
+            domain,
+            supers,
+            horn_by_lit,
+            horn_empty,
+            clash_by_lit,
+            clash_empty,
+            marker_role,
+            trigger_lits,
+            uni_for_role,
             transitive,
             n_concepts: next_marker,
         })
@@ -3099,7 +3270,8 @@ impl Tableau {
     fn consistent_cached(&self, root_label: &[CLit], prog: &CProg) -> bool {
         with_big_stack(|| {
             let mut run = CacheRun::new(self, prog);
-            run.sat_seed(&CKey::canon(root_label.to_vec(), Vec::new())).0
+            run.sat_seed(&CKey::canon(root_label.to_vec(), Vec::new()))
+                .0
         })
     }
 
@@ -3124,7 +3296,12 @@ impl Tableau {
             }
         }
         // ⊤ ⊑ T tops: a virtual edge from every concept to each top.
-        let tops: Vec<C> = prog.horn_empty.iter().filter(|l| !l.neg).map(|l| l.c).collect();
+        let tops: Vec<C> = prog
+            .horn_empty
+            .iter()
+            .filter(|l| !l.neg)
+            .map(|l| l.c)
+            .collect();
         let mut out: HashMap<C, HashSet<C>> = HashMap::new();
         for &a in named {
             let mut seen: HashSet<C> = HashSet::new();
@@ -3168,12 +3345,17 @@ impl Tableau {
             // when NOT bogged on the (separately-decidable) global model build. NOT
             // for production — global consistency must be proven elsewhere (Ht does).
             let consistent = if std::env::var_os("KM_TAB_ASSUME_CONSISTENT").is_some() {
-                if run.stats { eprintln!("KM_TAB_STATS cache: consistent([]) ASSUMED true (skipped)"); }
+                if run.stats {
+                    eprintln!("KM_TAB_STATS cache: consistent([]) ASSUMED true (skipped)");
+                }
                 true
             } else {
                 let c = run.sat_seed(&CKey::canon(Vec::new(), Vec::new())).0;
                 if run.stats {
-                    eprintln!("KM_TAB_STATS cache: consistent([])={} seeds={} branches={}", c, run.n_seed, run.n_branch);
+                    eprintln!(
+                        "KM_TAB_STATS cache: consistent([])={} seeds={} branches={}",
+                        c, run.n_seed, run.n_branch
+                    );
                 }
                 c
             };
@@ -3187,7 +3369,10 @@ impl Tableau {
                 if run.stats && ai % 25 == 0 {
                     eprintln!(
                         "KM_TAB_STATS cache: classify {}/{} seeds={} cache={} subs_cand={}",
-                        ai, named.len(), run.n_seed, run.cache.len(),
+                        ai,
+                        named.len(),
+                        run.n_seed,
+                        run.cache.len(),
                         cand.iter().map(|(_, s)| s.len()).sum::<usize>()
                     );
                 }
@@ -3223,7 +3408,9 @@ impl Tableau {
                         n_told += 1;
                         continue;
                     }
-                    if !run.sat_seed(&CKey::canon(vec![CLit::pos(*a), CLit::neg(b)], Vec::new())).0
+                    if !run
+                        .sat_seed(&CKey::canon(vec![CLit::pos(*a), CLit::neg(b)], Vec::new()))
+                        .0
                     {
                         subs.push((*a, b));
                     }
@@ -3235,7 +3422,10 @@ impl Tableau {
             if run.stats {
                 eprintln!(
                     "KM_TAB_STATS cache: DONE seeds={} cache={} unsat_named={} subs={}",
-                    run.n_seed, run.cache.len(), unsat.len(), subs.len()
+                    run.n_seed,
+                    run.cache.len(),
+                    unsat.len(),
+                    subs.len()
                 );
             }
             (consistent, unsat, subs)
@@ -3321,8 +3511,8 @@ struct CacheRun<'a> {
     /// exploits them from the top instead of staying stuck deep in the ∃-chain.
     /// Sound: restarting only re-orders the (terminating, complete) DPLL search.
     restart: bool,
-    restart_unit: u64,    // restart_limit = luby_v * restart_unit
-    luby_u: u64,          // Knuth reluctant-doubling state
+    restart_unit: u64, // restart_limit = luby_v * restart_unit
+    luby_u: u64,       // Knuth reluctant-doubling state
     luby_v: u64,
     conflicts_since: u64, // conflicts since the last restart
     restart_limit: u64,
@@ -3345,7 +3535,7 @@ struct CacheRun<'a> {
     qwin_cap: usize,
     qglob_sum: u64,
     qglob_cnt: u64,
-    dyn_margin: f64,  // restart when recent_avg > dyn_margin * global_avg
+    dyn_margin: f64, // restart when recent_avg > dyn_margin * global_avg
     dwin: std::collections::VecDeque<u32>, // recent search depths (bounded)
     dwin_sum: u64,
     block_factor: f64, // suppress restart while depth > block_factor * avg_depth
@@ -3477,7 +3667,9 @@ impl<'a> CacheRun<'a> {
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(200_000),
-            eager: std::env::var("KM_TAB_EAGER").map(|s| s != "0").unwrap_or(true),
+            eager: std::env::var("KM_TAB_EAGER")
+                .map(|s| s != "0")
+                .unwrap_or(true),
             vsids: env_on("KM_TAB_VSIDS", conv),
             activity: if env_on("KM_TAB_VSIDS", conv) {
                 vec![0.0; prog.n_concepts as usize]
@@ -3578,7 +3770,11 @@ impl<'a> CacheRun<'a> {
 
     /// If `set` contains a learned no-good, return its clash reason (for
     /// backjumping); else `None`.
-    fn check_nogood(&self, set: &HashSet<CLit>, cdep: &HashMap<CLit, Vec<CLit>>) -> Option<Vec<CLit>> {
+    fn check_nogood(
+        &self,
+        set: &HashSet<CLit>,
+        cdep: &HashMap<CLit, Vec<CLit>>,
+    ) -> Option<Vec<CLit>> {
         for l in set {
             if let Some(idxs) = self.ng_watch.get(l) {
                 for &i in idxs {
@@ -4068,7 +4264,10 @@ impl<'a> CacheRun<'a> {
             let mut best: Option<(f64, &Vec<CLit>, &Vec<CLit>, bool)> = None;
             for (b, h) in &p.node_disj {
                 if b.iter().all(|l| set.contains(l)) && !h.iter().any(|d| set.contains(d)) {
-                    let score = h.iter().map(|d| self.act_of(d)).fold(f64::NEG_INFINITY, f64::max);
+                    let score = h
+                        .iter()
+                        .map(|d| self.act_of(d))
+                        .fold(f64::NEG_INFINITY, f64::max);
                     if best.as_ref().map_or(true, |&(s, ..)| score > s) {
                         best = Some((score, b, h, false));
                     }
@@ -4079,7 +4278,10 @@ impl<'a> CacheRun<'a> {
                     && b.iter().all(|l| set.contains(l))
                     && !h.iter().any(|d| set.contains(d))
                 {
-                    let score = h.iter().map(|d| self.act_of(d)).fold(f64::NEG_INFINITY, f64::max);
+                    let score = h
+                        .iter()
+                        .map(|d| self.act_of(d))
+                        .fold(f64::NEG_INFINITY, f64::max);
                     if best.as_ref().map_or(true, |&(s, ..)| score > s) {
                         best = Some((score, b, h, true));
                     }
@@ -4230,9 +4432,14 @@ impl<'a> CacheRun<'a> {
         let mut tainted = false;
         let mut trail = Vec::new();
         let mut tlits: HashSet<CLit> = HashSet::new();
-        if let Some(conf) =
-            self.close_dep(&mut set, &mut cdep, &key.imposed, &mut trail, &mut tlits, &mut tainted)
-        {
+        if let Some(conf) = self.close_dep(
+            &mut set,
+            &mut cdep,
+            &key.imposed,
+            &mut trail,
+            &mut tlits,
+            &mut tainted,
+        ) {
             self.cache.insert(key.clone(), false);
             if !tainted {
                 self.learn(&conf);
@@ -4269,7 +4476,11 @@ impl<'a> CacheRun<'a> {
         if self.stats && self.n_seed % self.hb == 0 {
             eprintln!(
                 "KM_TAB_STATS cache: seeds={} stack={} cache={} nogoods={} nghit={}",
-                self.n_seed, self.stack.len(), self.cache.len(), self.nogoods.len(), self.n_nghit
+                self.n_seed,
+                self.stack.len(),
+                self.cache.len(),
+                self.nogoods.len(),
+                self.n_nghit
             );
         }
         // seed entry: first DPLL step always does a full eager check (dirty).
@@ -4297,9 +4508,14 @@ impl<'a> CacheRun<'a> {
             tlits = HashSet::new();
             let mut tr: Vec<CLit> = Vec::new();
             let mut tn = false;
-            if let Some(conf) =
-                self.close_dep(&mut set, &mut cdep, &key.imposed, &mut tr, &mut tlits, &mut tn)
-            {
+            if let Some(conf) = self.close_dep(
+                &mut set,
+                &mut cdep,
+                &key.imposed,
+                &mut tr,
+                &mut tlits,
+                &mut tn,
+            ) {
                 // unreachable in practice (the base closed cleanly on first entry),
                 // but handle defensively as a genuine unsat.
                 res = Err(SearchErr::Conflict(conf, tn));
@@ -4438,8 +4654,12 @@ impl<'a> CacheRun<'a> {
         if self.stats && self.n_branch % 2_000_000 == 0 {
             eprintln!(
                 "KM_TAB_STATS cache: branches={} seeds={} cache={} stack={} nogoods={} nghit={}",
-                self.n_branch, self.n_seed, self.cache.len(), self.stack.len(),
-                self.nogoods.len(), self.n_nghit
+                self.n_branch,
+                self.n_seed,
+                self.cache.len(),
+                self.stack.len(),
+                self.nogoods.len(),
+                self.n_nghit
             );
         }
         // a conflict derived under this disjunction is node-specific iff the
@@ -4460,7 +4680,8 @@ impl<'a> CacheRun<'a> {
                 trail.push(d);
             }
             let mut ctaint = false;
-            let conf = match self.close_dep(set, cdep, &key.imposed, &mut trail, tlits, &mut ctaint) {
+            let conf = match self.close_dep(set, cdep, &key.imposed, &mut trail, tlits, &mut ctaint)
+            {
                 Some(c) => Some(c),
                 None => {
                     // the child step is dirty iff it added a trigger literal.
@@ -4687,9 +4908,16 @@ pub struct TOutput {
 
 fn atom_of(j: &JAtom) -> Atom {
     match *j {
-        JAtom::Concept { neg, c, t } => Atom::Concept { lit: CLit { neg, c }, t },
+        JAtom::Concept { neg, c, t } => Atom::Concept {
+            lit: CLit { neg, c },
+            t,
+        },
         JAtom::Role { r, s, t } => Atom::Role { r, s, t },
-        JAtom::Exists { r, neg, c, t } => Atom::Exists { r, fil: CLit { neg, c }, t },
+        JAtom::Exists { r, neg, c, t } => Atom::Exists {
+            r,
+            fil: CLit { neg, c },
+            t,
+        },
         JAtom::Eq { s, t } => Atom::Eq { s, t },
     }
 }
@@ -4700,7 +4928,12 @@ pub fn run_json(input: &str) -> Result<String, String> {
     let clauses: Vec<Clause> = inp
         .clauses
         .iter()
-        .map(|c| Clause::new(c.body.iter().map(atom_of).collect(), c.head.iter().map(atom_of).collect()))
+        .map(|c| {
+            Clause::new(
+                c.body.iter().map(atom_of).collect(),
+                c.head.iter().map(atom_of).collect(),
+            )
+        })
         .collect();
     let queries: Vec<C> = if inp.queries.is_empty() {
         (0..inp.concepts.len() as C).collect()
@@ -4731,7 +4964,11 @@ pub fn run_json(input: &str) -> Result<String, String> {
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|_| "rules-consistency thread panicked".to_string())?;
-        let out = TOutput { consistent, unsatisfiable: Vec::new(), subsumptions: Vec::new() };
+        let out = TOutput {
+            consistent,
+            unsatisfiable: Vec::new(),
+            subsumptions: Vec::new(),
+        };
         return serde_json::to_string(&out).map_err(|e| e.to_string());
     }
 
@@ -4760,8 +4997,11 @@ pub fn run_json(input: &str) -> Result<String, String> {
         let noms = inp.nominals.clone();
         let ht_number = inp.number;
         // KM_HT_CARD: first-class number restrictions to install on the Ht.
-        let card_raw: Vec<(C, bool, u32, R, C)> =
-            inp.card_defs.iter().map(|d| (d.marker, d.min, d.n, d.role, d.filler)).collect();
+        let card_raw: Vec<(C, bool, u32, R, C)> = inp
+            .card_defs
+            .iter()
+            .map(|d| (d.marker, d.min, d.n, d.role, d.filler))
+            .collect();
         let res = std::thread::Builder::new()
             // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
             // branch level; SHOQ number+nominal search can nest tens of thousands
@@ -4819,8 +5059,21 @@ pub fn run_json(input: &str) -> Result<String, String> {
             eprintln!("TR run_json: thread joined (Ht dropped inside thread)");
         }
         if let Some((consistent, unsat, subs)) = res {
-            let name =
-                |c: C| inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"));
+            // The per-concept model-label candidate sets can miss an entailed
+            // A ⊑ C when A ⊑ B ⊑ C and C is absent from A's one captured model
+            // (inferred, non-told subsumers via domain/range etc.). Subsumption
+            // is transitive, so closing the confirmed relation is unconditionally
+            // sound and only ADDS entailed pairs (ore_ont_7499: recovers 3297
+            // BFO/CHEBI upper-ontology links, byte-exact to gold). Applied once
+            // here so every hypertableau variant (branching + QO certify) is
+            // covered at the serialization boundary.
+            let subs = hypertableau::transitive_close_subs(subs);
+            let name = |c: C| {
+                inp.concepts
+                    .get(c as usize)
+                    .cloned()
+                    .unwrap_or_else(|| format!("C{c}"))
+            };
             let out = TOutput {
                 consistent,
                 unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
@@ -4842,7 +5095,16 @@ pub fn run_json(input: &str) -> Result<String, String> {
     t.set_number(inp.number);
     t.set_nominals(inp.nominals.clone());
     let (consistent, unsat, subs) = t.classify(&queries);
-    let name = |c: C| inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"));
+    // Same transitive-closure completion as the hypertableau path (sound: only
+    // adds entailed pairs). The legacy tableau's per-concept candidate sets have
+    // the same model-label incompleteness for inferred (non-told) subsumers.
+    let subs = hypertableau::transitive_close_subs(subs);
+    let name = |c: C| {
+        inp.concepts
+            .get(c as usize)
+            .cloned()
+            .unwrap_or_else(|| format!("C{c}"))
+    };
     let out = TOutput {
         consistent,
         unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
@@ -4856,13 +5118,20 @@ mod tests {
     use super::*;
 
     fn con(neg: bool, c: C, t: Var) -> Atom {
-        Atom::Concept { lit: CLit { neg, c }, t }
+        Atom::Concept {
+            lit: CLit { neg, c },
+            t,
+        }
     }
     fn role(r: R, s: Var, t: Var) -> Atom {
         Atom::Role { r, s, t }
     }
     fn exists(r: R, neg: bool, c: C, t: Var) -> Atom {
-        Atom::Exists { r, fil: CLit { neg, c }, t }
+        Atom::Exists {
+            r,
+            fil: CLit { neg, c },
+            t,
+        }
     }
 
     // concept ids: A=0,B=1,C=2,D=3 ; role r=0
@@ -4891,7 +5160,10 @@ mod tests {
         // clauses: A(x) → ∃r.B(x) ;  A(x) ∧ r(x,y) → ¬B(y)  ... but ¬B(y) head clashes with B(y).
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(true, B, 1)],
+            ),
         ];
         let t = Tableau::new(cls);
         assert!(!t.consistent(&[CLit::pos(A)]));
@@ -4902,7 +5174,10 @@ mod tests {
         // A ⊑ ∃r.B, A ⊑ ∀r.D  is satisfiable (successor gets B and D, no clash).
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, D, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, D, 1)],
+            ),
         ];
         let t = Tableau::new(cls);
         assert!(t.consistent(&[CLit::pos(A)]));
@@ -4912,7 +5187,10 @@ mod tests {
     fn disjunction_branch() {
         // A ⊑ B ⊔ D, A ⊑ ¬B, A ⊑ ¬D ⇒ A unsat (both branches clash).
         let cls = vec![
-            Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![con(true, D, X)]),
         ];
@@ -4924,7 +5202,10 @@ mod tests {
     fn disjunction_one_branch_open() {
         // A ⊑ B ⊔ D, A ⊑ ¬B ⇒ A still satisfiable (via the D branch).
         let cls = vec![
-            Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
         ];
         let t = Tableau::new(cls);
@@ -4971,7 +5252,13 @@ mod tests {
             Clause::new(vec![con(false, E, X), con(false, F, X)], vec![]),
             // ≤1 r.B : A(x) ∧ r(x,1) ∧ B(1) ∧ r(x,2) ∧ B(2) → ≈(1,2)
             Clause::new(
-                vec![con(false, A, X), role(R0, X, 1), con(false, B, 1), role(R0, X, 2), con(false, B, 2)],
+                vec![
+                    con(false, A, X),
+                    role(R0, X, 1),
+                    con(false, B, 1),
+                    role(R0, X, 2),
+                    con(false, B, 2),
+                ],
                 vec![eq(1, 2)],
             ),
         ];
@@ -4991,7 +5278,13 @@ mod tests {
             Clause::new(vec![con(false, Q, X)], vec![con(false, B, X)]),
             Clause::new(vec![con(false, Q, X)], vec![con(false, F, X)]),
             Clause::new(
-                vec![con(false, A, X), role(R0, X, 1), con(false, B, 1), role(R0, X, 2), con(false, B, 2)],
+                vec![
+                    con(false, A, X),
+                    role(R0, X, 1),
+                    con(false, B, 1),
+                    role(R0, X, 2),
+                    con(false, B, 2),
+                ],
                 vec![eq(1, 2)],
             ),
         ];
@@ -5014,7 +5307,13 @@ mod tests {
             Clause::new(vec![con(false, S0, X), con(false, S1, X)], vec![]), // slot disjointness
             // ≤1 r.C
             Clause::new(
-                vec![con(false, A, X), role(R0, X, 1), con(false, C2, 1), role(R0, X, 2), con(false, C2, 2)],
+                vec![
+                    con(false, A, X),
+                    role(R0, X, 1),
+                    con(false, C2, 1),
+                    role(R0, X, 2),
+                    con(false, C2, 2),
+                ],
                 vec![eq(1, 2)],
             ),
         ];
@@ -5054,9 +5353,12 @@ mod tests {
             Clause::new(
                 vec![
                     con(false, A, X),
-                    role(R0, X, 1), con(false, C2, 1),
-                    role(R0, X, 2), con(false, C2, 2),
-                    role(R0, X, 3), con(false, C2, 3),
+                    role(R0, X, 1),
+                    con(false, C2, 1),
+                    role(R0, X, 2),
+                    con(false, C2, 2),
+                    role(R0, X, 3),
+                    con(false, C2, 3),
                 ],
                 vec![eq(1, 2), eq(1, 3), eq(2, 3)],
             ),
@@ -5081,8 +5383,14 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, N, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R1, false, N, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, C2, 1)]),
-            Clause::new(vec![con(false, A, X), role(R1, X, 1)], vec![con(true, C2, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, C2, 1)],
+            ),
+            Clause::new(
+                vec![con(false, A, X), role(R1, X, 1)],
+                vec![con(true, C2, 1)],
+            ),
         ];
         let mut t = Tableau::new(cls);
         t.set_nominals(vec![N]);
@@ -5096,8 +5404,14 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, N, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R1, false, N, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, C2, 1)]),
-            Clause::new(vec![con(false, A, X), role(R1, X, 1)], vec![con(false, C2, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, C2, 1)],
+            ),
+            Clause::new(
+                vec![con(false, A, X), role(R1, X, 1)],
+                vec![con(false, C2, 1)],
+            ),
         ];
         let mut t = Tableau::new(cls);
         t.set_nominals(vec![N]);

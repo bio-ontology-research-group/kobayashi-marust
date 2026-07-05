@@ -86,7 +86,11 @@ impl IriRegistry {
                 cand = format!("{}__{}", base, tag);
                 let mut i = 2;
                 // while _short_owner.get(cand, full) != full
-                while self.short_owner.get(&cand).map(|s| s.as_str()).unwrap_or(full.as_str())
+                while self
+                    .short_owner
+                    .get(&cand)
+                    .map(|s| s.as_str())
+                    .unwrap_or(full.as_str())
                     != full.as_str()
                 {
                     cand = format!("{}__{}{}", base, tag, i);

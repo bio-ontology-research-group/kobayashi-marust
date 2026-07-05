@@ -7,8 +7,8 @@
 //! `{"clauses":[...]}` contract.
 
 pub mod calc;
-pub mod cli;
 pub mod clause;
+pub mod cli;
 pub mod elcomplete;
 pub mod engine;
 pub mod frontend;

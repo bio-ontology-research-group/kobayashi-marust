@@ -87,8 +87,8 @@ impl DataRanges {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::sexpr::Parser;
+    use super::*;
 
     fn parse_one(text: &str) -> Node<'_> {
         Parser::new(text).parse().unwrap()

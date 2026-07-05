@@ -192,16 +192,28 @@ impl Ontology {
     }
 
     pub fn tbox(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_tbox())
+        self.axioms
+            .iter()
+            .map(|a| a.as_ref())
+            .filter(|a| a.is_tbox())
     }
     pub fn rbox(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_rbox())
+        self.axioms
+            .iter()
+            .map(|a| a.as_ref())
+            .filter(|a| a.is_rbox())
     }
     pub fn abox(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().map(|a| a.as_ref()).filter(|a| a.is_abox())
+        self.axioms
+            .iter()
+            .map(|a| a.as_ref())
+            .filter(|a| a.is_abox())
     }
     /// SWRL DL-safe rules (consumed by the HT path).
     pub fn rules(&self) -> impl Iterator<Item = &Axiom> {
-        self.axioms.iter().map(|a| a.as_ref()).filter(|a| matches!(a, Axiom::Rule(..)))
+        self.axioms
+            .iter()
+            .map(|a| a.as_ref())
+            .filter(|a| matches!(a, Axiom::Rule(..)))
     }
 }

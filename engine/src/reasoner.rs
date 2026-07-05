@@ -97,7 +97,11 @@ impl Builder {
                     return Some(v);
                 }
                 // assign next neighbour variable z_i (i >= 1), i.e. ids -2, -3, ...
-                let next = varmap.values().filter(|&&v| is_neighbour(v) && v != Y).count() as i32 + 1;
+                let next = varmap
+                    .values()
+                    .filter(|&&v| is_neighbour(v) && v != Y)
+                    .count() as i32
+                    + 1;
                 let v = zvar(next);
                 varmap.insert(name.clone(), v);
                 Some(v)
@@ -135,7 +139,11 @@ impl Builder {
                 }
                 Some(Pred::Concept { iri, t })
             }
-            JAtom::Role { role, source, target } => {
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => {
                 let s = self.term(source, varmap)?;
                 let t = self.term(target, varmap)?;
                 let iri = self.sig.role(role);
@@ -230,7 +238,9 @@ impl Reasoner {
                 return n.max(1);
             }
         }
-        std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1)
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1)
     }
 
     fn build_engine(&self) -> Engine {
@@ -270,7 +280,11 @@ impl Reasoner {
         }
         *budget -= 1;
         if std::env::var_os("KM_PROF").is_some() && *budget % 100 == 0 {
-            eprintln!("KM_PROF split node budget_left={} depth={}", *budget, decisions.len());
+            eprintln!(
+                "KM_PROF split node budget_left={} depth={}",
+                *budget,
+                decisions.len()
+            );
         }
         let mut e = self.build_engine();
         // Branch closures run under the tame ordered regime.
@@ -515,16 +529,24 @@ impl Reasoner {
         fn ax(name: &str) -> JAtom {
             JAtom::Concept {
                 concept: name.to_string(),
-                term: JTerm::Var { name: "x".to_string() },
+                term: JTerm::Var {
+                    name: "x".to_string(),
+                },
             }
         }
         let mut out = Vec::new();
         for (a, supers) in &self.subs {
             for d in supers {
                 if d == "owl:Nothing" {
-                    out.push(JClause { body: vec![ax(a)], head: vec![] });
+                    out.push(JClause {
+                        body: vec![ax(a)],
+                        head: vec![],
+                    });
                 } else {
-                    out.push(JClause { body: vec![ax(a)], head: vec![ax(d)] });
+                    out.push(JClause {
+                        body: vec![ax(a)],
+                        head: vec![ax(d)],
+                    });
                 }
             }
         }
@@ -612,7 +634,10 @@ mod tests {
     #[test]
     fn disjunction_no_spurious_subsumption() {
         // A ⊑ B ⊔ C must NOT yield A ⊑ B or A ⊑ C (this was the soundness bug).
-        let rr = run(vec![cl(vec![c("A", vx())], vec![c("B", vx()), c("C", vx())])]);
+        let rr = run(vec![cl(
+            vec![c("A", vx())],
+            vec![c("B", vx()), c("C", vx())],
+        )]);
         assert!(!supers(&rr, "A").contains("B"));
         assert!(!supers(&rr, "A").contains("C"));
         assert!(!rr.inconsistent());
@@ -625,9 +650,16 @@ mod tests {
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
             cl(vec![c("A", vx())], vec![c("B", fx("f"))]),
             cl(vec![c("B", vx())], vec![c("C", vx())]),
-            cl(vec![r("R", vx(), vn("y")), c("C", vn("y"))], vec![c("D", vx())]),
+            cl(
+                vec![r("R", vx(), vn("y")), c("C", vn("y"))],
+                vec![c("D", vx())],
+            ),
         ]);
-        assert!(supers(&rr, "A").contains("D"), "expected A ⊑ D, got {:?}", supers(&rr, "A"));
+        assert!(
+            supers(&rr, "A").contains("D"),
+            "expected A ⊑ D, got {:?}",
+            supers(&rr, "A")
+        );
     }
 
     #[test]
@@ -641,7 +673,11 @@ mod tests {
             // A -> f≈g ∨ f≈h ∨ g≈h
             cl(
                 vec![c("A", vx())],
-                vec![eqa(fx("f"), fx("g")), eqa(fx("f"), fx("h")), eqa(fx("g"), fx("h"))],
+                vec![
+                    eqa(fx("f"), fx("g")),
+                    eqa(fx("f"), fx("h")),
+                    eqa(fx("g"), fx("h")),
+                ],
             ),
             // {A, f≈g} -> ⊥   (i.e. A -> f≉g)
             cl(vec![c("A", vx()), eqa(fx("f"), fx("g"))], vec![]),
@@ -679,7 +715,11 @@ mod tests {
                 vec![c("G", vx()), eqa(vn("y1"), vn("y2"))],
             ),
         ]);
-        assert!(supers(&rr, "P").contains("G"), "expected P ⊑ G, got {:?}", supers(&rr, "P"));
+        assert!(
+            supers(&rr, "P").contains("G"),
+            "expected P ⊑ G, got {:?}",
+            supers(&rr, "P")
+        );
     }
 
     #[test]
@@ -722,7 +762,11 @@ mod tests {
             }
         }
         let rr = run(clauses);
-        assert!(supers(&rr, "P").contains("G"), "expected P ⊑ G, got {:?}", supers(&rr, "P"));
+        assert!(
+            supers(&rr, "P").contains("G"),
+            "expected P ⊑ G, got {:?}",
+            supers(&rr, "P")
+        );
     }
 
     #[test]
@@ -733,6 +777,10 @@ mod tests {
             cl(vec![r("S", vx(), vn("y"))], vec![c("A", vx())]),
             cl(vec![c("B", vx())], vec![r("R", vx(), fx("g"))]),
         ]);
-        assert!(supers(&rr, "B").contains("A"), "expected B ⊑ A, got {:?}", supers(&rr, "B"));
+        assert!(
+            supers(&rr, "B").contains("A"),
+            "expected B ⊑ A, got {:?}",
+            supers(&rr, "B")
+        );
     }
 }

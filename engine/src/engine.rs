@@ -53,7 +53,10 @@ struct CentralSubst {
 }
 impl CentralSubst {
     fn new(allow_ground: bool) -> Self {
-        CentralSubst { map: HashMap::new(), allow_ground }
+        CentralSubst {
+            map: HashMap::new(),
+            allow_ground,
+        }
     }
     fn add(&mut self, i: Term, o: Term) -> bool {
         if is_central(i) {
@@ -305,9 +308,18 @@ fn can_unify(body: &Pred, head_max: &Pred) -> bool {
         (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) => {
             i1 == i2 && central_ok(*t1, *t2)
         }
-        (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Role { iri: i2, s: s2, t: t2 }) => {
-            i1 == i2 && central_ok(*s1, *s2) && central_ok(*t1, *t2)
-        }
+        (
+            Pred::Role {
+                iri: i1,
+                s: s1,
+                t: t1,
+            },
+            Pred::Role {
+                iri: i2,
+                s: s2,
+                t: t2,
+            },
+        ) => i1 == i2 && central_ok(*s1, *s2) && central_ok(*t1, *t2),
         _ => false,
     }
 }
@@ -317,9 +329,18 @@ fn unify(sigma: &mut CentralSubst, body: &Pred, head: &Pred) -> bool {
         (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) => {
             i1 == i2 && sigma.add(*t1, *t2)
         }
-        (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Role { iri: i2, s: s2, t: t2 }) => {
-            i1 == i2 && sigma.add(*s1, *s2) && sigma.add(*t1, *t2)
-        }
+        (
+            Pred::Role {
+                iri: i1,
+                s: s1,
+                t: t1,
+            },
+            Pred::Role {
+                iri: i2,
+                s: s2,
+                t: t2,
+            },
+        ) => i1 == i2 && sigma.add(*s1, *s2) && sigma.add(*t1, *t2),
         _ => false,
     }
 }
@@ -329,7 +350,7 @@ fn unify(sigma: &mut CentralSubst, body: &Pred, head: &Pred) -> bool {
 #[derive(Default)]
 struct Ontology {
     clauses: Vec<OntologyClause>,
-    facts: Vec<usize>,               // indices of empty-body clauses (x-form only)
+    facts: Vec<usize>, // indices of empty-body clauses (x-form only)
     /// Ground facts (empty-body clauses whose head mentions an individual),
     /// keyed by each individual they mention. Seeded fully into the ground
     /// context and on demand into a context that first derives an atom about
@@ -619,7 +640,13 @@ impl Context {
     /// index (every non-empty-head subsumer shares a head literal with
     /// `clause`); `todo` is scanned linearly (it is the small work queue).
     /// The `(nb, nh)` length pre-filter skips clauses that cannot subsume.
-    fn fwd_subsumed(&self, arena: &[ContextClause], clause: &ContextClause, nb: usize, nh: usize) -> bool {
+    fn fwd_subsumed(
+        &self,
+        arena: &[ContextClause],
+        clause: &ContextClause,
+        nb: usize,
+        nh: usize,
+    ) -> bool {
         for &ci in &self.empty_head_wo {
             let c = &arena[ci as usize];
             if c.body.len() <= nb && c.test_strengthening(clause) == -1 {
@@ -630,7 +657,10 @@ impl Context {
             if let Some(cands) = self.head_lit_index.get(l) {
                 for &ci in cands {
                     let c = &arena[ci as usize];
-                    if c.body.len() <= nb && c.head.len() <= nh && c.test_strengthening(clause) == -1 {
+                    if c.body.len() <= nb
+                        && c.head.len() <= nh
+                        && c.test_strengthening(clause) == -1
+                    {
                         return true;
                     }
                 }
@@ -654,7 +684,13 @@ impl Context {
     /// removes nothing, so the expensive full `worked_off` scan and index
     /// rebuild are skipped entirely.  Same removed set and survivor order as a
     /// full linear scan, so the result is unchanged.
-    fn back_subsume(&mut self, arena: &[ContextClause], clause: &ContextClause, nb: usize, nh: usize) {
+    fn back_subsume(
+        &mut self,
+        arena: &[ContextClause],
+        clause: &ContextClause,
+        nb: usize,
+        nh: usize,
+    ) {
         // The incoming clause must not remove an existing *identical* clause
         // (callers reject exact duplicates before back-subsuming, but the guard
         // mirrors the historical key check).
@@ -664,7 +700,11 @@ impl Context {
         if clause.head.is_empty() {
             for &ci in &self.worked_off {
                 let c = &arena[ci as usize];
-                if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && !same(c) {
+                if c.body.len() >= nb
+                    && c.head.len() >= nh
+                    && clause.test_strengthening(c) == -1
+                    && !same(c)
+                {
                     remove_wo.push(ci);
                 }
             }
@@ -688,7 +728,11 @@ impl Context {
             if let Some(cands) = best {
                 for &ci in cands {
                     let c = &arena[ci as usize];
-                    if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && !same(c) {
+                    if c.body.len() >= nb
+                        && c.head.len() >= nh
+                        && clause.test_strengthening(c) == -1
+                        && !same(c)
+                    {
                         remove_wo.push(ci);
                     }
                 }
@@ -707,7 +751,11 @@ impl Context {
         let mut todo = std::mem::take(&mut self.todo);
         todo.retain(|&ci| {
             let c = &arena[ci as usize];
-            if c.body.len() >= nb && c.head.len() >= nh && clause.test_strengthening(c) == -1 && !same(c) {
+            if c.body.len() >= nb
+                && c.head.len() >= nh
+                && clause.test_strengthening(c) == -1
+                && !same(c)
+            {
                 removed_todo.push(ci);
                 false
             } else {
@@ -1044,7 +1092,10 @@ impl Engine {
             central_index: HashMap::new(),
             central: std::env::var_os("KM_NO_CENTRAL").is_none(),
             // Portfolio candidate flags (cached once; default OFF/inert).
-            core_cap: std::env::var("KM_CORE_CAP").ok().and_then(|s| s.parse().ok()).unwrap_or(0),
+            core_cap: std::env::var("KM_CORE_CAP")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
             seed_from_subset: std::env::var_os("KM_SEED_FROM_SUBSET").is_some(),
             // Default ON (sound: units-first is confluent scheduling, early-unsat
             // is a ⊥-subsumes-all short-circuit). Validated gold-clean + net
@@ -1122,12 +1173,7 @@ impl Engine {
         id
     }
 
-    fn get_or_create_context(
-        &mut self,
-        core: Vec<Pred>,
-        root: bool,
-        query: Option<Iri>,
-    ) -> usize {
+    fn get_or_create_context(&mut self, core: Vec<Pred>, root: bool, query: Option<Iri>) -> usize {
         if let Some(&id) = self.core_index.get(&core) {
             return id;
         }
@@ -1353,8 +1399,16 @@ impl Engine {
         self.stat_saturate += 1;
         let trace_sat = std::env::var("KM_SAT").is_ok();
         let prof = std::env::var("KM_PROF").is_ok();
-        let (mut iters, mut subsumed, mut nhyper, mut npred, mut neqp, mut neqe, mut nfact, mut nadded) =
-            (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+        let (
+            mut iters,
+            mut subsumed,
+            mut nhyper,
+            mut npred,
+            mut neqp,
+            mut neqe,
+            mut nfact,
+            mut nadded,
+        ) = (0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
         let d = self.contexts[id].root as usize;
         loop {
             let cid = match self.contexts[id].todo.pop_front() {
@@ -1388,7 +1442,9 @@ impl Engine {
                 let (nb, nh) = (clause.body.len(), clause.head.len());
                 if ctx.fwd_subsumed(arena, &clause, nb, nh) {
                     self.contexts[id].clause_keys.remove(&cid);
-                    if prof { subsumed += 1; }
+                    if prof {
+                        subsumed += 1;
+                    }
                     continue;
                 }
             }
@@ -1402,21 +1458,33 @@ impl Engine {
                         // candidate ontology clauses are those with a body atom
                         // (central or neighbour) that can unify with `p`.
                         let results = self.hyper(id, &clause, *p, root);
-                        if prof { nhyper += results.len() as u64; }
+                        if prof {
+                            nhyper += results.len() as u64;
+                        }
                         for r in results {
-                            if self.add_clause(id, r) && prof { nadded += 1; }
+                            if self.add_clause(id, r) && prof {
+                                nadded += 1;
+                            }
                         }
                         if is_function(p.max_term()) {
                             let results = self.pred_local(id, &clause, *p, root);
-                            if prof { npred += results.len() as u64; }
+                            if prof {
+                                npred += results.len() as u64;
+                            }
                             for r in results {
-                                if self.add_clause(id, r) && prof { nadded += 1; }
+                                if self.add_clause(id, r) && prof {
+                                    nadded += 1;
+                                }
                             }
                             if self.equality {
                                 let results = self.eq_from_pred(id, &clause, *max, root);
-                                if prof { neqp += results.len() as u64; }
+                                if prof {
+                                    neqp += results.len() as u64;
+                                }
                                 for r in results {
-                                    if self.add_clause(id, r) && prof { nadded += 1; }
+                                    if self.add_clause(id, r) && prof {
+                                        nadded += 1;
+                                    }
                                 }
                             }
                         } else if p.is_ground() {
@@ -1426,15 +1494,23 @@ impl Engine {
                             // clauses, which the function-term refire above
                             // never revisits.
                             let results = self.pred_local(id, &clause, *p, root);
-                            if prof { npred += results.len() as u64; }
+                            if prof {
+                                npred += results.len() as u64;
+                            }
                             for r in results {
-                                if self.add_clause(id, r) && prof { nadded += 1; }
+                                if self.add_clause(id, r) && prof {
+                                    nadded += 1;
+                                }
                             }
                             if self.equality {
                                 let results = self.eq_from_pred(id, &clause, *max, root);
-                                if prof { neqp += results.len() as u64; }
+                                if prof {
+                                    neqp += results.len() as u64;
+                                }
                                 for r in results {
-                                    if self.add_clause(id, r) && prof { nadded += 1; }
+                                    if self.add_clause(id, r) && prof {
+                                        nadded += 1;
+                                    }
                                 }
                             }
                         }
@@ -1443,9 +1519,13 @@ impl Engine {
                         // This equality is the paramodulation source: rewrite
                         // matching literals of worked-off clauses.
                         let results = self.eq_from_equation(id, &clause, *max, root);
-                        if prof { neqe += results.len() as u64; }
+                        if prof {
+                            neqe += results.len() as u64;
+                        }
                         for r in results {
-                            if self.add_clause(id, r) && prof { nadded += 1; }
+                            if self.add_clause(id, r) && prof {
+                                nadded += 1;
+                            }
                         }
                     }
                     Lit::Ineq { .. } if self.equality => {
@@ -1454,20 +1534,35 @@ impl Engine {
                         // the equality/inequality clash is found regardless of
                         // derivation order).
                         let results = self.eq_from_pred(id, &clause, *max, root);
-                        if prof { neqp += results.len() as u64; }
+                        if prof {
+                            neqp += results.len() as u64;
+                        }
                         for r in results {
-                            if self.add_clause(id, r) && prof { nadded += 1; }
+                            if self.add_clause(id, r) && prof {
+                                nadded += 1;
+                            }
                         }
                     }
                     _ => {}
                 }
             }
             // Factor rule: applies to clauses with two head equalities sharing a side.
-            if self.equality && clause.head.iter().filter(|l| matches!(l, Lit::Eq { .. })).count() >= 2 {
+            if self.equality
+                && clause
+                    .head
+                    .iter()
+                    .filter(|l| matches!(l, Lit::Eq { .. }))
+                    .count()
+                    >= 2
+            {
                 let results = self.factor(&clause, root);
-                if prof { nfact += results.len() as u64; }
+                if prof {
+                    nfact += results.len() as u64;
+                }
                 for r in results {
-                    if self.add_clause(id, r) && prof { nadded += 1; }
+                    if self.add_clause(id, r) && prof {
+                        nadded += 1;
+                    }
                 }
             }
             // Join rule (nominal calculus): in-context resolution on ground
@@ -1475,7 +1570,9 @@ impl Engine {
             {
                 let results = self.join(id, &clause, root);
                 for r in results {
-                    if self.add_clause(id, r) && prof { nadded += 1; }
+                    if self.add_clause(id, r) && prof {
+                        nadded += 1;
+                    }
                 }
             }
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
@@ -1490,8 +1587,7 @@ impl Engine {
                     && match l {
                         Lit::P(_) => true,
                         Lit::Eq { s, t } => {
-                            is_individual(*s)
-                                && (*t == X || *t == Y || is_individual(*t))
+                            is_individual(*s) && (*t == X || *t == Y || is_individual(*t))
                         }
                         Lit::Ineq { .. } => false,
                     }
@@ -1536,8 +1632,18 @@ impl Engine {
                 let arena = &self.cc_arena[d];
                 let wl = c.worked_off.len();
                 if wl % 10000 == 0 {
-                    let maxb = c.worked_off.iter().map(|&ci| arena[ci as usize].body.len()).max().unwrap_or(0);
-                    let maxh = c.worked_off.iter().map(|&ci| arena[ci as usize].head.len()).max().unwrap_or(0);
+                    let maxb = c
+                        .worked_off
+                        .iter()
+                        .map(|&ci| arena[ci as usize].body.len())
+                        .max()
+                        .unwrap_or(0);
+                    let maxh = c
+                        .worked_off
+                        .iter()
+                        .map(|&ci| arena[ci as usize].head.len())
+                        .max()
+                        .unwrap_or(0);
                     let nctx = self.contexts.len();
                     eprintln!(
                         "KM_SAT ctx={} root={} core_len={} todo={} wo={} max_body={} max_head={} ncontexts={} hyper={}",
@@ -1646,7 +1752,19 @@ impl Engine {
                     Pred::Role { s, t, .. } => vec![s, t],
                 }
             };
-            self.hyper_join(id, side, oc, &candidates, &order, 0, &sigma, &exempt, &mut chosen, root, &mut out);
+            self.hyper_join(
+                id,
+                side,
+                oc,
+                &candidates,
+                &order,
+                0,
+                &sigma,
+                &exempt,
+                &mut chosen,
+                root,
+                &mut out,
+            );
         }
         out
     }
@@ -1670,7 +1788,9 @@ impl Engine {
         out: &mut Vec<ContextClause>,
     ) {
         if depth == order.len() {
-            if let Some(c) = self.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root) {
+            if let Some(c) =
+                self.build_hyper_resolvent(id, side, oc, sigma, candidates, chosen, root)
+            {
                 out.push(c);
             }
             return;
@@ -1682,7 +1802,19 @@ impl Engine {
                 && (oc.sym_groups.is_empty() || sym_groups_ok(oc, exempt, &s2))
             {
                 chosen[pos] = j;
-                self.hyper_join(id, side, oc, candidates, order, depth + 1, &s2, exempt, chosen, root, out);
+                self.hyper_join(
+                    id,
+                    side,
+                    oc,
+                    candidates,
+                    order,
+                    depth + 1,
+                    &s2,
+                    exempt,
+                    chosen,
+                    root,
+                    out,
+                );
             }
         }
     }
@@ -1849,7 +1981,13 @@ impl Engine {
     /// predicates are maximal in the head of clauses with the function term.
     /// Here `max` is a head predicate of `side` containing a function term; we
     /// resolve any neighbour pred clause whose body contains `max`.
-    fn pred_local(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+    fn pred_local(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        max: Pred,
+        root: bool,
+    ) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
@@ -1875,7 +2013,10 @@ impl Engine {
                 };
                 if let Some(cand) = cand {
                     for &ci in cand {
-                        if arena[ci as usize].max_head_predicates().any(|(p, _)| p == bp) {
+                        if arena[ci as usize]
+                            .max_head_predicates()
+                            .any(|(p, _)| p == bp)
+                        {
                             v.push((ci as usize, bp));
                         }
                     }
@@ -2068,9 +2209,7 @@ impl Engine {
                         continue;
                     }
                     let bcl = &arena[bi as usize];
-                    if let Some(r) =
-                        self.join_resolvent3(consumer, a, pcl, aprime, bcl, o, root)
-                    {
+                    if let Some(r) = self.join_resolvent3(consumer, a, pcl, aprime, bcl, o, root) {
                         out.push(r);
                     }
                 }
@@ -2215,8 +2354,8 @@ impl Engine {
                                 let bcl = &arena[bi as usize];
                                 for &ci in consumers {
                                     let consumer = &arena[ci as usize];
-                                    if let Some(r) = self
-                                        .join_resolvent3(consumer, a, side, p, bcl, o, root)
+                                    if let Some(r) =
+                                        self.join_resolvent3(consumer, a, side, p, bcl, o, root)
                                     {
                                         out.push(r);
                                     }
@@ -2272,7 +2411,13 @@ impl Engine {
 
     /// Eq rule where the max literal is a predicate containing a rewritable term,
     /// resolved against worked-off equality clauses.
-    fn eq_from_pred(&self, id: usize, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
+    fn eq_from_pred(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        max: Lit,
+        root: bool,
+    ) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
@@ -2293,7 +2438,13 @@ impl Engine {
     }
 
     /// Eq rule where the max literal is itself an equality/inequality.
-    fn eq_from_equation(&self, id: usize, side: &ContextClause, max: Lit, root: bool) -> Vec<ContextClause> {
+    fn eq_from_equation(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        max: Lit,
+        root: bool,
+    ) -> Vec<ContextClause> {
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
@@ -2604,7 +2755,12 @@ impl Engine {
             let target = self.ground_context();
             for (p, o) in ground_succ {
                 if self.contexts[id].pushed_succ.insert(p) {
-                    self.msgs.push_back(Msg::Succ { from: id, f: o, p, target });
+                    self.msgs.push_back(Msg::Succ {
+                        from: id,
+                        f: o,
+                        p,
+                        target,
+                    });
                 }
             }
         }
@@ -2781,7 +2937,12 @@ impl Engine {
                 for &p in &reach_preds {
                     if self.contexts[id].pushed_rsucc.insert((f, target, p)) {
                         let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
-                        self.msgs.push_back(Msg::Succ { from: id, f, p: psigma, target });
+                        self.msgs.push_back(Msg::Succ {
+                            from: id,
+                            f,
+                            p: psigma,
+                            target,
+                        });
                     }
                 }
             }
@@ -2886,8 +3047,7 @@ impl Engine {
                                 lit_inds(l, &mut inds);
                             }
                             ok = inds.iter().all(|o| {
-                                *o >= self.nom_base
-                                    || ctx.predecessors.contains_key(&(u, *o))
+                                *o >= self.nom_base || ctx.predecessors.contains_key(&(u, *o))
                             });
                         }
                         if ok {
@@ -2926,7 +3086,8 @@ impl Engine {
                             for l in &c.head {
                                 lit_inds(l, &mut inds);
                             }
-                            inds.iter().all(|o| ctx.predecessors.contains_key(&(edge.0, *o)))
+                            inds.iter()
+                                .all(|o| ctx.predecessors.contains_key(&(edge.0, *o)))
                         })
                     {
                         let sent = ctx
@@ -3075,7 +3236,10 @@ impl Engine {
             };
             if let Some(cand) = cand {
                 for &ci in cand {
-                    if arena[ci as usize].max_head_predicates().any(|(p, _)| p == bp) {
+                    if arena[ci as usize]
+                        .max_head_predicates()
+                        .any(|(p, _)| p == bp)
+                    {
                         v.push((ci as usize, bp));
                     }
                 }
@@ -3178,14 +3342,21 @@ impl Engine {
             if prof && (qi + 1) % 50 == 0 {
                 eprintln!(
                     "KM_PROF seeding query {}/{} contexts={} msgs_pending={} saturate_calls={}",
-                    qi + 1, queries.len(), self.contexts.len(), self.msgs.len(), self.stat_saturate
+                    qi + 1,
+                    queries.len(),
+                    self.contexts.len(),
+                    self.msgs.len(),
+                    self.stat_saturate
                 );
             }
         }
         if prof {
             eprintln!(
                 "KM_PROF seeded all {} queries; contexts={} msgs_pending={} saturate_calls={}",
-                queries.len(), self.contexts.len(), self.msgs.len(), self.stat_saturate
+                queries.len(),
+                self.contexts.len(),
+                self.msgs.len(),
+                self.stat_saturate
             );
         }
         // Always seed the ⊤ (empty-core) context so a *global* inconsistency
@@ -3264,11 +3435,17 @@ impl Engine {
                     for c in &self.contexts {
                         let arena = &self.cc_arena[c.root as usize];
                         totwo += c.worked_off.len();
-                        if c.worked_off.len() > topwo { topwo = c.worked_off.len(); }
+                        if c.worked_off.len() > topwo {
+                            topwo = c.worked_off.len();
+                        }
                         for &ci in &c.worked_off {
                             let cl = &arena[ci as usize];
-                            if cl.body.len() > maxb { maxb = cl.body.len(); }
-                            if cl.head.len() > maxh { maxh = cl.head.len(); }
+                            if cl.body.len() > maxb {
+                                maxb = cl.body.len();
+                            }
+                            if cl.head.len() > maxh {
+                                maxh = cl.head.len();
+                            }
                             match cl.head.len() {
                                 0 | 1 => h1 += 1,
                                 2 => h2 += 1,
@@ -3347,32 +3524,57 @@ impl Engine {
                 "KM_CTXSPLIT queries={} | t_seed_ms={} t_msgfix_ms={} t_total_ms={} \
                  (seed={:.0}% fix={:.0}%) | succ_msgs={} pred_msgs={} guard={}",
                 queries.len(),
-                t_seed.as_millis(), t_fix.as_millis(), t_total.as_millis(),
+                t_seed.as_millis(),
+                t_fix.as_millis(),
+                t_total.as_millis(),
                 100.0 * t_seed.as_secs_f64() / t_total.as_secs_f64().max(1e-9),
                 100.0 * t_fix.as_secs_f64() / t_total.as_secs_f64().max(1e-9),
-                nsucc_msgs, npred_msgs, guard
+                nsucc_msgs,
+                npred_msgs,
+                guard
             );
             eprintln!(
                 "KM_CTXSPLIT contexts: qroot={} other_root={} succ={} | \
                  worked_off: qroot={} ({:.0}%) other_root={} succ={} ({:.0}%) total={} | \
                  succ neighbor_pred={} qroot neighbor_pred={} | top_succ_wo={} top10_succ_wo={}",
-                qroot_n, other_root_n, succ_n,
-                qroot_wo, 100.0 * qroot_wo as f64 / (total_wo.max(1)) as f64,
-                other_root_wo, succ_wo, 100.0 * succ_wo as f64 / (total_wo.max(1)) as f64,
-                total_wo, succ_np, qroot_np, top_succ, top10_succ_wo
+                qroot_n,
+                other_root_n,
+                succ_n,
+                qroot_wo,
+                100.0 * qroot_wo as f64 / (total_wo.max(1)) as f64,
+                other_root_wo,
+                succ_wo,
+                100.0 * succ_wo as f64 / (total_wo.max(1)) as f64,
+                total_wo,
+                succ_np,
+                qroot_np,
+                top_succ,
+                top10_succ_wo
             );
         }
         if std::env::var("KM_DUMP_WO").is_ok() {
             let fmt_t = |t: Term| -> String {
-                if t == X { "x".to_string() }
-                else if t == Y { "y".to_string() }
-                else if t < 0 { format!("z{}", -t - 1) }
-                else { format!("f{}(x)", t) }
+                if t == X {
+                    "x".to_string()
+                } else if t == Y {
+                    "y".to_string()
+                } else if t < 0 {
+                    format!("z{}", -t - 1)
+                } else {
+                    format!("f{}(x)", t)
+                }
             };
             let fmt_p = |p: &Pred| -> String {
                 match *p {
-                    Pred::Concept { iri, t } => format!("{}({})", self.sig.concept_names[iri as usize], fmt_t(t)),
-                    Pred::Role { iri, s, t } => format!("{}({},{})", self.sig.role_names[iri as usize], fmt_t(s), fmt_t(t)),
+                    Pred::Concept { iri, t } => {
+                        format!("{}({})", self.sig.concept_names[iri as usize], fmt_t(t))
+                    }
+                    Pred::Role { iri, s, t } => format!(
+                        "{}({},{})",
+                        self.sig.role_names[iri as usize],
+                        fmt_t(s),
+                        fmt_t(t)
+                    ),
                 }
             };
             let fmt_l = |l: &Lit| -> String {
@@ -3384,18 +3586,33 @@ impl Engine {
             };
             for ctx in &self.contexts {
                 let core: Vec<String> = ctx.core.iter().map(&fmt_p).collect();
-                eprintln!("== ctx {} root={} query={:?} core=[{}] wo={}",
-                    ctx.id, ctx.root,
-                    ctx.query.map(|i| self.sig.concept_names[i as usize].clone()),
-                    core.join(", "), ctx.worked_off.len());
+                eprintln!(
+                    "== ctx {} root={} query={:?} core=[{}] wo={}",
+                    ctx.id,
+                    ctx.root,
+                    ctx.query
+                        .map(|i| self.sig.concept_names[i as usize].clone()),
+                    core.join(", "),
+                    ctx.worked_off.len()
+                );
                 let arena = &self.cc_arena[ctx.root as usize];
                 for &ci in &ctx.worked_off {
                     let c = &arena[ci as usize];
                     let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
                     let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
-                    eprintln!("   {} -> {}",
-                        if b.is_empty() { "T".to_string() } else { b.join(" & ") },
-                        if h.is_empty() { "F".to_string() } else { h.join(" | ") });
+                    eprintln!(
+                        "   {} -> {}",
+                        if b.is_empty() {
+                            "T".to_string()
+                        } else {
+                            b.join(" & ")
+                        },
+                        if h.is_empty() {
+                            "F".to_string()
+                        } else {
+                            h.join(" | ")
+                        }
+                    );
                 }
             }
         }
@@ -3406,10 +3623,15 @@ impl Engine {
             // when tracing one query's reachability propagation.
             let needles: Vec<String> = pat.split(',').map(|s| s.to_string()).collect();
             let fmt_t = |t: Term| -> String {
-                if t == X { "x".to_string() }
-                else if t == Y { "y".to_string() }
-                else if t < 0 { format!("z{}", -t - 1) }
-                else { format!("f{}(x)", t) }
+                if t == X {
+                    "x".to_string()
+                } else if t == Y {
+                    "y".to_string()
+                } else if t < 0 {
+                    format!("z{}", -t - 1)
+                } else {
+                    format!("f{}(x)", t)
+                }
             };
             let nm_c = |iri: u32| self.sig.concept_names[iri as usize].clone();
             let nm_r = |iri: u32| self.sig.role_names[iri as usize].clone();
@@ -3441,18 +3663,31 @@ impl Engine {
                         c.body.iter().any(&hit)
                             || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)))
                     });
-                if !touch { continue; }
+                if !touch {
+                    continue;
+                }
                 let core: Vec<String> = ctx.core.iter().map(&fmt_p).collect();
-                eprintln!("== ctx {} root={} query={:?} core=[{}] preds={} wo={}",
-                    ctx.id, ctx.root,
+                eprintln!(
+                    "== ctx {} root={} query={:?} core=[{}] preds={} wo={}",
+                    ctx.id,
+                    ctx.root,
                     ctx.query.map(|i| nm_c(i)),
-                    core.join(", "), ctx.predecessors.len(), ctx.worked_off.len());
-                let mut succs: Vec<String> = ctx.successors.iter()
-                    .map(|(f, sid)| format!("f{}->{}", f, sid)).collect();
+                    core.join(", "),
+                    ctx.predecessors.len(),
+                    ctx.worked_off.len()
+                );
+                let mut succs: Vec<String> = ctx
+                    .successors
+                    .iter()
+                    .map(|(f, sid)| format!("f{}->{}", f, sid))
+                    .collect();
                 succs.sort();
                 eprintln!("   SUCC: {}", succs.join(" "));
-                let mut preds: Vec<String> = ctx.predecessors.keys()
-                    .map(|(pid, f)| format!("{}@f{}", pid, f)).collect();
+                let mut preds: Vec<String> = ctx
+                    .predecessors
+                    .keys()
+                    .map(|(pid, f)| format!("{}@f{}", pid, f))
+                    .collect();
                 preds.sort();
                 eprintln!("   PRED-OF: {}", preds.join(" "));
                 for &ci in &ctx.worked_off {
@@ -3460,21 +3695,48 @@ impl Engine {
                     // only print clauses mentioning a needle (keeps it focused)
                     let rel = c.body.iter().any(&hit)
                         || c.head.iter().any(|l| matches!(l, Lit::P(p) if hit(p)));
-                    if !rel { continue; }
+                    if !rel {
+                        continue;
+                    }
                     let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
                     let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
-                    eprintln!("   {} -> {}",
-                        if b.is_empty() { "T".to_string() } else { b.join(" & ") },
-                        if h.is_empty() { "F".to_string() } else { h.join(" | ") });
+                    eprintln!(
+                        "   {} -> {}",
+                        if b.is_empty() {
+                            "T".to_string()
+                        } else {
+                            b.join(" & ")
+                        },
+                        if h.is_empty() {
+                            "F".to_string()
+                        } else {
+                            h.join(" | ")
+                        }
+                    );
                 }
             }
         }
         if std::env::var("KM_STATS").is_ok() {
             let nroot = self.contexts.iter().filter(|c| c.root).count();
             let nsucc = self.contexts.iter().filter(|c| !c.root).count();
-            let root_wo: usize = self.contexts.iter().filter(|c| c.root).map(|c| c.worked_off.len()).sum();
-            let succ_wo: usize = self.contexts.iter().filter(|c| !c.root).map(|c| c.worked_off.len()).sum();
-            let top_wo = self.contexts.iter().find(|c| c.root && c.core.is_empty()).map(|c| c.worked_off.len()).unwrap_or(0);
+            let root_wo: usize = self
+                .contexts
+                .iter()
+                .filter(|c| c.root)
+                .map(|c| c.worked_off.len())
+                .sum();
+            let succ_wo: usize = self
+                .contexts
+                .iter()
+                .filter(|c| !c.root)
+                .map(|c| c.worked_off.len())
+                .sum();
+            let top_wo = self
+                .contexts
+                .iter()
+                .find(|c| c.root && c.core.is_empty())
+                .map(|c| c.worked_off.len())
+                .unwrap_or(0);
             eprintln!(
                 "KM_STATS contexts={} roots={} succs={} root_wo_total={} succ_wo_total={} top_wo={} avg_root_wo={:.0}",
                 self.contexts.len(), nroot, nsucc, root_wo, succ_wo, top_wo,
@@ -3482,8 +3744,11 @@ impl Engine {
             );
             eprintln!(
                 "KM_STATS propagate={} pred_checks={} succ_scans={} hyper_calls={} saturate={}",
-                self.stat_propagate, self.stat_pred_checks, self.stat_succ_scans,
-                HYPER_CALLS.with(|c| c.get()), self.stat_saturate
+                self.stat_propagate,
+                self.stat_pred_checks,
+                self.stat_succ_scans,
+                HYPER_CALLS.with(|c| c.get()),
+                self.stat_saturate
             );
         }
         if std::env::var("KM_MEMSTATS").is_ok() {
@@ -3522,10 +3787,23 @@ impl Engine {
                 );
                 add(
                     "head_indexes",
-                    ctx.head_concept_index.len() + ctx.head_role_index.len() + ctx.head_lit_index.len(),
-                    ctx.head_concept_index.values().map(|v| 24 + 4 + v.capacity() * 4).sum::<usize>()
-                        + ctx.head_role_index.values().map(|v| 24 + 4 + v.capacity() * 4).sum::<usize>()
-                        + ctx.head_lit_index.values().map(|v| 24 + szl + v.capacity() * 4).sum::<usize>(),
+                    ctx.head_concept_index.len()
+                        + ctx.head_role_index.len()
+                        + ctx.head_lit_index.len(),
+                    ctx.head_concept_index
+                        .values()
+                        .map(|v| 24 + 4 + v.capacity() * 4)
+                        .sum::<usize>()
+                        + ctx
+                            .head_role_index
+                            .values()
+                            .map(|v| 24 + 4 + v.capacity() * 4)
+                            .sum::<usize>()
+                        + ctx
+                            .head_lit_index
+                            .values()
+                            .map(|v| 24 + szl + v.capacity() * 4)
+                            .sum::<usize>(),
                 );
                 add("todo", ctx.todo.len(), ctx.todo.capacity() * 4);
                 add(
@@ -3536,23 +3814,49 @@ impl Engine {
                 add(
                     "trigger_sets",
                     ctx.trigger_sets.values().map(|s| s.len()).sum::<usize>()
-                        + ctx.fact_trigger_sets.values().map(|s| s.len()).sum::<usize>(),
-                    ctx.trigger_sets.values().map(|s| 24 + s.len() * (szp + 8)).sum::<usize>()
-                        + ctx.fact_trigger_sets.values().map(|s| 24 + s.len() * (szp + 8)).sum::<usize>(),
+                        + ctx
+                            .fact_trigger_sets
+                            .values()
+                            .map(|s| s.len())
+                            .sum::<usize>(),
+                    ctx.trigger_sets
+                        .values()
+                        .map(|s| 24 + s.len() * (szp + 8))
+                        .sum::<usize>()
+                        + ctx
+                            .fact_trigger_sets
+                            .values()
+                            .map(|s| 24 + s.len() * (szp + 8))
+                            .sum::<usize>(),
                 );
                 add(
                     "predecessor_edges(pushed)",
                     ctx.predecessors.values().map(|s| s.len()).sum(),
-                    ctx.predecessors.values().map(|s| 24 + s.len() * (szp + 8)).sum(),
+                    ctx.predecessors
+                        .values()
+                        .map(|s| 24 + s.len() * (szp + 8))
+                        .sum(),
                 );
-                add("pushed_succ", ctx.pushed_succ.len(), ctx.pushed_succ.len() * (szp + 8));
+                add(
+                    "pushed_succ",
+                    ctx.pushed_succ.len(),
+                    ctx.pushed_succ.len() * (szp + 8),
+                );
                 add(
                     "pushed_pred(idx)",
                     ctx.pushed_pred.values().map(|s| s.len()).sum(),
                     ctx.pushed_pred.values().map(|s| 40 + s.len() * 12).sum(),
                 );
-                add("pred_pool(ids)", ctx.pred_pool.len(), ctx.pred_pool.capacity() * 4);
-                add("succ_pool(ids)", ctx.succ_pool.len(), ctx.succ_pool.capacity() * 4);
+                add(
+                    "pred_pool(ids)",
+                    ctx.pred_pool.len(),
+                    ctx.pred_pool.capacity() * 4,
+                );
+                add(
+                    "succ_pool(ids)",
+                    ctx.succ_pool.len(),
+                    ctx.succ_pool.capacity() * 4,
+                );
                 add(
                     "edges_misc",
                     ctx.successors.len() + ctx.edge_seen.len(),
@@ -3562,25 +3866,37 @@ impl Engine {
             add(
                 "core_index(engine)",
                 self.core_index.len(),
-                self.core_index.keys().map(|k| 24 + k.capacity() * szp + 8).sum(),
+                self.core_index
+                    .keys()
+                    .map(|k| 24 + k.capacity() * szp + 8)
+                    .sum(),
             );
             add(
                 "pred_interned(engine)",
                 self.pred_interned.len(),
                 self.pred_interned.capacity() * 48
-                    + self.pred_interned.iter()
+                    + self
+                        .pred_interned
+                        .iter()
                         .map(|p| (p.body.capacity() + p.head.capacity()) * szp)
                         .sum::<usize>()
                     + self.pred_intern_idx.len() * 40
-                    + self.pred_intern_idx.values().map(|v| v.capacity() * 4).sum::<usize>(),
+                    + self
+                        .pred_intern_idx
+                        .values()
+                        .map(|v| v.capacity() * 4)
+                        .sum::<usize>(),
             );
             add(
                 "cc_arena(engine)",
                 self.cc_arena[0].len() + self.cc_arena[1].len(),
-                self.cc_arena.iter()
+                self.cc_arena
+                    .iter()
                     .map(|a| a.capacity() * szcc + a.iter().map(&cc_heap).sum::<usize>())
                     .sum::<usize>()
-                    + self.cc_intern_idx.iter()
+                    + self
+                        .cc_intern_idx
+                        .iter()
                         .map(|m| m.len() * 40 + m.values().map(|v| v.capacity() * 4).sum::<usize>())
                         .sum::<usize>(),
             );
@@ -3605,7 +3921,10 @@ impl Engine {
                 let arena = &self.cc_arena[ctx.root as usize];
                 eprintln!(
                     "ctx {} root={} core={:?} #wo={}",
-                    ctx.id, ctx.root, ctx.core, ctx.worked_off.len()
+                    ctx.id,
+                    ctx.root,
+                    ctx.core,
+                    ctx.worked_off.len()
                 );
                 for &ci in &ctx.worked_off {
                     let c = &arena[ci as usize];
@@ -3782,7 +4101,9 @@ impl Engine {
                 if prof && guard % 50000 == 0 {
                     eprintln!(
                         "KM_PROF split-fixpoint guard={} contexts={} msgs_pending={}",
-                        guard, self.contexts.len(), self.msgs.len()
+                        guard,
+                        self.contexts.len(),
+                        self.msgs.len()
                     );
                 }
                 if guard > msg_cap {
@@ -3791,9 +4112,12 @@ impl Engine {
                 }
                 let t = match msg {
                     Msg::Succ { from, f, p, target } => self.apply_succ(from, f, p, target),
-                    Msg::Pred { to, from, edge_label, pool_idx } => {
-                        self.apply_pred(to, from, edge_label, pool_idx)
-                    }
+                    Msg::Pred {
+                        to,
+                        from,
+                        edge_label,
+                        pool_idx,
+                    } => self.apply_pred(to, from, edge_label, pool_idx),
                 };
                 if seen.insert(t) {
                     touched.push(t);
@@ -3840,9 +4164,10 @@ impl Engine {
                     continue;
                 }
                 // a disjunction (multi-head clause)
-                let all_concept_central = c.head.iter().all(|l| {
-                    matches!(l, Lit::P(Pred::Concept { t, .. }) if is_central(*t))
-                });
+                let all_concept_central = c
+                    .head
+                    .iter()
+                    .all(|l| matches!(l, Lit::P(Pred::Concept { t, .. }) if is_central(*t)));
                 if !all_concept_central {
                     cf.foreign = true; // role/eq/non-central disjunction
                     return cf;
@@ -3891,7 +4216,6 @@ impl Engine {
         }
         cf
     }
-
 }
 
 #[cfg(test)]

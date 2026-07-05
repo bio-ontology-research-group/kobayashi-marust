@@ -101,7 +101,10 @@ pub fn is_comp(t: Term) -> bool {
 pub fn comp_parts(t: Term) -> (Term, Term) {
     debug_assert!(is_comp(t));
     let v = t - COMP_BASE;
-    (FTERM_BASE + (v >> COMP_IND_BITS), v & ((1 << COMP_IND_BITS) - 1))
+    (
+        FTERM_BASE + (v >> COMP_IND_BITS),
+        v & ((1 << COMP_IND_BITS) - 1),
+    )
 }
 #[inline]
 pub fn term_max(a: Term, b: Term) -> Term {
@@ -174,9 +177,15 @@ impl Pred {
 pub enum Lit {
     P(Pred),
     /// `s == t`, normalised so `s >= t`.
-    Eq { s: Term, t: Term },
+    Eq {
+        s: Term,
+        t: Term,
+    },
     /// `s != t`, normalised so `s >= t`.
-    Ineq { s: Term, t: Term },
+    Ineq {
+        s: Term,
+        t: Term,
+    },
 }
 
 impl Lit {
@@ -322,12 +331,14 @@ impl Sig {
     }
     #[inline]
     pub fn is_reach(&self, iri: Iri) -> bool {
-        self.concept_reach.get(iri as usize).copied().unwrap_or(false)
+        self.concept_reach
+            .get(iri as usize)
+            .copied()
+            .unwrap_or(false)
     }
     #[inline]
     pub fn is_nothing_concept(&self, iri: Iri) -> bool {
-        self.nothing.get(iri as usize).copied().unwrap_or(false)
-            || self.bottom == Some(iri)
+        self.nothing.get(iri as usize).copied().unwrap_or(false) || self.bottom == Some(iri)
     }
     #[inline]
     pub fn is_nothing_pred(&self, p: &Pred) -> bool {
@@ -409,10 +420,18 @@ impl Pred {
             Pred::Role { iri, s, t } => {
                 (is_central(s)
                     && is_pred_var(t)
-                    && sig.backward_role_succ_trigger.get(iri as usize).copied().unwrap_or(false))
+                    && sig
+                        .backward_role_succ_trigger
+                        .get(iri as usize)
+                        .copied()
+                        .unwrap_or(false))
                     || (is_central(t)
                         && is_pred_var(s)
-                        && sig.forward_role_succ_trigger.get(iri as usize).copied().unwrap_or(false))
+                        && sig
+                            .forward_role_succ_trigger
+                            .get(iri as usize)
+                            .copied()
+                            .unwrap_or(false))
             }
         }
     }
@@ -535,7 +554,10 @@ pub fn set_seq_order_auto(on: bool) {
     } else {
         on
     };
-    SEQ_ORDER.store(if eff { 1 } else { 0 }, std::sync::atomic::Ordering::Relaxed);
+    SEQ_ORDER.store(
+        if eff { 1 } else { 0 },
+        std::sync::atomic::Ordering::Relaxed,
+    );
 }
 
 fn seq_order() -> bool {
@@ -656,9 +678,18 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
         return m1 < m2;
     }
     match (p1, p2) {
-        (Pred::Role { iri: i1, s: s1, t: t1 }, Pred::Role { iri: i2, s: s2, t: t2 }) => {
-            s1 < s2 || (s1 == s2 && (t1 < t2 || (t1 == t2 && i1 <= i2)))
-        }
+        (
+            Pred::Role {
+                iri: i1,
+                s: s1,
+                t: t1,
+            },
+            Pred::Role {
+                iri: i2,
+                s: s2,
+                t: t2,
+            },
+        ) => s1 < s2 || (s1 == s2 && (t1 < t2 || (t1 == t2 && i1 <= i2))),
         // Same-term concept pairs handled above; unreachable here.
         (Pred::Concept { iri: i1, .. }, Pred::Concept { iri: i2, .. }) => i1 <= i2,
         (Pred::Role { .. }, Pred::Concept { .. }) => false,

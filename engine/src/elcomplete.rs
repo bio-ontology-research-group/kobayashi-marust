@@ -219,10 +219,7 @@ fn concept_of(a: &JAtom) -> Option<(&str, &JTerm)> {
 /// against the canonical model (the completeness certificate). Returns `None`
 /// only for an orphan existential-filler half-clause (a shape we don't model
 /// at all).
-fn to_nf(
-    clauses: &[JClause],
-    it: &mut Interner,
-) -> Option<(Nfs, Vec<JClause>, HashMap<u32, u32>)> {
+fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, HashMap<u32, u32>)> {
     let mut nf1 = Vec::new();
     let mut nf2 = Vec::new();
     let mut nf3 = Vec::new();
@@ -259,7 +256,10 @@ fn to_nf(
         let b = &c.body;
         let h = &c.head;
         // equality / inequality atoms (number restrictions, nominal merge) -> not EL
-        if b.iter().chain(h.iter()).any(|a| matches!(a, JAtom::Eq { .. })) {
+        if b.iter()
+            .chain(h.iter())
+            .any(|a| matches!(a, JAtom::Eq { .. }))
+        {
             residual.push(c.clone());
             continue;
         }
@@ -276,7 +276,9 @@ fn to_nf(
 
         // empty head => ⊥ (NF5 / disjointness)
         if h.is_empty() {
-            let all_var = bc.iter().all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(_)));
+            let all_var = bc
+                .iter()
+                .all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(_)));
             if br.is_empty() && !bc.is_empty() && all_var {
                 if bc.len() == 1 {
                     let s = addc!(concept_of(bc[0]).unwrap().0);
@@ -284,8 +286,10 @@ fn to_nf(
                     continue;
                 }
                 // A1⊓…⊓Ak ⊑ ⊥ : binary-decompose (k>=2)
-                let mut names: Vec<String> =
-                    bc.iter().map(|a| concept_of(a).unwrap().0.to_string()).collect();
+                let mut names: Vec<String> = bc
+                    .iter()
+                    .map(|a| concept_of(a).unwrap().0.to_string())
+                    .collect();
                 names.sort();
                 let mut acc = names[0].clone();
                 for j in 1..names.len() - 1 {
@@ -293,12 +297,20 @@ fn to_nf(
                     let s1 = addc!(&acc);
                     let s2 = addc!(&names[j]);
                     let sup = addc!(&aux);
-                    nf2.push(Nf2 { sub1: s1, sub2: s2, sup });
+                    nf2.push(Nf2 {
+                        sub1: s1,
+                        sub2: s2,
+                        sup,
+                    });
                     acc = aux;
                 }
                 let s1 = addc!(&acc);
                 let s2 = addc!(&names[names.len() - 1]);
-                nf2.push(Nf2 { sub1: s1, sub2: s2, sup: BOTTOM });
+                nf2.push(Nf2 {
+                    sub1: s1,
+                    sub2: s2,
+                    sup: BOTTOM,
+                });
                 concept_names.insert(BOTTOM);
                 continue;
             }
@@ -316,8 +328,9 @@ fn to_nf(
             let (hd_name, hd_term) = concept_of(hc[0]).unwrap();
             match tk(hd_term) {
                 Tk::Var(_) => {
-                    let all_var =
-                        bc.iter().all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(_)));
+                    let all_var = bc
+                        .iter()
+                        .all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(_)));
                     if br.is_empty() && all_var {
                         match bc.len() {
                             0 => {
@@ -334,7 +347,11 @@ fn to_nf(
                                 let s1 = addc!(concept_of(bc[0]).unwrap().0);
                                 let s2 = addc!(concept_of(bc[1]).unwrap().0);
                                 let hd = addc!(hd_name);
-                                nf2.push(Nf2 { sub1: s1, sub2: s2, sup: hd });
+                                nf2.push(Nf2 {
+                                    sub1: s1,
+                                    sub2: s2,
+                                    sup: hd,
+                                });
                             }
                             _ => {
                                 // n-ary conjunction (k>2): binary-decompose with
@@ -351,20 +368,33 @@ fn to_nf(
                                     let s1 = addc!(&acc);
                                     let s2 = addc!(&names[j]);
                                     let sup = addc!(&aux);
-                                    nf2.push(Nf2 { sub1: s1, sub2: s2, sup });
+                                    nf2.push(Nf2 {
+                                        sub1: s1,
+                                        sub2: s2,
+                                        sup,
+                                    });
                                     acc = aux;
                                 }
                                 let s1 = addc!(&acc);
                                 let s2 = addc!(&names[names.len() - 1]);
                                 let hd = addc!(hd_name);
-                                nf2.push(Nf2 { sub1: s1, sub2: s2, sup: hd });
+                                nf2.push(Nf2 {
+                                    sub1: s1,
+                                    sub2: s2,
+                                    sup: hd,
+                                });
                             }
                         }
                         continue;
                     }
                     // NF4:  R(x,y) ∧ A(y) ⊑ B(x)
                     if br.len() == 1 && bc.len() == 1 {
-                        if let JAtom::Role { role, source, target } = br[0] {
+                        if let JAtom::Role {
+                            role,
+                            source,
+                            target,
+                        } = br[0]
+                        {
                             let (cc_name, cc_term) = concept_of(bc[0]).unwrap();
                             if let (Tk::Var(_), Tk::Var(ty)) = (tk(source), tk(target)) {
                                 if let Tk::Var(cv) = tk(cc_term) {
@@ -372,7 +402,11 @@ fn to_nf(
                                         let r = addr!(role);
                                         let f = addc!(cc_name);
                                         let hd = addc!(hd_name);
-                                        nf4.push(Nf4 { role: r, filler: f, sup: hd });
+                                        nf4.push(Nf4 {
+                                            role: r,
+                                            filler: f,
+                                            sup: hd,
+                                        });
                                         continue;
                                     }
                                 }
@@ -406,7 +440,12 @@ fn to_nf(
 
         // ---- role head ----
         if !hr.is_empty() {
-            if let JAtom::Role { role, source, target } = hr[0] {
+            if let JAtom::Role {
+                role,
+                source,
+                target,
+            } = hr[0]
+            {
                 let st = tk(target);
                 let sxs = tk(source);
                 // reflexive role: `[] -> R(x,x)` (empty body, R relating one
@@ -450,12 +489,7 @@ fn to_nf(
                         target: bt,
                     } = br[0]
                     {
-                        let fwd = match (
-                            vname(&tk(bs)),
-                            vname(&tk(bt)),
-                            vname(&sxs),
-                            vname(&st),
-                        ) {
+                        let fwd = match (vname(&tk(bs)), vname(&tk(bt)), vname(&sxs), vname(&st)) {
                             (Some(a), Some(b), Some(c), Some(d)) => a == c && b == d,
                             _ => false,
                         };
@@ -545,7 +579,11 @@ fn to_nf(
                 role_names.insert(r);
                 concept_names.insert(sub);
                 concept_names.insert(f);
-                nf3.push(Nf3 { sub, role: r, filler: f });
+                nf3.push(Nf3 {
+                    sub,
+                    role: r,
+                    filler: f,
+                });
                 match skolem_filler.entry(fnid) {
                     std::collections::hash_map::Entry::Occupied(e) if *e.get() != f => {
                         skolem_ambiguous.insert(fnid);
@@ -690,14 +728,20 @@ fn build_idx(nfs: &Nfs, n: usize) -> Idx {
     }
     let mut nf3_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf3 {
-        nf3_by_sub.entry(a.sub).or_default().push((a.role, a.filler));
+        nf3_by_sub
+            .entry(a.sub)
+            .or_default()
+            .push((a.role, a.filler));
     }
     // NF4 (∃R.D⊑E) indexed by filler D -> [(role R, sup E)]. The Sub rule reads
     // it to register propagations; the Edge rule consults the `prop` store the
     // Sub rule fills, so no `(role,filler)` index is needed.
     let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     for a in &nfs.nf4 {
-        nf4_by_filler.entry(a.filler).or_default().push((a.role, a.sup));
+        nf4_by_filler
+            .entry(a.filler)
+            .or_default()
+            .push((a.role, a.sup));
     }
     let nf5_subs: HashSet<u32> = nfs.nf5.iter().copied().collect();
     let mut nf7_by_pair: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
@@ -912,7 +956,9 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
                     for (r2, e) in out {
                         if let Some(sups) = idx.nf7_by_pair.get(&(r, r2)) {
                             for &nfsup in sups {
-                                for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                                for &super_role in
+                                    idx.role_sub.get(nfsup as usize).unwrap_or(&empty)
+                                {
                                     st.add_edge(c, super_role, e);
                                 }
                             }
@@ -923,7 +969,9 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
                     for (parent, r0) in preds {
                         if let Some(sups) = idx.nf7_by_pair.get(&(r0, r)) {
                             for &nfsup in sups {
-                                for &super_role in idx.role_sub.get(nfsup as usize).unwrap_or(&empty) {
+                                for &super_role in
+                                    idx.role_sub.get(nfsup as usize).unwrap_or(&empty)
+                                {
                                     st.add_edge(parent, super_role, d);
                                 }
                             }
@@ -940,7 +988,6 @@ fn run(idx: &Idx, st: &mut State, nf4_buf: &mut Vec<u32>, prof: &mut Prof) {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Completeness certificate over the canonical model
@@ -1059,7 +1106,11 @@ fn compile_residual(
                         nfs.concept_names.insert(cid);
                         dst.push(RAtom::C { cid, v });
                     }
-                    JAtom::Role { role, source, target } => {
+                    JAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => {
                         let s = term_v!(source);
                         let t = term_v!(target);
                         let rid = it.intern(role);
@@ -1222,8 +1273,22 @@ fn cert_round(
                     }
                     asg[free] = Some(nd);
                     if !join(
-                        rc, rci, order, depth, asg, nodes, alive, sub_super, edges, repr, members,
-                        edges_by_role, empty_m, empty_e, budget, collect,
+                        rc,
+                        rci,
+                        order,
+                        depth,
+                        asg,
+                        nodes,
+                        alive,
+                        sub_super,
+                        edges,
+                        repr,
+                        members,
+                        edges_by_role,
+                        empty_m,
+                        empty_e,
+                        budget,
+                        collect,
                     ) {
                         asg[free] = None;
                         return false;
@@ -1264,8 +1329,22 @@ fn cert_round(
                         return true; // body unsatisfied: clause holds here
                     }
                     join(
-                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr, members,
-                        edges_by_role, empty_m, empty_e, budget, collect,
+                        rc,
+                        rci,
+                        order,
+                        depth + 1,
+                        asg,
+                        nodes,
+                        alive,
+                        sub_super,
+                        edges,
+                        repr,
+                        members,
+                        edges_by_role,
+                        empty_m,
+                        empty_e,
+                        budget,
+                        collect,
                     )
                 }
                 None => {
@@ -1276,8 +1355,22 @@ fn cert_round(
                         }
                         asg[v] = Some(nd);
                         if !join(
-                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr,
-                            members, edges_by_role, empty_m, empty_e, budget, collect,
+                            rc,
+                            rci,
+                            order,
+                            depth + 1,
+                            asg,
+                            nodes,
+                            alive,
+                            sub_super,
+                            edges,
+                            repr,
+                            members,
+                            edges_by_role,
+                            empty_m,
+                            empty_e,
+                            budget,
+                            collect,
                         ) {
                             asg[v] = None;
                             return false;
@@ -1294,8 +1387,22 @@ fn cert_round(
                         return true;
                     }
                     join(
-                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr, members,
-                        edges_by_role, empty_m, empty_e, budget, collect,
+                        rc,
+                        rci,
+                        order,
+                        depth + 1,
+                        asg,
+                        nodes,
+                        alive,
+                        sub_super,
+                        edges,
+                        repr,
+                        members,
+                        edges_by_role,
+                        empty_m,
+                        empty_e,
+                        budget,
+                        collect,
                     )
                 }
                 (Some(sn), None) => {
@@ -1309,8 +1416,22 @@ fn cert_round(
                         }
                         asg[t] = Some(d);
                         if !join(
-                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr,
-                            members, edges_by_role, empty_m, empty_e, budget, collect,
+                            rc,
+                            rci,
+                            order,
+                            depth + 1,
+                            asg,
+                            nodes,
+                            alive,
+                            sub_super,
+                            edges,
+                            repr,
+                            members,
+                            edges_by_role,
+                            empty_m,
+                            empty_e,
+                            budget,
+                            collect,
                         ) {
                             asg[t] = None;
                             return false;
@@ -1342,8 +1463,22 @@ fn cert_round(
                         asg[s] = Some(c);
                         asg[t] = Some(d);
                         if !join(
-                            rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr,
-                            members, edges_by_role, empty_m, empty_e, budget, collect,
+                            rc,
+                            rci,
+                            order,
+                            depth + 1,
+                            asg,
+                            nodes,
+                            alive,
+                            sub_super,
+                            edges,
+                            repr,
+                            members,
+                            edges_by_role,
+                            empty_m,
+                            empty_e,
+                            budget,
+                            collect,
                         ) {
                             asg[s] = os;
                             asg[t] = ot;
@@ -1369,8 +1504,22 @@ fn cert_round(
                         return true;
                     }
                     join(
-                        rc, rci, order, depth + 1, asg, nodes, alive, sub_super, edges, repr, members,
-                        edges_by_role, empty_m, empty_e, budget, collect,
+                        rc,
+                        rci,
+                        order,
+                        depth + 1,
+                        asg,
+                        nodes,
+                        alive,
+                        sub_super,
+                        edges,
+                        repr,
+                        members,
+                        edges_by_role,
+                        empty_m,
+                        empty_e,
+                        budget,
+                        collect,
                     )
                 }
                 // unbound side: cannot evaluate — fail conservatively
@@ -1429,8 +1578,22 @@ fn cert_round(
             asg[v] = Some(node);
         }
         let ok = join(
-            rc, i, &order, 0, &mut asg, &nodes, &alive, sub_super, edges, repr, &members,
-            &edges_by_role, &empty_m, &empty_e, budget, &mut collect,
+            rc,
+            i,
+            &order,
+            0,
+            &mut asg,
+            &nodes,
+            &alive,
+            sub_super,
+            edges,
+            repr,
+            &members,
+            &edges_by_role,
+            &empty_m,
+            &empty_e,
+            budget,
+            &mut collect,
         );
         if !ok {
             if debug {
@@ -1468,7 +1631,16 @@ fn cert_round(
 /// candidate extensions; exhausting it fails conservatively.
 fn check_certificate(rcs: &[RClause], nfs: &Nfs, st: &State, debug: bool) -> bool {
     let mut budget: u64 = 200_000_000;
-    cert_round(rcs, &nfs.concept_names, &st.sub_super, &st.edges, None, &mut budget, None, debug)
+    cert_round(
+        rcs,
+        &nfs.concept_names,
+        &st.sub_super,
+        &st.edges,
+        None,
+        &mut budget,
+        None,
+        debug,
+    )
 }
 
 /// Completeness certificate by MODEL REPAIR (pay-as-you-go upper bound).
@@ -1647,9 +1819,14 @@ fn repair_certify(
                 let head = &rcs[*rci].head;
                 // addable candidates in this clause's preference order
                 let cands: Vec<&RAtom> = if polv[*rci] {
-                    head.iter().rev().filter(|a| !matches!(a, RAtom::Eq { .. })).collect()
+                    head.iter()
+                        .rev()
+                        .filter(|a| !matches!(a, RAtom::Eq { .. }))
+                        .collect()
                 } else {
-                    head.iter().filter(|a| !matches!(a, RAtom::Eq { .. })).collect()
+                    head.iter()
+                        .filter(|a| !matches!(a, RAtom::Eq { .. }))
+                        .collect()
                 };
                 // choice: prefer an unbanned candidate not disjoint with
                 // the node's labels, then any unbanned one, then anything
@@ -1748,11 +1925,7 @@ fn repair_certify(
                                     })
                                     .copied()
                                     .or_else(|| {
-                                        chrono
-                                            .iter()
-                                            .rev()
-                                            .find(|t| !banned.contains(*t))
-                                            .copied()
+                                        chrono.iter().rev().find(|t| !banned.contains(*t)).copied()
                                     });
                             }
                             match blame {
@@ -1821,14 +1994,10 @@ fn repair_certify(
                             chrono
                                 .iter()
                                 .rev()
-                                .find(|t| {
-                                    uf_find(&mut repr, t.0) == cr && !banned.contains(*t)
-                                })
+                                .find(|t| uf_find(&mut repr, t.0) == cr && !banned.contains(*t))
                                 .copied()
                         })
-                        .or_else(|| {
-                            chrono.iter().rev().find(|t| !banned.contains(*t)).copied()
-                        });
+                        .or_else(|| chrono.iter().rev().find(|t| !banned.contains(*t)).copied());
                     match blame {
                         Some(triple) => {
                             if debug {
@@ -1907,9 +2076,7 @@ fn repair_certify(
             // die — their subjects become unresolved residue for the engine
             if let PassOut::Model(st, prov) = run_pass(&polv, seed + 10, &banned, true) {
                 if debug {
-                    eprintln!(
-                        "KM_ELC_CERT repair pass {seed}: death-tolerant model accepted"
-                    );
+                    eprintln!("KM_ELC_CERT repair pass {seed}: death-tolerant model accepted");
                 }
                 if seed == 0 {
                     banned0 = banned.clone();
@@ -2330,8 +2497,15 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
         eprintln!(
             "KM_ELC_PROFILE sub_items={} edge_items={} | nf1_scan={} nf2_scan={} nf3_scan={} \
              nf4_sub_scan={} nf4_edge_scan={} nf7_scan={} botback={}",
-            prof.sub_items, prof.edge_items, prof.nf1_scan, prof.nf2_scan, prof.nf3_scan,
-            prof.nf4_sub_scan, prof.nf4_edge_scan, prof.nf7_scan, prof.botback
+            prof.sub_items,
+            prof.edge_items,
+            prof.nf1_scan,
+            prof.nf2_scan,
+            prof.nf3_scan,
+            prof.nf4_sub_scan,
+            prof.nf4_edge_scan,
+            prof.nf7_scan,
+            prof.botback
         );
     }
     let mut res = st;
@@ -2435,7 +2609,11 @@ mod tests {
         format!("{{\"kind\":\"var\",\"name\":\"{}\"}}", n)
     }
     fn c(name: &str, t: &str) -> String {
-        format!("{{\"kind\":\"concept\",\"concept\":\"{}\",\"term\":{}}}", name, v(t))
+        format!(
+            "{{\"kind\":\"concept\",\"concept\":\"{}\",\"term\":{}}}",
+            name,
+            v(t)
+        )
     }
     fn cf(name: &str, f: &str, t: &str) -> String {
         format!(
@@ -2444,7 +2622,12 @@ mod tests {
         )
     }
     fn r(role: &str, s: &str, t: &str) -> String {
-        format!("{{\"kind\":\"role\",\"role\":\"{}\",\"source\":{},\"target\":{}}}", role, v(s), v(t))
+        format!(
+            "{{\"kind\":\"role\",\"role\":\"{}\",\"source\":{},\"target\":{}}}",
+            role,
+            v(s),
+            v(t)
+        )
     }
     fn rf(role: &str, s: &str, f: &str) -> String {
         format!(
@@ -2453,7 +2636,11 @@ mod tests {
         )
     }
     fn cl(body: &[String], head: &[String]) -> String {
-        format!("{{\"body\":[{}],\"head\":[{}]}}", body.join(","), head.join(","))
+        format!(
+            "{{\"body\":[{}],\"head\":[{}]}}",
+            body.join(","),
+            head.join(",")
+        )
     }
 
     fn subs_of(res: &ElResult, sub: &str) -> Vec<String> {
@@ -2535,11 +2722,19 @@ mod tests {
         // Completed EL relation: A⊑X, B⊑X. Parked residual: D ⊑ A ∨ B.
         // ⊔-distribution ⟹ D ⊑ X (a subsumption hidden in the parked disjunction).
         let mut it = Interner::new();
-        let (a, b, x, d) = (it.intern("A"), it.intern("B"), it.intern("X"), it.intern("D"));
+        let (a, b, x, d) = (
+            it.intern("A"),
+            it.intern("B"),
+            it.intern("X"),
+            it.intern("D"),
+        );
         let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); it.len()];
         sub_super[a as usize].insert(x);
         sub_super[b as usize].insert(x);
-        let residual = clauses(&format!("[{}]", cl(&[c("D", "x")], &[c("A", "x"), c("B", "x")])));
+        let residual = clauses(&format!(
+            "[{}]",
+            cl(&[c("D", "x")], &[c("A", "x"), c("B", "x")])
+        ));
         let added = hoist_residual_disjuncts(&residual, &it, &mut sub_super);
         assert_eq!(added, 1, "exactly D⊑X recovered");
         assert!(sub_super[d as usize].contains(&x), "D⊑X must be derived");
@@ -2549,12 +2744,20 @@ mod tests {
     fn elc_hoist_skips_when_no_common_super() {
         // A⊑X, B⊑Y. D ⊑ A ∨ B has no common super ⟹ nothing recovered.
         let mut it = Interner::new();
-        let (a, b, x, y, _d) =
-            (it.intern("A"), it.intern("B"), it.intern("X"), it.intern("Y"), it.intern("D"));
+        let (a, b, x, y, _d) = (
+            it.intern("A"),
+            it.intern("B"),
+            it.intern("X"),
+            it.intern("Y"),
+            it.intern("D"),
+        );
         let mut sub_super: Vec<HashSet<u32>> = vec![HashSet::default(); it.len()];
         sub_super[a as usize].insert(x);
         sub_super[b as usize].insert(y);
-        let residual = clauses(&format!("[{}]", cl(&[c("D", "x")], &[c("A", "x"), c("B", "x")])));
+        let residual = clauses(&format!(
+            "[{}]",
+            cl(&[c("D", "x")], &[c("A", "x"), c("B", "x")])
+        ));
         assert_eq!(hoist_residual_disjuncts(&residual, &it, &mut sub_super), 0);
     }
 
@@ -2576,7 +2779,8 @@ mod tests {
             range,
             cl(&[c("B", "x")], &[c("C", "x")]),
         ));
-        let res = classify_inner(cs_pass, CertMode::Check, false).expect("range satisfied by B ⊑ C");
+        let res =
+            classify_inner(cs_pass, CertMode::Check, false).expect("range satisfied by B ⊑ C");
         assert!(subs_of(&res, "B").contains(&"C".to_string()));
     }
 
@@ -2612,7 +2816,8 @@ mod tests {
                 v("z")
             ),
         ));
-        let res = classify_inner(cs1, CertMode::Check, false).expect("functional with one successor");
+        let res =
+            classify_inner(cs1, CertMode::Check, false).expect("functional with one successor");
         assert!(subs_of(&res, "A").is_empty() || !res.inconsistent);
     }
 
@@ -2654,8 +2859,12 @@ mod tests {
             r("R", "x", "y"),
             c("D", "y")
         );
-        let res = classify_inner(clauses(&format!("[{},{}]", base, constraint)), CertMode::Check, false)
-            .expect("constraint body unsatisfied: certificate passes");
+        let res = classify_inner(
+            clauses(&format!("[{},{}]", base, constraint)),
+            CertMode::Check,
+            false,
+        )
+        .expect("constraint body unsatisfied: certificate passes");
         assert!(!res.inconsistent);
         // Now make the successor a D: the constraint is violated in the model.
         let cs_fail = clauses(&format!(

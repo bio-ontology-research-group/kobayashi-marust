@@ -97,7 +97,11 @@ fn two_concepts_same_term(atoms: &[Atom]) -> Option<(String, String)> {
     }
     if let (Atom::Concept(a, ta), Atom::Concept(b, tb)) = (&atoms[0], &atoms[1]) {
         if ta == tb && a != b {
-            return Some(if a <= b { (a.clone(), b.clone()) } else { (b.clone(), a.clone()) });
+            return Some(if a <= b {
+                (a.clone(), b.clone())
+            } else {
+                (b.clone(), a.clone())
+            });
         }
     }
     None
@@ -146,7 +150,13 @@ pub fn elim_complements(tbox: Vec<DLClause>) -> (Vec<DLClause>, usize) {
     }
     let elim_pairs: HashSet<(String, String)> = sub
         .iter()
-        .map(|(e, k)| if e <= k { (e.clone(), k.clone()) } else { (k.clone(), e.clone()) })
+        .map(|(e, k)| {
+            if e <= k {
+                (e.clone(), k.clone())
+            } else {
+                (k.clone(), e.clone())
+            }
+        })
         .collect();
     let n = sub.len();
     let mut out: Vec<DLClause> = Vec::with_capacity(tbox.len());
@@ -224,9 +234,10 @@ pub fn hoist_common_disjuncts(tbox: Vec<DLClause>) -> (Vec<DLClause>, usize) {
     let mut told: HashMap<&str, HashSet<&str>> = HashMap::new();
     for c in &tbox {
         if c.body.len() == 1 && c.head.len() == 1 {
-            if let (Some((a, ta)), Some((x, tx))) =
-                (single_var_concept(&c.body[0]), single_var_concept(&c.head[0]))
-            {
+            if let (Some((a, ta)), Some((x, tx))) = (
+                single_var_concept(&c.body[0]),
+                single_var_concept(&c.head[0]),
+            ) {
                 if ta == tx {
                     told.entry(a).or_default().insert(x);
                 }
@@ -266,10 +277,7 @@ pub fn hoist_common_disjuncts(tbox: Vec<DLClause>) -> (Vec<DLClause>, usize) {
 
         // candidate supers of the first disjunct (its told supers ∪ {itself}),
         // intersected with the supers of every other disjunct.
-        fn supers<'a>(
-            told: &HashMap<&'a str, HashSet<&'a str>>,
-            a: &'a str,
-        ) -> HashSet<&'a str> {
+        fn supers<'a>(told: &HashMap<&'a str, HashSet<&'a str>>, a: &'a str) -> HashSet<&'a str> {
             let mut s = told.get(a).cloned().unwrap_or_default();
             s.insert(a);
             s

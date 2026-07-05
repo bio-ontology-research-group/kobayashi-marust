@@ -30,14 +30,18 @@ fn nom_of(ind: &str) -> String {
 /// `ClassAssertion` as `⊤ → q(a)`, a `RoleAssertion` as `⊤ → r(a,b)`,
 /// `SameIndividual` as `⊤ → a≈b`, `DifferentIndividuals` as `a≈b → ⊥`.
 enum AboxFact {
-    Concept(String, String),       // q(a)
-    Role(String, String, String),  // r(a,b)
-    Same(String, String),          // a ≈ b
-    Diff(String, String),          // a ≠ b  (recorded, not encoded — see below)
+    Concept(String, String),      // q(a)
+    Role(String, String, String), // r(a,b)
+    Same(String, String),         // a ≈ b
+    Diff(String, String),         // a ≠ b  (recorded, not encoded — see below)
 }
 
 fn ind_name(t: &JTerm) -> Option<&str> {
-    if let JTerm::Ind { name } = t { Some(name.as_str()) } else { None }
+    if let JTerm::Ind { name } = t {
+        Some(name.as_str())
+    } else {
+        None
+    }
 }
 
 /// Recognise a ground ABox fact (all terms individuals). Returns `None` for any
@@ -45,22 +49,31 @@ fn ind_name(t: &JTerm) -> Option<&str> {
 fn abox_fact(c: &JClause) -> Option<AboxFact> {
     if c.body.is_empty() && c.head.len() == 1 {
         return match &c.head[0] {
-            JAtom::Concept { concept, term } => {
-                Some(AboxFact::Concept(concept.clone(), ind_name(term)?.to_string()))
-            }
-            JAtom::Role { role, source, target } => Some(AboxFact::Role(
+            JAtom::Concept { concept, term } => Some(AboxFact::Concept(
+                concept.clone(),
+                ind_name(term)?.to_string(),
+            )),
+            JAtom::Role {
+                role,
+                source,
+                target,
+            } => Some(AboxFact::Role(
                 role.clone(),
                 ind_name(source)?.to_string(),
                 ind_name(target)?.to_string(),
             )),
-            JAtom::Eq { left, right } => {
-                Some(AboxFact::Same(ind_name(left)?.to_string(), ind_name(right)?.to_string()))
-            }
+            JAtom::Eq { left, right } => Some(AboxFact::Same(
+                ind_name(left)?.to_string(),
+                ind_name(right)?.to_string(),
+            )),
         };
     }
     if c.head.is_empty() && c.body.len() == 1 {
         if let JAtom::Eq { left, right } = &c.body[0] {
-            return Some(AboxFact::Diff(ind_name(left)?.to_string(), ind_name(right)?.to_string()));
+            return Some(AboxFact::Diff(
+                ind_name(left)?.to_string(),
+                ind_name(right)?.to_string(),
+            ));
         }
     }
     None
@@ -80,7 +93,11 @@ fn rule_term_name(t: &JRuleTerm) -> (bool, &str) {
 /// Same/Diff atom (an (in)equality guard not yet encoded) or an empty head. The
 /// second tuple element is the individual names the rule references (so they are
 /// registered as nominal nodes). Concept/role ids are assigned in `ids`.
-fn build_rule_clause(rule: &JRule, ids: &mut Ids, oguard: usize) -> Option<(HtClause, Vec<String>)> {
+fn build_rule_clause(
+    rule: &JRule,
+    ids: &mut Ids,
+    oguard: usize,
+) -> Option<(HtClause, Vec<String>)> {
     let mut var_of: HashMap<(bool, String), usize> = HashMap::new();
     let mut next_var = 0usize;
     let mut ind_vars: Vec<(usize, String)> = Vec::new();
@@ -109,12 +126,24 @@ fn build_rule_clause(rule: &JRule, ids: &mut Ids, oguard: usize) -> Option<(HtCl
         for a in atoms {
             match a {
                 JRuleAtom::Class { concept, term } => {
-                    out.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: vget(term) });
+                    out.push(HAtom::Concept {
+                        neg: false,
+                        c: ids.cid(concept),
+                        t: vget(term),
+                    });
                 }
-                JRuleAtom::Role { role, source, target } => {
+                JRuleAtom::Role {
+                    role,
+                    source,
+                    target,
+                } => {
                     let s = vget(source);
                     let t = vget(target);
-                    out.push(HAtom::Role { r: ids.rid(role), s, t });
+                    out.push(HAtom::Role {
+                        r: ids.rid(role),
+                        s,
+                        t,
+                    });
                 }
                 JRuleAtom::Same { .. } | JRuleAtom::Diff { .. } => return None,
             }
@@ -127,12 +156,20 @@ fn build_rule_clause(rule: &JRule, ids: &mut Ids, oguard: usize) -> Option<(HtCl
         return None;
     }
     for &v in &all_vars {
-        body.push(HAtom::Concept { neg: false, c: oguard, t: v });
+        body.push(HAtom::Concept {
+            neg: false,
+            c: oguard,
+            t: v,
+        });
     }
     let mut inds: Vec<String> = Vec::new();
     for (v, a) in &ind_vars {
         let na = ids.cid(&nom_of(a));
-        body.push(HAtom::Concept { neg: false, c: na, t: *v });
+        body.push(HAtom::Concept {
+            neg: false,
+            c: na,
+            t: *v,
+        });
         inds.push(a.clone());
     }
     Some((HtClause { body, head }, inds))
@@ -151,7 +188,12 @@ pub enum HAtom {
     #[serde(rename = "eq")]
     Eq { s: usize, t: usize },
     #[serde(rename = "e")]
-    Exist { r: usize, neg: bool, c: usize, t: usize },
+    Exist {
+        r: usize,
+        neg: bool,
+        c: usize,
+        t: usize,
+    },
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -282,16 +324,34 @@ fn role_automaton_exist_reachability(
     }
     // chains + sub-roles from the clause set
     for c in ht {
-        let rb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
-        if c.body.len() == 2 && c.head.len() == 1
+        let rb: Vec<&HAtom> = c
+            .body
+            .iter()
+            .filter(|a| matches!(a, HAtom::Role { .. }))
+            .collect();
+        if c.body.len() == 2
+            && c.head.len() == 1
             && matches!(c.body[0], HAtom::Role { .. })
             && matches!(c.body[1], HAtom::Role { .. })
             && matches!(c.head[0], HAtom::Role { .. })
         {
-            if let (HAtom::Role { r: r1, s: r1s, t: r1t },
-                     HAtom::Role { r: r2, s: r2s, t: r2t },
-                     HAtom::Role { r: hr, s: hs, t: ht_ }) =
-                (rb[0], rb[1], &c.head[0])
+            if let (
+                HAtom::Role {
+                    r: r1,
+                    s: r1s,
+                    t: r1t,
+                },
+                HAtom::Role {
+                    r: r2,
+                    s: r2s,
+                    t: r2t,
+                },
+                HAtom::Role {
+                    r: hr,
+                    s: hs,
+                    t: ht_,
+                },
+            ) = (rb[0], rb[1], &c.head[0])
             {
                 let (fr, sr, _mid) = if r1t == r2s {
                     (*r1, *r2, r1t)
@@ -307,12 +367,23 @@ fn role_automaton_exist_reachability(
             continue;
         }
         // sub-role S⊑R: body=[Role S x y], head=[Role R x y]
-        if c.body.len() == 1 && c.head.len() == 1
+        if c.body.len() == 1
+            && c.head.len() == 1
             && matches!(c.body[0], HAtom::Role { .. })
             && matches!(c.head[0], HAtom::Role { .. })
         {
-            if let (HAtom::Role { r: sr, s: ss, t: st }, HAtom::Role { r: hr, s: hs, t: ht_ }) =
-                (rb[0], &c.head[0])
+            if let (
+                HAtom::Role {
+                    r: sr,
+                    s: ss,
+                    t: st,
+                },
+                HAtom::Role {
+                    r: hr,
+                    s: hs,
+                    t: ht_,
+                },
+            ) = (rb[0], &c.head[0])
             {
                 if *ss == *hs && *st == *ht_ && *ss != *st && sr != hr {
                     sub_super.entry(*sr).or_default().push(*hr);
@@ -338,9 +409,24 @@ fn role_automaton_exist_reachability(
     // used to resolve the absorbed definer chains around ∃R.C.
     let mut sub: HashMap<usize, Vec<usize>> = HashMap::new();
     for c in ht {
-        if c.body.len() == 1 && c.head.len() == 1
-            && matches!(c.body[0], HAtom::Concept { neg: false, t: 0, .. })
-            && matches!(c.head[0], HAtom::Concept { neg: false, t: 0, .. })
+        if c.body.len() == 1
+            && c.head.len() == 1
+            && matches!(
+                c.body[0],
+                HAtom::Concept {
+                    neg: false,
+                    t: 0,
+                    ..
+                }
+            )
+            && matches!(
+                c.head[0],
+                HAtom::Concept {
+                    neg: false,
+                    t: 0,
+                    ..
+                }
+            )
         {
             if let (HAtom::Concept { c: a, .. }, HAtom::Concept { c: b, .. }) =
                 (&c.body[0], &c.head[0])
@@ -406,12 +492,27 @@ fn role_automaton_exist_reachability(
     // exists-head clauses: body=[Concept D t:0], head contains Exist{r,c,t:0}
     let mut exists_heads: Vec<(usize, usize, usize)> = Vec::new(); // (D, R, F)
     for c in ht {
-        if c.body.len() != 1 || !matches!(c.body[0], HAtom::Concept { neg: false, t: 0, .. }) {
+        if c.body.len() != 1
+            || !matches!(
+                c.body[0],
+                HAtom::Concept {
+                    neg: false,
+                    t: 0,
+                    ..
+                }
+            )
+        {
             continue;
         }
         if let HAtom::Concept { c: d, .. } = c.body[0] {
             for h in &c.head {
-                if let HAtom::Exist { r, neg: false, c: f, t: 0 } = h {
+                if let HAtom::Exist {
+                    r,
+                    neg: false,
+                    c: f,
+                    t: 0,
+                } = h
+                {
                     exists_heads.push((d, *r, *f));
                 }
             }
@@ -459,8 +560,8 @@ fn role_automaton_exist_reachability(
     // chain join (the join is over the FILLER being a source of the next hop;
     // the named filler is the resolution target).
     let mut intros: HashSet<(usize, usize, usize)> = HashSet::new(); // (A, R, Cnamed)
-    // by_rf for the fixpoint: (R, Cnamed) -> {Anamed}.  Use named throughout so
-    // the closure is finite and the join is sound (A⊑∃R1.Bnamed, Bnamed⊑∃R2.C).
+                                                                     // by_rf for the fixpoint: (R, Cnamed) -> {Anamed}.  Use named throughout so
+                                                                     // the closure is finite and the join is sound (A⊑∃R1.Bnamed, Bnamed⊑∃R2.C).
     let mut by_rf: HashMap<(usize, usize), HashSet<usize>> = HashMap::new();
     let mut _dbg_eh = 0u64;
     let mut _dbg_src0 = 0u64;
@@ -494,7 +595,11 @@ fn role_automaton_exist_reachability(
     // (R, Cnamed) -> [Dnamed]
     let mut consumers: HashMap<(usize, usize), Vec<usize>> = HashMap::new();
     for c in ht {
-        let rb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
+        let rb: Vec<&HAtom> = c
+            .body
+            .iter()
+            .filter(|a| matches!(a, HAtom::Role { .. }))
+            .collect();
         if rb.len() != 1 || c.head.is_empty() {
             continue;
         }
@@ -505,7 +610,12 @@ fn role_automaton_exist_reachability(
             // single filler concept on y (=rt)
             let mut fil: Option<usize> = None;
             for a in &c.body {
-                if let HAtom::Concept { neg: false, c: cc, t } = a {
+                if let HAtom::Concept {
+                    neg: false,
+                    c: cc,
+                    t,
+                } = a
+                {
                     if *t == *rt {
                         if fil.is_none() {
                             fil = Some(*cc);
@@ -523,7 +633,12 @@ fn role_automaton_exist_reachability(
             // head concepts on x (=0): named Ds
             let mut ds: Vec<usize> = Vec::new();
             for h in &c.head {
-                if let HAtom::Concept { neg: false, c: cc, t: 0 } = h {
+                if let HAtom::Concept {
+                    neg: false,
+                    c: cc,
+                    t: 0,
+                } = h
+                {
                     if *cc < nc && !is_internal(&ids.con_names[*cc]) {
                         ds.push(*cc);
                     }
@@ -541,7 +656,10 @@ fn role_automaton_exist_reachability(
             // same resolution for consistency.
             let fils = named_fillers(fdef, &mut fil_cache);
             for cf in fils {
-                consumers.entry((*r, cf)).or_default().extend(ds.iter().copied());
+                consumers
+                    .entry((*r, cf))
+                    .or_default()
+                    .extend(ds.iter().copied());
             }
         }
     }
@@ -599,11 +717,8 @@ fn role_automaton_exist_reachability(
         // sub-role: A ⊑ ∃S.C ∧ S ⊑ R ⟹ A ⊑ ∃R.C
         for (s, sups) in &sub_super {
             for r in sups {
-                let s_cs: Vec<(usize, usize)> = snapshot
-                    .keys()
-                    .filter(|(rr, _)| rr == s)
-                    .cloned()
-                    .collect();
+                let s_cs: Vec<(usize, usize)> =
+                    snapshot.keys().filter(|(rr, _)| rr == s).cloned().collect();
                 for (_, c) in s_cs {
                     let as_ = match snapshot.get(&(*s, c)) {
                         Some(s2) => s2.iter().copied().collect::<Vec<_>>(),
@@ -635,13 +750,24 @@ fn role_automaton_exist_reachability(
         if !emitted.insert((*a, *r, *c)) {
             continue;
         }
-        let mid = *marker_cache
-            .entry((*r, *c))
-            .or_insert_with(|| ids.cid(&format!("__trans__{}__{}", ids.rol_names[*r], ids.con_names[*c])));
+        let mid = *marker_cache.entry((*r, *c)).or_insert_with(|| {
+            ids.cid(&format!(
+                "__trans__{}__{}",
+                ids.rol_names[*r], ids.con_names[*c]
+            ))
+        });
         // seed: A(x) → marker(x)
         out.push(HtClause {
-            body: vec![HAtom::Concept { neg: false, c: *a, t: 0 }],
-            head: vec![HAtom::Concept { neg: false, c: mid, t: 0 }],
+            body: vec![HAtom::Concept {
+                neg: false,
+                c: *a,
+                t: 0,
+            }],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: mid,
+                t: 0,
+            }],
         });
         // consumers: marker(x) → D(x) for each D with ∃R.C ⊑ D (incl. sub-role)
         let mut ds: Vec<usize> = Vec::new();
@@ -659,8 +785,16 @@ fn role_automaton_exist_reachability(
         ds.dedup();
         for d in ds {
             out.push(HtClause {
-                body: vec![HAtom::Concept { neg: false, c: mid, t: 0 }],
-                head: vec![HAtom::Concept { neg: false, c: d, t: 0 }],
+                body: vec![HAtom::Concept {
+                    neg: false,
+                    c: mid,
+                    t: 0,
+                }],
+                head: vec![HAtom::Concept {
+                    neg: false,
+                    c: d,
+                    t: 0,
+                }],
             });
         }
     }
@@ -729,9 +863,7 @@ fn card_drop(
         }
     }
     // (2) ≥n distinctness.
-    if c.head.is_empty()
-        && body_has(min_markers)
-        && c.body.iter().any(|a| eq_fun_pair(a).is_some())
+    if c.head.is_empty() && body_has(min_markers) && c.body.iter().any(|a| eq_fun_pair(a).is_some())
     {
         return true;
     }
@@ -759,8 +891,10 @@ fn em_recognition_drop(
     if !c.body.is_empty() || c.head.len() < 2 {
         return false;
     }
-    let all_concept_x = c.head.iter().all(|a| matches!(a,
-        JAtom::Concept { term: JTerm::Var { name }, .. } if name == "x"));
+    let all_concept_x = c.head.iter().all(|a| {
+        matches!(a,
+        JAtom::Concept { term: JTerm::Var { name }, .. } if name == "x")
+    });
     if !all_concept_x {
         return false;
     }
@@ -797,7 +931,10 @@ fn guard_em_transform(
             .body
             .iter()
             .filter_map(|a| match a {
-                JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && is_marker(concept) => Some(concept),
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } if name == "x" && is_marker(concept) => Some(concept),
                 _ => None,
             })
             .collect();
@@ -808,7 +945,10 @@ fn guard_em_transform(
             .body
             .iter()
             .filter_map(|a| match a {
-                JAtom::Concept { concept, term: JTerm::Var { name } } if name == "x" && !is_marker(concept) => Some(concept.clone()),
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } if name == "x" && !is_marker(concept) => Some(concept.clone()),
                 _ => None,
             })
             .collect();
@@ -859,9 +999,17 @@ fn guard_em_transform(
         for g in &gsets {
             let body: Vec<JAtom> = g
                 .iter()
-                .map(|cn| JAtom::Concept { concept: cn.clone(), term: JTerm::Var { name: "x".to_string() } })
+                .map(|cn| JAtom::Concept {
+                    concept: cn.clone(),
+                    term: JTerm::Var {
+                        name: "x".to_string(),
+                    },
+                })
                 .collect();
-            out.push(JClause { body, head: c.head.clone() });
+            out.push(JClause {
+                body,
+                head: c.head.clone(),
+            });
         }
     }
     out
@@ -878,7 +1026,12 @@ struct Ids {
 }
 impl Ids {
     fn new() -> Ids {
-        Ids { con_names: Vec::new(), con_id: HashMap::new(), rol_names: Vec::new(), rol_id: HashMap::new() }
+        Ids {
+            con_names: Vec::new(),
+            con_id: HashMap::new(),
+            rol_names: Vec::new(),
+            rol_id: HashMap::new(),
+        }
     }
     fn cid(&mut self, n: &str) -> usize {
         if let Some(&i) = self.con_id.get(n) {
@@ -928,7 +1081,10 @@ struct OrderedMM {
 }
 impl OrderedMM {
     fn new() -> OrderedMM {
-        OrderedMM { keys: Vec::new(), vals: HashMap::new() }
+        OrderedMM {
+            keys: Vec::new(),
+            vals: HashMap::new(),
+        }
     }
     fn push(&mut self, k: &str, v: &str) {
         if !self.vals.contains_key(k) {
@@ -941,14 +1097,24 @@ impl OrderedMM {
         self.vals.get(k).map(|v| v.as_slice()).unwrap_or(&[])
     }
     fn iter(&self) -> impl Iterator<Item = (&String, &Vec<String>)> {
-        self.keys.iter().map(move |k| (k, self.vals.get(k).unwrap()))
+        self.keys
+            .iter()
+            .map(move |k| (k, self.vals.get(k).unwrap()))
     }
 }
 
 // ---------------------------------------------------------------------------
 // convert
 // ---------------------------------------------------------------------------
-pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::collections::HashSet<String>, cardinalities: &[crate::json_io::CardMeta], card_enabled: bool, rules: &[JRule], ht_rules: bool) -> TInput {
+pub fn convert(
+    clauses: &[JClause],
+    rbox: Option<&[Vec<String>]>,
+    named: &std::collections::HashSet<String>,
+    cardinalities: &[crate::json_io::CardMeta],
+    card_enabled: bool,
+    rules: &[JRule],
+    ht_rules: bool,
+) -> TInput {
     let mut ids = Ids::new();
     let mut dropped: usize = 0;
     let mut ht: Vec<HtClause> = Vec::new();
@@ -983,12 +1149,12 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     // nominal+inverse ont that my `card_routable` __nom__ relaxation would otherwise
     // mis-transform). So exclude inverse here too, matching the route guard exactly.
     let has_inverse = rbox
-        .map(|rb| rb.iter().any(|ax| ax.first().map(String::as_str) == Some("inverse")))
+        .map(|rb| {
+            rb.iter()
+                .any(|ax| ax.first().map(String::as_str) == Some("inverse"))
+        })
         .unwrap_or(false);
-    let card_active = !cardinalities.is_empty()
-        && card_enabled
-        && card_routable
-        && !has_inverse;
+    let card_active = !cardinalities.is_empty() && card_enabled && card_routable && !has_inverse;
     let mut min_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut max_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
     if card_active {
@@ -1007,7 +1173,7 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     // it, so the per-node branch must not remain.
     let drop_em = card_active
         && (std::env::var_os("KM_HT_CARD_DROP_EM").is_some()
-            || std::env::var_os("KM_HT_CARD_RECOG").is_some());
+            || std::env::var_os("KM_NO_HT_CARD_RECOG").is_none());
 
     // KM_HT_CARD_GUARD_EM: rewrite the `⊤ → Q ∨ NQ` recognition splits into
     // guarded form before pass 1 (the sound, lazy-unfolding form of DROP_EM).
@@ -1053,20 +1219,33 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
             let roles: Vec<(&str, &crate::json_io::JTerm, &crate::json_io::JTerm)> = body
                 .iter()
                 .filter_map(|a| match a {
-                    crate::json_io::JAtom::Role { role, source, target } => Some((role.as_str(), source, target)),
+                    crate::json_io::JAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => Some((role.as_str(), source, target)),
                     _ => None,
                 })
                 .collect();
             if roles.len() != 2 {
                 continue;
             }
-            if let crate::json_io::JAtom::Role { role: hr, source: hs, target: ht } = &head[0] {
+            if let crate::json_io::JAtom::Role {
+                role: hr,
+                source: hs,
+                target: ht,
+            } = &head[0]
+            {
                 let (r1n, r1s, r1t) = roles[0];
                 let (r2n, r2s, r2t) = roles[1];
                 // orient: first.target == second.source (middle)
-                let (fr, sr, _mid_ok) = if r1t == r2s { (r1n, r2n, true) }
-                    else if r2t == r1s { (r2n, r1n, true) }
-                    else { ("", "", false) };
+                let (fr, sr, _mid_ok) = if r1t == r2s {
+                    (r1n, r2n, true)
+                } else if r2t == r1s {
+                    (r2n, r1n, true)
+                } else {
+                    ("", "", false)
+                };
                 // head source = first.source, head target = second.target
                 if hs == r1s && ht == r2t && r1s != r2t {
                     let r1id = ids.rid(fr);
@@ -1087,8 +1266,12 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     for c in clauses {
         // KM_KEEP_CHAIN_AXIOMS: skip the raw chain/transitive axioms (detected
         // above as side data; keeping them in the clause set bloats cb_to_ht).
-        if keep_chains && c.body.len() == 2 && c.head.len() == 1
-            && c.body.iter().all(|a| matches!(a, crate::json_io::JAtom::Role { .. }))
+        if keep_chains
+            && c.body.len() == 2
+            && c.head.len() == 1
+            && c.body
+                .iter()
+                .all(|a| matches!(a, crate::json_io::JAtom::Role { .. }))
             && matches!(c.head[0], crate::json_io::JAtom::Role { .. })
         {
             continue;
@@ -1149,13 +1332,22 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
                 exj_order.push(f.clone());
                 exj.insert(
                     f.clone(),
-                    ExjRec { body: c.body.clone(), role: None, fillers: Vec::new(), ok: true },
+                    ExjRec {
+                        body: c.body.clone(),
+                        role: None,
+                        fillers: Vec::new(),
+                        ok: true,
+                    },
                 );
             }
             let rec = exj.get_mut(&f).unwrap();
             for a in &c.head {
                 match a {
-                    JAtom::Role { role, source, target } if fun_sym(target) == Some(f.as_str()) => {
+                    JAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } if fun_sym(target) == Some(f.as_str()) => {
                         let src_is_x = matches!(source, JTerm::Var { name } if name == "x");
                         if src_is_x {
                             if rec.role.is_some() && rec.role.as_deref() != Some(role.as_str()) {
@@ -1182,14 +1374,20 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
             distinct_pairs.extend(body_eq_pairs);
         } else if c.body.iter().any(atom_has_fun) {
             dropped += 1;
-        } else if c.head.iter().chain(c.body.iter()).any(|a| matches!(a, JAtom::Eq { .. })) {
+        } else if c
+            .head
+            .iter()
+            .chain(c.body.iter())
+            .any(|a| matches!(a, JAtom::Eq { .. }))
+        {
             eq_clauses.push(c.clone());
         } else {
             passthrough.push(c.clone());
         }
     }
 
-    let mut funcs_needing_slot: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut funcs_needing_slot: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     for (fi, fj) in &distinct_pairs {
         funcs_needing_slot.insert(fi.clone());
         funcs_needing_slot.insert(fj.clone());
@@ -1208,8 +1406,14 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
                 Some("inverse") => inverse_pairs.push((ax[1].clone(), ax[2].clone())),
                 Some("domain") => domains.push(&ax[1], &ax[2]),
                 Some("range") => ranges.push(&ax[1], &ax[2]),
-                Some("fenced") => fenced.push(Fenced { reason: ax[1].clone(), detail: ax[2].clone() }),
-                _ => fenced.push(Fenced { reason: "unknown-rbox".into(), detail: format!("{:?}", ax) }),
+                Some("fenced") => fenced.push(Fenced {
+                    reason: ax[1].clone(),
+                    detail: ax[2].clone(),
+                }),
+                _ => fenced.push(Fenced {
+                    reason: "unknown-rbox".into(),
+                    detail: format!("{:?}", ax),
+                }),
             }
         }
     }
@@ -1241,14 +1445,29 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         let mut bad = false;
         for a in &rec.body {
             match a {
-                JAtom::Concept { concept, term: JTerm::Var { name } } => {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => {
                     let v = vnum(&mut vm, name);
-                    bod.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: v });
+                    bod.push(HAtom::Concept {
+                        neg: false,
+                        c: ids.cid(concept),
+                        t: v,
+                    });
                 }
-                JAtom::Role { role, source: JTerm::Var { name: sn }, target: JTerm::Var { name: tn } } => {
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: sn },
+                    target: JTerm::Var { name: tn },
+                } => {
                     let s = vnum(&mut vm, sn);
                     let t = vnum(&mut vm, tn);
-                    bod.push(HAtom::Role { r: ids.rid(role), s, t });
+                    bod.push(HAtom::Role {
+                        r: ids.rid(role),
+                        s,
+                        t,
+                    });
                 }
                 _ => bad = true,
             }
@@ -1269,14 +1488,26 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
             for cn in &fillers {
                 if is_bottom(cn) {
                     ht.push(HtClause {
-                        body: vec![HAtom::Concept { neg: false, c: ids.cid(&dname), t: 0 }],
+                        body: vec![HAtom::Concept {
+                            neg: false,
+                            c: ids.cid(&dname),
+                            t: 0,
+                        }],
                         head: vec![],
                     });
                 } else {
                     let cc = ids.cid(cn);
                     ht.push(HtClause {
-                        body: vec![HAtom::Concept { neg: false, c: ids.cid(&dname), t: 0 }],
-                        head: vec![HAtom::Concept { neg: false, c: cc, t: 0 }],
+                        body: vec![HAtom::Concept {
+                            neg: false,
+                            c: ids.cid(&dname),
+                            t: 0,
+                        }],
+                        head: vec![HAtom::Concept {
+                            neg: false,
+                            c: cc,
+                            t: 0,
+                        }],
                     });
                 }
             }
@@ -1284,13 +1515,28 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         };
         let role = rec.role.as_ref().unwrap();
         let rrole = ids.rid(role);
-        ht.push(HtClause { body: bod.clone(), head: vec![HAtom::Exist { r: rrole, neg: false, c: fil, t: 0 }] });
+        ht.push(HtClause {
+            body: bod.clone(),
+            head: vec![HAtom::Exist {
+                r: rrole,
+                neg: false,
+                c: fil,
+                t: 0,
+            }],
+        });
         // domain-obligation propagation
         for sup in super_roles(role) {
             let ds: Vec<String> = domains.get(&sup).to_vec();
             for d in ds {
                 let dc = ids.cid(&d);
-                ht.push(HtClause { body: bod.clone(), head: vec![HAtom::Concept { neg: false, c: dc, t: 0 }] });
+                ht.push(HtClause {
+                    body: bod.clone(),
+                    head: vec![HAtom::Concept {
+                        neg: false,
+                        c: dc,
+                        t: 0,
+                    }],
+                });
             }
         }
     }
@@ -1301,8 +1547,16 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         let cj = ids.cid(&format!("__slot__{}", fj));
         ht.push(HtClause {
             body: vec![
-                HAtom::Concept { neg: false, c: ci, t: 0 },
-                HAtom::Concept { neg: false, c: cj, t: 0 },
+                HAtom::Concept {
+                    neg: false,
+                    c: ci,
+                    t: 0,
+                },
+                HAtom::Concept {
+                    neg: false,
+                    c: cj,
+                    t: 0,
+                },
             ],
             head: vec![],
         });
@@ -1316,31 +1570,61 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         let mut bad = false;
         for a in &c.body {
             match a {
-                JAtom::Concept { concept, term: JTerm::Var { name } } => {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => {
                     let v = vnum(&mut vm, name);
-                    bod.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: v });
+                    bod.push(HAtom::Concept {
+                        neg: false,
+                        c: ids.cid(concept),
+                        t: v,
+                    });
                 }
-                JAtom::Role { role, source: JTerm::Var { name: sn }, target: JTerm::Var { name: tn } } => {
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: sn },
+                    target: JTerm::Var { name: tn },
+                } => {
                     let s = vnum(&mut vm, sn);
                     let t = vnum(&mut vm, tn);
-                    bod.push(HAtom::Role { r: ids.rid(role), s, t });
+                    bod.push(HAtom::Role {
+                        r: ids.rid(role),
+                        s,
+                        t,
+                    });
                 }
                 _ => bad = true,
             }
         }
         for a in &c.head {
             match a {
-                JAtom::Concept { concept, term: JTerm::Var { name } } => {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => {
                     if is_bottom(concept) {
                         continue;
                     }
                     let v = vnum(&mut vm, name);
-                    hed.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: v });
+                    hed.push(HAtom::Concept {
+                        neg: false,
+                        c: ids.cid(concept),
+                        t: v,
+                    });
                 }
-                JAtom::Role { role, source: JTerm::Var { name: sn }, target: JTerm::Var { name: tn } } => {
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: sn },
+                    target: JTerm::Var { name: tn },
+                } => {
                     let s = vnum(&mut vm, sn);
                     let t = vnum(&mut vm, tn);
-                    hed.push(HAtom::Role { r: ids.rid(role), s, t });
+                    hed.push(HAtom::Role {
+                        r: ids.rid(role),
+                        s,
+                        t,
+                    });
                 }
                 _ => bad = true,
             }
@@ -1349,7 +1633,10 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
             dropped += 1;
             continue;
         }
-        ht.push(HtClause { body: bod, head: hed });
+        ht.push(HtClause {
+            body: bod,
+            head: hed,
+        });
     }
 
     // ---- eq clauses (≤n / functional / inverse-functional) ----
@@ -1361,16 +1648,34 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         let mut bad = false;
         for a in &c.body {
             match a {
-                JAtom::Concept { concept, term: JTerm::Var { name } } => {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => {
                     let v = vnum(&mut vm, name);
-                    bod.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: v });
+                    bod.push(HAtom::Concept {
+                        neg: false,
+                        c: ids.cid(concept),
+                        t: v,
+                    });
                 }
-                JAtom::Role { role, source: JTerm::Var { name: sn }, target: JTerm::Var { name: tn } } => {
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: sn },
+                    target: JTerm::Var { name: tn },
+                } => {
                     let s = vnum(&mut vm, sn);
                     let t = vnum(&mut vm, tn);
-                    bod.push(HAtom::Role { r: ids.rid(role), s, t });
+                    bod.push(HAtom::Role {
+                        r: ids.rid(role),
+                        s,
+                        t,
+                    });
                 }
-                JAtom::Eq { left: JTerm::Var { name: ln }, right: JTerm::Var { name: rn } } => {
+                JAtom::Eq {
+                    left: JTerm::Var { name: ln },
+                    right: JTerm::Var { name: rn },
+                } => {
                     let s = vnum(&mut vm, ln);
                     let t = vnum(&mut vm, rn);
                     bod.push(HAtom::Eq { s, t });
@@ -1380,22 +1685,40 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         }
         for a in &c.head {
             match a {
-                JAtom::Eq { left: JTerm::Var { name: ln }, right: JTerm::Var { name: rn } } => {
+                JAtom::Eq {
+                    left: JTerm::Var { name: ln },
+                    right: JTerm::Var { name: rn },
+                } => {
                     let s = vnum(&mut vm, ln);
                     let t = vnum(&mut vm, rn);
                     hed.push(HAtom::Eq { s, t });
                 }
-                JAtom::Concept { concept, term: JTerm::Var { name } } => {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => {
                     if is_bottom(concept) {
                         continue;
                     }
                     let v = vnum(&mut vm, name);
-                    hed.push(HAtom::Concept { neg: false, c: ids.cid(concept), t: v });
+                    hed.push(HAtom::Concept {
+                        neg: false,
+                        c: ids.cid(concept),
+                        t: v,
+                    });
                 }
-                JAtom::Role { role, source: JTerm::Var { name: sn }, target: JTerm::Var { name: tn } } => {
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: sn },
+                    target: JTerm::Var { name: tn },
+                } => {
                     let s = vnum(&mut vm, sn);
                     let t = vnum(&mut vm, tn);
-                    hed.push(HAtom::Role { r: ids.rid(role), s, t });
+                    hed.push(HAtom::Role {
+                        r: ids.rid(role),
+                        s,
+                        t,
+                    });
                 }
                 _ => bad = true,
             }
@@ -1407,7 +1730,10 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         if hed.iter().any(|h| matches!(h, HAtom::Eq { .. })) {
             number = true;
         }
-        ht.push(HtClause { body: bod, head: hed });
+        ht.push(HtClause {
+            body: bod,
+            head: hed,
+        });
     }
 
     // ---- KM_HT_RULES: seed the ABox as named nominal nodes + fire DL-safe rules ----
@@ -1435,11 +1761,26 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
                     let na = ids.cid(&nom_of(a));
                     let qc = ids.cid(q);
                     if is_bottom(q) {
-                        ht.push(HtClause { body: vec![HAtom::Concept { neg: false, c: na, t: 0 }], head: vec![] });
+                        ht.push(HtClause {
+                            body: vec![HAtom::Concept {
+                                neg: false,
+                                c: na,
+                                t: 0,
+                            }],
+                            head: vec![],
+                        });
                     } else {
                         ht.push(HtClause {
-                            body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
-                            head: vec![HAtom::Concept { neg: false, c: qc, t: 0 }],
+                            body: vec![HAtom::Concept {
+                                neg: false,
+                                c: na,
+                                t: 0,
+                            }],
+                            head: vec![HAtom::Concept {
+                                neg: false,
+                                c: qc,
+                                t: 0,
+                            }],
                         });
                     }
                 }
@@ -1450,8 +1791,17 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
                     let nb = ids.cid(&nom_of(b));
                     let rr = ids.rid(r);
                     ht.push(HtClause {
-                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
-                        head: vec![HAtom::Exist { r: rr, neg: false, c: nb, t: 0 }],
+                        body: vec![HAtom::Concept {
+                            neg: false,
+                            c: na,
+                            t: 0,
+                        }],
+                        head: vec![HAtom::Exist {
+                            r: rr,
+                            neg: false,
+                            c: nb,
+                            t: 0,
+                        }],
                     });
                 }
                 AboxFact::Same(a, b) => {
@@ -1460,12 +1810,28 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
                     let na = ids.cid(&nom_of(a));
                     let nb = ids.cid(&nom_of(b));
                     ht.push(HtClause {
-                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
-                        head: vec![HAtom::Concept { neg: false, c: nb, t: 0 }],
+                        body: vec![HAtom::Concept {
+                            neg: false,
+                            c: na,
+                            t: 0,
+                        }],
+                        head: vec![HAtom::Concept {
+                            neg: false,
+                            c: nb,
+                            t: 0,
+                        }],
                     });
                     ht.push(HtClause {
-                        body: vec![HAtom::Concept { neg: false, c: nb, t: 0 }],
-                        head: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
+                        body: vec![HAtom::Concept {
+                            neg: false,
+                            c: nb,
+                            t: 0,
+                        }],
+                        head: vec![HAtom::Concept {
+                            neg: false,
+                            c: na,
+                            t: 0,
+                        }],
                     });
                 }
                 AboxFact::Diff(a, b) => {
@@ -1495,8 +1861,16 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         for a in &individuals {
             let na = ids.cid(&nom_of(a));
             ht.push(HtClause {
-                body: vec![HAtom::Concept { neg: false, c: na, t: 0 }],
-                head: vec![HAtom::Concept { neg: false, c: oguard, t: 0 }],
+                body: vec![HAtom::Concept {
+                    neg: false,
+                    c: na,
+                    t: 0,
+                }],
+                head: vec![HAtom::Concept {
+                    neg: false,
+                    c: oguard,
+                    t: 0,
+                }],
             });
         }
     }
@@ -1523,15 +1897,21 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         });
     }
     {
-        let dom_keys: Vec<(String, Vec<String>)> =
-            domains.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        let dom_keys: Vec<(String, Vec<String>)> = domains
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
         for (r, ds) in dom_keys {
             let rr = ids.rid(&r);
             for d in ds {
                 let dc = ids.cid(&d);
                 ht.push(HtClause {
                     body: vec![HAtom::Role { r: rr, s: 0, t: 1 }],
-                    head: vec![HAtom::Concept { neg: false, c: dc, t: 0 }],
+                    head: vec![HAtom::Concept {
+                        neg: false,
+                        c: dc,
+                        t: 0,
+                    }],
                 });
             }
         }
@@ -1543,15 +1923,23 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
                 let c1 = ids.cid(&cc);
                 ht.push(HtClause {
                     body: vec![HAtom::Role { r: rr, s: 0, t: 1 }],
-                    head: vec![HAtom::Concept { neg: false, c: c1, t: 1 }],
+                    head: vec![HAtom::Concept {
+                        neg: false,
+                        c: c1,
+                        t: 1,
+                    }],
                 });
             }
         }
     }
 
     // ---- nominals ----
-    let mut nom_names: Vec<String> =
-        ids.con_names.iter().filter(|n| short(n).starts_with("__nom__")).cloned().collect();
+    let mut nom_names: Vec<String> = ids
+        .con_names
+        .iter()
+        .filter(|n| short(n).starts_with("__nom__"))
+        .cloned()
+        .collect();
     nom_names.sort();
     nom_names.dedup();
     let mut nominal_ids: Vec<usize> = nom_names.iter().map(|n| ids.con_id[n]).collect();
@@ -1559,7 +1947,10 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
     if !nominal_ids.is_empty() && !inverse_pairs.is_empty() {
         fenced.push(Fenced {
             reason: "nominal+inverse(SHOI/SHOIQ)".into(),
-            detail: format!("{} nominal(s) together with inverse roles", nominal_ids.len()),
+            detail: format!(
+                "{} nominal(s) together with inverse roles",
+                nominal_ids.len()
+            ),
         });
         nominal_ids = Vec::new();
     }
@@ -1572,13 +1963,37 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
 
     // ---- transitivity: Horrocks-Sattler universal propagation ----
     if std::env::var_os("KM_HT_NO_TRANS_ENC").is_none() {
-        let mut transitive_roles: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut transitive_roles: std::collections::HashSet<usize> =
+            std::collections::HashSet::new();
         for c in &ht {
-            let rb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
-            let rh: Vec<&HAtom> = c.head.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
+            let rb: Vec<&HAtom> = c
+                .body
+                .iter()
+                .filter(|a| matches!(a, HAtom::Role { .. }))
+                .collect();
+            let rh: Vec<&HAtom> = c
+                .head
+                .iter()
+                .filter(|a| matches!(a, HAtom::Role { .. }))
+                .collect();
             if c.body.len() == 2 && rb.len() == 2 && c.head.len() == 1 && rh.len() == 1 {
-                if let (HAtom::Role { r: r1, s: r1s, t: r1t }, HAtom::Role { r: r2, s: r2s, t: r2t }, HAtom::Role { r: hr, s: hs, t: ht_ }) =
-                    (rb[0], rb[1], rh[0])
+                if let (
+                    HAtom::Role {
+                        r: r1,
+                        s: r1s,
+                        t: r1t,
+                    },
+                    HAtom::Role {
+                        r: r2,
+                        s: r2s,
+                        t: r2t,
+                    },
+                    HAtom::Role {
+                        r: hr,
+                        s: hs,
+                        t: ht_,
+                    },
+                ) = (rb[0], rb[1], rh[0])
                 {
                     if r1 == r2 && r2 == hr && r1t == r2s && hs == r1s && ht_ == r2t && r1s != r2t {
                         transitive_roles.insert(*hr);
@@ -1588,24 +2003,53 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         }
         if !transitive_roles.is_empty() {
             let mut extra: Vec<HtClause> = Vec::new();
-            let mut seen: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+            let mut seen: std::collections::HashSet<(usize, usize)> =
+                std::collections::HashSet::new();
             for c in &ht {
-                let rb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Role { .. })).collect();
-                let cb: Vec<&HAtom> = c.body.iter().filter(|a| matches!(a, HAtom::Concept { .. })).collect();
-                let ch: Vec<&HAtom> = c.head.iter().filter(|a| matches!(a, HAtom::Concept { .. })).collect();
+                let rb: Vec<&HAtom> = c
+                    .body
+                    .iter()
+                    .filter(|a| matches!(a, HAtom::Role { .. }))
+                    .collect();
+                let cb: Vec<&HAtom> = c
+                    .body
+                    .iter()
+                    .filter(|a| matches!(a, HAtom::Concept { .. }))
+                    .collect();
+                let ch: Vec<&HAtom> = c
+                    .head
+                    .iter()
+                    .filter(|a| matches!(a, HAtom::Concept { .. }))
+                    .collect();
                 if c.body.len() == 2 && rb.len() == 1 && cb.len() == 1 {
-                    if let (HAtom::Role { r, s: rs, t: rt }, HAtom::Concept { neg, c: uc, t: ut }) = (rb[0], cb[0]) {
-                        let any_ch_at_rt = ch.iter().any(|cc| matches!(cc, HAtom::Concept { t, .. } if t == rt));
+                    if let (HAtom::Role { r, s: rs, t: rt }, HAtom::Concept { neg, c: uc, t: ut }) =
+                        (rb[0], cb[0])
+                    {
+                        let any_ch_at_rt = ch
+                            .iter()
+                            .any(|cc| matches!(cc, HAtom::Concept { t, .. } if t == rt));
                         if transitive_roles.contains(r) && !*neg && ut == rs && any_ch_at_rt {
                             let key = (*r, *uc);
                             if !seen.contains(&key) {
                                 seen.insert(key);
                                 extra.push(HtClause {
                                     body: vec![
-                                        HAtom::Role { r: *r, s: *rs, t: *rt },
-                                        HAtom::Concept { neg: false, c: *uc, t: *rs },
+                                        HAtom::Role {
+                                            r: *r,
+                                            s: *rs,
+                                            t: *rt,
+                                        },
+                                        HAtom::Concept {
+                                            neg: false,
+                                            c: *uc,
+                                            t: *rs,
+                                        },
                                     ],
-                                    head: vec![HAtom::Concept { neg: false, c: *uc, t: *rt }],
+                                    head: vec![HAtom::Concept {
+                                        neg: false,
+                                        c: *uc,
+                                        t: *rt,
+                                    }],
                                 });
                             }
                         }
@@ -1628,7 +2072,10 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         let extra = role_automaton_exist_reachability(&ht, &mut ids, &inverse_pairs);
         if !extra.is_empty() {
             if std::env::var_os("KM_HT_STATS").is_some() {
-                eprintln!("cb_to_ht [role-automaton] +{} reachability clauses", extra.len());
+                eprintln!(
+                    "cb_to_ht [role-automaton] +{} reachability clauses",
+                    extra.len()
+                );
             }
             ht.extend(extra);
         }
@@ -1666,7 +2113,10 @@ pub fn convert(clauses: &[JClause], rbox: Option<&[Vec<String>]>, named: &std::c
         let (out, n_elim) = elim_complements(ht, &ids.con_names);
         ht = out;
         if std::env::var_os("KM_HT_STATS").is_some() {
-            eprintln!("cb_to_ht [emelim] eliminated {} complementary pairs", n_elim);
+            eprintln!(
+                "cb_to_ht [emelim] eliminated {} complementary pairs",
+                n_elim
+            );
         }
     }
 
@@ -1715,7 +2165,11 @@ fn pos_concepts(atoms: &[HAtom]) -> Option<Vec<usize>> {
 fn sub_atom(a: &HAtom, sub: &HashMap<usize, usize>) -> HAtom {
     if let HAtom::Concept { neg, c, t } = a {
         if let Some(&k) = sub.get(c) {
-            return HAtom::Concept { neg: !*neg, c: k, t: *t };
+            return HAtom::Concept {
+                neg: !*neg,
+                c: k,
+                t: *t,
+            };
         }
     }
     a.clone()
@@ -1746,7 +2200,11 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut head_horn: HashSet<usize> = HashSet::new();
     let pair = |v: &[usize]| -> (usize, usize) {
         let (a, b) = (v[0], v[1]);
-        if a <= b { (a, b) } else { (b, a) }
+        if a <= b {
+            (a, b)
+        } else {
+            (b, a)
+        }
     };
     for c in &ht {
         let head_nonempty = !c.head.is_empty();
@@ -1795,10 +2253,10 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
-        // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
-        // drives a consequence and is NOT independently (Horn) derivable — then
-        // dropping the disjunction would silence that consequence. A consequence
-        // whose side is Horn-derivable survives the drop, so that pair still folds.
+                        // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
+                        // drives a consequence and is NOT independently (Horn) derivable — then
+                        // dropping the disjunction would silence that consequence. A consequence
+                        // whose side is Horn-derivable survives the drop, so that pair still folds.
         let unsafe_a = body_drives.contains(&a) && !head_horn.contains(&a);
         let unsafe_b = body_drives.contains(&b) && !head_horn.contains(&b);
         if unsafe_a || unsafe_b {
@@ -1824,8 +2282,10 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     if sub.is_empty() {
         return (ht, 0);
     }
-    let elim_pairs: HashSet<(usize, usize)> =
-        sub.iter().map(|(&e, &k)| if e <= k { (e, k) } else { (k, e) }).collect();
+    let elim_pairs: HashSet<(usize, usize)> = sub
+        .iter()
+        .map(|(&e, &k)| if e <= k { (e, k) } else { (k, e) })
+        .collect();
     let mut out: Vec<HtClause> = Vec::new();
     for c in &ht {
         if c.body.is_empty() {

@@ -171,7 +171,11 @@ pub fn run_ofn(args: &[String]) {
                 exit(1);
             }
         }
-        let out = OfnClausesOnly { clauses: result.clauses, cardinalities: result.cardinalities, rules: result.rules };
+        let out = OfnClausesOnly {
+            clauses: result.clauses,
+            cardinalities: result.cardinalities,
+            rules: result.rules,
+        };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {
             eprintln!("serialise error: {}", e);
             exit(1);
@@ -222,7 +226,11 @@ pub fn run_elc() {
         exit(1);
     }
     if timing {
-        eprintln!("KM_ELC_TIMING read={:.2}s ({} MB)", t0.elapsed().as_secs_f64(), buf.len() >> 20);
+        eprintln!(
+            "KM_ELC_TIMING read={:.2}s ({} MB)",
+            t0.elapsed().as_secs_f64(),
+            buf.len() >> 20
+        );
     }
     let t1 = Instant::now();
     let input: JInput = match serde_json::from_slice(&buf) {
@@ -234,13 +242,21 @@ pub fn run_elc() {
     };
     drop(buf);
     if timing {
-        eprintln!("KM_ELC_TIMING parse={:.2}s ({} clauses)", t1.elapsed().as_secs_f64(), input.clauses.len());
+        eprintln!(
+            "KM_ELC_TIMING parse={:.2}s ({} clauses)",
+            t1.elapsed().as_secs_f64(),
+            input.clauses.len()
+        );
     }
     let t2 = Instant::now();
     match elcomplete::classify(input.clauses) {
         Some(res) => {
             if timing {
-                eprintln!("KM_ELC_TIMING classify={:.2}s ({} subjects)", t2.elapsed().as_secs_f64(), res.subsumptions.len());
+                eprintln!(
+                    "KM_ELC_TIMING classify={:.2}s ({} subjects)",
+                    t2.elapsed().as_secs_f64(),
+                    res.subsumptions.len()
+                );
             }
             let t3 = Instant::now();
             let partial = !res.unresolved.is_empty();
@@ -258,7 +274,11 @@ pub fn run_elc() {
             }
             let _ = w.flush();
             if timing {
-                eprintln!("KM_ELC_TIMING serialise={:.2}s total={:.2}s", t3.elapsed().as_secs_f64(), t0.elapsed().as_secs_f64());
+                eprintln!(
+                    "KM_ELC_TIMING serialise={:.2}s total={:.2}s",
+                    t3.elapsed().as_secs_f64(),
+                    t0.elapsed().as_secs_f64()
+                );
             }
             if partial {
                 exit(4); // certified for every subject EXCEPT the listed residue
@@ -291,7 +311,10 @@ pub fn run_engine() {
     r.saturate();
 
     let subs = r.subsumptions();
-    let subsumptions = subs.into_iter().map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>())).collect();
+    let subsumptions = subs
+        .into_iter()
+        .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
+        .collect();
 
     // The derived-clause echo doubles output volume and is only consumed by the
     // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on

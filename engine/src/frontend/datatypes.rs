@@ -126,7 +126,12 @@ struct NamedDt {
     finite_bool: bool,
 }
 
-const TOP_TYPES: &[&str] = &["rdfs:Literal", "Literal", "rdf:PlainLiteral", "PlainLiteral"];
+const TOP_TYPES: &[&str] = &[
+    "rdfs:Literal",
+    "Literal",
+    "rdf:PlainLiteral",
+    "PlainLiteral",
+];
 
 fn named_dt(name: &str) -> Option<NamedDt> {
     let local = name.rsplit(':').next().unwrap_or(name);
@@ -1150,16 +1155,23 @@ mod tests {
         let cls = datatype_relation_clauses(&ns, 8);
         let texts: Vec<String> = cls.iter().map(|c| format!("{:?}", c)).collect();
         // 5 ∈ integer, integer ⊑ decimal, 5 ∉ string (disjoint partition)
-        assert!(texts.iter().any(|t| t.contains("val__\\\"5\\\"") && t.contains("xsd:integer")),
-            "missing membership: {:#?}", texts);
         assert!(
-            cls.iter().any(|c| c.body.len() == 1 && c.head.len() == 1
+            texts
+                .iter()
+                .any(|t| t.contains("val__\\\"5\\\"") && t.contains("xsd:integer")),
+            "missing membership: {:#?}",
+            texts
+        );
+        assert!(
+            cls.iter().any(|c| c.body.len() == 1
+                && c.head.len() == 1
                 && format!("{:?}", c.body[0]).contains("xsd:integer")
                 && format!("{:?}", c.head[0]).contains("xsd:decimal")),
             "missing integer ⊑ decimal"
         );
         assert!(
-            cls.iter().any(|c| c.head.is_empty() && c.body.len() == 2
+            cls.iter().any(|c| c.head.is_empty()
+                && c.body.len() == 2
                 && format!("{:?}", c).contains("xsd:string")),
             "missing numeric/string disjointness"
         );
@@ -1175,7 +1187,10 @@ mod tests {
         let cls = datatype_relation_clauses(&ns, 8);
         // "1"^^int = "1.0"^^decimal: bidirectional inclusion
         assert!(
-            cls.iter().filter(|c| c.body.len() == 1 && c.head.len() == 1).count() >= 2,
+            cls.iter()
+                .filter(|c| c.body.len() == 1 && c.head.len() == 1)
+                .count()
+                >= 2,
             "missing value equality inclusions"
         );
         // "1" vs "2": disjoint
@@ -1212,7 +1227,10 @@ mod tests {
         let cls = datatype_relation_clauses(&ns, 8);
         // both intervals ⊑ integer; intervals disjoint; [1,3] gets a cover
         assert!(
-            cls.iter().filter(|c| c.body.len() == 1 && c.head.len() == 1).count() >= 2,
+            cls.iter()
+                .filter(|c| c.body.len() == 1 && c.head.len() == 1)
+                .count()
+                >= 2,
             "missing interval ⊑ integer"
         );
         assert!(
@@ -1233,6 +1251,10 @@ mod tests {
             "__dt__xsd:string",
         ]);
         let cls = datatype_relation_clauses(&ns, 8);
-        assert!(cls.is_empty(), "opaque range must emit nothing, got {}", cls.len());
+        assert!(
+            cls.is_empty(),
+            "opaque range must emit nothing, got {}",
+            cls.len()
+        );
     }
 }

@@ -98,7 +98,11 @@ impl Acc {
                         saw_aux = true;
                     }
                 }
-                JAtom::Role { role, source, target } => {
+                JAtom::Role {
+                    role,
+                    source,
+                    target,
+                } => {
                     self.roles.insert(role.clone());
                     broles += 1;
                     broles_names.push(role);
@@ -126,7 +130,11 @@ impl Acc {
                         saw_aux = true;
                     }
                 }
-                JAtom::Role { role, source, target } => {
+                JAtom::Role {
+                    role,
+                    source,
+                    target,
+                } => {
                     self.roles.insert(role.clone());
                     hroles += 1;
                     hrole = Some(role);
@@ -326,7 +334,14 @@ fn scan_constructs(ont: &Path) -> Constructs {
     const FAMILIES: &[(&str, &[&str])] = &[
         ("complement", &["ObjectComplementOf", "DataComplementOf"]),
         ("union", &["ObjectUnionOf", "DisjointUnion"]),
-        ("inverse", &["ObjectInverseOf", "InverseObjectProperties", "InverseFunctionalObjectProperty"]),
+        (
+            "inverse",
+            &[
+                "ObjectInverseOf",
+                "InverseObjectProperties",
+                "InverseFunctionalObjectProperty",
+            ],
+        ),
         (
             "qcard",
             &[
@@ -338,8 +353,18 @@ fn scan_constructs(ont: &Path) -> Constructs {
                 "DataExactCardinality",
             ],
         ),
-        ("nominal", &["ObjectOneOf", "ObjectHasValue", "DataHasValue"]),
-        ("functional", &["FunctionalObjectProperty", "InverseFunctionalObjectProperty", "FunctionalDataProperty"]),
+        (
+            "nominal",
+            &["ObjectOneOf", "ObjectHasValue", "DataHasValue"],
+        ),
+        (
+            "functional",
+            &[
+                "FunctionalObjectProperty",
+                "InverseFunctionalObjectProperty",
+                "FunctionalDataProperty",
+            ],
+        ),
         ("trans", &["TransitiveObjectProperty"]),
         ("chain", &["ObjectPropertyChain"]),
         ("role_hier", &["SubObjectPropertyOf", "SubDataPropertyOf"]),
@@ -360,7 +385,15 @@ fn scan_constructs(ont: &Path) -> Constructs {
         ("self", &["ObjectHasSelf"]),
         ("key", &["HasKey"]),
         ("rule", &["DLSafeRule"]),
-        ("disjoint", &["DisjointClasses", "DisjointUnion", "DisjointObjectProperties", "DisjointDataProperties"]),
+        (
+            "disjoint",
+            &[
+                "DisjointClasses",
+                "DisjointUnion",
+                "DisjointObjectProperties",
+                "DisjointDataProperties",
+            ],
+        ),
         ("equiv", &["EquivalentClasses"]),
         ("subclass", &["SubClassOf"]),
         (
@@ -668,7 +701,8 @@ pub fn extract(cfg: &Config, ont: &Path) -> Features {
                     f.n_top_disj2_absorbed = aa.n_top_disj2;
                     f.n_compl_definer_absorbed = aa.n_compl_definer();
                     f.disj_removed_by_absorb = acc.n_disj as i64 - aa.n_disj as i64;
-                    f.frac_disj_removed = r5(f.disj_removed_by_absorb as f64 / acc.n_disj.max(1) as f64);
+                    f.frac_disj_removed =
+                        r5(f.disj_removed_by_absorb as f64 / acc.n_disj.max(1) as f64);
                     f.clauses_delta_absorb = aa.n_clauses as i64 - acc.n_clauses as i64;
                 }
             }

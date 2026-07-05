@@ -65,7 +65,11 @@ impl OntologyClause {
         let body = sort_dedup_pred(body);
         let head = sort_dedup_lit(head);
         let sym_groups = sym_groups(&body, &head);
-        OntologyClause { body, head, sym_groups }
+        OntologyClause {
+            body,
+            head,
+            sym_groups,
+        }
     }
 }
 
@@ -95,7 +99,17 @@ fn sym_groups(body: &[Pred], head: &[Lit]) -> Vec<(Vec<Term>, bool)> {
         return Vec::new();
     }
     vars.sort();
-    let swap = |a: Term, b: Term| move |t: Term| if t == a { b } else if t == b { a } else { t };
+    let swap = |a: Term, b: Term| {
+        move |t: Term| {
+            if t == a {
+                b
+            } else if t == b {
+                a
+            } else {
+                t
+            }
+        }
+    };
     let invariant = |a: Term, b: Term| -> bool {
         let s = swap(a, b);
         let mut b2: Vec<Pred> = body.iter().map(|p| p.apply(&s)).collect();
@@ -137,7 +151,8 @@ fn sym_groups(body: &[Pred], head: &[Lit]) -> Vec<(Vec<Term>, bool)> {
         groups.entry(r).or_default().push(vars[i]);
     }
     let has_eq = |a: Term, b: Term| -> bool {
-        head.iter().any(|l| matches!(*l, Lit::Eq { s, t } if (s == a && t == b) || (s == b && t == a)))
+        head.iter()
+            .any(|l| matches!(*l, Lit::Eq { s, t } if (s == a && t == b) || (s == b && t == a)))
     };
     let mut out: Vec<(Vec<Term>, bool)> = Vec::new();
     for (_, mut g) in groups {
@@ -145,8 +160,7 @@ fn sym_groups(body: &[Pred], head: &[Lit]) -> Vec<(Vec<Term>, bool)> {
             continue;
         }
         g.sort();
-        let strict = (0..g.len())
-            .all(|i| ((i + 1)..g.len()).all(|j| has_eq(g[i], g[j])));
+        let strict = (0..g.len()).all(|i| ((i + 1)..g.len()).all(|j| has_eq(g[i], g[j])));
         out.push((g, strict));
     }
     out.sort();

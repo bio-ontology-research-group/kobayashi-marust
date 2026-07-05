@@ -550,7 +550,7 @@ fn spawn_ht(
         None,
         named,
         &cards,
-        std::env::var_os("KM_HT_CARD").is_some(),
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
     );
@@ -622,7 +622,7 @@ fn spawn_ht(
     // middle did not. So when recognition is requested, drop the `!tin.inverse`
     // exclusion and let inverse+cardinality onts (the SRIQ number giants) onto the
     // card route. Default OFF -> production routing is unchanged.
-    let card_recog = std::env::var_os("KM_HT_CARD_RECOG").is_some();
+    let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     let card_candidate = cfg.ht_card
         && !tin.card_defs.is_empty()
         && tin.dropped == 0

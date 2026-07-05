@@ -156,7 +156,7 @@ static DBG_EQ_NONFILLER: AtomicU64 = AtomicU64::new(0); // a successor is not a 
 static DBG_EQ_NOROLE: AtomicU64 = AtomicU64::new(0); // eq_merge_role None (shape)
 static DBG_EQ_UNSAT: AtomicU64 = AtomicU64::new(0); // a successor already unsat (killed merge)
 static DBG_EQ_OTHER: AtomicU64 = AtomicU64::new(0); // empty seed / budget
-// harvest churn probe: total harvest_disj calls vs those that added ZERO lits (re-scan waste)
+                                                    // harvest churn probe: total harvest_disj calls vs those that added ZERO lits (re-scan waste)
 static DBG_HARVEST_DISJ: AtomicU64 = AtomicU64::new(0);
 static DBG_HARVEST_NOOP: AtomicU64 = AtomicU64::new(0);
 // QO-saturation work-volume probe (gated on `KM_HT_QO_EDGEPROBE`, off by default so
@@ -196,7 +196,7 @@ thread_local! {
     static RMF_STEPS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
-use super::{Atom, CLit, Clause, Node, C, R, Var, X};
+use super::{Atom, CLit, Clause, Node, Var, C, R, X};
 
 pub type Level = u32;
 
@@ -233,6 +233,68 @@ pub fn dep_contains(d: &DepSet, level: Level) -> bool {
     }
     false
 }
+
+/// Transitively close a confirmed subsumption relation `A ⊑ B`.
+///
+/// Phase 2 tests only the candidates in each concept's single captured model
+/// root label (plus a told-clause closure). A true subsumer that is inferred
+/// (e.g. via domain/range, not a structural `A(x)→B(x)` clause) and is absent
+/// from that one model's label is never a candidate, so `A ⊑ B ⊑ C` can yield
+/// `A ⊑ B` and `B ⊑ C` while dropping the entailed `A ⊑ C` (ore_ont_7499: 3297
+/// such pairs to the BFO/CHEBI upper ontology). Closing the relation restores
+/// them.
+///
+/// Unconditionally sound: subsumption is transitive, so every added pair is
+/// already entailed by `subs`; it only ADDS pairs and never removes one, so an
+/// already-closed (correct) output is returned unchanged and no unsound pair can
+/// be introduced unless `subs` already contained one. Runs on the (small) set of
+/// query concepts the HT classifies, not the full signature.
+pub fn transitive_close_subs(subs: Vec<(C, C)>) -> Vec<(C, C)> {
+    let mut sup: HashMap<C, HashSet<C>> = HashMap::new();
+    for (a, b) in &subs {
+        sup.entry(*a).or_default().insert(*b);
+    }
+    let keys: Vec<C> = sup.keys().copied().collect();
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for &a in &keys {
+            let bs: Vec<C> = sup[&a].iter().copied().collect();
+            let mut add: Vec<C> = Vec::new();
+            for b in bs {
+                if let Some(bsup) = sup.get(&b) {
+                    for &c in bsup {
+                        if c != a && !sup[&a].contains(&c) {
+                            add.push(c);
+                        }
+                    }
+                }
+            }
+            if !add.is_empty() {
+                let e = sup.get_mut(&a).unwrap();
+                for c in add {
+                    e.insert(c);
+                }
+                changed = true;
+            }
+        }
+    }
+    let mut out: Vec<(C, C)> = Vec::new();
+    for (a, bs) in &sup {
+        for &b in bs {
+            out.push((*a, b));
+        }
+    }
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!(
+            "KM_HT [close-subs] in={} out={}",
+            subs.len(),
+            out.len()
+        );
+    }
+    out
+}
+
 pub fn dep_add(d: &DepSet, level: Level) -> DepSet {
     match d {
         None => Some(Rc::new(DepNode { level, rest: None })),
@@ -240,10 +302,16 @@ pub fn dep_add(d: &DepSet, level: Level) -> DepSet {
             if level == n.level {
                 d.clone()
             } else if level > n.level {
-                Some(Rc::new(DepNode { level, rest: d.clone() }))
+                Some(Rc::new(DepNode {
+                    level,
+                    rest: d.clone(),
+                }))
             } else {
                 let tail = dep_add(&n.rest, level);
-                Some(Rc::new(DepNode { level: n.level, rest: tail }))
+                Some(Rc::new(DepNode {
+                    level: n.level,
+                    rest: tail,
+                }))
             }
         }
     }
@@ -255,13 +323,22 @@ pub fn dep_union(a: &DepSet, b: &DepSet) -> DepSet {
         (Some(na), Some(nb)) => {
             if na.level == nb.level {
                 let tail = dep_union(&na.rest, &nb.rest);
-                Some(Rc::new(DepNode { level: na.level, rest: tail }))
+                Some(Rc::new(DepNode {
+                    level: na.level,
+                    rest: tail,
+                }))
             } else if na.level > nb.level {
                 let tail = dep_union(&na.rest, b);
-                Some(Rc::new(DepNode { level: na.level, rest: tail }))
+                Some(Rc::new(DepNode {
+                    level: na.level,
+                    rest: tail,
+                }))
             } else {
                 let tail = dep_union(a, &nb.rest);
-                Some(Rc::new(DepNode { level: nb.level, rest: tail }))
+                Some(Rc::new(DepNode {
+                    level: nb.level,
+                    rest: tail,
+                }))
             }
         }
     }
@@ -287,7 +364,10 @@ pub fn dep_remove(d: &DepSet, level: Level) -> DepSet {
                 d.clone()
             } else {
                 let tail = dep_remove(&n.rest, level);
-                Some(Rc::new(DepNode { level: n.level, rest: tail }))
+                Some(Rc::new(DepNode {
+                    level: n.level,
+                    rest: tail,
+                }))
             }
         }
     }
@@ -655,9 +735,9 @@ impl Ext {
         let nn = self.num_nodes();
         let lo = self.i2_lo.min(nn);
         self.i2_last_lo = lo; // diagnostic: suffix size = nn - lo
-        // Drop stale entries for re-evaluated nodes (id >= lo), touching only the
-        // non-empty slots (scanning the whole table each pass was the dominant
-        // blocking cost). Empty-but-touched slots are cheap (retain over 0 elems).
+                              // Drop stale entries for re-evaluated nodes (id >= lo), touching only the
+                              // non-empty slots (scanning the whole table each pass was the dominant
+                              // blocking cost). Empty-but-touched slots are cheap (retain over 0 elems).
         if lo == 0 {
             for &e in &self.i2_touched {
                 self.i2_lists[e].clear();
@@ -706,18 +786,27 @@ impl Ext {
     fn i3_signature(&self, n: Node, p: Node) -> Vec<u64> {
         const SEP: u64 = u64::MAX;
         let mut sig: Vec<u64> = Vec::new();
-        let mut a: Vec<u64> =
-            self.concepts[n].keys().filter(|k| !k.neg).map(|k| (k.c as u64) << 1).collect();
+        let mut a: Vec<u64> = self.concepts[n]
+            .keys()
+            .filter(|k| !k.neg)
+            .map(|k| (k.c as u64) << 1)
+            .collect();
         a.sort_unstable();
         sig.extend(a);
         sig.push(SEP);
-        let mut b: Vec<u64> =
-            self.concepts[p].keys().filter(|k| !k.neg).map(|k| (k.c as u64) << 1).collect();
+        let mut b: Vec<u64> = self.concepts[p]
+            .keys()
+            .filter(|k| !k.neg)
+            .map(|k| (k.c as u64) << 1)
+            .collect();
         b.sort_unstable();
         sig.extend(b);
         sig.push(SEP);
-        let mut e: Vec<u64> =
-            self.in_edges[n].iter().filter(|(_, s, _)| *s == p).map(|(r, _, _)| *r as u64).collect();
+        let mut e: Vec<u64> = self.in_edges[n]
+            .iter()
+            .filter(|(_, s, _)| *s == p)
+            .map(|(r, _, _)| *r as u64)
+            .collect();
         e.sort_unstable();
         e.dedup();
         sig.extend(e);
@@ -741,21 +830,35 @@ impl Ext {
     fn i3_signature_full(&self, n: Node, p: Node) -> Vec<u64> {
         const SEP: u64 = u64::MAX;
         let mut sig: Vec<u64> = Vec::new();
-        let mut a: Vec<u64> =
-            self.concepts[n].keys().map(|k| ((k.c as u64) << 1) | (k.neg as u64)).collect();
+        let mut a: Vec<u64> = self.concepts[n]
+            .keys()
+            .map(|k| ((k.c as u64) << 1) | (k.neg as u64))
+            .collect();
         a.sort_unstable();
         sig.extend(a);
         sig.push(SEP);
-        let mut b: Vec<u64> =
-            self.concepts[p].keys().map(|k| ((k.c as u64) << 1) | (k.neg as u64)).collect();
+        let mut b: Vec<u64> = self.concepts[p]
+            .keys()
+            .map(|k| ((k.c as u64) << 1) | (k.neg as u64))
+            .collect();
         b.sort_unstable();
         sig.extend(b);
         sig.push(SEP);
         let mut e: Vec<u64> = Vec::new();
         // forward p→n roles (tag 0)
-        e.extend(self.in_edges[n].iter().filter(|(_, s, _)| *s == p).map(|(r, _, _)| (*r as u64) << 1));
+        e.extend(
+            self.in_edges[n]
+                .iter()
+                .filter(|(_, s, _)| *s == p)
+                .map(|(r, _, _)| (*r as u64) << 1),
+        );
         // backward n→p roles (tag 1) — the inverse direction of the same edge
-        e.extend(self.out_edges[n].iter().filter(|(_, t, _)| *t == p).map(|(r, _, _)| ((*r as u64) << 1) | 1));
+        e.extend(
+            self.out_edges[n]
+                .iter()
+                .filter(|(_, t, _)| *t == p)
+                .map(|(r, _, _)| ((*r as u64) << 1) | 1),
+        );
         e.sort_unstable();
         e.dedup();
         sig.extend(e);
@@ -843,7 +946,11 @@ impl Ext {
             self.dirty_in.push(true);
             self.open_in.push(false);
         }
-        self.pending.push(PendingDisj { disjuncts, bdep, at });
+        self.pending.push(PendingDisj {
+            disjuncts,
+            bdep,
+            at,
+        });
     }
 
     /// Record a ≤n qualified-cardinality merge choice (KM_HT_QMERGE), branched at
@@ -858,7 +965,12 @@ impl Ext {
     /// is either "assert a live concept" or "merge a live pair".
     fn push_card(&mut self, concepts: Vec<(Node, CLit)>, pairs: Vec<(Node, Node)>, bdep: DepSet) {
         let at = self.trail.len();
-        self.pending_merge.push(MergeDisj { concepts, pairs, bdep, at });
+        self.pending_merge.push(MergeDisj {
+            concepts,
+            pairs,
+            bdep,
+            at,
+        });
     }
 
     /// Mark every disjunction touched by a change at `(n, lit)` (either the
@@ -867,7 +979,10 @@ impl Ext {
         if !self.watch {
             return;
         }
-        let comp = CLit { neg: !lit.neg, c: lit.c };
+        let comp = CLit {
+            neg: !lit.neg,
+            c: lit.c,
+        };
         for key in [(n, lit), (n, comp)] {
             let len = self.lit_disj.get(&key).map_or(0, |v| v.len());
             for i in 0..len {
@@ -928,12 +1043,17 @@ impl Ext {
         self.concepts.get(node).and_then(|m| m.get(&lit))
     }
     pub fn has_concept(&self, node: Node, lit: CLit) -> bool {
-        self.concepts.get(node).is_some_and(|m| m.contains_key(&lit))
+        self.concepts
+            .get(node)
+            .is_some_and(|m| m.contains_key(&lit))
     }
 
     /// Assert `lit` at `node`. Returns true iff freshly added (enqueues it).
     pub fn add_concept(&mut self, node: Node, lit: CLit, dep: &DepSet) -> bool {
-        let comp = CLit { neg: !lit.neg, c: lit.c };
+        let comp = CLit {
+            neg: !lit.neg,
+            c: lit.c,
+        };
         if let Some(other) = self.concepts[node].get(&comp) {
             let cd = dep_union(dep, other);
             self.clash_node = Some(node);
@@ -972,7 +1092,10 @@ impl Ext {
     }
 
     pub fn add_edge(&mut self, r: R, s: Node, t: Node, dep: &DepSet) {
-        if self.out_edges[s].iter().any(|&(rr, tt, _)| rr == r && tt == t) {
+        if self.out_edges[s]
+            .iter()
+            .any(|&(rr, tt, _)| rr == r && tt == t)
+        {
             return;
         }
         self.out_edges[s].push((r, t, dep.clone()));
@@ -1026,7 +1149,10 @@ impl Ext {
         if a == b {
             return None;
         }
-        self.distinct[a].iter().find(|&&(x, _)| x == b).map(|(_, d)| d.clone())
+        self.distinct[a]
+            .iter()
+            .find(|&&(x, _)| x == b)
+            .map(|(_, d)| d.clone())
     }
 
     /// KM_HT_NUMBER: fold nodes `a` and `b` together (a ≤n / functional merge).
@@ -1054,12 +1180,19 @@ impl Ext {
         let (survivor, victim) = if a <= b { (a, b) } else { (b, a) };
         self.merges += 1;
         if std::env::var_os("KM_HT_TRACE").is_some() && self.merges % 100_000 == 0 {
-            eprintln!("MERGE count={} nodes={} trail={}", self.merges, self.concepts.len(), self.trail.len());
+            eprintln!(
+                "MERGE count={} nodes={} trail={}",
+                self.merges,
+                self.concepts.len(),
+                self.trail.len()
+            );
         }
         self.trail.push(Trail::Merge(victim));
         self.merged[victim] = Some(survivor);
-        let cs: Vec<(CLit, DepSet)> =
-            self.concepts[victim].iter().map(|(k, v)| (*k, v.clone())).collect();
+        let cs: Vec<(CLit, DepSet)> = self.concepts[victim]
+            .iter()
+            .map(|(k, v)| (*k, v.clone()))
+            .collect();
         for (lit, d) in cs {
             let nd = dep_union(&d, mdep);
             self.add_concept(survivor, lit, &nd);
@@ -1131,8 +1264,10 @@ impl Ext {
                 if self.resolve(keep) == self.resolve(o) {
                     continue;
                 }
-                let dk =
-                    self.concepts[self.resolve(keep)].get(&lit).cloned().unwrap_or(None);
+                let dk = self.concepts[self.resolve(keep)]
+                    .get(&lit)
+                    .cloned()
+                    .unwrap_or(None);
                 let dobj = self.concepts[o].get(&lit).cloned().unwrap_or(None);
                 let mdep = dep_union(&dk, &dobj);
                 self.merge_into(keep, o, &mdep);
@@ -1184,13 +1319,15 @@ impl Ext {
                     self.mark_disj_dirty(node, lit);
                 }
                 Trail::Edge(r, s, t) => {
-                    if let Some(pos) =
-                        self.out_edges[s].iter().position(|&(rr, tt, _)| rr == r && tt == t)
+                    if let Some(pos) = self.out_edges[s]
+                        .iter()
+                        .position(|&(rr, tt, _)| rr == r && tt == t)
                     {
                         self.out_edges[s].swap_remove(pos);
                     }
-                    if let Some(pos) =
-                        self.in_edges[t].iter().position(|&(rr, ss, _)| rr == r && ss == s)
+                    if let Some(pos) = self.in_edges[t]
+                        .iter()
+                        .position(|&(rr, ss, _)| rr == r && ss == s)
                     {
                         self.in_edges[t].swap_remove(pos);
                     }
@@ -1318,7 +1455,9 @@ fn edge_dep(ext: &Ext, r: R, s: Node, t: Node) -> Option<DepSet> {
 }
 
 fn has_rsucc(ext: &Ext, n: Node, r: R, fil: CLit) -> bool {
-    ext.out_edges[n].iter().any(|&(rr, t, _)| rr == r && ext.has_concept(t, fil))
+    ext.out_edges[n]
+        .iter()
+        .any(|&(rr, t, _)| rr == r && ext.has_concept(t, fil))
 }
 
 // ============================ Matching =====================================
@@ -1374,8 +1513,9 @@ fn rec_match(
             let tv = *t as usize;
             if let Some(sn) = sigma[sv] {
                 if let Some(tn) = sigma[tv] {
-                    if let Some((_, _, edep)) =
-                        ext.out_edges[sn].iter().find(|&&(rr, tt, _)| rr == *r && tt == tn)
+                    if let Some((_, _, edep)) = ext.out_edges[sn]
+                        .iter()
+                        .find(|&&(rr, tt, _)| rr == *r && tt == tn)
                     {
                         let nd = dep_union(dep, edep);
                         rec_match(ext, atoms, i + 1, sigma, &nd, out);
@@ -1494,7 +1634,10 @@ fn rec_match_flex(
                 }
                 (None, Some(tn)) => {
                     for k2 in 0..ext.in_edges[tn].len() {
-                        let (rr, ss) = { let e = &ext.in_edges[tn][k2]; (e.0, e.1) };
+                        let (rr, ss) = {
+                            let e = &ext.in_edges[tn][k2];
+                            (e.0, e.1)
+                        };
                         if rr == r {
                             if let Some(ed) = edge_dep(ext, r, ss, tn) {
                                 let nd = dep_union(dep, &ed);
@@ -1544,7 +1687,10 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
                 if ext.has_concept(n, lit) {
                     return;
                 }
-                let comp = CLit { neg: !lit.neg, c: lit.c };
+                let comp = CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                };
                 if let Some(d) = ext.dep_of(n, comp) {
                     dead = dep_union(&dead, d);
                 } else {
@@ -1603,7 +1749,10 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
                     satisfied = true;
                     break;
                 }
-                let comp = CLit { neg: !lit.neg, c: lit.c };
+                let comp = CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                };
                 if let Some(d) = ext.dep_of(n, comp) {
                     dead_dep = dep_union(&dead_dep, d);
                 } else {
@@ -1654,7 +1803,13 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
             HeadItem::Exists(n, r, fil) => {
                 let at = ext.mark();
                 let idx = ext.obligations.len();
-                ext.obligations.push(Oblig { n, r, fil, dep: bdep.clone(), at });
+                ext.obligations.push(Oblig {
+                    n,
+                    r,
+                    fil,
+                    dep: bdep.clone(),
+                    at,
+                });
                 if ext.incroblig {
                     ext.node_obligs[n].push(idx);
                     ext.oblig_sat.push(false);
@@ -1666,11 +1821,18 @@ fn apply_head(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, sigma: &Subst, b
                 ext.add_edge(r, s, t, &d);
             }
         }
-    } else if live.iter().any(|h| matches!(h, HeadItem::Exists(..) | HeadItem::Edge(..))) {
+    } else if live
+        .iter()
+        .any(|h| matches!(h, HeadItem::Exists(..) | HeadItem::Edge(..)))
+    {
         // a disjunction containing an ∃ or a role edge is out of the branchable
         // (ground concept-disjunction) fragment: bail soundly to the legacy path.
         if std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("TR UNSUPPORTED: disjunctive head with exists/edge ({} live, cid={})", live.len(), cid);
+            eprintln!(
+                "TR UNSUPPORTED: disjunctive head with exists/edge ({} live, cid={})",
+                live.len(),
+                cid
+            );
         }
         ext.unsupported = true;
     } else {
@@ -1705,7 +1867,11 @@ fn fire_anchor_concept(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: us
     rec_match_flex(ext, body, &mut done, &mut sigma, &dep0, &mut matches);
     if ext.number && RMF_STEPS.with(|c| c.get()) > RMF_STEP_CAP {
         if std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("HUGEMATCH cid={} body_len={} join overflow -> bail unsupported", cid, body.len());
+            eprintln!(
+                "HUGEMATCH cid={} body_len={} join overflow -> bail unsupported",
+                cid,
+                body.len()
+            );
         }
         ext.unsupported = true;
         return;
@@ -1723,7 +1889,14 @@ fn fire_anchor_concept(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: us
 
 /// Fire clause `cid` whose sorted-body atom at `pos` is a Role matching the
 /// freshly added edge `r(es,et)`; anchor there and complete the match.
-fn fire_anchor_edge(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: usize, es: Node, et: Node) {
+fn fire_anchor_edge(
+    clauses: &[ClauseRec],
+    ext: &mut Ext,
+    cid: usize,
+    pos: usize,
+    es: Node,
+    et: Node,
+) {
     let body = &clauses[cid].1;
     let nv = clauses[cid].2;
     let (r, sv, tv) = match body[pos] {
@@ -1756,7 +1929,11 @@ fn fire_anchor_edge(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, pos: usize
     rec_match_flex(ext, body, &mut done, &mut sigma, &dep0, &mut matches);
     if ext.number && RMF_STEPS.with(|c| c.get()) > RMF_STEP_CAP {
         if std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("HUGEMATCH cid={} body_len={} join overflow -> bail unsupported", cid, body.len());
+            eprintln!(
+                "HUGEMATCH cid={} body_len={} join overflow -> bail unsupported",
+                cid,
+                body.len()
+            );
         }
         ext.unsupported = true;
         return;
@@ -1783,7 +1960,9 @@ fn fire_global(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, n: Node) {
 // ============================== Blocking ===================================
 
 fn label_subset(ext: &Ext, n: Node, m: Node) -> bool {
-    ext.concepts[n].keys().all(|k| ext.concepts[m].contains_key(k))
+    ext.concepts[n]
+        .keys()
+        .all(|k| ext.concepts[m].contains_key(k))
 }
 fn ancestor_blocked(ext: &Ext, n: Node) -> bool {
     if !ext.blockable[n] {
@@ -1885,7 +2064,10 @@ fn eval_disj(ext: &Ext, id: usize) -> DEval {
         if ext.has_concept(n, lit) {
             return DEval::Satisfied;
         }
-        let comp = CLit { neg: !lit.neg, c: lit.c };
+        let comp = CLit {
+            neg: !lit.neg,
+            c: lit.c,
+        };
         if let Some(d) = ext.dep_of(n, comp) {
             dead_dep = dep_union(&dead_dep, d);
         } else {
@@ -1901,7 +2083,10 @@ fn eval_disj(ext: &Ext, id: usize) -> DEval {
 }
 
 fn env_u8(key: &str, default: u8) -> u8 {
-    std::env::var(key).ok().and_then(|s| s.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(default)
 }
 
 /// Luby sequence (1,1,2,1,1,2,4,1,...) — restart-interval multiplier; guarantees
@@ -2220,8 +2405,14 @@ fn contrapositives(clauses: &[Clause]) -> Vec<Clause> {
                 .filter(|(j, _)| *j != i)
                 .map(|(_, l)| Atom::Concept { lit: *l, t: v })
                 .collect();
-            let comp = CLit { neg: !lits[i].neg, c: lits[i].c };
-            extra.push(Clause { body, head: vec![Atom::Concept { lit: comp, t: v }] });
+            let comp = CLit {
+                neg: !lits[i].neg,
+                c: lits[i].c,
+            };
+            extra.push(Clause {
+                body,
+                head: vec![Atom::Concept { lit: comp, t: v }],
+            });
         }
     }
     extra
@@ -2284,7 +2475,13 @@ fn trigger_absorb(clauses: &mut [Clause]) -> usize {
         for a in &cl.head {
             if let Atom::Concept { lit, t } = a {
                 if lit.neg {
-                    new_body.push(Atom::Concept { lit: CLit { neg: false, c: lit.c }, t: *t });
+                    new_body.push(Atom::Concept {
+                        lit: CLit {
+                            neg: false,
+                            c: lit.c,
+                        },
+                        t: *t,
+                    });
                     continue;
                 }
             }
@@ -2340,7 +2537,11 @@ fn index_forall(clauses: &[Clause]) -> HashMap<(CLit, R), Vec<CLit>> {
 ///   `D(x) ∧ R1(x,y) → M2(y)`   (carry ∀R2.C marker across R1)
 ///   `M2(x) ∧ R2(x,y) → C(y)`   (M2 fires C on R2-successors)
 /// M2 is a fresh marker concept.  Sound (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).
-fn ht_chain_unfolding_clauses(clauses: &[Clause], chains: &[(R, R, R)], transitive: &[R]) -> Vec<Clause> {
+fn ht_chain_unfolding_clauses(
+    clauses: &[Clause],
+    chains: &[(R, R, R)],
+    transitive: &[R],
+) -> Vec<Clause> {
     use std::collections::{HashMap, HashSet};
     if chains.is_empty() {
         return Vec::new();
@@ -2352,7 +2553,8 @@ fn ht_chain_unfolding_clauses(clauses: &[Clause], chains: &[(R, R, R)], transiti
     for c in clauses {
         let body = &c.body;
         let head = &c.head;
-        if body.len() == 1 && head.len() == 1
+        if body.len() == 1
+            && head.len() == 1
             && matches!(body[0], Atom::Role { .. })
             && matches!(head[0], Atom::Role { .. })
         {
@@ -2448,28 +2650,32 @@ fn ht_chain_unfolding_clauses(clauses: &[Clause], chains: &[(R, R, R)], transiti
                 continue;
             }
             // M2 = marker for ∀R2.E
-            let m2 = *chain_markers
-                .entry((r2, *d, *e))
-                .or_insert_with(|| {
-                    let id = next_marker;
-                    next_marker += 1;
-                    // M2(x) ∧ R2(x,y) → E(y): M2 fires E on R2-successors
-                    out.push(Clause {
-                        body: vec![
-                            Atom::Concept { lit: CLit::pos(id), t: X },
-                            Atom::Role { r: r2, s: X, t: 1 },
-                        ],
-                        head: vec![Atom::Concept { lit: *e, t: 1 }],
-                    });
-                    id
+            let m2 = *chain_markers.entry((r2, *d, *e)).or_insert_with(|| {
+                let id = next_marker;
+                next_marker += 1;
+                // M2(x) ∧ R2(x,y) → E(y): M2 fires E on R2-successors
+                out.push(Clause {
+                    body: vec![
+                        Atom::Concept {
+                            lit: CLit::pos(id),
+                            t: X,
+                        },
+                        Atom::Role { r: r2, s: X, t: 1 },
+                    ],
+                    head: vec![Atom::Concept { lit: *e, t: 1 }],
                 });
+                id
+            });
             // D(x) ∧ R1(x,y) → M2(y): carry M2 across R1
             out.push(Clause {
                 body: vec![
                     Atom::Concept { lit: *d, t: X },
                     Atom::Role { r: r1, s: X, t: 1 },
                 ],
-                head: vec![Atom::Concept { lit: CLit::pos(m2), t: 1 }],
+                head: vec![Atom::Concept {
+                    lit: CLit::pos(m2),
+                    t: 1,
+                }],
             });
         }
     }
@@ -2533,7 +2739,11 @@ fn ht_transitive_chain_compose(
     // key (R, sorted [C1,...]) → P (the head CLit).  P is the __trans__R__C marker.
     let mut seen_p: HashMap<(R, Vec<CLit>), CLit> = HashMap::new();
     for c in clauses {
-        let roles: Vec<&Atom> = c.body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
+        let roles: Vec<&Atom> = c
+            .body
+            .iter()
+            .filter(|a| matches!(a, Atom::Role { .. }))
+            .collect();
         if roles.len() != 1 {
             continue;
         }
@@ -2558,7 +2768,11 @@ fn ht_transitive_chain_compose(
             if c_on_y.is_empty() || c.head.is_empty() {
                 continue;
             }
-            if !c.head.iter().all(|h| matches!(h, Atom::Concept { t, .. } if *t == X)) {
+            if !c
+                .head
+                .iter()
+                .all(|h| matches!(h, Atom::Concept { t, .. } if *t == X))
+            {
                 continue;
             }
             if let Atom::Concept { lit: p, .. } = &c.head[0] {
@@ -2596,48 +2810,56 @@ fn ht_transitive_chain_compose(
                 continue;
             }
             // __cmpp variant: S(X,Z) ∧ P(Z) → M(X) ; R(X,Y) ∧ M(Y) → P(X)
-            let m = *mid_p
-                .entry((s, *p))
-                .or_insert_with(|| {
-                    let id = next_marker;
-                    next_marker += 1;
-                    out.push(Clause {
-                        body: vec![
-                            Atom::Role { r: s, s: X, t: z },
-                            Atom::Concept { lit: *p, t: z },
-                        ],
-                        head: vec![Atom::Concept { lit: CLit::pos(id), t: X }],
-                    });
-                    id
+            let m = *mid_p.entry((s, *p)).or_insert_with(|| {
+                let id = next_marker;
+                next_marker += 1;
+                out.push(Clause {
+                    body: vec![
+                        Atom::Role { r: s, s: X, t: z },
+                        Atom::Concept { lit: *p, t: z },
+                    ],
+                    head: vec![Atom::Concept {
+                        lit: CLit::pos(id),
+                        t: X,
+                    }],
                 });
+                id
+            });
             out.push(Clause {
                 body: vec![
                     Atom::Role { r, s: X, t: y },
-                    Atom::Concept { lit: CLit::pos(m), t: y },
+                    Atom::Concept {
+                        lit: CLit::pos(m),
+                        t: y,
+                    },
                 ],
                 head: vec![Atom::Concept { lit: *p, t: X }],
             });
             // __cmpc variant: S(X,Z) ∧ ⋀C_i(Z) → M2(X) ; R(X,Y) ∧ M2(Y) → P(X)
             let key = (s, c_on_y.clone());
-            let m2 = *mid_c
-                .entry(key)
-                .or_insert_with(|| {
-                    let id = next_marker;
-                    next_marker += 1;
-                    let mut body1: Vec<Atom> = vec![Atom::Role { r: s, s: X, t: z }];
-                    for ci in c_on_y {
-                        body1.push(Atom::Concept { lit: *ci, t: z });
-                    }
-                    out.push(Clause {
-                        body: body1,
-                        head: vec![Atom::Concept { lit: CLit::pos(id), t: X }],
-                    });
-                    id
+            let m2 = *mid_c.entry(key).or_insert_with(|| {
+                let id = next_marker;
+                next_marker += 1;
+                let mut body1: Vec<Atom> = vec![Atom::Role { r: s, s: X, t: z }];
+                for ci in c_on_y {
+                    body1.push(Atom::Concept { lit: *ci, t: z });
+                }
+                out.push(Clause {
+                    body: body1,
+                    head: vec![Atom::Concept {
+                        lit: CLit::pos(id),
+                        t: X,
+                    }],
                 });
+                id
+            });
             out.push(Clause {
                 body: vec![
                     Atom::Role { r, s: X, t: y },
-                    Atom::Concept { lit: CLit::pos(m2), t: y },
+                    Atom::Concept {
+                        lit: CLit::pos(m2),
+                        t: y,
+                    },
                 ],
                 head: vec![Atom::Concept { lit: *p, t: X }],
             });
@@ -2645,7 +2867,6 @@ fn ht_transitive_chain_compose(
     }
     out
 }
-
 
 /// `s(a,b) → r(b,a)` (single role body, single role head, swapped variables,
 /// distinct roles). cb_to_ht emits these (with the `inverse` TInput flag often left
@@ -2656,8 +2877,18 @@ fn ht_transitive_chain_compose(
 fn has_inverse_bridge(clauses: &[Clause]) -> bool {
     clauses.iter().any(|c| {
         if c.body.len() == 1 && c.head.len() == 1 {
-            if let (Atom::Role { r: sr, s: ba, t: bb }, Atom::Role { r: rr, s: hs, t: ht }) =
-                (&c.body[0], &c.head[0])
+            if let (
+                Atom::Role {
+                    r: sr,
+                    s: ba,
+                    t: bb,
+                },
+                Atom::Role {
+                    r: rr,
+                    s: hs,
+                    t: ht,
+                },
+            ) = (&c.body[0], &c.head[0])
             {
                 return *hs == *bb && *ht == *ba && *sr != *rr;
             }
@@ -2686,8 +2917,18 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
     let mut bridge_src: HashMap<R, Vec<R>> = HashMap::new();
     let bridge_of = |c: &Clause| -> Option<(R, R)> {
         if c.body.len() == 1 && c.head.len() == 1 {
-            if let (Atom::Role { r: sr, s: ba, t: bb }, Atom::Role { r: rr, s: hs, t: ht }) =
-                (&c.body[0], &c.head[0])
+            if let (
+                Atom::Role {
+                    r: sr,
+                    s: ba,
+                    t: bb,
+                },
+                Atom::Role {
+                    r: rr,
+                    s: hs,
+                    t: ht,
+                },
+            ) = (&c.body[0], &c.head[0])
             {
                 if *hs == *bb && *ht == *ba && *sr != *rr {
                     return Some((*rr, *sr)); // r ⟸ s
@@ -2716,7 +2957,13 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
         let roles: Vec<R> = c
             .body
             .iter()
-            .filter_map(|a| if let Atom::Role { r, .. } = a { Some(*r) } else { None })
+            .filter_map(|a| {
+                if let Atom::Role { r, .. } = a {
+                    Some(*r)
+                } else {
+                    None
+                }
+            })
             .collect();
         if roles.len() > 1 {
             for r in roles {
@@ -2731,7 +2978,10 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
     }
     let composable = |r: R| inv_of.contains_key(&r) && !bad.contains(&r);
     if std::env::var_os("KM_HT_TRACE").is_some() {
-        let n_bridges: usize = clauses.iter().filter(|(c, _, _)| bridge_of(c).is_some()).count();
+        let n_bridges: usize = clauses
+            .iter()
+            .filter(|(c, _, _)| bridge_of(c).is_some())
+            .count();
         let n_inv = inv_of.len();
         let n_bad = bad.len();
         // single-role-body consumers of an inverse role (prop-shape ∀; composable)
@@ -2742,7 +2992,17 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
             if bridge_of(c).is_some() {
                 continue;
             }
-            let rb: Vec<R> = c.body.iter().filter_map(|a| if let Atom::Role { r, .. } = a { Some(*r) } else { None }).collect();
+            let rb: Vec<R> = c
+                .body
+                .iter()
+                .filter_map(|a| {
+                    if let Atom::Role { r, .. } = a {
+                        Some(*r)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
             let touches_inv = rb.iter().any(|r| inv_of.contains_key(r));
             if touches_inv {
                 if rb.len() == 1 {
@@ -2768,7 +3028,17 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
     let mut otherwise_produced: HashSet<R> = HashSet::new();
     for (c, _, _) in clauses {
         let is_bridge = bridge_of(c).is_some();
-        let rb: Vec<R> = c.body.iter().filter_map(|a| if let Atom::Role { r, .. } = a { Some(*r) } else { None }).collect();
+        let rb: Vec<R> = c
+            .body
+            .iter()
+            .filter_map(|a| {
+                if let Atom::Role { r, .. } = a {
+                    Some(*r)
+                } else {
+                    None
+                }
+            })
+            .collect();
         if rb.len() > 1 {
             for r in rb {
                 multi_bodied.insert(r);
@@ -2777,8 +3047,12 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
         if !is_bridge {
             for h in &c.head {
                 match h {
-                    Atom::Role { r, .. } => { otherwise_produced.insert(*r); }
-                    Atom::Exists { r, .. } => { otherwise_produced.insert(*r); }
+                    Atom::Role { r, .. } => {
+                        otherwise_produced.insert(*r);
+                    }
+                    Atom::Exists { r, .. } => {
+                        otherwise_produced.insert(*r);
+                    }
                     _ => {}
                 }
             }
@@ -2867,7 +3141,10 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
                     }
                 }
             }
-            out.push(Clause { body: nb, head: c.head.clone() });
+            out.push(Clause {
+                body: nb,
+                head: c.head.clone(),
+            });
         }
         if body_roles.len() == 1 {
             let (idx, r, u, v) = body_roles[0];
@@ -2876,7 +3153,10 @@ fn compose_inverse(clauses: &[ClauseRec]) -> Vec<Clause> {
                 let mut nb = c.body.clone();
                 // r(u,v) ⟸ s(v,u): fire the same consequence over the forward s-edge.
                 nb[idx] = Atom::Role { r: s, s: v, t: u };
-                out.push(Clause { body: nb, head: c.head.clone() });
+                out.push(Clause {
+                    body: nb,
+                    head: c.head.clone(),
+                });
             }
         }
     }
@@ -3018,7 +3298,10 @@ fn harvest_global(recs: &[ClauseRec]) -> Vec<Clause> {
                 if emitted.insert(x) {
                     extra.push(Clause {
                         body: Vec::new(),
-                        head: vec![Atom::Concept { lit: CLit::pos(x), t: X }],
+                        head: vec![Atom::Concept {
+                            lit: CLit::pos(x),
+                            t: X,
+                        }],
                     });
                 }
             }
@@ -3536,10 +3819,10 @@ enum QoUndo {
     Unsat(Node),
     Pending(usize), // pending grew to this len
     ConceptNode(CLit),
-    Prop(R, Node, usize), // prop[(R,Node)] grew to this len
+    Prop(R, Node, usize),  // prop[(R,Node)] grew to this len
     Fprop(R, Node, usize), // fprop[(R,Node)] grew to this len
-    Filler(CLit, u32),    // filler_node[(CLit, class)] was created
-    SatFiller(CLit, R),   // sat_filler[(CLit, role)] was created
+    Filler(CLit, u32),     // filler_node[(CLit, class)] was created
+    SatFiller(CLit, R),    // sat_filler[(CLit, role)] was created
 }
 
 pub struct QoResult {
@@ -3671,8 +3954,18 @@ impl<'a> QoSat<'a> {
             if body.len() != 1 || head.len() != 1 {
                 continue;
             }
-            if let (Atom::Role { r: br, s: bs, t: bt }, Atom::Role { r: hr, s: hs, t: ht }) =
-                (&body[0], &head[0])
+            if let (
+                Atom::Role {
+                    r: br,
+                    s: bs,
+                    t: bt,
+                },
+                Atom::Role {
+                    r: hr,
+                    s: hs,
+                    t: ht,
+                },
+            ) = (&body[0], &head[0])
             {
                 // R(x,y) → S(y,x): head source = body target, head dest = body source.
                 if *hs == *bt && *ht == *bs && *br != *hr {
@@ -3683,7 +3976,10 @@ impl<'a> QoSat<'a> {
         let mut reach_via_inv: HashMap<R, Vec<C>> = HashMap::new();
         for (&r, cs) in reach_by_role.iter() {
             if let Some(&rinv) = inv_map.get(&r) {
-                reach_via_inv.entry(rinv).or_default().extend(cs.iter().copied());
+                reach_via_inv
+                    .entry(rinv)
+                    .or_default()
+                    .extend(cs.iter().copied());
             }
         }
         // --- Konclude role-keyed range folding setup. ------------------------
@@ -3711,7 +4007,11 @@ impl<'a> QoSat<'a> {
             }
             let (r, sv, tv) = roles[0];
             match head[0] {
-                Atom::Role { r: hr, s: hs, t: ht } if hs == sv && ht == tv => {
+                Atom::Role {
+                    r: hr,
+                    s: hs,
+                    t: ht,
+                } if hs == sv && ht == tv => {
                     superrole.entry(r).or_default().push(hr);
                 }
                 Atom::Concept { lit, t } if t == tv => {
@@ -3980,21 +4280,45 @@ impl<'a> QoSat<'a> {
             for rec in clauses.iter() {
                 let body = &rec.1;
                 let head = &rec.0.head;
-                let rb: Vec<&Atom> = body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
-                if body.len() == 2 && head.len() == 1
+                let rb: Vec<&Atom> = body
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Role { .. }))
+                    .collect();
+                if body.len() == 2
+                    && head.len() == 1
                     && matches!(body[0], Atom::Role { .. })
                     && matches!(body[1], Atom::Role { .. })
                     && matches!(head[0], Atom::Role { .. })
                 {
-                    if let (Atom::Role { r: r1, s: r1s, t: r1t },
-                             Atom::Role { r: r2, s: r2s, t: r2t },
-                             Atom::Role { r: hr, s: hs, t: ht_ }) =
-                        (rb[0], rb[1], &head[0])
+                    if let (
+                        Atom::Role {
+                            r: r1,
+                            s: r1s,
+                            t: r1t,
+                        },
+                        Atom::Role {
+                            r: r2,
+                            s: r2s,
+                            t: r2t,
+                        },
+                        Atom::Role {
+                            r: hr,
+                            s: hs,
+                            t: ht_,
+                        },
+                    ) = (rb[0], rb[1], &head[0])
                     {
-                        let (fr, sr, mid_ok) = if r1t == r2s { (*r1, *r2, true) }
-                            else if r2t == r1s { (*r2, *r1, true) }
-                            else { (0, 0, false) };
-                        if mid_ok && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t
+                        let (fr, sr, mid_ok) = if r1t == r2s {
+                            (*r1, *r2, true)
+                        } else if r2t == r1s {
+                            (*r2, *r1, true)
+                        } else {
+                            (0, 0, false)
+                        };
+                        if mid_ok
+                            && *hs == *r1s
+                            && *ht_ == *r2t
+                            && *r1s != *r2t
                             && !(fr == sr && sr == *hr)
                         {
                             chains.push((fr, sr, *hr));
@@ -4007,18 +4331,41 @@ impl<'a> QoSat<'a> {
             for rec in clauses.iter() {
                 let body = &rec.1;
                 let head = &rec.0.head;
-                let rb: Vec<&Atom> = body.iter().filter(|a| matches!(a, Atom::Role { .. })).collect();
-                if body.len() == 2 && head.len() == 1
+                let rb: Vec<&Atom> = body
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Role { .. }))
+                    .collect();
+                if body.len() == 2
+                    && head.len() == 1
                     && matches!(body[0], Atom::Role { .. })
                     && matches!(body[1], Atom::Role { .. })
                     && matches!(head[0], Atom::Role { .. })
                 {
-                    if let (Atom::Role { r: r1, s: r1s, t: r1t },
-                             Atom::Role { r: r2, s: r2s, t: r2t },
-                             Atom::Role { r: hr, s: hs, t: ht_ }) =
-                        (rb[0], rb[1], &head[0])
+                    if let (
+                        Atom::Role {
+                            r: r1,
+                            s: r1s,
+                            t: r1t,
+                        },
+                        Atom::Role {
+                            r: r2,
+                            s: r2s,
+                            t: r2t,
+                        },
+                        Atom::Role {
+                            r: hr,
+                            s: hs,
+                            t: ht_,
+                        },
+                    ) = (rb[0], rb[1], &head[0])
                     {
-                        if r1 == r2 && r2 == hr && r1t == r2s && *hs == *r1s && *ht_ == *r2t && *r1s != *r2t {
+                        if r1 == r2
+                            && r2 == hr
+                            && r1t == r2s
+                            && *hs == *r1s
+                            && *ht_ == *r2t
+                            && *r1s != *r2t
+                        {
                             transitive.insert(*hr);
                         }
                     }
@@ -4082,7 +4429,8 @@ impl<'a> QoSat<'a> {
                 }
                 let mut next_marker: C = maxc;
                 // snapshot the fprop_rule (guard -> [(R, E)]) to iterate while mutating
-                let snap: Vec<(CLit, Vec<(R, CLit)>)> = fprop_rule.iter().map(|(k, v)| (*k, v.clone())).collect();
+                let snap: Vec<(CLit, Vec<(R, CLit)>)> =
+                    fprop_rule.iter().map(|(k, v)| (*k, v.clone())).collect();
                 // M2 marker for (R2, parent_guard, E): carries ∀R2.E
                 let mut chain_markers: HashMap<(R, CLit, CLit), CLit> = HashMap::new();
                 for (guard, rules) in &snap {
@@ -4095,32 +4443,33 @@ impl<'a> QoSat<'a> {
                             continue;
                         }
                         // for each chain R1∘R2⊑U with U ⊑* r (r is U or a sub-role of U)
-        for &(r1, r2, u) in chains.iter() {
+                        for &(r1, r2, u) in chains.iter() {
                             if !super_close(u).contains(&r) {
                                 continue;
                             }
                             // M2 = marker for ∀R2.E
-                            let m2 = *chain_markers
-                                .entry((r2, *guard, e))
-                                .or_insert_with(|| {
-                                    let id = CLit { neg: false, c: next_marker };
-                                    next_marker += 1;
-                                    // M2's own fprop_rule: ∀R2.E fires E on R2-successors
-                                    fprop_rule.entry(id).or_default().push((r2, e));
-                                    // NOTE: the transitive self-loop on R2 (∀R2.C
-                                    // re-fires on R2-successors) is NOT added here.
-                                    // On the shared-filler model the self-prop
-                                    // `(r2, id)` cascades (every R2-edge re-fires id
-                                    // onto a shared filler → non-convergent).  The
-                                    // transitive ∀R2.C chase is handled by the
-                                    // existing __trans__ marker-propagation +
-                                    // reach_by_role/kp_finalize post-pass + residue
-                                    // complete tableau (sound).  Adding the self-loop
-                                    // here is faithful to Konclude's automaton but
-                                    // requires copy-on-conflict (copyDependingIndividual
-                                    // Node) to bound — the deep architectural piece.
-                                    id
-                                });
+                            let m2 = *chain_markers.entry((r2, *guard, e)).or_insert_with(|| {
+                                let id = CLit {
+                                    neg: false,
+                                    c: next_marker,
+                                };
+                                next_marker += 1;
+                                // M2's own fprop_rule: ∀R2.E fires E on R2-successors
+                                fprop_rule.entry(id).or_default().push((r2, e));
+                                // NOTE: the transitive self-loop on R2 (∀R2.C
+                                // re-fires on R2-successors) is NOT added here.
+                                // On the shared-filler model the self-prop
+                                // `(r2, id)` cascades (every R2-edge re-fires id
+                                // onto a shared filler → non-convergent).  The
+                                // transitive ∀R2.C chase is handled by the
+                                // existing __trans__ marker-propagation +
+                                // reach_by_role/kp_finalize post-pass + residue
+                                // complete tableau (sound).  Adding the self-loop
+                                // here is faithful to Konclude's automaton but
+                                // requires copy-on-conflict (copyDependingIndividual
+                                // Node) to bound — the deep architectural piece.
+                                id
+                            });
                             // carry M2 across the R1-edge: guard D on source ∧ R1-edge → M2 on successor
                             let entry = fprop_rule.entry(*guard).or_default();
                             if !entry.contains(&(r1, m2)) {
@@ -4268,7 +4617,9 @@ impl<'a> QoSat<'a> {
     /// Seconds elapsed in the current `saturate_global` pass (0.0 before it starts).
     /// Only called from the `KM_HT_TRACE` heartbeats.
     fn sat_elapsed(&self) -> f64 {
-        self.sat_t0.map(|t| t.elapsed().as_secs_f64()).unwrap_or(0.0)
+        self.sat_t0
+            .map(|t| t.elapsed().as_secs_f64())
+            .unwrap_or(0.0)
     }
 
     /// KM_QO_EDGE_COMPOSE: install the role-chain edge-composition indexes from
@@ -4434,7 +4785,10 @@ impl<'a> QoSat<'a> {
         if self.merged_into[n].is_some() {
             return false;
         }
-        let comp = CLit { neg: !lit.neg, c: lit.c };
+        let comp = CLit {
+            neg: !lit.neg,
+            c: lit.c,
+        };
         if self.label[n].contains(&comp) {
             self.kill_node(n);
             return false;
@@ -4560,7 +4914,10 @@ impl<'a> QoSat<'a> {
         if self.merged_into[s].is_some() || self.merged_into[t].is_some() {
             return; // never wire an edge to/from a dead (merged) node
         }
-        if self.out_edges[s].iter().any(|(rr, tt)| *rr == r && *tt == t) {
+        if self.out_edges[s]
+            .iter()
+            .any(|(rr, tt)| *rr == r && *tt == t)
+        {
             return;
         }
         self.out_edges[s].push((r, t));
@@ -4593,7 +4950,14 @@ impl<'a> QoSat<'a> {
     /// (complete) without conflating predecessors (sound). Returns true iff the
     /// redirect was applied (the head is then discharged); false ⇒ caller keeps
     /// the old defer behaviour (the write was not a plain forward `∀r` from `X`).
-    fn try_split_redirect(&mut self, cid: usize, anchor: Node, n: Node, head_t: Var, lit: CLit) -> bool {
+    fn try_split_redirect(
+        &mut self,
+        cid: usize,
+        anchor: Node,
+        n: Node,
+        head_t: Var,
+        lit: CLit,
+    ) -> bool {
         // The base ∃-filler concept that keys `n`; without it `n` is not a
         // shared filler we know how to split (e.g. a root/self seed) ⇒ defer.
         let fil = match self.node_fil[n] {
@@ -4608,7 +4972,12 @@ impl<'a> QoSat<'a> {
         let mut role: Option<R> = None;
         for a in body.iter() {
             if let Atom::Role { r, s, t } = *a {
-                if s == X && t == head_t && self.out_edges[anchor].iter().any(|&(rr, tt)| rr == r && tt == n) {
+                if s == X
+                    && t == head_t
+                    && self.out_edges[anchor]
+                        .iter()
+                        .any(|&(rr, tt)| rr == r && tt == n)
+                {
                     role = Some(r);
                     break;
                 }
@@ -4661,7 +5030,10 @@ impl<'a> QoSat<'a> {
             None => return false,
         };
         // src must actually have the shared r-edge to `t` to redirect it.
-        if !self.out_edges[src].iter().any(|&(rr, tt)| rr == r && tt == t) {
+        if !self.out_edges[src]
+            .iter()
+            .any(|&(rr, tt)| rr == r && tt == t)
+        {
             return false;
         }
         let ops = self.src_forall.entry((src, r)).or_default();
@@ -4769,7 +5141,9 @@ impl<'a> QoSat<'a> {
                     return self.finish(root);
                 }
                 self.eval_all_parked();
-                if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty()
+                if self.lit_work.is_empty()
+                    && self.node_work.is_empty()
+                    && self.edge_work.is_empty()
                 {
                     break;
                 }
@@ -4815,7 +5189,10 @@ impl<'a> QoSat<'a> {
         // QO_NODE_CAP (tuned for the tiny disjunction family) would bail instantly on
         // a real 70k-concept ontology. Scale the cap to the seeded concept count plus
         // generous headroom for ∃-filler / definer nodes.
-        let cap = named_concepts.len().saturating_add(500_000).max(QO_NODE_CAP);
+        let cap = named_concepts
+            .len()
+            .saturating_add(500_000)
+            .max(QO_NODE_CAP);
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         self.sat_t0 = Some(Instant::now());
         self.last_hb = None;
@@ -4865,7 +5242,9 @@ impl<'a> QoSat<'a> {
                     return self.finish_global();
                 }
                 self.eval_all_parked();
-                if self.lit_work.is_empty() && self.node_work.is_empty() && self.edge_work.is_empty()
+                if self.lit_work.is_empty()
+                    && self.node_work.is_empty()
+                    && self.edge_work.is_empty()
                 {
                     break;
                 }
@@ -4889,8 +5268,11 @@ impl<'a> QoSat<'a> {
         if trace {
             eprintln!(
                 "QO PRECOMPUTE converged el={:.0}ms nodes={} stored_edges~{} pending={}",
-                self.sat_elapsed() * 1000.0, self.label.len(),
-                (0..self.label.len()).map(|i| self.out_edges[i].len()).sum::<usize>(),
+                self.sat_elapsed() * 1000.0,
+                self.label.len(),
+                (0..self.label.len())
+                    .map(|i| self.out_edges[i].len())
+                    .sum::<usize>(),
                 self.pending.len(),
             );
         }
@@ -4929,8 +5311,12 @@ impl<'a> QoSat<'a> {
                     let mut fill_in: usize = 0;
                     for i in 0..nn {
                         let ind = self.in_edges[i].len();
-                        if ind > maxin { maxin = ind; }
-                        if self.is_filler[i] { fill_in += ind; }
+                        if ind > maxin {
+                            maxin = ind;
+                        }
+                        if self.is_filler[i] {
+                            fill_in += ind;
+                        }
                     }
                     eprintln!(
                         "QOEDGESTATS stored_edges={} fillers={} max_in_degree={} edges_into_fillers={}",
@@ -4988,7 +5374,10 @@ impl<'a> QoSat<'a> {
                 self.kp_insuff_nodes.insert(n);
                 self.qo_insufficient = true;
             }
-            if let Some(rules) = (!filler_defer).then(|| ()).and_then(|_| self.prop_rule.remove(&lit)) {
+            if let Some(rules) = (!filler_defer)
+                .then(|| ())
+                .and_then(|_| self.prop_rule.remove(&lit))
+            {
                 for &(r, e) in &rules {
                     let old_len = {
                         let entry = self.prop.entry((r, n)).or_default();
@@ -5078,7 +5467,11 @@ impl<'a> QoSat<'a> {
             if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
                     "QONODE el={:.1}s pops={} global_per_node={} edge_work={} node_work={}",
-                    self.sat_elapsed(), e, self.global.len(), self.edge_work.len(), self.node_work.len()
+                    self.sat_elapsed(),
+                    e,
+                    self.global.len(),
+                    self.edge_work.len(),
+                    self.node_work.len()
                 );
             }
             if self.node_unsat.contains(&n) || self.merged_into[n].is_some() {
@@ -5118,7 +5511,8 @@ impl<'a> QoSat<'a> {
                 self.hb_check("edge");
             }
             if self.edgeprobe {
-                if e > 0 && e % self.edgeprobe_iv == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
+                if e > 0 && e % self.edgeprobe_iv == 0 && std::env::var_os("KM_HT_TRACE").is_some()
+                {
                     eprintln!(
                         "QOEDGE el={:.1}s pops={} edge_work={} lit_work={} nodes={} | frc={} match={} apply={} fprope={} kpw={} addlit={} trigscan={} maxlabel={}",
                         self.sat_elapsed(), e, self.edge_work.len(), self.lit_work.len(), self.label.len(),
@@ -5131,8 +5525,11 @@ impl<'a> QoSat<'a> {
             } else if e > 0 && e % 200_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
                     "QOEDGE pops={} edge_work={} lit_work={} node_work={} nodes={}",
-                    e, self.edge_work.len(), self.lit_work.len(),
-                    self.node_work.len(), self.label.len()
+                    e,
+                    self.edge_work.len(),
+                    self.lit_work.len(),
+                    self.node_work.len(),
+                    self.label.len()
                 );
             }
             // a merge evacuated one endpoint: this is a stale edge, its work was
@@ -5145,7 +5542,11 @@ impl<'a> QoSat<'a> {
             // giant prop set / a heavy fire_role_clause fan-out) is pinpointed.
             // A big prop set is announced BEFORE the loop (so it shows even if that
             // loop is the one that hangs); the end-of-pop timer reports the rest.
-            let dbg_pop_t0 = if self.edgeprobe { Some(Instant::now()) } else { None };
+            let dbg_pop_t0 = if self.edgeprobe {
+                Some(Instant::now())
+            } else {
+                None
+            };
             let dbg_propn = if self.edgeprobe {
                 self.prop.get(&(r, t)).map(|v| v.len()).unwrap_or(0)
             } else {
@@ -5404,7 +5805,11 @@ impl<'a> QoSat<'a> {
     fn harvest_all(&mut self) {
         let parked: Vec<(Node, usize)> = self.pending.clone();
         if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("QOPHASE harvest_all START el={:.1}s over {} parked disjunctions", self.sat_elapsed(), parked.len());
+            eprintln!(
+                "QOPHASE harvest_all START el={:.1}s over {} parked disjunctions",
+                self.sat_elapsed(),
+                parked.len()
+            );
         }
         for (i, (n, cid)) in parked.iter().enumerate() {
             if self.edgeprobe && i % 50_000 == 0 {
@@ -5419,8 +5824,12 @@ impl<'a> QoSat<'a> {
             }
         }
         if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("QOPHASE harvest_all DONE el={:.1}s harvest_disj={} noop={}", self.sat_elapsed(),
-                DBG_HARVEST_DISJ.load(Ordering::Relaxed), DBG_HARVEST_NOOP.load(Ordering::Relaxed));
+            eprintln!(
+                "QOPHASE harvest_all DONE el={:.1}s harvest_disj={} noop={}",
+                self.sat_elapsed(),
+                DBG_HARVEST_DISJ.load(Ordering::Relaxed),
+                DBG_HARVEST_NOOP.load(Ordering::Relaxed)
+            );
         }
     }
 
@@ -5448,7 +5857,10 @@ impl<'a> QoSat<'a> {
                 if self.label[n].contains(lit) {
                     return; // satisfied — no longer parked
                 }
-                let comp = CLit { neg: !lit.neg, c: lit.c };
+                let comp = CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                };
                 if self.label[n].contains(&comp) {
                     continue; // dead disjunct
                 }
@@ -5477,7 +5889,10 @@ impl<'a> QoSat<'a> {
         };
         for lit in common {
             if !self.label[n].contains(&lit)
-                && !self.label[n].contains(&CLit { neg: !lit.neg, c: lit.c })
+                && !self.label[n].contains(&CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                })
             {
                 self.add_lit(n, lit);
             }
@@ -5488,7 +5903,11 @@ impl<'a> QoSat<'a> {
     fn eval_all_parked(&mut self) {
         let pend = self.pending.clone();
         if self.edgeprobe && std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("QOPHASE eval_all_parked START el={:.1}s over {} parked", self.sat_elapsed(), pend.len());
+            eprintln!(
+                "QOPHASE eval_all_parked START el={:.1}s over {} parked",
+                self.sat_elapsed(),
+                pend.len()
+            );
         }
         for (i, (n, _cid)) in pend.iter().enumerate() {
             if self.edgeprobe && i % 50_000 == 0 {
@@ -5509,7 +5928,9 @@ impl<'a> QoSat<'a> {
     /// (`upperAtLeast`/`lowerAtMost`) and links the first successor's child node.
     /// Over-bound successors mark `valid_roles=false` (skipped by the prune).
     fn build_pmodel(&self) -> PModel {
-        let mut pm = PModel { nodes: vec![PmNode::default()] };
+        let mut pm = PModel {
+            nodes: vec![PmNode::default()],
+        };
         let mut map: HashMap<Node, usize> = HashMap::new();
         map.insert(0, 0);
         let mut queue: Vec<(Node, u32)> = vec![(0, 0)];
@@ -5769,7 +6190,10 @@ impl<'a> QoSat<'a> {
                         satisfied = true;
                         break;
                     }
-                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    let comp = CLit {
+                        neg: !lit.neg,
+                        c: lit.c,
+                    };
                     if self.label[n].contains(&comp) {
                         continue;
                     }
@@ -5801,7 +6225,10 @@ impl<'a> QoSat<'a> {
                         satisfied = true;
                         break;
                     }
-                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    let comp = CLit {
+                        neg: !lit.neg,
+                        c: lit.c,
+                    };
                     if !self.label[n].contains(&comp) {
                         live += 1;
                     }
@@ -5851,7 +6278,10 @@ impl<'a> QoSat<'a> {
                     if self.label[n].contains(lit) {
                         return None;
                     }
-                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    let comp = CLit {
+                        neg: !lit.neg,
+                        c: lit.c,
+                    };
                     if self.label[n].contains(&comp) {
                         return None;
                     }
@@ -5901,7 +6331,10 @@ impl<'a> QoSat<'a> {
         self.unsupported = false; // reset the branch-local flag
         if std::env::var_os("KM_HT_QOTRACE").is_some() {
             let dur = dl.unwrap().elapsed().as_millis();
-            eprintln!("KM_HT [qo-residue] anchor={} extra={:?} -> r={} unsup={} tainted={} {}ms", anchor, extra, r, unsup, tainted, dur);
+            eprintln!(
+                "KM_HT [qo-residue] anchor={} extra={:?} -> r={} unsup={} tainted={} {}ms",
+                anchor, extra, r, unsup, tainted, dur
+            );
         }
         if unsup || tainted {
             // could not decide soundly on the shared model ⇒ defer this concept.
@@ -6010,7 +6443,11 @@ impl<'a> QoSat<'a> {
             }
         }
         if trace {
-            eprintln!("QORES phase2: tests={} verified residue_subs={}", tested, subs.len());
+            eprintln!(
+                "QORES phase2: tests={} verified residue_subs={}",
+                tested,
+                subs.len()
+            );
         }
         Some((unsat, subs))
     }
@@ -6096,8 +6533,10 @@ impl<'a> QoSat<'a> {
             if m % 5_000_000 == 0 && std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!(
                     "QOMATCH el={:.1}s match_body_calls={} apply={} addlit={}",
-                    self.sat_elapsed(), m,
-                    DBG_APPLY.load(Ordering::Relaxed), DBG_ADDLIT.load(Ordering::Relaxed)
+                    self.sat_elapsed(),
+                    m,
+                    DBG_APPLY.load(Ordering::Relaxed),
+                    DBG_ADDLIT.load(Ordering::Relaxed)
                 );
             }
         }
@@ -6119,7 +6558,10 @@ impl<'a> QoSat<'a> {
             }
             Atom::Role { r, s, t } => match (sigma[*s as usize], sigma[*t as usize]) {
                 (Some(sn), Some(tn)) => {
-                    if self.out_edges[sn].iter().any(|(rr, tt)| *rr == *r && *tt == tn) {
+                    if self.out_edges[sn]
+                        .iter()
+                        .any(|(rr, tt)| *rr == *r && *tt == tn)
+                    {
                         self.match_body(body, done, sigma, out);
                     }
                 }
@@ -6271,7 +6713,10 @@ impl<'a> QoSat<'a> {
                         satisfied = true;
                         break;
                     }
-                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    let comp = CLit {
+                        neg: !lit.neg,
+                        c: lit.c,
+                    };
                     if self.label[n].contains(&comp) {
                         // dead disjunct
                     } else {
@@ -6315,14 +6760,20 @@ impl<'a> QoSat<'a> {
                                 f
                             }
                         };
-                        if !self.out_edges[n].iter().any(|(rr, tt)| *rr == r && *tt == f) {
+                        if !self.out_edges[n]
+                            .iter()
+                            .any(|(rr, tt)| *rr == r && *tt == f)
+                        {
                             self.add_edge(n, r, f);
                         }
                         satisfied = true;
                         break;
                     }
                     let f = self.ensure_filler(r, fil);
-                    if !self.out_edges[n].iter().any(|(rr, tt)| *rr == r && *tt == f) {
+                    if !self.out_edges[n]
+                        .iter()
+                        .any(|(rr, tt)| *rr == r && *tt == f)
+                    {
                         self.add_edge(n, r, f);
                     }
                     satisfied = true;
@@ -6418,7 +6869,8 @@ impl<'a> QoSat<'a> {
                                 DBG_EQ_NONFILLER.fetch_add(1, Ordering::Relaxed);
                             } else if self.eq_merge_role(cid, s, t).is_none() {
                                 DBG_EQ_NOROLE.fetch_add(1, Ordering::Relaxed);
-                            } else if self.node_unsat.contains(&sn) || self.node_unsat.contains(&tn) {
+                            } else if self.node_unsat.contains(&sn) || self.node_unsat.contains(&tn)
+                            {
                                 DBG_EQ_UNSAT.fetch_add(1, Ordering::Relaxed);
                             } else {
                                 DBG_EQ_OTHER.fetch_add(1, Ordering::Relaxed);
@@ -6601,8 +7053,7 @@ impl<'a> QoSat<'a> {
                     self.add_lit(t, e);
                     return;
                 }
-                let critical =
-                    on_self || !self.kp_guard_only || self.kp_guard.contains(&e.c);
+                let critical = on_self || !self.kp_guard_only || self.kp_guard.contains(&e.c);
                 if critical {
                     self.kp_check1.insert((t, e));
                 }
@@ -6640,8 +7091,7 @@ impl<'a> QoSat<'a> {
                 if self.kpwrite && on_self {
                     return self.add_lit(n, lit);
                 }
-                let critical =
-                    on_self || !self.kp_guard_only || self.kp_guard.contains(&lit.c);
+                let critical = on_self || !self.kp_guard_only || self.kp_guard.contains(&lit.c);
                 if critical {
                     self.kp_check1.insert((n, lit));
                 }
@@ -6693,7 +7143,8 @@ impl<'a> QoSat<'a> {
                         if self.is_filler[src] && !self.node_unsat.contains(&src) {
                             for &c in cs {
                                 let lit = CLit { neg: false, c };
-                                if !self.node_unsat.contains(&dst) && self.label[dst].contains(&lit) {
+                                if !self.node_unsat.contains(&dst) && self.label[dst].contains(&lit)
+                                {
                                     _dpred += 1;
                                     if !self.label[src].contains(&lit) {
                                         self.kp_insufficient = true;
@@ -6710,7 +7161,8 @@ impl<'a> QoSat<'a> {
                         if self.is_filler[dst] && !self.node_unsat.contains(&dst) {
                             for &c in cs {
                                 let lit = CLit { neg: false, c };
-                                if !self.node_unsat.contains(&src) && self.label[src].contains(&lit) {
+                                if !self.node_unsat.contains(&src) && self.label[src].contains(&lit)
+                                {
                                     _ipred += 1;
                                     if !self.label[dst].contains(&lit) {
                                         self.kp_insufficient = true;
@@ -6835,7 +7287,10 @@ impl<'a> QoSat<'a> {
                 if self.label[n].contains(lit) {
                     return (true, Vec::new());
                 }
-                let comp = CLit { neg: !lit.neg, c: lit.c };
+                let comp = CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                };
                 if self.label[n].contains(&comp) {
                     continue;
                 }
@@ -6863,7 +7318,12 @@ impl Ht {
         for (cid, rec) in self.clauses.iter().enumerate() {
             if rec.1.is_empty() {
                 global_clauses.push(cid);
-                let nhc = rec.0.head.iter().filter(|a| matches!(a, Atom::Concept { .. })).count();
+                let nhc = rec
+                    .0
+                    .head
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Concept { .. }))
+                    .count();
                 if nhc >= 2 {
                     global_disj.push(cid);
                 }
@@ -6935,7 +7395,12 @@ impl Ht {
                 global_clauses.push(cid);
                 // disjunctive global = empty body + ≥2 concept head atoms (the
                 // ⊤ ⊑ A ∨ B GCIs that fire and branch on every node).
-                let nhc = rec.0.head.iter().filter(|a| matches!(a, Atom::Concept { .. })).count();
+                let nhc = rec
+                    .0
+                    .head
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Concept { .. }))
+                    .count();
                 if nhc >= 2 {
                     global_disj.push(cid);
                 }
@@ -6957,8 +7422,8 @@ impl Ht {
             clauses: recs,
             forall_idx,
             card_defs: HashMap::new(),
-            card: std::env::var_os("KM_HT_CARD").is_some(),
-            card_recog: std::env::var_os("KM_HT_CARD_RECOG").is_some(),
+            card: std::env::var_os("KM_NO_HT_CARD").is_none(),
+            card_recog: std::env::var_os("KM_NO_HT_CARD_RECOG").is_none(),
             pc_tainted: Vec::new(),
             pc_candidates: Vec::new(),
             pc_unsat_candidates: Vec::new(),
@@ -6988,7 +7453,8 @@ impl Ht {
                 1
             } else if std::env::var_os("KM_HT_BLOCK").is_some() {
                 env_u8("KM_HT_BLOCK", 1)
-            } else if std::env::var_os("KM_HT_AUTOBLOCK").is_some() && has_inverse_bridge(&clauses) {
+            } else if std::env::var_os("KM_HT_AUTOBLOCK").is_some() && has_inverse_bridge(&clauses)
+            {
                 5
             } else {
                 1
@@ -7011,14 +7477,20 @@ impl Ht {
             i2_full: 0,
             block_buf: RefCell::new(BlockBuf::default()),
             stats: std::env::var_os("KM_HT_STATS").is_some(),
-            hb: std::env::var("KM_HT_HB").ok().and_then(|s| s.parse().ok()).unwrap_or(200_000),
+            hb: std::env::var("KM_HT_HB")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(200_000),
             tick: 0,
             cur_depth: 0,
             activity: HashMap::new(),
             ord_mode: env_u8("KM_HT_ORD", 0),
             pick_mode: env_u8("KM_HT_PICK", 0),
             do_restart: std::env::var_os("KM_HT_RESTART").is_some(),
-            rbase: std::env::var("KM_HT_RBASE").ok().and_then(|s| s.parse().ok()).unwrap_or(200),
+            rbase: std::env::var("KM_HT_RBASE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(200),
             conflicts: 0,
             restart_limit: u64::MAX,
             luby_idx: 1,
@@ -7069,14 +7541,36 @@ impl Ht {
         if ht.trace {
             let (mut hrole, mut heq, mut hexists, mut hdisj, mut hdisj_ex) = (0, 0, 0, 0, 0);
             for (c, _, _) in &ht.clauses {
-                let nrole = c.head.iter().filter(|a| matches!(a, Atom::Role { .. })).count();
-                let neq = c.head.iter().filter(|a| matches!(a, Atom::Eq { .. })).count();
-                let nex = c.head.iter().filter(|a| matches!(a, Atom::Exists { .. })).count();
-                if nrole > 0 { hrole += 1; }
-                if neq > 0 { heq += 1; }
-                if nex > 0 { hexists += 1; }
-                if c.head.len() >= 2 { hdisj += 1; }
-                if c.head.len() >= 2 && nex > 0 { hdisj_ex += 1; }
+                let nrole = c
+                    .head
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Role { .. }))
+                    .count();
+                let neq = c
+                    .head
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Eq { .. }))
+                    .count();
+                let nex = c
+                    .head
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Exists { .. }))
+                    .count();
+                if nrole > 0 {
+                    hrole += 1;
+                }
+                if neq > 0 {
+                    heq += 1;
+                }
+                if nex > 0 {
+                    hexists += 1;
+                }
+                if c.head.len() >= 2 {
+                    hdisj += 1;
+                }
+                if c.head.len() >= 2 && nex > 0 {
+                    hdisj_ex += 1;
+                }
             }
             eprintln!(
                 "TR CENSUS clauses={} head_role={} head_eq={} head_exists={} disj(>=2)={} disj_with_exists={}",
@@ -7253,7 +7747,10 @@ impl Ht {
                     kind: if is_min { CardKind::Min } else { CardKind::Max },
                     n,
                     role,
-                    filler: CLit { neg: false, c: filler },
+                    filler: CLit {
+                        neg: false,
+                        c: filler,
+                    },
                 },
             );
         }
@@ -7314,7 +7811,11 @@ impl Ht {
                 MATCH_MAX.load(Ordering::Relaxed),
             );
             if self.satfold {
-                eprintln!("KM_HT [satfold] labels={} hits={}", self.sat_labels.len(), self.satfold_hits);
+                eprintln!(
+                    "KM_HT [satfold] labels={} hits={}",
+                    self.sat_labels.len(),
+                    self.satfold_hits
+                );
             }
         }
     }
@@ -7740,8 +8241,14 @@ impl Ht {
         if self.stats && nn > 200 {
             let nb = blocked.iter().filter(|b| **b).count();
             let blk = self.ext.blockable.iter().filter(|b| **b).count();
-            eprintln!("KM_HT [blocking] mode={} nodes={} blockable={} blocked={} ({}%)",
-                mode, nn, blk, nb, if nn > 0 { nb * 100 / nn } else { 0 });
+            eprintln!(
+                "KM_HT [blocking] mode={} nodes={} blockable={} blocked={} ({}%)",
+                mode,
+                nn,
+                blk,
+                nb,
+                if nn > 0 { nb * 100 / nn } else { 0 }
+            );
         }
         blocked
     }
@@ -7773,7 +8280,10 @@ impl Ht {
                     if self.card && !lit.neg {
                         if let Some(&def) = self.card_defs.get(&lit.c) {
                             let node = self.ext.resolve(n);
-                            let dep = self.ext.dep_of(node, lit).cloned()
+                            let dep = self
+                                .ext
+                                .dep_of(node, lit)
+                                .cloned()
                                 .unwrap_or_else(dep_empty);
                             let at = self.ext.trail.len();
                             let req = CardReq {
@@ -7831,7 +8341,11 @@ impl Ht {
                                 }
                             }
                         }
-                        let dep = self.ext.dep_of(s, CLit::pos(0)).cloned().unwrap_or_else(dep_empty);
+                        let dep = self
+                            .ext
+                            .dep_of(s, CLit::pos(0))
+                            .cloned()
+                            .unwrap_or_else(dep_empty);
                         for (rr, ss, tt) in new_edges {
                             if self.ext.has_clash() {
                                 return;
@@ -7887,7 +8401,10 @@ impl Ht {
                     satisfied = true;
                     break;
                 }
-                let comp = CLit { neg: !lit.neg, c: lit.c };
+                let comp = CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                };
                 if let Some(d) = self.ext.dep_of(n, comp) {
                     dead_dep = dep_union(&dead_dep, d);
                 } else {
@@ -7921,7 +8438,10 @@ impl Ht {
                     _ => false,
                 };
                 if take {
-                    branch = Some(GD { disjuncts: live, dep: dep_union(&bdep, &dead_dep) });
+                    branch = Some(GD {
+                        disjuncts: live,
+                        dep: dep_union(&bdep, &dead_dep),
+                    });
                 }
             }
         }
@@ -7972,7 +8492,12 @@ impl Ht {
             }
             self.ext.open_in[id] = false;
             match eval_disj(&self.ext, id) {
-                DEval::Branch(live, dep) => return Scan::Branch(GD { disjuncts: live, dep }),
+                DEval::Branch(live, dep) => {
+                    return Scan::Branch(GD {
+                        disjuncts: live,
+                        dep,
+                    })
+                }
                 DEval::Clash(dep) => {
                     self.ext.raise_clash(dep);
                     return Scan::Clash;
@@ -8002,29 +8527,29 @@ impl Ht {
             // KM_HT_SATCACHE3 consults the cross-query pool only in the full
             // `compute_blocked` (it owns `self.sat_sigs3`); fall off the incremental
             // mode-3 path when the cache is live so pooled blocks fire.
-            Some(if self.ext.incr2
-                && (self.block_mode == 1
-                    || (self.block_mode == 3 && !self.satcache3))
-            {
-                // mode 1 = subset (i2_*), mode 3 = pairwise (i3_*); both re-evaluate
-                // only the changed suffix, identical to the full scan.
-                let b = if self.block_mode == 3 {
-                    self.ext.i3_recompute()
-                } else {
-                    self.ext.i2_recompute()
-                };
-                if self.stats {
-                    self.i2_suf_sum += (b.len() - self.ext.i2_last_lo) as u128;
-                    self.i2_calls += 1;
-                    if self.ext.i2_last_lo == 0 {
-                        self.i2_full += 1;
+            Some(
+                if self.ext.incr2
+                    && (self.block_mode == 1 || (self.block_mode == 3 && !self.satcache3))
+                {
+                    // mode 1 = subset (i2_*), mode 3 = pairwise (i3_*); both re-evaluate
+                    // only the changed suffix, identical to the full scan.
+                    let b = if self.block_mode == 3 {
+                        self.ext.i3_recompute()
+                    } else {
+                        self.ext.i2_recompute()
+                    };
+                    if self.stats {
+                        self.i2_suf_sum += (b.len() - self.ext.i2_last_lo) as u128;
+                        self.i2_calls += 1;
+                        if self.ext.i2_last_lo == 0 {
+                            self.i2_full += 1;
+                        }
                     }
-                }
-                if self.i2_check {
-                    let full = self.compute_blocked();
-                    if full != b {
-                        let fd = (0..b.len()).find(|&k| full[k] != b[k]);
-                        panic!(
+                    if self.i2_check {
+                        let full = self.compute_blocked();
+                        if full != b {
+                            let fd = (0..b.len()).find(|&k| full[k] != b[k]);
+                            panic!(
                             "i{} blocking mismatch: nn={} full_blk={} inc_blk={} first_diff={:?}",
                             self.block_mode,
                             b.len(),
@@ -8032,12 +8557,13 @@ impl Ht {
                             b.iter().filter(|x| **x).count(),
                             fd
                         );
+                        }
                     }
-                }
-                b
-            } else {
-                self.compute_blocked()
-            })
+                    b
+                } else {
+                    self.compute_blocked()
+                },
+            )
         } else {
             None
         };
@@ -8195,7 +8721,10 @@ impl Ht {
         succ.dedup();
         let mut chosen: Vec<Node> = Vec::new();
         for s in succ {
-            if chosen.iter().all(|&c| self.ext.are_distinct(c, s).is_some()) {
+            if chosen
+                .iter()
+                .all(|&c| self.ext.are_distinct(c, s).is_some())
+            {
                 chosen.push(s);
             }
         }
@@ -8278,7 +8807,10 @@ impl Ht {
                 (cm.n, cm.role, cm.filler, cm.bound, cm.dep.clone())
             };
             let node = self.ext.resolve(n0);
-            let comp = CLit { neg: !filler.neg, c: filler.c };
+            let comp = CLit {
+                neg: !filler.neg,
+                c: filler.c,
+            };
             let mut succ: Vec<Node> = self.ext.out_edges[node]
                 .iter()
                 .filter(|&&(r, _, _)| r == role)
@@ -8287,17 +8819,20 @@ impl Ht {
             succ.sort_unstable();
             succ.dedup();
             // choose: first successor not yet committed to filler / ¬filler.
-            let unqual = succ.iter().copied().find(|&s| {
-                !self.ext.has_concept(s, filler) && !self.ext.has_concept(s, comp)
-            });
+            let unqual = succ
+                .iter()
+                .copied()
+                .find(|&s| !self.ext.has_concept(s, filler) && !self.ext.has_concept(s, comp));
             if let Some(s) = unqual {
                 let edep = edge_dep(&self.ext, role, node, s).unwrap_or_else(dep_empty);
                 let base = dep_union(&mdep, &edep);
                 return Some(self.branch_choose(s, filler, &base, depth));
             }
             // all qualified: the filler-carrying successors are the counted ones.
-            let cs: Vec<Node> =
-                succ.into_iter().filter(|&s| self.ext.has_concept(s, filler)).collect();
+            let cs: Vec<Node> = succ
+                .into_iter()
+                .filter(|&s| self.ext.has_concept(s, filler))
+                .collect();
             if cs.len() as u32 <= bound {
                 continue; // this ≤n already holds
             }
@@ -8311,8 +8846,11 @@ impl Ht {
                     match self.ext.are_distinct(cs[i], cs[j]) {
                         Some(dd) => distinct_dep = dep_union(&distinct_dep, &dd),
                         None => {
-                            let (a, b) =
-                                if cs[i] <= cs[j] { (cs[i], cs[j]) } else { (cs[j], cs[i]) };
+                            let (a, b) = if cs[i] <= cs[j] {
+                                (cs[i], cs[j])
+                            } else {
+                                (cs[j], cs[i])
+                            };
                             pairs.push((a, b));
                         }
                     }
@@ -8361,7 +8899,10 @@ impl Ht {
     /// clash dependency when impossible (a sound justification for `¬filler` at
     /// `s`), else `None`. Sound: a purely hypothetical probe with no lasting effect.
     fn filler_impossible(&mut self, s: Node, filler: CLit) -> Option<DepSet> {
-        let comp = CLit { neg: !filler.neg, c: filler.c };
+        let comp = CLit {
+            neg: !filler.neg,
+            c: filler.c,
+        };
         if self.ext.has_concept(s, comp) {
             return Some(self.ext.dep_of(s, comp).cloned().unwrap_or_else(dep_empty));
         }
@@ -8409,7 +8950,12 @@ impl Ht {
         }
         let nn = self.ext.num_nodes();
         if std::env::var_os("KM_HT_RECOG_DBG").is_some() {
-            eprintln!("RECOG_STEP card_defs={} maxdefs={} nn={}", self.card_defs.len(), maxdefs.len(), nn);
+            eprintln!(
+                "RECOG_STEP card_defs={} maxdefs={} nn={}",
+                self.card_defs.len(),
+                maxdefs.len(),
+                nn
+            );
         }
         let mut made = false;
         for raw in 0..nn {
@@ -8419,11 +8965,17 @@ impl Ht {
                 continue;
             }
             for &(marker, def) in &maxdefs {
-                let qlit = CLit { neg: false, c: marker };
+                let qlit = CLit {
+                    neg: false,
+                    c: marker,
+                };
                 if self.ext.has_concept(v, qlit) {
                     continue;
                 }
-                let comp = CLit { neg: !def.filler.neg, c: def.filler.c };
+                let comp = CLit {
+                    neg: !def.filler.neg,
+                    c: def.filler.c,
+                };
                 let mut succ: Vec<Node> = self.ext.out_edges[v]
                     .iter()
                     .filter(|&&(r, _, _)| r == def.role)
@@ -8479,7 +9031,13 @@ impl Ht {
                 if std::env::var_os("KM_HT_RECOG_DBG").is_some() && !succ.is_empty() {
                     eprintln!(
                         "RECOG node={} marker={} role={} filler={} n={} succ={} could={} -> {}",
-                        v, marker, def.role, def.filler.c, def.n, succ.len(), could,
+                        v,
+                        marker,
+                        def.role,
+                        def.filler.c,
+                        def.n,
+                        succ.len(),
+                        could,
                         if could <= def.n { "DERIVE" } else { "skip" }
                     );
                 }
@@ -8497,7 +9055,10 @@ impl Ht {
     /// of `branch_merge`'s two-option loop).
     fn branch_choose(&mut self, s: Node, filler: CLit, base: &DepSet, depth: Level) -> Out {
         let level = depth + 1;
-        let comp = CLit { neg: !filler.neg, c: filler.c };
+        let comp = CLit {
+            neg: !filler.neg,
+            c: filler.c,
+        };
         self.branch_pushes += 1;
         let mut fail = dep_empty();
         for &lit in &[filler, comp] {
@@ -8537,7 +9098,8 @@ impl Ht {
         // clash ⇒ precise dependency-directed backjumping could skip them (big
         // win). If dep_max(cd) ≈ cur_depth and card(cd) is large, the deps are
         // already tight and the search is genuinely deep (precision won't help).
-        if self.stats && std::env::var_os("KM_HT_DEPSTATS").is_some() && self.conflicts % 2000 == 0 {
+        if self.stats && std::env::var_os("KM_HT_DEPSTATS").is_some() && self.conflicts % 2000 == 0
+        {
             // dump the conflict's decision levels + their nodes: are the ~6 culprit
             // decisions at low/stable nodes (node-keyed learning suffices once
             // staleness is fixed) or scattered across recreated deep nodes
@@ -8546,7 +9108,11 @@ impl Ht {
             let mut cur = &cd;
             while let Some(n) = cur {
                 let l = n.level as usize;
-                let nd = if l < self.decisions.len() { self.decisions[l].0 } else { usize::MAX };
+                let nd = if l < self.decisions.len() {
+                    self.decisions[l].0
+                } else {
+                    usize::MAX
+                };
                 lv.push((n.level, nd));
                 cur = &n.rest;
             }
@@ -8659,7 +9225,8 @@ impl Ht {
     fn record_decision(&mut self, level: Level, n: Node, lit: CLit) {
         let l = level as usize;
         if self.decisions.len() <= l {
-            self.decisions.resize(l + 1, (0, 0, CLit { neg: false, c: 0 }));
+            self.decisions
+                .resize(l + 1, (0, 0, CLit { neg: false, c: 0 }));
         }
         self.decisions[l] = (n, self.ext.node_uid(n), lit);
         if self.lblng {
@@ -8794,7 +9361,10 @@ impl Ht {
             self.ext.raise_clash(dep);
         } else {
             // force the complement of the last free decision literal.
-            let comp = CLit { neg: !other.2.neg, c: other.2.c };
+            let comp = CLit {
+                neg: !other.2.neg,
+                c: other.2.c,
+            };
             self.ext.add_concept(other.0, comp, &dep);
         }
     }
@@ -8862,7 +9432,10 @@ impl Ht {
             if self.ext.has_concept(rn, lit) {
                 return self.dfs(depth);
             }
-            let comp = CLit { neg: !lit.neg, c: lit.c };
+            let comp = CLit {
+                neg: !lit.neg,
+                c: lit.c,
+            };
             if let Some(d) = self.ext.dep_of(rn, comp) {
                 dead = dep_union(&dead, d);
             } else {
@@ -8923,13 +9496,20 @@ impl Ht {
             self.cur_depth = depth;
             self.heartbeat("dfs");
             if self.trace {
-                eprintln!("TR dfs depth={} step={} pending={}", depth, self.steps, self.ext.pending.len());
+                eprintln!(
+                    "TR dfs depth={} step={} pending={}",
+                    depth,
+                    self.steps,
+                    self.ext.pending.len()
+                );
             }
             let _pt0 = Instant::now();
             self.propagate();
             self.prop_us += _pt0.elapsed().as_micros();
             if self.ext.has_clash() {
-                if self.trace { eprintln!("TR prop-clash depth={}", depth); }
+                if self.trace {
+                    eprintln!("TR prop-clash depth={}", depth);
+                }
                 return self.conflict_out(self.ext.clash_dep());
             }
             // Nominals (o-rule): deterministically merge nominal carriers before
@@ -8938,7 +9518,9 @@ impl Ht {
             if !self.ext.nominals.is_empty() {
                 let merged = self.ext.process_nominals();
                 if self.ext.has_clash() {
-                    if self.trace { eprintln!("TR nominal-clash depth={}", depth); }
+                    if self.trace {
+                        eprintln!("TR nominal-clash depth={}", depth);
+                    }
                     return self.conflict_out(self.ext.clash_dep());
                 }
                 if merged {
@@ -8949,7 +9531,9 @@ impl Ht {
             let _made = self.process_obligations();
             self.oblig_us += _ot0.elapsed().as_micros();
             if _made {
-                if self.trace { eprintln!("TR oblig-made depth={}", depth); }
+                if self.trace {
+                    eprintln!("TR oblig-made depth={}", depth);
+                }
                 continue;
             }
             let action = if self.watch {
@@ -8959,15 +9543,21 @@ impl Ht {
             };
             match action {
                 Scan::Clash => {
-                    if self.trace { eprintln!("TR scan-clash depth={}", depth); }
+                    if self.trace {
+                        eprintln!("TR scan-clash depth={}", depth);
+                    }
                     return self.conflict_out(self.ext.clash_dep());
                 }
                 Scan::Unit => {
-                    if self.trace { eprintln!("TR scan-unit depth={}", depth); }
+                    if self.trace {
+                        eprintln!("TR scan-unit depth={}", depth);
+                    }
                     continue;
                 }
                 Scan::Sat => {
-                    if self.trace { eprintln!("TR scan-sat depth={}", depth); }
+                    if self.trace {
+                        eprintln!("TR scan-sat depth={}", depth);
+                    }
                     // KM_HT_CARD: discharge a still-violated first-class ≤n
                     // restriction (Konclude `applyATMOSTRule`: choose then merge)
                     // before declaring the model complete.
@@ -9018,7 +9608,12 @@ impl Ht {
                     }
                     let level = depth + 1;
                     if self.trace {
-                        eprintln!("TR branch depth={} level={} ndisj={}", depth, level, gd.disjuncts.len());
+                        eprintln!(
+                            "TR branch depth={} level={} ndisj={}",
+                            depth,
+                            level,
+                            gd.disjuncts.len()
+                        );
                     }
                     self.order_disjuncts(&mut gd.disjuncts);
                     self.branch_pushes += 1;
@@ -9028,7 +9623,10 @@ impl Ht {
                         let mark = self.ext.mark();
                         let dep = dep_add(&gd.dep, level);
                         if self.trace {
-                            eprintln!("TR try di={} node={} c={} neg={} mark={}", di, d.node, d.lit.c, d.lit.neg, mark);
+                            eprintln!(
+                                "TR try di={} node={} c={} neg={} mark={}",
+                                di, d.node, d.lit.c, d.lit.neg, mark
+                            );
                         }
                         if self.learn || self.lblng {
                             self.record_decision(level, d.node, d.lit);
@@ -9051,7 +9649,9 @@ impl Ht {
                             Out::Sat => return Out::Sat,
                             Out::Restart => {
                                 self.ext.backtrack_to(mark);
-                                if self.lblng { self.unrecord_choice(level); }
+                                if self.lblng {
+                                    self.unrecord_choice(level);
+                                }
                                 return Out::Restart;
                             }
                             Out::Conflict(cd) => {
@@ -9061,12 +9661,20 @@ impl Ht {
                                     *self.activity.entry(d.lit.c).or_insert(0) += 1;
                                 }
                                 if self.trace {
-                                    eprintln!("TR conflict di={} depth={} cd_max={} contains_level={}", di, depth, dep_max(&cd), dep_contains(&cd, level));
+                                    eprintln!(
+                                        "TR conflict di={} depth={} cd_max={} contains_level={}",
+                                        di,
+                                        depth,
+                                        dep_max(&cd),
+                                        dep_contains(&cd, level)
+                                    );
                                 }
                                 self.ext.backtrack_to(mark);
                                 if !dep_contains(&cd, level) {
                                     self.backjumps += 1;
-                                    if self.lblng { self.unrecord_choice(level); }
+                                    if self.lblng {
+                                        self.unrecord_choice(level);
+                                    }
                                     return Out::Conflict(cd);
                                 }
                                 fail = dep_union(&fail, &cd);
@@ -9080,7 +9688,10 @@ impl Ht {
                                 // disjunction. Sound: cd∖{level} ⊨ ¬D_di.
                                 if self.negtried && di + 1 < gd.disjuncts.len() {
                                     let ndep = dep_remove(&cd, level);
-                                    let comp = CLit { neg: !d.lit.neg, c: d.lit.c };
+                                    let comp = CLit {
+                                        neg: !d.lit.neg,
+                                        c: d.lit.c,
+                                    };
                                     self.negfired += 1;
                                     self.ext.add_concept(d.node, comp, &ndep);
                                     if self.ext.has_clash() {
@@ -9088,18 +9699,27 @@ impl Ht {
                                         // unsat under the current outer choices.
                                         let cd2 = self.ext.clash_dep();
                                         self.ext.backtrack_to(mark);
-                                        if self.lblng { self.unrecord_choice(level); }
+                                        if self.lblng {
+                                            self.unrecord_choice(level);
+                                        }
                                         if !dep_contains(&cd2, level) {
                                             return Out::Conflict(cd2);
                                         }
-                                        return Out::Conflict(dep_remove(&dep_union(&fail, &cd2), level));
+                                        return Out::Conflict(dep_remove(
+                                            &dep_union(&fail, &cd2),
+                                            level,
+                                        ));
                                     }
                                 }
                             }
                         }
                     }
-                    if self.trace { eprintln!("TR branch-exhausted depth={}", depth); }
-                    if self.lblng { self.unrecord_choice(level); }
+                    if self.trace {
+                        eprintln!("TR branch-exhausted depth={}", depth);
+                    }
+                    if self.lblng {
+                        self.unrecord_choice(level);
+                    }
                     return Out::Conflict(dep_remove(&fail, level));
                 }
             }
@@ -9242,7 +9862,11 @@ impl Ht {
                     // sound model extension.
                     if sat && self.satfold {
                         let nn = self.ext.num_nodes();
-                        let blocked = if self.anywhere { self.compute_blocked() } else { vec![false; nn] };
+                        let blocked = if self.anywhere {
+                            self.compute_blocked()
+                        } else {
+                            vec![false; nn]
+                        };
                         for n in 0..nn {
                             if blocked[n] {
                                 continue;
@@ -9343,16 +9967,28 @@ impl Ht {
         let nn = self.ext.num_nodes();
         let mut sigs: Vec<Vec<C>> = Vec::with_capacity(nn);
         for n in 0..nn {
-            let mut s: Vec<C> = self.ext.concepts[n].keys().filter(|k| !k.neg).map(|k| k.c).collect();
+            let mut s: Vec<C> = self.ext.concepts[n]
+                .keys()
+                .filter(|k| !k.neg)
+                .map(|k| k.c)
+                .collect();
             s.sort_unstable();
             sigs.push(s);
         }
         let mut sizes: Vec<usize> = sigs.iter().map(|s| s.len()).collect();
         sizes.sort_unstable();
         let distinct: HashSet<&Vec<C>> = sigs.iter().collect();
-        let blocked = if self.anywhere { self.compute_blocked() } else { vec![false; nn] };
+        let blocked = if self.anywhere {
+            self.compute_blocked()
+        } else {
+            vec![false; nn]
+        };
         let nblk = blocked.iter().filter(|b| **b).count();
-        let med = if sizes.is_empty() { 0 } else { sizes[sizes.len() / 2] };
+        let med = if sizes.is_empty() {
+            0
+        } else {
+            sizes[sizes.len() / 2]
+        };
         eprintln!(
             "KM_HT [dumplabels] nodes={} distinct_pos_labels={} blocked={} label_size(min/med/max)={}/{}/{}",
             nn, distinct.len(), nblk,
@@ -9361,7 +9997,8 @@ impl Ht {
         // UNBLOCKED nodes drive branching: how many DISTINCT labels among them,
         // and are they pairwise-incomparable (no subset relation ⇒ subset blocking
         // cannot fold them; the diversity comes from exclusive-disjunct choices)?
-        let mut ublabels: Vec<&Vec<C>> = (0..nn).filter(|&n| !blocked[n]).map(|n| &sigs[n]).collect();
+        let mut ublabels: Vec<&Vec<C>> =
+            (0..nn).filter(|&n| !blocked[n]).map(|n| &sigs[n]).collect();
         ublabels.sort();
         ublabels.dedup();
         let ub_distinct = ublabels.len();
@@ -9372,11 +10009,17 @@ impl Ht {
                 let (a, b) = (ublabels[i], ublabels[j]);
                 let sub_ab = a.iter().all(|x| b.contains(x));
                 let sub_ba = b.iter().all(|x| a.contains(x));
-                if sub_ab || sub_ba { comp += 1; } else { incomp += 1; }
+                if sub_ab || sub_ba {
+                    comp += 1;
+                } else {
+                    incomp += 1;
+                }
             }
         }
-        eprintln!("KM_HT [dumplabels] unblocked_distinct={} pairs(comparable/incomparable)={}/{}",
-            ub_distinct, comp, incomp);
+        eprintln!(
+            "KM_HT [dumplabels] unblocked_distinct={} pairs(comparable/incomparable)={}/{}",
+            ub_distinct, comp, incomp
+        );
         // smallest 8 unblocked labels (raw concept ids) to eyeball what differs.
         let mut by_size: Vec<&Vec<C>> = ublabels.clone();
         by_size.sort_by_key(|s| s.len());
@@ -9435,7 +10078,10 @@ impl Ht {
                     satisfied = true;
                     break;
                 }
-                let comp = CLit { neg: !lit.neg, c: lit.c };
+                let comp = CLit {
+                    neg: !lit.neg,
+                    c: lit.c,
+                };
                 if self.ext.dep_of(n, comp).is_none() {
                     live += 1;
                 }
@@ -9468,7 +10114,13 @@ impl Ht {
             Some(true) => {
                 // root = node 0; its label is `a`'s model assignment. Absent
                 // positive concept ⇒ false at the root ⇒ a genuine countermodel.
-                Some(self.ext.concepts[0].keys().filter(|k| !k.neg).map(|k| k.c).collect())
+                Some(
+                    self.ext.concepts[0]
+                        .keys()
+                        .filter(|k| !k.neg)
+                        .map(|k| k.c)
+                        .collect(),
+                )
             }
             // unsat (a ⊑ ⊥ ⊑ b, keep) or unsupported (defer) ⇒ no refutation.
             _ => None,
@@ -9524,9 +10176,12 @@ impl Ht {
             if cl.head.len() < 2 {
                 continue;
             }
-            let ok = cl.head.iter().chain(cl.body.iter()).all(|a| {
-                matches!(a, Atom::Concept { lit, t } if !lit.neg && *t == X)
-            }) && !cl.body.is_empty();
+            let ok = cl
+                .head
+                .iter()
+                .chain(cl.body.iter())
+                .all(|a| matches!(a, Atom::Concept { lit, t } if !lit.neg && *t == X))
+                && !cl.body.is_empty();
             if ok {
                 out.insert(cid);
             }
@@ -9534,11 +10189,7 @@ impl Ht {
         out
     }
 
-    fn certain_disjunction_consequences(
-        &self,
-        subs: &[(C, C)],
-        qset: &HashSet<C>,
-    ) -> Vec<(C, C)> {
+    fn certain_disjunction_consequences(&self, subs: &[(C, C)], qset: &HashSet<C>) -> Vec<(C, C)> {
         // closure maps: fwd[a] = subsumers of a; inv[b] = concepts subsumed by b.
         let mut fwd: HashMap<C, HashSet<C>> = HashMap::new();
         let mut inv: HashMap<C, HashSet<C>> = HashMap::new();
@@ -9563,7 +10214,10 @@ impl Ht {
             for a in &cl.head {
                 match a {
                     Atom::Concept { lit, t } if !lit.neg && *t == X => heads.push(lit.c),
-                    _ => { ok = false; break; }
+                    _ => {
+                        ok = false;
+                        break;
+                    }
                 }
             }
             if !ok {
@@ -9573,7 +10227,10 @@ impl Ht {
             for a in &cl.body {
                 match a {
                     Atom::Concept { lit, t } if !lit.neg && *t == X => body.push(lit.c),
-                    _ => { ok = false; break; }
+                    _ => {
+                        ok = false;
+                        break;
+                    }
                 }
             }
             if !ok || body.is_empty() {
@@ -9676,79 +10333,90 @@ impl Ht {
                     let ec_bwd = ec_bwd.clone();
                     std::thread::Builder::new()
                         .stack_size(RWORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
-                            let mut w = Ht::new(tmpl);
-                            w.set_anywhere(anywhere);
-                            w.set_fast_tableau(); // result-identical speedups
-                            w.set_edge_compose(ec_fwd, ec_bwd);
-                            // The residue concept's complete tableau may meet an
-                            // equality-head clause (`≤n` / functional, the `⋁ Eq`
-                            // disjunctive head). Without `number` the apply_head Eq
-                            // arm bails `unsupported` ⇒ the whole residue-complete
-                            // defers to CB (ore_ont_7499: a single ≤n concept forces
-                            // the defer). Enable the number+qmerge cardinality merge
-                            // (the same sound rule the card route uses): Eq-heads now
-                            // route to `push_card`/`branch_merge`. Result-identical on
-                            // a pure-disjunction residue (no Eq head ⇒ number inert).
-                            w.force_number = true;
-                            w.force_qmerge = true;
-                            let mut subs: Vec<(C, C)> = Vec::new();
-                            let mut unsat: Vec<C> = Vec::new();
-                            let mut nconf: u64 = 0;
-                            // KM_HT_QO_RESIDUE_SAMPLE=N: process only the first N residue
-                            // concepts (diagnostic: measure per-concept model-build vs
-                            // candidate-test cost without waiting for all 9755).
-                            let sample = std::env::var("KM_HT_QO_RESIDUE_SAMPLE")
-                                .ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(0);
-                            let mut t_model = std::time::Duration::ZERO;
-                            let mut t_cand = std::time::Duration::ZERO;
-                            loop {
-                                let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                                if i >= residue_ref.len() || (sample > 0 && i >= sample) {
-                                    break;
-                                }
-                                let a = residue_ref[i];
-                                // one real model of `a`.
-                                let tm = std::time::Instant::now();
-                                let cons_a = w.consistent(&[CLit::pos(a)]);
-                                t_model += tm.elapsed();
-                                match cons_a {
-                                    Some(false) => {
-                                        unsat.push(a); // a ⊑ ⊥ ⇒ unsatisfiable
-                                        continue;
+                        .spawn_scoped(
+                            s,
+                            move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
+                                let mut w = Ht::new(tmpl);
+                                w.set_anywhere(anywhere);
+                                w.set_fast_tableau(); // result-identical speedups
+                                w.set_edge_compose(ec_fwd, ec_bwd);
+                                // The residue concept's complete tableau may meet an
+                                // equality-head clause (`≤n` / functional, the `⋁ Eq`
+                                // disjunctive head). Without `number` the apply_head Eq
+                                // arm bails `unsupported` ⇒ the whole residue-complete
+                                // defers to CB (ore_ont_7499: a single ≤n concept forces
+                                // the defer). Enable the number+qmerge cardinality merge
+                                // (the same sound rule the card route uses): Eq-heads now
+                                // route to `push_card`/`branch_merge`. Result-identical on
+                                // a pure-disjunction residue (no Eq head ⇒ number inert).
+                                w.force_number = true;
+                                w.force_qmerge = true;
+                                let mut subs: Vec<(C, C)> = Vec::new();
+                                let mut unsat: Vec<C> = Vec::new();
+                                let mut nconf: u64 = 0;
+                                // KM_HT_QO_RESIDUE_SAMPLE=N: process only the first N residue
+                                // concepts (diagnostic: measure per-concept model-build vs
+                                // candidate-test cost without waiting for all 9755).
+                                let sample = std::env::var("KM_HT_QO_RESIDUE_SAMPLE")
+                                    .ok()
+                                    .and_then(|s| s.parse::<usize>().ok())
+                                    .unwrap_or(0);
+                                let mut t_model = std::time::Duration::ZERO;
+                                let mut t_cand = std::time::Duration::ZERO;
+                                loop {
+                                    let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                    if i >= residue_ref.len() || (sample > 0 && i >= sample) {
+                                        break;
                                     }
-                                    None => return None, // out-of-fragment ⇒ defer
-                                    Some(true) => {}
-                                }
-                                // candidate superset = positive query concepts at root,
-                                // MINUS the already-confirmed sound subsumers (`known[a]`,
-                                // the residue concept's monotone forward-only label — the
-                                // caller already emitted those). Only the uncertain ones
-                                // (added by resolving the parked disjunction) pay the
-                                // expensive `A ⊓ ¬B` unsat proof. This is the lever that
-                                // cuts the per-concept candidate count from "all subsumers"
-                                // to "the few the disjunction could change".
-                                let ka = known_ref.get(&a);
-                                let cand: Vec<C> = w.ext.concepts[0]
-                                    .keys()
-                                    .filter(|k| !k.neg)
-                                    .map(|k| k.c)
-                                    .filter(|b| *b != a && qset_ref.contains(b))
-                                    .filter(|b| ka.map_or(true, |s| !s.contains(b)))
-                                    .collect();
-                                let tc = std::time::Instant::now();
-                                for b in cand {
-                                    nconf += 1;
-                                    match w.consistent(&[CLit::pos(a), CLit::neg(b)]) {
-                                        Some(false) => subs.push((a, b)), // a ⊓ ¬b unsat ⇒ a ⊑ b
-                                        Some(true) => {}                  // satisfiable ⇒ a ⋢ b
-                                        None => return None,              // defer
+                                    let a = residue_ref[i];
+                                    // one real model of `a`.
+                                    let tm = std::time::Instant::now();
+                                    let cons_a = w.consistent(&[CLit::pos(a)]);
+                                    t_model += tm.elapsed();
+                                    match cons_a {
+                                        Some(false) => {
+                                            unsat.push(a); // a ⊑ ⊥ ⇒ unsatisfiable
+                                            continue;
+                                        }
+                                        None => return None, // out-of-fragment ⇒ defer
+                                        Some(true) => {}
                                     }
+                                    // candidate superset = positive query concepts at root,
+                                    // MINUS the already-confirmed sound subsumers (`known[a]`,
+                                    // the residue concept's monotone forward-only label — the
+                                    // caller already emitted those). Only the uncertain ones
+                                    // (added by resolving the parked disjunction) pay the
+                                    // expensive `A ⊓ ¬B` unsat proof. This is the lever that
+                                    // cuts the per-concept candidate count from "all subsumers"
+                                    // to "the few the disjunction could change".
+                                    let ka = known_ref.get(&a);
+                                    let cand: Vec<C> = w.ext.concepts[0]
+                                        .keys()
+                                        .filter(|k| !k.neg)
+                                        .map(|k| k.c)
+                                        .filter(|b| *b != a && qset_ref.contains(b))
+                                        .filter(|b| ka.map_or(true, |s| !s.contains(b)))
+                                        .collect();
+                                    let tc = std::time::Instant::now();
+                                    for b in cand {
+                                        nconf += 1;
+                                        match w.consistent(&[CLit::pos(a), CLit::neg(b)]) {
+                                            Some(false) => subs.push((a, b)), // a ⊓ ¬b unsat ⇒ a ⊑ b
+                                            Some(true) => {}                  // satisfiable ⇒ a ⋢ b
+                                            None => return None,              // defer
+                                        }
+                                    }
+                                    t_cand += tc.elapsed();
                                 }
-                                t_cand += tc.elapsed();
-                            }
-                            Some((unsat, subs, nconf, t_model.as_secs_f64(), t_cand.as_secs_f64()))
-                        })
+                                Some((
+                                    unsat,
+                                    subs,
+                                    nconf,
+                                    t_model.as_secs_f64(),
+                                    t_cand.as_secs_f64(),
+                                ))
+                            },
+                        )
                         .expect("spawn residue-complete worker")
                 })
                 .collect();
@@ -9798,8 +10466,11 @@ impl Ht {
         let core_sigs: Option<HashSet<Vec<C>>> = if std::env::var_os("KM_HT_COREPROBE").is_some() {
             let mut s: HashSet<Vec<C>> = HashSet::new();
             for n in 0..self.ext.num_nodes() {
-                let mut v: Vec<C> =
-                    self.ext.concepts[n].keys().filter(|k| !k.neg).map(|k| k.c).collect();
+                let mut v: Vec<C> = self.ext.concepts[n]
+                    .keys()
+                    .filter(|k| !k.neg)
+                    .map(|k| k.c)
+                    .collect();
                 v.sort_unstable();
                 s.insert(v);
             }
@@ -9813,7 +10484,9 @@ impl Ht {
             None
         };
         if std::env::var_os("KM_HT_GLOBAL").is_some() {
-            if self.trace { eprintln!("TR classify-return (global, consistent)"); }
+            if self.trace {
+                eprintln!("TR classify-return (global, consistent)");
+            }
             return Some((true, Vec::new(), Vec::new()));
         }
         // KM_HT_PAR=N (N>1): run the 94 per-concept SAT tests (Phase 1) and the
@@ -9827,7 +10500,10 @@ impl Ht {
         // untouched. The cross-query heuristic caches (witreuse/satcache/satfold/
         // phase/lblcache) are per-worker, so they are inert under parallelism;
         // they are experimental and off in production.
-        let par = std::env::var("KM_HT_PAR").ok().and_then(|s| s.parse::<usize>().ok()).unwrap_or(1);
+        let par = std::env::var("KM_HT_PAR")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(1);
         if par > 1 && !self.naive {
             return self.classify_parallel(queries, par);
         }
@@ -9905,8 +10581,11 @@ impl Ht {
                     let nn = self.ext.num_nodes();
                     let mut shared = 0usize;
                     for n in 0..nn {
-                        let mut v: Vec<C> =
-                            self.ext.concepts[n].keys().filter(|k| !k.neg).map(|k| k.c).collect();
+                        let mut v: Vec<C> = self.ext.concepts[n]
+                            .keys()
+                            .filter(|k| !k.neg)
+                            .map(|k| k.c)
+                            .collect();
                         v.sort_unstable();
                         if core.contains(&v) {
                             shared += 1;
@@ -9914,7 +10593,10 @@ impl Ht {
                     }
                     eprintln!(
                         "KM_HT [coreprobe] concept={} nodes={} shared_with_core={} ({}%)",
-                        a, nn, shared, if nn > 0 { 100 * shared / nn } else { 0 }
+                        a,
+                        nn,
+                        shared,
+                        if nn > 0 { 100 * shared / nn } else { 0 }
                     );
                 }
             }
@@ -9951,18 +10633,32 @@ impl Ht {
             // KM_HT_DUMPLABELS: one-shot dump of the first concept's model — node
             // count, distinct positive labels, size distribution, smallest labels.
             // Diagnostic for the HermiT model-fold gap (compare to HermitNodeLabels).
-            if (qi == 0 || self.backtracks - bt0 > 5000) && std::env::var_os("KM_HT_DUMPLABELS").is_some() {
-                eprintln!("KM_HT [dumplabels] FOR concept={} qi={} backtracks_here={}", a, qi, self.backtracks - bt0);
+            if (qi == 0 || self.backtracks - bt0 > 5000)
+                && std::env::var_os("KM_HT_DUMPLABELS").is_some()
+            {
+                eprintln!(
+                    "KM_HT [dumplabels] FOR concept={} qi={} backtracks_here={}",
+                    a,
+                    qi,
+                    self.backtracks - bt0
+                );
                 self.dump_labels();
             }
         }
         if self.stats && witreuse {
-            eprintln!("KM_HT [witreuse] queries={} reused={} built={}",
-                queries.len(), wit_hits, queries.len() as u64 - wit_hits);
+            eprintln!(
+                "KM_HT [witreuse] queries={} reused={} built={}",
+                queries.len(),
+                wit_hits,
+                queries.len() as u64 - wit_hits
+            );
         }
         if self.stats && self.satcache3 {
-            eprintln!("KM_HT [satcache3] pooled_full_sigs={} distinct={}",
-                self.sc3_pooled, self.sat_sigs3.len());
+            eprintln!(
+                "KM_HT [satcache3] pooled_full_sigs={} distinct={}",
+                self.sc3_pooled,
+                self.sat_sigs3.len()
+            );
         }
 
         // Told subsumers (Mechanism 1, from the HermiT trace): structural
@@ -10051,8 +10747,11 @@ impl Ht {
                 cand.sort_unstable();
                 cand.dedup();
                 // `possible` is the live residual; SAT models prune it as we go.
-                let mut possible: HashSet<C> =
-                    if modelprune { cand.iter().copied().collect() } else { HashSet::new() };
+                let mut possible: HashSet<C> = if modelprune {
+                    cand.iter().copied().collect()
+                } else {
+                    HashSet::new()
+                };
                 for b in cand {
                     if known.contains(&b) {
                         continue;
@@ -10090,8 +10789,12 @@ impl Ht {
                 }
             }
             if self.stats {
-                eprintln!("KM_HT [classify-p2] modelprune={} sat_q={} phase2_tests={}",
-                    modelprune, sat_q.len(), tests);
+                eprintln!(
+                    "KM_HT [classify-p2] modelprune={} sat_q={} phase2_tests={}",
+                    modelprune,
+                    sat_q.len(),
+                    tests
+                );
             }
         }
         if self.stats {
@@ -10111,11 +10814,20 @@ impl Ht {
                 "KM_HT [classify-i2] calls={} full_rebuilds={} avg_suffix={} (vs ~node count)",
                 self.i2_calls,
                 self.i2_full,
-                if self.i2_calls > 0 { self.i2_suf_sum / self.i2_calls as u128 } else { 0 },
+                if self.i2_calls > 0 {
+                    self.i2_suf_sum / self.i2_calls as u128
+                } else {
+                    0
+                },
             );
         }
         if self.trace {
-            eprintln!("TR classify-return (full) sat={} unsat={} subs={}", sat_q.len(), unsat.len(), subs.len());
+            eprintln!(
+                "TR classify-return (full) sat={} unsat={} subs={}",
+                sat_q.len(),
+                unsat.len(),
+                subs.len()
+            );
         }
         Some((true, unsat, subs))
     }
@@ -10238,8 +10950,7 @@ impl Ht {
         let nl = labels.len();
         let next2 = AtomicUsize::new(0);
         let p2: Vec<Option<Vec<(C, C)>>> = std::thread::scope(|s| {
-            let (told, qset, satset, labels, next2) =
-                (&told, &qset, &satset, &labels, &next2);
+            let (told, qset, satset, labels, next2) = (&told, &qset, &satset, &labels, &next2);
             let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
                 .map(|_| {
                     let tmpl = template.clone();
@@ -10267,8 +10978,7 @@ impl Ht {
                                 let (a, lab) = &labels[li];
                                 let a = *a;
                                 let mut known: HashSet<C> = HashSet::new();
-                                let mut stack: Vec<C> =
-                                    told.get(&a).cloned().unwrap_or_default();
+                                let mut stack: Vec<C> = told.get(&a).cloned().unwrap_or_default();
                                 while let Some(x) = stack.pop() {
                                     if known.insert(x) {
                                         if let Some(v) = told.get(&x) {
@@ -10335,7 +11045,10 @@ impl Ht {
         if stats {
             eprintln!(
                 "KM_HT [classify-par] threads={} queries={} sat_q={} subs={}",
-                nthreads, nq, sat_q.len(), subs.len()
+                nthreads,
+                nq,
+                sat_q.len(),
+                subs.len()
             );
         }
         Some((true, unsat, subs))
@@ -10618,15 +11331,15 @@ impl Ht {
                         if trace {
                             eprintln!(
                                 "QOPHASE residue-complete ({} concepts) returned {} in {:.1}s",
-                                res, if rc.is_some() { "certified" } else { "defer" },
+                                res,
+                                if rc.is_some() { "certified" } else { "defer" },
                                 t_res.elapsed().as_secs_f64()
                             );
                         }
                         if let Some((ru, rsv)) = rc {
                             cu.extend(ru);
                             cs.extend(rsv);
-                            let consistent =
-                                !(!queries.is_empty() && cu.len() == queries.len());
+                            let consistent = !(!queries.is_empty() && cu.len() == queries.len());
                             if trace {
                                 eprintln!(
                                     "QOGF residue-complete certified: total_subs={} total_unsat={}",
@@ -10676,8 +11389,11 @@ impl Ht {
         }
         // `saturate_global` seeds the query concepts first, in order, so query
         // `queries[i]` is shared node `i` (same mapping the legacy global path uses).
-        let node_of: HashMap<C, Node> =
-            queries.iter().enumerate().map(|(i, &c)| (c, i as Node)).collect();
+        let node_of: HashMap<C, Node> = queries
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| (c, i as Node))
+            .collect();
         let mut unsat: Vec<C> = Vec::new();
         let mut subs: Vec<(C, C)> = Vec::new();
         for &a in queries {
@@ -10758,7 +11474,9 @@ impl Ht {
                         }
                         let fwd = &g.label_pos[n];
                         gg.node_unsat.contains(&n)
-                            || gg.label_pos[n].iter().any(|b| *b != *a && qset.contains(b) && !fwd.contains(b))
+                            || gg.label_pos[n]
+                                .iter()
+                                .any(|b| *b != *a && qset.contains(b) && !fwd.contains(b))
                     })
                     .collect()
             } else {
@@ -10768,7 +11486,12 @@ impl Ht {
                 for rec in self.clauses.iter() {
                     let head = &rec.0.head;
                     if head.len() == 1 {
-                        if let Atom::Role { r: hr, s: hs, t: ht } = &head[0] {
+                        if let Atom::Role {
+                            r: hr,
+                            s: hs,
+                            t: ht,
+                        } = &head[0]
+                        {
                             for a in &rec.1 {
                                 if let Atom::Role { r, s, t } = a {
                                     if *s == *ht && *t == *hs {
@@ -10928,7 +11651,11 @@ impl Ht {
         let qset: HashSet<C> = queries.iter().copied().collect();
         let trace = std::env::var_os("KM_HT_TRACE").is_some();
         if trace {
-            eprintln!("QOPC entry queries={} clauses={}", queries.len(), self.clauses.len());
+            eprintln!(
+                "QOPC entry queries={} clauses={}",
+                queries.len(),
+                self.clauses.len()
+            );
         }
         // KM_HT_QO_TESTONE=A,B : adjudicate one pair A⊑B with the COMPLETE Ht
         // tableau (a different engine than QoSat) — does consistent(A ⊓ ¬B) say
@@ -10938,7 +11665,8 @@ impl Ht {
             let parts: Vec<C> = v.split(',').filter_map(|s| s.parse().ok()).collect();
             if parts.len() == 2 {
                 let (a, b) = (parts[0], parts[1]);
-                let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                let template: Vec<Clause> =
+                    self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
                 let mut w = Ht::new(template);
                 w.set_fast_tableau();
                 w.set_edge_compose(self.ht_chain_fwd.clone(), self.ht_chain_bwd.clone());
@@ -10949,13 +11677,21 @@ impl Ht {
                 let sat_anb = w2.consistent(&[CLit::pos(a), CLit::neg(b)]);
                 eprintln!(
                     "QOTESTONE a={} b={}: consistent(a)={:?} consistent(a⊓¬b)={:?}  ⇒ {}",
-                    a, b, sat_a, sat_anb,
-                    match sat_anb { Some(false) => "a⊑b CERTAIN (QoSat gap)", Some(true) => "a⋢b (gold contested)", None => "unsupported/defer" }
+                    a,
+                    b,
+                    sat_a,
+                    sat_anb,
+                    match sat_anb {
+                        Some(false) => "a⊑b CERTAIN (QoSat gap)",
+                        Some(true) => "a⋢b (gold contested)",
+                        None => "unsupported/defer",
+                    }
                 );
                 if std::env::var_os("KM_HT_TESTONE_TRACE").is_some() {
                     let e = &w2.ext;
                     let nn = e.num_nodes();
-                    let mut ebyrole: std::collections::HashMap<R, u64> = std::collections::HashMap::new();
+                    let mut ebyrole: std::collections::HashMap<R, u64> =
+                        std::collections::HashMap::new();
                     let mut tot_e = 0u64;
                     for s in 0..nn {
                         for (r, _t, _d) in &e.out_edges[s] {
@@ -10972,14 +11708,22 @@ impl Ht {
                     }
                     // root (node 0) positive label
                     let mut root_pos: Vec<C> = e.concepts[0]
-                        .keys().filter(|k| !k.neg).map(|k| k.c).collect();
+                        .keys()
+                        .filter(|k| !k.neg)
+                        .map(|k| k.c)
+                        .collect();
                     root_pos.sort_unstable();
                     let mut root_neg: Vec<C> = e.concepts[0]
-                        .keys().filter(|k| k.neg).map(|k| k.c).collect();
+                        .keys()
+                        .filter(|k| k.neg)
+                        .map(|k| k.c)
+                        .collect();
                     root_neg.sort_unstable();
                     // max BFS depth from root over any role
                     let mut dist = vec![u32::MAX; nn];
-                    if nn > 0 { dist[0] = 0; }
+                    if nn > 0 {
+                        dist[0] = 0;
+                    }
                     let mut qdep = std::collections::VecDeque::new();
                     qdep.push_back(0u32);
                     let mut maxd = 0u32;
@@ -10999,8 +11743,16 @@ impl Ht {
                         e.unsupported, nn, tot_e, maxd, w2.branch_pushes, w2.backtracks, w2.steps,
                         b, nodes_with_b.len(), ebyrole_v
                     );
-                    eprintln!("TESTONE_TRACE: root_pos_count={} root_pos(first40)={:?}", root_pos.len(), &root_pos[..root_pos.len().min(40)]);
-                    eprintln!("TESTONE_TRACE: root_neg_count={} root_neg={:?}", root_neg.len(), &root_neg);
+                    eprintln!(
+                        "TESTONE_TRACE: root_pos_count={} root_pos(first40)={:?}",
+                        root_pos.len(),
+                        &root_pos[..root_pos.len().min(40)]
+                    );
+                    eprintln!(
+                        "TESTONE_TRACE: root_neg_count={} root_neg={:?}",
+                        root_neg.len(),
+                        &root_neg
+                    );
                 }
             }
         }
@@ -11103,7 +11855,11 @@ impl Ht {
             // that parked clause `cid`. Diagnostic for the 9755-vs-Konclude-675 gap.
             let res_hist: Option<Vec<std::sync::atomic::AtomicUsize>> =
                 if std::env::var_os("KM_HT_QO_RESIDUE_HIST").is_some() {
-                    Some((0..clauses_ref.len()).map(|_| std::sync::atomic::AtomicUsize::new(0)).collect())
+                    Some(
+                        (0..clauses_ref.len())
+                            .map(|_| std::sync::atomic::AtomicUsize::new(0))
+                            .collect(),
+                    )
                 } else {
                     None
                 };
@@ -11122,8 +11878,12 @@ impl Ht {
             // that concept to the fresh-build residue (sound).
             let inplace = std::env::var_os("KM_HT_QO_INPLACE").is_some();
             let pmbuild = std::env::var_os("KM_HT_QO_PMBUILD").is_some();
-            let probe: Option<C> = std::env::var("KM_HT_QO_PROBE").ok().and_then(|s| s.parse().ok());
-            let probe_sup: Option<C> = std::env::var("KM_HT_QO_PROBE_SUP").ok().and_then(|s| s.parse().ok());
+            let probe: Option<C> = std::env::var("KM_HT_QO_PROBE")
+                .ok()
+                .and_then(|s| s.parse().ok());
+            let probe_sup: Option<C> = std::env::var("KM_HT_QO_PROBE_SUP")
+                .ok()
+                .and_then(|s| s.parse().ok());
             let nodecertain = std::env::var_os("KM_HT_QO_NODECERTAIN").is_some();
             let concept_level: HashSet<usize> = if discharge || nodecertain {
                 self.concept_level_disjunction_cids()
@@ -11137,15 +11897,25 @@ impl Ht {
             let nc_map: Option<std::sync::Arc<HashMap<usize, Vec<C>>>> = if nodecertain {
                 let m = build_nodecertain_map(clauses_ref, concept_level_ref, fprop, cap);
                 if std::env::var_os("KM_HT_TRACE").is_some() {
-                    eprintln!("QONODECERTAIN map: {} concept-level disjunctions enriched", m.len());
+                    eprintln!(
+                        "QONODECERTAIN map: {} concept-level disjunctions enriched",
+                        m.len()
+                    );
                     if let Ok(p) = std::env::var("KM_HT_QO_PROBE_CID") {
                         if let Ok(pc) = p.parse::<usize>() {
-                            eprintln!("QONODECERTAIN cid={} in_map={} D_len={:?}",
-                                pc, m.contains_key(&pc), m.get(&pc).map(|d| d.len()));
+                            eprintln!(
+                                "QONODECERTAIN cid={} in_map={} D_len={:?}",
+                                pc,
+                                m.contains_key(&pc),
+                                m.get(&pc).map(|d| d.len())
+                            );
                         }
                     }
                     // how many concept-level cids had a NON-empty intersection
-                    eprintln!("QONODECERTAIN concept_level_total={}", concept_level_ref.len());
+                    eprintln!(
+                        "QONODECERTAIN concept_level_total={}",
+                        concept_level_ref.len()
+                    );
                 }
                 Some(std::sync::Arc::new(m))
             } else {
@@ -11372,7 +12142,11 @@ impl Ht {
             if trace {
                 eprintln!(
                     "QOPC bulk done el={:.1}s: suff_subs={} unsat={} residue={} ({} threads)",
-                    t_pc.elapsed().as_secs_f64(), subs.len(), unsat.len(), residue.len(), nthreads
+                    t_pc.elapsed().as_secs_f64(),
+                    subs.len(),
+                    unsat.len(),
+                    residue.len(),
+                    nthreads
                 );
                 if pmbuild {
                     let cnt = DBG_PM_COUNT.load(Ordering::Relaxed).max(1);
@@ -11397,7 +12171,9 @@ impl Ht {
                 let total: usize = rows.iter().map(|&(_, c)| c).sum();
                 eprintln!(
                     "QORESHIST residue={} distinct_clauses={} total_parkings={}",
-                    residue.len(), rows.len(), total
+                    residue.len(),
+                    rows.len(),
+                    total
                 );
                 for (cid, c) in rows.iter().take(40) {
                     let cl = &self.clauses[*cid].0;
@@ -11405,7 +12181,10 @@ impl Ht {
                     let bstr: Vec<String> = cl.body.iter().map(fmt_atom_dbg).collect();
                     eprintln!(
                         "QORESHIST cid={} n={} head=[{}] body=[{}]",
-                        cid, c, hstr.join(" ; "), bstr.join(" , ")
+                        cid,
+                        c,
+                        hstr.join(" ; "),
+                        bstr.join(" , ")
                     );
                 }
             }
@@ -11418,7 +12197,8 @@ impl Ht {
                 if trace {
                     eprintln!(
                         "QOCERTAIN: +{} certain disjunction subs el={:.2}s",
-                        new_subs.len(), t_c.elapsed().as_secs_f64()
+                        new_subs.len(),
+                        t_c.elapsed().as_secs_f64()
                     );
                 }
                 subs.extend(new_subs);
@@ -11457,7 +12237,10 @@ impl Ht {
             if trace {
                 eprintln!(
                     "QOPC done (parallel) subs={} unsat={} consistent={} el={:.1}s",
-                    subs.len(), unsat.len(), consistent, t_pc.elapsed().as_secs_f64()
+                    subs.len(),
+                    unsat.len(),
+                    consistent,
+                    t_pc.elapsed().as_secs_f64()
                 );
             }
             self.pc_candidates = Vec::new();
@@ -11485,8 +12268,13 @@ impl Ht {
                 if trace && i > 0 && i % 5000 == 0 {
                     eprintln!(
                         "QOPC_TALLY {}/{} el={:.1}s suff={} insuff={} unsup={} clash={}",
-                        i, queries.len(), t_pc.elapsed().as_secs_f64(),
-                        tally.0, tally.1, tally.2, tally.3
+                        i,
+                        queries.len(),
+                        t_pc.elapsed().as_secs_f64(),
+                        tally.0,
+                        tally.1,
+                        tally.2,
+                        tally.3
                     );
                 }
                 continue;
@@ -11510,7 +12298,12 @@ impl Ht {
                     continue;
                 }
                 if trace {
-                    eprintln!("QOPC bail (insufficient) at {}/{} concept {}", i, queries.len(), a);
+                    eprintln!(
+                        "QOPC bail (insufficient) at {}/{} concept {}",
+                        i,
+                        queries.len(),
+                        a
+                    );
                 }
                 return None; // open parked disjunction → defer (sound)
             }
@@ -11555,8 +12348,15 @@ impl Ht {
                 }
             }
             if trace && i > 0 && i % 5000 == 0 {
-                eprintln!("QOPC {}/{} subs={} cands={} unsat={} ucands={}",
-                    i, queries.len(), subs.len(), cands.len(), unsat.len(), unsat_cands.len());
+                eprintln!(
+                    "QOPC {}/{} subs={} cands={} unsat={} ucands={}",
+                    i,
+                    queries.len(),
+                    subs.len(),
+                    cands.len(),
+                    unsat.len(),
+                    unsat_cands.len()
+                );
             }
         }
         if pc_tally {
@@ -11596,8 +12396,14 @@ impl Ht {
         }
         let consistent = !(!queries.is_empty() && unsat.len() == queries.len());
         if trace {
-            eprintln!("QOPC done subs={} cands={} unsat={} ucands={} consistent={}",
-                subs.len(), cands.len(), unsat.len(), unsat_cands.len(), consistent);
+            eprintln!(
+                "QOPC done subs={} cands={} unsat={} ucands={} consistent={}",
+                subs.len(),
+                cands.len(),
+                unsat.len(),
+                unsat_cands.len(),
+                consistent
+            );
         }
         self.pc_candidates = cands;
         self.pc_unsat_candidates = unsat_cands;
@@ -11759,8 +12565,7 @@ impl Ht {
                 }
                 if residue.is_empty() {
                     // every query concept CLEAN ⇒ sound+complete from the single pass.
-                    let consistent =
-                        !(!queries.is_empty() && clean_unsat.len() == queries.len());
+                    let consistent = !(!queries.is_empty() && clean_unsat.len() == queries.len());
                     return Some((consistent, clean_unsat, clean_subs));
                 }
                 // Port #1 — RESIDUE MODEL-REUSE. Complete the affected concepts on
@@ -11771,8 +12576,7 @@ impl Ht {
                 // pollution (`!qo_insufficient`). Otherwise the shared-model labels
                 // and subtree branching are not trustworthy ⇒ keep deferring.
                 if std::env::var_os("KM_HT_QO_RESIDUE").is_some()
-                    && (qk.residue_unsafe
-                        || (qk.kp_insuff_nodes.is_empty() && !qk.qo_insufficient))
+                    && (qk.residue_unsafe || (qk.kp_insuff_nodes.is_empty() && !qk.qo_insufficient))
                 {
                     if let Some((res_unsat, res_subs)) =
                         qk.qo_residue_classify(&residue_nodes, &g.label_pos, &qset)
@@ -11811,8 +12615,11 @@ impl Ht {
                 g.label_pos.len()
             );
         }
-        let node_of: HashMap<C, Node> =
-            queries.iter().enumerate().map(|(i, &c)| (c, i as Node)).collect();
+        let node_of: HashMap<C, Node> = queries
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| (c, i as Node))
+            .collect();
         let mut unsat: Vec<C> = Vec::new();
         let mut subs: Vec<(C, C)> = Vec::new();
         for &a in queries {
@@ -11854,10 +12661,7 @@ impl Ht {
         // bridge but DO have parked disjunctions the residue-complete verify decides,
         // so do not defer them here; let the forward pass + residue-complete run.
         let residue_complete_disj = std::env::var_os("KM_HT_QO_RESIDUE_COMPLETE").is_some();
-        if certify_only
-            && count_inverse_bridges(&self.clauses) == 0
-            && !residue_complete_disj
-        {
+        if certify_only && count_inverse_bridges(&self.clauses) == 0 && !residue_complete_disj {
             if std::env::var_os("KM_HT_TRACE").is_some() {
                 eprintln!("QO router: no inverse bridge ⇒ defer (not a hybrid candidate)");
             }
@@ -11922,7 +12726,9 @@ impl Ht {
             if std::env::var_os("KM_HT_QO_GFCERT").is_some() {
                 if let Some(r) = self.qo_classify_global_fwd(queries) {
                     if std::env::var_os("KM_HT_TRACE").is_some() {
-                        eprintln!("QO router: global-forward CLEAN certify (sound+complete) ⇒ answer");
+                        eprintln!(
+                            "QO router: global-forward CLEAN certify (sound+complete) ⇒ answer"
+                        );
                     }
                     return Some(r);
                 }
@@ -12083,19 +12889,20 @@ impl Ht {
                         .unwrap_or(1)
                         .max(1);
                     let nthreads = par.min(cands.len().max(1)).max(1);
-        let template: Vec<Clause> = self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
-        // Ht-only TCC: extend the residue template with the __cmpp__ clauses so
-        // the complete tableau (with blocking) propagates transitive markers
-        // through cross-role chains.  The QoSat (reads &self.clauses) never sees
-        // them — no cascade.  The Ht's blocking bounds the propagation.
-        let template: Vec<Clause> = if !self.ht_tcc_clauses.is_empty() {
-            let mut t = template;
-            t.extend(self.ht_tcc_clauses.iter().cloned());
-            t
-        } else {
-            template
-        };
-        let anywhere = self.anywhere;
+                    let template: Vec<Clause> =
+                        self.clauses.iter().map(|(c, _, _)| c.clone()).collect();
+                    // Ht-only TCC: extend the residue template with the __cmpp__ clauses so
+                    // the complete tableau (with blocking) propagates transitive markers
+                    // through cross-role chains.  The QoSat (reads &self.clauses) never sees
+                    // them — no cascade.  The Ht's blocking bounds the propagation.
+                    let template: Vec<Clause> = if !self.ht_tcc_clauses.is_empty() {
+                        let mut t = template;
+                        t.extend(self.ht_tcc_clauses.iter().cloned());
+                        t
+                    } else {
+                        template
+                    };
+                    let anywhere = self.anywhere;
                     let next = std::sync::atomic::AtomicUsize::new(0);
                     const VWORKER_STACK: usize = 512 * 1024 * 1024;
                     let cands_ref = &cands;
@@ -12114,7 +12921,8 @@ impl Ht {
                                         let mut kept: Vec<(C, C)> = Vec::new();
                                         let (mut nk, mut nd, mut nn) = (0u64, 0u64, 0u64);
                                         loop {
-                                            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                                            let i = next
+                                                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                             if i >= cands_ref.len() {
                                                 break;
                                             }
@@ -12177,7 +12985,11 @@ impl Ht {
         // architecture. No `self.consistent()` (the 671-node fresh rebuild) is
         // needed; `None` from a residue test ⇒ bail to the caller's fallback. ---
         if std::env::var_os("KM_HT_TRACE").is_some() {
-            eprintln!("QOC entry queries={} clauses={}", queries.len(), self.clauses.len());
+            eprintln!(
+                "QOC entry queries={} clauses={}",
+                queries.len(),
+                self.clauses.len()
+            );
         }
         let mut qs = QoSat::new(&self.clauses);
         // Sound ELI saturation: re-fire role/∀ clauses when their guard concept
@@ -12206,7 +13018,9 @@ impl Ht {
         // in the parked over-approximation, the KB is inconsistent (a clash in
         // the over-approximation is sound for unsat — no real model exists). ---
         let all_dead = !queries.is_empty()
-            && queries.iter().all(|&a| qs.node_unsat.contains(&node_of[&a]));
+            && queries
+                .iter()
+                .all(|&a| qs.node_unsat.contains(&node_of[&a]));
         if all_dead {
             return Some((false, queries.to_vec(), Vec::new()));
         }
@@ -12273,8 +13087,17 @@ impl Ht {
             let open = g.open_disj_per_node[n];
             let lab = g.label_pos[n].clone();
             if self.stats {
-                eprintln!("KM_HT [qo-p1] qi={}/{} a={} node={} dead={} suff={} open={} lab_sz={}",
-                    qi, queries.len(), a, n, dead, suff, open, lab.len());
+                eprintln!(
+                    "KM_HT [qo-p1] qi={}/{} a={} node={} dead={} suff={} open={} lab_sz={}",
+                    qi,
+                    queries.len(),
+                    a,
+                    n,
+                    dead,
+                    suff,
+                    open,
+                    lab.len()
+                );
             }
             if dead {
                 // parked-model clash ⇒ sound for unsat.
@@ -12314,7 +13137,11 @@ impl Ht {
                 }
             }
             // known subsumers that are query concepts ⇒ recorded without a test.
-            for b in known.iter().copied().filter(|b| *b != a && qset.contains(b) && satset.contains(b)) {
+            for b in known
+                .iter()
+                .copied()
+                .filter(|b| *b != a && qset.contains(b) && satset.contains(b))
+            {
                 subs.push((a, b));
             }
             // candidates = possible(a) minus known, restricted to query concepts.
@@ -12323,7 +13150,9 @@ impl Ht {
                 .map(|s| {
                     s.iter()
                         .copied()
-                        .filter(|b| *b != a && qset.contains(b) && satset.contains(b) && !known.contains(b))
+                        .filter(|b| {
+                            *b != a && qset.contains(b) && satset.contains(b) && !known.contains(b)
+                        })
                         .collect()
                 })
                 .unwrap_or_default();
@@ -12424,7 +13253,10 @@ impl Ht {
                         satisfied = true;
                         break;
                     }
-                    let comp = CLit { neg: !lit.neg, c: lit.c };
+                    let comp = CLit {
+                        neg: !lit.neg,
+                        c: lit.c,
+                    };
                     if let Some(d) = self.ext.dep_of(n, comp) {
                         dead_dep = dep_union(&dead_dep, d);
                     } else {
@@ -12614,11 +13446,25 @@ mod tests {
         // B needs ≥3 on role r (det); A's model has only 1 successor ⇒ PRUNE.
         let a = pm_one(
             &[],
-            &[(0, PmRole { det: true, upper_at_least: 1, ..Default::default() })],
+            &[(
+                0,
+                PmRole {
+                    det: true,
+                    upper_at_least: 1,
+                    ..Default::default()
+                },
+            )],
         );
         let b = pm_one(
             &[],
-            &[(0, PmRole { det: true, lower_at_least: 3, ..Default::default() })],
+            &[(
+                0,
+                PmRole {
+                    det: true,
+                    lower_at_least: 3,
+                    ..Default::default()
+                },
+            )],
         );
         assert!(!pm_subsumer_possible(&a, 0, &b, 0));
         // role present only in B and deterministic ⇒ PRUNE.
@@ -12630,13 +13476,20 @@ mod tests {
         CLit { neg, c }
     }
     fn con(neg: bool, c: C, t: Var) -> Atom {
-        Atom::Concept { lit: CLit { neg, c }, t }
+        Atom::Concept {
+            lit: CLit { neg, c },
+            t,
+        }
     }
     fn role(r: R, s: Var, t: Var) -> Atom {
         Atom::Role { r, s, t }
     }
     fn exists(r: R, neg: bool, c: C, t: Var) -> Atom {
-        Atom::Exists { r, fil: CLit { neg, c }, t }
+        Atom::Exists {
+            r,
+            fil: CLit { neg, c },
+            t,
+        }
     }
 
     const A: C = 0;
@@ -12722,7 +13575,15 @@ mod tests {
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)])];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MK, CardDef { kind: CardKind::Min, n: 2, role: R0, filler: CLit::pos(FC) });
+        defs.insert(
+            MK,
+            CardDef {
+                kind: CardKind::Min,
+                n: 2,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
@@ -12742,7 +13603,15 @@ mod tests {
         ];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MK, CardDef { kind: CardKind::Min, n: 1, role: R0, filler: CLit::pos(FC) });
+        defs.insert(
+            MK,
+            CardDef {
+                kind: CardKind::Min,
+                n: 1,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
     }
@@ -12757,7 +13626,15 @@ mod tests {
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, MK, X)])];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MK, CardDef { kind: CardKind::Min, n: 1, role: R0, filler: CLit::pos(A) });
+        defs.insert(
+            MK,
+            CardDef {
+                kind: CardKind::Min,
+                n: 1,
+                role: R0,
+                filler: CLit::pos(A),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
@@ -12776,8 +13653,24 @@ mod tests {
         ];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MN, CardDef { kind: CardKind::Min, n: 3, role: R0, filler: CLit::pos(FC) });
-        defs.insert(MX, CardDef { kind: CardKind::Max, n: 2, role: R0, filler: CLit::pos(FC) });
+        defs.insert(
+            MN,
+            CardDef {
+                kind: CardKind::Min,
+                n: 3,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
+        defs.insert(
+            MX,
+            CardDef {
+                kind: CardKind::Max,
+                n: 2,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
     }
@@ -12799,7 +13692,15 @@ mod tests {
         ];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MX, CardDef { kind: CardKind::Max, n: 1, role: R0, filler: CLit::pos(FC) });
+        defs.insert(
+            MX,
+            CardDef {
+                kind: CardKind::Max,
+                n: 1,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
@@ -12824,7 +13725,15 @@ mod tests {
         ];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MX, CardDef { kind: CardKind::Max, n: 1, role: R0, filler: CLit::pos(FC) });
+        defs.insert(
+            MX,
+            CardDef {
+                kind: CardKind::Max,
+                n: 1,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(false));
     }
@@ -12843,7 +13752,15 @@ mod tests {
         ];
         let mut t = ht(cls);
         let mut defs = HashMap::new();
-        defs.insert(MX, CardDef { kind: CardKind::Max, n: 0, role: R0, filler: CLit::pos(FC) });
+        defs.insert(
+            MX,
+            CardDef {
+                kind: CardKind::Max,
+                n: 0,
+                role: R0,
+                filler: CLit::pos(FC),
+            },
+        );
         t.set_card_defs(defs);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
@@ -12868,7 +13785,10 @@ mod tests {
 
     #[test]
     fn clash_a_and_not_a() {
-        assert_eq!(ht(vec![]).consistent(&[CLit::pos(A), CLit::neg(A)]), Some(false));
+        assert_eq!(
+            ht(vec![]).consistent(&[CLit::pos(A), CLit::neg(A)]),
+            Some(false)
+        );
     }
     #[test]
     fn simple_sat() {
@@ -12878,7 +13798,10 @@ mod tests {
     fn existential_then_universal_clash() {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(true, B, 1)],
+            ),
         ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(false));
     }
@@ -12886,14 +13809,20 @@ mod tests {
     fn existential_universal_consistent() {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, D, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, D, 1)],
+            ),
         ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
     }
     #[test]
     fn disjunction_unsat_both_branches_clash() {
         let cls = vec![
-            Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![con(true, D, X)]),
         ];
@@ -12902,7 +13831,10 @@ mod tests {
     #[test]
     fn disjunction_one_branch_open() {
         let cls = vec![
-            Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
         ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
@@ -12911,10 +13843,16 @@ mod tests {
     fn unit_propagation_via_dead_disjunct() {
         // A ⊑ B ⊔ D, A ⊑ ¬B ⇒ D forced; {A,¬D} unsat. Exercises scan unit-prop.
         let cls = vec![
-            Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
         ];
-        assert_eq!(ht(cls).consistent(&[CLit::pos(A), CLit::neg(D)]), Some(false));
+        assert_eq!(
+            ht(cls).consistent(&[CLit::pos(A), CLit::neg(D)]),
+            Some(false)
+        );
     }
     #[test]
     fn horn_chain_delta() {
@@ -12923,7 +13861,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![con(false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
         ];
-        assert_eq!(ht(cls).consistent(&[CLit::pos(A), CLit::neg(D)]), Some(false));
+        assert_eq!(
+            ht(cls).consistent(&[CLit::pos(A), CLit::neg(D)]),
+            Some(false)
+        );
     }
     #[test]
     fn forall_propagation_delta_both_triggers() {
@@ -12933,7 +13874,10 @@ mod tests {
         const C2: C = 2;
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, C2, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, C2, 1)],
+            ),
             Clause::new(vec![con(false, C2, X)], vec![con(true, B, X)]),
         ];
         // successor is B (from ∃) and C2 (from ∀), C2→¬B clashes ⇒ A unsat.
@@ -12941,7 +13885,10 @@ mod tests {
     }
     #[test]
     fn infinite_chain_blocks_and_terminates() {
-        let cls = vec![Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)])];
+        let cls = vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![exists(R0, false, A, X)],
+        )];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
     }
     #[test]
@@ -12986,14 +13933,17 @@ mod tests {
         // C, which clash ⇒ {A} unsat. Verifies the Eq-head node-merge primitive
         // (copies the victim's label onto the survivor, with the merge dep).
         const C2: C = 2; // C, disjoint from B
-        // Harmless to leave set for the test binary: only Eq-head clauses consult
-        // `number`, and no other test uses Eq heads.
+                         // Harmless to leave set for the test binary: only Eq-head clauses consult
+                         // `number`, and no other test uses Eq heads.
         std::env::set_var("KM_HT_NUMBER", "1");
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
             // functional r: r(x,y1) ∧ r(x,y2) → y1 = y2
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
             // B ⊓ C ⊑ ⊥
             Clause::new(vec![con(false, B, X), con(false, C2, X)], vec![]),
         ];
@@ -13012,7 +13962,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
             // r functional
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
             // inverse bridging r <-> s
             Clause::new(vec![role(R0, X, 1)], vec![role(S, 1, X)]),
             Clause::new(vec![role(S, X, 1)], vec![role(R0, 1, X)]),
@@ -13030,7 +13983,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
         ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
     }
@@ -13050,11 +14006,18 @@ mod tests {
         const G2: C = 15;
         let atmost2 = Clause::new(
             vec![
-                role(R0, X, 1), con(false, F, 1),
-                role(R0, X, 2), con(false, F, 2),
-                role(R0, X, 3), con(false, F, 3),
+                role(R0, X, 1),
+                con(false, F, 1),
+                role(R0, X, 2),
+                con(false, F, 2),
+                role(R0, X, 3),
+                con(false, F, 3),
             ],
-            vec![Atom::Eq { s: 1, t: 2 }, Atom::Eq { s: 1, t: 3 }, Atom::Eq { s: 2, t: 3 }],
+            vec![
+                Atom::Eq { s: 1, t: 2 },
+                Atom::Eq { s: 1, t: 3 },
+                Atom::Eq { s: 2, t: 3 },
+            ],
         );
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
@@ -13088,11 +14051,18 @@ mod tests {
         const G2: C = 15;
         let atmost2 = Clause::new(
             vec![
-                role(R0, X, 1), con(false, F, 1),
-                role(R0, X, 2), con(false, F, 2),
-                role(R0, X, 3), con(false, F, 3),
+                role(R0, X, 1),
+                con(false, F, 1),
+                role(R0, X, 2),
+                con(false, F, 2),
+                role(R0, X, 3),
+                con(false, F, 3),
             ],
-            vec![Atom::Eq { s: 1, t: 2 }, Atom::Eq { s: 1, t: 3 }, Atom::Eq { s: 2, t: 3 }],
+            vec![
+                Atom::Eq { s: 1, t: 2 },
+                Atom::Eq { s: 1, t: 3 },
+                Atom::Eq { s: 2, t: 3 },
+            ],
         );
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, G0, X)]),
@@ -13129,7 +14099,12 @@ mod tests {
         const G0: C = 13;
         const G1: C = 14;
         let recog = Clause::new(
-            vec![role(R0, X, 1), con(false, F, 1), role(R0, X, 2), con(false, F, 2)],
+            vec![
+                role(R0, X, 1),
+                con(false, F, 1),
+                role(R0, X, 2),
+                con(false, F, 2),
+            ],
             vec![con(false, Q, X), Atom::Eq { s: 1, t: 2 }],
         );
         let cls = vec![
@@ -13162,7 +14137,12 @@ mod tests {
         const G0: C = 14;
         const G1: C = 15;
         let recog = Clause::new(
-            vec![role(R0, X, 1), con(false, F, 1), role(R0, X, 2), con(false, F, 2)],
+            vec![
+                role(R0, X, 1),
+                con(false, F, 1),
+                role(R0, X, 2),
+                con(false, F, 2),
+            ],
             vec![con(false, Q, X), Atom::Eq { s: 1, t: 2 }],
         );
         let cls = vec![
@@ -13193,7 +14173,12 @@ mod tests {
         const G0: C = 14;
         const G1: C = 15;
         let recog = Clause::new(
-            vec![role(R0, X, 1), con(false, F, 1), role(R0, X, 2), con(false, F, 2)],
+            vec![
+                role(R0, X, 1),
+                con(false, F, 1),
+                role(R0, X, 2),
+                con(false, F, 2),
+            ],
             vec![con(false, Q, X), Atom::Eq { s: 1, t: 2 }],
         );
         let cls = vec![
@@ -13258,7 +14243,10 @@ mod tests {
     }
     #[test]
     fn anywhere_blocking_also_terminates() {
-        let cls = vec![Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)])];
+        let cls = vec![Clause::new(
+            vec![con(false, A, X)],
+            vec![exists(R0, false, A, X)],
+        )];
         let mut t = ht(cls);
         t.set_anywhere(true);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
@@ -13269,12 +14257,21 @@ mod tests {
         const Q: C = 7;
         const R_: C = 8;
         let cls = vec![
-            Clause::new(vec![con(false, P, X)], vec![con(false, Q, X), con(false, R_, X)]),
-            Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+            Clause::new(
+                vec![con(false, P, X)],
+                vec![con(false, Q, X), con(false, R_, X)],
+            ),
+            Clause::new(
+                vec![con(false, A, X)],
+                vec![con(false, B, X), con(false, D, X)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![con(true, D, X)]),
         ];
-        assert_eq!(ht(cls).consistent(&[CLit::pos(P), CLit::pos(A)]), Some(false));
+        assert_eq!(
+            ht(cls).consistent(&[CLit::pos(P), CLit::pos(A)]),
+            Some(false)
+        );
     }
     #[test]
     fn global_axiom_empty_body() {
@@ -13296,14 +14293,20 @@ mod tests {
         // verdict under every ord/pick/restart setting (search is exhaustive).
         let unsat = || {
             vec![
-                Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+                Clause::new(
+                    vec![con(false, A, X)],
+                    vec![con(false, B, X), con(false, D, X)],
+                ),
                 Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
                 Clause::new(vec![con(false, A, X)], vec![con(true, D, X)]),
             ]
         };
         let open = || {
             vec![
-                Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+                Clause::new(
+                    vec![con(false, A, X)],
+                    vec![con(false, B, X), con(false, D, X)],
+                ),
                 Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
             ]
         };
@@ -13354,7 +14357,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![role(R0, X, 1)], vec![role(S, X, 1)]),
-            Clause::new(vec![con(false, A, X), role(S, X, 1)], vec![con(false, E, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(S, X, 1)],
+                vec![con(false, E, 1)],
+            ),
         ];
         assert_eq!(ht(cls).consistent(&[CLit::pos(A)]), Some(true));
     }
@@ -13374,7 +14380,10 @@ mod tests {
             (vec![], vec![CLit::pos(A)], Some(true)),
             (
                 vec![
-                    Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+                    Clause::new(
+                        vec![con(false, A, X)],
+                        vec![con(false, B, X), con(false, D, X)],
+                    ),
                     Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
                     Clause::new(vec![con(false, A, X)], vec![con(true, D, X)]),
                 ],
@@ -13383,7 +14392,10 @@ mod tests {
             ),
             (
                 vec![
-                    Clause::new(vec![con(false, A, X)], vec![con(false, B, X), con(false, D, X)]),
+                    Clause::new(
+                        vec![con(false, A, X)],
+                        vec![con(false, B, X), con(false, D, X)],
+                    ),
                     Clause::new(vec![con(false, A, X)], vec![con(true, B, X)]),
                 ],
                 vec![CLit::pos(A), CLit::neg(D)],
@@ -13392,13 +14404,19 @@ mod tests {
             (
                 vec![
                     Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-                    Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+                    Clause::new(
+                        vec![con(false, A, X), role(R0, X, 1)],
+                        vec![con(true, B, 1)],
+                    ),
                 ],
                 vec![CLit::pos(A)],
                 Some(false),
             ),
             (
-                vec![Clause::new(vec![con(false, A, X)], vec![exists(R0, false, A, X)])],
+                vec![Clause::new(
+                    vec![con(false, A, X)],
+                    vec![exists(R0, false, A, X)],
+                )],
                 vec![CLit::pos(A)],
                 Some(true),
             ),
@@ -13462,7 +14480,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, G, X)]),
             Clause::new(vec![role(R0, X, y), role(R0, y, z)], vec![role(R0, X, z)]),
-            Clause::new(vec![role(R0, X, z), con(false, G, z)], vec![con(false, H, X)]),
+            Clause::new(
+                vec![role(R0, X, z), con(false, G, z)],
+                vec![con(false, H, X)],
+            ),
         ];
         let recs = mk_recs(&cls);
         let mut qs = QoSat::new(&recs);
@@ -13489,7 +14510,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
-            Clause::new(vec![con(false, D, y), role(R0, X, y)], vec![con(false, E, X)]),
+            Clause::new(
+                vec![con(false, D, y), role(R0, X, y)],
+                vec![con(false, E, X)],
+            ),
         ];
         let recs = mk_recs(&cls);
         // WITH complete_roles: the inverse consequence E reaches node(A).
@@ -13506,7 +14530,10 @@ mod tests {
         // but not E — guards must propagate only along real edges, not spuriously.
         let nb = qs.concept_node[&CLit::pos(B)];
         assert!(g.label_pos[nb].contains(&D));
-        assert!(!g.label_pos[nb].contains(&E), "E must not appear without an r-edge");
+        assert!(
+            !g.label_pos[nb].contains(&E),
+            "E must not appear without an r-edge"
+        );
     }
 
     #[test]
@@ -13523,7 +14550,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A2, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![con(false, D, X)]),
-            Clause::new(vec![con(false, D, y), role(R0, X, y)], vec![con(false, E, X)]),
+            Clause::new(
+                vec![con(false, D, y), role(R0, X, y)],
+                vec![con(false, E, X)],
+            ),
         ];
         let recs = mk_recs(&cls);
         let mut qs = QoSat::new(&recs);
@@ -13533,8 +14563,14 @@ mod tests {
         let na = qs.concept_node[&CLit::pos(A)];
         let na2 = qs.concept_node[&CLit::pos(A2)];
         let nb = qs.concept_node[&CLit::pos(B)];
-        assert!(g.label_pos[na].contains(&E), "A1 must get E via prop broadcast");
-        assert!(g.label_pos[na2].contains(&E), "A2 must get E via prop broadcast");
+        assert!(
+            g.label_pos[na].contains(&E),
+            "A1 must get E via prop broadcast"
+        );
+        assert!(
+            g.label_pos[na2].contains(&E),
+            "A2 must get E via prop broadcast"
+        );
         assert!(!g.label_pos[nb].contains(&E));
     }
 
@@ -13555,18 +14591,30 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
             // R(X,y) ⊓ D(X) → E(y): guard D on the role SOURCE, head E on TARGET.
-            Clause::new(vec![con(false, D, X), role(R0, X, y)], vec![con(false, E, y)]),
+            Clause::new(
+                vec![con(false, D, X), role(R0, X, y)],
+                vec![con(false, E, y)],
+            ),
         ];
         let recs = mk_recs(&cls);
         let mut qs = QoSat::new_opts(&recs, false, true); // fprop_on = true
         qs.complete_roles = true;
         let g = qs.saturate_global(&[A, B, D, E]);
         assert!(!g.unsupported);
-        assert!(!qs.qo_insufficient, "fprop capture must route the head-on-target clause away from apply_head");
+        assert!(
+            !qs.qo_insufficient,
+            "fprop capture must route the head-on-target clause away from apply_head"
+        );
         let na = qs.concept_node[&CLit::pos(A)];
         let nb = qs.concept_node[&CLit::pos(B)];
-        assert!(g.label_pos[nb].contains(&E), "B (A's r-successor) must get E via fprop forward broadcast");
-        assert!(!g.label_pos[na].contains(&E), "A (the source) must NOT get E");
+        assert!(
+            g.label_pos[nb].contains(&E),
+            "B (A's r-successor) must get E via fprop forward broadcast"
+        );
+        assert!(
+            !g.label_pos[na].contains(&E),
+            "A (the source) must NOT get E"
+        );
     }
 
     #[test]
@@ -13592,8 +14640,14 @@ mod tests {
             Clause::new(vec![con(false, A2, X)], vec![exists(R1, false, B, X)]),
             Clause::new(vec![role(R0, X, y)], vec![con(false, CR, y)]),
             Clause::new(vec![role(R1, X, y)], vec![con(false, CS, y)]),
-            Clause::new(vec![role(R0, X, y), con(false, CS, y)], vec![con(false, SPUR, X)]),
-            Clause::new(vec![role(R0, X, y), con(false, CR, y)], vec![con(false, GOOD, X)]),
+            Clause::new(
+                vec![role(R0, X, y), con(false, CS, y)],
+                vec![con(false, SPUR, X)],
+            ),
+            Clause::new(
+                vec![role(R0, X, y), con(false, CR, y)],
+                vec![con(false, GOOD, X)],
+            ),
         ];
         let mut ht = ht(cls);
         let (cons, _unsat, subs) = ht
@@ -13637,11 +14691,17 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![con(false, GUARD, X)]),
-            Clause::new(vec![con(false, GUARD, X), role(R0, X, y)], vec![con(false, E, X)]),
+            Clause::new(
+                vec![con(false, GUARD, X), role(R0, X, y)],
+                vec![con(false, E, X)],
+            ),
         ];
         let mut ht = ht(cls);
         let (_, _, subs) = ht.qo_classify_perconcept(&[A, B, GUARD, E]).unwrap();
-        assert!(subs.contains(&(A, E)), "A ⊑ E must be derived (guard-after-edge)");
+        assert!(
+            subs.contains(&(A, E)),
+            "A ⊑ E must be derived (guard-after-edge)"
+        );
         assert!(subs.contains(&(A, GUARD)));
     }
 
@@ -13657,11 +14717,17 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, G, X)]),
             Clause::new(vec![role(R0, X, y), role(R0, y, z)], vec![role(R0, X, z)]),
-            Clause::new(vec![role(R0, X, z), con(false, G, z)], vec![con(false, H, X)]),
+            Clause::new(
+                vec![role(R0, X, z), con(false, G, z)],
+                vec![con(false, H, X)],
+            ),
         ];
         let mut ht = ht(cls);
         let (_, _, subs) = ht.qo_classify_perconcept(&[A, H]).unwrap();
-        assert!(subs.contains(&(A, H)), "A ⊑ H via transitive r-chain (per-concept)");
+        assert!(
+            subs.contains(&(A, H)),
+            "A ⊑ H via transitive r-chain (per-concept)"
+        );
     }
 
     #[test]
@@ -13689,7 +14755,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C1, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
-            Clause::new(vec![role(R0, X, y), role(R0, X, z)], vec![Atom::Eq { s: y, t: z }]),
+            Clause::new(
+                vec![role(R0, X, y), role(R0, X, z)],
+                vec![Atom::Eq { s: y, t: z }],
+            ),
         ];
         let mut ht = ht(cls);
         assert_eq!(ht.qo_classify_perconcept(&[A, C1, C2]), None);
@@ -13714,7 +14783,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R1, false, B, X)]),
             Clause::new(vec![role(R1, X, y)], vec![role(R2, y, X)]), // inverse bridge
             Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
-            Clause::new(vec![role(R2, X, y), con(false, D, y)], vec![con(false, E, X)]), // ∃r2.D ⊑ E
+            Clause::new(
+                vec![role(R2, X, y), con(false, D, y)],
+                vec![con(false, E, X)],
+            ), // ∃r2.D ⊑ E
             Clause::new(vec![con(false, B, X)], vec![con(false, E, X)]), // B ⊑ E (forward)
         ];
         let mut ht = ht(cls);
@@ -13722,7 +14794,10 @@ mod tests {
             .qo_classify_kpset(&[A, B, D, E])
             .expect("inert inverse must certify (Some)");
         assert!(cons);
-        assert!(subs.contains(&(B, E)), "B ⊑ E is real (forward) and must be kept");
+        assert!(
+            subs.contains(&(B, E)),
+            "B ⊑ E is real (forward) and must be kept"
+        );
         assert!(subs.contains(&(A, D)), "A ⊑ D (forward) must be kept");
         assert!(
             !subs.contains(&(A, E)),
@@ -13745,7 +14820,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R1, false, B, X)]),
             Clause::new(vec![role(R1, X, y)], vec![role(R2, y, X)]), // inverse bridge
             Clause::new(vec![con(false, A, X)], vec![con(false, D, X)]),
-            Clause::new(vec![role(R2, X, y), con(false, D, y)], vec![con(false, E, X)]), // ∃r2.D ⊑ E
+            Clause::new(
+                vec![role(R2, X, y), con(false, D, y)],
+                vec![con(false, E, X)],
+            ), // ∃r2.D ⊑ E
         ];
         let mut ht = ht(cls);
         assert!(
@@ -13771,7 +14849,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]), // R1 = R0 inverse
-            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, E, y)]), // B ⊑ ∀R1.E
+            Clause::new(
+                vec![con(false, B, X), role(R1, X, y)],
+                vec![con(false, E, y)],
+            ), // B ⊑ ∀R1.E
         ];
         let h = ht(cls);
         // CHECK-only (no kpwrite): the self-node write is deferred ⇒ insufficient.
@@ -13791,7 +14872,10 @@ mod tests {
         qk.sat_mode = true;
         qk.kpwrite = true;
         let g = qk.saturate_global(&[A, B, E]);
-        assert!(!qk.kp_insufficient, "KPWRITE must NOT defer: the write is sound");
+        assert!(
+            !qk.kp_insufficient,
+            "KPWRITE must NOT defer: the write is sound"
+        );
         assert!(
             g.label_pos[0].contains(&E),
             "A ⊑ E must be derived by the sound backward write (node 0 = query A)"
@@ -13814,18 +14898,34 @@ mod tests {
         const CC: C = 4;
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, CC, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, CC, 1)],
+            ),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![con(false, B, X), role(R0, X, 1)], vec![con(true, CC, 1)]),
+            Clause::new(
+                vec![con(false, B, X), role(R0, X, 1)],
+                vec![con(true, CC, 1)],
+            ),
         ];
         // Ground truth: each concept is consistent on its own (sound full tableau).
-        assert_eq!(ht(cls.clone()).consistent(&[CLit::pos(A)]), Some(true), "A alone is SAT");
-        assert_eq!(ht(cls.clone()).consistent(&[CLit::pos(B)]), Some(true), "B alone is SAT");
+        assert_eq!(
+            ht(cls.clone()).consistent(&[CLit::pos(A)]),
+            Some(true),
+            "A alone is SAT"
+        );
+        assert_eq!(
+            ht(cls.clone()).consistent(&[CLit::pos(B)]),
+            Some(true),
+            "B alone is SAT"
+        );
         // The certify gate must not claim either unsat: it either DEFERS (None today)
         // or, post port #2, certifies with neither A nor B in the unsat set.
         if let Some((_cons, unsat, _subs)) = ht(cls).qo_classify_kpset(&[A, B, D, CC]) {
-            assert!(!unsat.contains(&A) && !unsat.contains(&B),
-                "shared-filler ∀-conflict must NOT spuriously unsat A or B");
+            assert!(
+                !unsat.contains(&A) && !unsat.contains(&B),
+                "shared-filler ∀-conflict must NOT spuriously unsat A or B"
+            );
         }
     }
 
@@ -13839,19 +14939,34 @@ mod tests {
         const CC: C = 4;
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(false, CC, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(false, CC, 1)],
+            ),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![con(false, B, X), role(R0, X, 1)], vec![con(true, CC, 1)]),
+            Clause::new(
+                vec![con(false, B, X), role(R0, X, 1)],
+                vec![con(true, CC, 1)],
+            ),
         ];
         let h = ht(cls);
         let mut qs = QoSat::new_opts(&h.clauses, true, false); // forward-only (no inverse)
         qs.complete_roles = true;
         qs.split_mode = true;
         let g = qs.saturate_global(&[A, B, D, CC]);
-        assert!(!qs.qo_insufficient, "split must NOT defer (copy-on-conflict avoids critical-ALL)");
+        assert!(
+            !qs.qo_insufficient,
+            "split must NOT defer (copy-on-conflict avoids critical-ALL)"
+        );
         assert!(!qs.unsupported, "split pass must complete");
-        assert!(!g.node_unsat.contains(&0), "A (node 0) must not be spuriously unsat");
-        assert!(!g.node_unsat.contains(&1), "B (node 1) must not be spuriously unsat");
+        assert!(
+            !g.node_unsat.contains(&0),
+            "A (node 0) must not be spuriously unsat"
+        );
+        assert!(
+            !g.node_unsat.contains(&1),
+            "B (node 1) must not be spuriously unsat"
+        );
     }
 
     #[test]
@@ -13865,8 +14980,14 @@ mod tests {
         let y: Var = 1;
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, y)], vec![con(false, CC, y)]),
-            Clause::new(vec![role(R0, X, y), con(false, CC, y)], vec![con(false, F, X)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, y)],
+                vec![con(false, CC, y)],
+            ),
+            Clause::new(
+                vec![role(R0, X, y), con(false, CC, y)],
+                vec![con(false, F, X)],
+            ),
         ];
         let h = ht(cls);
         let mut qs = QoSat::new_opts(&h.clauses, true, false);
@@ -13875,7 +14996,10 @@ mod tests {
         let g = qs.saturate_global(&[A, D, CC, F]);
         assert!(!qs.qo_insufficient, "no critical-ALL deferral expected");
         // node 0 = A; the backward F(x) write lands on it.
-        assert!(g.label_pos[0].contains(&F), "A ⊑ F must survive the split redirect");
+        assert!(
+            g.label_pos[0].contains(&F),
+            "A ⊑ F must survive the split redirect"
+        );
     }
 
     #[test]
@@ -13887,15 +15011,24 @@ mod tests {
         // insufficient (this is the spurious 98M-firing over-defer on 9724).
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
         ];
         let h = ht(cls);
         let mut qs = QoSat::new_opts(&h.clauses, true, false);
         qs.complete_roles = true;
         qs.card_defer = true;
         let _ = qs.saturate_global(&[A, D]);
-        assert!(!qs.qo_insufficient, "self-equality merge must not mark insufficient");
-        assert!(!qs.kp_insufficient, "self-equality merge is not a real cardinality obligation");
+        assert!(
+            !qs.qo_insufficient,
+            "self-equality merge must not mark insufficient"
+        );
+        assert!(
+            !qs.kp_insufficient,
+            "self-equality merge is not a real cardinality obligation"
+        );
     }
 
     #[test]
@@ -13907,14 +15040,20 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
         ];
         let h = ht(cls);
         let mut qs = QoSat::new_opts(&h.clauses, true, false);
         qs.complete_roles = true;
         qs.card_defer = true;
         let _ = qs.saturate_global(&[A, B, C2]);
-        assert!(qs.kp_insufficient, "a distinct-successor merge must still defer");
+        assert!(
+            qs.kp_insufficient,
+            "a distinct-successor merge must still defer"
+        );
     }
 
     #[test]
@@ -13925,7 +15064,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
         ];
         let h = ht(cls);
         let mut qs = QoSat::new_opts(&h.clauses, true, false);
@@ -13933,7 +15075,10 @@ mod tests {
         qs.sat_mode = true;
         qs.card_merge = true;
         let g = qs.saturate_global(&[A, B, D]);
-        assert!(!qs.qo_insufficient && !qs.kp_insufficient, "a consistent merge must certify, not defer");
+        assert!(
+            !qs.qo_insufficient && !qs.kp_insufficient,
+            "a consistent merge must certify, not defer"
+        );
         assert!(!g.node_unsat.contains(&0), "A is consistent");
     }
 
@@ -13945,7 +15090,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, C2, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
             Clause::new(vec![con(false, B, X), con(false, C2, X)], vec![]),
         ];
         let h = ht(cls);
@@ -13954,7 +15102,10 @@ mod tests {
         qs.sat_mode = true;
         qs.card_merge = true;
         let _ = qs.saturate_global(&[A, B, C2]);
-        assert!(qs.kp_insufficient, "an inconsistent forced merge must defer the anchor");
+        assert!(
+            qs.kp_insufficient,
+            "an inconsistent forced merge must defer the anchor"
+        );
     }
 
     #[test]
@@ -13970,8 +15121,14 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
             Clause::new(vec![con(false, P2, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
-            Clause::new(vec![role(R0, X, 1), con(false, D, 1)], vec![con(false, G, X)]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
+            Clause::new(
+                vec![role(R0, X, 1), con(false, D, 1)],
+                vec![con(false, G, X)],
+            ),
         ];
         let h = ht(cls);
         let mut qs = QoSat::new_opts(&h.clauses, true, false);
@@ -13979,8 +15136,14 @@ mod tests {
         qs.sat_mode = true;
         qs.card_merge = true;
         let g = qs.saturate_global(&[A, P2, B, D, G]);
-        assert!(g.label_pos[0].contains(&G), "A ⊑ G (its merged successor carries D)");
-        assert!(!g.label_pos[1].contains(&G), "P2 must NOT get G — the merge must not pollute the shared filler");
+        assert!(
+            g.label_pos[0].contains(&G),
+            "A ⊑ G (its merged successor carries D)"
+        );
+        assert!(
+            !g.label_pos[1].contains(&G),
+            "P2 must NOT get G — the merge must not pollute the shared filler"
+        );
     }
 
     // ---- block_mode 4: sound SHIQ double-blocking + inverse propagation ----
@@ -14016,7 +15179,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
-            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(
+                vec![con(false, B, X), role(R1, X, y)],
+                vec![con(false, CC, y)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, CC, X)]),
         ];
         let mut ht = ht(cls);
@@ -14036,7 +15202,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
-            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(
+                vec![con(false, B, X), role(R1, X, y)],
+                vec![con(false, CC, y)],
+            ),
         ];
         let mut ht = ht(cls);
         ht.block_mode = 4;
@@ -14049,7 +15218,10 @@ mod tests {
         // pure no-inverse case. A ⊑ ∃R0.B, A ⊓ R0 ⊑ ¬B (∀R0.¬B) ⇒ UNSAT.
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(true, B, 1)],
+            ),
         ];
         let mut ht = ht(cls);
         ht.block_mode = 4;
@@ -14073,7 +15245,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
             // R0 functional: the two successors of A merge
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
             // merged {B,D} node spawns an A-successor ⇒ infinite cycle
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, A, X)]),
             // inverse bridge
@@ -14097,7 +15272,10 @@ mod tests {
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, D, X)]),
-            Clause::new(vec![role(R0, X, 1), role(R0, X, 2)], vec![Atom::Eq { s: 1, t: 2 }]),
+            Clause::new(
+                vec![role(R0, X, 1), role(R0, X, 2)],
+                vec![Atom::Eq { s: 1, t: 2 }],
+            ),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, A, X)]),
             Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
             // B ⊓ D ⊑ ⊥
@@ -14138,7 +15316,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
-            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(
+                vec![con(false, B, X), role(R1, X, y)],
+                vec![con(false, CC, y)],
+            ),
         ];
         let mut ht = ht(cls);
         ht.block_mode = 5;
@@ -14156,7 +15337,10 @@ mod tests {
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
-            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(
+                vec![con(false, B, X), role(R1, X, y)],
+                vec![con(false, CC, y)],
+            ),
             Clause::new(vec![con(false, A, X)], vec![con(true, CC, X)]),
         ];
         let mut ht = ht(cls);
@@ -14170,7 +15354,10 @@ mod tests {
         // B2a vacuous since no w→v edge).
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
-            Clause::new(vec![con(false, A, X), role(R0, X, 1)], vec![con(true, B, 1)]),
+            Clause::new(
+                vec![con(false, A, X), role(R0, X, 1)],
+                vec![con(true, B, 1)],
+            ),
         ];
         let mut ht = ht(cls);
         ht.block_mode = 5;
@@ -14186,7 +15373,10 @@ mod tests {
         let y: Var = 1;
         let cls = vec![
             // ∀: B ∧ R1(x,y) → CC(y)  ⇒ indexed (B,R1)->[CC]
-            Clause::new(vec![con(false, B, X), role(R1, X, y)], vec![con(false, CC, y)]),
+            Clause::new(
+                vec![con(false, B, X), role(R1, X, y)],
+                vec![con(false, CC, y)],
+            ),
             // ∃ head: not a universal
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             // plain bridge (role head): not a concept-universal
@@ -14226,7 +15416,10 @@ mod tests {
         let cls = vec![Clause::new(vec![con(false, A, X)], vec![con(false, B, X)])];
         let mut ht = ht(cls);
         let m = ht.model_root_pos(A).expect("A is satisfiable");
-        assert!(m.contains(&B), "B forced in A's model (A⊑B) ⇒ NOT refutable");
+        assert!(
+            m.contains(&B),
+            "B forced in A's model (A⊑B) ⇒ NOT refutable"
+        );
         assert!(!m.contains(&CC), "CC absent in A's model ⇒ refutes A⊑CC");
     }
 }

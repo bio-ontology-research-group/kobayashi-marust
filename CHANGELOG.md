@@ -4,6 +4,48 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### HT: first-class cardinality route default-on (+3 ORE) and functional-role tagging (+1, gated)
+
+The Konclude-port first-class `≥n`/`≤n` number rules (`KM_HT_CARD`) and the
+propagation-based `≤n` recognition (`KM_HT_CARD_RECOG`, with SHIQ non-shared ∀
+handling and mode-5 blocking) are now DEFAULT-ON; opt out with `KM_NO_HT_CARD` /
+`KM_NO_HT_CARD_RECOG`. Validation: full 584-ont km-only IBEX panel with the
+flags (job 48067625) — 574 ok, 573 gold-MATCH, 1 DIFF (10702, pre-existing
+nominal incompleteness), 0 MATCH-to-DIFF regressions; recovers **ore_ont_1603
+(21.7 s), 9540 (20.8 s), 7499 (82.5 s)**, all previously 240 s timeouts. A
+default-config confirmation panel (48076591) reproduces the result with no env
+set. A 156-pair flag-portfolio sweep (48066078: 13 timeout onts x 12 configs)
+established these are the only flag-recoverable timeouts besides the contested
+SWRL pair (15516/2669 via `KM_HT_RULES`, correct-but-gold-wrong; kept opt-in
+since enabling it also disables complementary-definer elimination globally).
+
+`KM_HT_CARD_FN` (new, opt-in): the frontend additionally tags
+`FunctionalObjectProperty(R)` as a first-class global `⊤ ⊑ ≤1 R.⊤` — a fresh
+universal marker concept asserted as a ⊤-fact with a max-CardMeta whose marker
+and filler are that concept, so the HT `≤n` merge folds functionality instead
+of branching over the raw `R(x,y0) ∧ R(x,y1) → y0 = y1` Eq clause (which is
+kept: the CB engine consumes it, and it is redundant-but-sound on the HT).
+**ore_ont_541: timeout in every prior config → 21 s, gold-exact.** Gated
+opt-in pending its own corpus panel: the tagging makes every functional-role
+ontology card-routable, which needs regression validation before a default
+flip.
+
+Also: `transitive_close_subs` now closes the confirmed subsumption relation at
+the HT worker's serialization boundary (both the Ht and legacy-Tableau paths).
+Phase 2 tests only candidates from one captured model root label plus a
+told-clause closure, so an inferred (domain/range-derived, non-told) subsumer
+absent from that model could yield `A ⊑ B` and `B ⊑ C` without the entailed
+`A ⊑ C`. Closing is unconditionally sound (subsumption is transitive; the pass
+only adds entailed pairs). Benchmark-inert (the ORE harness canonicalisation
+already closes) but makes the raw JSON output correct on its own.
+
+Diagnosis note: ore_ont_7499's apparent 3297-pair incompleteness against gold
+is a localname-collision artifact, not a reasoning gap — the ontology carries
+one axiom in the `purl.org/obo/owl/CHEBI#` namespace while the BFO upper
+hierarchy lives in `purl.obolibrary.org/obo/CHEBI_...` with no bridging axiom;
+KM correctly keeps the namespaces distinct and matches gold after localname
+canonicalisation (same artifact class as ore_ont_12698's residual 18).
+
 ### HT/QoSat: QO hybrid router (`KM_HT_QO_ROUTER`) — sound certify-or-defer race arm
 
 Wires the validated hybrid certify path into production as a structurally-routed,

@@ -282,7 +282,11 @@ fn transitive_chain_compose_impl(tbox: &[DLClause]) -> Vec<DLClause> {
         if c_on_y.is_empty() || c.head.is_empty() {
             continue;
         }
-        if !c.head.iter().all(|h| matches!(h, Atom::Concept(_, t) if *t == x)) {
+        if !c
+            .head
+            .iter()
+            .all(|h| matches!(h, Atom::Concept(_, t) if *t == x))
+        {
             continue;
         }
         let key = (rrole.to_string(), c_on_y.clone());
@@ -350,7 +354,9 @@ pub fn chain_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     // by_t: T -> [(R,S)]
     let mut by_t: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for (r, s, t) in &info.chains {
-        by_t.entry(t.clone()).or_default().push((r.clone(), s.clone()));
+        by_t.entry(t.clone())
+            .or_default()
+            .push((r.clone(), s.clone()));
     }
     let x = var_x();
     let mut extra = Vec::new();
@@ -462,10 +468,7 @@ pub fn prune_dead_inverse_bridges(tbox: &mut Vec<DLClause>, pairs: &[(String, St
         }
         match (&c.body[0], &c.head[0]) {
             (Atom::Role(r, rs, rt), Atom::Role(s, ss, st)) => {
-                rs == st
-                    && rt == ss
-                    && rs != rt
-                    && bridge_edges.contains(&(r.as_str(), s.as_str()))
+                rs == st && rt == ss && rs != rt && bridge_edges.contains(&(r.as_str(), s.as_str()))
             }
             _ => false,
         }
@@ -603,9 +606,7 @@ pub fn prune_inert_role_bridges(
             return true;
         }
         match (&c.body[0], &c.head[0]) {
-            (Atom::Role(r, rs, rt), Atom::Role(s, ss, st))
-                if rs == st && rt == ss && rs != rt =>
-            {
+            (Atom::Role(r, rs, rt), Atom::Role(s, ss, st)) if rs == st && rt == ss && rs != rt => {
                 let drop = (r == s && sym_inert.contains(r.as_str()))
                     || inv_inert.contains(&(r.as_str(), s.as_str()));
                 !drop
@@ -801,16 +802,23 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     let mut two_step: HashMap<String, Vec<(String, String)>> = HashMap::new();
     for (r1, r2, u) in &info.chains {
         for sup in super_close(u) {
-            two_step.entry(sup).or_default().push((r1.clone(), r2.clone()));
+            two_step
+                .entry(sup)
+                .or_default()
+                .push((r1.clone(), r2.clone()));
         }
     }
     for r in &trans {
-        two_step.entry(r.clone()).or_default().push((r.clone(), r.clone()));
+        two_step
+            .entry(r.clone())
+            .or_default()
+            .push((r.clone(), r.clone()));
     }
 
     let mut by_rf: HashMap<(String, String), HashSet<String>> = HashMap::new();
     for (a, r, c) in &intros {
-        by_rf.entry((r.clone(), c.clone()))
+        by_rf
+            .entry((r.clone(), c.clone()))
             .or_default()
             .insert(a.clone());
     }
@@ -852,11 +860,8 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
         }
         for (s, sups) in &sub_super {
             for r in sups {
-                let s_cs: Vec<(String, String)> = snapshot
-                    .keys()
-                    .filter(|(rr, _)| rr == s)
-                    .cloned()
-                    .collect();
+                let s_cs: Vec<(String, String)> =
+                    snapshot.keys().filter(|(rr, _)| rr == s).cloned().collect();
                 for (_ss, c) in s_cs {
                     let as_ = match snapshot.get(&(s.clone(), c.clone())) {
                         Some(s2) => s2.iter().cloned().collect::<Vec<_>>(),
@@ -909,7 +914,6 @@ pub fn role_automaton_reachability_clauses(tbox: &[DLClause]) -> Vec<DLClause> {
     }
     out
 }
-
 
 /// Port of `_is_chain_axiom`.
 fn is_chain_axiom(c: &DLClause) -> bool {
@@ -1021,7 +1025,9 @@ pub fn domain_consumer_chain_clauses(info: &ChainInfo, domain_range: &[DLClause]
     let trans: HashSet<&str> = info.trans.iter().map(|s| s.as_str()).collect();
     let mut by_t: HashMap<&str, Vec<(&str, &str)>> = HashMap::new();
     for (r, s, t) in &info.chains {
-        by_t.entry(t.as_str()).or_default().push((r.as_str(), s.as_str()));
+        by_t.entry(t.as_str())
+            .or_default()
+            .push((r.as_str(), s.as_str()));
     }
     let mut extra = Vec::new();
     let mut seen_s: HashSet<String> = HashSet::new();
@@ -1106,8 +1112,8 @@ pub fn nominal_defining_clauses(hooks: &GroundHooks) -> Vec<DLClause> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::clauses::constraint;
+    use super::*;
 
     fn role(r: &str, s: Term, t: Term) -> Atom {
         Atom::Role(r.to_string(), s, t)
@@ -1133,14 +1139,23 @@ mod tests {
         let con = |n: &str, t: &Term| Atom::Concept(n.to_string(), t.clone());
         let tbox = vec![
             clause(
-                [role("T", x.clone(), y.clone()), role("T", y.clone(), z.clone())],
+                [
+                    role("T", x.clone(), y.clone()),
+                    role("T", y.clone(), z.clone()),
+                ],
                 [role("T", x.clone(), z.clone())],
             ),
             clause(
-                [role("R", x.clone(), y.clone()), role("S", y.clone(), z.clone())],
+                [
+                    role("R", x.clone(), y.clone()),
+                    role("S", y.clone(), z.clone()),
+                ],
                 [role("U", x.clone(), z.clone())],
             ),
-            clause([role("U", x.clone(), y.clone())], [role("T", x.clone(), y.clone())]),
+            clause(
+                [role("U", x.clone(), y.clone())],
+                [role("T", x.clone(), y.clone())],
+            ),
             clause(
                 [role("T", x.clone(), y.clone()), con("H", &y)],
                 [con("D", &x)],
@@ -1187,8 +1202,12 @@ mod tests {
         });
         let has_consumer = out.iter().any(|c| {
             c.head == vec![Atom::Concept("D".into(), var_x())]
-                && c.body.iter().any(|a| matches!(a, Atom::Role(r, ..) if r == "r"))
-                && c.body.iter().any(|a| matches!(a, Atom::Concept(q, _) if q == "__chain__s__"))
+                && c.body
+                    .iter()
+                    .any(|a| matches!(a, Atom::Role(r, ..) if r == "r"))
+                && c.body
+                    .iter()
+                    .any(|a| matches!(a, Atom::Concept(q, _) if q == "__chain__s__"))
         });
         assert!(has_recog, "missing __chain__s__ recognition: {out:?}");
         assert!(has_consumer, "missing r∧__chain__s__→D consumer: {out:?}");
@@ -1210,7 +1229,9 @@ mod tests {
         // up-propagation clause r(x,y) ∧ P(y) → P(x) for P = __trans__r____chain__s__
         let p = "__trans__r____chain__s__";
         let has_prop = out.iter().any(|c| {
-            c.body.iter().any(|a| matches!(a, Atom::Concept(q, t) if q == p && *t == var_y()))
+            c.body
+                .iter()
+                .any(|a| matches!(a, Atom::Concept(q, t) if q == p && *t == var_y()))
                 && c.head == vec![Atom::Concept(p.into(), var_x())]
         });
         assert!(has_prop, "missing transitive up-propagation: {out:?}");
@@ -1229,7 +1250,10 @@ mod tests {
             out[0],
             clause(
                 [],
-                [Atom::Concept("__nom__o".to_string(), Term::Ind("o".to_string()))]
+                [Atom::Concept(
+                    "__nom__o".to_string(),
+                    Term::Ind("o".to_string())
+                )]
             )
         );
         // DL8: __nom__o(x) → x ≈ o
@@ -1247,7 +1271,11 @@ mod tests {
         // A ⊑ ∃R.B yields only a head occurrence of R; nothing consumes R or S.
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
-            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+            [role(
+                "R",
+                var_x(),
+                Term::Fun("f".to_string(), Box::new(var_x())),
+            )],
         );
         let mut tbox = vec![producer.clone(), bridge("R", "S"), bridge("S", "R")];
         prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S")]);
@@ -1288,7 +1316,12 @@ mod tests {
         prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S"), pair("S", "T")]);
         assert_eq!(
             tbox,
-            vec![consumer, bridge("R", "S"), bridge("S", "T"), bridge("T", "S")]
+            vec![
+                consumer,
+                bridge("R", "S"),
+                bridge("S", "T"),
+                bridge("T", "S")
+            ]
         );
     }
 
@@ -1297,10 +1330,7 @@ mod tests {
         // R(x,y) → S(x,y) is a role-hierarchy clause: never pruned, and its
         // body occurrence of R keeps nothing alive for the R→S bridge (S is
         // still unconsumed).
-        let sub = clause(
-            [role("R", var_x(), var_y())],
-            [role("S", var_x(), var_y())],
-        );
+        let sub = clause([role("R", var_x(), var_y())], [role("S", var_x(), var_y())]);
         let mut tbox = vec![sub.clone(), bridge("R", "S"), bridge("S", "R")];
         prune_dead_inverse_bridges(&mut tbox, &[pair("R", "S")]);
         // S→R survives: the hierarchy clause consumes R. R→S dies.
@@ -1309,10 +1339,7 @@ mod tests {
 
     #[test]
     fn noop_without_pairs() {
-        let sub = clause(
-            [role("R", var_x(), var_y())],
-            [role("S", var_y(), var_x())],
-        );
+        let sub = clause([role("R", var_x(), var_y())], [role("S", var_y(), var_x())]);
         let mut tbox = vec![sub.clone()];
         prune_dead_inverse_bridges(&mut tbox, &[]);
         assert_eq!(tbox, vec![sub]);
@@ -1329,7 +1356,11 @@ mod tests {
         // concept, so it is inert.
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
-            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+            [role(
+                "R",
+                var_x(),
+                Term::Fun("f".to_string(), Box::new(var_x())),
+            )],
         );
         let succ = clause(
             [Atom::Concept("A".to_string(), var_x())],
@@ -1339,7 +1370,10 @@ mod tests {
             )],
         );
         let trans = clause(
-            [role("R", var_x(), var_y()), role("R", var_y(), Term::Var("z".to_string()))],
+            [
+                role("R", var_x(), var_y()),
+                role("R", var_y(), Term::Var("z".to_string())),
+            ],
             [role("R", var_x(), Term::Var("z".to_string()))],
         );
         let tbox = vec![producer, succ, trans, bridge("R", "R")];
@@ -1421,7 +1455,11 @@ mod tests {
     fn prunes_inert_symmetric_self_bridge() {
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
-            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+            [role(
+                "R",
+                var_x(),
+                Term::Fun("f".to_string(), Box::new(var_x())),
+            )],
         );
         let mut tbox = vec![producer.clone(), bridge("R", "R")];
         let relevant = HashSet::new();
@@ -1446,7 +1484,11 @@ mod tests {
     fn prunes_inert_inverse_pair_both_directions() {
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
-            [role("R", var_x(), Term::Fun("f".to_string(), Box::new(var_x())))],
+            [role(
+                "R",
+                var_x(),
+                Term::Fun("f".to_string(), Box::new(var_x())),
+            )],
         );
         let mut tbox = vec![producer.clone(), bridge("R", "S"), bridge("S", "R")];
         let relevant = HashSet::new();

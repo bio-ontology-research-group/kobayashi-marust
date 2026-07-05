@@ -19,7 +19,10 @@ pub struct OutOfFragment(pub String);
 fn role_str(reg: &mut IriRegistry, node: &Node) -> Result<String, OutOfFragment> {
     match node {
         Node::Atom(s) => Ok(reg.short(s)),
-        _ => Err(OutOfFragment(format!("named role expected, got {:?}", node))),
+        _ => Err(OutOfFragment(format!(
+            "named role expected, got {:?}",
+            node
+        ))),
     }
 }
 
@@ -247,7 +250,9 @@ pub(super) fn strip_annotations<'a, 'n>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a
 /// ⟶ a named individual. Anything else (a nested expression) is unrepresentable.
 fn parse_rule_term(reg: &mut IriRegistry, node: &Node) -> Option<RuleTerm> {
     match node {
-        Node::List(h, a) if *h == "Variable" => Some(RuleTerm::Var(reg.short(a.first()?.as_atom()?))),
+        Node::List(h, a) if *h == "Variable" => {
+            Some(RuleTerm::Var(reg.short(a.first()?.as_atom()?)))
+        }
         Node::Atom(s) => Some(RuleTerm::Ind(reg.short(s))),
         _ => None,
     }
@@ -454,8 +459,14 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 Concept::Forall(role_cls(reg, args[0])?, Box::new(cls(reg, args[1])?)),
             ));
         }
-        "Declaration" | "Prefix" | "Import" | "Annotation" | "AnnotationAssertion"
-        | "DisjointObjectProperties" | "ObjectPropertyDomain" | "ObjectPropertyRange" => {
+        "Declaration"
+        | "Prefix"
+        | "Import"
+        | "Annotation"
+        | "AnnotationAssertion"
+        | "DisjointObjectProperties"
+        | "ObjectPropertyDomain"
+        | "ObjectPropertyRange" => {
             // not part of the SROIQ core we validate here
         }
         // Data property axioms: data properties are abstracted as roles whose
@@ -465,7 +476,9 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         // `Distortion_Type_Affine ⊑ =2 affc2` with `Functional(affc2)` is
         // unsatisfiable, which the dropped functionality silently missed.
         "FunctionalDataProperty" => {
-            o.add(Axiom::FunctionalRole(reg.short(args[0].as_atom().unwrap_or(""))));
+            o.add(Axiom::FunctionalRole(
+                reg.short(args[0].as_atom().unwrap_or("")),
+            ));
         }
         "SubDataPropertyOf" => {
             o.add(Axiom::RoleInclusion(
@@ -509,7 +522,10 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             ));
         }
         "DatatypeDefinition" => {
-            o.add(Axiom::EquivalentClasses(dt_concept(args[0]), dt_concept(args[1])));
+            o.add(Axiom::EquivalentClasses(
+                dt_concept(args[0]),
+                dt_concept(args[1]),
+            ));
         }
         other if other.starts_with("Data") || other == "HasKey" => {
             // remaining datatype axioms (negative assertions, keys): sound to
@@ -611,8 +627,14 @@ Head(ObjectPropertyAtom(<http://e#inv> Variable(<http://e#op1>) Variable(<http:/
             Axiom::Rule(body, head) => {
                 assert_eq!(body.len(), 6, "5 atoms + 1 diff guard");
                 assert_eq!(head.len(), 1);
-                assert!(body.iter().any(|a| matches!(a, RuleAtom::Diff(..))), "diff guard kept");
-                assert!(matches!(&head[0], RuleAtom::Role(_, RuleTerm::Var(_), RuleTerm::Var(_))));
+                assert!(
+                    body.iter().any(|a| matches!(a, RuleAtom::Diff(..))),
+                    "diff guard kept"
+                );
+                assert!(matches!(
+                    &head[0],
+                    RuleAtom::Role(_, RuleTerm::Var(_), RuleTerm::Var(_))
+                ));
             }
             _ => panic!("not a rule"),
         }

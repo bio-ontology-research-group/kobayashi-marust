@@ -131,7 +131,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let abox_data = abox_consistency::collect(&ontology);
     let (asserted_direct, asserted_roles) = abox_consistency::asserted_profile(&ontology);
     if std::env::var_os("KM_DEBUG_RULES").is_some() {
-        eprintln!("KM_DEBUG_RULES: parsed {} DL-safe SWRL rule(s)", ontology.rules().count());
+        eprintln!(
+            "KM_DEBUG_RULES: parsed {} DL-safe SWRL rule(s)",
+            ontology.rules().count()
+        );
     }
     // KM_HT_RULES (Stage 2): carry the parsed DL-safe rules to cb_to_ht and (when
     // any rule is present) keep the ground ABox in the clause set so cb_to_ht can
@@ -191,10 +194,8 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     })?;
     // asserted-ABox inconsistency: named-disjointness clash (abox_consistency)
     // or datatype range/functionality clash (data_abox); both sound prechecks.
-    let abox_inconsistent = abox_data
-        .map(|d| d.is_inconsistent(&rbox))
-        .unwrap_or(false)
-        || data_abox.is_inconsistent();
+    let abox_inconsistent =
+        abox_data.map(|d| d.is_inconsistent(&rbox)).unwrap_or(false) || data_abox.is_inconsistent();
     // named classes with a provable asserted member: direct assertions plus
     // domain/range typing of asserted roles (`R(a,b)` + `Domain(R,C)` => `a:C`).
     let mut asserted_classes: BTreeSet<String> = asserted_direct;
@@ -221,7 +222,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // benchmark budget — honest resource limits, never silent approximation.
     // Run before extending so the recognitions see the same `domain_range` set.
     if std::env::var_os("KM_NO_CHAIN_DOMAIN").is_none() {
-        tbox.extend(preprocess::domain_consumer_chain_clauses(&chain_info, &domain_range));
+        tbox.extend(preprocess::domain_consumer_chain_clauses(
+            &chain_info,
+            &domain_range,
+        ));
     }
     tbox.extend(domain_range);
     // All consumers are in place (augment encodings + domain/range), so dead
@@ -238,7 +242,12 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // in the slice keep the ontology on the CB engine.
     let relevant = preprocess::concept_relevant_roles(&tbox);
     if !no_prune {
-        preprocess::prune_inert_role_bridges(&mut tbox, &symmetric_roles, &role_inverses, &relevant);
+        preprocess::prune_inert_role_bridges(
+            &mut tbox,
+            &symmetric_roles,
+            &role_inverses,
+            &relevant,
+        );
     }
     let inverses_inert = role_inverses
         .iter()
@@ -373,15 +382,24 @@ fn collect_rules(ontology: &syntax::Ontology) -> Vec<crate::json_io::JRule> {
     // a rule atom is representable only if every ClassAtom is over a *named* class.
     let conv_atom = |a: &RuleAtom| -> Option<JRuleAtom> {
         Some(match a {
-            RuleAtom::Class(Concept::Name(c), t) => {
-                JRuleAtom::Class { concept: c.clone(), term: term(t) }
-            }
+            RuleAtom::Class(Concept::Name(c), t) => JRuleAtom::Class {
+                concept: c.clone(),
+                term: term(t),
+            },
             RuleAtom::Class(_, _) => return None, // complex class expression: drop the rule
-            RuleAtom::Role(r, s, t) => {
-                JRuleAtom::Role { role: r.clone(), source: term(s), target: term(t) }
-            }
-            RuleAtom::Same(l, r) => JRuleAtom::Same { left: term(l), right: term(r) },
-            RuleAtom::Diff(l, r) => JRuleAtom::Diff { left: term(l), right: term(r) },
+            RuleAtom::Role(r, s, t) => JRuleAtom::Role {
+                role: r.clone(),
+                source: term(s),
+                target: term(t),
+            },
+            RuleAtom::Same(l, r) => JRuleAtom::Same {
+                left: term(l),
+                right: term(r),
+            },
+            RuleAtom::Diff(l, r) => JRuleAtom::Diff {
+                left: term(l),
+                right: term(r),
+            },
         })
     };
     let mut out = Vec::new();

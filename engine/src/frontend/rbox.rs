@@ -87,12 +87,12 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                         Node::List(_, ca) => strip_annotations(ca),
                         _ => Vec::new(),
                     };
-                    if chain_args.len() == 2
-                        && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some()
-                    {
-                        if let (Some(r1), Some(r2), Some(rs)) =
-                            (plain_role(reg, chain_args[0]), plain_role(reg, chain_args[1]), ssup)
-                        {
+                    if chain_args.len() == 2 && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
+                        if let (Some(r1), Some(r2), Some(rs)) = (
+                            plain_role(reg, chain_args[0]),
+                            plain_role(reg, chain_args[1]),
+                            ssup,
+                        ) {
                             out.push(RboxRecord::Chain(r1, r2, rs));
                         } else {
                             out.push(RboxRecord::Fenced(

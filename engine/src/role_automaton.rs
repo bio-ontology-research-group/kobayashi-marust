@@ -219,9 +219,16 @@ impl AutomatonBuilder {
     ///
     /// Soundness: `R1∘R2⊑U` and `U ⊑* r` ⟹ `R1∘R2 ⊑* r`, so a node reachable
     /// via `R1` then `R2` is `r`-reachable — the ∀R.C must cover it.
-    fn unfold(&mut self, r: Role, begin: State, end: State, unfolded: &HashSet<Role>, auto: &mut RoleAutomaton) {
+    fn unfold(
+        &mut self,
+        r: Role,
+        begin: State,
+        end: State,
+        unfolded: &HashSet<Role>,
+        auto: &mut RoleAutomaton,
+    ) {
         // chains whose super U has r in its sub-role closure (U ⊑* r is r=U or U⊑...⊑r;
-        // equivalently r ∈ sub_close(U).  We test U ⊇* r i.e. r ∈ super_close(U)... 
+        // equivalently r ∈ sub_close(U).  We test U ⊇* r i.e. r ∈ super_close(U)...
         // correct direction: U ⊑* r means r is a SUPER of U, i.e. r ∈ super_close(U).
         let chains: Vec<(Role, Role, Role)> = self.rb.chains.clone();
         for &(r1, r2, u) in &chains {
@@ -524,8 +531,8 @@ mod walker_tests {
     #[test]
     fn all_walker_14817_pattern() {
         let rb = RoleBox {
-            transitive: [1].into_iter().collect(),           // dev transitive
-            chains: vec![(1, 2, 1)],                          // dev∘part ⊑ dev
+            transitive: [1].into_iter().collect(), // dev transitive
+            chains: vec![(1, 2, 1)],               // dev∘part ⊑ dev
             ..Default::default()
         };
         let mut b = AutomatonBuilder::new(rb);
@@ -557,8 +564,14 @@ mod tests {
     fn transitive_self_loop() {
         let mut b = AutomatonBuilder::new(rb_transitive(1));
         let a = b.build(1).clone();
-        assert!(a.transitions.iter().any(|t| t.from == a.begin && t.to == a.end && t.role == Some(1)));
-        assert!(a.transitions.iter().any(|t| t.from == a.end && t.to == a.begin && t.role.is_none()));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == a.begin && t.to == a.end && t.role == Some(1)));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == a.end && t.to == a.begin && t.role.is_none()));
     }
 
     /// A plain (non-complex) role has no automaton built; the caller keeps the
@@ -580,7 +593,10 @@ mod tests {
         let mut b = AutomatonBuilder::new(rb);
         let a = b.build(3).clone();
         // main transition
-        assert!(a.transitions.iter().any(|t| t.from == a.begin && t.to == a.end && t.role == Some(3)));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == a.begin && t.to == a.end && t.role == Some(3)));
         // chain path: begin --1--> mid --2--> end  (mid is some fresh state)
         let mid = a
             .transitions
@@ -588,7 +604,10 @@ mod tests {
             .find(|t| t.from == a.begin && t.role == Some(1))
             .map(|t| t.to)
             .expect("R1 transition from begin");
-        assert!(a.transitions.iter().any(|t| t.from == mid && t.to == a.end && t.role == Some(2)));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == mid && t.to == a.end && t.role == Some(2)));
     }
 
     /// Sub-role S⊑R: the automaton for R gains a begin --S--> end transition,
@@ -601,7 +620,10 @@ mod tests {
         };
         let mut b = AutomatonBuilder::new(rb);
         let a = b.build(1).clone();
-        assert!(a.transitions.iter().any(|t| t.from == a.begin && t.to == a.end && t.role == Some(2)));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == a.begin && t.to == a.end && t.role == Some(2)));
     }
 
     /// Transitive + chain: ∀R.C with R transitive and a chain R1∘R2⊑R.  The
@@ -618,7 +640,10 @@ mod tests {
         };
         let mut b = AutomatonBuilder::new(rb);
         let a = b.build(1).clone();
-        assert!(a.transitions.iter().any(|t| t.role.is_none() && t.from == a.end && t.to == a.begin));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.role.is_none() && t.from == a.end && t.to == a.begin));
         let mid = a
             .transitions
             .iter()
@@ -626,7 +651,10 @@ mod tests {
             .map(|t| t.to);
         assert!(mid.is_some(), "chain R1 transition from begin exists");
         let mid = mid.unwrap();
-        assert!(a.transitions.iter().any(|t| t.from == mid && t.to == a.end && t.role == Some(1)));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == mid && t.to == a.end && t.role == Some(1)));
     }
 
     /// The ∀-walker: seeding begin, advancing along R reaches end (plain).
@@ -690,7 +718,10 @@ mod tests {
         };
         let mut b = AutomatonBuilder::new(rb);
         let a = b.build(1).clone();
-        assert!(a.transitions.iter().any(|t| t.from == a.begin && t.to == a.end && t.role == Some(2)));
+        assert!(a
+            .transitions
+            .iter()
+            .any(|t| t.from == a.begin && t.to == a.end && t.role == Some(2)));
     }
 
     /// Sub-role closure: super_close(r) is reflexive + transitive.

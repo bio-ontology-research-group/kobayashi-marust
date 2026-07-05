@@ -105,7 +105,11 @@ pub enum JRuleAtom {
     #[serde(rename = "class")]
     Class { concept: String, term: JRuleTerm },
     #[serde(rename = "role")]
-    Role { role: String, source: JRuleTerm, target: JRuleTerm },
+    Role {
+        role: String,
+        source: JRuleTerm,
+        target: JRuleTerm,
+    },
     #[serde(rename = "same")]
     Same { left: JRuleTerm, right: JRuleTerm },
     #[serde(rename = "diff")]

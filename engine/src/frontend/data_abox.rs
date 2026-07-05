@@ -101,9 +101,9 @@ fn dtype_family(tok: &str) -> Option<Family> {
 /// atoms: the quoted token and a suffix atom (`@lang` / `^^dt`).
 #[derive(Debug)]
 enum Lit<'a> {
-    Plain(&'a str),            // "lex" == "lex"^^xsd:string in OWL 2
-    Lang(&'a str, &'a str),    // (lex, lang)
-    Typed(&'a str, &'a str),   // (lex, datatype token)
+    Plain(&'a str),          // "lex" == "lex"^^xsd:string in OWL 2
+    Lang(&'a str, &'a str),  // (lex, lang)
+    Typed(&'a str, &'a str), // (lex, datatype token)
 }
 
 fn parse_lit<'b>(tok: &'b str, suffix: Option<&'b str>) -> Option<Lit<'b>> {
@@ -318,9 +318,10 @@ impl<'a> DataAbox<'a> {
         match head {
             "DataPropertyRange" => {
                 let args = strip_annotations(args);
-                if let (Some(p), Some(Some(d))) =
-                    (args.first().and_then(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(p), Some(Some(d))) = (
+                    args.first().and_then(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.ranges.entry(p).or_default().push(d);
                 }
             }
@@ -332,9 +333,10 @@ impl<'a> DataAbox<'a> {
             }
             "SubDataPropertyOf" => {
                 let args = strip_annotations(args);
-                if let (Some(Some(s)), Some(Some(t))) =
-                    (args.first().map(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(Some(s)), Some(Some(t))) = (
+                    args.first().map(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.supers.entry(s).or_default().push(t);
                 }
             }
@@ -378,17 +380,19 @@ impl<'a> DataAbox<'a> {
             }
             "InverseObjectProperties" => {
                 let args = strip_annotations(args);
-                if let (Some(Some(p)), Some(Some(q))) =
-                    (args.first().map(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(Some(p)), Some(Some(q))) = (
+                    args.first().map(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.inverses.push((p, q));
                 }
             }
             "SubObjectPropertyOf" => {
                 let args = strip_annotations(args);
-                if let (Some(Some(s)), Some(Some(t))) =
-                    (args.first().map(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(Some(s)), Some(Some(t))) = (
+                    args.first().map(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.osupers.entry(s).or_default().push(t);
                 }
             }
@@ -400,17 +404,19 @@ impl<'a> DataAbox<'a> {
             }
             "ObjectPropertyDomain" => {
                 let args = strip_annotations(args);
-                if let (Some(Some(p)), Some(Some(c))) =
-                    (args.first().map(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(Some(p)), Some(Some(c))) = (
+                    args.first().map(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.odomain.entry(p).or_default().push(c);
                 }
             }
             "ObjectPropertyRange" => {
                 let args = strip_annotations(args);
-                if let (Some(Some(p)), Some(Some(c))) =
-                    (args.first().map(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(Some(p)), Some(Some(c))) = (
+                    args.first().map(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.orange.entry(p).or_default().push(c);
                 }
             }
@@ -452,10 +458,9 @@ impl<'a> DataAbox<'a> {
                                 ["ObjectMaxCardinality", "ObjectExactCardinality"],
                             ) {
                                 self.omax1.push((c, r));
-                            } else if let Some(p) = atmost1_role(
-                                other,
-                                ["DataMaxCardinality", "DataExactCardinality"],
-                            ) {
+                            } else if let Some(p) =
+                                atmost1_role(other, ["DataMaxCardinality", "DataExactCardinality"])
+                            {
                                 self.dmax1.push((c, p));
                             }
                         }
@@ -464,9 +469,10 @@ impl<'a> DataAbox<'a> {
             }
             "ClassAssertion" => {
                 let args = strip_annotations(args);
-                if let (Some(Some(c)), Some(Some(i))) =
-                    (args.first().map(|n| n.as_atom()), args.get(1).map(|n| n.as_atom()))
-                {
+                if let (Some(Some(c)), Some(Some(i))) = (
+                    args.first().map(|n| n.as_atom()),
+                    args.get(1).map(|n| n.as_atom()),
+                ) {
                     self.cassert.push((c, i));
                 }
             }
@@ -579,27 +585,28 @@ impl<'a> DataAbox<'a> {
         }
         // class ancestors memo (named hierarchy)
         let mut anc_memo: HashMap<&str, Vec<&'a str>> = HashMap::new();
-        let mut ancestors = |c: &'a str, memo: &mut HashMap<&'a str, Vec<&'a str>>| -> Vec<&'a str> {
-            if let Some(v) = memo.get(c) {
-                return v.clone();
-            }
-            let mut seen: HashSet<&str> = HashSet::new();
-            let mut out = vec![c];
-            seen.insert(c);
-            let mut stack = vec![c];
-            while let Some(x) = stack.pop() {
-                if let Some(ts) = self.csupers.get(x) {
-                    for &t in ts {
-                        if seen.insert(t) {
-                            out.push(t);
-                            stack.push(t);
+        let mut ancestors =
+            |c: &'a str, memo: &mut HashMap<&'a str, Vec<&'a str>>| -> Vec<&'a str> {
+                if let Some(v) = memo.get(c) {
+                    return v.clone();
+                }
+                let mut seen: HashSet<&str> = HashSet::new();
+                let mut out = vec![c];
+                seen.insert(c);
+                let mut stack = vec![c];
+                while let Some(x) = stack.pop() {
+                    if let Some(ts) = self.csupers.get(x) {
+                        for &t in ts {
+                            if seen.insert(t) {
+                                out.push(t);
+                                stack.push(t);
+                            }
                         }
                     }
                 }
-            }
-            memo.insert(c, out.clone());
-            out
-        };
+                memo.insert(c, out.clone());
+                out
+            };
         let mut mem: HashMap<u32, HashSet<&'a str>> = HashMap::new();
         for _ in 0..MERGE_ITER_CAP {
             // closed role-assertion set over current roots
@@ -615,13 +622,14 @@ impl<'a> DataAbox<'a> {
                 if closed.len() > MERGE_EDGE_CAP {
                     return None;
                 }
-                let mut push = |e: (&'a str, u32, u32),
-                                closed: &mut HashSet<(&'a str, u32, u32)>,
-                                work: &mut Vec<(&'a str, u32, u32)>| {
-                    if closed.insert(e) {
-                        work.push(e);
-                    }
-                };
+                let mut push =
+                    |e: (&'a str, u32, u32),
+                     closed: &mut HashSet<(&'a str, u32, u32)>,
+                     work: &mut Vec<(&'a str, u32, u32)>| {
+                        if closed.insert(e) {
+                            work.push(e);
+                        }
+                    };
                 if let Some(ts) = self.osupers.get(p) {
                     for &t in ts {
                         push((t, a, b), &mut closed, &mut work);
@@ -651,12 +659,16 @@ impl<'a> DataAbox<'a> {
             for &(p, a, b) in &closed {
                 if let Some(ds) = self.odomain.get(p) {
                     for &d in ds {
-                        mem.entry(a).or_default().extend(ancestors(d, &mut anc_memo));
+                        mem.entry(a)
+                            .or_default()
+                            .extend(ancestors(d, &mut anc_memo));
                     }
                 }
                 if let Some(rs) = self.orange.get(p) {
                     for &c in rs {
-                        mem.entry(b).or_default().extend(ancestors(c, &mut anc_memo));
+                        mem.entry(b)
+                            .or_default()
+                            .extend(ancestors(c, &mut anc_memo));
                     }
                 }
             }
@@ -741,9 +753,10 @@ impl<'a> DataAbox<'a> {
             let r = uf.find(ids[i]);
             for q in self.all_supers(p) {
                 let applies = self.functional.contains(q)
-                    || self.dmax1.iter().any(|&(c, dp)| {
-                        dp == q && mem.get(&r).is_some_and(|s| s.contains(c))
-                    });
+                    || self
+                        .dmax1
+                        .iter()
+                        .any(|&(c, dp)| dp == q && mem.get(&r).is_some_and(|s| s.contains(c)));
                 if applies {
                     by_key.entry((q, r)).or_default().push((ltok, suf));
                 }

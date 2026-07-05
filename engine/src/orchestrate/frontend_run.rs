@@ -40,7 +40,10 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
         .stdout(File::create(clauses.path())?)
         .stderr(File::create(stderr.path())?)
         .status()
-        .map_err(|e| OrchestrateError::Spawn { bin: "ofn".into(), source: e })?;
+        .map_err(|e| OrchestrateError::Spawn {
+            bin: "ofn".into(),
+            source: e,
+        })?;
 
     let code = status.code().unwrap_or(-1);
     if code == 3 {
@@ -54,7 +57,11 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
     }
     if code != 0 {
         let msg = std::fs::read_to_string(stderr.path()).unwrap_or_default();
-        return Err(OrchestrateError::Worker { bin: "ofn".into(), code, stderr: msg });
+        return Err(OrchestrateError::Worker {
+            bin: "ofn".into(),
+            code,
+            stderr: msg,
+        });
     }
     let meta_parsed: Meta = serde_json::from_reader(File::open(meta.path())?)?;
     Ok((clauses, meta_parsed))

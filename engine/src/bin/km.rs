@@ -106,7 +106,7 @@ fn cb_to_ht_cmd() {
         input.rbox.as_deref(),
         &named,
         &input.cardinalities,
-        std::env::var_os("KM_HT_CARD").is_some(),
+        std::env::var_os("KM_NO_HT_CARD").is_none(),
         &input.rules,
         std::env::var_os("KM_HT_RULES").is_some(),
     );

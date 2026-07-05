@@ -95,8 +95,10 @@ pub struct Config {
     /// pigeonhole). The first-class rules FOLD the cardinality model the legacy
     /// Eq-merge cannot (12653 12365→201 nodes, 1603 17182→206, gold-exact).
     /// Monotone-safe in fallback mode (CB preferred; the fast Ht answers only on
-    /// CB timeout). Default OFF (opt in: KM_HT_CARD) — the master switch also makes
-    /// the frontend emit the cardinality metadata, so it gates the whole feature.
+    /// CB timeout). Default ON (opt out: KM_NO_HT_CARD) — the master switch also
+    /// makes the frontend emit the cardinality metadata, so it gates the whole
+    /// feature. Validated clean on the 584-ont card panel (48067625): +3 gold
+    /// recoveries (1603, 9540, 7499), 0 MATCH→DIFF regressions.
     pub ht_card: bool,
     /// KM_HT_RULES (Stage 2 of SWRL DL-safe rule support): when set AND the
     /// ontology has DL-safe rules, route it to the rule-aware HT consistency check
@@ -107,7 +109,10 @@ pub struct Config {
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 impl Config {
@@ -132,11 +137,18 @@ impl Config {
             absorb_probe_s: env_f64("KM_ABSORB_PROBE_S", 8.0),
             tab_race: std::env::var_os("KM_TAB_RACE").is_some(),
             tab_feat: std::env::var_os("KM_TAB_FEAT").is_some(),
-            tab_max_clauses: std::env::var("KM_TAB_MAX_CLAUSES").ok().and_then(|v| v.parse().ok()).unwrap_or(20000),
+            tab_max_clauses: std::env::var("KM_TAB_MAX_CLAUSES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(20000),
             tab_race_delay: env_f64("KM_TAB_RACE_DELAY", 30.0),
-            tab_race_nice: std::env::var("KM_TAB_RACE_NICE").map(|v| v != "0").unwrap_or(true),
+            tab_race_nice: std::env::var("KM_TAB_RACE_NICE")
+                .map(|v| v != "0")
+                .unwrap_or(true),
             tab_ord: std::env::var("KM_TAB_ORD").unwrap_or_else(|_| "0".to_string()),
-            threads: std::env::var("KM_THREADS").ok().and_then(|v| v.parse().ok()),
+            threads: std::env::var("KM_THREADS")
+                .ok()
+                .and_then(|v| v.parse().ok()),
             par_mem_gb: env_f64("KM_PAR_MEM_GB", 18.0),
             central_time_cap: env_f64("KM_CENTRAL_TIME_CAP", 190.0),
             no_retry: std::env::var_os("KM_NO_RETRY").is_some(),
@@ -167,7 +179,7 @@ impl Config {
             // with KM_NO_HT_QO_ROUTER / KM_NO_HT_SHOQ.
             qo_router: std::env::var_os("KM_NO_HT_QO_ROUTER").is_none(),
             ht_shoq: std::env::var_os("KM_NO_HT_SHOQ").is_none(),
-            ht_card: std::env::var_os("KM_HT_CARD").is_some(),
+            ht_card: std::env::var_os("KM_NO_HT_CARD").is_none(),
             ht_rules: std::env::var_os("KM_HT_RULES").is_some(),
         }
     }

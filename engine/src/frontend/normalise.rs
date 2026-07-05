@@ -129,7 +129,9 @@ pub struct Clausifier {
     /// `≥(n+1)` recognition proxy) into `hooks.cardinalities` as a first-class
     /// `CardMeta`. The clausal expansion is still emitted unchanged (the CB engine
     /// consumes it); the metadata only lets the HT path swap it for the Konclude
-    /// number rules. Default off ⇒ no metadata ⇒ byte-identical output.
+    /// number rules. Default ON (opt out: KM_NO_HT_CARD). The clause set is
+    /// byte-identical either way — this only populates the additive `cardinalities`
+    /// side-data field, consumed solely by the card-routed HT path.
     card: bool,
 }
 
@@ -147,10 +149,12 @@ impl Clausifier {
             atleast_neg: HashSet::new(),
             atmost_pos: HashSet::new(),
             atmost_neg: HashSet::new(),
-            absorb: std::env::var("KM_ABSORB").map(|s| s != "0").unwrap_or(false),
+            absorb: std::env::var("KM_ABSORB")
+                .map(|s| s != "0")
+                .unwrap_or(false),
             def_pos: HashSet::new(),
             def_neg: HashSet::new(),
-            card: std::env::var_os("KM_HT_CARD").is_some(),
+            card: std::env::var_os("KM_NO_HT_CARD").is_none(),
         }
     }
 
@@ -425,7 +429,10 @@ impl Clausifier {
                 let filler_name = self.q(filler);
                 // Propagation: Q(x) ∧ R(x,y) → D(y)
                 self.clauses.push(clause(
-                    [qx.clone(), Atom::Role(role_name.clone(), x.clone(), y.clone())],
+                    [
+                        qx.clone(),
+                        Atom::Role(role_name.clone(), x.clone(), y.clone()),
+                    ],
                     [Atom::Concept(filler_name.clone(), y.clone())],
                 ));
                 // Introduction, only when this ∀R.D occurs negatively somewhere.
@@ -643,10 +650,24 @@ mod tests {
                 && cl.head.len() == 2
                 && cl.head.contains(&qx)
                 && cl.head.iter().any(|a| matches!(a, Atom::Eq(_, _)))
-                && cl.body.iter().filter(|a| matches!(a, Atom::Role(..))).count() == 2
-                && cl.body.iter().filter(|a| matches!(a, Atom::Concept(..))).count() == 2
+                && cl
+                    .body
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Role(..)))
+                    .count()
+                    == 2
+                && cl
+                    .body
+                    .iter()
+                    .filter(|a| matches!(a, Atom::Concept(..)))
+                    .count()
+                    == 2
         });
-        assert!(found, "missing ≥2 recognition clause; got {:#?}", cf.clauses);
+        assert!(
+            found,
+            "missing ≥2 recognition clause; got {:#?}",
+            cf.clauses
+        );
     }
 
     /// Polarity gating: a pre-pass-proven positive-only `≥n` skips the
@@ -669,7 +690,10 @@ mod tests {
         let mut cf = Clausifier::new();
         cf.mark_polarity(&mk(), false);
         cf.q(&mk());
-        assert!(!has_recognition(&cf), "positive-only ≥2 must not emit recognition");
+        assert!(
+            !has_recognition(&cf),
+            "positive-only ≥2 must not emit recognition"
+        );
         // both polarities: emitted
         let mut cf = Clausifier::new();
         cf.mark_polarity(&mk(), false);
@@ -692,16 +716,20 @@ mod tests {
         };
         // The excluded-middle clause `⊤ → Q ∨ NQ` marks the recognition.
         let has_recognition = |cf: &Clausifier| {
-            cf.clauses
-                .iter()
-                .any(|cl| cl.body.is_empty() && cl.head.len() == 2
-                    && cl.head.iter().all(|a| matches!(a, Atom::Concept(..))))
+            cf.clauses.iter().any(|cl| {
+                cl.body.is_empty()
+                    && cl.head.len() == 2
+                    && cl.head.iter().all(|a| matches!(a, Atom::Concept(..)))
+            })
         };
         // positive-only: skipped
         let mut cf = Clausifier::new();
         cf.mark_polarity(&mk(), false);
         cf.q(&mk());
-        assert!(!has_recognition(&cf), "positive-only ≤1 must not emit recognition");
+        assert!(
+            !has_recognition(&cf),
+            "positive-only ≤1 must not emit recognition"
+        );
         // negative: emitted (excluded middle + 2 witnesses + 1 distinctness)
         let mut cf = Clausifier::new();
         cf.mark_polarity(&mk(), true);
@@ -851,9 +879,11 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                 ]));
             }
             Axiom::IrreflexiveRole(role) => {
-                clausifier
-                    .clauses
-                    .push(constraint([Atom::Role(role.clone(), x.clone(), x.clone())]));
+                clausifier.clauses.push(constraint([Atom::Role(
+                    role.clone(),
+                    x.clone(),
+                    x.clone(),
+                )]));
             }
             Axiom::ReflexiveRole(role) => {
                 clausifier
@@ -870,6 +900,30 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                     ],
                     [Atom::Eq(y0, y1)],
                 ));
+                // KM_HT_CARD_FN (opt-in): functionality is `⊤ ⊑ ≤1 R.⊤`, i.e. a
+                // first-class atmost anchored on every node (Konclude folds it with
+                // applyATMOSTRule; the raw Eq-head clause above cannot fold the
+                // model). Marker == filler == a fresh universal concept asserted as
+                // a ⊤-fact: every node carries the marker (installs the ≤1) and
+                // every R-successor carries the filler (counts toward the bound).
+                // The Eq clause stays — the CB engine consumes it, and on the HT
+                // it is redundant-but-sound alongside the card rule. Gated opt-in:
+                // tagging makes EVERY functional-role ontology card-routable
+                // (spawns the card HT arm + disables emelim there), which needs its
+                // own corpus validation before any default flip.
+                if clausifier.card && std::env::var_os("KM_HT_CARD_FN").is_some() {
+                    let qf = format!("Q_fn_{}", role);
+                    clausifier
+                        .clauses
+                        .push(fact([Atom::Concept(qf.clone(), x.clone())]));
+                    clausifier.hooks.cardinalities.push(crate::json_io::CardMeta {
+                        marker: qf.clone(),
+                        min: false,
+                        n: 1,
+                        role: role.clone(),
+                        filler: qf,
+                    });
+                }
             }
             Axiom::InverseFunctionalRole(role) => {
                 let y0 = Term::Var("y0".to_string());
@@ -913,10 +967,7 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                 )]));
             }
             Axiom::SameIndividual(l, r) => {
-                abox_clauses.push(fact([Atom::Eq(
-                    Term::Ind(l.clone()),
-                    Term::Ind(r.clone()),
-                )]));
+                abox_clauses.push(fact([Atom::Eq(Term::Ind(l.clone()), Term::Ind(r.clone()))]));
             }
             Axiom::DifferentIndividuals(l, r) => {
                 abox_clauses.push(constraint([Atom::Eq(
