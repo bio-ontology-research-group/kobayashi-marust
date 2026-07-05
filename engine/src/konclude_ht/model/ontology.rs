@@ -23,10 +23,11 @@ use super::concept_process::{
 };
 use super::individual::{Individual, Variable};
 use super::role::Role;
+use super::role_chain::RoleChain;
 use super::substrate::{Arena, Cint64, Id, INVALID};
 use super::{
     ConceptId, ConceptProcessDataId, ConceptSaturationReferenceLinkingDataId, IndividualId, RoleId,
-    SaturationConceptReferenceLinkingId, UnsatisfiableCachingTagsId, VariableId,
+    RoleChainId, SaturationConceptReferenceLinkingId, UnsatisfiableCachingTagsId, VariableId,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -69,6 +70,8 @@ pub struct OntologyArenas {
     saturation_concept_reference_linkings: Arena<SaturationConceptReferenceLinking>,
     /// `CRole` pool (the static role / RBox terminology).
     roles: Arena<Role>,
+    /// `CRoleChain` pool (`CRBox::mRoleChainVector`; role-automata port).
+    role_chains: Arena<RoleChain>,
     /// `CIndividual` pool (the static individuals).
     individuals: Arena<Individual>,
     /// `CABox::mActiveIndividualSet`.
@@ -275,6 +278,7 @@ impl OntologyArenas {
             concept_saturation_reference_linking_datas: Arena::new(),
             saturation_concept_reference_linkings: Arena::new(),
             roles: Arena::new(),
+            role_chains: Arena::new(),
             individuals: Arena::new(),
             active_individual_set: None,
             max_triples_indexed_individual_id: 0,
@@ -364,6 +368,19 @@ impl OntologyArenas {
     #[inline]
     pub fn role_count(&self) -> Cint64 {
         self.roles.len() as Cint64
+    }
+    onto_accessors!(
+        role_chains,
+        RoleChain,
+        RoleChainId,
+        role_chain,
+        role_chain_mut,
+        alloc_role_chain
+    );
+    /// Port-facing `CRoleChainVector::getItemCount`.
+    #[inline]
+    pub fn role_chain_count(&self) -> Cint64 {
+        self.role_chains.len() as Cint64
     }
     onto_accessors!(
         individuals,
