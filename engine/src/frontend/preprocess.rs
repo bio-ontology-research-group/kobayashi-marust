@@ -25,18 +25,60 @@ pub fn nominal_clauses(abox: &[DLClause], hooks: &GroundHooks) -> Vec<DLClause> 
     }
     let x = var_x();
     let mut extra = Vec::new();
+    let mut seen_links: std::collections::HashSet<(String, String, String)> =
+        std::collections::HashSet::new();
     for c in abox {
         if !c.body.is_empty() {
             continue; // only unconditional ABox facts
         }
         for a in &c.head {
-            if let Atom::Concept(concept, Term::Ind(name)) = a {
-                if let Some(nom) = ind_to_nom.get(name.as_str()) {
+            match a {
+                Atom::Concept(concept, Term::Ind(name)) => {
+                    if let Some(nom) = ind_to_nom.get(name.as_str()) {
+                        extra.push(clause(
+                            [Atom::Concept(nom.to_string(), x.clone())],
+                            [Atom::Concept(concept.clone(), x.clone())],
+                        ));
+                    }
+                }
+                // Role assertion between two nominal-proxied individuals:
+                // `R(a,b)` entails `{a} ⊑ ∃R.{b}`, i.e. in proxy form
+                // `__nom__a(x) → R(x, f(x))` and `__nom__a(x) → __nom__b(f(x))`.
+                // Sound: interpreting each proxy as exactly its singleton (the
+                // canonical extension under which every emitted proxy clause
+                // holds) makes this a semantic consequence of the assertion.
+                // This is the ABox-role half of the augmentation above (the
+                // concept-assertion half has been emitted for years); without
+                // it a hasValue successor carrying `__nom__a` never sees a's
+                // asserted role edges, so transitive-role recognition through
+                // the ABox graph cannot fire (ore_ont_10702: all 23 missing
+                // `X ⊑ FrenchWine` need locatedIn(aRegion, FrenchRegion) at
+                // the `__nom__aRegion` successor). Dedup so repeated
+                // assertions emit one clause pair.
+                Atom::Role(role, Term::Ind(src), Term::Ind(tgt)) => {
+                    let (Some(nom_s), Some(nom_t)) =
+                        (ind_to_nom.get(src.as_str()), ind_to_nom.get(tgt.as_str()))
+                    else {
+                        continue;
+                    };
+                    let key = (nom_s.to_string(), role.clone(), nom_t.to_string());
+                    if !seen_links.insert(key) {
+                        continue;
+                    }
+                    let f = Term::Fun(
+                        format!("f_nomlink_{}_{}_{}", nom_s, role, nom_t),
+                        Box::new(x.clone()),
+                    );
                     extra.push(clause(
-                        [Atom::Concept(nom.to_string(), x.clone())],
-                        [Atom::Concept(concept.clone(), x.clone())],
+                        [Atom::Concept(nom_s.to_string(), x.clone())],
+                        [Atom::Role(role.clone(), x.clone(), f.clone())],
+                    ));
+                    extra.push(clause(
+                        [Atom::Concept(nom_s.to_string(), x.clone())],
+                        [Atom::Concept(nom_t.to_string(), f)],
                     ));
                 }
+                _ => {}
             }
         }
     }
