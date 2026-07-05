@@ -42,7 +42,11 @@ fn main() {
 }
 
 fn features_cmd(rest: &[String]) {
-    let onts: Vec<&str> = rest.iter().map(String::as_str).filter(|a| !a.starts_with("--")).collect();
+    let onts: Vec<&str> = rest
+        .iter()
+        .map(String::as_str)
+        .filter(|a| !a.starts_with("--"))
+        .collect();
     if onts.is_empty() {
         eprintln!("usage: km features <ontology.ofn> ...");
         exit(2);
@@ -78,6 +82,11 @@ fn cb_to_ht_cmd() {
         cardinalities: Vec<kobayashi_marust::json_io::CardMeta>,
         #[serde(default)]
         rules: Vec<kobayashi_marust::json_io::JRule>,
+        /// declared class names (frontend meta `named`): a declared class is
+        /// always a query even when its local name looks internal (contains
+        /// ':' or a Q_/__/aux_/def_ prefix)
+        #[serde(default)]
+        named: Vec<String>,
     }
     let mut buf = String::new();
     if std::io::stdin().read_to_string(&mut buf).is_err() {
@@ -91,8 +100,16 @@ fn cb_to_ht_cmd() {
             exit(1);
         }
     };
-    let named = std::collections::HashSet::new();
-    let tin = orchestrate::cb_to_ht::convert(&input.clauses, input.rbox.as_deref(), &named, &input.cardinalities, std::env::var_os("KM_HT_CARD").is_some(), &input.rules, std::env::var_os("KM_HT_RULES").is_some());
+    let named: std::collections::HashSet<String> = input.named.iter().cloned().collect();
+    let tin = orchestrate::cb_to_ht::convert(
+        &input.clauses,
+        input.rbox.as_deref(),
+        &named,
+        &input.cardinalities,
+        std::env::var_os("KM_HT_CARD").is_some(),
+        &input.rules,
+        std::env::var_os("KM_HT_RULES").is_some(),
+    );
     let stdout = std::io::stdout();
     if let Err(e) = serde_json::to_writer(stdout.lock(), &tin) {
         eprintln!("serialise error: {e}");

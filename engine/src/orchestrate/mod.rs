@@ -38,9 +38,16 @@ pub enum OrchestrateError {
     /// ofn exit 3: ontology outside the supported fragment (datatypes)
     OutOfFragment(String),
     /// a worker exited non-zero (other than the modelled elc 3/4 codes)
-    Worker { bin: String, code: i32, stderr: String },
+    Worker {
+        bin: String,
+        code: i32,
+        stderr: String,
+    },
     /// failed to spawn a worker binary
-    Spawn { bin: String, source: std::io::Error },
+    Spawn {
+        bin: String,
+        source: std::io::Error,
+    },
     Io(std::io::Error),
     Json(serde_json::Error),
 }
@@ -98,7 +105,9 @@ pub struct Classification {
 }
 
 pub(crate) fn parse_out(res: &engine_run::EngineResult) -> Result<EngineOut, OrchestrateError> {
-    Ok(serde_json::from_reader(BufReader::new(File::open(res.stdout.path())?))?)
+    Ok(serde_json::from_reader(BufReader::new(File::open(
+        res.stdout.path(),
+    )?))?)
 }
 
 /// The CB stack chosen by the production flags. Mirrors `owl_classify`'s
@@ -114,18 +123,21 @@ fn cb_stack(
     cfg: &Config,
     ont: &std::path::Path,
     clauses_path: &std::path::Path,
+    named: &HashSet<String>,
     engine_threads: Option<usize>,
 ) -> Result<EngineOut, OrchestrateError> {
     if cfg.absorb_portfolio && cfg.absorb_on {
         if cfg.tab_race {
-            return race::race_cb_vs_tableau(cfg, clauses_path, || {
+            return race::race_cb_vs_tableau(cfg, clauses_path, named, || {
                 race::race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
             });
         }
         return race::race_absorbed_plain(cfg, ont, clauses_path, engine_threads);
     }
     if cfg.tab_race {
-        return race::race_cb_vs_tableau(cfg, clauses_path, || run_adaptive(cfg, clauses_path, engine_threads));
+        return race::race_cb_vs_tableau(cfg, clauses_path, named, || {
+            run_adaptive(cfg, clauses_path, engine_threads)
+        });
     }
     run_adaptive(cfg, clauses_path, engine_threads)
 }
@@ -137,7 +149,11 @@ fn run_adaptive(
 ) -> Result<EngineOut, OrchestrateError> {
     let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
     if res.code != 0 {
-        return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+        return Err(OrchestrateError::Worker {
+            bin: "engine".into(),
+            code: res.code,
+            stderr: res.stderr,
+        });
     }
     parse_out(&res)
 }
@@ -154,7 +170,11 @@ fn handle_elc_result(
         3 => Ok(None),
         4 => Ok(Some(resolve_residue(cfg, parse_out(&res)?, clauses_path)?)),
         0 => Ok(Some(parse_out(&res)?)),
-        c => Err(OrchestrateError::Worker { bin: "elc".into(), code: c, stderr: res.stderr }),
+        c => Err(OrchestrateError::Worker {
+            bin: "elc".into(),
+            code: c,
+            stderr: res.stderr,
+        }),
     }
 }
 
@@ -166,7 +186,10 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     let timing = std::env::var_os("KM_TIMING").is_some();
     let (clauses_path, meta) = frontend_run::run_ofn_split(cfg, ont)?;
     if timing {
-        eprintln!("KM_TIMING frontend done @ {:.2}s", t_start.elapsed().as_secs_f64());
+        eprintln!(
+            "KM_TIMING frontend done @ {:.2}s",
+            t_start.elapsed().as_secs_f64()
+        );
     }
 
     // The frontend proved the ABox forces an individual into disjoint named
@@ -189,7 +212,11 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     if cfg.ht_rules {
         if let Some(consistent) = rules_consistency(cfg, clauses_path.path(), &meta)? {
             if timing {
-                eprintln!("KM_TIMING rules-consistency done @ {:.2}s consistent={}", t_start.elapsed().as_secs_f64(), consistent);
+                eprintln!(
+                    "KM_TIMING rules-consistency done @ {:.2}s consistent={}",
+                    t_start.elapsed().as_secs_f64(),
+                    consistent
+                );
             }
             return Ok(Classification {
                 consistent,
@@ -232,13 +259,24 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
         // and elc side by side); keep them on the safe single-arm paths (bare elc
         // when EL-safe, else the CB stack) by suppressing the portfolio for them.
-        let is_giant = std::fs::metadata(ont).map(|m| m.len() > 100_000_000).unwrap_or(false);
+        let is_giant = std::fs::metadata(ont)
+            .map(|m| m.len() > 100_000_000)
+            .unwrap_or(false);
         let portfolio_on = cfg.elc_portfolio && !is_giant;
         let mut out: Option<EngineOut> = None;
         let (elc_prog, elc_pre) = cfg.elc_cmd();
         if meta.el_rbox_safe && !portfolio_on {
             // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
-            let res = engine_run::run_engine(&elc_prog, &elc_pre, clauses_path.path(), None, None, None, &[], false)?;
+            let res = engine_run::run_engine(
+                &elc_prog,
+                &elc_pre,
+                clauses_path.path(),
+                None,
+                None,
+                None,
+                &[],
+                false,
+            )?;
             out = handle_elc_result(cfg, res, clauses_path.path())?;
             if out.is_none() {
                 // EL-safe RBox but a non-EL TBox residual (covering disjunction /
@@ -287,6 +325,13 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                 out = handle_elc_result(cfg, res, clauses_path.path())?;
             }
         }
+        // Declared class names from the frontend meta: threaded into every
+        // cb_to_ht conversion so a declared class is ALWAYS a query, even when
+        // its local name looks internal (Q_/__/aux_/def_ prefix or contains
+        // ':', e.g. <.../searchId.do?chebiId=CHEBI:37577>). Without this the
+        // HT/tableau arms silently drop such classes from their answers
+        // (ore_ont_12698: 84 missing subsumptions).
+        let named_set: HashSet<String> = meta.named.iter().cloned().collect();
         match out {
             Some(o) => o,
             None => {
@@ -296,7 +341,7 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                     // wins; in fallback mode HT answers only when the CB/elc arm
                     // fails or runs past budget (monotone-safe). This reaches the
                     // union of the HT and elc-portfolio recoveries in one pass.
-                    race::race_cb_vs_ht(cfg, clauses_path.path(), ht_mode, |th| {
+                    race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
                         race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)
                     })?
                 } else if portfolio_on {
@@ -307,22 +352,31 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                     race::race_adaptive_vs_elc(cfg, clauses_path.path(), th)?
                 } else if cfg.ht_race {
                     // race the whole CB stack against the KM_HT hypertableau.
-                    race::race_cb_vs_ht(cfg, clauses_path.path(), ht_mode, |th| {
-                        cb_stack(cfg, ont, clauses_path.path(), th)
+                    race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
+                        cb_stack(cfg, ont, clauses_path.path(), &named_set, th)
                     })?
                 } else {
-                    cb_stack(cfg, ont, clauses_path.path(), cfg.threads)?
+                    cb_stack(cfg, ont, clauses_path.path(), &named_set, cfg.threads)?
                 }
             }
         }
     };
 
     if timing {
-        eprintln!("KM_TIMING engine block done @ {:.2}s (subs_keys={})", t_start.elapsed().as_secs_f64(), out.subsumptions.len());
+        eprintln!(
+            "KM_TIMING engine block done @ {:.2}s (subs_keys={})",
+            t_start.elapsed().as_secs_f64(),
+            out.subsumptions.len()
+        );
     }
     // Output mapping: emit FULL IRIs (the harness canonicalises once); filter
     // generated names; drop self-subsumptions; collect ⊥-subsumptions as unsat.
-    let full_iri = |n: &str| -> String { meta.iri_map.get(n).cloned().unwrap_or_else(|| n.to_string()) };
+    let full_iri = |n: &str| -> String {
+        meta.iri_map
+            .get(n)
+            .cloned()
+            .unwrap_or_else(|| n.to_string())
+    };
     let mut subs: Vec<[String; 2]> = Vec::new();
     let mut unsat: Vec<String> = Vec::new();
     let mut unsat_names: HashSet<&str> = HashSet::new();
@@ -387,7 +441,7 @@ fn rules_consistency(
         &input.cardinalities,
         false, // keep the clausal cardinality (Eq-heads) for the default Tableau
         &input.rules,
-        true,  // ht_rules: seed the ABox + emit rule clauses
+        true, // ht_rules: seed the ABox + emit rule clauses
     );
     let tin_bytes = serde_json::to_vec(&tin)?;
     let (tab_prog, tab_pre) = cfg.tab_cmd();
@@ -401,7 +455,10 @@ fn rules_consistency(
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
     cmd.env_remove("KM_HT");
-    let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn { bin: "tableau".into(), source: e })?;
+    let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
+        bin: "tableau".into(),
+        source: e,
+    })?;
     {
         use std::io::Write as _;
         let mut stdin = child.stdin.take().expect("tableau stdin");
@@ -466,14 +523,22 @@ fn resolve_residue(
 /// byte-identical to `owl_classify.py` for ASCII IRIs.
 struct PyFmt;
 impl serde_json::ser::Formatter for PyFmt {
-    fn begin_array_value<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> std::io::Result<()> {
+    fn begin_array_value<W: ?Sized + Write>(
+        &mut self,
+        w: &mut W,
+        first: bool,
+    ) -> std::io::Result<()> {
         if first {
             Ok(())
         } else {
             w.write_all(b", ")
         }
     }
-    fn begin_object_key<W: ?Sized + Write>(&mut self, w: &mut W, first: bool) -> std::io::Result<()> {
+    fn begin_object_key<W: ?Sized + Write>(
+        &mut self,
+        w: &mut W,
+        first: bool,
+    ) -> std::io::Result<()> {
         if first {
             Ok(())
         } else {

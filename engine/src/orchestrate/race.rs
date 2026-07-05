@@ -46,15 +46,26 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
         }
     }
     for u in &t.unsatisfiable {
-        subs.entry(u.clone()).or_default().push("owl:Nothing".to_string());
+        subs.entry(u.clone())
+            .or_default()
+            .push("owl:Nothing".to_string());
     }
-    EngineOut { subsumptions: subs, inconsistent: !t.consistent, dropped: 0, unresolved: Vec::new() }
+    EngineOut {
+        subsumptions: subs,
+        inconsistent: !t.consistent,
+        dropped: 0,
+        unresolved: Vec::new(),
+    }
 }
 
 // ---------------------------------------------------------------------------
 // lazily-spawned label-caching tableau racer
 // ---------------------------------------------------------------------------
-fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath)> {
+fn spawn_tableau(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+) -> Option<(Child, super::tmpfile::TempPath)> {
     if !cfg.tab_race {
         return None;
     }
@@ -72,8 +83,7 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
     if !cl.iter().any(|c| c.head.len() >= 2) {
         return None;
     }
-    let named = std::collections::HashSet::new();
-    let tin = cb_to_ht::convert(&cl, None, &named, &cards, false, &[], false);
+    let tin = cb_to_ht::convert(&cl, None, named, &cards, false, &[], false);
     // only race when the TInput faithfully represents the ontology
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return None;
@@ -114,7 +124,12 @@ fn spawn_tableau(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmp
 // ---------------------------------------------------------------------------
 // CB-engine procedure vs the lazily-spawned tableau; first valid finisher wins
 // ---------------------------------------------------------------------------
-pub fn race_cb_vs_tableau<F>(cfg: &Config, clauses_path: &Path, engine_run: F) -> Result<EngineOut, OrchestrateError>
+pub fn race_cb_vs_tableau<F>(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+    engine_run: F,
+) -> Result<EngineOut, OrchestrateError>
 where
     F: FnOnce() -> Result<EngineOut, OrchestrateError> + Send,
 {
@@ -139,7 +154,7 @@ where
         let mut tab = if eng_done.load(Ordering::SeqCst) {
             None
         } else {
-            spawn_tableau(cfg, clauses_path)
+            spawn_tableau(cfg, clauses_path, named)
         };
 
         let mut winner: Option<EngineOut> = None;
@@ -150,7 +165,8 @@ where
                     let mut won = None;
                     if st.success() {
                         if let Ok(f) = File::open(outp.path()) {
-                            if let Ok(t) = serde_json::from_reader::<_, TOutput>(BufReader::new(f)) {
+                            if let Ok(t) = serde_json::from_reader::<_, TOutput>(BufReader::new(f))
+                            {
                                 won = Some(tableau_to_out(t));
                             }
                         }
@@ -224,7 +240,11 @@ pub fn race_absorbed_plain(
     // plain absent or did not finish fast: run the absorbed set with full budget
     let res = engine_run::run_engine_adaptive(cfg, absorbed_path, None, engine_threads)?;
     if res.code != 0 {
-        return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+        return Err(OrchestrateError::Worker {
+            bin: "engine".into(),
+            code: res.code,
+            stderr: res.stderr,
+        });
     }
     parse_out(&res)
 }
@@ -236,7 +256,9 @@ pub fn race_absorbed_plain(
 /// unset; the benchmark harness always sets it, so the racer reservations below
 /// resolve to `cfg.threads` in practice.
 fn avail_cpus() -> usize {
-    std::thread::available_parallelism().map(|n| n.get()).unwrap_or(2)
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2)
 }
 
 /// Spawn the certified-elc racer (`KM_ELC_CERT`, default 2). Its (possibly
@@ -274,7 +296,11 @@ pub fn race_adaptive_vs_elc(
         None => {
             let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
             if res.code != 0 {
-                return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+                return Err(OrchestrateError::Worker {
+                    bin: "engine".into(),
+                    code: res.code,
+                    stderr: res.stderr,
+                });
             }
             return parse_out(&res);
         }
@@ -296,7 +322,9 @@ pub fn race_adaptive_vs_elc(
         });
 
         // the lazily-spawned residue racer (elc exit 4): run_engine with KM_QUERIES
-        let mut tgt: Option<thread::ScopedJoinHandle<Result<engine_run::EngineResult, OrchestrateError>>> = None;
+        let mut tgt: Option<
+            thread::ScopedJoinHandle<Result<engine_run::EngineResult, OrchestrateError>>,
+        > = None;
         let mut partial: Option<EngineOut> = None;
         let mut elc_lost = false;
         let mut winner: Option<EngineOut> = None;
@@ -404,7 +432,11 @@ pub fn race_adaptive_vs_elc(
         engine_run::cancel_and_kill_engines();
         let res = cb.join().expect("engine thread panicked")?;
         if res.code != 0 {
-            return Err(OrchestrateError::Worker { bin: "engine".into(), code: res.code, stderr: res.stderr });
+            return Err(OrchestrateError::Worker {
+                bin: "engine".into(),
+                code: res.code,
+                stderr: res.stderr,
+            });
         }
         parse_out(&res)
     });
@@ -415,7 +447,8 @@ pub fn race_adaptive_vs_elc(
 /// `KM_THREADS` is unset (the harness always sets it, so in practice the engine
 /// keeps `cfg.threads`). Mirrors `classify`'s `if "KM_THREADS" not in os.environ`.
 pub fn elc_portfolio_threads(cfg: &Config) -> Option<usize> {
-    cfg.threads.or_else(|| Some(avail_cpus().saturating_sub(1).max(1)))
+    cfg.threads
+        .or_else(|| Some(avail_cpus().saturating_sub(1).max(1)))
 }
 
 // ---------------------------------------------------------------------------
@@ -442,13 +475,22 @@ fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
 fn has_inverse_bridge(cl: &[crate::json_io::JClause]) -> bool {
     use crate::json_io::{JAtom, JTerm};
     let var = |t: &JTerm| -> Option<String> {
-        if let JTerm::Var { name } = t { Some(name.clone()) } else { None }
+        if let JTerm::Var { name } = t {
+            Some(name.clone())
+        } else {
+            None
+        }
     };
     cl.iter().any(|c| {
         if c.head.len() != 1 {
             return false;
         }
-        if let JAtom::Role { source: hs, target: ht, .. } = &c.head[0] {
+        if let JAtom::Role {
+            source: hs,
+            target: ht,
+            ..
+        } = &c.head[0]
+        {
             let (hs, ht) = match (var(hs), var(ht)) {
                 (Some(a), Some(b)) => (a, b),
                 _ => return false,
@@ -483,18 +525,33 @@ fn has_datatype(cl: &[crate::json_io::JClause]) -> bool {
 
 /// Spawn `tableau_cli` under `KM_HT=1` as a racer on the HT-routable fragment.
 /// Returns `(child, out_path)` or `None`. Port of `_spawn_ht`.
-fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile::TempPath, bool)> {
+fn spawn_ht(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+) -> Option<(Child, super::tmpfile::TempPath, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
         let f = File::open(clauses_path).ok()?;
         let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
         (v.clauses, v.cardinalities)
     };
-    let named = std::collections::HashSet::new();
     let _tconv = Instant::now();
-    let tin = cb_to_ht::convert(&cl, None, &named, &cards, std::env::var_os("KM_HT_CARD").is_some(), &[], false);
+    let tin = cb_to_ht::convert(
+        &cl,
+        None,
+        named,
+        &cards,
+        std::env::var_os("KM_HT_CARD").is_some(),
+        &[],
+        false,
+    );
     if std::env::var_os("KM_TIMING").is_some() {
-        eprintln!("KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s", cl.len(), _tconv.elapsed().as_secs_f64());
+        eprintln!(
+            "KM_TIMING spawn_ht: read+convert {} clauses in {:.2}s",
+            cl.len(),
+            _tconv.elapsed().as_secs_f64()
+        );
     }
     // KM_DUMP_TIN=<path>: write the cb_to_ht TInput JSON (so the tableau worker can
     // be run standalone on it with any flags + visible stderr) and print the
@@ -686,7 +743,11 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
         // tests, ~18 GB, times out even all-cores) and all-cores here would
         // oversubscribe a concurrent sweep, so leave it serial; set KM_HT_PAR to opt
         // into the (sound) parallel card classify.
-        for (k, v) in [("KM_HT_FORCE", "1"), ("KM_HT_CARD", "1"), ("KM_HT_PAR", "1")] {
+        for (k, v) in [
+            ("KM_HT_FORCE", "1"),
+            ("KM_HT_CARD", "1"),
+            ("KM_HT_PAR", "1"),
+        ] {
             if std::env::var_os(k).is_none() {
                 cmd.env(k, v);
             }
@@ -773,7 +834,11 @@ fn spawn_ht(cfg: &Config, clauses_path: &Path) -> Option<(Child, super::tmpfile:
     // waiting out the doomed CB for the full ht_budget_s (which on a 240s sweep gives
     // the card arm only a 15s window). CB-preference is preserved: `take_cb` is
     // checked every loop iteration, so a card ont CB solves fast still goes to CB.
-    Some((child, out_path, shoq_candidate || qo_candidate || card_candidate))
+    Some((
+        child,
+        out_path,
+        shoq_candidate || qo_candidate || card_candidate,
+    ))
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
@@ -801,13 +866,14 @@ fn ht_reserved_threads(cfg: &Config) -> Option<usize> {
 pub fn race_cb_vs_ht<F>(
     cfg: &Config,
     clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
     mode: &str,
     engine_run: F,
 ) -> Result<EngineOut, OrchestrateError>
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out, fast_certify) = match spawn_ht(cfg, clauses_path) {
+    let (mut ht, ht_out, fast_certify) = match spawn_ht(cfg, clauses_path, named) {
         Some(x) => x,
         None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
     };
@@ -827,14 +893,17 @@ where
 
     let read_tout = |p: &Path| -> Option<EngineOut> {
         let f = File::open(p).ok()?;
-        serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok().map(tableau_to_out)
+        serde_json::from_reader::<_, TOutput>(BufReader::new(f))
+            .ok()
+            .map(tableau_to_out)
     };
 
     // the CB result, written by the CB thread when it finishes — the analogue of
     // Python's `done` dict (Ok = `done["out"]`, Err = `done["exc"]`). Inspecting
     // it each iteration lets the loop distinguish "CB succeeded" (always prefer)
     // from "CB errored" (wait for HT) without consuming the join handle.
-    let cb_slot: Arc<Mutex<Option<Result<EngineOut, OrchestrateError>>>> = Arc::new(Mutex::new(None));
+    let cb_slot: Arc<Mutex<Option<Result<EngineOut, OrchestrateError>>>> =
+        Arc::new(Mutex::new(None));
     let race_mode = mode.to_string();
     let result: Result<EngineOut, OrchestrateError> = thread::scope(|s| {
         let slot = cb_slot.clone();
@@ -855,19 +924,30 @@ where
                 if let Ok(Some(st)) = ht.try_wait() {
                     ht_polled = true;
                     if timing {
-                        eprintln!("KM_TIMING race: HT worker exited @ {:.2}s (success={})", t0.elapsed().as_secs_f64(), st.success());
+                        eprintln!(
+                            "KM_TIMING race: HT worker exited @ {:.2}s (success={})",
+                            t0.elapsed().as_secs_f64(),
+                            st.success()
+                        );
                     }
                     if st.success() {
                         ht_res = read_tout(ht_out.path());
                         if timing {
-                            eprintln!("KM_TIMING race: read_tout done @ {:.2}s", t0.elapsed().as_secs_f64());
+                            eprintln!(
+                                "KM_TIMING race: read_tout done @ {:.2}s",
+                                t0.elapsed().as_secs_f64()
+                            );
                         }
                     }
                 }
             }
             if timing && !cb_logged {
                 if let Some(r) = cb_slot.lock().unwrap().as_ref() {
-                    eprintln!("KM_TIMING race: CB slot filled @ {:.2}s (ok={})", t0.elapsed().as_secs_f64(), r.is_ok());
+                    eprintln!(
+                        "KM_TIMING race: CB slot filled @ {:.2}s (ok={})",
+                        t0.elapsed().as_secs_f64(),
+                        r.is_ok()
+                    );
                     cb_logged = true;
                 }
             }
@@ -876,7 +956,7 @@ where
             let mut take_cb = false;
             let mut cb_errored = false;
             match cb_slot.lock().unwrap().as_ref() {
-                Some(Ok(_)) => take_cb = true,    // CB succeeded: always prefer CB
+                Some(Ok(_)) => take_cb = true,     // CB succeeded: always prefer CB
                 Some(Err(_)) => cb_errored = true, // CB errored: HT is the only hope
                 None => {}
             }
