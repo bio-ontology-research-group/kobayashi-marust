@@ -44,6 +44,7 @@ thread_local! {
     static ADDCLAUSE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static PREDLOCAL_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     static EQRULE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static PROPAGATE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 /// Add `t.elapsed()` ns to a per-rule profiling cell (no-op cost is a branch on
@@ -2758,6 +2759,15 @@ impl Engine {
 
     /// After saturating context `id`, generate Succ and Pred messages.
     fn propagate(&mut self, id: usize) {
+        if !self.prof_time {
+            return self.propagate_inner(id);
+        }
+        let t = std::time::Instant::now();
+        self.propagate_inner(id);
+        prof_add(&PROPAGATE_NS, t);
+    }
+
+    fn propagate_inner(&mut self, id: usize) {
         if !self.contexts[id].dirty {
             return;
         }
@@ -3829,12 +3839,13 @@ impl Engine {
                     c.with(|x| x.get()) as f64 / 1e6
                 };
                 eprintln!(
-                    "KM_STATS[time-ms] subsume={:.1} hyper={:.1} pred_local={:.1} add_clause={:.1} eq={:.1}",
+                    "KM_STATS[time-ms] subsume={:.1} hyper={:.1} pred_local={:.1} add_clause={:.1} eq={:.1} propagate={:.1}",
                     ms(&SUBSUME_NS),
                     ms(&HYPER_NS),
                     ms(&PREDLOCAL_NS),
                     ms(&ADDCLAUSE_NS),
                     ms(&EQRULE_NS),
+                    ms(&PROPAGATE_NS),
                 );
             }
         }
