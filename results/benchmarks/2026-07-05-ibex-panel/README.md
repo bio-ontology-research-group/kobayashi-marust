@@ -47,3 +47,28 @@ docs/CONTESTED-GOLD.md; Konclude's 0.2 s "ok" parses away the rules.)
 - 10702 (wine/nominals): 23 missing, all `X ⊑ FrenchWine`-style.
 - 12698: 84 missing (CHEBI-style ids), peak 38.8 GB - likely the ST-retry
   after parallel blowup produced a truncated/fallback result path.
+
+## Post-fix rerun (same day, commit 8d3b537)
+
+The 12698 incompleteness was root-caused to the HT/tableau race arms passing
+an EMPTY `named` set to `cb_to_ht::convert` (declared classes whose IRI
+localname contains ':' were treated as internal and dropped from the query
+set). Fix: thread `meta.named` through the race path. Full 584-ont rerun
+(build 48057549, panel 48057552; files `*_postfix.*`):
+
+- km: 571 ok / 13 timeout (same set - zero coverage regressions),
+  **570 gold-MATCH / 1 DIFF** (was 569/2). 12698 now byte-identical to gold.
+- Remaining DIFF: 10702 only (sound, incomplete by 23; needs hasValue-nominal
+  + ABox role assertions + transitive locatedIn chaining; CB+KM_NOMINALS is
+  sound but times out; fast-Ht o-rule lacks trans-over-nominal-edges).
+- km wall med/avg 0.57 / 7.14 s; peak med/avg 126 / 1057 MB. WIN 36.
+
+## Threads A/B on the 102-ont memory tail (job 48057871)
+
+t16 vs t1, same node, new binary: mem ratio t16/t1 median only 1.35x
+(max 250x - concentrated: 12698 45->9.9 GB, 15491 19->6.5 GB); only 14 onts
+get >=2x memory back at <=1.5x wall; 16462 NEEDS parallel (t1 = timeout);
+9635 stays ~44 GB even at t1. Conclusion: the memory tail is dominated by
+the CB engine's per-context algorithmic memory, not thread amplification -
+a threads router is a weak lever. Raw results: ibex
+`/ibex/scratch/hohndor/km/thrab/`.
