@@ -35,6 +35,22 @@ thread_local! {
     /// Hyper-call counter (only read under KM_STATS). Thread-local because
     /// `hyper` takes `&self`; reset per Engine run via `reset_hyper_calls`.
     static HYPER_CALLS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Per-rule cumulative wall time (ns), populated only under `KM_PROF_TIME`.
+    /// Splits the saturation loop's cost across its phases so CB-throughput
+    /// optimisation (the beat-Konclude lever) can target the actual bottleneck
+    /// instead of guessing. Reset per Engine run via `reset_hyper_calls`.
+    static SUBSUME_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static HYPER_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static ADDCLAUSE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static PREDLOCAL_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    static EQRULE_NS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Add `t.elapsed()` ns to a per-rule profiling cell (no-op cost is a branch on
+/// the cached `prof_time` flag at the call site).
+#[inline(always)]
+fn prof_add(cell: &'static std::thread::LocalKey<std::cell::Cell<u64>>, t: std::time::Instant) {
+    cell.with(|c| c.set(c.get() + t.elapsed().as_nanos() as u64));
 }
 
 // ----------------------------- substitutions -------------------------------
@@ -875,6 +891,10 @@ pub struct Engine {
     prof: bool,
     trace_sat: bool,
     trigskip: bool,
+    /// KM_PROF_TIME: accumulate per-rule wall time in the saturation loop
+    /// (SUBSUME/HYPER/ADDCLAUSE/PREDLOCAL/EQRULE thread-locals), printed under
+    /// KM_STATS. Off by default (zero cost bar a cached-bool branch).
+    prof_time: bool,
     /// Context-independent closure: the worked-off clauses of an empty-core,
     /// non-root context saturated from the ontology facts + TBox alone (no Succ
     /// hypotheses, no incoming edges).  These consequences are entailed by the
@@ -1109,6 +1129,7 @@ impl Engine {
             prof: std::env::var_os("KM_PROF").is_some(),
             trace_sat: std::env::var_os("KM_SAT").is_some(),
             trigskip: std::env::var_os("KM_NO_TRIGSKIP").is_none(),
+            prof_time: std::env::var_os("KM_PROF_TIME").is_some(),
             // Default ON (sound: units-first is confluent scheduling, early-unsat
             // is a ⊥-subsumes-all short-circuit). Validated gold-clean + net
             // faster + recovers 10908 across the full ORE corpus (IBEX 47526798,
@@ -1337,6 +1358,16 @@ impl Engine {
     /// Redundancy-aware clause addition (Elim): skip if subsumed; remove clauses
     /// it subsumes; enqueue to todo.  Returns true if added.
     fn add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
+        if !self.prof_time {
+            return self.add_clause_inner(id, clause);
+        }
+        let t = std::time::Instant::now();
+        let r = self.add_clause_inner(id, clause);
+        prof_add(&ADDCLAUSE_NS, t);
+        r
+    }
+
+    fn add_clause_inner(&mut self, id: usize, clause: ContextClause) -> bool {
         if clause.is_head_tautology() {
             return false;
         }
@@ -1452,7 +1483,12 @@ impl Engine {
                 let ctx = &self.contexts[id];
                 let arena = &self.cc_arena[d];
                 let (nb, nh) = (clause.body.len(), clause.head.len());
-                if ctx.fwd_subsumed(arena, &clause, nb, nh) {
+                let __t_sub = self.prof_time.then(std::time::Instant::now);
+                let is_sub = ctx.fwd_subsumed(arena, &clause, nb, nh);
+                if let Some(t) = __t_sub {
+                    prof_add(&SUBSUME_NS, t);
+                }
+                if is_sub {
                     self.contexts[id].clause_keys.remove(&cid);
                     if prof {
                         subsumed += 1;
@@ -1670,6 +1706,16 @@ impl Engine {
     /// Hyper rule.  `side` is the just-popped clause; `max` one of its maximal
     /// head predicates.
     fn hyper(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+        if !self.prof_time {
+            return self.hyper_inner(id, side, max, root);
+        }
+        let t = std::time::Instant::now();
+        let r = self.hyper_inner(id, side, max, root);
+        prof_add(&HYPER_NS, t);
+        r
+    }
+
+    fn hyper_inner(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];
@@ -1994,6 +2040,22 @@ impl Engine {
     /// Here `max` is a head predicate of `side` containing a function term; we
     /// resolve any neighbour pred clause whose body contains `max`.
     fn pred_local(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        max: Pred,
+        root: bool,
+    ) -> Vec<ContextClause> {
+        if !self.prof_time {
+            return self.pred_local_inner(id, side, max, root);
+        }
+        let t = std::time::Instant::now();
+        let r = self.pred_local_inner(id, side, max, root);
+        prof_add(&PREDLOCAL_NS, t);
+        r
+    }
+
+    fn pred_local_inner(
         &self,
         id: usize,
         side: &ContextClause,
@@ -3762,6 +3824,19 @@ impl Engine {
                 HYPER_CALLS.with(|c| c.get()),
                 self.stat_saturate
             );
+            if self.prof_time {
+                let ms = |c: &'static std::thread::LocalKey<std::cell::Cell<u64>>| {
+                    c.with(|x| x.get()) as f64 / 1e6
+                };
+                eprintln!(
+                    "KM_STATS[time-ms] subsume={:.1} hyper={:.1} pred_local={:.1} add_clause={:.1} eq={:.1}",
+                    ms(&SUBSUME_NS),
+                    ms(&HYPER_NS),
+                    ms(&PREDLOCAL_NS),
+                    ms(&ADDCLAUSE_NS),
+                    ms(&EQRULE_NS),
+                );
+            }
         }
         if std::env::var("KM_MEMSTATS").is_ok() {
             // Exact-ish accounting of where context memory sits (heap data via
