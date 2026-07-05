@@ -4,6 +4,33 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### SWRL DL-safe rules default-on, rule-gated (+3 ORE: 2669, 15516, 10906)
+
+Three ORE timeouts are SWRL ontologies KM already solved correctly but only
+under the opt-in `KM_HT_RULES` flag. The flag is now DEFAULT-ON (opt out with
+`KM_NO_HT_RULES`), with the whole feature gated on ACTUAL DL-safe-rule
+presence so it is provably inert on every rule-free ontology:
+
+- Frontend `collect_rules` runs by default but returns empty on a rule-free
+  ont, so `ht_rules` stays false and the clause output is byte-identical.
+- `cb_to_ht` derives `rules_active = ht_rules && !rules.is_empty()`, which now
+  gates the ABox-nominal seeding, the ground-fact interception, and — the old
+  blocker to default-on — the emelim suppression. On a rule-free ont emelim
+  still runs exactly as before.
+- The rules-consistency check short-circuits ONLY on a detected inconsistency
+  (⊥ subsumes all ⟹ the empty-subsumption verdict is complete). A CONSISTENT
+  rule ontology falls through to normal classification so its hierarchy is
+  still computed; DL-safe rules range only over named individuals and cannot
+  change a TBox subsumption, so the fall-through is sound + complete.
+
+Validation — all 6 corpus onts carrying `DLSafeRule`, default vs
+`KM_NO_HT_RULES`: **2669** (240 s timeout → inconsistent, 0.17 s), **15516**
+(→ inconsistent, 0.16 s), **10906** (→ inconsistent) all now correct
+(genuinely inconsistent; HermiT agrees, gold wrong — see
+`docs/CONTESTED-GOLD.md`); 13129 consistent 83 subs == 83 subs (identical, no
+regression); 12451 and 10860 unchanged timeouts. +3 recoveries, 0 regressions,
+1390/1390 unit tests green.
+
 ### HT: first-class cardinality route default-on (+3 ORE) and functional-role tagging (+1, gated)
 
 The Konclude-port first-class `≥n`/`≤n` number rules (`KM_HT_CARD`) and the
