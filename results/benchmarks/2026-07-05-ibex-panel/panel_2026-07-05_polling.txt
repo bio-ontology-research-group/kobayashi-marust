@@ -1,0 +1,68 @@
+# ontologies with >=1 record: 584
+
+## Status counts (per reasoner)
+reasoner      ok  timeout  memout  error  unsup  parse  noresult
+konclude     584        0       0      0      0      0         0
+elk          584        0       0      0      0      0         0
+hermit       561       23       0      0      0      0         0
+km           571       13       0      0      0      0         0
+
+## Correctness vs Konclude-gold (sig.gz byte-identical)
+reasoner    MATCH  DIFF  NOSIG
+konclude      584     0      0
+elk           527    57      0
+hermit        555     8     21
+km            570     1     13
+
+## Solvable-within grid: count of onts with status=ok AND wall<=T AND peak<=M
+
+### konclude   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       432   530   543   543   543   543   543   543
+    4       432   531   553   564   565   565   565   565
+    8       432   531   553   576   581   581   581   581
+   16       432   531   553   577   583   584   584   584
+   32       432   531   553   577   583   584   584   584
+   56       432   531   553   577   583   584   584   584
+
+### elk   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       397   562   562   562   562   562   562   562
+    4       397   570   573   576   576   576   576   576
+    8       397   570   575   584   584   584   584   584
+   16       397   570   575   584   584   584   584   584
+   32       397   570   575   584   584   584   584   584
+   56       397   570   575   584   584   584   584   584
+
+### hermit   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       100   387   399   404   419   429   431   432
+    4       100   406   442   452   467   481   485   487
+    8       100   406   453   480   498   513   518   523
+   16       100   406   453   494   518   536   543   550
+   32       100   406   453   494   520   541   554   561
+   56       100   406   453   494   520   541   554   561
+
+### km   (rows=mem GB, cols=time s)
+memGB\t       1     5    10    30    60   120   300   600
+    2       362   454   474   486   488   489   489   489
+    4       362   460   499   524   531   533   534   534
+    8       362   460   502   540   552   560   562   562
+   16       362   460   503   544   556   564   567   567
+   32       362   460   503   545   557   565   569   569
+   56       362   460   503   545   557   565   571   571
+
+## Wall (s) / Peak (MB) percentiles over OK runs
+reasoner    n_ok | wall_p50 wall_p90 wall_p99 wall_max | peak_p50 peak_p90 peak_max
+konclude     584 |   0.3178   4.7115  35.0573    72.84 |    131.2   1277.4  15124.2
+elk          584 |   0.7985   2.2221  12.9386  19.3407 |    245.4   1278.2   6864.3
+hermit       561 |   1.7982  40.8867 347.2773 598.7648 |    709.7   4753.0  27339.5
+km           571 |   0.5764  13.1165 212.0672 225.7557 |    104.3   2685.3  45152.4
+
+## Coverage relationships
+solved by >=1 reasoner: 584 / 584
+solved by NONE: 0: 
+konclude-only (no other reasoner solves): 0: 
+elk-only (no other reasoner solves): 0: 
+hermit-only (no other reasoner solves): 0: 
+km-only (no other reasoner solves): 0: 

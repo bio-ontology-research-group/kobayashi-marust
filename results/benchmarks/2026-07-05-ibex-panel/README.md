@@ -63,6 +63,19 @@ set). Fix: thread `meta.named` through the race path. Full 584-ont rerun
   sound but times out; fast-Ht o-rule lacks trans-over-nominal-edges).
 - km wall med/avg 0.57 / 7.14 s; peak med/avg 126 / 1057 MB. WIN 36.
 
+## Polling-fix rerun (same day, commit f05bccd)
+
+Every orchestrator subprocess wait used a fixed poll quantum (100 ms engine
+watchdog, 200 ms tableau grace, 50-100 ms race loops), putting a ~0.1-0.2 s
+latency floor under each pipeline stage - the dominant cost on small
+ontologies. Replaced with 1 ms-doubling backoff (result-identical). Full
+584-ont rerun (build 48063818, panel 48063819; files `*_polling.*`):
+
+- **WIN (faster AND less mem than Konclude): 161** (was 36 post-fix, 34
+  baseline). MOREMEM-only: 1. km wall med 0.58 s both-ok (Konclude 0.31).
+- Coverage/correctness unchanged: 571 ok, same 13 timeouts, 1 DIFF (10702).
+- km peak median 104 MB vs Konclude 130 MB - km stays the leanest median.
+
 ## Threads A/B on the 102-ont memory tail (job 48057871)
 
 t16 vs t1, same node, new binary: mem ratio t16/t1 median only 1.35x
