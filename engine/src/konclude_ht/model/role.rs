@@ -20,7 +20,8 @@
 #![allow(dead_code)]
 
 use super::concept::Concept;
-use super::stubs::{NameId, RoleChainId, RoleDataId, Terminology, TerminologyId};
+use super::role_chain::RoleChainId;
+use super::stubs::{NameId, RoleDataId, Terminology, TerminologyId};
 use super::substrate::{Arena, Cint64, Id, NegLink};
 use super::{ConceptId, RoleId};
 

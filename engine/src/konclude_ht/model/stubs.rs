@@ -12,10 +12,8 @@
 
 use super::substrate::{Cint64, Id};
 
-/// Port of `CRoleChain` (placeholder; full port lands with `CRoleChain.{h,cpp}`).
-pub struct RoleChain;
-/// `CRoleChain*` → `RoleChainId`.
-pub type RoleChainId = Id<RoleChain>;
+// `CRoleChain` graduated from this stub file to the full port in
+// `model/role_chain.rs` (with the role-chain automata preprocessor).
 
 /// Port of `CRoleData` (placeholder; full port lands with `CRoleData.{h,cpp}`).
 pub struct RoleData;

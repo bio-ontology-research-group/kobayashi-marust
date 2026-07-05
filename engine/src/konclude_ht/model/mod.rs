@@ -11,10 +11,12 @@ pub mod individual; // W1: CIndividual + CVariable
 pub mod ontology;
 pub mod op; // W1: operator codes (CCxxx) + CConceptOperator flag groups
 pub mod role; // W1: CRole
-pub mod stubs; // W1: not-yet-ported placeholder ids (CRoleChain/CRoleData/CTerminology/CName)
+pub mod role_chain; // role-automata port: CRoleChain (graduated from stubs)
+pub mod stubs; // W1: not-yet-ported placeholder ids (CRoleData/CTerminology/CName)
 pub mod substrate; // W3.5: OntologyArenas — the static read-shared terminology (CConcept/CRole/CIndividual/CVariable)
 
-pub use stubs::{NameId, RoleChainId, RoleDataId, TerminologyId};
+pub use role_chain::{RoleChain, RoleChainId};
+pub use stubs::{NameId, RoleDataId, TerminologyId};
 pub use substrate::{Arena, Cint64, Id, NegLink, Trail, INVALID};
 
 /// `CConcept*`  → `ConceptId`.
