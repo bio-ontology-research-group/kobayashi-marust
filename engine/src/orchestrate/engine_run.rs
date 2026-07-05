@@ -121,9 +121,10 @@ pub fn run_engine(
         cmd.env(k, v);
     }
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| OrchestrateError::Spawn { bin: bin_name.clone(), source: e })?;
+    let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
+        bin: bin_name.clone(),
+        source: e,
+    })?;
     let pid = child.id();
     register(pid);
 
@@ -135,7 +136,13 @@ pub fn run_engine(
     let status = if cap_bytes.is_none() && deadline.is_none() {
         child.wait()?
     } else {
-        // poll the resident set and wall clock every 100 ms; SIGKILL on breach.
+        // Poll the resident set and wall clock; SIGKILL on breach. The poll
+        // interval starts at 1 ms and doubles up to 100 ms: a worker that
+        // exits in ~10 ms is noticed in ~10 ms (the old fixed 100 ms sleep
+        // put a ~0.1 s latency floor under EVERY subprocess stage, which
+        // dominated km classify wall on small ontologies), while long runs
+        // converge to the same 100 ms watchdog cadence as before.
+        let mut interval = Duration::from_millis(1);
         loop {
             if let Some(st) = child.try_wait()? {
                 break st;
@@ -156,14 +163,21 @@ pub fn run_engine(
                     break child.wait()?;
                 }
             }
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(interval);
+            interval = (interval * 2).min(Duration::from_millis(100));
         }
     };
 
     deregister(pid);
     let code = status.code().unwrap_or(-1); // signal-killed -> negative-ish; we branch on oom/timed/rc anyway
     let stderr = std::fs::read_to_string(stderr_tmp.path()).unwrap_or_default();
-    Ok(EngineResult { code, stdout: stdout_tmp, stderr, oom, timed_out })
+    Ok(EngineResult {
+        code,
+        stdout: stdout_tmp,
+        stderr,
+        oom,
+        timed_out,
+    })
 }
 
 /// Parallel attempt under the RSS+time watchdog; on overflow/timeout/failure,
@@ -200,7 +214,11 @@ pub fn run_engine_adaptive(
         clauses_path,
         first.as_deref(),
         Some(cfg.par_mem_gb),
-        if central_on { Some(cfg.central_time_cap) } else { None },
+        if central_on {
+            Some(cfg.central_time_cap)
+        } else {
+            None
+        },
         &env1,
         false,
     )?;
@@ -214,10 +232,28 @@ pub fn run_engine_adaptive(
             if let Some(q) = queries {
                 env2.push(("KM_QUERIES", q));
             }
-            proc = run_engine(&engine, &engine_pre, clauses_path, Some("1"), None, None, &env2, false)?;
+            proc = run_engine(
+                &engine,
+                &engine_pre,
+                clauses_path,
+                Some("1"),
+                None,
+                None,
+                &env2,
+                false,
+            )?;
         } else if first.as_deref() != Some("1") {
             // explicit legacy run: single-threaded retry
-            proc = run_engine(&engine, &engine_pre, clauses_path, Some("1"), None, None, &env1, false)?;
+            proc = run_engine(
+                &engine,
+                &engine_pre,
+                clauses_path,
+                Some("1"),
+                None,
+                None,
+                &env1,
+                false,
+            )?;
         }
     }
     Ok(proc)

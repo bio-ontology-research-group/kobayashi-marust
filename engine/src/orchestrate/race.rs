@@ -144,12 +144,16 @@ where
 
         // grace delay: an ontology the engine finishes within it pays zero
         // tableau cost (no clause read, no conversion, no extra process).
+        // Adaptive sleep (1 ms doubling to 200 ms): a fast engine exit is
+        // noticed near-immediately instead of after a 200 ms quantum.
         let t0 = Instant::now();
+        let mut interval = Duration::from_millis(1);
         while t0.elapsed().as_secs_f64() < cfg.tab_race_delay {
             if eng_done.load(Ordering::SeqCst) {
                 break;
             }
-            thread::sleep(Duration::from_millis(200));
+            thread::sleep(interval);
+            interval = (interval * 2).min(Duration::from_millis(200));
         }
         let mut tab = if eng_done.load(Ordering::SeqCst) {
             None
@@ -158,6 +162,7 @@ where
         };
 
         let mut winner: Option<EngineOut> = None;
+        let mut interval = Duration::from_millis(1);
         loop {
             let mut tab_failed = false;
             if let Some((child, outp)) = tab.as_mut() {
@@ -189,7 +194,8 @@ where
             if eng_done.load(Ordering::SeqCst) {
                 break;
             }
-            thread::sleep(Duration::from_millis(50));
+            thread::sleep(interval);
+            interval = (interval * 2).min(Duration::from_millis(50));
         }
 
         // reap any tableau child still around
@@ -329,6 +335,7 @@ pub fn race_adaptive_vs_elc(
         let mut elc_lost = false;
         let mut winner: Option<EngineOut> = None;
 
+        let mut interval = Duration::from_millis(1);
         loop {
             // --- poll the certified-elc process ---
             if !elc_lost {
@@ -413,7 +420,8 @@ pub fn race_adaptive_vs_elc(
                     }
                 }
             }
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(interval);
+            interval = (interval * 2).min(Duration::from_millis(100));
         }
 
         // a racer (elc/residue) won: kill the elc process + reap; engines already
@@ -918,6 +926,7 @@ where
         let timing = std::env::var_os("KM_TIMING").is_some();
         let mut cb_logged = false;
 
+        let mut interval = Duration::from_millis(1);
         loop {
             // poll HT once it finishes (capture its valid answer)
             if !ht_polled {
@@ -997,7 +1006,8 @@ where
                     }
                 }
             }
-            thread::sleep(Duration::from_millis(50));
+            thread::sleep(interval);
+            interval = (interval * 2).min(Duration::from_millis(50));
         }
     });
     result
