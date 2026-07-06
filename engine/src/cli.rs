@@ -294,6 +294,11 @@ pub fn run_elc() {
 pub fn run_engine() {
     use crate::reasoner::Reasoner;
     maybe_enable_debug();
+    // KM_PROF_TIME: coarse whole-run phase timers (read+parse / build /
+    // saturate / extract / serialise+write), complementing the per-rule timers
+    // in engine.rs which only cover the saturation loop's rule bodies.
+    let prof = std::env::var_os("KM_PROF_TIME").is_some();
+    let t0 = std::time::Instant::now();
     let mut buf = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut buf) {
         eprintln!("failed to read stdin: {e}");
@@ -306,15 +311,22 @@ pub fn run_engine() {
             exit(1);
         }
     };
+    let t_parse = t0.elapsed();
 
+    let t1 = std::time::Instant::now();
     let mut r = Reasoner::new(&input.clauses);
+    let t_build = t1.elapsed();
+    let t2 = std::time::Instant::now();
     r.saturate();
+    let t_saturate = t2.elapsed();
 
+    let t3 = std::time::Instant::now();
     let subs = r.subsumptions();
     let subsumptions = subs
         .into_iter()
         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
         .collect();
+    let t_extract = t3.elapsed();
 
     // The derived-clause echo doubles output volume and is only consumed by the
     // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on
@@ -330,11 +342,22 @@ pub fn run_engine() {
         dropped: r.dropped_unsupported(),
     };
 
+    let t4 = std::time::Instant::now();
     let s = serde_json::to_string(&out).expect("serialise output");
     let stdout = std::io::stdout();
     let mut h = stdout.lock();
     h.write_all(s.as_bytes()).expect("write stdout");
     h.write_all(b"\n").expect("write newline");
+    if prof {
+        eprintln!(
+            "KM_STATS[phase-ms] parse={:.1} build={:.1} saturate={:.1} extract={:.1} write={:.1}",
+            t_parse.as_secs_f64() * 1e3,
+            t_build.as_secs_f64() * 1e3,
+            t_saturate.as_secs_f64() * 1e3,
+            t_extract.as_secs_f64() * 1e3,
+            t4.elapsed().as_secs_f64() * 1e3,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
