@@ -60,6 +60,13 @@ pub struct Bridged {
     /// Clauses the v1 encoder could NOT express. `> 0` ⇒ the bridged ontology
     /// under-approximates the input: "satisfiable" verdicts are unreliable.
     pub unsupported: usize,
+    /// Implications absorbed onto their first positive trigger concept
+    /// (`CCATOM` host promoted to `CCSUB`; see the attachment pass) — these
+    /// are unfolded only in nodes whose label contains the trigger.
+    pub absorbed: usize,
+    /// Implications with no positive concept trigger, attached to the
+    /// ontology TOP concept (scanned by EVERY node).
+    pub top_attached: usize,
 }
 
 /// Tag base for bridged concepts (tag 1 is the ontology TOP sentinel).
@@ -186,6 +193,11 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         .collect();
 
     let mut tbox: Vec<ConceptId> = Vec::new();
+    // Absorption bookkeeping (attached after the encode loop): an implication
+    // with a positive concept trigger hangs off that trigger's concept; the
+    // rest go to TOP.
+    let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
+    let mut top_gcis: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
     // Structures outside the v1 clause encoder count as unsupported input.
     unsupported += tin.card_defs.len() + tin.nominals.len() + tin.chains.len();
@@ -302,7 +314,12 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             } else {
                 b.or_of(&heads)
             };
-            tbox.push(b.implication(head, &triggers));
+            let imp = b.implication(head, &triggers);
+            tbox.push(imp);
+            match triggers.iter().find(|&&(_, neg)| !neg) {
+                Some(&(host, _)) => absorbed_pairs.push((host, imp)),
+                None => top_gcis.push(imp),
+            }
             continue;
         }
 
@@ -362,7 +379,12 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     ops.push(all);
                     b.or_of(&ops)
                 };
-                tbox.push(b.implication(head, &triggers));
+                let imp = b.implication(head, &triggers);
+                tbox.push(imp);
+                match triggers.iter().find(|&&(_, neg)| !neg) {
+                    Some(&(host, _)) => absorbed_pairs.push((host, imp)),
+                    None => top_gcis.push(imp),
+                }
             } else if !succ_body.is_empty() {
                 // ---- y-triggered (the absorption shape): ------------------
                 // `D(y) ∧ R(x,y) → E(x) ∨ F(y)`  ≡  `D ⊑ F ∨ ∀R⁻.E`
@@ -386,7 +408,12 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     ops.push(all_inv);
                     b.or_of(&ops)
                 };
-                tbox.push(b.implication(head, &succ_body));
+                let imp = b.implication(head, &succ_body);
+                tbox.push(imp);
+                match succ_body.iter().find(|&&(_, neg)| !neg) {
+                    Some(&(host, _)) => absorbed_pairs.push((host, imp)),
+                    None => top_gcis.push(imp),
+                }
             } else {
                 // no concept trigger on either side (`⊤ ⊑ …` over an edge) —
                 // out of the v1 fragment (needs the covering-disjunction
@@ -399,20 +426,42 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         unsupported += 1;
     }
 
-    // Attach every TBox implication as an operand of the ontology TOP concept
-    // (Konclude's universal-constraint attachment): `CCTOP` dispatches to the
-    // AND rule, and `create_new_individual` labels every fresh successor with
-    // TOP — so GCIs reach EVERY node, not just the probe root. Without this
-    // the ∃-generated successors never see the TBox (e.g. `B ⊓ C → ⊥` cannot
-    // clash on the ∀/∃ successor). The probe driver still re-seeds the
-    // implications on the ROOT each pass (the re-drive stand-in for the
-    // unported condensed reapply queue); successor-side chains deeper than
-    // one drive remain a documented v1 gap closed by the reapply-queue port.
+    // ---- attachment pass: absorption wiring (Konclude's CCSUB mechanism) ---
+    // An implication with a positive concept trigger is attached as an
+    // operand of that trigger's concept, whose opcode is promoted CCATOM →
+    // CCSUB: positive CCSUB dispatches to the AND rule (mPosJumpFuncVec[CCSUB]
+    // = applyANDRule; negated CCSUB is atomaric), so the implication is
+    // unfolded ONLY in nodes whose label actually contains the trigger —
+    // node-count-independent, exactly how absorbed GCIs hang off named
+    // concepts in Konclude. This is what keeps per-node work flat: without it
+    // every node scanned the whole TBox through TOP (measured on ore_ont_1016:
+    // 388 nodes × 13k TOP impls = the 5M drive cap). Restricting assertion to
+    // trigger-nodes is sound AND complete (in a trigger-free node the clause
+    // is vacuous — the standard absorption argument; DL-clause bodies are
+    // positive atoms). The retained ¬trigger linker inside the CCIMPL is then
+    // trivially satisfied at unfold time and the remaining triggers ride the
+    // condensed reapply queue (install-to-trigger).
+    for &(host, imp) in &absorbed_pairs {
+        let c = ctx.ontology_arenas_mut().concept_mut(host);
+        if c.get_operator_code() == op::CCATOM {
+            c.set_operator_code(op::CCSUB);
+        }
+        c.add_operand_linker(imp, false);
+        c.inc_operand_count(1);
+    }
+
+    // Trigger-less implications go to the ontology TOP concept (Konclude's
+    // universal-constraint attachment): `CCTOP` dispatches to the AND rule,
+    // and `create_new_individual` labels every fresh successor with TOP — so
+    // these reach EVERY node. The probe driver still re-seeds the FULL tbox
+    // list on the ROOT each pass (root nodes are not created through
+    // `create_new_individual`, so they never receive TOP; the re-drive also
+    // remains the cross-drive safety net).
     let top = ctx.processing_data_box().ontology_top_concept();
     if top.is_some() {
-        let n = tbox.len() as i64;
+        let n = top_gcis.len() as i64;
         let top_concept = ctx.ontology_arenas_mut().concept_mut(top);
-        for &g in &tbox {
+        for &g in &top_gcis {
             top_concept.add_operand_linker(g, false);
         }
         let count = top_concept.get_operand_count();
@@ -424,6 +473,8 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         roles,
         tbox,
         unsupported,
+        absorbed: absorbed_pairs.len(),
+        top_attached: top_gcis.len(),
     }
 }
 
@@ -844,13 +895,15 @@ mod tests {
                 &[(bridged.named[s], false)],
             );
             eprintln!(
-                "BRIDGE-PROBE {}: verdict={:?} bridge={:.0}ms probe={:.0}ms nodes={} backtracks={}",
+                "BRIDGE-PROBE {}: verdict={:?} bridge={:.0}ms probe={:.0}ms nodes={} backtracks={} absorbed={} top={}",
                 tin.concepts[s],
                 verdict,
                 t_bridge.as_secs_f64() * 1e3,
                 t1.elapsed().as_secs_f64() * 1e3,
                 ctx.process_context().node_count(),
                 algo.or_backtrack_count,
+                bridged.absorbed,
+                bridged.top_attached,
             );
         }
     }
@@ -889,11 +942,13 @@ mod tests {
         let bridged = bridge_tinput(&mut ctx, &tin);
         eprintln!(
             "BRIDGE-COVERAGE {path}: concepts={} roles={} clauses={} encoded_impls={} \
-             unsupported={} (inverse={} nominals={} card_defs={} chains={})",
+             absorbed={} top_attached={} unsupported={} (inverse={} nominals={} card_defs={} chains={})",
             tin.concepts.len(),
             tin.roles.len(),
             tin.clauses.len(),
             bridged.tbox.len(),
+            bridged.absorbed,
+            bridged.top_attached,
             bridged.unsupported,
             tin.inverse,
             tin.nominals.len(),
