@@ -536,6 +536,7 @@ impl Default for ReapplyRoleSuccessorData {
 }
 
 /// Port of `CReapplyRoleSuccessorHash` (no base class).
+#[derive(Clone)]
 pub struct ReapplyRoleSuccessorHash {
     // KONCLUDE-PORT-NOTE[ownership]: ambient `CProcessContext*` handle (opaque).
     pub context: Cint64, // mContext
@@ -600,6 +601,7 @@ impl ReapplyRoleSuccessorHash {
 /// `dependency_track_point` from `CDependencyTracker`); the six
 /// `CBranchingMergingIndividualNodeCandidateLinker*` chains become candidate-linker
 /// head ids, and the `CXLinker<CIndividualLinkEdge*>*` chain a `Vec<EdgeId>`.
+#[derive(Clone)]
 pub struct BranchingMergingProcessingRestrictionSpecification {
     // --- base CProcessingRestrictionSpecification (: CLinkerBase<double,…>) ---
     /// `CLinkerBase<double,…>` data element (`getPriorityOffset`).

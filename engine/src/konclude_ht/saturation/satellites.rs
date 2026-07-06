@@ -155,6 +155,7 @@ pub type SaturationModifiedProcessUpdateLinkerId = Id<SaturationModifiedProcessU
 /// A negated-concept occurrence in a saturation node's label / clash chain. The
 /// `CNegLinkerBase<CConcept*,Self>` base carries the concept (`getData()`), a
 /// negation bit, and the intrusive self next-link.
+#[derive(Clone)]
 pub struct ConceptSaturationDescriptor {
     /// `CNegLinkerBase` data (the described concept).
     pub concept: ConceptId,
@@ -225,6 +226,7 @@ impl ConceptSaturationDescriptor {
 /// A queued concept-application linker carrying the concept saturation
 /// descriptor to (re)apply. The `CLinkerBase` base carries the descriptor
 /// (`getData()`) and the intrusive self next-link.
+#[derive(Clone)]
 pub struct ConceptSaturationProcessLinker {
     /// `CLinkerBase` data (the carried concept saturation descriptor).
     pub data: ConceptSaturationDescriptorId,
@@ -276,6 +278,7 @@ impl ConceptSaturationProcessLinker {
 /// Port of `CRoleSaturationProcessLinker`.
 ///
 /// A queued role-application linker carrying the role to (re)process.
+#[derive(Clone)]
 pub struct RoleSaturationProcessLinker {
     /// `CLinkerBase` data (the carried role).
     pub data: RoleId,
@@ -325,6 +328,7 @@ impl RoleSaturationProcessLinker {
 ///
 /// An inverse-side propagation edge: the role (`getData()`) plus the source
 /// saturation node the propagation came from.
+#[derive(Clone)]
 pub struct BackwardSaturationPropagationLink {
     /// `CLinkerBase` data (the link role).
     pub role: RoleId,
@@ -394,6 +398,7 @@ impl BackwardSaturationPropagationLink {
 /// `CRoleBackwardSaturationPropagationHashData`. The W132 updater slice only
 /// needs the hash's backward-propagation link chain, but the descriptor is part of
 /// the same Konclude data record and is ported here as the faithful satellite.
+#[derive(Clone)]
 pub struct BackwardSaturationPropagationReapplyDescriptor {
     /// `CLinkerBase` data.
     pub concept_saturation_descriptor: ConceptSaturationDescriptorId,
@@ -510,6 +515,7 @@ impl RoleBackwardSaturationPropagationHashData {
 }
 
 /// Port of `CRoleBackwardSaturationPropagationHash`.
+#[derive(Clone)]
 pub struct RoleBackwardSaturationPropagationHash {
     /// `CProcessContext* mContext`.
     pub context: Cint64,
@@ -581,6 +587,7 @@ impl RoleBackwardSaturationPropagationHash {
 /// successor-node map: counts, the successor saturation node, the creation-role
 /// chain (`CXNegLinker<CRole*>*` → `Vec<NegLink<RoleId>>`), and the intrusive
 /// next-link in the per-role bucket.
+#[derive(Clone)]
 pub struct SaturationSuccessorData {
     /// `mSuccCount`.
     pub succ_count: Cint64,
@@ -732,6 +739,7 @@ impl IndividualSaturationSuccessorLinkDataLinker {
 /// `CPROCESSMAP<cint64,CSaturationSuccessorData*>` keyed by successor node id,
 /// the last successor link, the count, the (opaque) successor extension data,
 /// and the ALL/FUNCTIONAL processing-queue flags.
+#[derive(Clone)]
 pub struct LinkedRoleSaturationSuccessorData {
     /// `mSuccNodeDataMap` (`CPROCESSMAP<cint64,CSaturationSuccessorData*>`).
     pub succ_node_data_map: HashMap<Cint64, SaturationSuccessorDataId>,
@@ -813,6 +821,7 @@ impl LinkedRoleSaturationSuccessorData {
 // ===========================================================================
 
 /// Port of `CSaturationSuccessorExtensionData`.
+#[derive(Clone)]
 pub struct SaturationSuccessorExtensionData {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -899,6 +908,7 @@ impl SaturationSuccessorExtensionData {
 /// from the pool; those bodies are `W4.5-DEFER` until the extension/assertion-linker
 /// sub-structs port. The struct + ctor + map/cursor accessors are ported here so
 /// the per-node extension data and the s-units can hold and thread the hash.
+#[derive(Clone)]
 pub struct LinkedRoleSaturationSuccessorHash {
     /// `mRoleSuccDataHash` (`CPROCESSHASH<CRole*,CLinkedRoleSaturationSuccessorData*>`).
     pub role_succ_data_hash: HashMap<RoleId, LinkedRoleSaturationSuccessorDataId>,
@@ -1004,6 +1014,7 @@ impl LinkedRoleSaturationSuccessorHash {
 
 /// Port of the anonymous `CXLinker<CRole*>` chain owned by
 /// `CLinkedDataValueAssertionSaturationData`.
+#[derive(Clone)]
 pub struct DataValueRoleAssertionLinker {
     /// `CLinkerBase` data (`CRole*`).
     pub data: RoleId,
@@ -1056,6 +1067,7 @@ impl DataValueRoleAssertionLinker {
 /// of `addDataValueAssertion` is unused in the C++ implementation; the Rust
 /// context helper keeps it as an opaque `Cint64` argument and ignores it
 /// likewise.
+#[derive(Clone)]
 pub struct LinkedDataValueAssertionSaturationData {
     /// `mContext` (opaque per-test owner handle).
     pub process_context: Cint64,
@@ -1107,6 +1119,7 @@ impl LinkedDataValueAssertionSaturationData {
 // ===========================================================================
 
 /// Port of `CSaturationSuccessorRoleAssertionLinker`.
+#[derive(Clone)]
 pub struct SaturationSuccessorRoleAssertionLinker {
     /// `CLinkerBase` data (`CIndividualSaturationProcessNode*`).
     pub destination_node: SatNodeId,
@@ -1181,6 +1194,7 @@ impl SaturationSuccessorRoleAssertionLinker {
 // ===========================================================================
 
 /// Port of `CCriticalPredecessorRoleCardinalityData`.
+#[derive(Clone)]
 pub struct CriticalPredecessorRoleCardinalityData {
     /// `mUnproblematicConceptLinker` (`CXNegLinker<CConcept*>*`).
     pub unproblematic_concept_linker: Vec<NegLink<ConceptId>>,
@@ -1207,6 +1221,7 @@ impl CriticalPredecessorRoleCardinalityData {
 }
 
 /// Port of `CCriticalPredecessorRoleCardinalityHash`.
+#[derive(Clone)]
 pub struct CriticalPredecessorRoleCardinalityHash {
     /// `mContext`.
     pub process_context: Cint64,
@@ -1295,6 +1310,7 @@ impl SaturationDisjunctCommonConceptCountHashData {
 }
 
 /// Port of `CSaturationDisjunctCommonConceptCountHash`.
+#[derive(Clone)]
 pub struct SaturationDisjunctCommonConceptCountHash {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -1407,6 +1423,7 @@ impl SaturationDisjunctCommonConceptCountHash {
 }
 
 /// Port of `CSaturationDisjunctExtractionLinker`.
+#[derive(Clone)]
 pub struct SaturationDisjunctExtractionLinker {
     /// `CLinkerBase` data (`CIndividualSaturationProcessNode*`).
     pub disjunct_node: SatNodeId,
@@ -1476,6 +1493,7 @@ impl SaturationDisjunctExtractionLinker {
 }
 
 /// Port of `CSaturationDisjunctCommonConceptExtractionData`.
+#[derive(Clone)]
 pub struct SaturationDisjunctCommonConceptExtractionData {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -1626,6 +1644,7 @@ impl SaturationAtmostSuccessorMergingHashData {
 }
 
 /// Port of `CSaturationATMOSTSuccessorMergingHash`.
+#[derive(Clone)]
 pub struct SaturationAtmostSuccessorMergingHash {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -1677,6 +1696,7 @@ impl SaturationAtmostSuccessorMergingHash {
 }
 
 /// Port of `CSaturationATMOSTSuccessorMergingData`.
+#[derive(Clone)]
 pub struct SaturationAtmostSuccessorMergingData {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -1854,6 +1874,7 @@ impl SaturationAtmostSuccessorMergingData {
 /// `mLinkedDataValueAssertionData`, and `mRoleAssertionLinker` resolve to real
 /// ported types; the remaining `mXxx*` members stay opaque `Cint64`
 /// (`INVALID` == `nullptr`). Their lazy create-getters are `W4.5-DEFER`.
+#[derive(Clone)]
 pub struct IndividualSaturationProcessNodeExtensionData {
     /// `mProcessContext` (opaque per-test owner handle).
     pub process_context: Cint64,
@@ -2001,6 +2022,7 @@ impl ConceptNegationPair {
 
 /// Port-facing temporary map for
 /// `CPROCESSINGHASH<cint64,CConceptNegationPair>`.
+#[derive(Clone)]
 pub struct SaturationConceptExtensionMap {
     pub concept_extension_map: HashMap<Cint64, ConceptNegationPair>,
 }
@@ -2058,6 +2080,7 @@ impl SaturationSuccessorConceptExtensionMapData {
 }
 
 /// Port of `CSaturationSuccessorConceptExtensionMap`.
+#[derive(Clone)]
 pub struct SaturationSuccessorConceptExtensionMap {
     /// `mConceptExtensionMap`.
     pub concept_extension_map: HashMap<Cint64, SaturationSuccessorConceptExtensionMapData>,
@@ -2133,6 +2156,7 @@ impl SaturationSuccessorConceptExtensionMap {
 /// C++ derives from `CLinkerBase<bool,Self>`: the boolean payload is the
 /// extension-processing queued flag and the intrusive next pointer chains the
 /// node-level ALL extension process queue.
+#[derive(Clone)]
 pub struct SaturationSuccessorAllConceptExtensionData {
     /// `CLinkerBase` data (`isExtensionProcessingQueued`).
     pub extension_processing_queued: bool,
@@ -2302,6 +2326,7 @@ impl SaturationSuccessorAllConceptExtensionData {
 // ===========================================================================
 
 /// Port of `CSaturationLinkedSuccessorIndividualALLConceptsExtensionData`.
+#[derive(Clone)]
 pub struct SaturationLinkedSuccessorIndividualAllConceptsExtensionData {
     /// `mIndiProcSatNode`.
     pub indi_proc_sat_node: SatNodeId,
@@ -2348,6 +2373,7 @@ impl SaturationLinkedSuccessorIndividualAllConceptsExtensionData {
 // ===========================================================================
 
 /// Port of `CSaturationLinkedSuccessorIndividualALLConceptsExtensionHash`.
+#[derive(Clone)]
 pub struct SaturationLinkedSuccessorIndividualAllConceptsExtensionHash {
     /// `mLinkedSuccIndiALLConceptExtHash`.
     pub linked_successor_individual_all_concepts_extension_hash:
@@ -2398,6 +2424,7 @@ impl SaturationIndividualNodeExtensionResolveHashData {
 }
 
 /// Port of `CSaturationIndividualNodeExtensionResolveHash`.
+#[derive(Clone)]
 pub struct SaturationIndividualNodeExtensionResolveHash {
     /// Concept-key slice of
     /// `CPROCESSHASH<QPair<void*,bool>,CSaturationIndividualNodeExtensionResolveHashData>`.
@@ -2484,6 +2511,7 @@ impl SaturationIndividualNodeExtensionResolveHash {
 }
 
 /// Port of `CSaturationIndividualNodeExtensionResolveData`.
+#[derive(Clone)]
 pub struct SaturationIndividualNodeExtensionResolveData {
     /// `mExtensionResolveHash`.
     pub extension_resolve_hash: SaturationIndividualNodeExtensionResolveHashId,
@@ -2551,6 +2579,7 @@ impl SaturationIndividualNodeExtensionResolveData {
 /// state and ownership boundary are ported here; the dependent resolve / ALL /
 /// FUNCTIONAL extension records are not ported yet and therefore remain opaque
 /// `Cint64` handles (`INVALID` == `nullptr`).
+#[derive(Clone)]
 pub struct SaturationIndividualNodeSuccessorExtensionData {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -2684,6 +2713,7 @@ impl SaturationIndividualNodeSuccessorExtensionData {
 /// Port of `CSaturationIndividualNodeALLConceptsExtensionData`.
 ///
 /// This is the node-level ALL-concepts successor-extension worklist.
+#[derive(Clone)]
 pub struct SaturationIndividualNodeAllConceptsExtensionData {
     /// `mSuccessorExtensionInitialized`.
     pub successor_extension_initialized: bool,
@@ -2807,6 +2837,7 @@ impl SaturationIndividualNodeAllConceptsExtensionData {
 /// C++ derives from `CLinkerBase<bool,Self>`: the boolean payload is the
 /// extension-processing-queued flag and the intrusive next pointer chains
 /// successor extension process data.
+#[derive(Clone)]
 pub struct SaturationSuccessorFunctionalConceptExtensionData {
     /// `CLinkerBase` data (`isExtensionProcessingQueued`).
     pub extension_processing_queued: bool,
@@ -2901,6 +2932,7 @@ impl SaturationSuccessorFunctionalConceptExtensionData {
 // ===========================================================================
 
 /// Port of `CSaturationLinkedSuccessorRoleFUNCTIONALConceptsExtensionHash`.
+#[derive(Clone)]
 pub struct SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
     /// `mLinkedSuccRoleFUNCTIONALConceptExtHash`.
     pub linked_succ_role_functional_concept_ext_hash:
@@ -2955,6 +2987,7 @@ impl SaturationLinkedSuccessorRoleFunctionalConceptsExtensionHash {
 /// W489 ports the successor-facing role-extension data surface used by SAT-6.
 /// Predecessor queues, qualified-atmost queues, and forwarding hashes remain
 /// represented by typed/opaque fields until their callers are ported.
+#[derive(Clone)]
 pub struct SaturationIndividualNodeFunctionalConceptsExtensionData {
     /// `mSuccessorExtensionInitialized`.
     pub successor_extension_initialized: bool,
@@ -3150,6 +3183,7 @@ impl SaturationIndividualNodeFunctionalConceptsExtensionData {
 // ===========================================================================
 
 /// Port of `CSaturationIndividualNodeDatatypeData`.
+#[derive(Clone)]
 pub struct SaturationIndividualNodeDatatypeData {
     /// `mProcessContext`.
     pub process_context: Cint64,
@@ -3218,6 +3252,7 @@ impl SaturationIndividualNodeDatatypeData {
 /// the intrusive self-chain next pointer. `mNextTriggerConcept` points into the
 /// remaining `CSortedNegLinker<CConcept*>` trigger suffix; the Rust port owns the
 /// suffix as a head-to-tail vector.
+#[derive(Clone)]
 pub struct ImplicationReapplyConceptSaturationDescriptor {
     /// `CLinkerBase` data (`getData()`): the implication concept.
     pub implication_concept: ConceptId,
@@ -3290,6 +3325,7 @@ pub enum SaturationModificationProcessUpdateType {
 }
 
 /// Port of `CSaturationModifiedProcessUpdateLinker`.
+#[derive(Clone)]
 pub struct SaturationModifiedProcessUpdateLinker {
     /// `CLinkerBase` data (`CIndividualSaturationProcessNode*`).
     pub processing_individual: SatNodeId,
@@ -3503,6 +3539,7 @@ impl ReapplyConceptSaturationLabelSetIterator {
 /// opaque `CConceptSetFlags` payloads and stay deferred. The struct + ctor +
 /// init/copy + count/linker accessors + the simple `hasConcept`/`containsConcept`
 /// lookups are ported here so the s-units can hold and read the label set.
+#[derive(Clone)]
 pub struct ReapplyConceptSaturationLabelSet {
     /// `mConceptDesDepHash` (`CPROCESSHASH<cint64,CConceptSaturationDescriptorReapplyData>`).
     pub concept_des_dep_hash: HashMap<Cint64, ConceptSaturationDescriptorReapplyData>,

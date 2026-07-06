@@ -58,7 +58,7 @@ macro_rules! cache_arena_accessors {
         /// Resolve an id to a mutable borrow (the `obj->` mutate path).
         #[inline]
         pub fn $get_mut(&mut self, id: Id<$ty>) -> &mut $ty {
-            self.$field.get_mut(id)
+            self.$field.get_mut_raw(id)
         }
         /// Pool-allocate a new record, returning its stable id (`new CXxx(…)`).
         #[inline]

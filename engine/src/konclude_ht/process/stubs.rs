@@ -70,7 +70,7 @@ macro_rules! stub_id {
     ($($(#[$m:meta])* $name:ident => $id:ident),* $(,)?) => {
         $(
             $(#[$m])*
-            #[derive(Debug, Default)]
+            #[derive(Debug, Default, Clone)]
             pub struct $name;
             pub type $id = Id<$name>;
         )*
@@ -80,7 +80,7 @@ macro_rules! stub_id {
 /// Declare marker structs only (used inline as `Id<Marker>` at the call site).
 macro_rules! stub {
     ($($(#[$m:meta])* $name:ident),* $(,)?) => {
-        $( $(#[$m])* #[derive(Debug, Default)] pub struct $name; )*
+        $( $(#[$m])* #[derive(Debug, Default, Clone)] pub struct $name; )*
     };
 }
 

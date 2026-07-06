@@ -856,6 +856,10 @@ pub struct CalculationAlgorithmContextBase {
     pub branch_tree_node: BranchNodeId,
     /// `CDependencyNode* mBaseDepNode`.
     pub base_dep_node: DependencyId,
+    /// Branch-epoch databox snapshots (in-process COW): one whole-databox
+    /// clone per open epoch, restored on pop together with the process
+    /// context's arena journals (see `ProcessContext::push_branch_epoch`).
+    pub databox_epoch_stack: Vec<ProcessingDataBox>,
     /// Port-owned cache: a deterministic track point on the branching tree's
     /// INDEPENDENT base dependency node, lazily materialized by
     /// [`Self::get_or_create_base_dependency_track_point`]. Konclude
@@ -915,6 +919,7 @@ impl CalculationAlgorithmContextBase {
             proc_stat_gath: Id::NONE,
             branch_tree_node: Id::NONE,
             base_dep_node: Id::NONE,
+            databox_epoch_stack: Vec::new(),
             base_independent_track_point: Id::NONE,
             indi_node_manager: Id::NONE,
             unsat_cache_handler: Id::NONE,
@@ -1127,6 +1132,25 @@ impl CalculationAlgorithmContextBase {
         let b = &mut self.base;
         b.used_process_context
             .processing_data_box_branching_tree(&mut b.used_processing_data_box, create)
+    }
+
+    /// Open a branch epoch: arena journals + watermarks across the process
+    /// context, plus a whole-databox snapshot. One epoch per ACTIVE OR
+    /// alternative — popping restores the COMPLETE graph state to the push
+    /// point (the in-process stand-in for Konclude's per-alternative task
+    /// fork over a copy-on-write databox).
+    pub fn push_branch_epoch(&mut self) {
+        self.base.used_process_context.push_branch_epoch();
+        self.databox_epoch_stack
+            .push(self.base.used_processing_data_box.clone());
+    }
+
+    /// Close the innermost branch epoch (rollback).
+    pub fn pop_branch_epoch(&mut self) {
+        self.base.used_process_context.pop_branch_epoch();
+        if let Some(db) = self.databox_epoch_stack.pop() {
+            self.base.used_processing_data_box = db;
+        }
     }
 
     /// Lazily materialize the branching tree's INDEPENDENT base dependency

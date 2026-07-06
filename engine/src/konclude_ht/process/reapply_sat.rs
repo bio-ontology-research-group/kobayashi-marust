@@ -489,6 +489,7 @@ impl SignatureIterator {
 
 /// Port of `CSignatureBlockingCandidateHash` — signature → candidate-node-id
 /// chain index used to find blocking candidates by concept-set signature.
+#[derive(Clone)]
 pub struct SignatureBlockingCandidateHash {
     // KONCLUDE-PORT-NOTE[ownership]: ambient `CProcessContext* mContext` (opaque).
     pub context: Cint64,
@@ -649,6 +650,7 @@ impl SignatureBlockingCandidateHash {
 /// a process-tag word, kept as inline fields. `CCoreConceptDescriptor*` is a
 /// `CConceptDescriptor` subtype → `ConDescId` (matching `satellites.rs`'s
 /// `core_con_des_linker`).
+#[derive(Clone)]
 pub struct IndividualNodeBlockingTestData {
     // --- base CNodeSwitchTag (: CProcessTag) ---
     // KONCLUDE-PORT-NOTE[api]: the full `CNodeSwitchTag` (init/update/up-to-date
@@ -827,6 +829,7 @@ pub trait BlockingAlternativeData {
 
 /// Port of `CBlockingAlternativeSignatureBlockingCandidateData`
 /// (`: public CBlockingAlternativeData`).
+#[derive(Clone)]
 pub struct BlockingAlternativeSignatureBlockingCandidateData {
     // KONCLUDE-PORT-NOTE[ownership]: `CIndividualProcessNode* mBlockIndiCandi` → `NodeId`.
     pub block_indi_candi: NodeId,           // mBlockIndiCandi
@@ -932,6 +935,7 @@ impl BlockingAlternativeData for BlockingAlternativeSignatureBlockingCandidateDa
 /// as authoritative once present; reads fall back to the shared `use` snapshot
 /// before localisation (see `use_inc_list` / `use_neigh_list` helpers). The share
 /// is a clone (`[memory-pool]`: the zero-copy pointer share is left for later).
+#[derive(Clone)]
 pub struct IndividualNodeIncrementalExpansionData {
     // KONCLUDE-PORT-NOTE[ownership]: ambient `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64, // mProcessContext
@@ -1288,6 +1292,7 @@ impl IndividualNodeIncrementalExpansionData {
 /// KONCLUDE-PORT-NOTE[ownership]: the intrusive linker becomes `next:
 /// ReapplyConceptDescriptorId`; `CProcessingRestrictionSpecification*` remains an
 /// opaque process-local handle until the restriction object family is fully wired.
+#[derive(Clone)]
 pub struct ReapplyConceptDescriptor {
     /// `CLinkerBase::mData` (`CConceptDescriptor*`).
     pub data: ConDescId,
@@ -1421,6 +1426,7 @@ impl ReapplyConceptDescriptor {
 ///
 /// KONCLUDE-PORT-NOTE[ownership]: `CProcessingRestrictionSpecification* mProcessingRestriction`
 /// stays opaque `Cint64` (`INVALID` == `nullptr`) — the iterator never reads it.
+#[derive(Clone)]
 pub struct CondensedReapplyConceptDescriptor {
     /// `CLinkerBase::mData` (`CConceptDescriptor*`).
     pub data: ConDescId,

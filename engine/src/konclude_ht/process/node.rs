@@ -186,6 +186,7 @@ impl IndividualProcessNodePriority {
 /// type in the process model. Fields are grouped per `manifest/05-process-units.md`
 /// §SD-3 (A triples / B doubles / C loc-use / D identity / … / K singletons) and
 /// otherwise follow the C++ declaration order for diffability.
+#[derive(Clone)]
 pub struct IndividualProcessNode {
     // === folded bases (KONCLUDE-PORT-NOTE[ownership]) =====================
     // `CIndividualProcessNodeReference` (→ `CProcessReference`): no data.

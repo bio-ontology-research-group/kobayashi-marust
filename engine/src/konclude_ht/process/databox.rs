@@ -160,6 +160,7 @@ impl ProcessingDataBoxConceptAssertion {
 /// which is the snapshot to rewind to on backtrack) are realised by the
 /// `initProcessingDataBox(parent)` handoff in DB-1, NOT by this struct shape:
 /// here they are three plain ids that may legally hold the same value.
+#[derive(Clone)]
 pub struct ProcessingDataBox {
     // --- ontology / context singletons (.h 565–571) ---
     /// KONCLUDE-PORT-NOTE[ownership]: `CProcessContext*` back-pointer to the

@@ -705,6 +705,7 @@ impl ReusingReviewData {
 /// KONCLUDE-PORT-NOTE[api]: no `#[derive(Clone)]` (the `modification_tag` base is not
 /// `Clone`); the struct is never whole-cloned — `init_blocking_candidate_data` clones
 /// only the `BTreeMap`, and `get_blocking_individual_candidate_data` uses `mem::replace`.
+#[derive(Clone)]
 pub struct BlockingIndividualNodeCandidateData {
     // --- base CNodeSwitchTag (: CProcessTag) ---
     pub node_switch_tag: Cint64,

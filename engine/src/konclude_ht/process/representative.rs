@@ -1513,6 +1513,7 @@ impl Default for ConceptRepresentativePropagationSetHashData {
 }
 
 /// Port of `CConceptRepresentativePropagationSetHash`.
+#[derive(Clone)]
 pub struct ConceptRepresentativePropagationSetHash {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,
@@ -1643,6 +1644,7 @@ impl Default for RepresentativeVariableBindingPathSetHashData {
 }
 
 /// Port of `CRepresentativeVariableBindingPathSetHash`.
+#[derive(Clone)]
 pub struct RepresentativeVariableBindingPathSetHash {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,
@@ -1955,6 +1957,7 @@ impl RepresentativeVariableBindingPathSetHash {
 // ===========================================================================
 
 /// Port of `CRepresentativeVariableBindingPathHash`.
+#[derive(Clone)]
 pub struct RepresentativeVariableBindingPathHash {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,
@@ -2132,6 +2135,7 @@ impl RepresentativeVariableBindingPathSetMigrateData {
 /// base → `localization_tag: Cint64`. The two migrate-data pointers become arena ids; the
 /// two joining-hash pointers are W3.5r-DEFER marker ids (the hash is an unported own
 /// unit). `mSigKey` is held BY VALUE.
+#[derive(Clone)]
 pub struct RepresentativeVariableBindingPathSetData {
     /// `CLinkerBase::data` (the representative ID — `getData()`/`setData()`).
     pub data: Cint64,
@@ -2526,6 +2530,7 @@ impl RepresentativeVariableBindingPathSetData {
 /// base carries the *representative set data* AS its `data` (`getRepresentativeVariableBindingPathSetData()
 /// == getData()`); folded to `data` (the SetData id) + `next` (the descriptor list linker).
 /// `CDependencyTracker` → `dep_track_point`.
+#[derive(Clone)]
 pub struct RepresentativePropagationDescriptor {
     /// `CLinkerBase::data` (the `CRepresentativeVariableBindingPathSetData*`).
     pub data: RepresentativeVariableBindingPathSetDataId,
@@ -2738,6 +2743,7 @@ impl RepresentativePropagationMap {
 /// A concept's incoming/outgoing representative propagations: the repID → descriptor
 /// map (`mRepPropMap`, by value), the incoming/outgoing/last-processed descriptor
 /// linkers, the rolling incoming signature (by value) and the concept descriptor.
+#[derive(Clone)]
 pub struct RepresentativePropagationSet {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,

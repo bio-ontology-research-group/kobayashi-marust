@@ -328,6 +328,11 @@ pub struct CompletionTaskHandleAlgorithm {
     pub conf_build_dependencies: bool,
     pub conf_dependency_backtracking: bool,
     pub conf_dependency_backjumping: bool,
+    /// In-process COW branch epochs (see `push_branch_epoch`): every OR
+    /// alternative runs under an arena journal + databox snapshot, so a
+    /// backtrack restores the COMPLETE graph state (multi-node, queues,
+    /// blocking data). Replaces the single-node label snapshot when on.
+    pub conf_inprocess_cow: bool,
     pub conf_write_unsat_caching: bool,
     pub conf_test_occur_unsat_cached: bool,
     pub conf_test_precheck_unsat_cached: bool,
@@ -803,6 +808,7 @@ impl CompletionTaskHandleAlgorithm {
             conf_build_dependencies: false,
             conf_dependency_backtracking: false,
             conf_dependency_backjumping: false,
+            conf_inprocess_cow: false,
             conf_write_unsat_caching: false,
             conf_test_occur_unsat_cached: false,
             conf_test_precheck_unsat_cached: false,

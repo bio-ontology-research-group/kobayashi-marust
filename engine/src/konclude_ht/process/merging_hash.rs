@@ -115,6 +115,7 @@ impl IndividualMergingHashData {
 
 /// Port of `CIndividualMergingHash` (`: public CPROCESSHASH<cint64,
 /// CIndividualMergingHashData>`).
+#[derive(Clone)]
 pub struct IndividualMergingHash {
     /// The Qt-hash base content (`cint64` individual id → merging data).
     indi_merging_hash: HashMap<Cint64, IndividualMergingHashData>,

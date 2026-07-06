@@ -211,6 +211,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// dependency-directed backjump (`clashedBacktracking`, u29) with full arena /
     /// databox watermark restore (the Arena `truncate_to` + db1 save/restore) is the
     /// documented gap — it needs the unported Unit 28/30 tracking-line records.
+    /// Discard the topmost branch point: pop its stack entry, close its
+    /// branch epoch (in-process COW — the complete-state rollback), restore
+    /// the used branch tree node.
+    fn discard_topmost_or_branch(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let bp = self.or_branch_stack.pop().expect("caller checked non-empty");
+        if self.conf_inprocess_cow {
+            calc_alg_context.pop_branch_epoch();
+        }
+        calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
+        self.or_backtrack_count += 1;
+    }
+
     fn try_backtrack_or_branch(
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
@@ -220,9 +235,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if bp.next_alt < bp.disjuncts.len() {
                 break;
             }
-            let bp = self.or_branch_stack.pop().expect("checked non-empty");
-            calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
-            self.or_backtrack_count += 1;
+            self.discard_topmost_or_branch(calc_alg_context);
         }
         if self.or_branch_stack.is_empty() {
             return false;
@@ -310,9 +323,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // recurs under every one of their alternatives; marked-but-exhausted
         // ones were propagated through by u29 when their last sibling clashed.
         while self.or_branch_stack.len() > target + 1 {
-            let bp = self.or_branch_stack.pop().expect("len checked");
-            calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
-            self.or_backtrack_count += 1;
+            self.discard_topmost_or_branch(calc_alg_context);
         }
         self.advance_topmost_or_branch(calc_alg_context);
         true
@@ -327,6 +338,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         self.or_backtrack_count += 1;
+
+        // In-process COW: close the FAILED alternative's epoch (complete
+        // graph rollback to the pre-alternative state) and open a fresh one
+        // for the next alternative — the in-process equivalent of killing the
+        // clashed branch task and starting its sibling from the parent's
+        // copy-on-write databox.
+        if self.conf_inprocess_cow {
+            calc_alg_context.pop_branch_epoch();
+            calc_alg_context.push_branch_epoch();
+        }
 
         // the clash is being recovered from — clear it (the C++ catch consumes the
         // exception, then `clashedBacktracking` re-drives the chosen branch).
@@ -388,11 +409,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // failed alternative created a successor node, the single-node snapshot
         // cannot restore the graph (that needs the full task-fork restore), so we
         // leave the chronological behaviour unchanged for that case (no regression).
-        let restored = calc_alg_context.process_context().node_count() == node_count_at_push;
+        // Under in-process COW the epoch rollback already restored the
+        // complete state — the single-node snapshot is redundant (and empty).
+        let restored = self.conf_inprocess_cow
+            || calc_alg_context.process_context().node_count() == node_count_at_push;
         if !restored {
             self.unrestored_advance_count += 1;
         }
-        if restored {
+        if !self.conf_inprocess_cow && restored {
             let (label_snapshot, queue_snapshot) = {
                 let bp = self.or_branch_stack.last().expect("checked non-empty");
                 (bp.node_label_snapshot.clone(), bp.node_queue_snapshot.clone())

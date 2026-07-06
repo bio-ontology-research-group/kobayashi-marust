@@ -289,9 +289,12 @@ macro_rules! arena_accessors {
             self.$field.get(id)
         }
         /// Resolve an id to a mutable borrow (the `obj->` mutate path).
+        /// Routed through the branch-epoch journal: under an open epoch the
+        /// first mutation of a pre-epoch slot saves a rollback clone
+        /// (zero-cost when no epoch is open).
         #[inline]
         pub fn $get_mut(&mut self, id: $id) -> &mut $ty {
-            self.$field.get_mut(id)
+            self.$field.get_mut_journaled(id)
         }
         /// Pool-allocate a new object, returning its stable id (`new CXxx(…)`).
         #[inline]
@@ -311,6 +314,8 @@ macro_rules! arena_accessors {
 /// dependency spine, satellites) for readability; allocation order within a test
 /// is whatever the completion engine drives, not the field order.
 pub struct ProcessContext {
+    /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
+    branch_epoch_depth: usize,
     // --- graph nodes ---
     /// `CIndividualProcessNode` pool. The databox's `individual_process_node_vector`
     /// holds `NodeId`s into THIS arena (it tracks; this owns).
@@ -675,6 +680,7 @@ impl ProcessContext {
     /// every arena empty, every handle `nullptr`.
     pub fn new() -> Self {
         ProcessContext {
+            branch_epoch_depth: 0,
             nodes: Arena::new(),
             sat_nodes: Arena::new(),
             edges: Arena::new(),
@@ -958,7 +964,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_depth_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .take_next_process_individual(nodes)
     }
 
@@ -974,7 +980,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_depth_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .insert_process_indiviudal(nodes, individual);
     }
 
@@ -991,7 +997,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .insert_indiviudal_process_descriptor(indi_proc_node_descs, nodes, desc);
     }
 
@@ -1007,7 +1013,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .take_next_process_individual_descriptor(indi_proc_node_descs, nodes)
     }
 
@@ -1023,7 +1029,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .is_individual_queued(nodes, individual)
     }
 
@@ -1060,7 +1066,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_reactivation_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .insert_reactivation_indiviudal(nodes, individual, force_reactivation)
     }
 
@@ -1094,7 +1100,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_concept_batch_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .take_next_concept_process_individual(nodes, con_proc_descs, con_descs, onto)
     }
 
@@ -1114,7 +1120,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_concept_batch_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .insert_indiviudal_for_concept(
                 nodes,
                 con_proc_descs,
@@ -1143,7 +1149,7 @@ impl ProcessContext {
             ..
         } = *self;
         indi_concept_batch_proc_queues
-            .get_mut(qid)
+            .get_mut_journaled(qid)
             .insert_indiviudal_for_binding_count(
                 nodes,
                 con_proc_descs,
@@ -1750,21 +1756,21 @@ impl ProcessContext {
     /// `CNonDeterministicDependencyNode::getDependencyTrackPointBranch`.
     pub fn dependency_track_point_branch(&mut self, dependency_node: DependencyId) -> TrackPointId {
         self.dep_nodes
-            .get_mut(dependency_node)
+            .get_mut_journaled(dependency_node)
             .get_dependency_track_point_branch(dependency_node, &mut self.track_points)
     }
 
     /// Port-owned helper for `CDeterministicDependencyNode::updateBranchingTag`.
     pub fn update_dependency_branching_tag(&mut self, dependency_node: DependencyId) -> bool {
         self.dep_nodes
-            .get_mut(dependency_node)
+            .get_mut_journaled(dependency_node)
             .update_branching_tag(&self.track_points, &self.dep_links)
     }
 
     /// Port-owned helper for `CNonDeterministicDependencyNode::updateBranchingTags`.
     pub fn update_dependency_branching_tags(&mut self, dependency_node: DependencyId) -> bool {
         self.dep_nodes
-            .get_mut(dependency_node)
+            .get_mut_journaled(dependency_node)
             .update_branching_tags(&mut self.track_points, &self.dep_links)
     }
     arena_accessors!(
@@ -2601,6 +2607,341 @@ impl ProcessContext {
     }
 
     /// Context-threaded port of `CBranchingTree::getBaseDependencyNode`.
+
+    // =======================================================================
+    // Branch-epoch COW (in-process stand-in for Konclude's per-task memory
+    // pools + copy-on-write databox referencing). One epoch per ACTIVE OR
+    // alternative: `pop_branch_epoch` rolls back every allocation AND every
+    // in-place mutation made under the alternative — the complete-graph
+    // restore the single-node label snapshot could not provide. The
+    // dependency track-point and branch-node arenas are WATERMARK-ONLY: their
+    // in-place mutations (clash markings, branching tags) are branch-SHARED
+    // state in Konclude and must survive the alternative's death (the DDB
+    // learning / all-siblings-clashed propagation).
+    // =======================================================================
+
+    /// Open a branch epoch across every arena.
+    pub fn push_branch_epoch(&mut self) {
+        self.additional_data_assertion_linkers.push_epoch();
+        self.additional_role_assertion_linkers.push_epoch();
+        self.analized_con_exp_datas.push_epoch();
+        self.analized_con_exp_linkers.push_epoch();
+        self.backend_neighbour_expansion_controlling_datas.push_epoch();
+        self.backend_sync_datas.push_epoch();
+        self.backward_prop_links.push_epoch();
+        self.backward_prop_reapply_descs.push_epoch();
+        self.backward_sat_prop_links.push_epoch();
+        self.backward_sat_prop_reapply_descs.push_epoch();
+        self.blocking_alt_datas.push_epoch();
+        self.blocking_follow_sets.push_epoch();
+        self.blocking_indi_node_cand_datas.push_epoch();
+        self.blocking_indi_node_cand_hashes.push_epoch();
+        self.blocking_indi_node_linked_cand_datas.push_epoch();
+        self.blocking_indi_node_linked_cand_hashes.push_epoch();
+        self.blocking_indi_node_linkers.push_epoch();
+        self.blocking_test_datas.push_epoch();
+        self.branching_merging_candidate_linkers.push_epoch();
+        self.branching_trees.push_epoch();
+        self.branch_instrs.push_epoch();
+        self.clash_descs.push_epoch();
+        self.concept_nominal_schema_grounding_datas.push_epoch();
+        self.concept_nominal_schema_grounding_hashes.push_epoch();
+        self.concept_process_linkers.push_epoch();
+        self.concept_proc_queues.push_epoch();
+        self.con_descs.push_epoch();
+        self.cond_reapply_con_descs.push_epoch();
+        self.conn_succ_corr_hashes.push_epoch();
+        self.conn_succ_sets.push_epoch();
+        self.con_proc_descs.push_epoch();
+        self.con_prop_binding_set_hashes.push_epoch();
+        self.con_rep_prop_set_hashes.push_epoch();
+        self.con_sat_descs.push_epoch();
+        self.con_sat_proc_linkers.push_epoch();
+        self.con_var_bind_path_set_hashes.push_epoch();
+        self.core_con_descs.push_epoch();
+        self.critical_pred_role_card_datas.push_epoch();
+        self.critical_pred_role_card_hashes.push_epoch();
+        self.critical_sat_concept_queues.push_epoch();
+        self.critical_sat_concept_type_queues.push_epoch();
+        self.datatypes_value_space_datas.push_epoch();
+        self.data_value_role_assertion_linkers.push_epoch();
+        self.dep_links.push_epoch();
+        self.dep_nodes.push_epoch();
+        self.disjoint_edges.push_epoch();
+        self.disjoint_succ_role_hashes.push_epoch();
+        self.distinct_edges.push_epoch();
+        self.distinct_hashes.push_epoch();
+        self.edges.push_epoch();
+        self.extended_con_ref_linking_datas.push_epoch();
+        self.imp_reapply_con_sat_descs.push_epoch();
+        self.inc_exp_datas.push_epoch();
+        self.indi_concept_batch_proc_queues.push_epoch();
+        self.indi_custom_priority_proc_queues.push_epoch();
+        self.indi_depth_proc_queues.push_epoch();
+        self.indi_proc_node_descs.push_epoch();
+        self.indi_proc_queues.push_epoch();
+        self.indi_reactivation_proc_queues.push_epoch();
+        self.indi_rotation_proc_queues.push_epoch();
+        self.indi_sat_block_datas.push_epoch();
+        self.indi_sat_node_ext_datas.push_epoch();
+        self.indi_sat_process_node_linkers.push_epoch();
+        self.indi_sat_succ_link_data_linkers.push_epoch();
+        self.indi_unsorted_proc_queues.push_epoch();
+        self.individual_merging_hashes.push_epoch();
+        self.individual_process_node_linkers.push_epoch();
+        self.label_sets.push_epoch();
+        self.linked_data_value_assertion_datas.push_epoch();
+        self.linked_role_sat_succ_datas.push_epoch();
+        self.linked_role_sat_succ_hashes.push_epoch();
+        self.marker_indi_node_datas.push_epoch();
+        self.marker_indi_node_hashes.push_epoch();
+        self.nodes.push_epoch();
+        self.node_switch_histories.push_epoch();
+        self.nominal_caching_loss_reactivation_datas.push_epoch();
+        self.nominal_caching_loss_reactivation_hashes.push_epoch();
+        self.nominal_conn_sets.push_epoch();
+        self.process_asserted_data_literal_linkers.push_epoch();
+        self.prop_binding_descs.push_epoch();
+        self.prop_binding_reapply_con_descs.push_epoch();
+        self.prop_binding_reapply_con_hashes.push_epoch();
+        self.prop_bindings.push_epoch();
+        self.prop_binding_sets.push_epoch();
+        self.prop_rep_trans_exts.push_epoch();
+        self.prop_var_bind_trans_exts.push_epoch();
+        self.reapply_con_descs.push_epoch();
+        self.reapply_con_sat_label_sets.push_epoch();
+        self.referred_individual_tracking_vectors.push_epoch();
+        self.rep_joining_datas.push_epoch();
+        self.rep_joining_hashes.push_epoch();
+        self.rep_prop_descs.push_epoch();
+        self.rep_prop_sets.push_epoch();
+        self.rep_var_bind_path_hashes.push_epoch();
+        self.rep_var_bind_path_joining_key_datas.push_epoch();
+        self.rep_var_bind_path_joining_key_hashes.push_epoch();
+        self.rep_var_bind_path_set_datas.push_epoch();
+        self.rep_var_bind_path_set_hashes.push_epoch();
+        self.rep_var_bind_path_set_joining_datas.push_epoch();
+        self.rep_var_bind_path_set_joining_hashes.push_epoch();
+        self.rep_var_bind_path_set_migrate_datas.push_epoch();
+        self.restriction_specs.push_epoch();
+        self.reusing_con_exp_datas.push_epoch();
+        self.reusing_review_datas.push_epoch();
+        self.role_backward_prop_hashes.push_epoch();
+        self.role_backward_sat_prop_hashes.push_epoch();
+        self.role_sat_proc_linkers.push_epoch();
+        self.role_succ_hashes.push_epoch();
+        self.sat_atmost_successor_merging_datas.push_epoch();
+        self.sat_atmost_successor_merging_hashes.push_epoch();
+        self.sat_concept_extension_maps.push_epoch();
+        self.sat_critical_ind_node_con_test_sets.push_epoch();
+        self.sat_critical_ind_node_proc_queues.push_epoch();
+        self.sat_disjunct_common_concept_extraction_datas.push_epoch();
+        self.sat_disjunct_extraction_linkers.push_epoch();
+        self.sat_indi_node_all_concept_ext_datas.push_epoch();
+        self.sat_indi_node_datatype_datas.push_epoch();
+        self.sat_indi_node_ext_resolve_datas.push_epoch();
+        self.sat_indi_node_ext_resolve_hashes.push_epoch();
+        self.sat_indi_node_functional_concept_ext_datas.push_epoch();
+        self.sat_indi_node_succ_ext_datas.push_epoch();
+        self.sat_influenced_nominal_sets.push_epoch();
+        self.sat_linked_succ_indi_all_concept_ext_datas.push_epoch();
+        self.sat_modified_process_update_linkers.push_epoch();
+        self.sat_nodes.push_epoch();
+        self.sat_nominal_dependent_node_datas.push_epoch();
+        self.sat_nominal_dependent_node_hashes.push_epoch();
+        self.sat_nominal_handling_datas.push_epoch();
+        self.sat_succ_datas.push_epoch();
+        self.sat_successor_all_concept_ext_datas.push_epoch();
+        self.sat_successor_concept_extension_maps.push_epoch();
+        self.sat_successor_functional_concept_ext_datas.push_epoch();
+        self.sat_succ_ext_datas.push_epoch();
+        self.sat_succ_ext_ind_node_proc_queues.push_epoch();
+        self.sat_succ_role_assertion_linkers.push_epoch();
+        self.sig_block_cand_hashes.push_epoch();
+        self.sig_block_con_exp_datas.push_epoch();
+        self.signature_blocking_review_sets.push_epoch();
+        self.successor_individual_atmost_reactivation_datas.push_epoch();
+        self.succ_role_hashes.push_epoch();
+        self.unsat_cache_ret_datas.push_epoch();
+        self.var_binding_descs.push_epoch();
+        self.var_binding_path_descs.push_epoch();
+        self.var_binding_path_join_datas.push_epoch();
+        self.var_binding_path_join_hashes.push_epoch();
+        self.var_binding_path_merging_hashes.push_epoch();
+        self.var_binding_paths.push_epoch();
+        self.var_binding_path_sets.push_epoch();
+        self.var_bindings.push_epoch();
+        self.var_binding_trigger_hashes.push_epoch();
+        self.var_binding_trigger_linkers.push_epoch();
+        self.track_points.push_epoch_watermark();
+        self.branch_nodes.push_epoch_watermark();
+        self.branch_epoch_depth += 1;
+    }
+
+    /// Close the innermost branch epoch: journal-rollback + truncate.
+    pub fn pop_branch_epoch(&mut self) {
+        self.additional_data_assertion_linkers.pop_epoch();
+        self.additional_role_assertion_linkers.pop_epoch();
+        self.analized_con_exp_datas.pop_epoch();
+        self.analized_con_exp_linkers.pop_epoch();
+        self.backend_neighbour_expansion_controlling_datas.pop_epoch();
+        self.backend_sync_datas.pop_epoch();
+        self.backward_prop_links.pop_epoch();
+        self.backward_prop_reapply_descs.pop_epoch();
+        self.backward_sat_prop_links.pop_epoch();
+        self.backward_sat_prop_reapply_descs.pop_epoch();
+        self.blocking_alt_datas.pop_epoch();
+        self.blocking_follow_sets.pop_epoch();
+        self.blocking_indi_node_cand_datas.pop_epoch();
+        self.blocking_indi_node_cand_hashes.pop_epoch();
+        self.blocking_indi_node_linked_cand_datas.pop_epoch();
+        self.blocking_indi_node_linked_cand_hashes.pop_epoch();
+        self.blocking_indi_node_linkers.pop_epoch();
+        self.blocking_test_datas.pop_epoch();
+        self.branching_merging_candidate_linkers.pop_epoch();
+        self.branching_trees.pop_epoch();
+        self.branch_instrs.pop_epoch();
+        self.clash_descs.pop_epoch();
+        self.concept_nominal_schema_grounding_datas.pop_epoch();
+        self.concept_nominal_schema_grounding_hashes.pop_epoch();
+        self.concept_process_linkers.pop_epoch();
+        self.concept_proc_queues.pop_epoch();
+        self.con_descs.pop_epoch();
+        self.cond_reapply_con_descs.pop_epoch();
+        self.conn_succ_corr_hashes.pop_epoch();
+        self.conn_succ_sets.pop_epoch();
+        self.con_proc_descs.pop_epoch();
+        self.con_prop_binding_set_hashes.pop_epoch();
+        self.con_rep_prop_set_hashes.pop_epoch();
+        self.con_sat_descs.pop_epoch();
+        self.con_sat_proc_linkers.pop_epoch();
+        self.con_var_bind_path_set_hashes.pop_epoch();
+        self.core_con_descs.pop_epoch();
+        self.critical_pred_role_card_datas.pop_epoch();
+        self.critical_pred_role_card_hashes.pop_epoch();
+        self.critical_sat_concept_queues.pop_epoch();
+        self.critical_sat_concept_type_queues.pop_epoch();
+        self.datatypes_value_space_datas.pop_epoch();
+        self.data_value_role_assertion_linkers.pop_epoch();
+        self.dep_links.pop_epoch();
+        self.dep_nodes.pop_epoch();
+        self.disjoint_edges.pop_epoch();
+        self.disjoint_succ_role_hashes.pop_epoch();
+        self.distinct_edges.pop_epoch();
+        self.distinct_hashes.pop_epoch();
+        self.edges.pop_epoch();
+        self.extended_con_ref_linking_datas.pop_epoch();
+        self.imp_reapply_con_sat_descs.pop_epoch();
+        self.inc_exp_datas.pop_epoch();
+        self.indi_concept_batch_proc_queues.pop_epoch();
+        self.indi_custom_priority_proc_queues.pop_epoch();
+        self.indi_depth_proc_queues.pop_epoch();
+        self.indi_proc_node_descs.pop_epoch();
+        self.indi_proc_queues.pop_epoch();
+        self.indi_reactivation_proc_queues.pop_epoch();
+        self.indi_rotation_proc_queues.pop_epoch();
+        self.indi_sat_block_datas.pop_epoch();
+        self.indi_sat_node_ext_datas.pop_epoch();
+        self.indi_sat_process_node_linkers.pop_epoch();
+        self.indi_sat_succ_link_data_linkers.pop_epoch();
+        self.indi_unsorted_proc_queues.pop_epoch();
+        self.individual_merging_hashes.pop_epoch();
+        self.individual_process_node_linkers.pop_epoch();
+        self.label_sets.pop_epoch();
+        self.linked_data_value_assertion_datas.pop_epoch();
+        self.linked_role_sat_succ_datas.pop_epoch();
+        self.linked_role_sat_succ_hashes.pop_epoch();
+        self.marker_indi_node_datas.pop_epoch();
+        self.marker_indi_node_hashes.pop_epoch();
+        self.nodes.pop_epoch();
+        self.node_switch_histories.pop_epoch();
+        self.nominal_caching_loss_reactivation_datas.pop_epoch();
+        self.nominal_caching_loss_reactivation_hashes.pop_epoch();
+        self.nominal_conn_sets.pop_epoch();
+        self.process_asserted_data_literal_linkers.pop_epoch();
+        self.prop_binding_descs.pop_epoch();
+        self.prop_binding_reapply_con_descs.pop_epoch();
+        self.prop_binding_reapply_con_hashes.pop_epoch();
+        self.prop_bindings.pop_epoch();
+        self.prop_binding_sets.pop_epoch();
+        self.prop_rep_trans_exts.pop_epoch();
+        self.prop_var_bind_trans_exts.pop_epoch();
+        self.reapply_con_descs.pop_epoch();
+        self.reapply_con_sat_label_sets.pop_epoch();
+        self.referred_individual_tracking_vectors.pop_epoch();
+        self.rep_joining_datas.pop_epoch();
+        self.rep_joining_hashes.pop_epoch();
+        self.rep_prop_descs.pop_epoch();
+        self.rep_prop_sets.pop_epoch();
+        self.rep_var_bind_path_hashes.pop_epoch();
+        self.rep_var_bind_path_joining_key_datas.pop_epoch();
+        self.rep_var_bind_path_joining_key_hashes.pop_epoch();
+        self.rep_var_bind_path_set_datas.pop_epoch();
+        self.rep_var_bind_path_set_hashes.pop_epoch();
+        self.rep_var_bind_path_set_joining_datas.pop_epoch();
+        self.rep_var_bind_path_set_joining_hashes.pop_epoch();
+        self.rep_var_bind_path_set_migrate_datas.pop_epoch();
+        self.restriction_specs.pop_epoch();
+        self.reusing_con_exp_datas.pop_epoch();
+        self.reusing_review_datas.pop_epoch();
+        self.role_backward_prop_hashes.pop_epoch();
+        self.role_backward_sat_prop_hashes.pop_epoch();
+        self.role_sat_proc_linkers.pop_epoch();
+        self.role_succ_hashes.pop_epoch();
+        self.sat_atmost_successor_merging_datas.pop_epoch();
+        self.sat_atmost_successor_merging_hashes.pop_epoch();
+        self.sat_concept_extension_maps.pop_epoch();
+        self.sat_critical_ind_node_con_test_sets.pop_epoch();
+        self.sat_critical_ind_node_proc_queues.pop_epoch();
+        self.sat_disjunct_common_concept_extraction_datas.pop_epoch();
+        self.sat_disjunct_extraction_linkers.pop_epoch();
+        self.sat_indi_node_all_concept_ext_datas.pop_epoch();
+        self.sat_indi_node_datatype_datas.pop_epoch();
+        self.sat_indi_node_ext_resolve_datas.pop_epoch();
+        self.sat_indi_node_ext_resolve_hashes.pop_epoch();
+        self.sat_indi_node_functional_concept_ext_datas.pop_epoch();
+        self.sat_indi_node_succ_ext_datas.pop_epoch();
+        self.sat_influenced_nominal_sets.pop_epoch();
+        self.sat_linked_succ_indi_all_concept_ext_datas.pop_epoch();
+        self.sat_modified_process_update_linkers.pop_epoch();
+        self.sat_nodes.pop_epoch();
+        self.sat_nominal_dependent_node_datas.pop_epoch();
+        self.sat_nominal_dependent_node_hashes.pop_epoch();
+        self.sat_nominal_handling_datas.pop_epoch();
+        self.sat_succ_datas.pop_epoch();
+        self.sat_successor_all_concept_ext_datas.pop_epoch();
+        self.sat_successor_concept_extension_maps.pop_epoch();
+        self.sat_successor_functional_concept_ext_datas.pop_epoch();
+        self.sat_succ_ext_datas.pop_epoch();
+        self.sat_succ_ext_ind_node_proc_queues.pop_epoch();
+        self.sat_succ_role_assertion_linkers.pop_epoch();
+        self.sig_block_cand_hashes.pop_epoch();
+        self.sig_block_con_exp_datas.pop_epoch();
+        self.signature_blocking_review_sets.pop_epoch();
+        self.successor_individual_atmost_reactivation_datas.pop_epoch();
+        self.succ_role_hashes.pop_epoch();
+        self.unsat_cache_ret_datas.pop_epoch();
+        self.var_binding_descs.pop_epoch();
+        self.var_binding_path_descs.pop_epoch();
+        self.var_binding_path_join_datas.pop_epoch();
+        self.var_binding_path_join_hashes.pop_epoch();
+        self.var_binding_path_merging_hashes.pop_epoch();
+        self.var_binding_paths.pop_epoch();
+        self.var_binding_path_sets.pop_epoch();
+        self.var_bindings.pop_epoch();
+        self.var_binding_trigger_hashes.pop_epoch();
+        self.var_binding_trigger_linkers.pop_epoch();
+        self.track_points.pop_epoch_watermark();
+        self.branch_nodes.pop_epoch_watermark();
+        self.branch_epoch_depth -= 1;
+    }
+
+    /// Open branch epochs (0 = none).
+    #[inline]
+    pub fn branch_epoch_depth(&self) -> usize {
+        self.branch_epoch_depth
+    }
+
     pub fn branching_tree_base_dependency_node(
         &mut self,
         tree_id: BranchingTreeId,
@@ -5874,7 +6215,7 @@ impl ProcessContext {
             ..
         } = *self;
         role_succ_hashes
-            .get_mut(hash)
+            .get_mut_journaled(hash)
             .has_role_successor_to_individual(
                 nodes,
                 edges,
@@ -5907,7 +6248,7 @@ impl ProcessContext {
             ..
         } = *self;
         role_succ_hashes
-            .get_mut(hash)
+            .get_mut_journaled(hash)
             .get_role_successor_to_individual_link(
                 nodes,
                 edges,
@@ -5967,7 +6308,7 @@ impl ProcessContext {
             ..
         } = *self;
         let link_count = role_succ_hashes
-            .get_mut(reapply_hash)
+            .get_mut_journaled(reapply_hash)
             .insert_role_successor_link(nodes, edges, role, link, Some(reapply_queue_it));
 
         let succ_hash = self.node_successor_role_hash(source);
@@ -5992,7 +6333,7 @@ impl ProcessContext {
             ..
         } = *self;
         disjoint_succ_role_hashes
-            .get_mut(disjoint_hash)
+            .get_mut_journaled(disjoint_hash)
             .insert_disjoint_successor_role_link(disjoint_edges, dest_id, link);
     }
 
@@ -6463,7 +6804,7 @@ impl ProcessContext {
             ..
         } = *self;
         role_succ_hashes
-            .get_mut(reapply_hash)
+            .get_mut_journaled(reapply_hash)
             .remove_role_successor_link_by_link(nodes, edges, role, link);
     }
 

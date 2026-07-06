@@ -811,7 +811,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // undo the failed alternative's derivations (fixes the chronological-
         // backtrack unsoundness for same-node disjunctions).
         let node_count_at_push = calc_alg_context.process_context().node_count();
-        let node_label_snapshot = {
+        // Under in-process COW the branch epoch restores the COMPLETE state,
+        // so the single-node snapshots are redundant — keep them empty.
+        let node_label_snapshot = if self.conf_inprocess_cow {
+            Default::default()
+        } else {
             let ls_id = calc_alg_context
                 .process_context_mut()
                 .node_reapply_concept_label_set(process_indi);
@@ -821,7 +825,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // coupled through trigger-reapply registration; see `OrBranchPoint`). The
         // disjunction's own descriptor was already taken from the queue, so it is
         // NOT in the snapshot and cannot re-fire after a restore.
-        let node_queue_snapshot = {
+        let node_queue_snapshot = if self.conf_inprocess_cow {
+            Default::default()
+        } else {
             let q_id = calc_alg_context
                 .process_context_mut()
                 .node_concept_processing_queue(process_indi, true);
@@ -830,6 +836,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .concept_proc_queue(q_id)
                 .clone()
         };
+
+        // In-process COW: open the alternative's branch epoch AFTER the
+        // per-disjunction records (OR dependency, alternative track points,
+        // snapshots) — those belong to the PARENT state and survive
+        // alternative pops — and BEFORE the first disjunct is added.
+        if self.conf_inprocess_cow {
+            calc_alg_context.push_branch_epoch();
+        }
 
         // Push the open branch point; the FIRST alternative is added now, so the
         // next unexplored alternative is index 1.

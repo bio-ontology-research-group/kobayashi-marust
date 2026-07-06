@@ -722,6 +722,7 @@ impl PropagationRepresentativeTransitionExtension {
 /// KONCLUDE-PORT-NOTE[ownership]: the `CDependencyTracker` base is folded in as the
 /// `dep_track_point` field. `CVariable*` → `VariableId`, `CIndividualProcessNode*` →
 /// `NodeId`, `CConceptDescriptor*` → `ConDescId`.
+#[derive(Clone)]
 pub struct PropagationBinding {
     /// `CDependencyTracker::mDependencyTrackPoint`.
     pub dep_track_point: TrackPointId,
@@ -834,6 +835,7 @@ impl PropagationBinding {
 /// base is a list-of-self linker (`mData == this`); it is folded to `data` (the
 /// self-pointer, set by the allocator when needed) + `next`. The `CDependencyTracker`
 /// base gives `dep_track_point`. The payload `CPropagationBinding*` is `mPropBinding`.
+#[derive(Clone)]
 pub struct PropagationBindingDescriptor {
     /// `CLinkerBase::data` (the self-pointer `CPropagationBindingDescriptor*`).
     pub data: PropagationBindingDescriptorId,
@@ -938,6 +940,7 @@ impl PropagationBindingDescriptor {
 ///
 /// KONCLUDE-PORT-NOTE[ownership]: list-of-self `CLinkerBase` (`next`) + folded
 /// `CDependencyTracker` (`dep_track_point`); the payload pointers become ids.
+#[derive(Clone)]
 pub struct PropagationBindingReapplyConceptDescriptor {
     /// `CLinkerBase::next`.
     pub next: PropagationBindingReapplyConceptDescriptorId,
@@ -1173,6 +1176,7 @@ impl PropagationBindingMap {
 ///
 /// KONCLUDE-PORT-NOTE[ownership]: `mPropMap` is held BY VALUE; the pointer members
 /// become ids; `mProcessContext` stays opaque `Cint64`.
+#[derive(Clone)]
 pub struct PropagationBindingSet {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,

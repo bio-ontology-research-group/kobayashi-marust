@@ -107,6 +107,7 @@ pub type VariableBindingTriggerHashId = Id<VariableBindingTriggerHash>;
 /// KONCLUDE-PORT-NOTE[ownership]: the `CDependencyTracker` base is folded in as the
 /// `dep_track_point` field (exactly as `process/node.rs` folds it). `CVariable*` →
 /// `VariableId`, `CIndividualProcessNode*` → `NodeId`.
+#[derive(Clone)]
 pub struct VariableBinding {
     /// `CDependencyTracker::mDependencyTrackPoint`.
     pub dep_track_point: TrackPointId,
@@ -196,6 +197,7 @@ impl VariableBinding {
 ///
 /// KONCLUDE-PORT-NOTE[ownership]: the `CSortedLinkerBase<CVariableBinding*,Self>`
 /// base contributes the `data` (the binding) + `next` (the sorted chain link).
+#[derive(Clone)]
 pub struct VariableBindingDescriptor {
     /// `CSortedLinkerBase::data` (`CVariableBinding*`).
     pub data: VarBindingId,
@@ -366,6 +368,7 @@ impl VariableBindingDescriptor {
 // ===========================================================================
 
 /// Port of `CVariableBindingPath`.
+#[derive(Clone)]
 pub struct VariableBindingPath {
     /// `cint64 mPropID`.
     pub prop_id: Cint64,
@@ -498,6 +501,7 @@ impl VariableBindingPathMapData {
 /// KONCLUDE-PORT-NOTE[ownership]: the `CLinkerBase<CVariableBindingPath*,Self>` base
 /// gives `data` (the path) + `next`; the `CDependencyTracker` base gives
 /// `dep_track_point`.
+#[derive(Clone)]
 pub struct VariableBindingPathDescriptor {
     /// `CLinkerBase::data` (`CVariableBindingPath*`).
     pub data: VarBindingPathId,
@@ -660,6 +664,7 @@ impl VariableBindingPathMap {
 ///
 /// KONCLUDE-PORT-NOTE[ownership]: `mVarBindPathMap` is held BY VALUE; the pointer
 /// members become ids; `mProcessContext` stays opaque `Cint64`.
+#[derive(Clone)]
 pub struct VariableBindingPathSet {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,
@@ -821,6 +826,7 @@ impl VariableBindingPathSet {
 // ===========================================================================
 
 /// Port of `CVariableBindingPathJoiningData`.
+#[derive(Clone)]
 pub struct VariableBindingPathJoiningData {
     /// `mutable cint64 mCalculatedHashValue`.
     pub calculated_hash_value: Cint64,
@@ -1297,6 +1303,7 @@ pub fn q_hash_joining(hasher: &VariableBindingPathJoiningHasher) -> u32 {
 /// `isKeyEquivalentTo` (the `equals`/`q_hash_joining` ports above are the building
 /// blocks for the reconcile that adds a proper bucketed key). The loc/use localize
 /// flow IS ported faithfully.
+#[derive(Clone)]
 pub struct VariableBindingPathJoiningHash {
     /// `CProcessContext* mContext` (opaque).
     pub context: Cint64,
@@ -1404,6 +1411,7 @@ impl VariableBindingPathJoiningHash {
 // ===========================================================================
 
 /// Port of `CVariableBindingTriggerLinker`.
+#[derive(Clone)]
 pub struct VariableBindingTriggerLinker {
     /// `CLinkerBase::data` (`CVariableBindingPathDescriptor*`).
     pub data: VarBindingPathDescriptorId,
@@ -1747,6 +1755,7 @@ impl Default for VariableBindingPathMergingHashData {
 pub type TPathIDPair = (Cint64, Cint64);
 
 /// Port of `CVariableBindingPathMergingHash`.
+#[derive(Clone)]
 pub struct VariableBindingPathMergingHash {
     /// `CProcessContext* mProcessContext` (opaque).
     pub process_context: Cint64,

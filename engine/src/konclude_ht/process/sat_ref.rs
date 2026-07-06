@@ -15,6 +15,7 @@ use super::super::model::{Cint64, ConceptId, RoleId};
 pub type ExtendedConceptReferenceLinkingDataId = Id<ExtendedConceptReferenceLinkingData>;
 
 /// Port of the data needed from `CSaturationConceptDataItem`.
+#[derive(Clone)]
 pub struct ExtendedConceptReferenceLinkingData {
     /// `CSaturationConceptDataItem::mConceptSat`.
     pub saturation_concept: ConceptId,

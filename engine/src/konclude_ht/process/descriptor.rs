@@ -71,6 +71,7 @@ impl ConceptProcessPriority {
 ///
 /// A concept occurrence with a negation polarity, the track point that justifies
 /// it, and the intrusive next-descriptor link.
+#[derive(Clone)]
 pub struct ConceptDescriptor {
     // --- from CNegLinkerBase<CConcept*> ---
     // KONCLUDE-PORT-NOTE[ownership]: `CConcept*` linker target -> `ConceptId`.
@@ -307,6 +308,7 @@ impl Default for ClashDescriptorKind {
 /// live non-datatype clash subclasses and `CTrackedClashedDescriptor` into
 /// `ClashDescriptorKind`; the datatype value-space exclusion subclass remains
 /// pending on datatype clash substrate.
+#[derive(Clone)]
 pub struct ClashDescriptor {
     /// Folded runtime subtype payload.
     pub kind: ClashDescriptorKind,

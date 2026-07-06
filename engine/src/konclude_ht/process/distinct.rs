@@ -648,7 +648,7 @@ impl Clone for DisjointSuccessorRoleData {
 /// KONCLUDE-PORT-NOTE[ownership]/[memory-pool]: `mContext` dropped; the outer
 /// `CPROCESSHASH<cint64, CDisjointSuccessorRoleData>` becomes an owned
 /// `HashMap<cint64, DisjointSuccessorRoleData>`.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct DisjointSuccessorRoleHash {
     /// `CPROCESSHASH<cint64, CDisjointSuccessorRoleData> mSuccNegDisEdgeHash`.
     succ_neg_dis_edge_hash: HashMap<Cint64, DisjointSuccessorRoleData>,

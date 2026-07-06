@@ -38,6 +38,7 @@ use super::{EdgeId, NodeId, TrackPointId};
 /// A directed role edge `source --role--> destination` recorded during
 /// completion, tagging the creator node and the dependency track point that
 /// justifies it.
+#[derive(Clone)]
 pub struct IndividualLinkEdge {
     // --- inherited from CProcessTag ---
     /// `CProcessTag::mProcessTag` (relocalization / localization tag).
@@ -201,6 +202,7 @@ impl IndividualLinkEdge {
 ///
 /// An `owl:differentFrom` edge between two nodes; carries no role and no
 /// creator (it extends only `CNodeEdge`).
+#[derive(Clone)]
 pub struct DistinctEdge {
     /// `CProcessTag::mProcessTag`.
     pub process_tag: Cint64,
@@ -300,6 +302,7 @@ impl DistinctEdge {
 /// KONCLUDE-PORT-NOTE[api]: the canonical Rust name is `DisjointEdge`
 /// (`process/mod.rs` `DisjointEdgeId = Id<edge::DisjointEdge>`); the C++ class
 /// is `CNegationDisjointEdge`.
+#[derive(Clone)]
 pub struct DisjointEdge {
     /// `CProcessTag::mProcessTag`.
     pub process_tag: Cint64,

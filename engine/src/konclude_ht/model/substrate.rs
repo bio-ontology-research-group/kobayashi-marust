@@ -103,11 +103,31 @@ impl<T> std::fmt::Debug for Id<T> {
 /// survives, exactly as Konclude relies on the branch structure to guarantee.
 pub struct Arena<T> {
     items: Vec<T>,
+    /// Branch-epoch watermarks (in-process COW): allocation lengths at each
+    /// open epoch; `pop_epoch*` truncates back. Empty when no epoch is open —
+    /// all epoch machinery is then zero-cost.
+    wm_stack: Vec<usize>,
+    /// Journal frames (one per open epoch, for journal-enabled pushes): the
+    /// first in-place mutation of a slot BELOW the frame's watermark saves a
+    /// clone; `pop_epoch` replays the saves in reverse. Slots at/above the
+    /// watermark die on truncate and are never saved.
+    journal_stack: Vec<EpochJournalFrame<T>>,
+}
+
+/// One epoch's first-touch save frame (see [`Arena::get_mut_journaled`]).
+pub struct EpochJournalFrame<T> {
+    watermark: usize,
+    saved_keys: std::collections::HashSet<usize>,
+    saves: Vec<(usize, T)>,
 }
 
 impl<T> Default for Arena<T> {
     fn default() -> Self {
-        Arena { items: Vec::new() }
+        Arena {
+            items: Vec::new(),
+            wm_stack: Vec::new(),
+            journal_stack: Vec::new(),
+        }
     }
 }
 
@@ -125,10 +145,7 @@ impl<T> Arena<T> {
     pub fn get(&self, id: Id<T>) -> &T {
         &self.items[id.index()]
     }
-    #[inline]
-    pub fn get_mut(&mut self, id: Id<T>) -> &mut T {
-        &mut self.items[id.index()]
-    }
+
     #[inline]
     pub fn len(&self) -> usize {
         self.items.len()
@@ -136,6 +153,19 @@ impl<T> Arena<T> {
     #[inline]
     pub fn watermark(&self) -> usize {
         self.items.len()
+    }
+    /// Plain mutate path WITHOUT epoch journaling (no `Clone` bound):
+    /// immutable-model arenas (ontology concepts/roles), the task layer, and
+    /// cross-task shared cache state, whose mutations must persist across
+    /// branch rollbacks by design.
+    #[inline]
+    pub fn get_mut(&mut self, id: Id<T>) -> &mut T {
+        &mut self.items[id.index()]
+    }
+    /// Alias (cache substrate call sites).
+    #[inline]
+    pub fn get_mut_raw(&mut self, id: Id<T>) -> &mut T {
+        &mut self.items[id.index()]
     }
     /// Backtrack: drop everything allocated since `mark`.
     #[inline]
@@ -145,6 +175,78 @@ impl<T> Arena<T> {
     #[inline]
     pub fn iter(&self) -> std::slice::Iter<'_, T> {
         self.items.iter()
+    }
+
+    // --- branch-epoch COW (the in-process stand-in for Konclude's per-task
+    // --- memory pools + copy-on-write databox referencing) ---
+
+    /// Open a watermark-ONLY epoch: allocations since it are dropped on pop,
+    /// but in-place mutations of older slots PERSIST across the pop. Used for
+    /// the dependency track-point / branch-node arenas, whose clash markings
+    /// are branch-SHARED state in Konclude (the DDB learning must survive the
+    /// death of the alternative that produced it).
+    #[inline]
+    pub fn push_epoch_watermark(&mut self) {
+        self.wm_stack.push(self.items.len());
+    }
+    /// Close a watermark-only epoch.
+    #[inline]
+    pub fn pop_epoch_watermark(&mut self) {
+        if let Some(wm) = self.wm_stack.pop() {
+            self.items.truncate(wm);
+        }
+    }
+    /// True when any epoch is open (journaled or watermark-only).
+    #[inline]
+    pub fn epoch_open(&self) -> bool {
+        !self.wm_stack.is_empty()
+    }
+}
+
+impl<T: Clone> Arena<T> {
+    /// Open a JOURNALED epoch: allocations are dropped on pop AND in-place
+    /// mutations of pre-epoch slots are rolled back (first-touch clone).
+    #[inline]
+    pub fn push_epoch(&mut self) {
+        let wm = self.items.len();
+        self.wm_stack.push(wm);
+        self.journal_stack.push(EpochJournalFrame {
+            watermark: wm,
+            saved_keys: std::collections::HashSet::new(),
+            saves: Vec::new(),
+        });
+    }
+    /// Close a journaled epoch: replay the saves in reverse, then truncate.
+    pub fn pop_epoch(&mut self) {
+        if let Some(frame) = self.journal_stack.pop() {
+            // truncate FIRST (frees slots the saves may index past? saves are
+            // all below the watermark by construction, so order is free; do
+            // saves last so restored content is final).
+            if let Some(wm) = self.wm_stack.pop() {
+                self.items.truncate(wm);
+            }
+            for (ix, v) in frame.saves.into_iter().rev() {
+                self.items[ix] = v;
+            }
+        } else if let Some(wm) = self.wm_stack.pop() {
+            self.items.truncate(wm);
+        }
+    }
+    /// The mutate path under branch epochs: the first mutation of a
+    /// pre-epoch slot in the CURRENT epoch saves a rollback clone (zero-cost
+    /// when no journaled epoch is open). The `ProcessContext` accessor macro
+    /// routes every branch-state arena through this; arenas holding
+    /// immutable-model / cross-task state keep the raw `get_mut`.
+    #[inline]
+    pub fn get_mut_journaled(&mut self, id: Id<T>) -> &mut T {
+        if let Some(frame) = self.journal_stack.last_mut() {
+            let ix = id.index();
+            if ix < frame.watermark && frame.saved_keys.insert(ix) {
+                let clone = self.items[ix].clone();
+                frame.saves.push((ix, clone));
+            }
+        }
+        &mut self.items[id.index()]
     }
 }
 

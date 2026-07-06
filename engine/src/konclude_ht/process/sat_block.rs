@@ -10,6 +10,7 @@ use super::super::model::substrate::{Cint64, Id};
 use super::{ConDescId, SatNodeId};
 
 /// Port of `CIndividualNodeSaturationBlockingData`.
+#[derive(Clone)]
 pub struct IndividualNodeSaturationBlockingData {
     /// `cint64 mSaturationBlockedConceptCount`.
     pub saturation_blocked_concept_count: Cint64,

@@ -839,6 +839,16 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
             algo.conf_atomic_semantic_branching = true;
         }
     }
+    // KM_HT_COW (opt-in, composable with KM_HT_DDB): complete-state restore
+    // per alternative via arena journals + databox snapshots. Measured cost:
+    // the uniform first-touch journal re-clones the alternative's touched
+    // slot set on EVERY backtrack cycle — 12653 DDB classify 0.9s → 260s —
+    // so this is NOT coupled to DDB. It targets flat-graph deep-backtracking
+    // onts (the 541 family); the path to defaulting it on is per-node
+    // localization (Konclude's task-fork shape), not uniform journaling.
+    if std::env::var_os("KM_HT_COW").is_some() {
+        algo.conf_inprocess_cow = true;
+    }
     // KM_BRIDGE_NO_BLOCKING: diagnostic knob — run the probe with blocking OFF
     // (∃-cycles then hit the drive cap ⇒ Stop/None). If a verdict that flips
     // WITH blocking becomes stable WITHOUT it, the blocking establish/review

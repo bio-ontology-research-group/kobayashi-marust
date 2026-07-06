@@ -34,6 +34,7 @@ pub type SuccessorRoleHashId = super::super::model::substrate::Id<SuccessorRoleH
 // ===========================================================================
 
 /// Port of `CSuccessorRoleHash`.
+#[derive(Clone)]
 pub struct SuccessorRoleHash {
     /// `CPROCESSHASH<cint64, CIndividualLinkEdge*>* mSuccessorLinkHash`.
     successor_link_hash: HashMap<Cint64, Vec<EdgeId>>,

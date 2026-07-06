@@ -102,6 +102,7 @@ impl Default for MarkerIndividualNodeHashData {
 }
 
 /// Port of `CMarkerIndividualNodeHash`.
+#[derive(Clone)]
 pub struct MarkerIndividualNodeHash {
     pub context: Cint64,
     pub marker_individual_node_hash: HashMap<ConceptId, MarkerIndividualNodeHashData>,

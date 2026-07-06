@@ -55,6 +55,7 @@ pub struct IndividualSaturationProcessNodeStatusFlags {
 /// (→ `CProcessReference`) has **no data members** (pure identity/context
 /// handle), so it contributes no fields here; the context handle it abstracts is
 /// stored directly as `process_context` below.
+#[derive(Clone)]
 pub struct IndividualSaturationProcessNode {
     // --- context / allocator -------------------------------------------------
     // KONCLUDE-PORT-NOTE[ownership]: `CProcessContext*` is the ambient per-test
