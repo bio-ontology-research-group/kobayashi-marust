@@ -31,8 +31,15 @@ and `4 W8-DEFER`.
 
 ### Works, and is tested (1183 `konclude_ht` tests, all green locally)
 - **ALC consistency**: conjunction (`⊓`), disjunction (`⊔`) with **branch
-  creation + chronological backtracking**, negation, **clash detection**, TBox
-  unfolding (`A ⊑ B` via the implication rule).
+  creation + SOUND same-node backtracking** (8796e2f: the OR push snapshots the
+  node's label set + concept-processing queue as a coupled pair and the
+  backtrack restores both, undoing the failed disjunct's downstream
+  derivations; guarded on no-successor-created — successor-creating disjuncts
+  still use chronological behaviour pending the task-fork/backjump port),
+  negation, **clash detection**, TBox unfolding (`A ⊑ B` via the implication
+  rule). The former unsoundness (a failed disjunct's derivation persisting and
+  falsely closing an open branch) is pinned + fixed by the un-ignored
+  `subsumption_via_disjunction_one_branch_open` negative control.
 - **Roles / successors**: `∃R.C` creates a successor node + R-edge and labels it;
   `∀R.C` propagates over edges; **nested `∃` grows multi-node** (root→n1→n2…).
 - **Termination**: ancestor subset blocking now stops the cyclic TBox pattern
