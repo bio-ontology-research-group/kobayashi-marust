@@ -888,7 +888,23 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
+    let (mut ht, ht_out, fast_certify) = match spawn_ht(cfg, clauses_path, named) {
+        Some(x) => x,
+        None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
+    };
     let reserved = ht_reserved_threads(cfg);
+    // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid): sound+complete on their
+    // fragment and decide quickly (SHOQ <1-3s, QO certify ~tens of s), so take the
+    // answer after a SHORT budget instead of waiting out the doomed CB for the full
+    // ht_budget_s. CB still wins when it finishes first (preserves CB-preference /
+    // monotone-safety on CB-solvable onts). The budget is only the "start accepting
+    // HT" threshold: past it, the certified answer is harvested the moment it is
+    // ready, so a QO arm that certifies later than the SHOQ default is still taken.
+    let budget = if fast_certify {
+        cfg.shoq_budget_s.min(cfg.ht_budget_s)
+    } else {
+        cfg.ht_budget_s
+    };
 
     let read_tout = |p: &Path| -> Option<EngineOut> {
         let f = File::open(p).ok()?;
@@ -896,21 +912,6 @@ where
             .ok()
             .map(tableau_to_out)
     };
-
-    // KM_HT_GRACE_S (default 0.5): run CB alone for this long before spawning the
-    // HT arm. On a trivial ont CB wins in ~0.1s — well under the grace — so the HT
-    // subprocess (fork/exec of the 4.4MB binary + the clause read+convert) is never
-    // paid, which is the residual few-ms that separated ~90 near-tie onts from a
-    // WIN against Konclude. SOUND + recovery-preserving: HT is NEVER the fast winner
-    // over a FINISHING CB — fallback mode always prefers CB when it finishes, and
-    // the fast_certify (SHOQ/QO) harvest only matters on CB-SLOW onts (grace
-    // elapses → HT spawns → harvest after its budget, delayed by only the grace).
-    // Mirrors the label-caching tableau arm, which already lazy-spawns after a
-    // grace (`race_cb_vs_tableau`). Set 0 to spawn HT eagerly.
-    let grace: f64 = std::env::var("KM_HT_GRACE_S")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0.5);
 
     // the CB result, written by the CB thread when it finishes — the analogue of
     // Python's `done` dict (Ok = `done["out"]`, Err = `done["exc"]`). Inspecting
@@ -926,72 +927,32 @@ where
             *slot.lock().unwrap() = Some(r);
         });
 
+        let mut ht_res: Option<EngineOut> = None;
+        let mut ht_polled = false;
         let t0 = Instant::now();
         let timing = std::env::var_os("KM_TIMING").is_some();
-
-        // grace delay: an ontology CB finishes within it pays zero HT cost (no
-        // clause read, no convert, no subprocess). Adaptive 1ms-doubling sleep.
-        let mut interval = Duration::from_millis(1);
-        while t0.elapsed().as_secs_f64() < grace {
-            if cb_slot.lock().unwrap().is_some() {
-                break;
-            }
-            thread::sleep(interval);
-            interval = (interval * 2).min(Duration::from_millis(50));
-        }
-
-        // Spawn HT only if CB has NOT already succeeded (errored or still running =>
-        // HT may still be needed). On a non-routable ont spawn_ht returns None and
-        // CB answers alone.
-        let cb_succeeded = matches!(cb_slot.lock().unwrap().as_ref(), Some(Ok(_)));
-        let (mut ht, ht_out, budget): (Option<Child>, Option<super::tmpfile::TempPath>, f64) =
-            if cb_succeeded {
-                (None, None, 0.0)
-            } else {
-                match spawn_ht(cfg, clauses_path, named) {
-                    // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid) decide
-                    // quickly, so accept their answer after a SHORT budget instead of
-                    // waiting out a doomed CB for the full ht_budget_s.
-                    Some((h, o, fast_certify)) => {
-                        let b = if fast_certify {
-                            cfg.shoq_budget_s.min(cfg.ht_budget_s)
-                        } else {
-                            cfg.ht_budget_s
-                        };
-                        (Some(h), Some(o), b)
-                    }
-                    None => (None, None, 0.0),
-                }
-            };
-
-        let mut ht_res: Option<EngineOut> = None;
-        // No HT process => nothing to poll; treat as already polled so a CB error
-        // returns immediately instead of spinning.
-        let mut ht_polled = ht.is_none();
         let mut cb_logged = false;
 
         let mut interval = Duration::from_millis(1);
         loop {
             // poll HT once it finishes (capture its valid answer)
             if !ht_polled {
-                if let Some(ht_ref) = ht.as_mut() {
-                    if let Ok(Some(st)) = ht_ref.try_wait() {
-                        ht_polled = true;
+                if let Ok(Some(st)) = ht.try_wait() {
+                    ht_polled = true;
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING race: HT worker exited @ {:.2}s (success={})",
+                            t0.elapsed().as_secs_f64(),
+                            st.success()
+                        );
+                    }
+                    if st.success() {
+                        ht_res = read_tout(ht_out.path());
                         if timing {
                             eprintln!(
-                                "KM_TIMING race: HT worker exited @ {:.2}s (success={})",
-                                t0.elapsed().as_secs_f64(),
-                                st.success()
+                                "KM_TIMING race: read_tout done @ {:.2}s",
+                                t0.elapsed().as_secs_f64()
                             );
-                        }
-                        if st.success() {
-                            ht_res = read_tout(ht_out.as_ref().unwrap().path());
-                            if timing {
-                                eprintln!(
-                                    "KM_TIMING race: read_tout done @ {:.2}s",
-                                    t0.elapsed().as_secs_f64()
-                                );
-                            }
                         }
                     }
                 }
@@ -1017,10 +978,8 @@ where
             }
             if take_cb {
                 let cb = cb_slot.lock().unwrap().take().unwrap();
-                if let Some(ht_ref) = ht.as_mut() {
-                    let _ = ht_ref.kill();
-                    let _ = ht_ref.wait();
-                }
+                let _ = ht.kill();
+                let _ = ht.wait();
                 return cb; // the scope joins the (finished) CB thread
             }
 
@@ -1028,9 +987,7 @@ where
                 if let Some(w) = ht_res.take() {
                     // HT finished first (and valid): kill CB and win.
                     engine_run::cancel_and_kill_engines();
-                    if let Some(ht_ref) = ht.as_mut() {
-                        let _ = ht_ref.wait();
-                    }
+                    let _ = ht.wait();
                     return Ok(w);
                 }
                 if cb_errored && ht_polled {
@@ -1041,21 +998,17 @@ where
                 // fallback mode
                 if cb_errored {
                     if let Some(w) = ht_res.take() {
-                        if let Some(ht_ref) = ht.as_mut() {
-                            let _ = ht_ref.wait();
-                        }
+                        let _ = ht.wait();
                         return Ok(w);
                     }
                     if ht_polled {
                         return cb_slot.lock().unwrap().take().unwrap();
                     }
-                } else if ht.is_some() && t0.elapsed().as_secs_f64() > budget {
+                } else if t0.elapsed().as_secs_f64() > budget {
                     if let Some(w) = ht_res.take() {
                         // CB over budget: HT fills the gap.
                         engine_run::cancel_and_kill_engines();
-                        if let Some(ht_ref) = ht.as_mut() {
-                            let _ = ht_ref.wait();
-                        }
+                        let _ = ht.wait();
                         return Ok(w);
                     }
                 }
