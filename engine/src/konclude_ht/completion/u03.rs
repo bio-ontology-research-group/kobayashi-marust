@@ -750,6 +750,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     sat_calc_task: INVALID,
                 });
 
+        // SOUND-BACKTRACK: snapshot the node's label set BEFORE any disjunct is
+        // added, so backtracking can restore the clean pre-disjunction state and
+        // undo the failed alternative's derivations (fixes the chronological-
+        // backtrack unsoundness for same-node disjunctions).
+        let node_count_at_push = calc_alg_context.process_context().node_count();
+        let node_label_snapshot = {
+            let ls_id = calc_alg_context
+                .process_context_mut()
+                .node_reapply_concept_label_set(process_indi);
+            calc_alg_context.process_context().label_set(ls_id).clone()
+        };
+        // The processing queue is snapshotted TOGETHER with the label set (they are
+        // coupled through trigger-reapply registration; see `OrBranchPoint`). The
+        // disjunction's own descriptor was already taken from the queue, so it is
+        // NOT in the snapshot and cannot re-fire after a restore.
+        let node_queue_snapshot = {
+            let q_id = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(process_indi, true);
+            calc_alg_context
+                .process_context()
+                .concept_proc_queue(q_id)
+                .clone()
+        };
+
         // Push the open branch point; the FIRST alternative is added now, so the
         // next unexplored alternative is index 1.
         let first: NegLink<ConceptId> = operands[0];
@@ -761,6 +786,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             dep_track_point,
             branch_node,
             or_dependency_node,
+            node_label_snapshot,
+            node_queue_snapshot,
+            node_count_at_push,
         });
 
         // addConceptToIndividual(operand, opNegated, processIndi, depTrackPoint, ...).

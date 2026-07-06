@@ -216,13 +216,20 @@ fn is_unsatisfiable(env: &mut Env, seed: &[(ConceptId, bool)], gcis: &[ConceptId
     }
 
     // re-drive to fixpoint: each pass re-enqueues every GCI and runs the completion;
-    // a clash ⇒ unsatisfiable; a stable label-set count ⇒ saturated and consistent.
+    // a clash ⇒ unsatisfiable; a stable label-set count with NO backtrack in the
+    // pass ⇒ saturated and consistent. A pass that backtracked must never be a
+    // fixpoint witness: the sound-backtrack restore (u02) rewinds the label set AND
+    // the processing queue to the pre-disjunction snapshot, wiping this pass's
+    // re-seeded GCI descriptors (only the next re-seed pass re-derives their
+    // consequences on the new alternative), and a swapped disjunct keeps the
+    // concept COUNT stable even though the label changed.
     let mut prev_count: i64 = -1;
     for _ in 0..256 {
         for &g in gcis {
             seed_concept_on_queue(env, root, g);
         }
         seed_root_immediate(env, root);
+        let backtracks_before = env.algo.or_backtrack_count;
         let consistent = env.algo.run_completion_on(&mut env.ctx);
         if !consistent {
             return true;
@@ -232,7 +239,7 @@ fn is_unsatisfiable(env: &mut Env, seed: &[(ConceptId, bool)], gcis: &[ConceptId
             .process_context_mut()
             .node_reapply_concept_label_set(root);
         let count = env.ctx.process_context().label_set(ls).get_concept_count();
-        if count == prev_count {
+        if count == prev_count && env.algo.or_backtrack_count == backtracks_before {
             break;
         }
         prev_count = count;
@@ -370,7 +377,6 @@ fn subsumption_via_disjunction_both_branches_close() {
 /// lines). Un-ignore when that lands. THIS is the core blocker for konclude_ht on
 /// the ORE disjunction family.
 #[test]
-#[ignore = "exposes the chronological-backtrack unsoundness (no state restore on backtrack); needs the dependency-directed backjump (Unit 28/30)"]
 fn subsumption_via_disjunction_one_branch_open() {
     let mut env = new_env();
     let a = env.atom(101);

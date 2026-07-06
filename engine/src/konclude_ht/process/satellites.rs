@@ -193,7 +193,7 @@ impl ConceptSetSignature {
 }
 
 /// Port of `CConceptSetStructure` (placeholder, held by value).
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConceptSetStructure;
 
 impl ConceptSetStructure {
@@ -209,12 +209,12 @@ impl ConceptSetStructure {
 }
 
 /// Port of `CConceptSetFlags` (placeholder, held by value).
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConceptSetFlags;
 
 /// Port of `CConceptLabelSetModificationTag` (placeholder base, `: CProcessTag`).
 /// Embedded by composition; carries the process-tag marking word.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConceptLabelSetModificationTag {
     // CProcessTag::mProcessTag
     pub process_tag: Cint64,
@@ -324,6 +324,7 @@ impl ConceptLabelSetModificationTag {
 /// Port of `CConceptDescriptorDependencyReapplyData`
 /// (`CConceptDescriptorDependencyReapplyData.h`) — the per-concept value in the
 /// label set's reapply maps.
+#[derive(Clone)]
 pub struct ConceptDescriptorDependencyReapplyData {
     // KONCLUDE-PORT-NOTE[ownership]: `CConceptDescriptor* mConceptDescriptor` → `ConDescId`.
     pub concept_descriptor: ConDescId,
@@ -355,6 +356,7 @@ impl Default for ConceptDescriptorDependencyReapplyData {
 /// `CConceptDescriptor*` linker heads become `ConDescId`s, and the two
 /// `CPROCESSMAP<cint64,…>` maps become `HashMap`s. The COW between them is the
 /// load-bearing part — see the field notes below + unit LS-1.
+#[derive(Clone)]
 pub struct ReapplyConceptLabelSet {
     // --- base CConceptLabelSetModificationTag (composition) ------------------
     pub modification_tag: ConceptLabelSetModificationTag,
@@ -393,6 +395,7 @@ pub struct ReapplyConceptLabelSet {
 /// The three states of `mAdditionalConceptDesDepMap` (null / owned-overflow /
 /// shared-from-another-label-set). Kept first-class so LS-1 can port the COW
 /// share-vs-copy decision byte-exactly.
+#[derive(Clone)]
 pub enum AdditionalDesDepMapRef {
     /// `nullptr`.
     Null,

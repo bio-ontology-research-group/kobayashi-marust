@@ -187,17 +187,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 break;
             }
             self.or_branch_stack.pop();
+            self.or_backtrack_count += 1;
         }
         if self.or_branch_stack.is_empty() {
             return false;
         }
+        self.or_backtrack_count += 1;
 
         // the clash is being recovered from — clear it (the C++ catch consumes the
         // exception, then `clashedBacktracking` re-drives the chosen branch).
         calc_alg_context.clear_pending_signal();
 
         // advance the topmost open branch to its next unexplored alternative.
-        let (node, target, op_negated, dep_track_point) = {
+        let (node, target, op_negated, dep_track_point, node_count_at_push) = {
             let bp = self.or_branch_stack.last_mut().expect("checked non-empty");
             let link = bp.disjuncts[bp.next_alt];
             bp.next_alt += 1;
@@ -206,8 +208,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 link.target,
                 link.negated ^ bp.negate,
                 bp.dep_track_point,
+                bp.node_count_at_push,
             )
         };
+
+        // SOUND-BACKTRACK: restore `node`'s label set to the pre-disjunction
+        // snapshot, undoing the just-failed alternative's derivations, so the next
+        // alternative is tried on the clean state. Guarded on `node_count`: if the
+        // failed alternative created a successor node, the single-node snapshot
+        // cannot restore the graph (that needs the full task-fork restore), so we
+        // leave the chronological behaviour unchanged for that case (no regression).
+        if calc_alg_context.process_context().node_count() == node_count_at_push {
+            let (label_snapshot, queue_snapshot) = {
+                let bp = self.or_branch_stack.last().expect("checked non-empty");
+                (bp.node_label_snapshot.clone(), bp.node_queue_snapshot.clone())
+            };
+            let ls_id = calc_alg_context
+                .process_context_mut()
+                .node_reapply_concept_label_set(node);
+            *calc_alg_context
+                .process_context_mut()
+                .label_set_mut(ls_id) = label_snapshot;
+            // Restore the coupled processing-queue snapshot (see `OrBranchPoint`):
+            // trigger descriptors consumed by the failed alternative re-appear, so
+            // reapply registrations wiped by the label restore are re-derived.
+            let q_id = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(node, true);
+            *calc_alg_context
+                .process_context_mut()
+                .concept_proc_queue_mut(q_id) = queue_snapshot;
+        }
 
         // re-seed the node onto the immediately-processing queue so
         // `take_next_process_individual` (Probe 2) returns it on the next drive.

@@ -148,6 +148,27 @@ pub struct OrBranchPoint {
     pub branch_node: BranchNodeId,
     /// The allocated `CORDependencyNode` (`DNTORDEPENDENCY`).
     pub or_dependency_node: DependencyId,
+    /// SOUND-BACKTRACK snapshot of `node`'s concept label set taken BEFORE the
+    /// first disjunct was added. On backtrack it is restored (undoing the failed
+    /// disjunct's downstream derivations) so the next alternative is tried on the
+    /// clean pre-disjunction state — fixing the chronological-backtrack
+    /// unsoundness (see `try_backtrack_or_branch`). Sound ONLY when no successor
+    /// node was created since the push (`node_count_at_push` guard); a
+    /// successor-creating disjunct still needs the full task-fork restore.
+    pub node_label_snapshot: super::super::process::satellites::ReapplyConceptLabelSet,
+    /// SOUND-BACKTRACK snapshot of `node`'s concept PROCESSING QUEUE at push time,
+    /// restored together with the label set. The two are coupled: a trigger
+    /// descriptor consumed from the queue during a failed alternative may have
+    /// registered its reapply entry in the (restored-away) label set; restoring the
+    /// queue re-supplies that descriptor so the registration / firing is re-derived
+    /// on the next alternative. Safe because concept process descriptors are
+    /// arena-allocated and never reused, and an existing descriptor's intrusive
+    /// `next` link is only written when the descriptor itself is (re)inserted — a
+    /// push-time head therefore still addresses exactly the push-time chain.
+    pub node_queue_snapshot: super::super::process::queues::ConceptProcessingQueue,
+    /// `process_context.node_count()` at push — the guard: restore the snapshot
+    /// only if no new node was created (i.e. the disjunct stayed on `node`).
+    pub node_count_at_push: usize,
 }
 
 /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm`.
@@ -589,6 +610,14 @@ pub struct CompletionTaskHandleAlgorithm {
     /// faithful (task-fork) model; populated by the chronological-branching port the
     /// drive loop (u02) + `initialize_or_processing` (u03) install.
     pub or_branch_stack: Vec<OrBranchPoint>,
+    /// Monotone counter of disjunction backtracks (`try_backtrack_or_branch`
+    /// advancing to a next alternative OR popping an exhausted branch point). An
+    /// outer re-drive loop that re-applies global constraints (GCI re-seeding) must
+    /// NOT conclude fixpoint on a pass in which this advanced: the backtrack restore
+    /// wipes queued-but-independent work (e.g. re-seeded implication descriptors)
+    /// that only the next re-seed pass re-derives, and a swapped disjunct keeps the
+    /// label-set concept COUNT stable even though the label changed.
+    pub or_backtrack_count: u64,
 }
 
 impl CompletionTaskHandleAlgorithm {
@@ -977,6 +1006,7 @@ impl CompletionTaskHandleAlgorithm {
             debug_expansion_count: 500,
 
             or_branch_stack: Vec::new(),
+            or_backtrack_count: 0,
         }
     }
 
