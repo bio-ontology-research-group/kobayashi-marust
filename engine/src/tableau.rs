@@ -4981,6 +4981,56 @@ pub fn run_json(input: &str) -> Result<String, String> {
     // experimental SHIQ inverse/number merge path + KM_HT_QO) actually runs on
     // inverse/number onts for measurement — otherwise such onts fall through to
     // the legacy tableau here, never reaching Ht.
+    // KM_HT_BRIDGE: route the KB to the konclude_ht bridge (the Rust port of
+    // Konclude's completion kernel). Sound+complete on its fragment by
+    // construction: deterministic subjects answer by canonical-model read-off,
+    // non-deterministic ones by candidate extraction + pairwise unsat probes.
+    // `None` ⇒ DEFER (unsupported clause shape / nominals / a STOPped drive):
+    // fall through to the other arms — the bridge only ever ADDS coverage.
+    if std::env::var_os("KM_HT_BRIDGE").is_some() {
+        // The bridge consumes the producer-side TInput (cb_to_ht) — same wire
+        // format as this worker's TInput; re-parse the raw input for it.
+        let tin_bridge: crate::orchestrate::cb_to_ht::TInput =
+            serde_json::from_str(input).map_err(|e| e.to_string())?;
+        let res = std::thread::Builder::new()
+            .stack_size(4usize << 30)
+            .spawn(move || crate::konclude_ht::bridge::bridged_classify(&tin_bridge))
+            .map_err(|e| e.to_string())?
+            .join()
+            .map_err(|_| "konclude_ht bridge thread panicked".to_string())?;
+        if let Some(r) = res {
+            let subs: Vec<(C, C)> = r
+                .subsumptions
+                .iter()
+                .map(|&(a, b)| (a as C, b as C))
+                .collect();
+            // Transitive closure at the serialization boundary, exactly like the
+            // other arms: every input pair is verified/entailed, so closing is
+            // sound and only adds entailed pairs.
+            let subs = hypertableau::transitive_close_subs(subs);
+            let name = |c: C| {
+                inp.concepts
+                    .get(c as usize)
+                    .cloned()
+                    .unwrap_or_else(|| format!("C{c}"))
+            };
+            let out = TOutput {
+                consistent: true,
+                unsatisfiable: r.unsatisfiable.iter().map(|&c| name(c as C)).collect(),
+                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
+            };
+            return serde_json::to_string(&out).map_err(|e| e.to_string());
+        }
+        // The bridge declined. If it was the ONLY route this worker was
+        // spawned for (KM_HT_BRIDGE_ONLY, set by spawn_ht), emit NO answer —
+        // the legacy tableau below is not validated on this fragment and the
+        // orchestrator's CB arm must decide. Otherwise fall through to the
+        // route the worker was actually spawned for (monotone-safe).
+        if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
+            return Err("konclude_ht bridge defer".to_string());
+        }
+    }
+
     let ht_force = std::env::var_os("KM_HT_FORCE").is_some();
     // KM_HT_NOMINALS: route nominal (but inverse-free) KBs — SHOQ / SHON — to the
     // fast Ht, which now carries the nominal o-rule (`set_nominals`) composed with

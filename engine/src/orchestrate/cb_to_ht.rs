@@ -178,7 +178,7 @@ fn build_rule_clause(
 // ---------------------------------------------------------------------------
 // output (TInput) types
 // ---------------------------------------------------------------------------
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(tag = "k")]
 pub enum HAtom {
     #[serde(rename = "c")]
@@ -196,13 +196,13 @@ pub enum HAtom {
     },
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct HtClause {
     pub body: Vec<HAtom>,
     pub head: Vec<HAtom>,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct Fenced {
     pub reason: String,
     pub detail: String,
@@ -212,7 +212,7 @@ pub struct Fenced {
 /// concept/role ids. `min` ⇒ `≥n role.filler`, else `≤n role.filler`. The HT
 /// worker (`run_json`) installs these via `set_card_defs_raw`; the clausal
 /// `⋁ Eq` pigeonhole for each marker is dropped from `clauses`.
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct CardDefJson {
     pub marker: usize,
     pub min: bool,
@@ -221,7 +221,8 @@ pub struct CardDefJson {
     pub filler: usize,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
 pub struct TInput {
     pub concepts: Vec<String>,
     pub roles: Vec<String>,

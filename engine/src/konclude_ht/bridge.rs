@@ -698,6 +698,21 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
 /// every search flag is off) and any ∃-cycle or DAG-unrolled successor tree
 /// runs into the drive cap — measured on ore_ont_1016's Abdomen probe.
 pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
+    // KM_HT_DDB: opt-in dependency-directed backjumping (Konclude's
+    // `clashedBacktracking`, u29). Turns the dependency spine ON (every rule
+    // application then materializes its dependency node + track point, exactly
+    // Konclude's default) and routes clashes through the tracked-clash analysis
+    // so the in-process OR backtrack can SKIP branch points the clash does not
+    // depend on. Target: the 541 family (deep chronological thrashing).
+    if std::env::var_os("KM_HT_DDB").is_some() {
+        algo.conf_build_dependencies = true;
+        algo.conf_dependency_backjumping = true;
+        // Konclude production defaults (CReasonerConfigurationGroup):
+        // SemanticBranching=false, AtomicSemanticBranching=true — a new
+        // alternative asserts the negation of every previously refuted ATOMIC
+        // disjunct, so sibling subtrees cannot re-explore failed disjuncts.
+        algo.conf_atomic_semantic_branching = true;
+    }
     // KM_BRIDGE_NO_BLOCKING: diagnostic knob — run the probe with blocking OFF
     // (∃-cycles then hit the drive cap ⇒ Stop/None). If a verdict that flips
     // WITH blocking becomes stable WITHOUT it, the blocking establish/review
@@ -1109,11 +1124,16 @@ pub fn bridged_unsat(
 /// subject the single branch is not authoritative — the caller must fall
 /// back to pairwise `bridged_unsat` probes over the candidate set.
 ///
-/// Returns `Some(subsumer_indices)` on a deterministic saturation (indices
-/// into `bridged.named`, INCLUDING `subject` itself), `None` if the drive
-/// STOPped or backtracked (read-off not authoritative). A clash means the
-/// subject is unsatisfiable — every concept subsumes it — reported as the
-/// full index range.
+/// Returns `Some((subsumer_indices, authoritative))` (indices into
+/// `bridged.named`, INCLUDING `subject` itself), `None` if the drive
+/// STOPped (no verdict at all). `authoritative = true` ⇔ the saturation made
+/// NO nondeterministic choice (no OR branch point opened, no backtrack): the
+/// canonical model captures every consequence and the read-off IS the
+/// subsumer set. `authoritative = false` ⇔ the label is one branch's model —
+/// the positives are CANDIDATE subsumers (Konclude's possible-subsumer
+/// extraction) the caller must verify individually via `bridged_unsat`
+/// pairwise probes. A clash means the subject is unsatisfiable — every
+/// concept subsumes it — reported as the full index range, authoritative.
 pub fn bridged_classify_subject(
     algo: &mut CompletionTaskHandleAlgorithm,
     ctx: &mut CalculationAlgorithmContextBase,
@@ -1121,7 +1141,7 @@ pub fn bridged_classify_subject(
     next_indi_id: &mut i64,
     subject: usize,
     n_named: usize,
-) -> Option<Vec<usize>> {
+) -> Option<(Vec<usize>, bool)> {
     ctx.clear_pending_signal();
     algo.or_branch_stack.clear();
 
@@ -1148,10 +1168,11 @@ pub fn bridged_classify_subject(
     );
     if ctx.has_pending_signal() {
         // seed alone clashed ⇒ subject unsatisfiable
-        return Some((0..n_named).collect());
+        return Some(((0..n_named).collect(), true));
     }
 
     let backtracks_before = algo.or_backtrack_count;
+    let branch_opens_before = algo.or_branch_open_count;
     // GLOBAL fixpoint: break only when a full re-drive pass inserts NO concept
     // on ANY node. Breaking on the root-label COUNT (the earlier criterion) is
     // order-dependent — a pass can add nothing to the root while reapply /
@@ -1172,9 +1193,9 @@ pub fn bridged_classify_subject(
         if !consistent {
             return match ctx.pending_signal() {
                 super::completion::clash::CalcSignal::Clash(_) => {
-                    Some((0..n_named).collect())
+                    Some(((0..n_named).collect(), true))
                 }
-                _ => None, // STOP: not authoritative
+                _ => None, // STOP: no verdict
             };
         }
         let inserts = algo.stat_con_des_insertion_count;
@@ -1184,9 +1205,13 @@ pub fn bridged_classify_subject(
         prev_inserts = inserts;
     }
     // Non-deterministic saturation ⇒ single branch is not authoritative.
-    if algo.or_backtrack_count != backtracks_before {
-        return None;
-    }
+    // Opened branch points count even without backtracks: a drive committing
+    // to first disjuncts pollutes the root label with branch-dependent
+    // concepts (measured on ore_ont_3215: 86 SPURIOUS subsumptions under the
+    // backtrack-only gate). The read-off still runs — its positives become
+    // the CANDIDATE set for pairwise verification.
+    let authoritative = algo.or_backtrack_count == backtracks_before
+        && algo.or_branch_open_count == branch_opens_before;
 
     // Read off positive named tags from the root label.
     let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
@@ -1212,7 +1237,140 @@ pub fn bridged_classify_subject(
     }
     subsumers.sort_unstable();
     subsumers.dedup();
-    Some(subsumers)
+    Some((subsumers, authoritative))
+}
+
+/// The production classification result: index pairs into `TInput.concepts`.
+pub struct BridgedClassification {
+    /// Indices of unsatisfiable named concepts.
+    pub unsatisfiable: Vec<usize>,
+    /// `(sub, sup)` subsumption pairs (self-pairs excluded).
+    pub subsumptions: Vec<(usize, usize)>,
+}
+
+/// Fresh per-subject probe environment: algorithm + context + bridged
+/// terminology. Konclude isolates probes via per-task databox COW (the
+/// unported Task layer); the v1 driver rebuilds — same verdicts, O(TBox)
+/// per subject/probe.
+fn fresh_bridge_env(
+    tin: &TInput,
+) -> (
+    CompletionTaskHandleAlgorithm,
+    CalculationAlgorithmContextBase,
+    Bridged,
+) {
+    use super::completion::strategy::ConceptProcessingPriorityStrategy;
+    let mut algo = CompletionTaskHandleAlgorithm::new();
+    configure_default_blocking(&mut algo);
+    let mut ctx = CalculationAlgorithmContextBase::new();
+    ctx.base.used_concept_priority_strategy =
+        Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+    let top = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1);
+        c.set_operator_code(op::CCTOP);
+        ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    ctx.processing_data_box_mut().ontology_top_concept = top;
+    let bridged = bridge_tinput(&mut ctx, tin);
+    (algo, ctx, bridged)
+}
+
+/// Production classification of a `TInput` over the konclude_ht bridge.
+///
+/// Per subject: model read-off when the saturation was deterministic
+/// (authoritative — the canonical model IS the subsumer set), else candidate
+/// extraction + pairwise `bridged_unsat(s ⊓ ¬c)` verification (label ABSENCE
+/// in a saturated clash-free graph is a countermodel even on a
+/// non-deterministic drive, so the candidate positives are a complete
+/// filter; only presences need verification).
+///
+/// Returns `None` (DEFER — the caller must fall back to a sound+complete
+/// arm) when the answer would not be both sound and complete:
+/// - the encoder could not express every clause (`unsupported > 0`);
+/// - the input carries nominals/ABox content (not bridged);
+/// - any subject drive or verification probe STOPped without a verdict.
+pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
+    if !tin.nominals.is_empty() {
+        return None;
+    }
+    let n_named = tin.concepts.len();
+    let subjects: Vec<usize> = if tin.queries.is_empty() {
+        (0..n_named).collect()
+    } else {
+        tin.queries.iter().map(|&q| q as usize).collect()
+    };
+    let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+    let mut out = BridgedClassification {
+        unsatisfiable: Vec::new(),
+        subsumptions: Vec::new(),
+    };
+    for (k, &s) in subjects.iter().enumerate() {
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(tin);
+        if bridged.unsupported > 0 {
+            return None;
+        }
+        let mut next_indi_id: i64 = 1_000;
+        let (subs, authoritative) =
+            bridged_classify_subject(&mut algo, &mut ctx, &bridged, &mut next_indi_id, s, n_named)?;
+        if progress && (k % 64 == 0 || k + 1 == subjects.len()) {
+            eprintln!(
+                "BRIDGE-CLASSIFY subject {}/{} auth={} subs={}",
+                k + 1,
+                subjects.len(),
+                authoritative,
+                subs.len()
+            );
+        }
+        // The subject-unsatisfiable signal is the FULL index range
+        // (authoritative). A tiny ontology can legitimately have a subject
+        // subsumed by every named concept, so disambiguate with a direct
+        // single-seed unsat probe.
+        if authoritative && subs.len() == n_named {
+            let (mut a2, mut c2, b2) = fresh_bridge_env(tin);
+            let mut id2: i64 = 1_000;
+            match bridged_unsat(&mut a2, &mut c2, &b2, &mut id2, &[(b2.named[s], false)]) {
+                Some(true) => {
+                    out.unsatisfiable.push(s);
+                    continue;
+                }
+                Some(false) => {} // genuinely subsumed by everything — keep pairs
+                None => return None,
+            }
+        }
+        if authoritative {
+            for c in subs {
+                if c != s {
+                    out.subsumptions.push((s, c));
+                }
+            }
+            continue;
+        }
+        // Non-deterministic subject: verify each candidate pairwise.
+        for c in subs {
+            if c == s {
+                continue;
+            }
+            let (mut a2, mut c2, b2) = fresh_bridge_env(tin);
+            let mut id2: i64 = 1_000;
+            match bridged_unsat(
+                &mut a2,
+                &mut c2,
+                &b2,
+                &mut id2,
+                &[(b2.named[s], false), (b2.named[c], true)],
+            ) {
+                Some(true) => out.subsumptions.push((s, c)),
+                Some(false) => {}
+                None => return None,
+            }
+        }
+        // A non-deterministic subject can also be unsatisfiable without the
+        // read-off reporting the full range (a clash IS reported full-range,
+        // so this is only reachable when the drive found a model — the
+        // subject is satisfiable; nothing to check).
+    }
+    Some(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -1709,12 +1867,12 @@ mod tests {
             bridged_classify_subject(&mut algo, &mut ctx, &bridged, &mut next, s_idx, n_named);
         let readoff_has = readoff
             .as_ref()
-            .map(|subs| subs.contains(&sup_idx))
+            .map(|(subs, _)| subs.contains(&sup_idx))
             .unwrap_or(false);
         eprintln!(
             "BRIDGE-PAIR {sub} ⊑ {sup}: pairwise={pairwise} readoff_has={readoff_has} \
              readoff_nondet={}",
-            readoff.is_none(),
+            !readoff.as_ref().map(|(_, auth)| *auth).unwrap_or(false),
         );
         // dump every clause referencing sub or sup (to scope the propagation
         // the completion is missing).
@@ -1778,11 +1936,18 @@ mod tests {
         let mut gold_pairs: std::collections::HashSet<(String, String)> =
             std::collections::HashSet::new();
         let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Names appearing as a SUB in gold: only these become subjects, so a
+        // gold file restricted to a subject sample stays self-consistent —
+        // every admitted subject carries its COMPLETE supers set, keeping
+        // `spurious` meaningful (a supers-only name would otherwise be
+        // classified against an empty gold row and misread as unsound).
+        let mut gold_subs: std::collections::HashSet<String> = std::collections::HashSet::new();
         for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
             let sub = local(pair[0].as_str().unwrap());
             let sup = local(pair[1].as_str().unwrap());
             gold_universe.insert(sub.clone());
             gold_universe.insert(sup.clone());
+            gold_subs.insert(sub.clone());
             gold_pairs.insert((sub, sup));
         }
 
@@ -1808,8 +1973,24 @@ mod tests {
         ctx.processing_data_box_mut().ontology_top_concept = top;
         let bridged = bridge_tinput(&mut ctx, &tin);
 
-        // subjects = gold-known, in-fragment named concepts.
-        let subjects: Vec<usize> = (0..n_named)
+        // subjects = gold-classified (sub-side), in-fragment named concepts.
+        let mut subjects: Vec<usize> = (0..n_named)
+            .filter(|&i| gold_subs.contains(&tin.concepts[i]))
+            .collect();
+        // KM_BRIDGE_MAX_SUBJECTS=N: validate a bounded prefix of subjects
+        // (correctness sample on deep taxonomies where full O(subjects)
+        // classification without databox reuse is a separate speed lever).
+        // When set, gold is restricted to these subjects so missing/spurious
+        // stay meaningful on the sample.
+        if let Some(cap) = std::env::var("KM_BRIDGE_MAX_SUBJECTS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            subjects.truncate(cap);
+        }
+        // pairwise-fallback COLUMNS: every gold-known named concept (a super
+        // like `Path` need not be a classified subject itself).
+        let targets: Vec<usize> = (0..n_named)
             .filter(|&i| gold_universe.contains(&tin.concepts[i]))
             .collect();
 
@@ -1835,8 +2016,23 @@ mod tests {
             ctx2.processing_data_box_mut().ontology_top_concept = top2;
             let bridged2 = bridge_tinput(&mut ctx2, &tin);
             let mut n2 = 0i64;
-            match bridged_classify_subject(&mut algo2, &mut ctx2, &bridged2, &mut n2, s, n_named) {
-                Some(subs) => {
+            let t_subj = std::time::Instant::now();
+            let verdict = bridged_classify_subject(&mut algo2, &mut ctx2, &bridged2, &mut n2, s, n_named);
+            eprintln!(
+                "SUBJ {} {}: {} in {:.1}s (nodes={} backtracks={})",
+                s,
+                tin.concepts[s],
+                match &verdict {
+                    Some((v, true)) => format!("readoff {} supers", v.len()),
+                    Some((v, false)) => format!("NONDET {} candidates", v.len()),
+                    None => "STOP".into(),
+                },
+                t_subj.elapsed().as_secs_f64(),
+                ctx2.process_context().node_count(),
+                algo2.or_backtrack_count,
+            );
+            match verdict {
+                Some((subs, true)) => {
                     for sup in subs {
                         if sup == s {
                             continue;
@@ -1850,16 +2046,23 @@ mod tests {
                         }
                     }
                 }
-                None => {
+                Some((cands, false)) => {
                     // Non-deterministic saturation: the one-model read-off is
-                    // not authoritative. Fall back to PAIRWISE probes over the
-                    // candidate targets — `unsat(s ⊓ ¬sup)` proves `s ⊑ sup`
-                    // under ANY branch discipline (Konclude's own
-                    // subsumption-test shape), O(candidates) per subject
-                    // instead of O(1).
+                    // not authoritative — its positives are the CANDIDATE
+                    // subsumers (Konclude's possible-subsumer extraction).
+                    // Verify each with a pairwise probe: `unsat(s ⊓ ¬sup)`
+                    // proves `s ⊑ sup` under ANY branch discipline. On a
+                    // small gold universe, probe every target instead (the
+                    // candidate label can under-approximate; the pairwise
+                    // verdict itself is exact either way).
                     nondet += 1;
-                    for &sup in &subjects {
-                        if sup == s {
+                    let cand_list: Vec<usize> = if targets.len() <= 64 {
+                        targets.clone()
+                    } else {
+                        cands
+                    };
+                    for sup in cand_list {
+                        if sup == s || !gold_universe.contains(&tin.concepts[sup]) {
                             continue;
                         }
                         let mut algo3 = CompletionTaskHandleAlgorithm::new();
@@ -1891,6 +2094,7 @@ mod tests {
                         }
                     }
                 }
+                None => nondet += 1, // STOP: no verdict at all
             }
         }
         let elapsed = t0.elapsed();

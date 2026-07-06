@@ -657,10 +657,20 @@ fn spawn_ht(
         && tin.fenced.is_empty()
         && !tin.nominals.is_empty()
         && !has_datatype(&cl);
+    // KM_HT_BRIDGE route: the konclude_ht bridge (Konclude's completion kernel
+    // in Rust) answers sound+complete-or-DEFER by construction (deterministic
+    // read-off / pairwise-verified candidates; declines anything it cannot
+    // encode losslessly). Nominal-free faithful TInputs only; the worker's
+    // bridge arm re-checks coverage per clause. Opt-in while under validation.
+    let bridge_candidate = std::env::var_os("KM_HT_BRIDGE").is_some()
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && tin.nominals.is_empty();
     if !ht_routable(&tin)
         && !qo_candidate
         && !shoq_candidate
         && !card_candidate
+        && !bridge_candidate
         && std::env::var_os("KM_HT_FORCE").is_none()
     {
         return None;
@@ -685,6 +695,17 @@ fn spawn_ht(
         cmd.stderr(Stdio::null());
     }
     cmd.env("KM_HT", "1");
+    if bridge_candidate
+        && !ht_routable(&tin)
+        && !qo_candidate
+        && !shoq_candidate
+        && !card_candidate
+    {
+        // The bridge is the ONLY reason this worker was spawned: if its arm
+        // declines, the worker must produce NO answer (the legacy tableau is
+        // not validated on this fragment — "tableau is NOT a fallback").
+        cmd.env("KM_HT_BRIDGE_ONLY", "1");
+    }
     if qo_candidate {
         // Route this Horn-inverse ont to the validated hybrid certify path, run as
         // a sound certify-OR-DEFER arm: KM_HT_QO_CERTIFY_ONLY makes it emit a

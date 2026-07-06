@@ -397,6 +397,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        // In-process stand-in for cancelling the root task: the drive loop (u02)
+        // reads this flag as "the clash traced to branching level 0 ⇒ the whole
+        // problem is unsatisfiable regardless of open disjunction alternatives".
+        self.ddb_root_cancelled = true;
         // rootTask = (CSatisfiableCalculationTask*)calcAlgContext->getSatisfiableCalculationTask()->getRootTask()
         // W6-DEFER[api]: the satisfiable-calculation task + its root task are Task subsystem.
         let root_task: SatTaskId = Id::NONE;

@@ -18,7 +18,7 @@
 
 #![allow(dead_code, unused_variables, unused_mut)]
 
-use super::super::model::substrate::Cint64;
+use super::super::model::substrate::{Cint64, NegLink};
 use super::super::model::ConceptId;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
@@ -140,16 +140,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // `clashedBacktracking`; see the `OrBranchPoint` KONCLUDE-PORT-NOTE.)
         let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
         let mut drives: u64 = 0;
+        self.ddb_root_cancelled = false;
         loop {
             self.run_saturation_loop(calc_alg_context);
             drives += 1;
             if progress && drives % 4096 == 0 {
                 eprintln!(
-                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={}",
+                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={} ddb_jumps={} ddb_pops={} ddb_fallbacks={}",
                     self.or_backtrack_count,
                     calc_alg_context.process_context().node_count(),
                     self.stat_con_des_insertion_count,
                     self.or_branch_stack.len(),
+                    self.ddb_jump_count,
+                    self.ddb_jump_pop_total,
+                    self.ddb_fallback_count,
                 );
             }
             if !calc_alg_context.has_pending_signal() {
@@ -157,7 +161,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 return true;
             }
             match calc_alg_context.pending_signal() {
-                CalcSignal::Clash(_) => {
+                CalcSignal::Clash(clash) => {
+                    if self.conf_dependency_backjumping {
+                        // Dependency-directed backjumping: run the ported
+                        // `clashedBacktracking` (u29) — it walks the clash's
+                        // dependency closure and marks the responsible
+                        // non-deterministic track points clashed (propagating
+                        // through decisions whose every sibling is clashed).
+                        self.clashed_backtracking(clash, calc_alg_context);
+                        if self.ddb_root_cancelled {
+                            // The clash traced to branching level 0: independent
+                            // of every open alternative ⇒ INCONSISTENT.
+                            return false;
+                        }
+                        if self.try_backtrack_or_branch_ddb(calc_alg_context) {
+                            continue;
+                        }
+                        return false;
+                    }
                     if self.try_backtrack_or_branch(calc_alg_context) {
                         // advanced to the next alternative (signal cleared); re-drive.
                         continue;
@@ -198,12 +219,101 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if bp.next_alt < bp.disjuncts.len() {
                 break;
             }
-            self.or_branch_stack.pop();
+            let bp = self.or_branch_stack.pop().expect("checked non-empty");
+            calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
             self.or_backtrack_count += 1;
         }
         if self.or_branch_stack.is_empty() {
             return false;
         }
+        self.advance_topmost_or_branch(calc_alg_context);
+        true
+    }
+
+    /// The dependency-directed backtrack (`conf_dependency_backjumping`): the
+    /// caller has already run `clashedBacktracking` (u29), which marked every
+    /// non-deterministic track point the clash depends on as clashed
+    /// (`is_clashed_or_irelevant_branch`), propagating through decisions whose
+    /// every sibling alternative is clashed. The stack walk then:
+    ///
+    /// - POPS a branch point whose current alternative's track point is NOT
+    ///   marked — the clash does not depend on that choice, so the clash
+    ///   recurs under every one of its alternatives; enumerating them is
+    ///   futile (the backjump — this is what collapses 541's 2^56 space).
+    ///   Sound because the tracked-clash line analyses the DEEPEST branching
+    ///   level first (`getBranchingLevelTag() == mBranchingLevel` bucketing):
+    ///   an unmarked branch point above the analysis stop is not in the
+    ///   clash's dependency closure.
+    /// - POPS a marked-but-exhausted branch point (the u29 propagation has
+    ///   already marked the outer responsible decision when the last sibling
+    ///   clashed).
+    /// - ADVANCES the topmost marked branch point with a remaining
+    ///   alternative.
+    ///
+    /// SAFETY NET: when the analysis marked NO branch point that still has a
+    /// remaining alternative (e.g. it stopped early on a track point already
+    /// marked by an earlier clash epoch — possible because the in-process
+    /// label-snapshot restore cannot undo multi-node leakage the way
+    /// Konclude's per-task copy-on-write does), the walk does NOT declare
+    /// inconsistency: it falls back to the chronological backtrack. DDB is
+    /// therefore purely a pruner — a wrong UNSAT verdict cannot come from the
+    /// marking, only from exhausting alternatives (modulo the pop-unmarked
+    /// skip, which is justified per-clash by the level-ordering argument).
+    fn try_backtrack_or_branch_ddb(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        // Scan (no mutation) from the top for the first branch point whose
+        // CURRENT alternative the analysis marked clashed and which still has
+        // an unexplored alternative.
+        let mut target: Option<usize> = None;
+        for i in (0..self.or_branch_stack.len()).rev() {
+            let bp = &self.or_branch_stack[i];
+            let cur_tp = bp
+                .alt_track_points
+                .get(bp.next_alt.wrapping_sub(1))
+                .copied()
+                .unwrap_or(TrackPointId::NONE);
+            let refuted = cur_tp.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .track_point(cur_tp)
+                    .is_clashed_or_irelevant_branch();
+            if refuted && bp.next_alt < bp.disjuncts.len() {
+                target = Some(i);
+                break;
+            }
+        }
+        let Some(target) = target else {
+            // No marked branch point with a remaining alternative — do NOT
+            // trust the analysis for an UNSAT verdict; chronological fallback.
+            self.ddb_fallback_count += 1;
+            return self.try_backtrack_or_branch(calc_alg_context);
+        };
+        self.ddb_jump_count += 1;
+        self.ddb_jump_pop_total += (self.or_branch_stack.len() - 1 - target) as u64;
+        // The backjump: discard everything above the target. Unmarked branch
+        // points there are not in the clash's dependency closure (the tracked
+        // line analyses the deepest branching level first), so the clash
+        // recurs under every one of their alternatives; marked-but-exhausted
+        // ones were propagated through by u29 when their last sibling clashed.
+        while self.or_branch_stack.len() > target + 1 {
+            let bp = self.or_branch_stack.pop().expect("len checked");
+            calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
+            self.or_backtrack_count += 1;
+        }
+        self.advance_topmost_or_branch(calc_alg_context);
+        true
+    }
+
+    /// Shared advance: clear the pending clash, restore the topmost branch
+    /// point's snapshots, re-seed its node, and add its next unexplored
+    /// alternative (under the alternative's own non-deterministic track point
+    /// when DDB minted them, else under the disjunction's track point).
+    fn advance_topmost_or_branch(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
         self.or_backtrack_count += 1;
 
         // the clash is being recovered from — clear it (the C++ catch consumes the
@@ -211,18 +321,54 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context.clear_pending_signal();
 
         // advance the topmost open branch to its next unexplored alternative.
-        let (node, target, op_negated, dep_track_point, node_count_at_push) = {
+        let (node, target, op_negated, dep_track_point, node_count_at_push, sem_branch) = {
             let bp = self.or_branch_stack.last_mut().expect("checked non-empty");
             let link = bp.disjuncts[bp.next_alt];
+            let alt_tp = bp.alt_track_points.get(bp.next_alt).copied();
+            // Semantic branching (`executeORBranching` non-pos operands): the
+            // new alternative also asserts the NEGATION of every previously
+            // refuted alternative (`addOpNegated = !posOperand ^ isNegated ^
+            // negate`), so a sibling subtree cannot re-explore a failed
+            // disjunct. Sound: alternative `i` is only advanced past when the
+            // context refuted it. Konclude default: atomic-only
+            // (`AtomicSemanticBranching`, no extra rule work).
+            let sem_branch: Vec<NegLink<ConceptId>> = if self.conf_semantic_branching
+                || self.conf_atomic_semantic_branching
+            {
+                bp.disjuncts[..bp.next_alt]
+                    .iter()
+                    .map(|l| NegLink {
+                        target: l.target,
+                        negated: !(l.negated ^ bp.negate),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
             bp.next_alt += 1;
             (
                 bp.node,
                 link.target,
                 link.negated ^ bp.negate,
-                bp.dep_track_point,
+                alt_tp.filter(|tp| tp.is_some()).unwrap_or(bp.dep_track_point),
                 bp.node_count_at_push,
+                sem_branch,
             )
         };
+        // DDB: the new alternative's branch node becomes the used branch tree
+        // node (nested disjunctions under it nest one branching level deeper).
+        if dep_track_point.is_some()
+            && self
+                .or_branch_stack
+                .last()
+                .map(|bp| !bp.alt_track_points.is_empty())
+                .unwrap_or(false)
+        {
+            calc_alg_context.base.used_branch_tree_node = calc_alg_context
+                .process_context()
+                .track_point(dep_track_point)
+                .get_branch_node();
+        }
 
         // SOUND-BACKTRACK: restore `node`'s label set to the pre-disjunction
         // snapshot, undoing the just-failed alternative's derivations, so the next
@@ -230,7 +376,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // failed alternative created a successor node, the single-node snapshot
         // cannot restore the graph (that needs the full task-fork restore), so we
         // leave the chronological behaviour unchanged for that case (no regression).
-        if calc_alg_context.process_context().node_count() == node_count_at_push {
+        let restored = calc_alg_context.process_context().node_count() == node_count_at_push;
+        if restored {
             let (label_snapshot, queue_snapshot) = {
                 let bp = self.or_branch_stack.last().expect("checked non-empty");
                 (bp.node_label_snapshot.clone(), bp.node_queue_snapshot.clone())
@@ -275,7 +422,40 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             true,
             calc_alg_context,
         );
-        true
+        // Semantic-branching additions (under the SAME alternative track
+        // point, exactly `executeORBranching`'s addingConceptLinker). Stop on
+        // a raised clash — the outer loop backtracks again.
+        //
+        // ONLY when the snapshot restore actually executed: Konclude adds
+        // these in a FORKED task (pre-branch state by construction). When the
+        // failed alternative created successor nodes the single-node snapshot
+        // cannot restore the graph and the label keeps the failed
+        // alternative's derivations — adding ¬d_i on top of leftover d_i
+        // derivations manufactures false clashes (measured: 12653 collapsed
+        // to unsat-everything, spurious=120). Without the restore, skip the
+        // negations entirely (the plain chronological add is the validated
+        // behaviour there).
+        if restored {
+            for l in sem_branch {
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+                if self.conf_semantic_branching
+                    || self.is_concept_addition_atomaric(l.target, l.negated, calc_alg_context)
+                {
+                    let mut n = node_m;
+                    self.add_concept_to_individual(
+                        l.target,
+                        l.negated,
+                        &mut n,
+                        dep_track_point,
+                        true,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
     }
 
     /// The deterministic completion main loop (`handleTask` inner loop, cpp

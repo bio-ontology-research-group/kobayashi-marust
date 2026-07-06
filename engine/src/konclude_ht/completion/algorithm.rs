@@ -148,6 +148,20 @@ pub struct OrBranchPoint {
     pub branch_node: BranchNodeId,
     /// The allocated `CORDependencyNode` (`DNTORDEPENDENCY`).
     pub or_dependency_node: DependencyId,
+    /// DDB (`conf_dependency_backjumping`): one non-deterministic dependency
+    /// track point PER ALTERNATIVE, minted upfront at push time (Konclude mints
+    /// one per forked branch task in `executeORBranching`; upfront minting is
+    /// required so "all sibling branches clashed" in the u29 analysis means the
+    /// whole disjunction is refuted — lazily-minted siblings would make the
+    /// propagation fire while untried alternatives remain). Alternative `k`'s
+    /// concepts are added under `alt_track_points[k]`, whose branching tag is
+    /// this branch point's nesting depth — the tag the tracked-clash analysis
+    /// keys on. Empty when the dependency spine is off (chronological mode).
+    pub alt_track_points: Vec<TrackPointId>,
+    /// The `used_branch_tree_node` at push time, restored when this branch
+    /// point is popped (each active alternative installs its own branch node
+    /// as the used node so nested disjunctions nest one level deeper).
+    pub parent_used_branch_node: BranchNodeId,
     /// SOUND-BACKTRACK snapshot of `node`'s concept label set taken BEFORE the
     /// first disjunct was added. On backtrack it is restored (undoing the failed
     /// disjunct's downstream derivations) so the next alternative is tried on the
@@ -618,6 +632,33 @@ pub struct CompletionTaskHandleAlgorithm {
     /// that only the next re-seed pass re-derives, and a swapped disjunct keeps the
     /// label-set concept COUNT stable even though the label changed.
     pub or_backtrack_count: u64,
+    /// Count of OR branch points OPENED (pushed). A drive with
+    /// `or_branch_open_count` unchanged made NO nondeterministic choice, so a
+    /// model read-off is authoritative. `or_backtrack_count` alone is NOT a
+    /// determinism witness: a drive can open branch points and commit to first
+    /// disjuncts without ever clashing — concepts added under those choices
+    /// are branch-dependent (Konclude gates the same read-off on the
+    /// dependency track point's branching tag, cpp 4121; the in-process OR
+    /// adds disjuncts under the OR concept's own track point, so the tag is
+    /// not observable downstream and the open-count stands in).
+    pub or_branch_open_count: u64,
+    /// Set by `cancellation_root_task` (u32): the tracked-clash analysis
+    /// (`clashedBacktracking`, u29) traced a clash to branching level 0 — the
+    /// clash is independent of every open disjunction alternative, so the
+    /// whole problem is unsatisfiable regardless of remaining branches. The
+    /// in-process drive loop (u02) reads this as its stand-in for Konclude's
+    /// root-task cancellation (the Task-subsystem side of `cancellationTask`
+    /// is W6-DEFER). Reset at the top of `run_completion_on`.
+    pub ddb_root_cancelled: bool,
+    /// DDB diagnostics: backjumps taken (target found by the scan).
+    pub ddb_jump_count: u64,
+    /// DDB diagnostics: branch points POPPED PAST by backjumps (jump distance
+    /// beyond the plain advance; 0 for a topmost-target jump — the
+    /// chronological-equivalent case).
+    pub ddb_jump_pop_total: u64,
+    /// DDB diagnostics: clashes where the analysis marked NO open branch
+    /// point (chronological fallback taken).
+    pub ddb_fallback_count: u64,
 }
 
 impl CompletionTaskHandleAlgorithm {
@@ -1007,6 +1048,11 @@ impl CompletionTaskHandleAlgorithm {
 
             or_branch_stack: Vec::new(),
             or_backtrack_count: 0,
+            or_branch_open_count: 0,
+            ddb_root_cancelled: false,
+            ddb_jump_count: 0,
+            ddb_jump_pop_total: 0,
+            ddb_fallback_count: 0,
         }
     }
 
