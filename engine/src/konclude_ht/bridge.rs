@@ -167,6 +167,23 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             b.ctx.ontology_arenas_mut().alloc_role(r)
         })
         .collect();
+    // Every bridged role gets a wired inverse (both directions, the
+    // `inverse_role_propagation` selftest pattern). Needed by the
+    // absorption-shape rewrite below: a y-triggered guarded clause
+    // `D(y) ∧ R(x,y) → E(x)` encodes as `D ⊑ ∀R⁻.E`.
+    let inv_roles: Vec<RoleId> = (0..tin.roles.len())
+        .map(|i| {
+            let mut r = Role::new();
+            r.set_role_tag(100 + (tin.roles.len() + i) as Cint64);
+            r.set_inverse_role(roles[i]);
+            let id = b.ctx.ontology_arenas_mut().alloc_role(r);
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(roles[i])
+                .set_inverse_role(id);
+            id
+        })
+        .collect();
 
     let mut tbox: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
@@ -307,17 +324,6 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     }
                 }
             }
-            if triggers.is_empty() {
-                // A trigger-less guarded clause (e.g. the cb_to_ht definer
-                // RECOGNITION direction `B(y) ∧ R(x,y) → Q(x)`) would encode
-                // as `⊤ ⊑ Q ∨ ∀R.¬B` — a covering disjunction that OR-branches
-                // on EVERY node and (through the definer's ∃) spawns unbounded
-                // successor chains. Konclude expresses this shape via
-                // ABSORPTION (role-triggered backward implication over edges);
-                // until that wave lands it is out of the v1 fragment.
-                unsupported += 1;
-                continue;
-            }
             let mut head_x: Vec<(ConceptId, bool)> = Vec::new();
             let mut head_y: Vec<(ConceptId, bool)> = Vec::new();
             for a in &cl.head {
@@ -335,26 +341,58 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     head_y.push(lit(&mut b, a));
                 }
             }
-            // ∀R.( ¬D1 ∨ … ∨ F1 ∨ … ) — the y-side residue
-            let mut y_ops: Vec<(ConceptId, bool)> = succ_body
-                .iter()
-                .map(|&(c, n)| (c, !n)) // body atoms flip polarity
-                .collect();
-            y_ops.extend(head_y.iter().copied());
-            let y_disj = if y_ops.is_empty() {
-                (b.bottom(), false)
+            if !triggers.is_empty() {
+                // ---- x-triggered: C ⊑ … ∨ ∀R.(¬D ∨ …) ---------------------
+                // ∀R.( ¬D1 ∨ … ∨ F1 ∨ … ) — the y-side residue
+                let mut y_ops: Vec<(ConceptId, bool)> = succ_body
+                    .iter()
+                    .map(|&(c, n)| (c, !n)) // body atoms flip polarity
+                    .collect();
+                y_ops.extend(head_y.iter().copied());
+                let y_disj = if y_ops.is_empty() {
+                    (b.bottom(), false)
+                } else {
+                    b.or_of(&y_ops)
+                };
+                let all = (b.all(roles[r], y_disj), false);
+                let head = if head_x.is_empty() {
+                    all
+                } else {
+                    let mut ops = head_x;
+                    ops.push(all);
+                    b.or_of(&ops)
+                };
+                tbox.push(b.implication(head, &triggers));
+            } else if !succ_body.is_empty() {
+                // ---- y-triggered (the absorption shape): ------------------
+                // `D(y) ∧ R(x,y) → E(x) ∨ F(y)`  ≡  `D ⊑ F ∨ ∀R⁻.E`
+                // (the cb_to_ht definer RECOGNITION direction). Encoded
+                // trigger-less it would be a covering disjunction branching
+                // on EVERY node (measured: unbounded successor chains); the
+                // inverse-∀ form fires only on D-nodes and rides the ported
+                // inverse-edge propagation (`inverse_role_propagation`
+                // selftest). Konclude reaches the same behaviour through
+                // absorption's backward implication triggers.
+                let x_disj = if head_x.is_empty() {
+                    (b.bottom(), false)
+                } else {
+                    b.or_of(&head_x)
+                };
+                let all_inv = (b.all(inv_roles[r], x_disj), false);
+                let head = if head_y.is_empty() {
+                    all_inv
+                } else {
+                    let mut ops = head_y;
+                    ops.push(all_inv);
+                    b.or_of(&ops)
+                };
+                tbox.push(b.implication(head, &succ_body));
             } else {
-                b.or_of(&y_ops)
-            };
-            let all = (b.all(roles[r], y_disj), false);
-            let head = if head_x.is_empty() {
-                all
-            } else {
-                let mut ops = head_x;
-                ops.push(all);
-                b.or_of(&ops)
-            };
-            tbox.push(b.implication(head, &triggers));
+                // no concept trigger on either side (`⊤ ⊑ …` over an edge) —
+                // out of the v1 fragment (needs the covering-disjunction
+                // machinery Konclude gets from absorption + branch triggers).
+                unsupported += 1;
+            }
             continue;
         }
 
@@ -721,6 +759,30 @@ mod tests {
         }
         assert!(holds, "A unsat via R⊑S hierarchy ⇒ A ⊑ D vacuously");
         assert!(!env.subsumes("D", "A"), "D ⊑ A must NOT hold");
+    }
+
+    #[test]
+    fn bridge_exists_recognition_inverse() {
+        // ∃R.B ⊑ Q (the definer-recognition / absorption shape, frontend-
+        // clausified to `B(y) ∧ R(x,y) → Q(x)`, bridged as `B ⊑ ∀R⁻.Q`):
+        // A ⊑ ∃R.B and Q ⊑ E ⊢ A ⊑ E — the Q lands on A through the
+        // inverse-edge propagation, not through any forward unfold.
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:B))\n\
+             Declaration(Class(:Q)) Declaration(Class(:E))\n\
+             Declaration(ObjectProperty(:R))\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:R :B))\n\
+             SubClassOf(ObjectSomeValuesFrom(:R :B) :Q)\n\
+             SubClassOf(:Q :E)\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        let holds = env.subsumes("A", "E");
+        if !holds {
+            dump_nodes(&mut env, "after A⊑E probe (recognition)");
+        }
+        assert!(holds, "A ⊑ E via ∃R.B ⊑ Q recognition over the inverse edge");
+        assert!(!env.subsumes("E", "A"), "E ⊑ A must NOT hold");
     }
 
     /// Fragment-coverage report on a REAL ontology: set `KM_BRIDGE_ONT` to an
