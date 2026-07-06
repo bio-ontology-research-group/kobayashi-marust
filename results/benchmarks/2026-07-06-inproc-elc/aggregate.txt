@@ -1,0 +1,71 @@
+=== ORE reasoner_cmp aggregate (584 onts) ===
+solved: km=576  konclude=584
+km unsolved but konclude solved (8): ['541', '3215', '7914', '9663', '9724', '10621', '12653', '14817']
+
+gold-match (km vs Konclude gold): MATCH=574 DIFF=2 NOSIG=8
+gold-match EXCLUDING contested (9 onts): MATCH=572 DIFF=0
+  km DIFF vs gold (excl contested) [0]: []
+
+=== km vs Konclude on 576 onts BOTH solved ===
+km FASTER: 318   km slower: 258
+km LESS-mem: 425   km more-mem: 151
+
+--- top 25 where km SLOWER (ont, km_s, konc_s, delta) ---
+     9635  km=225.13s  konc=0.10s  +225.03s
+    15491  km=225.53s  konc=0.53s  +225.00s
+     5303  km=225.14s  konc=0.17s  +224.97s
+    12141  km=225.15s  konc=0.19s  +224.96s
+     9024  km=225.17s  konc=0.32s  +224.85s
+     6246  km=201.24s  konc=0.17s  +201.07s
+     8486  km=138.58s  konc=27.48s  +111.10s
+    14459  km=131.53s  konc=26.23s  +105.30s
+     7409  km=86.23s  konc=8.71s  +77.52s
+    16462  km=57.65s  konc=6.44s  +51.22s
+     7499  km=45.43s  konc=3.40s  +42.02s
+     6212  km=50.01s  konc=16.34s  +33.67s
+    12698  km=28.82s  konc=0.91s  +27.91s
+    10689  km=40.68s  konc=16.62s  +24.06s
+    11315  km=29.47s  konc=6.68s  +22.79s
+    11745  km=26.02s  konc=4.16s  +21.86s
+      868  km=39.35s  konc=17.99s  +21.36s
+     7581  km=27.01s  konc=5.88s  +21.12s
+     1603  km=20.72s  konc=0.10s  +20.62s
+    15672  km=20.64s  konc=0.17s  +20.47s
+    10908  km=20.28s  konc=0.09s  +20.19s
+     5107  km=20.51s  konc=0.35s  +20.16s
+     6934  km=20.20s  konc=0.17s  +20.03s
+    10702  km=20.19s  konc=0.23s  +19.96s
+     6223  km=24.14s  konc=5.59s  +18.54s
+--- top 25 where km MORE-mem (ont, km_mb, konc_mb, delta) ---
+     6246  km=45291MB  konc=16MB  +45274MB
+     5303  km=45143MB  konc=115MB  +45028MB
+     9635  km=45078MB  konc=103MB  +44975MB
+    12698  km=36391MB  konc=438MB  +35953MB
+     1603  km=34608MB  konc=122MB  +34486MB
+    15491  km=31335MB  konc=308MB  +31027MB
+    12141  km=17411MB  konc=115MB  +17296MB
+    10908  km=17358MB  konc=134MB  +17223MB
+     7499  km=17605MB  konc=391MB  +17213MB
+    15672  km=10667MB  konc=107MB  +10560MB
+     9024  km=9712MB  konc=42MB  +9669MB
+    11460  km=8855MB  konc=1788MB  +7067MB
+     4604  km=7734MB  konc=1492MB  +6242MB
+     7246  km=7701MB  konc=1642MB  +6059MB
+     9540  km=6127MB  konc=153MB  +5974MB
+     5760  km=5364MB  konc=1342MB  +4022MB
+     7993  km=5174MB  konc=1304MB  +3871MB
+    16462  km=6774MB  konc=3182MB  +3592MB
+     7581  km=5838MB  konc=2296MB  +3542MB
+     7127  km=4543MB  konc=1025MB  +3518MB
+    14216  km=4673MB  konc=1179MB  +3494MB
+     2253  km=4584MB  konc=1184MB  +3399MB
+     4557  km=4414MB  konc=1028MB  +3386MB
+     5602  km=4478MB  konc=1144MB  +3334MB
+     9768  km=4442MB  konc=1150MB  +3293MB
+km   median wall=0.200s  median peak=27MB  mean wall=5.98s
+konc median wall=0.248s  median peak=123MB  mean wall=1.63s
+km/konc wall ratio median=0.97x (>1 km slower)
+km/konc peak ratio median=0.21x (<1 km lighter)
+both-solved onts where km wall<=konc: 318/576
+both-solved onts where km peak<=konc: 425/576
+both-solved onts where km faster AND lighter: 318/576
