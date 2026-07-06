@@ -617,6 +617,12 @@ mod tests {
         unsupported: usize,
     }
 
+    /// Same as [`bridge_ofn`] but reads the ontology from a file path.
+    fn bridge_ofn_path(path: &str) -> BridgeEnv {
+        let text = std::fs::read_to_string(path).expect("readable ontology");
+        bridge_ofn(&text)
+    }
+
     /// ofn → clauses → TInput (the future production route input).
     fn bridge_ofn(text: &str) -> BridgeEnv {
         let fr = crate::frontend::ofn_to_clauses(text).expect("in fragment");
@@ -922,6 +928,124 @@ mod tests {
                 bridged.absorbed,
                 bridged.top_attached,
             );
+        }
+    }
+
+    /// Verdict CORRECTNESS on a REAL ontology vs a gold classification.
+    /// `KM_BRIDGE_ONT` = the .owl; `KM_BRIDGE_GOLD` = the `km classify` JSON
+    /// output (`{"consistent":..,"subsumptions":[[sub_iri,sup_iri],..]}`,
+    /// the validated production path). Samples the first `KM_BRIDGE_PROBES`
+    /// (default 20) named subjects; for each, checks EVERY gold super
+    /// (bridge must report subsumption) and an equal number of gold
+    /// NON-supers (bridge must NOT). Reports missing (incomplete) / spurious
+    /// (unsound) counts. Diagnostic; asserts only that unsound==0 when the
+    /// bridge is fully covered (`unsupported==0`), since a clash verdict is
+    /// sound even under-approximated.
+    #[test]
+    #[ignore]
+    fn bridge_correctness_sample() {
+        let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
+        let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
+        let n_probes: usize = std::env::var("KM_BRIDGE_PROBES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
+        let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
+        let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
+        // local name after '#' or last '/'.
+        let local = |iri: &str| -> String {
+            iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string()
+        };
+        // gold super-map: sub_local → set(sup_local); `gold_universe` = every
+        // concept gold tracks (as sub or sup). Negatives are drawn ONLY from
+        // this universe: cb_to_ht mints internal DEFINER concepts (Q_NNNN) that
+        // are NOT named classes, so gold never lists them as supers — a subject
+        // legitimately subsumed by an internal definer is correct, not unsound,
+        // and must not be sampled as a negative.
+        let mut supers: std::collections::HashMap<String, std::collections::HashSet<String>> =
+            std::collections::HashMap::new();
+        let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
+            let sub = local(pair[0].as_str().unwrap());
+            let sup = local(pair[1].as_str().unwrap());
+            gold_universe.insert(sub.clone());
+            gold_universe.insert(sup.clone());
+            supers.entry(sub).or_default().insert(sup);
+        }
+
+        let mut env = bridge_ofn_path(&path);
+        // owned snapshot of the TInput concept names (avoids holding an
+        // immutable borrow of env across the &mut env.subsumes() calls).
+        let present: std::collections::HashSet<String> = env.con_id.keys().cloned().collect();
+        // subjects: gold subjects that ARE present in the TInput (in-fragment).
+        let mut subjects: Vec<String> = supers
+            .keys()
+            .filter(|s| present.contains(*s))
+            .cloned()
+            .collect();
+        subjects.sort();
+        subjects.truncate(n_probes);
+
+        // deterministic "random" negatives: stride through the gold-known,
+        // in-fragment concepts (excludes cb_to_ht internal definers).
+        let mut all_concepts: Vec<String> = present
+            .iter()
+            .filter(|c| gold_universe.contains(*c))
+            .cloned()
+            .collect();
+        all_concepts.sort();
+
+        let mut missing = 0usize; // gold super the bridge did NOT derive (incomplete)
+        let mut spurious = 0usize; // non-super the bridge DID derive (unsound)
+        let mut checked_pos = 0usize;
+        let mut checked_neg = 0usize;
+        for sub in &subjects {
+            let gold_sups = &supers[sub];
+            for sup in gold_sups {
+                if !present.contains(sup) || sup == sub {
+                    continue;
+                }
+                checked_pos += 1;
+                if !env.subsumes(sub, sup) {
+                    missing += 1;
+                    if missing <= 20 {
+                        eprintln!("MISSING (incomplete): {sub} ⊑ {sup}");
+                    }
+                }
+            }
+            // negatives: same count of concepts NOT in the gold super-set.
+            let want_neg = gold_sups.len().max(1);
+            let mut got = 0usize;
+            let step = (all_concepts.len() / want_neg.max(1)).max(1);
+            let mut i = 0usize;
+            while got < want_neg && i < all_concepts.len() {
+                let cand = &all_concepts[i];
+                i += step;
+                if cand == sub || gold_sups.contains(cand) {
+                    continue;
+                }
+                checked_neg += 1;
+                got += 1;
+                if env.subsumes(sub, cand) {
+                    spurious += 1;
+                    if spurious <= 20 {
+                        eprintln!("SPURIOUS (unsound): {sub} ⊑ {cand}");
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "BRIDGE-CORRECTNESS {path}: subjects={} pos_checked={} missing={} \
+             neg_checked={} spurious={} unsupported={}",
+            subjects.len(),
+            checked_pos,
+            missing,
+            checked_neg,
+            spurious,
+            env.unsupported,
+        );
+        if env.unsupported == 0 {
+            assert_eq!(spurious, 0, "clash verdicts must be sound");
         }
     }
 
