@@ -1266,6 +1266,80 @@ mod tests {
         }
     }
 
+    /// Compare the two subsumption oracles on ONE pair (`KM_BRIDGE_PAIR=
+    /// "SubLocal,SupLocal"`): the pairwise probe (`subsumes`, seed A+¬B,
+    /// re-drive with backtrack) vs the model read-off (`bridged_classify_
+    /// subject`, saturate {A} and read the root label). Tells whether a
+    /// read-off MISS is a read-off limitation (pairwise=true) or a real
+    /// completion-incompleteness (both false). Diagnostic.
+    #[test]
+    #[ignore]
+    fn bridge_probe_pair() {
+        let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
+        let pair = std::env::var("KM_BRIDGE_PAIR").expect("set KM_BRIDGE_PAIR=Sub,Sup");
+        let (sub, sup) = pair.split_once(',').expect("Sub,Sup");
+        let mut env = bridge_ofn_path(&path);
+        let pairwise = env.subsumes(sub, sup);
+
+        // read-off on the same subject
+        let n_named = env.tin.concepts.len();
+        let s_idx = *env.con_id.get(sub).expect("sub in TInput");
+        let sup_idx = *env.con_id.get(sup).expect("sup in TInput");
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        configure_default_blocking(&mut algo);
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        ctx.base.used_concept_priority_strategy =
+            Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+        let top = {
+            let mut c = Concept::new();
+            c.set_concept_tag(1);
+            c.set_operator_code(op::CCTOP);
+            ctx.ontology_arenas_mut().alloc_concept(c)
+        };
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+        let bridged = bridge_tinput(&mut ctx, &env.tin);
+        let mut next = 0i64;
+        let readoff =
+            bridged_classify_subject(&mut algo, &mut ctx, &bridged, &mut next, s_idx, n_named);
+        let readoff_has = readoff
+            .as_ref()
+            .map(|subs| subs.contains(&sup_idx))
+            .unwrap_or(false);
+        eprintln!(
+            "BRIDGE-PAIR {sub} ⊑ {sup}: pairwise={pairwise} readoff_has={readoff_has} \
+             readoff_nondet={}",
+            readoff.is_none(),
+        );
+        // dump every clause referencing sub or sup (to scope the propagation
+        // the completion is missing).
+        if std::env::var("KM_BRIDGE_DUMP_CLAUSES").is_ok() {
+            let name = |i: usize| env.tin.concepts[i].as_str();
+            let show = |a: &HAtom| -> String {
+                match a {
+                    HAtom::Concept { neg, c, t } => {
+                        format!("{}{}({t})", if *neg { "¬" } else { "" }, name(*c))
+                    }
+                    HAtom::Role { r, s, t } => format!("R{r}({s},{t})"),
+                    HAtom::Eq { s, t } => format!("eq({s},{t})"),
+                    HAtom::Exist { r, neg, c, t } => {
+                        format!("∃R{r}.{}{}({t})", if *neg { "¬" } else { "" }, name(*c))
+                    }
+                }
+            };
+            let mentions = |cl: &HtClause, idx: usize| -> bool {
+                cl.body.iter().chain(cl.head.iter()).any(|a| matches!(a,
+                    HAtom::Concept { c, .. } | HAtom::Exist { c, .. } if *c == idx))
+            };
+            for cl in &env.tin.clauses {
+                if mentions(cl, s_idx) || mentions(cl, sup_idx) {
+                    let b: Vec<String> = cl.body.iter().map(show).collect();
+                    let h: Vec<String> = cl.head.iter().map(show).collect();
+                    eprintln!("  CLAUSE: {} -> {}", b.join(" ∧ "), h.join(" ∨ "));
+                }
+            }
+        }
+    }
+
     /// FULL model-read-off classification vs gold: saturate every named
     /// subject ONCE (`bridged_classify_subject`) and read its subsumers off
     /// the root label — O(concepts) saturations, the feasible classification
