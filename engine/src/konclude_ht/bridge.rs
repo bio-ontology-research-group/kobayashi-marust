@@ -482,6 +482,21 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
 // Probe driver — the classify_test re-drive harness over a bridged TBox.
 // ---------------------------------------------------------------------------
 
+/// Konclude's DEFAULT blocking configuration for a probe algorithm — the
+/// cpp-constructor (115-118, 157) + `readCalculationConfig` default branch
+/// (u31): optimized subset blocking searched through the anywhere linked
+/// candidate hash, with lazy exact hashing; `saveCoreBlockingConceptsCandidates`
+/// is coupled to the linked search (cpp 741). Without a blocking search the
+/// completion NEVER blocks (`get_blocking_individual_node` returns NONE when
+/// every search flag is off) and any ∃-cycle or DAG-unrolled successor tree
+/// runs into the drive cap — measured on ore_ont_1016's Abdomen probe.
+pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
+    algo.conf_optimized_sub_set_blocking = true;
+    algo.conf_anywhere_blocking_linked_candidate_hash_search = true;
+    algo.conf_anywhere_blocking_lazy_exact_hashing = true;
+    algo.conf_save_core_blocking_concepts_candidates = true;
+}
+
 /// Seed `concept` onto `root`'s concept-processing queue at the immediate
 /// priority (8) — the classify_test `seed_concept_on_queue`.
 fn seed_concept_on_queue(
@@ -638,6 +653,7 @@ mod tests {
         /// O(TBox) per probe.
         fn subsumes(&mut self, sub: &str, sup: &str) -> bool {
             let mut algo = CompletionTaskHandleAlgorithm::new();
+            configure_default_blocking(&mut algo);
             let mut ctx = CalculationAlgorithmContextBase::new();
             ctx.base.used_concept_priority_strategy =
                 Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
@@ -873,6 +889,7 @@ mod tests {
         for &s in &subjects {
             let t0 = std::time::Instant::now();
             let mut algo = CompletionTaskHandleAlgorithm::new();
+            configure_default_blocking(&mut algo);
             let mut ctx = CalculationAlgorithmContextBase::new();
             ctx.base.used_concept_priority_strategy =
                 Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
