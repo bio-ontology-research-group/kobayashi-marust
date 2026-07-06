@@ -172,8 +172,64 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     let mut unsupported = 0usize;
     // Structures outside the v1 clause encoder count as unsupported input.
     unsupported += tin.card_defs.len() + tin.nominals.len() + tin.chains.len();
+    // Inverse roles are not wired in the v1 bridge (the model supports them;
+    // the TInput role-pair plumbing is a later wave) — an ontology carrying
+    // them is under-constrained when bridged, so surface that.
+    if tin.inverse {
+        unsupported += 1;
+    }
+
+    // ---- pass 1: role hierarchy `R(x,y) → S(x,y)` --------------------------
+    // Collected first and installed as (transitively closed) indirect-super-
+    // role linkers on the sub-role — the exact structure the ∀/edge rules and
+    // the u08 hierarchy-resolved edge reapply consume (see the
+    // `role_hierarchy_forall` selftest and CSubroleTransformationPreProcess).
+    let mut sub_super: Vec<Vec<usize>> = vec![Vec::new(); tin.roles.len()];
+    let is_hierarchy = |cl: &HtClause| -> Option<(usize, usize)> {
+        if cl.body.len() != 1 || cl.head.len() != 1 {
+            return None;
+        }
+        if let (HAtom::Role { r: sr, s: ss, t: st }, HAtom::Role { r: hr, s: hs, t: ht }) =
+            (&cl.body[0], &cl.head[0])
+        {
+            if ss == hs && st == ht && ss != st && sr != hr {
+                return Some((*sr, *hr));
+            }
+        }
+        None
+    };
+    for cl in &tin.clauses {
+        if let Some((sub, sup)) = is_hierarchy(cl) {
+            sub_super[sub].push(sup);
+        }
+    }
+    // transitive closure per sub-role (small role counts; DFS per role)
+    for sub in 0..sub_super.len() {
+        let mut seen: BTreeSet<usize> = BTreeSet::new();
+        let mut stack: Vec<usize> = sub_super[sub].clone();
+        while let Some(s) = stack.pop() {
+            if s != sub && seen.insert(s) {
+                stack.extend(sub_super[s].iter().copied());
+            }
+        }
+        for s in seen {
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(roles[sub])
+                .add_indirect_super_role_linker(
+                    super::model::substrate::NegLink {
+                        target: roles[s],
+                        negated: false,
+                    },
+                );
+        }
+    }
 
     'clause: for cl in &tin.clauses {
+        // hierarchy clauses were consumed by pass 1
+        if is_hierarchy(cl).is_some() {
+            continue;
+        }
         // ---- classify the clause's variable/role shape -------------------
         let mut body_roles: Vec<(usize, usize, usize)> = Vec::new(); // (r, s, t)
         for a in &cl.body {
@@ -641,5 +697,29 @@ mod tests {
             dump_nodes(&mut env, "after B⊑C probe");
         }
         assert!(!bc, "B ⊑ C must NOT hold");
+    }
+
+    #[test]
+    fn bridge_role_hierarchy_forall() {
+        // R ⊑ S: A ⊑ ∃R.D, A ⊑ ∀S.C, D ⊑ ¬C — the ∀S restriction must reach
+        // the R-successor via the hierarchy ⇒ A unsatisfiable. The bridged
+        // counterpart of the `role_hierarchy_forall` selftest, driven from
+        // real OWL through the indirect-super-role linkers pass.
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:D))\n\
+             Declaration(ObjectProperty(:R)) Declaration(ObjectProperty(:S))\n\
+             SubObjectPropertyOf(:R :S)\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:R :D))\n\
+             SubClassOf(:A ObjectAllValuesFrom(:S :C))\n\
+             SubClassOf(:D ObjectComplementOf(:C))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        let holds = env.subsumes("A", "D");
+        if !holds {
+            dump_nodes(&mut env, "after A⊑D probe (hierarchy)");
+        }
+        assert!(holds, "A unsat via R⊑S hierarchy ⇒ A ⊑ D vacuously");
+        assert!(!env.subsumes("D", "A"), "D ⊑ A must NOT hold");
     }
 }
