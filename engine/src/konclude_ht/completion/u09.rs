@@ -689,6 +689,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // search next not existing trigger — while (triggImpProcRes->hasConceptImplicationTrigger())
         let mut all_triggers_available = true;
+        // the FIRST absent trigger (the C++ `triggerLinkerIt` cursor left at the
+        // break position) — the install-to-trigger target below.
+        let mut missing_trigger: Option<NegLink<ConceptId>> = None;
         for trigger in op_linker.iter().skip(1) {
             // nextTrigger->getData() / nextTrigger->isNegated()
             let trigger_concept: ConceptId = trigger.target;
@@ -728,20 +731,45 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     // (dependency-directed backtracking; the unported trigger spec holds the chain).
                 }
             } else {
-                // not present ⇒ break to install-to-trigger (W3-DEFER addConceptToReapplyQueue).
+                // not present ⇒ break to install-to-trigger.
                 all_triggers_available = false;
+                missing_trigger = Some(*trigger);
                 break;
             }
         }
 
         if !all_triggers_available {
-            // install to trigger
+            // install to trigger (cpp 10411-10419):
+            //   bool triggerNegation = !nextTrigger->isNegated();
+            //   if (!isConceptInReapplyQueue(conDes, triggerConcept, triggerNegation, ...))
+            //     addConceptToReapplyQueue(conDes, triggerConcept, triggerNegation, ..., depTrackPoint, ...);
+            // The registered descriptor re-queues THIS implication's concept
+            // descriptor when the trigger concept lands on the node (fired by
+            // `insert_concepts_to_individual_concept_set`'s reapply iterator →
+            // `apply_reapply_queue_concepts_condensed_iterator`), so the rule is
+            // re-run and either fires or installs on its NEXT missing trigger —
+            // the dynamic condensed-reapply chaining.
             // W3-DEFER[macro]: STATINC(IMPLICATIONTRIGGERINGCOUNT, calc_alg_context)
-            // W3-DEFER[api]: addConceptToReapplyQueue(conDes, triggerConcept, !nextTrigger->isNegated(),
-            //   processIndi, triggImpProcRes, depTrackPoint, calcAlgContext) — the condensed reapply
-            //   queue is unported, so a not-yet-present trigger does not re-fire the implication.
-            //   For inputs where all triggers are already on the node (the basic GCI unfold) this
-            //   branch is never taken.
+            if let Some(trigger) = missing_trigger {
+                let trigger_negation = !trigger.negated;
+                if !self.is_concept_in_reapply_queue_concept(
+                    con_des,
+                    trigger.target,
+                    trigger_negation,
+                    *process_indi,
+                    calc_alg_context,
+                ) {
+                    self.add_concept_to_reapply_queue_concept(
+                        con_des,
+                        trigger.target,
+                        trigger_negation,
+                        *process_indi,
+                        false,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                }
+            }
         } else {
             // W3-DEFER[macro]: STATINC(IMPLICATIONEXECUTINGCOUNT, calc_alg_context)
             // W3-DEFER[api]: triggImpProcRes->getImplicationDependency() — the trigger
