@@ -888,23 +888,7 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out, fast_certify) = match spawn_ht(cfg, clauses_path, named) {
-        Some(x) => x,
-        None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
-    };
     let reserved = ht_reserved_threads(cfg);
-    // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid): sound+complete on their
-    // fragment and decide quickly (SHOQ <1-3s, QO certify ~tens of s), so take the
-    // answer after a SHORT budget instead of waiting out the doomed CB for the full
-    // ht_budget_s. CB still wins when it finishes first (preserves CB-preference /
-    // monotone-safety on CB-solvable onts). The budget is only the "start accepting
-    // HT" threshold: past it, the certified answer is harvested the moment it is
-    // ready, so a QO arm that certifies later than the SHOQ default is still taken.
-    let budget = if fast_certify {
-        cfg.shoq_budget_s.min(cfg.ht_budget_s)
-    } else {
-        cfg.ht_budget_s
-    };
 
     let read_tout = |p: &Path| -> Option<EngineOut> {
         let f = File::open(p).ok()?;
@@ -927,32 +911,61 @@ where
             *slot.lock().unwrap() = Some(r);
         });
 
-        let mut ht_res: Option<EngineOut> = None;
-        let mut ht_polled = false;
         let t0 = Instant::now();
         let timing = std::env::var_os("KM_TIMING").is_some();
+
+        // Spawn HT AFTER the CB thread so the HT spawn's fork/exec (~5-15ms of the
+        // 4.4MB binary + the clause read+convert) does not delay CB's START — that
+        // delay was the residual fixed overhead separating ~90 near-tie onts from a
+        // WIN against Konclude. HT is NOT deferred (no grace): it spawns immediately
+        // and races concurrently, so the fast_certify (SHOQ/QO) arms are harvested
+        // essentially as before. (Deferring HT with a 0.5s grace regressed exactly
+        // those fast arms, -29 WIN, panel 48089881 — HT IS the fast winner there.)
+        // Non-routable => spawn_ht None => CB answers alone.
+        let (mut ht, ht_out, budget): (Option<Child>, Option<super::tmpfile::TempPath>, f64) =
+            match spawn_ht(cfg, clauses_path, named) {
+                // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid) decide quickly,
+                // so accept their answer after a SHORT budget instead of waiting out a
+                // doomed CB for the full ht_budget_s.
+                Some((h, o, fast_certify)) => {
+                    let b = if fast_certify {
+                        cfg.shoq_budget_s.min(cfg.ht_budget_s)
+                    } else {
+                        cfg.ht_budget_s
+                    };
+                    (Some(h), Some(o), b)
+                }
+                None => (None, None, 0.0),
+            };
+
+        let mut ht_res: Option<EngineOut> = None;
+        // No HT process => nothing to poll; treat as already polled so a CB error
+        // returns immediately instead of spinning.
+        let mut ht_polled = ht.is_none();
         let mut cb_logged = false;
 
         let mut interval = Duration::from_millis(1);
         loop {
             // poll HT once it finishes (capture its valid answer)
             if !ht_polled {
-                if let Ok(Some(st)) = ht.try_wait() {
-                    ht_polled = true;
-                    if timing {
-                        eprintln!(
-                            "KM_TIMING race: HT worker exited @ {:.2}s (success={})",
-                            t0.elapsed().as_secs_f64(),
-                            st.success()
-                        );
-                    }
-                    if st.success() {
-                        ht_res = read_tout(ht_out.path());
+                if let Some(ht_ref) = ht.as_mut() {
+                    if let Ok(Some(st)) = ht_ref.try_wait() {
+                        ht_polled = true;
                         if timing {
                             eprintln!(
-                                "KM_TIMING race: read_tout done @ {:.2}s",
-                                t0.elapsed().as_secs_f64()
+                                "KM_TIMING race: HT worker exited @ {:.2}s (success={})",
+                                t0.elapsed().as_secs_f64(),
+                                st.success()
                             );
+                        }
+                        if st.success() {
+                            ht_res = read_tout(ht_out.as_ref().unwrap().path());
+                            if timing {
+                                eprintln!(
+                                    "KM_TIMING race: read_tout done @ {:.2}s",
+                                    t0.elapsed().as_secs_f64()
+                                );
+                            }
                         }
                     }
                 }
@@ -978,8 +991,10 @@ where
             }
             if take_cb {
                 let cb = cb_slot.lock().unwrap().take().unwrap();
-                let _ = ht.kill();
-                let _ = ht.wait();
+                if let Some(ht_ref) = ht.as_mut() {
+                    let _ = ht_ref.kill();
+                    let _ = ht_ref.wait();
+                }
                 return cb; // the scope joins the (finished) CB thread
             }
 
@@ -987,7 +1002,9 @@ where
                 if let Some(w) = ht_res.take() {
                     // HT finished first (and valid): kill CB and win.
                     engine_run::cancel_and_kill_engines();
-                    let _ = ht.wait();
+                    if let Some(ht_ref) = ht.as_mut() {
+                        let _ = ht_ref.wait();
+                    }
                     return Ok(w);
                 }
                 if cb_errored && ht_polled {
@@ -998,17 +1015,21 @@ where
                 // fallback mode
                 if cb_errored {
                     if let Some(w) = ht_res.take() {
-                        let _ = ht.wait();
+                        if let Some(ht_ref) = ht.as_mut() {
+                            let _ = ht_ref.wait();
+                        }
                         return Ok(w);
                     }
                     if ht_polled {
                         return cb_slot.lock().unwrap().take().unwrap();
                     }
-                } else if t0.elapsed().as_secs_f64() > budget {
+                } else if ht.is_some() && t0.elapsed().as_secs_f64() > budget {
                     if let Some(w) = ht_res.take() {
                         // CB over budget: HT fills the gap.
                         engine_run::cancel_and_kill_engines();
-                        let _ = ht.wait();
+                        if let Some(ht_ref) = ht.as_mut() {
+                            let _ = ht_ref.wait();
+                        }
                         return Ok(w);
                     }
                 }
