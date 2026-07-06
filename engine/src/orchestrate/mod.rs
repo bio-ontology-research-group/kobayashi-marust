@@ -178,6 +178,55 @@ fn handle_elc_result(
     }
 }
 
+/// Upper size bound (bytes of the source ontology) for the in-process elc
+/// fast path. Trivial ORE onts are a few hundred KB; the bound stays well
+/// below the giants (whose elc peak must remain in an isolated subprocess).
+const INPROC_ELC_MAX: u64 = 4 << 20;
+
+/// In-process elc for small EL-safe ontologies (`KM_NO_INPROC_ELC` to opt out).
+///
+/// Calls `elcomplete::classify` directly — no `fork`/`exec` of the elc worker
+/// and no clause-JSON stdout round-trip. Byte-identical to the worker path:
+/// the worker builds `ElcOutput { subsumptions, inconsistent, unresolved }`
+/// and serialises it; `parse_out` deserialises the same fields into
+/// `EngineOut`. Here the same `ElResult` fields populate `EngineOut` directly
+/// (the `subsumptions` BTreeMap serialises identically either way).
+///
+/// The exit-code contract is preserved 1:1: `classify` → `None` is the
+/// worker's exit 3 (not EL ⇒ caller falls through to the portfolio/CB path);
+/// a non-empty `unresolved` is exit 4 (certificate residue, resolved by the
+/// same `resolve_residue`); an empty residue is exit 0 (use it).
+///
+/// This is the trusted bare-elc answer (identical to the non-portfolio
+/// `el_rbox_safe` branch), so returning it and SKIPPING the concurrent
+/// portfolio race is sound+complete for exactly the onts elc fully certifies
+/// — while removing the per-ont worker forks that dominate the wall on the
+/// trivial band (where km already uses less memory than Konclude but ties or
+/// narrowly loses on time because of the fork/thread-startup contention).
+fn try_inproc_elc(
+    cfg: &Config,
+    clauses_path: &Path,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    let buf = std::fs::read(clauses_path)?;
+    let input: crate::json_io::JInput = serde_json::from_slice(&buf)?;
+    match crate::elcomplete::classify(input.clauses) {
+        None => Ok(None), // not EL ⇒ exit-3 equivalent, fall through
+        Some(res) => {
+            let out = EngineOut {
+                subsumptions: res.subsumptions,
+                inconsistent: res.inconsistent,
+                dropped: 0,
+                unresolved: res.unresolved,
+            };
+            if out.unresolved.is_empty() {
+                Ok(Some(out))
+            } else {
+                Ok(Some(resolve_residue(cfg, out, clauses_path)?))
+            }
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // the conductor
 // ---------------------------------------------------------------------------
@@ -270,7 +319,28 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         let portfolio_on = cfg.elc_portfolio && !is_giant;
         let mut out: Option<EngineOut> = None;
         let (elc_prog, elc_pre) = cfg.elc_cmd();
-        if meta.el_rbox_safe && !portfolio_on {
+
+        // In-process elc fast path for SMALL EL-safe ontologies: run elc as a
+        // library call and, when it fully certifies, skip the portfolio race
+        // entirely (no CB/HT/elc-cert forks). Equivalent to the trusted
+        // bare-elc branch below; elc reporting not-EL (None) falls straight
+        // through to the existing logic unchanged. Gated by size so the
+        // giants keep their isolated-subprocess elc. Opt out KM_NO_INPROC_ELC.
+        let inproc_ok = std::env::var_os("KM_NO_INPROC_ELC").is_none();
+        let small = std::fs::metadata(ont)
+            .map(|m| m.len() < INPROC_ELC_MAX)
+            .unwrap_or(false);
+        if inproc_ok && small && meta.el_rbox_safe {
+            out = try_inproc_elc(cfg, clauses_path.path())?;
+            if timing && out.is_some() {
+                eprintln!(
+                    "KM_TIMING in-process elc done @ {:.2}s (no race)",
+                    t_start.elapsed().as_secs_f64()
+                );
+            }
+        }
+
+        if out.is_none() && meta.el_rbox_safe && !portfolio_on {
             // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
             let res = engine_run::run_engine(
                 &elc_prog,
