@@ -9,6 +9,7 @@
 //! function-by-function.
 
 // Submodules are declared here as waves land:
+pub mod bridge; // Production-route input: TInput (cb_to_ht) → OntologyArenas + probe driver
 pub mod cache; // W6: cache subtree (struct skeleton)
 pub mod calculation;
 pub mod classifier; // Optimized classifier caller seams
