@@ -2,7 +2,34 @@
 
 All notable changes to the kobayashi-marust reasoner. Newest first.
 
+> **How each once-failing ontology was solved — diagnosis, mechanism,
+> validation — is documented per-ontology in
+> [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md).** Keep that file
+> updated whenever an ontology flips to solved.
+
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
+
+### konclude_ht bridge solves ore_ont_12653 sound+complete in 1.0 s (`d64e78b`)
+
+ore_ont_12653 (production 240 s timeout, disjunction + qualified-cardinality
+family) classifies missing=0 spurious=0 via the ported Konclude algorithm.
+Three coverage ports (domain/range at link install, inverse-role hierarchy on
+concrete inverse-role objects with both-polarity closure, first-class
+qualified `≥n/≤n` from `card_defs`) plus a pairwise `bridged_unsat` fallback
+for nondeterministic subjects. Validation: konclude_ht suite 1208/1208;
+ore_ont_1016 read-off regression identical (32712/32739, spurious=0).
+Instrumented diagnosis of the rest of the family: ore_ont_541 is pure
+chronological-backtrack thrashing (nodes=4 flat, ~2^56 branch space) and needs
+the u29 dependency-directed-backjumping port; ore_ont_7914 is model explosion
+(46k nodes) and needs blocking/lazy-∀. Full recipes:
+`docs/SOLVED-ONTOLOGIES.md`.
+
+Follow-up (same day): model read-off soundness gate. `or_backtrack_count == 0`
+is NOT a determinism witness — a drive can open OR branch points and commit to
+first disjuncts without clashing, polluting the root label (86 spurious
+subsumptions measured on ore_ont_3215). Read-off is authoritative only when
+NO branch point was opened (`or_branch_open_count`); nondeterministic subjects
+degrade to candidate extraction + exact pairwise verification.
 
 ### In-process frontend fast path for small onts (+47 beat-Konclude WINs)
 
