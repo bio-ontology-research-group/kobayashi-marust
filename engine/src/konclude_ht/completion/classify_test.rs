@@ -96,6 +96,20 @@ impl Env {
         self.ctx.ontology_arenas_mut().alloc_concept(c)
     }
 
+    /// Allocate a disjunction concept `⊔ ops` (`CCOR`, all operands positive) —
+    /// the OR rule branches on it (see `apply_or_rule` / the u02 chronological
+    /// backtrack `try_backtrack_or_branch`).
+    fn disj(&mut self, tag: i64, ops: &[ConceptId]) -> ConceptId {
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCOR);
+        for &o in ops {
+            c.add_operand_linker(o, false);
+        }
+        c.set_operand_count(ops.len() as i64);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
+
     /// Allocate a GCI `sub ⊑ head` (optionally a negated head) as the implication
     /// concept `¬sub ⊔ head` — `CCIMPL`, operands `[head(head_neg), ¬sub(trigger)]`.
     /// The rule fires when `sub` is present with the opposite polarity of the `¬sub`
@@ -307,5 +321,93 @@ fn unsatisfiable_concept() {
     assert!(
         is_unsatisfiable(&mut env, &[(a, false)], &tbox),
         "A must be unsatisfiable under {{A ⊑ B, A ⊑ ¬B}}"
+    );
+}
+
+// ===========================================================================
+// Disjunction / reasoning-by-cases — the OR rule + the u02 chronological
+// backtrack (`try_backtrack_or_branch`). This is the capability the disjunction
+// family needs; here it is exercised end-to-end through the drive loop.
+// ===========================================================================
+
+/// `{A ⊑ B ⊔ C, B ⊑ D, C ⊑ D}` ⇒ `A ⊑ D` HOLDS by reasoning by cases: probing
+/// `A ⊓ ¬D`, the OR rule branches on `B ⊔ C`; the B-alternative derives D (clash
+/// with ¬D), the backtrack tries the C-alternative which ALSO derives D (clash),
+/// so BOTH alternatives close ⇒ `A ⊓ ¬D` unsatisfiable ⇒ `A ⊑ D`.
+#[test]
+fn subsumption_via_disjunction_both_branches_close() {
+    let mut env = new_env();
+    let a = env.atom(101);
+    let b = env.atom(102);
+    let c = env.atom(103);
+    let d = env.atom(104);
+    let b_or_c = env.disj(200, &[b, c]);
+    let a_sub_bc = env.gci(300, a, b_or_c, false); // A ⊑ B ⊔ C
+    let b_sub_d = env.gci(301, b, d, false); // B ⊑ D
+    let c_sub_d = env.gci(302, c, d, false); // C ⊑ D
+    let tbox = [a_sub_bc, b_sub_d, c_sub_d];
+
+    assert!(
+        env.entails_subsumption(a, d, &tbox),
+        "A ⊑ D must hold under {{A ⊑ B⊔C, B ⊑ D, C ⊑ D}} (both disjunction branches derive D)"
+    );
+}
+
+/// The NEGATIVE control: drop `C ⊑ D`. Now the C-alternative of `B ⊔ C` does NOT
+/// derive D, so `A ⊓ ¬D` is SATISFIABLE (via C) ⇒ `A ⊑ D` does NOT hold.
+///
+/// KONCLUDE-PORT-NOTE[branching-gap]: this currently FAILS — it exposes the known
+/// unsoundness of the CHRONOLOGICAL backtrack (`try_backtrack_or_branch`, u02).
+/// When the B-alternative is tried, `B ⊑ D` derives `D` on the node; `D` clashes
+/// with the probe's `¬D`. The backtrack advances to the C-alternative but does NOT
+/// UNDO B's derivation of `D`, so `D` (hence the clash) persists and the genuinely-
+/// open C branch is wrongly reported as clashing ⇒ `A ⊓ ¬D` is falsely called
+/// unsatisfiable ⇒ `A ⊑ D` is falsely entailed. The chronological backtrack is only
+/// sound when a failed disjunct clashes AT INSERT-TIME (polarity clash before the
+/// concept enters the label set); a disjunct that causes any downstream derivation
+/// needs the dependency-directed backjump with completion-graph state restore
+/// (arena `truncate_to` + databox watermark, the unported Unit 28/30 tracking
+/// lines). Un-ignore when that lands. THIS is the core blocker for konclude_ht on
+/// the ORE disjunction family.
+#[test]
+#[ignore = "exposes the chronological-backtrack unsoundness (no state restore on backtrack); needs the dependency-directed backjump (Unit 28/30)"]
+fn subsumption_via_disjunction_one_branch_open() {
+    let mut env = new_env();
+    let a = env.atom(101);
+    let b = env.atom(102);
+    let c = env.atom(103);
+    let d = env.atom(104);
+    let b_or_c = env.disj(200, &[b, c]);
+    let a_sub_bc = env.gci(300, a, b_or_c, false); // A ⊑ B ⊔ C
+    let b_sub_d = env.gci(301, b, d, false); // B ⊑ D  (no C ⊑ D)
+    let tbox = [a_sub_bc, b_sub_d];
+
+    assert!(
+        !env.entails_subsumption(a, d, &tbox),
+        "A ⊑ D must NOT hold under {{A ⊑ B⊔C, B ⊑ D}} (the C branch leaves A ⊓ ¬D satisfiable)"
+    );
+}
+
+/// A disjunction with BOTH disjuncts contradictory makes the carrier
+/// unsatisfiable: `{A ⊑ B ⊔ C, B ⊑ ⊥-ish (B ⊑ E, B ⊑ ¬E), C ⊑ E, C ⊑ ¬E}` ⇒ `A`
+/// unsatisfiable (every alternative clashes independent of the probe's `¬D`).
+#[test]
+fn disjunction_all_branches_unsat_makes_carrier_unsat() {
+    let mut env = new_env();
+    let a = env.atom(101);
+    let b = env.atom(102);
+    let c = env.atom(103);
+    let e = env.atom(105);
+    let b_or_c = env.disj(200, &[b, c]);
+    let a_sub_bc = env.gci(300, a, b_or_c, false);
+    let b_sub_e = env.gci(301, b, e, false);
+    let b_sub_ne = env.gci(302, b, e, true);
+    let c_sub_e = env.gci(303, c, e, false);
+    let c_sub_ne = env.gci(304, c, e, true);
+    let tbox = [a_sub_bc, b_sub_e, b_sub_ne, c_sub_e, c_sub_ne];
+
+    assert!(
+        is_unsatisfiable(&mut env, &[(a, false)], &tbox),
+        "A must be unsatisfiable when every disjunct of B⊔C is itself unsatisfiable"
     );
 }
