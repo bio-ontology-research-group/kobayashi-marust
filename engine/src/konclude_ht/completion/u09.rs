@@ -114,13 +114,91 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_operand_list()
             .to_vec();
 
-        // KONCLUDE-PORT-NOTE[api]: getLinkProcessingRestriction(conProDes) (u03) is still
-        // a `todo!` (the CLinkProcessingRestrictionSpecification subtype is unported). A
-        // node-processed ∀ carries no link restriction, so restLink == NONE here and the
-        // general re-propagation branch runs; the per-link restLink branch (edge-triggered
-        // ∀, cpp 16306–16345) is realised instead by the ∃-rule's
-        // `ht_reapply_universal_restrictions` when a new R-edge is created.
-        // (rest_link == Id::NONE)
+        // restLink = getLinkProcessingRestriction(conProDes) — the EDGE-TRIGGERED ∀
+        // (cpp 16306–16345). The link-install reapply consumption queues an armed
+        // ∀-descriptor RESTRICTED to the fresh link; propagating over just that link
+        // is what lets a restriction reach a successor acquired LATE (e.g. a link
+        // relocated onto this node by a ≤n merge). `get_successor_individual`
+        // resolves the OPPOSITE endpoint relative to `process_indi`, so the same
+        // branch serves both the forward case (armed on the source) and the
+        // inverse-super case (armed on the destination, target = the source).
+        let rest_link = self.get_link_processing_restriction(*con_pro_des, calc_alg_context);
+        if rest_link != Id::NONE {
+            self.applied_all_rule_count += 1;
+            // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation — false here.
+            let succ_indi = {
+                let mut pi = *process_indi;
+                self.get_successor_individual(&mut pi, rest_link, calc_alg_context)
+            };
+            if succ_indi.is_some() {
+                let mut loc_succ_indi =
+                    self.get_localized_individual(succ_indi, false, calc_alg_context);
+                for con_op_linker_it in concept_op_linker.iter() {
+                    let op_concept: ConceptId = con_op_linker_it.target;
+                    let op_con_neg: bool = con_op_linker_it.negated ^ negate;
+                    let ls: LabelSetId = calc_alg_context
+                        .process_context()
+                        .node(loc_succ_indi)
+                        .use_reapply_con_label_set;
+                    let has_concept = ls != Id::NONE
+                        && self.label_set_contains_concept_resolved(
+                            ls,
+                            op_concept,
+                            op_con_neg,
+                            calc_alg_context,
+                        );
+                    if !has_concept {
+                        self.add_concept_to_individual(
+                            op_concept,
+                            op_con_neg,
+                            &mut loc_succ_indi,
+                            dep_track_point,
+                            true,
+                            true,
+                            calc_alg_context,
+                        );
+                        if calc_alg_context.has_pending_signal() {
+                            return;
+                        }
+                    }
+                }
+                // W15-rbox inline transitivity (see the general branch): the ∀
+                // itself re-propagates over the restricted link too.
+                if calc_alg_context
+                    .ontology_arenas()
+                    .role(role)
+                    .is_transitive()
+                {
+                    let ls: LabelSetId = calc_alg_context
+                        .process_context()
+                        .node(loc_succ_indi)
+                        .use_reapply_con_label_set;
+                    let has_all_self = ls != Id::NONE
+                        && self.label_set_contains_concept_resolved(
+                            ls,
+                            concept,
+                            negate,
+                            calc_alg_context,
+                        );
+                    if !has_all_self {
+                        self.add_concept_to_individual(
+                            concept,
+                            negate,
+                            &mut loc_succ_indi,
+                            dep_track_point,
+                            true,
+                            true,
+                            calc_alg_context,
+                        );
+                        if calc_alg_context.has_pending_signal() {
+                            return;
+                        }
+                    }
+                }
+                self.add_individual_to_processing_queue(loc_succ_indi, calc_alg_context);
+            }
+            return;
+        }
 
         // General ∀: re-propagate the universal restriction to every existing
         // role-successor (cpp 16348–16392). The direct node-level
@@ -154,17 +232,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let op_concept: ConceptId = con_op_linker_it.target;
                 let op_con_neg: bool = con_op_linker_it.negated ^ negate;
                 // conLabelSet->hasConcept(opConcept, opConNeg) — skip if already present.
-                let has_concept = {
-                    let ls: LabelSetId = calc_alg_context
-                        .process_context()
-                        .node(loc_succ_indi)
-                        .use_reapply_con_label_set;
-                    ls != Id::NONE
-                        && calc_alg_context
-                            .process_context()
-                            .label_set(ls)
-                            .has_concept(op_concept, op_con_neg)
-                };
+                // Tag-RESOLVED (ls1::has_concept is a W2-DEFER stub: raw-index key +
+                // always-false negation; a raw/tag collision would SKIP a required add).
+                let ls: LabelSetId = calc_alg_context
+                    .process_context()
+                    .node(loc_succ_indi)
+                    .use_reapply_con_label_set;
+                let has_concept = ls != Id::NONE
+                    && self.label_set_contains_concept_resolved(
+                        ls,
+                        op_concept,
+                        op_con_neg,
+                        calc_alg_context,
+                    );
                 if !has_concept {
                     // W3-DEFER[api]: createALLDependency — the descriptor's dependency
                     // track point is threaded directly (∀ adds no non-deterministic split).
@@ -184,17 +264,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             // W15-rbox transitivity: re-propagate `∀role.C` itself to the successor.
             if is_transitive {
-                let has_all_self = {
-                    let ls: LabelSetId = calc_alg_context
-                        .process_context()
-                        .node(loc_succ_indi)
-                        .use_reapply_con_label_set;
-                    ls != Id::NONE
-                        && calc_alg_context
-                            .process_context()
-                            .label_set(ls)
-                            .has_concept(concept, negate)
-                };
+                // tag-RESOLVED contains (see the operand guard above).
+                let ls: LabelSetId = calc_alg_context
+                    .process_context()
+                    .node(loc_succ_indi)
+                    .use_reapply_con_label_set;
+                let has_all_self = ls != Id::NONE
+                    && self.label_set_contains_concept_resolved(
+                        ls,
+                        concept,
+                        negate,
+                        calc_alg_context,
+                    );
                 if !has_all_self {
                     self.add_concept_to_individual(
                         concept,

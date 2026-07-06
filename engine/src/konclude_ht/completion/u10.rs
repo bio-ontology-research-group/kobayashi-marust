@@ -193,6 +193,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
+
+        // (2b) inverse: ALL predecessors via the connection-successor set —
+        // Konclude registers every link's source there (cpp 22346–22349), so a
+        // node with links from several parents (≤n-merge relocation) propagates
+        // its ∀R⁻ restrictions to EVERY R-predecessor, not just its creator.
+        // (The ancestor arm above keeps hand-built fixtures without conn-sets
+        // working; `out.contains` dedups.)
+        let conn = pc.node_connection_successor_set_existing(source);
+        if conn.is_some() {
+            let source_id = pc.node(source).individual_node_id();
+            let mut cit = pc.conn_succ_set(conn).get_connection_successor_iterator();
+            while cit.has_next() {
+                let pred_id = cit.next(true);
+                if pred_id == source_id {
+                    continue;
+                }
+                let pred = calc_alg_context
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(pred_id);
+                if pred.is_none() || out.contains(&pred) {
+                    continue;
+                }
+                let pn = pc.node(pred);
+                if pn.has_merged_into_individual_node_id()
+                    || pn.has_purged_blocked_processing_restriction_flags()
+                {
+                    continue;
+                }
+                let mut lit = pc.node_successor_role_iterator(pred, source_id);
+                while lit.has_next() {
+                    let link = lit.next(true);
+                    if link.is_none() {
+                        continue;
+                    }
+                    let edge_role: RoleId = pc.edge(link).get_link_role();
+                    if edge_role.is_none() {
+                        continue;
+                    }
+                    let inv: RoleId = onto.role(edge_role).get_inverse_role();
+                    let inv_matches = inv == role
+                        || (inv.is_some() && onto.role(inv).has_indirect_super_role(role));
+                    if inv_matches {
+                        out.push(pred);
+                        break;
+                    }
+                }
+            }
+        }
         out
     }
 

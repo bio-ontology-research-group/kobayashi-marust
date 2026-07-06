@@ -597,6 +597,13 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
 /// every search flag is off) and any ∃-cycle or DAG-unrolled successor tree
 /// runs into the drive cap — measured on ore_ont_1016's Abdomen probe.
 pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
+    // KM_BRIDGE_NO_BLOCKING: diagnostic knob — run the probe with blocking OFF
+    // (∃-cycles then hit the drive cap ⇒ Stop/None). If a verdict that flips
+    // WITH blocking becomes stable WITHOUT it, the blocking establish/review
+    // path is the order-sensitive mechanism.
+    if std::env::var_os("KM_BRIDGE_NO_BLOCKING").is_some() {
+        return;
+    }
     algo.conf_optimized_sub_set_blocking = true;
     algo.conf_anywhere_blocking_linked_candidate_hash_search = true;
     algo.conf_anywhere_blocking_lazy_exact_hashing = true;
@@ -677,8 +684,11 @@ pub fn bridged_unsat(
         }
     }
 
-    let mut prev_count: i64 = -1;
-    for _ in 0..256 {
+    // GLOBAL fixpoint on total insertions (see `bridged_classify_subject`):
+    // root-label-count-stable is order-dependent and declared a false fixpoint.
+    let trace = std::env::var_os("KM_BRIDGE_TRACE").is_some();
+    let mut prev_inserts: i64 = -1;
+    for pass in 0..256 {
         for &g in &bridged.tbox {
             seed_concept_on_queue(ctx, root, g);
         }
@@ -688,21 +698,301 @@ pub fn bridged_unsat(
             .insert_indiviudal_process_node(root);
         let backtracks_before = algo.or_backtrack_count;
         let consistent = algo.run_completion_on(ctx);
+        if trace {
+            eprintln!(
+                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={}",
+                algo.stat_con_des_insertion_count,
+                algo.or_backtrack_count,
+                ctx.process_context().node_count(),
+            );
+        }
         if !consistent {
             // A Clash is a genuine UNSAT; a Stop (iteration cap / task fork)
             // is an UNKNOWN — folding it into unsat would be UNSOUND, folding
             // it into sat would be INCOMPLETE.
             return match ctx.pending_signal() {
-                super::completion::clash::CalcSignal::Clash(_) => Some(true),
+                super::completion::clash::CalcSignal::Clash(clash) => {
+                    if trace {
+                        // walk the clash descriptor chain: which concepts on
+                        // which nodes clashed (diff a clash run vs a SAT run).
+                        let mut c = clash;
+                        while c.is_some() {
+                            let d = ctx.process_context().clash_desc(c);
+                            let next = d.next;
+                            if let super::process::descriptor::ClashDescriptorKind::Concept {
+                                concept_descriptor,
+                                individual_node,
+                            } = &d.kind
+                            {
+                                let concept_descriptor = *concept_descriptor;
+                                let individual_node = *individual_node;
+                                let (tag, neg, node_id) = {
+                                    let pc = ctx.process_context();
+                                    let con = if concept_descriptor.is_some() {
+                                        pc.con_desc(concept_descriptor).get_concept()
+                                    } else {
+                                        Id::NONE
+                                    };
+                                    (
+                                        if con.is_some() {
+                                            ctx.ontology_arenas().concept(con).get_concept_tag()
+                                        } else {
+                                            -1
+                                        },
+                                        concept_descriptor.is_some()
+                                            && pc.con_desc(concept_descriptor).is_negated(),
+                                        if individual_node.is_some() {
+                                            pc.node(individual_node).individual_node_id()
+                                        } else {
+                                            -1
+                                        },
+                                    )
+                                };
+                                eprintln!(
+                                    "TRACE CLASH concept tag={tag} neg={neg} node={node_id}"
+                                );
+                            } else {
+                                use super::process::descriptor::ClashDescriptorKind as K;
+                                match &d.kind {
+                                    K::Dependency => eprintln!("TRACE CLASH dependency"),
+                                    K::IndividualLink { link_edge } => {
+                                        let pc = ctx.process_context();
+                                        let (s, t, r) = if link_edge.is_some() {
+                                            let e = pc.edge(*link_edge);
+                                            (
+                                                pc.node(e.get_source_individual())
+                                                    .individual_node_id(),
+                                                pc.node(e.get_destination_individual())
+                                                    .individual_node_id(),
+                                                e.get_link_role().index() as i64,
+                                            )
+                                        } else {
+                                            (-1, -1, -1)
+                                        };
+                                        eprintln!("TRACE CLASH link {s}--role{r}-->{t}");
+                                    }
+                                    K::IndividualDistinct { distinct_edge } => {
+                                        let pc = ctx.process_context();
+                                        let (s, t) = if distinct_edge.is_some() {
+                                            let e = pc.distinct_edge(*distinct_edge);
+                                            (
+                                                pc.node(e.source).individual_node_id(),
+                                                pc.node(e.destination).individual_node_id(),
+                                            )
+                                        } else {
+                                            (-1, -1)
+                                        };
+                                        eprintln!("TRACE CLASH distinct {s} != {t}");
+                                    }
+                                    _ => eprintln!("TRACE CLASH other-kind"),
+                                }
+                            }
+                            c = next;
+                        }
+                    }
+                    Some(true)
+                }
                 _ => None,
             };
         }
-        let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
-        let count = ctx.process_context().label_set(ls).get_concept_count();
-        if count == prev_count && algo.or_backtrack_count == backtracks_before {
+        let inserts = algo.stat_con_des_insertion_count;
+        if inserts == prev_inserts && algo.or_backtrack_count == backtracks_before {
             break;
         }
-        prev_count = count;
+        prev_inserts = inserts;
+    }
+    if trace {
+        // Dump the final root label (sorted tags) so a SAT run can be diffed
+        // against a clash run of the same probe.
+        let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
+        let mut tags: Vec<(Cint64, bool)> = ctx
+            .process_context()
+            .label_set(ls)
+            .concept_des_dep_map
+            .iter()
+            .filter_map(|(tag, data)| {
+                let cd = data.concept_descriptor;
+                if cd.is_none() {
+                    return None;
+                }
+                Some((*tag, ctx.process_context().con_desc(cd).is_negated()))
+            })
+            .collect();
+        tags.sort_unstable();
+        eprintln!("TRACE root-label {tags:?}");
+
+        // BLOCKING INVARIANT: at a claimed fixpoint every DIRECTBLOCKED node's
+        // label must still be a SUBSET of its blocker's label (subset blocking).
+        // A violation = the retest-on-modification chain failed for that node —
+        // the order-dependent false-model mechanism.
+        // Walk CURRENT nodes via the id→node vector (raw arena slots include
+        // stale pre-localization copies whose old flags would false-positive).
+        let max_id = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_item_max_index();
+        let mut blocked_count = 0usize;
+        for indi_id in 0..=max_id.max(-1) {
+            let nid = ctx
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(indi_id);
+            if nid.is_none() {
+                continue;
+            }
+            let nid_idx = nid.index();
+            let node = ctx.process_context().node(nid);
+            if !node.has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_DIRECTBLOCKED,
+            ) {
+                continue;
+            }
+            blocked_count += 1;
+            let blocker_raw = node.blocker_individual_node();
+            let bls = node.use_reapply_con_label_set;
+            if blocker_raw.is_none() || bls.is_none() {
+                eprintln!("TRACE BLOCKVIOLATION node={nid_idx} blocker=NONE");
+                continue;
+            }
+            // map the (possibly stale pre-localization) blocker NodeId to the
+            // CURRENT node for its individual id.
+            let blocker = {
+                let blocker_id = ctx.process_context().node(blocker_raw).individual_node_id();
+                let cur = ctx
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(blocker_id);
+                if cur.is_some() { cur } else { blocker_raw }
+            };
+            let blocker_ls = ctx.process_context().node(blocker).use_reapply_con_label_set;
+            if blocker_ls.is_none() {
+                eprintln!("TRACE BLOCKVIOLATION node={nid_idx} blocker-label=NONE");
+                continue;
+            }
+            let pc = ctx.process_context();
+            let mut missing: Vec<(Cint64, bool)> = Vec::new();
+            for (tag, data) in pc.label_set(bls).concept_des_dep_map.iter() {
+                let cd = data.concept_descriptor;
+                if cd.is_none() {
+                    continue;
+                }
+                let neg = pc.con_desc(cd).is_negated();
+                // by-tag probe (the map IS keyed by real concept tags) + explicit
+                // polarity compare — ls1::has_concept is a W2-DEFER stub (raw-index
+                // key + always-false negation) and must not be used here.
+                let present = pc
+                    .label_set(blocker_ls)
+                    .concept_des_dep_map
+                    .get(tag)
+                    .map_or(false, |d| {
+                        d.concept_descriptor.is_some()
+                            && pc.con_desc(d.concept_descriptor).is_negated() == neg
+                    });
+                if !present {
+                    missing.push((*tag, neg));
+                }
+            }
+            if !missing.is_empty() {
+                missing.sort_unstable();
+                eprintln!(
+                    "TRACE BLOCKVIOLATION node={nid_idx} blocker={} missing={missing:?}",
+                    blocker.index()
+                );
+            }
+        }
+        eprintln!("TRACE blocked-nodes={blocked_count}");
+
+        // KM_BRIDGE_DUMP_EDGES=<indi>[,<indi>...]: dump the outgoing edges of
+        // the listed CURRENT nodes (role tag, destination id, ghost status).
+        if let Some(spec) = std::env::var_os("KM_BRIDGE_DUMP_EDGES") {
+            let ids: Vec<Cint64> = spec
+                .to_string_lossy()
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            for indi_id in ids {
+                let nid = ctx
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(indi_id);
+                if nid.is_none() {
+                    eprintln!("TRACE EDGES indi={indi_id} <no node>");
+                    continue;
+                }
+                let pc = ctx.process_context();
+                let mut it = pc.node_successor_iterator(nid);
+                while it.has_next() {
+                    let link = it.next_link(false);
+                    let succ_id = it.next_individual_id(true);
+                    if link.is_none() {
+                        continue;
+                    }
+                    let role_tag = {
+                        let r = pc.edge(link).get_link_role();
+                        if r.is_some() {
+                            ctx.ontology_arenas().role(r).get_role_tag()
+                        } else {
+                            -1
+                        }
+                    };
+                    let succ = ctx
+                        .processing_data_box()
+                        .individual_process_node_vector()
+                        .get_data(succ_id);
+                    let ghost = succ.is_some() && {
+                        let n = pc.node(succ);
+                        n.has_merged_into_individual_node_id()
+                            || n.has_purged_blocked_processing_restriction_flags()
+                    };
+                    eprintln!(
+                        "TRACE EDGES indi={indi_id} --role{role_tag}--> {succ_id} ghost={ghost}"
+                    );
+                }
+            }
+        }
+
+        // KM_BRIDGE_FIND_TAG=<tag>[,<tag>...]: list every current node whose
+        // label carries the tag (either polarity) + its blocking flags — used
+        // to locate the clash region of a TRUE run inside a FALSE run's model.
+        if let Some(spec) = std::env::var_os("KM_BRIDGE_FIND_TAG") {
+            let tags: Vec<Cint64> = spec
+                .to_string_lossy()
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            for indi_id in 0..=max_id.max(-1) {
+                let nid = ctx
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(indi_id);
+                if nid.is_none() {
+                    continue;
+                }
+                let pc = ctx.process_context();
+                let node = pc.node(nid);
+                let ls = node.use_reapply_con_label_set;
+                if ls.is_none() {
+                    continue;
+                }
+                for &t in &tags {
+                    if let Some(d) = pc.label_set(ls).concept_des_dep_map.get(&t) {
+                        if d.concept_descriptor.is_some() {
+                            let neg = pc.con_desc(d.concept_descriptor).is_negated();
+                            let flags = node.processing_restriction_flags();
+                            let blocked = node.has_partial_processing_restriction_flags(
+                                IndividualProcessNode::PRF_DIRECTBLOCKED
+                                    | IndividualProcessNode::PRF_INDIRECTBLOCKED
+                                    | IndividualProcessNode::PRF_PROCESSINGBLOCKED,
+                            );
+                            eprintln!(
+                                "TRACE FINDTAG tag={t} neg={neg} indi={indi_id} blocked={blocked} flags={flags:#x} label-size={}",
+                                pc.label_set(ls).get_concept_count()
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
     Some(false)
 }
@@ -761,7 +1051,14 @@ pub fn bridged_classify_subject(
     }
 
     let backtracks_before = algo.or_backtrack_count;
-    let mut prev_count: i64 = -1;
+    // GLOBAL fixpoint: break only when a full re-drive pass inserts NO concept
+    // on ANY node. Breaking on the root-label COUNT (the earlier criterion) is
+    // order-dependent — a pass can add nothing to the root while reapply /
+    // successor→root propagation is still pending, so it declared a fixpoint
+    // at an INCOMPLETE, HashMap-order-dependent closure (identical runs gave
+    // different subsumer sets). `stat_con_des_insertion_count` is the total
+    // insertions across every node; unchanged over a pass ⇒ true fixpoint.
+    let mut prev_inserts: i64 = -1;
     for _ in 0..256 {
         for &g in &bridged.tbox {
             seed_concept_on_queue(ctx, root, g);
@@ -779,12 +1076,11 @@ pub fn bridged_classify_subject(
                 _ => None, // STOP: not authoritative
             };
         }
-        let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
-        let count = ctx.process_context().label_set(ls).get_concept_count();
-        if count == prev_count {
+        let inserts = algo.stat_con_des_insertion_count;
+        if inserts == prev_inserts {
             break;
         }
-        prev_count = count;
+        prev_inserts = inserts;
     }
     // Non-deterministic saturation ⇒ single branch is not authoritative.
     if algo.or_backtrack_count != backtracks_before {
@@ -1279,6 +1575,15 @@ mod tests {
         let pair = std::env::var("KM_BRIDGE_PAIR").expect("set KM_BRIDGE_PAIR=Sub,Sup");
         let (sub, sup) = pair.split_once(',').expect("Sub,Sup");
         let mut env = bridge_ofn_path(&path);
+        // KM_BRIDGE_DUMP_NAMES: print the concept TAG of each listed name so a
+        // numeric KM_BRIDGE_FIND_TAG follow-up can watch the chain.
+        if let Ok(names) = std::env::var("KM_BRIDGE_DUMP_NAMES") {
+            for n in names.split(',') {
+                if let Some(&idx) = env.con_id.get(n.trim()) {
+                    eprintln!("NAME-TAG {}={}", n.trim(), TAG_BASE + idx as Cint64);
+                }
+            }
+        }
         let pairwise = env.subsumes(sub, sup);
 
         // read-off on the same subject
@@ -1330,8 +1635,20 @@ mod tests {
                 cl.body.iter().chain(cl.head.iter()).any(|a| matches!(a,
                     HAtom::Concept { c, .. } | HAtom::Exist { c, .. } if *c == idx))
             };
+            // extra names to trace (KM_BRIDGE_DUMP_NAMES="Q_708,Q_266").
+            let extra_idx: Vec<usize> = std::env::var("KM_BRIDGE_DUMP_NAMES")
+                .ok()
+                .map(|s| {
+                    s.split(',')
+                        .filter_map(|n| env.con_id.get(n.trim()).copied())
+                        .collect()
+                })
+                .unwrap_or_default();
             for cl in &env.tin.clauses {
-                if mentions(cl, s_idx) || mentions(cl, sup_idx) {
+                if mentions(cl, s_idx)
+                    || mentions(cl, sup_idx)
+                    || extra_idx.iter().any(|&i| mentions(cl, i))
+                {
                     let b: Vec<String> = cl.body.iter().map(show).collect();
                     let h: Vec<String> = cl.head.iter().map(show).collect();
                     eprintln!("  CLAUSE: {} -> {}", b.join(" ∧ "), h.join(" ∨ "));

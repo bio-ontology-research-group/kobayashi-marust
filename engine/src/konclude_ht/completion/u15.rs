@@ -45,7 +45,7 @@ use super::super::process::stubs::{
     AdditionalProcessDataAssertionsLinker, AdditionalProcessRoleAssertionsLinker,
     ProcessAssertedDataLiteralLinker,
 };
-use super::super::process::{NodeId, TrackPointId};
+use super::super::process::{ConDescId, NodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -133,6 +133,76 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///     `addIndividualToBackendIndirectCompatibilityExpansionQueue`).
     /// 13. if `newLinksAdded`, `propagateIndividualNodeModified`;
     ///     `addIndividualToProcessingQueue(mergeIntoIndividualNode)`; debug capture.
+    /// Relocate `pred`'s role links that point at `from` onto `into` — the
+    /// ht-scoped core of Konclude's merge phase 5 (cpp 21203–21232: per-link
+    /// `createMERGEDLINKDependency` + `createNewIndividualsLinkReapplyed`).
+    /// The install goes through `ht_install_role_successor_edge`, which fires
+    /// the role reapply queues over the fresh link (the `…Reapplyed` part) —
+    /// without this the predecessor LOSES its successor on a ≤n merge and
+    /// successor-side recognitions (`D ⊑ ∀R⁻.E`) can never reach it again.
+    /// Returns true iff a link was created.
+    pub fn ht_relocate_incoming_links(
+        &mut self,
+        pred: NodeId,
+        from: NodeId,
+        into: NodeId,
+        merge_dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        if pred.is_none() || pred == into || from == into {
+            return false;
+        }
+        let from_id = calc_alg_context
+            .process_context()
+            .node(from)
+            .individual_node_id();
+        // snapshot (role, link dep track point) of every pred→from link.
+        let links: Vec<(super::super::model::RoleId, TrackPointId)> = {
+            let pc = calc_alg_context.process_context();
+            let mut it = pc.node_successor_role_iterator(pred, from_id);
+            let mut v = Vec::new();
+            while it.has_next() {
+                let link = it.next(true);
+                if link.is_none() {
+                    continue;
+                }
+                let e = pc.edge(link);
+                v.push((e.get_link_role(), e.get_dependency_track_point()));
+            }
+            v
+        };
+        let mut added = false;
+        for (role, link_dep_track_point) in links {
+            // hasRoleSuccessorToIndividual(role, into) — skip existing.
+            let exists = self
+                .ht_role_successor_links(pred, role, calc_alg_context)
+                .iter()
+                .any(|&(_, s)| s == into);
+            if exists {
+                continue;
+            }
+            // createMERGEDLINKDependency(newDtp, mergeInto, mergeDtp, prevLinkDtp)
+            let mut new_dep_track_point = TrackPointId::NONE;
+            let mut into_mut = into;
+            self.create_merged_link_dependency(
+                &mut new_dep_track_point,
+                &mut into_mut,
+                merge_dep_track_point,
+                link_dep_track_point,
+                calc_alg_context,
+            );
+            self.ht_install_role_successor_edge(
+                pred,
+                into,
+                role,
+                new_dep_track_point,
+                calc_alg_context,
+            );
+            added = true;
+        }
+        added
+    }
+
     pub fn merge_individual_node_into(
         &mut self,
         merge_into_individual_node: NodeId,
@@ -186,45 +256,111 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // consulted in phases 5 and 7. Only phases 5/7 use it and both are deferred,
         // so it is not materialised yet (kept as a note for the un-defer wave).
 
-        // ---- phase 4: merge the concept label set -------------------------------
-        // The ReapplyConceptLabelSet iterator/contains/count surface is live; the
-        // whole phase remains deferred until it is wired end-to-end through the
-        // existing merged-concept dependency and add-concept helpers.
-        // Faithful structure (un-defer once the label-set surface lands; the dependency
-        // wrapper `create_merged_concept_dependency` and the `add_concept_to_individual_*`
-        // sibling already exist and are called here):
-        //   addingConceptLabelSet = ctx.node(individual).reapply_con_label_set (false-existence)
-        //   if present {
-        //     mergeIntoLabelSet = ctx.node_reapply_concept_label_set(merge_into) (true)
-        //     if addingCount * mMapComparisonDirectLookupFactor < mergeIntoCount { direct-lookup }
-        //     else { sorted merge-walk by data tag }
-        //     for each conDes not already in mergeIntoLabelSet:
-        //       STATINC(INDINODEMERGECONCEPTSADDCOUNT);
-        //       let mut new_dtp = TrackPointId::NONE;
-        //       self.create_merged_concept_dependency(&mut new_dtp, &mut merge_into, conDes,
-        //           merge_dep_track_point, conDepTrackPoint, calc_alg_context);
-        //       self.add_concept_to_individual_skip_and_processing(
-        //           concept, negation, merge_into, new_dtp, false, true, /*markMod*/true, ctx);
-        //   }
+        // ---- phase 4: merge the concept label set (PORTED) ------------------------
+        // cpp 21077–21141: every concept of `individual`'s label whose TAG is not yet
+        // in `merge_into`'s label is added under a MERGEDCONCEPT dependency.
+        // Konclude's contains test is `containsConcept(concept, nullptr)` — ANY
+        // polarity — because a cross-polarity pair is caught BEFORE the merge by
+        // `isIndividualNodesMergeable` → `isLabelConceptClashSet` (cpp 20714/20867).
+        // KONCLUDE-PORT-NOTE[api]: the C++ picks direct-lookup vs sorted merge-walk
+        // purely as a map-size heuristic (mMapComparisonDirectLookupFactor); the port
+        // always direct-looks-up — identical insertions either way.
         let _ = self.map_comparison_direct_lookup_factor;
+        let adding_concept_label_set = calc_alg_context
+            .process_context()
+            .node(individual)
+            .use_reapply_con_label_set;
+        if adding_concept_label_set.is_some() {
+            // snapshot (conDes, depTrackPoint) — the iterator borrows the context
+            // immutably while add_concept_to_individual mutates it.
+            let adding: Vec<(ConDescId, TrackPointId)> = {
+                let pc = calc_alg_context.process_context();
+                let ls = pc.label_set(adding_concept_label_set);
+                let mut it = ls.get_concept_label_set_iterator(true, true, false);
+                let mut v = Vec::new();
+                while it.has_next() {
+                    let cd = it.get_concept_descriptor();
+                    if cd.is_some() {
+                        v.push((cd, it.get_dependency_track_point(pc)));
+                    }
+                    it.move_next(pc);
+                }
+                v
+            };
+            let merge_into_label_set = calc_alg_context
+                .process_context_mut()
+                .node_reapply_concept_label_set(merge_into_individual_node);
+            for (con_des, con_dep_track_point) in adding {
+                let (concept, negation) = {
+                    let pc = calc_alg_context.process_context();
+                    (
+                        pc.con_desc(con_des).get_concept(),
+                        pc.con_desc(con_des).is_negated(),
+                    )
+                };
+                // containsConcept(concept, nullptr) — ANY polarity, tag-RESOLVED
+                // (ls1::has_concept is a W2-DEFER stub; see u35 resolved helpers).
+                let contained_any_polarity = self.contains_individual_node_concept_label(
+                    merge_into_label_set,
+                    concept,
+                    None,
+                    calc_alg_context,
+                );
+                if !contained_any_polarity {
+                    // STATINC(INDINODEMERGECONCEPTSADDCOUNT)
+                    let mut new_dep_track_point = TrackPointId::NONE;
+                    let mut merge_into_mut = merge_into_individual_node;
+                    self.create_merged_concept_dependency(
+                        &mut new_dep_track_point,
+                        &mut merge_into_mut,
+                        con_des,
+                        merge_dep_track_point,
+                        con_dep_track_point,
+                        calc_alg_context,
+                    );
+                    self.add_concept_to_individual(
+                        concept,
+                        negation,
+                        &mut merge_into_mut,
+                        new_dep_track_point,
+                        false,
+                        true,
+                        calc_alg_context,
+                    );
+                    // the C++ insert-clash THROWS out of the merge — mirror via the
+                    // pending signal (caller handles it like the exception).
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+            }
+        }
 
-        // ---- phase 5: move all connected incoming links -------------------------
-        // The OUTER walk over `individual`'s ConnectionSuccessorSet is now portable
-        // (`ctx.node_connection_successor_set` + `ConnectionSuccessorSetIterator` are
-        // real in process/distinct.rs); the INNER per-role relocation is NOT:
-        //   - W6-DEFER[api]: the nominal neighbour backend-expansion sub-block
-        //     (`getLocalizedIndividualBackendCacheSnychronisationData` /
-        //     `expandIndividualNeighbourNodeFromBackendCache`) is the W6 Cache layer;
-        //   - the pn3 role/disjoint-successor iterators and empty-iterator surface
-        //     exist, but still yield empty until the `mUseSuccRoleHash` /
-        //     `mUseDisjointSuccRoleHash` process-hash backends are threaded. Until
-        //     then the forward/reverse role-link + neg/disjoint relocation
-        //     (`create_new_individuals_link_reapplyed` /
-        //     `create_individual_node_negation_link` — both already exist as siblings —
-        //     `remove_individual_link` / `remove_disjoint_links` /
-        //     `remove_individual_connection`) cannot iterate yet.
-        // Faithful self-loop vs other-node split + the dedup-via-depTrackPointHash +
-        // `create_merged_link_dependency` structure is recorded in the doc comment.
+        // ---- phase 5: move connected incoming links (PORTED, ancestor-scoped) ----
+        // Konclude's outer walk covers `individual`'s ConnectionSuccessorSet; for a
+        // BLOCKABLE tree node the processed entries reduce to the tree PREDECESSOR
+        // (the `individual->isIndividualAncestor(locConnIndi)` arm) — children fail
+        // every arm and are handled by prune + re-derivation from the unioned label.
+        // The ht layer maintains no connection-successor sets, so the port relocates
+        // from the ancestor directly (the ≤n-merge caller additionally relocates from
+        // the counted parent; see `ht_apply_atmost_merge`). The old predecessor→
+        // `individual` links stay in the hashes — `ht_role_successor_links` filters
+        // merged/purged ghosts, realising Konclude's `removeIndividualLink`.
+        {
+            let mut individual_mut = individual;
+            let from_ancestor = self.get_ancestor_individual(&mut individual_mut, calc_alg_context);
+            if from_ancestor.is_some() {
+                new_links_added |= self.ht_relocate_incoming_links(
+                    from_ancestor,
+                    individual,
+                    merge_into_individual_node,
+                    merge_dep_track_point,
+                    calc_alg_context,
+                );
+            }
+        }
+        // W6-DEFER[api]: the nominal neighbour backend-expansion sub-block + the
+        // neg/disjoint-link relocation remain deferred with the W6 Cache layer.
 
         // ---- phase 6: nominal merge bookkeeping ---------------------------------
         // `IndividualMergingHash` and the node nominal accessors are live, but

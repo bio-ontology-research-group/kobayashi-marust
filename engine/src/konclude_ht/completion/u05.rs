@@ -386,18 +386,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 for op_link in &op_concepts {
                     let op_concept: ConceptId = op_link.target;
                     let op_con_neg: bool = op_link.negated ^ negated;
-                    // conLabelSet->containsConcept(opConcept, opConNeg)
-                    let has_concept = {
-                        let ls: LabelSetId = calc_alg_context
-                            .process_context()
-                            .node(loc_succ_indi)
-                            .use_reapply_con_label_set;
-                        ls != Id::NONE
-                            && calc_alg_context
-                                .process_context()
-                                .label_set(ls)
-                                .has_concept(op_concept, op_con_neg)
-                    };
+                    // conLabelSet->containsConcept(opConcept, opConNeg) — tag-RESOLVED
+                    // (ls1::has_concept is a W2-DEFER stub: raw-index key + always-false
+                    // negation; a raw/tag collision here would SKIP a required add).
+                    let ls: LabelSetId = calc_alg_context
+                        .process_context()
+                        .node(loc_succ_indi)
+                        .use_reapply_con_label_set;
+                    let has_concept = ls != Id::NONE
+                        && self.label_set_contains_concept_resolved(
+                            ls,
+                            op_concept,
+                            op_con_neg,
+                            calc_alg_context,
+                        );
                     if !has_concept {
                         if !all_dep_node_created {
                             all_dep_node_created = true;

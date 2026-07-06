@@ -1170,21 +1170,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         //   throw CCalculationClashProcessingException(clashConDesLinker);
         // }
         if contained && clashed_concept_descriptor != ConDescId::NONE {
-            // W5: un-defer the clash throw. The C++ allocates two
-            // `CClashedConceptDescriptor`s (for the new + the contained descriptor),
-            // chains them, and `throw CCalculationClashProcessingException(clashDes1)`.
-            // The port allocates ONE clash descriptor carrying the clash dependency
-            // track point and raises the pending-signal stand-in for the throw
-            // (`completion/clash.rs`); `handleTask`'s drain converts it to the clash
-            // catch. The full two-link clash-descriptor chain (for dependency
-            // backtracking) lands with the clash unit; the signal + verdict are live.
-            let clash = calc_alg_context
-                .process_context_mut()
-                .alloc_clash_desc(ClashDescriptor::new());
-            calc_alg_context
-                .process_context_mut()
-                .clash_desc_mut(clash)
-                .set_dependency_track_point(clashed_dependency_track_point);
+            // Faithful two-link clash chain (cpp): one `CClashedConceptDescriptor`
+            // for the CONTAINED descriptor, one for the NEW one, chained; then the
+            // pending-signal stand-in for the throw.
+            let mut clash = self.create_clashed_concept_descriptor(
+                Id::NONE,
+                process_indi,
+                clashed_concept_descriptor,
+                clashed_dependency_track_point,
+                calc_alg_context,
+            );
+            clash = self.create_clashed_concept_descriptor(
+                clash,
+                process_indi,
+                concept_descriptor,
+                dependency_track_point,
+                calc_alg_context,
+            );
             calc_alg_context.raise_clash(clash);
         }
 

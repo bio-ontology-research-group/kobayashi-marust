@@ -531,6 +531,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .individual_process_node_vector()
                     .get_data(succ_id);
                 if succ.is_some() {
+                    // skip MERGED-AWAY / PURGED ghosts: the port keeps no
+                    // connection-successor sets, so a ≤n merge cannot relocate
+                    // the old links (Konclude phase 5) — filtering here keeps
+                    // every successor scan consistent with the merged graph.
+                    let n = pc.node(succ);
+                    if n.has_merged_into_individual_node_id()
+                        || n.has_purged_blocked_processing_restriction_flags()
+                    {
+                        continue;
+                    }
                     out.push((link, succ));
                 }
             }
@@ -559,11 +569,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             let mut all = true;
             for nl in concept_linker {
-                if !calc_alg_context
-                    .process_context()
-                    .label_set(ls)
-                    .has_concept(nl.target, nl.negated ^ negate)
-                {
+                // tag-RESOLVED contains (ls1::has_concept is a W2-DEFER stub; a
+                // raw/tag collision here would REUSE an unsuitable successor).
+                if !self.label_set_contains_concept_resolved(
+                    ls,
+                    nl.target,
+                    nl.negated ^ negate,
+                    calc_alg_context,
+                ) {
                     all = false;
                     break;
                 }
@@ -601,6 +614,113 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context
             .process_context_mut()
             .node_install_individual_link(source, link, &mut reapply_queue_it);
+        // createNewIndividualsLink tail (cpp 22346–22349): register the SOURCE in the
+        // DESTINATION's connection-successor set — the only back-reference from a
+        // node to its predecessors. The inverse arm of `ht_all_rule_targets` walks
+        // it; without it a node acquired through ≤n-merge relocation only ever
+        // propagates ∀R⁻ to its CREATOR ancestor.
+        {
+            let source_id = calc_alg_context
+                .process_context()
+                .node(source)
+                .individual_node_id();
+            let conn = calc_alg_context
+                .process_context_mut()
+                .node_connection_successor_set(destination);
+            calc_alg_context
+                .process_context_mut()
+                .conn_succ_set_mut(conn)
+                .insert_connection_successor(source_id);
+        }
+        // applyReapplyQueueConceptsRestricted (cpp 22321/26572): the concepts armed in
+        // `source`'s per-role reapply queue (∀ / ≤n restrictions already processed on
+        // `source`) must RE-FIRE over this fresh link. Dropping the iterator here made
+        // the closure depend on whether the link existed when the rule first ran — the
+        // HashMap-order-dependent (in)completeness the bridge probes exposed.
+        self.apply_reapply_queue_concepts_restricted(source, reapply_queue_it, link, calc_alg_context);
+        // KONCLUDE-PORT-NOTE[api]: Konclude installs ONE link PER indirect super-role
+        // (`createNewIndividualsLinksReapplyed`'s roleLinkerIt loop), so each
+        // super-role's reapply queue fires on its own install. The port installs a
+        // single link and resolves the hierarchy at lookup — so the super-role queues
+        // must fire HERE: non-inverted supers armed on `source` (an R-link is an
+        // S-link for R ⊑ S), inverted supers armed on `destination` (the R-link makes
+        // `destination` see `source` as an S⁻-successor).
+        let super_links: Vec<(RoleId, bool)> = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_indirect_super_role_list()
+            .iter()
+            .map(|l| (l.target, l.negated))
+            .collect();
+        for (super_role, inversed) in super_links {
+            let (holder, skip) = if inversed {
+                (destination, false)
+            } else {
+                (source, super_role == role) // own queue already consumed via install
+            };
+            if skip {
+                continue;
+            }
+            let hash = calc_alg_context
+                .process_context()
+                .node_reapply_role_successor_hash_existing(holder);
+            if hash.is_none() {
+                continue;
+            }
+            let it = calc_alg_context
+                .process_context_mut()
+                .role_succ_hash_mut(hash)
+                .get_role_reapply_iterator(super_role, true);
+            self.apply_reapply_queue_concepts_restricted(holder, it, link, calc_alg_context);
+        }
+        // MIRROR INVERSE INSTALL (cpp 22300–22341, the roleLinkerIt INVERSE arm):
+        // Konclude installs one link per indirect-super-role entry, and the
+        // inverse entries go on the DESTINATION under the inverse role. The
+        // bridge wires only `set_inverse_role` (no inverse super lists), so
+        // synthesize that install here: `destination --inv(R)--> source` in the
+        // destination's hashes, with ITS reapply queue consumed over the new
+        // link. This is what lets (a) the B2 blocking condition see the parent
+        // edge from the child's side (without it a blocked child's blocker can
+        // hold an armed `∀R⁻.C` that would fire backward over the parent edge —
+        // an UNSOUND block that hid clashes order-dependently), and (b) `∀R⁻`
+        // fire as a plain forward ∀ over the inverse link.
+        let inv_role = calc_alg_context.ontology_arenas().role(role).get_inverse_role();
+        if inv_role.is_some() {
+            let mut e = IndividualLinkEdge::new();
+            // C++ initIndividualLinkEdge(creator=indiSource, indiDestination,
+            // indiSource, superRole, dtp): creator stays the ∃-applier.
+            e.set_source_individual(destination);
+            e.set_destination_individual(source);
+            e.set_link_role(inv_role);
+            e.set_dependency_track_point(dep_track_point);
+            e.creator = source;
+            let inv_link: EdgeId = calc_alg_context.process_context_mut().alloc_edge(e);
+            let mut inv_reapply_it = super::super::process::rs1::ReapplyQueueIterator::empty();
+            calc_alg_context
+                .process_context_mut()
+                .node_install_individual_link(destination, inv_link, &mut inv_reapply_it);
+            // generatedInvLink tail (cpp 22346): the SOURCE's connection set
+            // records the destination.
+            {
+                let dest_id = calc_alg_context
+                    .process_context()
+                    .node(destination)
+                    .individual_node_id();
+                let conn = calc_alg_context
+                    .process_context_mut()
+                    .node_connection_successor_set(source);
+                calc_alg_context
+                    .process_context_mut()
+                    .conn_succ_set_mut(conn)
+                    .insert_connection_successor(dest_id);
+            }
+            self.apply_reapply_queue_concepts_restricted(
+                destination,
+                inv_reapply_it,
+                inv_link,
+                calc_alg_context,
+            );
+        }
         link
     }
 
@@ -935,17 +1055,79 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .node(indi1)
             .use_distinct_hash;
-        if dh.is_none() {
-            return true;
+        if dh.is_some() {
+            let id2 = calc_alg_context
+                .process_context()
+                .node(indi2)
+                .individual_node_id();
+            if calc_alg_context
+                .process_context()
+                .distinct_hash(dh)
+                .is_individual_distinct(id2)
+            {
+                return false;
+            }
         }
-        let id2 = calc_alg_context
-            .process_context()
-            .node(indi2)
-            .individual_node_id();
-        !calc_alg_context
-            .process_context()
-            .distinct_hash(dh)
-            .is_individual_distinct(id2)
+        // isLabelConceptClashSet (cpp 20741): a same-tag opposite-polarity pair
+        // across the two labels makes the pair unmergeable — the pre-test that
+        // lets the merge's label union skip any-polarity-contained tags. Without
+        // it a ≤n merge would silently drop the polarity clash.
+        !self.ht_label_concept_clash_set(indi1, indi2, calc_alg_context)
+    }
+
+    /// Port of `isLabelConceptClashSet` (the `CIndividualProcessNode*` pair
+    /// overload, cpp 20867–20934): true iff the two labels contain the SAME
+    /// concept tag with OPPOSITE polarity.
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: the clash-descriptor accumulation is threaded by
+    /// the caller in the C++ (the collected descriptors feed the at-most clash);
+    /// the port's greedy at-most path raises its own clash descriptor, so only
+    /// the boolean verdict is ported. The C++ direct-lookup branch collects the
+    /// clash but forgets to return true (the sorted-walk branch returns) — the
+    /// port returns true from both, matching the evident intent and the caller's
+    /// use of the verdict.
+    pub fn ht_label_concept_clash_set(
+        &self,
+        indi1: NodeId,
+        indi2: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let pc = calc_alg_context.process_context();
+        let ls1 = pc.node(indi1).use_reapply_con_label_set;
+        let ls2 = pc.node(indi2).use_reapply_con_label_set;
+        if ls1.is_none() || ls2.is_none() {
+            return false;
+        }
+        // iterate the smaller set, look up in the larger (the C++ swap). The maps
+        // are keyed by REAL concept tags at insert, so probe by tag and compare
+        // polarity explicitly (ls1::has_concept is a W2-DEFER stub — raw-index key
+        // + always-false negation — and must not be used here).
+        let (sub, sup) = if pc.label_set(ls1).get_concept_count()
+            <= pc.label_set(ls2).get_concept_count()
+        {
+            (ls1, ls2)
+        } else {
+            (ls2, ls1)
+        };
+        for (tag, data) in pc.label_set(sub).concept_des_dep_map.iter() {
+            let cd = data.concept_descriptor;
+            if cd.is_none() {
+                continue;
+            }
+            let neg = pc.con_desc(cd).is_negated();
+            if pc
+                .label_set(sup)
+                .concept_des_dep_map
+                .get(tag)
+                .map_or(false, |d| {
+                    d.concept_descriptor.is_some()
+                        && pc.con_desc(d.concept_descriptor).is_negated() != neg
+                })
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// The merge/clash spine of `applyATMOSTRule` / `mergeMergingIndividualNodes`
@@ -993,6 +1175,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let into = succs[i];
                     let from = succs[j];
                     self.merge_individual_node_into(into, from, dep_track_point, calc_alg_context);
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                    // phase-5 relocation from the COUNTED parent: the merge's
+                    // ancestor-scoped relocation covers `from`'s creator; when
+                    // `process_indi` reached `from` through an earlier relocation
+                    // its own link must be re-pointed too (idempotent — the
+                    // helper skips existing links).
+                    self.ht_relocate_incoming_links(
+                        *process_indi,
+                        from,
+                        into,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
                     succs.remove(j);
                     if calc_alg_context.has_pending_signal() {
                         return;
@@ -1303,6 +1500,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             con_des,
             calc_alg_context,
         );
+
+        // A merge clash throws in the C++ (skipping the registration below) — the
+        // port signals instead of unwinding, so return here like the exception would.
+        if calc_alg_context.has_pending_signal() {
+            return;
+        }
+
+        // installReapplication (cpp 15001–15005): keep the ≤n restriction armed so a
+        // LATER `role`-link re-fires this rule — without it the merge/clash check only
+        // sees the successors that happen to exist NOW, an order-dependent closure.
+        // KONCLUDE-PORT-NOTE[api]: Konclude registers the dynamic
+        // `branchingMergingProcRest` descriptor to resume its branching-merging state
+        // machine; the greedy merge has no state to resume, so the port registers the
+        // plain-role STATIC descriptor (the `applyALLRule` pattern) — every future
+        // link re-runs the whole rule, a sound superset. The `is_concept_reapplied`
+        // guard keeps the queue duplicate-free.
+        let is_concept_reapplied: bool = calc_alg_context
+            .process_context()
+            .con_proc_desc(*con_pro_des)
+            .is_concept_reapplied();
+        if !is_concept_reapplied {
+            self.add_concept_to_reapply_queue_role(
+                con_des,
+                role,
+                *process_indi,
+                true,
+                dep_track_point,
+                calc_alg_context,
+            );
+        }
     }
 
     // =======================================================================
