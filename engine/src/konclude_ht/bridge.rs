@@ -785,6 +785,76 @@ mod tests {
         assert!(!env.subsumes("E", "A"), "E ⊑ A must NOT hold");
     }
 
+    /// Scale smoke-test on a REAL ontology: bridge `KM_BRIDGE_ONT` and run
+    /// satisfiability probes for the first `KM_BRIDGE_PROBES` (default 3)
+    /// named non-internal concepts, timing each. Measures whether the ported
+    /// engine + re-drive harness converge at real-TBox scale and what a probe
+    /// costs — the data for the classify-driver design (per-task databox vs
+    /// per-probe rebuild, reapply-queue priority). Diagnostic only.
+    #[test]
+    #[ignore]
+    fn bridge_scale_probe() {
+        let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
+        let n_probes: usize = std::env::var("KM_BRIDGE_PROBES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(3);
+        let text = std::fs::read_to_string(&path).expect("readable ontology");
+        let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
+        let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            None,
+            &named_set,
+            &fr.cardinalities,
+            false,
+            &fr.rules,
+            false,
+        );
+        let subjects: Vec<usize> = tin
+            .concepts
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| named_set.contains(*n))
+            .map(|(i, _)| i)
+            .take(n_probes)
+            .collect();
+        for &s in &subjects {
+            let t0 = std::time::Instant::now();
+            let mut algo = CompletionTaskHandleAlgorithm::new();
+            let mut ctx = CalculationAlgorithmContextBase::new();
+            ctx.base.used_concept_priority_strategy =
+                Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+            let top = {
+                let mut c = Concept::new();
+                c.set_concept_tag(1);
+                c.set_operator_code(op::CCTOP);
+                ctx.ontology_arenas_mut().alloc_concept(c)
+            };
+            ctx.processing_data_box_mut().ontology_top_concept = top;
+            let bridged = bridge_tinput(&mut ctx, &tin);
+            let t_bridge = t0.elapsed();
+            let t1 = std::time::Instant::now();
+            let mut next = 0i64;
+            let verdict = bridged_unsat(
+                &mut algo,
+                &mut ctx,
+                &bridged,
+                &mut next,
+                &[(bridged.named[s], false)],
+            );
+            eprintln!(
+                "BRIDGE-PROBE {}: verdict={:?} bridge={:.0}ms probe={:.0}ms nodes={} backtracks={}",
+                tin.concepts[s],
+                verdict,
+                t_bridge.as_secs_f64() * 1e3,
+                t1.elapsed().as_secs_f64() * 1e3,
+                ctx.process_context().node_count(),
+                algo.or_backtrack_count,
+            );
+        }
+    }
+
     /// Fragment-coverage report on a REAL ontology: set `KM_BRIDGE_ONT` to an
     /// .owl/.ofn path and run with `-- --ignored --nocapture`. Reports how
     /// many TInput clauses the v1 bridge encodes vs counts as unsupported —
