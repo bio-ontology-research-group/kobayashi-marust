@@ -722,4 +722,51 @@ mod tests {
         assert!(holds, "A unsat via R⊑S hierarchy ⇒ A ⊑ D vacuously");
         assert!(!env.subsumes("D", "A"), "D ⊑ A must NOT hold");
     }
+
+    /// Fragment-coverage report on a REAL ontology: set `KM_BRIDGE_ONT` to an
+    /// .owl/.ofn path and run with `-- --ignored --nocapture`. Reports how
+    /// many TInput clauses the v1 bridge encodes vs counts as unsupported —
+    /// the data that prioritises the next bridge wave (absorption, inverse,
+    /// cardinality). Diagnostic only; asserts nothing about verdicts.
+    #[test]
+    #[ignore]
+    fn bridge_coverage_report() {
+        let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
+        let text = std::fs::read_to_string(&path).expect("readable ontology");
+        let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            None,
+            &named,
+            &fr.cardinalities,
+            false,
+            &fr.rules,
+            false,
+        );
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        ctx.base.used_concept_priority_strategy =
+            Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+        let top = {
+            let mut c = Concept::new();
+            c.set_concept_tag(1);
+            c.set_operator_code(op::CCTOP);
+            ctx.ontology_arenas_mut().alloc_concept(c)
+        };
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+        let bridged = bridge_tinput(&mut ctx, &tin);
+        eprintln!(
+            "BRIDGE-COVERAGE {path}: concepts={} roles={} clauses={} encoded_impls={} \
+             unsupported={} (inverse={} nominals={} card_defs={} chains={})",
+            tin.concepts.len(),
+            tin.roles.len(),
+            tin.clauses.len(),
+            bridged.tbox.len(),
+            bridged.unsupported,
+            tin.inverse,
+            tin.nominals.len(),
+            tin.card_defs.len(),
+            tin.chains.len(),
+        );
+    }
 }
