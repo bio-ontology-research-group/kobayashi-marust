@@ -132,6 +132,20 @@ impl<'a> Builder<'a> {
         c.set_operand_count(1);
         self.ctx.ontology_arenas_mut().alloc_concept(c)
     }
+    /// Unqualified `≤n R.⊤` — `CCATMOST` with parameter `n` and NO operand
+    /// (empty qualifier ⇒ every R-successor counts). `n = 1` is a functional
+    /// role; the completion routes it through `apply_atmost_rule` →
+    /// `ht_apply_atmost_merge` (merge excess successors, else clash).
+    fn atmost(&mut self, role: RoleId, n: Cint64) -> ConceptId {
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role);
+        c.set_parameter(n);
+        c.set_operand_count(0);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
     /// `CCIMPL[ head, triggers… ]` — fires `head` once every trigger concept
     /// is present with the OPPOSITE polarity of its linker (see
     /// `apply_implication_rule`): a positive body atom becomes a NEGATED
@@ -199,6 +213,33 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
     let mut top_gcis: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
+    // Diagnostic (KM_BRIDGE_DUMP_UNSUP=N): record the shape of the first N
+    // unsupported clauses so the next coverage wave can be scoped.
+    let dump_unsup: usize = std::env::var("KM_BRIDGE_DUMP_UNSUP")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let mut dumped = 0usize;
+    let mut dump = |cl: &HtClause, why: &str| {
+        if dumped < dump_unsup {
+            let show = |a: &HAtom| -> String {
+                match a {
+                    HAtom::Concept { neg, c, t } => {
+                        format!("{}C{c}({t})", if *neg { "¬" } else { "" })
+                    }
+                    HAtom::Role { r, s, t } => format!("R{r}({s},{t})"),
+                    HAtom::Eq { s, t } => format!("eq({s},{t})"),
+                    HAtom::Exist { r, neg, c, t } => {
+                        format!("∃R{r}.{}C{c}({t})", if *neg { "¬" } else { "" })
+                    }
+                }
+            };
+            let b: Vec<String> = cl.body.iter().map(show).collect();
+            let h: Vec<String> = cl.head.iter().map(show).collect();
+            eprintln!("UNSUP[{why}]: {} -> {}", b.join(" ∧ "), h.join(" ∨ "));
+            dumped += 1;
+        }
+    };
     // Structures outside the v1 clause encoder count as unsupported input.
     unsupported += tin.card_defs.len() + tin.nominals.len() + tin.chains.len();
     // Inverse roles are not wired in the v1 bridge (the model supports them;
@@ -254,28 +295,71 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         }
     }
 
+    // ---- pass 2: functional roles `R(0,1) ∧ R(0,2) → eq(1,2)` --------------
+    // The clausal form of `⊤ ⊑ ≤1 R.⊤` (a functional property / global at-most
+    // 1). Detected here and later encoded as a `CCATMOST(R, 1)` on TOP so
+    // every node enforces ≤1 R-successor through the ported merge rule
+    // (`ht_apply_atmost_merge`). The clause itself is then consumed (not
+    // unsupported).
+    let is_functional = |cl: &HtClause| -> Option<usize> {
+        if cl.body.len() != 2 || cl.head.len() != 1 {
+            return None;
+        }
+        let (b0, b1) = (&cl.body[0], &cl.body[1]);
+        if let (
+            HAtom::Role { r: r0, s: s0, t: t0 },
+            HAtom::Role { r: r1, s: s1, t: t1 },
+            HAtom::Eq { s: es, t: et },
+        ) = (b0, b1, &cl.head[0])
+        {
+            // same role, shared source 0, distinct targets, head equates them.
+            if r0 == r1 && s0 == s1 && t0 != t1 {
+                let (a, b) = (*t0.min(t1), *t0.max(t1));
+                let (ea, eb) = (*es.min(et), *es.max(et));
+                if (a, b) == (ea, eb) && *s0 != a && *s0 != b {
+                    return Some(*r0);
+                }
+            }
+        }
+        None
+    };
+    let mut functional_roles: BTreeSet<usize> = BTreeSet::new();
+    for cl in &tin.clauses {
+        if let Some(r) = is_functional(cl) {
+            functional_roles.insert(r);
+        }
+    }
+
     'clause: for cl in &tin.clauses {
         // hierarchy clauses were consumed by pass 1
         if is_hierarchy(cl).is_some() {
             continue;
         }
+        // functional clauses were consumed by pass 2
+        if is_functional(cl).is_some() {
+            continue;
+        }
         // ---- classify the clause's variable/role shape -------------------
         let mut body_roles: Vec<(usize, usize, usize)> = Vec::new(); // (r, s, t)
+        let mut body_bad = false;
         for a in &cl.body {
             match a {
                 HAtom::Role { r, s, t } => body_roles.push((*r, *s, *t)),
                 HAtom::Eq { .. } | HAtom::Exist { .. } => {
-                    unsupported += 1;
-                    continue 'clause;
+                    body_bad = true;
                 }
                 HAtom::Concept { .. } => {}
             }
         }
-        for a in &cl.head {
-            if matches!(a, HAtom::Role { .. } | HAtom::Eq { .. }) {
-                unsupported += 1;
-                continue 'clause;
-            }
+        if body_bad {
+            unsupported += 1;
+            dump(cl, "body-eq-or-exist");
+            continue 'clause;
+        }
+        if cl.head.iter().any(|a| matches!(a, HAtom::Role { .. } | HAtom::Eq { .. })) {
+            unsupported += 1;
+            dump(cl, "head-role-or-eq");
+            continue 'clause;
         }
         let vars: BTreeSet<usize> = cl
             .body
@@ -328,8 +412,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             let (r, s, t) = body_roles[0];
             if s != 0 || t == 0 || vars.iter().any(|&v| v != s && v != t) {
                 unsupported += 1;
+                dump(cl, "guarded-var-shape");
                 continue;
             }
+            let _ = r;
             let mut triggers: Vec<(ConceptId, bool)> = Vec::new(); // at x
             let mut succ_body: Vec<(ConceptId, bool)> = Vec::new(); // at y
             for a in &cl.body {
@@ -353,6 +439,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 } else if matches!(a, HAtom::Exist { .. }) {
                     // nested ∃ under the ∀ — out of the v1 fragment
                     unsupported += 1;
+                    dump(cl, "nested-exist-under-forall");
                     continue 'clause;
                 } else {
                     head_y.push(lit(&mut b, a));
@@ -419,11 +506,29 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 // out of the v1 fragment (needs the covering-disjunction
                 // machinery Konclude gets from absorption + branch triggers).
                 unsupported += 1;
+                dump(cl, "edge-no-concept-trigger");
             }
             continue;
         }
 
         unsupported += 1;
+        dump(cl, "multi-role-body");
+    }
+
+    // ---- functional roles → `≤1 R` on TOP (every node) ---------------------
+    // Emitted while the Builder still holds the arena borrow. Each functional
+    // role R contributes an unqualified `CCATMOST(R, 1)`; attaching it to TOP
+    // makes every node enforce ≤1 R-successor via the ported merge rule. The
+    // atmost is also seeded on the root each drive pass (it is a universal
+    // constraint, not trigger-gated).
+    let functional_count = functional_roles.len();
+    let atmost_concepts: Vec<ConceptId> = functional_roles
+        .iter()
+        .map(|&r| b.atmost(roles[r], 1))
+        .collect();
+    for &a in &atmost_concepts {
+        tbox.push(a);
+        top_gcis.push(a);
     }
 
     // ---- attachment pass: absorption wiring (Konclude's CCSUB mechanism) ---
@@ -468,6 +573,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         top_concept.set_operand_count(count + n);
     }
 
+    let _ = functional_count;
     Bridged {
         named,
         roles,
