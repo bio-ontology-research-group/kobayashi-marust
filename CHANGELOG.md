@@ -4,6 +4,26 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### In-process frontend fast path for small onts (+47 beat-Konclude WINs)
+
+`classify` forked the `ofn` subprocess even for trivial ontologies, where the
+standalone parse is < 10 ms but the classify frontend phase is ~50 ms — the
+fork/exec of the 4.4 MB binary plus the clause/meta file round-trip. On the ~125
+near-tie onts (KM losing to Konclude by < 1 ms on ~0.14 s totals) that fixed
+overhead was the whole margin. Onts under 2 MB now run the frontend IN-PROCESS
+(`ofn_to_clauses` directly, same function the subprocess runs), writing the
+clauses file and returning the meta — byte-identical output. Memory-safe: the
+2 MB cap keeps the giants' multi-GB transient parse peak isolated in the
+subprocess; the small-ont transient is tens of MB and is freed before the engine
+runs. Opt out with `KM_NO_INPROC_OFN`.
+
+Full IBEX panel (job 48088964) vs the absorbed-plain panel (48086814): **WIN
+166 → 213 (+47); SLOWER 216 → 153; FAIL 8 → 8; 0 unsound.** Cumulative across
+both orchestration fixes this cycle (vs the pre-fix baseline 48085418): **WIN
+136 → 213 (+77), 24% → 37% beating Konclude on both speed AND memory; timeouts
+9 → 8.** The +16 SLOW+MEM/MOREMEM shift is speed-losses changing category (the
+in-process parse peak on the larger sub-2 MB onts), not WIN→loss regressions.
+
 ### Portfolio CB arm uses the absorbed-plain path (+30 beat-Konclude WINs, −1 timeout)
 
 The certified-elc portfolio ran its CB arm via `run_engine_adaptive` on the
