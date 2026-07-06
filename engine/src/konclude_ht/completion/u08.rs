@@ -632,6 +632,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .conn_succ_set_mut(conn)
                 .insert_connection_successor(source_id);
         }
+        // createNewIndividualsLinkReapplyed domain/range (cpp 22382–22395): for an
+        // installed R-edge (u,v), `range(R)` concepts go to v and `domain(R)`
+        // concepts to u, BEFORE the reapply queue fires over the link. Konclude
+        // passes allowPreprocessing=false here ("no preprocessing, because of
+        // possible not intercepted clashes while merging").
+        self.ht_apply_role_domain_range(role, source, destination, dep_track_point, calc_alg_context);
         // applyReapplyQueueConceptsRestricted (cpp 22321/26572): the concepts armed in
         // `source`'s per-role reapply queue (∀ / ≤n restrictions already processed on
         // `source`) must RE-FIRE over this fresh link. Dropping the iterator here made
@@ -653,6 +659,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .map(|l| (l.target, l.negated))
             .collect();
         for (super_role, inversed) in super_links {
+            // createNewIndividualsLinksReapplyed applies EACH super-role's own
+            // domain/range at its per-super-role install (cpp 22303–22334): a
+            // non-inverted super S puts the S-edge as (source, destination), an
+            // inverted super as (destination, source).
+            if super_role != role {
+                let (u, v) = if inversed { (destination, source) } else { (source, destination) };
+                self.ht_apply_role_domain_range(super_role, u, v, dep_track_point, calc_alg_context);
+            }
             let (holder, skip) = if inversed {
                 (destination, false)
             } else {
@@ -714,6 +728,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .conn_succ_set_mut(conn)
                     .insert_connection_successor(dest_id);
             }
+            // the inverse edge (destination, source) carries inv(R)'s own
+            // domain/range (cpp invRole arm, 22326–22334).
+            self.ht_apply_role_domain_range(
+                inv_role,
+                destination,
+                source,
+                dep_track_point,
+                calc_alg_context,
+            );
             self.apply_reapply_queue_concepts_restricted(
                 destination,
                 inv_reapply_it,
@@ -722,6 +745,54 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         }
         link
+    }
+
+    /// Port of the domain/range application inside `createNewIndividualsLink*`
+    /// (cpp 22303–22334 / 22382–22395): for an installed `role`-edge `(u, v)`,
+    /// add `role.range_linker` concepts to `v` and `role.domain_linker` concepts
+    /// to `u` via `addConceptsToIndividual(…, allowPreprocessing=false,
+    /// allowInitialization=false, nullptr, …)`.
+    pub fn ht_apply_role_domain_range(
+        &mut self,
+        role: RoleId,
+        u: NodeId,
+        v: NodeId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let (domain, range) = {
+            let r = calc_alg_context.ontology_arenas().role(role);
+            if r.domain_linker.is_empty() && r.range_linker.is_empty() {
+                return;
+            }
+            (r.domain_linker.clone(), r.range_linker.clone())
+        };
+        if !range.is_empty() {
+            let mut dest = v;
+            self.add_concepts_to_individual(
+                &range,
+                false,
+                &mut dest,
+                dep_track_point,
+                false,
+                false,
+                None,
+                calc_alg_context,
+            );
+        }
+        if !domain.is_empty() {
+            let mut src = u;
+            self.add_concepts_to_individual(
+                &domain,
+                false,
+                &mut src,
+                dep_track_point,
+                false,
+                false,
+                None,
+                calc_alg_context,
+            );
+        }
     }
 
     /// Edge-triggered ∀ re-application: push the positive `role`-`∀`-restrictions

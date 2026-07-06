@@ -138,8 +138,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // disjunct; the loop then re-drives. When no open branch remains the clash is
         // genuine ⇒ INCONSISTENT. (Konclude does this with per-alternative task forks +
         // `clashedBacktracking`; see the `OrBranchPoint` KONCLUDE-PORT-NOTE.)
+        let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        let mut drives: u64 = 0;
         loop {
             self.run_saturation_loop(calc_alg_context);
+            drives += 1;
+            if progress && drives % 4096 == 0 {
+                eprintln!(
+                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={}",
+                    self.or_backtrack_count,
+                    calc_alg_context.process_context().node_count(),
+                    self.stat_con_des_insertion_count,
+                    self.or_branch_stack.len(),
+                );
+            }
             if !calc_alg_context.has_pending_signal() {
                 // fixpoint reached, no clash ⇒ consistent / complete.
                 return true;
@@ -282,13 +294,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // normal operation it is never reached. On overrun we raise a stop (the drive ends
         // "not consistent" rather than silently claiming consistency).
         const MAX_DRIVE_ITERATIONS: u64 = 5_000_000;
+        let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
         let mut drive_iters: u64 = 0;
+        macro_rules! drive_progress {
+            () => {
+                if progress && drive_iters % 1_000_000 == 0 {
+                    eprintln!(
+                        "PROGRESS-SAT iters={drive_iters} nodes={} inserts={}",
+                        calc_alg_context.process_context().node_count(),
+                        self.stat_con_des_insertion_count,
+                    );
+                }
+            };
+        }
         let mut indi_proc_node: NodeId = self.take_next_process_individual(calc_alg_context);
         if calc_alg_context.has_pending_signal() {
             return;
         }
         while indi_proc_node.is_some() {
             drive_iters += 1;
+            drive_progress!();
             if drive_iters > MAX_DRIVE_ITERATIONS {
                 calc_alg_context.raise_stop(false);
                 return;
@@ -305,6 +330,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
                 while continue_processing_individual {
                     drive_iters += 1;
+                    drive_progress!();
                     if drive_iters > MAX_DRIVE_ITERATIONS {
                         calc_alg_context.raise_stop(false);
                         return;

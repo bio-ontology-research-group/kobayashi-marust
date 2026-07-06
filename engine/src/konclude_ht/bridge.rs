@@ -146,6 +146,32 @@ impl<'a> Builder<'a> {
         c.set_operand_count(0);
         self.ctx.ontology_arenas_mut().alloc_concept(c)
     }
+    /// Qualified `≤n R.C` — `CCATMOST` with parameter `n` and qualifier
+    /// operand `C` (the at-most merge counts only `C`-successors).
+    fn atmost_q(&mut self, role: RoleId, n: Cint64, filler: (ConceptId, bool)) -> ConceptId {
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role);
+        c.set_parameter(n);
+        c.add_operand_linker(filler.0, filler.1);
+        c.set_operand_count(1);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
+    /// Qualified `≥n R.C` — `CCATLEAST` with parameter `n` and qualifier
+    /// operand `C` (creates `n` pairwise-distinct `C`-successors).
+    fn atleast_q(&mut self, role: RoleId, n: Cint64, filler: (ConceptId, bool)) -> ConceptId {
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role);
+        c.set_parameter(n);
+        c.add_operand_linker(filler.0, filler.1);
+        c.set_operand_count(1);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
     /// `CCIMPL[ head, triggers… ]` — fires `head` once every trigger concept
     /// is present with the OPPOSITE polarity of its linker (see
     /// `apply_implication_rule`): a positive body atom becomes a NEGATED
@@ -240,8 +266,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             dumped += 1;
         }
     };
-    // Structures outside the v1 clause encoder count as unsupported input.
-    unsupported += tin.card_defs.len() + tin.nominals.len() + tin.chains.len();
+    // Structures outside the v1 clause encoder count as unsupported input
+    // (card_defs are ENCODED below — first-class ≥n/≤n via the ported
+    // CCATLEAST/CCATMOST rules — so they are no longer counted here).
+    unsupported += tin.nominals.len() + tin.chains.len();
     // Inverse roles are not wired in the v1 bridge (the model supports them;
     // the TInput role-pair plumbing is a later wave) — an ontology carrying
     // them is under-constrained when bridged, so surface that.
@@ -254,7 +282,16 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // role linkers on the sub-role — the exact structure the ∀/edge rules and
     // the u08 hierarchy-resolved edge reapply consume (see the
     // `role_hierarchy_forall` selftest and CSubroleTransformationPreProcess).
-    let mut sub_super: Vec<Vec<usize>> = vec![Vec::new(); tin.roles.len()];
+    // The closure runs over BOTH polarities (vertex = 2·role + inverted): a
+    // plain `R ⊑ S` also yields `R⁻ ⊑ S⁻` (needed by the mirror inverse-edge
+    // installs), and an inverse-hierarchy clause `R(x,y) → S(y,x)` (`R ⊑ S⁻`,
+    // the clausal InverseObjectProperties half) crosses polarity. All entries
+    // are installed with negated=false against the CONCRETE role object
+    // (`roles[·]` / `inv_roles[·]`) — `has_indirect_super_role` (the u08
+    // ∀-matcher) ignores the negated flag, so polarity must be resolved to
+    // distinct role objects, never encoded in the flag.
+    let n_r = tin.roles.len();
+    let mut sub_super: Vec<Vec<usize>> = vec![Vec::new(); 2 * n_r];
     let is_hierarchy = |cl: &HtClause| -> Option<(usize, usize)> {
         if cl.body.len() != 1 || cl.head.len() != 1 {
             return None;
@@ -268,12 +305,30 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         }
         None
     };
+    // `R(x,y) → S(y,x)` — `R ⊑ S⁻`; `sr == hr` allowed (a symmetric role).
+    let is_inv_hierarchy = |cl: &HtClause| -> Option<(usize, usize)> {
+        if cl.body.len() != 1 || cl.head.len() != 1 {
+            return None;
+        }
+        if let (HAtom::Role { r: sr, s: ss, t: st }, HAtom::Role { r: hr, s: hs, t: ht }) =
+            (&cl.body[0], &cl.head[0])
+        {
+            if ss == ht && st == hs && ss != st {
+                return Some((*sr, *hr));
+            }
+        }
+        None
+    };
     for cl in &tin.clauses {
         if let Some((sub, sup)) = is_hierarchy(cl) {
-            sub_super[sub].push(sup);
+            sub_super[2 * sub].push(2 * sup);
+            sub_super[2 * sub + 1].push(2 * sup + 1);
+        } else if let Some((sub, sup)) = is_inv_hierarchy(cl) {
+            sub_super[2 * sub].push(2 * sup + 1);
+            sub_super[2 * sub + 1].push(2 * sup);
         }
     }
-    // transitive closure per sub-role (small role counts; DFS per role)
+    // transitive closure per (role, polarity) vertex (small role counts; DFS)
     for sub in 0..sub_super.len() {
         let mut seen: BTreeSet<usize> = BTreeSet::new();
         let mut stack: Vec<usize> = sub_super[sub].clone();
@@ -282,13 +337,15 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 stack.extend(sub_super[s].iter().copied());
             }
         }
+        let sub_obj = if sub % 2 == 0 { roles[sub / 2] } else { inv_roles[sub / 2] };
         for s in seen {
+            let sup_obj = if s % 2 == 0 { roles[s / 2] } else { inv_roles[s / 2] };
             b.ctx
                 .ontology_arenas_mut()
-                .role_mut(roles[sub])
+                .role_mut(sub_obj)
                 .add_indirect_super_role_linker(
                     super::model::substrate::NegLink {
-                        target: roles[s],
+                        target: sup_obj,
                         negated: false,
                     },
                 );
@@ -331,8 +388,8 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     }
 
     'clause: for cl in &tin.clauses {
-        // hierarchy clauses were consumed by pass 1
-        if is_hierarchy(cl).is_some() {
+        // hierarchy clauses (plain + inverse) were consumed by pass 1
+        if is_hierarchy(cl).is_some() || is_inv_hierarchy(cl).is_some() {
             continue;
         }
         // functional clauses were consumed by pass 2
@@ -501,10 +558,37 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     Some(&(host, _)) => absorbed_pairs.push((host, imp)),
                     None => top_gcis.push(imp),
                 }
+            } else if head_y.is_empty() && !head_x.is_empty() {
+                // ---- domain axiom `R(x,y) → C(x) [∨ D(x) …]` ----------------
+                // Konclude stores these on the role (CRole::domainLinker) and
+                // applies them at every link install
+                // (createNewIndividualsLink* cpp 22382–22395, ported in u08
+                // ht_apply_role_domain_range) — node-count-independent, no
+                // covering disjunction needed.
+                let (c, neg) = b.or_of(&head_x);
+                let nl = super::model::substrate::NegLink { target: c, negated: neg };
+                b.ctx.ontology_arenas_mut().role_mut(roles[r]).domain_linker.push(nl);
+                // domain(R) = range(R⁻): keep the inverse object consistent so
+                // whichever edge direction is installed applies the concept.
+                b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).range_linker.push(nl);
+            } else if head_x.is_empty() && !head_y.is_empty() {
+                // ---- range axiom `R(x,y) → C(y) [∨ D(y) …]` -----------------
+                let (c, neg) = b.or_of(&head_y);
+                let nl = super::model::substrate::NegLink { target: c, negated: neg };
+                b.ctx.ontology_arenas_mut().role_mut(roles[r]).range_linker.push(nl);
+                b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).domain_linker.push(nl);
+            } else if head_x.is_empty() && head_y.is_empty() {
+                // ---- `R(x,y) → ⊥` (empty role): domain ⊥ — any R-edge
+                // immediately clashes its source, exactly the axiom's force.
+                let bot = b.bottom();
+                let nl = super::model::substrate::NegLink { target: bot, negated: false };
+                b.ctx.ontology_arenas_mut().role_mut(roles[r]).domain_linker.push(nl);
+                b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).range_linker.push(nl);
             } else {
-                // no concept trigger on either side (`⊤ ⊑ …` over an edge) —
-                // out of the v1 fragment (needs the covering-disjunction
-                // machinery Konclude gets from absorption + branch triggers).
+                // mixed x/y disjunctive head over an edge with no concept
+                // trigger (`R(x,y) → C(x) ∨ D(y)`) — out of the v1 fragment
+                // (needs the covering-disjunction machinery Konclude gets from
+                // absorption + branch triggers).
                 unsupported += 1;
                 dump(cl, "edge-no-concept-trigger");
             }
@@ -529,6 +613,23 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     for &a in &atmost_concepts {
         tbox.push(a);
         top_gcis.push(a);
+    }
+
+    // ---- first-class number restrictions (KM_HT_CARD `card_defs`) ----------
+    // `marker ⊑ ≥n role.filler` / `marker ⊑ ≤n role.filler`, resolved to the
+    // ported CCATLEAST / (qualified) CCATMOST concepts and hung off the
+    // marker's absorption (CCSUB → AND rule asserts the restriction exactly
+    // on marker-labelled nodes). The clausal `⋁ eq` pigeonhole for each
+    // marker was already dropped by `cb_to_ht::convert(card_enabled=true)`.
+    for cd in &tin.card_defs {
+        let filler = (named[cd.filler], false);
+        let c = if cd.min {
+            b.atleast_q(roles[cd.role], cd.n as Cint64, filler)
+        } else {
+            b.atmost_q(roles[cd.role], cd.n as Cint64, filler)
+        };
+        tbox.push(c);
+        absorbed_pairs.push((named[cd.marker], c));
     }
 
     // ---- attachment pass: absorption wiring (Konclude's CCSUB mechanism) ---
@@ -1145,7 +1246,7 @@ mod tests {
             None,
             &named,
             &fr.cardinalities,
-            false,
+            true,
             &fr.rules,
             false,
         );
@@ -1393,7 +1494,7 @@ mod tests {
             None,
             &named_set,
             &fr.cardinalities,
-            false,
+            true,
             &fr.rules,
             false,
         );
@@ -1689,7 +1790,7 @@ mod tests {
         let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
         let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let tin = crate::orchestrate::cb_to_ht::convert(
-            &fr.clauses, None, &named_set, &fr.cardinalities, false, &fr.rules, false,
+            &fr.clauses, None, &named_set, &fr.cardinalities, true, &fr.rules, false,
         );
         let n_named = tin.concepts.len();
 
@@ -1749,7 +1850,47 @@ mod tests {
                         }
                     }
                 }
-                None => nondet += 1,
+                None => {
+                    // Non-deterministic saturation: the one-model read-off is
+                    // not authoritative. Fall back to PAIRWISE probes over the
+                    // candidate targets — `unsat(s ⊓ ¬sup)` proves `s ⊑ sup`
+                    // under ANY branch discipline (Konclude's own
+                    // subsumption-test shape), O(candidates) per subject
+                    // instead of O(1).
+                    nondet += 1;
+                    for &sup in &subjects {
+                        if sup == s {
+                            continue;
+                        }
+                        let mut algo3 = CompletionTaskHandleAlgorithm::new();
+                        configure_default_blocking(&mut algo3);
+                        let mut ctx3 = CalculationAlgorithmContextBase::new();
+                        ctx3.base.used_concept_priority_strategy =
+                            Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+                        let top3 = {
+                            let mut c = Concept::new();
+                            c.set_concept_tag(1);
+                            c.set_operator_code(op::CCTOP);
+                            ctx3.ontology_arenas_mut().alloc_concept(c)
+                        };
+                        ctx3.processing_data_box_mut().ontology_top_concept = top3;
+                        let bridged3 = bridge_tinput(&mut ctx3, &tin);
+                        let mut n3 = 0i64;
+                        if bridged_unsat(
+                            &mut algo3,
+                            &mut ctx3,
+                            &bridged3,
+                            &mut n3,
+                            &[(bridged3.named[s], false), (bridged3.named[sup], true)],
+                        ) == Some(true)
+                        {
+                            derived.insert((
+                                tin.concepts[s].clone(),
+                                tin.concepts[sup].clone(),
+                            ));
+                        }
+                    }
+                }
             }
         }
         let elapsed = t0.elapsed();
@@ -1802,7 +1943,7 @@ mod tests {
             None,
             &named,
             &fr.cardinalities,
-            false,
+            true,
             &fr.rules,
             false,
         );
