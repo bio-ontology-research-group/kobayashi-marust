@@ -601,6 +601,117 @@ pub fn bridged_unsat(
     Some(false)
 }
 
+/// Model READ-OFF classification of one named concept.
+///
+/// Saturates `{named[subject]}` on a fresh root and reads the root label's
+/// positive NAMED tags as `subject`'s subsumers — O(1) saturation per
+/// concept instead of O(concepts) pairwise probes. VALID only when the
+/// saturation is deterministic (`or_backtrack_count` unchanged): one
+/// canonical model then captures every consequence, so a named concept in
+/// the label IS a subsumer (Horn/EL read-off). On a NON-deterministic
+/// subject the single branch is not authoritative — the caller must fall
+/// back to pairwise `bridged_unsat` probes over the candidate set.
+///
+/// Returns `Some(subsumer_indices)` on a deterministic saturation (indices
+/// into `bridged.named`, INCLUDING `subject` itself), `None` if the drive
+/// STOPped or backtracked (read-off not authoritative). A clash means the
+/// subject is unsatisfiable — every concept subsumes it — reported as the
+/// full index range.
+pub fn bridged_classify_subject(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    next_indi_id: &mut i64,
+    subject: usize,
+    n_named: usize,
+) -> Option<Vec<usize>> {
+    ctx.clear_pending_signal();
+    algo.or_branch_stack.clear();
+
+    let id = *next_indi_id;
+    *next_indi_id += 1;
+    let mut root = ctx
+        .process_context_mut()
+        .alloc_node(IndividualProcessNode::new(Id::NONE));
+    ctx.process_context_mut()
+        .node_mut(root)
+        .set_individual_node_id(id);
+    ctx.processing_data_box_mut()
+        .individual_process_node_vector_mut()
+        .set_local_data(id, root);
+
+    algo.add_concept_to_individual(
+        bridged.named[subject],
+        false,
+        &mut root,
+        TrackPointId::NONE,
+        false,
+        true,
+        ctx,
+    );
+    if ctx.has_pending_signal() {
+        // seed alone clashed ⇒ subject unsatisfiable
+        return Some((0..n_named).collect());
+    }
+
+    let backtracks_before = algo.or_backtrack_count;
+    let mut prev_count: i64 = -1;
+    for _ in 0..256 {
+        for &g in &bridged.tbox {
+            seed_concept_on_queue(ctx, root, g);
+        }
+        let iq = ctx.get_individual_immediately_processing_queue(true);
+        ctx.process_context_mut()
+            .indi_unsorted_proc_queue_mut(iq)
+            .insert_indiviudal_process_node(root);
+        let consistent = algo.run_completion_on(ctx);
+        if !consistent {
+            return match ctx.pending_signal() {
+                super::completion::clash::CalcSignal::Clash(_) => {
+                    Some((0..n_named).collect())
+                }
+                _ => None, // STOP: not authoritative
+            };
+        }
+        let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
+        let count = ctx.process_context().label_set(ls).get_concept_count();
+        if count == prev_count {
+            break;
+        }
+        prev_count = count;
+    }
+    // Non-deterministic saturation ⇒ single branch is not authoritative.
+    if algo.or_backtrack_count != backtracks_before {
+        return None;
+    }
+
+    // Read off positive named tags from the root label.
+    let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
+    let mut subsumers: Vec<usize> = Vec::new();
+    let entries: Vec<(Cint64, super::process::ConDescId)> = ctx
+        .process_context()
+        .label_set(ls)
+        .concept_des_dep_map
+        .iter()
+        .map(|(tag, data)| (*tag, data.concept_descriptor))
+        .collect();
+    for (tag, cd) in entries {
+        if tag < TAG_BASE || tag >= TAG_BASE + n_named as Cint64 {
+            continue;
+        }
+        if cd.is_none() {
+            continue;
+        }
+        if ctx.process_context().con_desc(cd).is_negated() {
+            continue;
+        }
+        subsumers.push((tag - TAG_BASE) as usize);
+    }
+    subsumers.sort_unstable();
+    subsumers.dedup();
+    Some(subsumers)
+}
+
 // ---------------------------------------------------------------------------
 // Tests: ofn text → frontend → cb_to_ht::convert → bridge → verdicts.
 // ---------------------------------------------------------------------------
@@ -1047,6 +1158,134 @@ mod tests {
         if env.unsupported == 0 {
             assert_eq!(spurious, 0, "clash verdicts must be sound");
         }
+    }
+
+    /// FULL model-read-off classification vs gold: saturate every named
+    /// subject ONCE (`bridged_classify_subject`) and read its subsumers off
+    /// the root label — O(concepts) saturations, the feasible classification
+    /// path (naive pairwise on 1016 = ~2500² probes). Compares the WHOLE
+    /// derived named-subsumption relation to the `km classify` gold
+    /// (`KM_BRIDGE_GOLD`), reporting missing (incomplete) / spurious
+    /// (unsound) / non-deterministic-subject counts. Diagnostic.
+    #[test]
+    #[ignore]
+    fn bridge_classify_full() {
+        let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
+        let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
+        let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
+        let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
+        let local = |iri: &str| -> String {
+            iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string()
+        };
+        let mut gold_pairs: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
+            let sub = local(pair[0].as_str().unwrap());
+            let sup = local(pair[1].as_str().unwrap());
+            gold_universe.insert(sub.clone());
+            gold_universe.insert(sup.clone());
+            gold_pairs.insert((sub, sup));
+        }
+
+        let text = std::fs::read_to_string(&path).expect("readable ontology");
+        let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
+        let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses, None, &named_set, &fr.cardinalities, false, &fr.rules, false,
+        );
+        let n_named = tin.concepts.len();
+
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        configure_default_blocking(&mut algo);
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        ctx.base.used_concept_priority_strategy =
+            Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+        let top = {
+            let mut c = Concept::new();
+            c.set_concept_tag(1);
+            c.set_operator_code(op::CCTOP);
+            ctx.ontology_arenas_mut().alloc_concept(c)
+        };
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+        let bridged = bridge_tinput(&mut ctx, &tin);
+
+        // subjects = gold-known, in-fragment named concepts.
+        let subjects: Vec<usize> = (0..n_named)
+            .filter(|&i| gold_universe.contains(&tin.concepts[i]))
+            .collect();
+
+        let mut derived: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        let mut nondet = 0usize;
+        let mut next = 0i64;
+        let t0 = std::time::Instant::now();
+        for &s in &subjects {
+            // fresh ctx per subject (per-probe isolation; the databox-COW
+            // reuse is the next wave). Rebuild is O(TBox).
+            let mut algo2 = CompletionTaskHandleAlgorithm::new();
+            configure_default_blocking(&mut algo2);
+            let mut ctx2 = CalculationAlgorithmContextBase::new();
+            ctx2.base.used_concept_priority_strategy =
+                Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+            let top2 = {
+                let mut c = Concept::new();
+                c.set_concept_tag(1);
+                c.set_operator_code(op::CCTOP);
+                ctx2.ontology_arenas_mut().alloc_concept(c)
+            };
+            ctx2.processing_data_box_mut().ontology_top_concept = top2;
+            let bridged2 = bridge_tinput(&mut ctx2, &tin);
+            let mut n2 = 0i64;
+            match bridged_classify_subject(&mut algo2, &mut ctx2, &bridged2, &mut n2, s, n_named) {
+                Some(subs) => {
+                    for sup in subs {
+                        if sup == s {
+                            continue;
+                        }
+                        // only named-vs-named, gold-known targets
+                        if gold_universe.contains(&tin.concepts[sup]) {
+                            derived.insert((
+                                tin.concepts[s].clone(),
+                                tin.concepts[sup].clone(),
+                            ));
+                        }
+                    }
+                }
+                None => nondet += 1,
+            }
+        }
+        let elapsed = t0.elapsed();
+        let _ = (&algo, &bridged, &mut next);
+
+        // restrict gold to the same subject/target universe we classified.
+        let subj_names: std::collections::HashSet<String> =
+            subjects.iter().map(|&i| tin.concepts[i].clone()).collect();
+        let gold_restricted: std::collections::HashSet<(String, String)> = gold_pairs
+            .iter()
+            .filter(|(sub, sup)| subj_names.contains(sub) && gold_universe.contains(sup))
+            .cloned()
+            .collect();
+        let missing: Vec<_> = gold_restricted.difference(&derived).take(20).collect();
+        let spurious: Vec<_> = derived.difference(&gold_restricted).take(20).collect();
+        for m in &missing {
+            eprintln!("MISSING (incomplete): {} ⊑ {}", m.0, m.1);
+        }
+        for sp in &spurious {
+            eprintln!("SPURIOUS (unsound): {} ⊑ {}", sp.0, sp.1);
+        }
+        eprintln!(
+            "BRIDGE-CLASSIFY {path}: subjects={} nondet={} derived={} gold={} \
+             missing={} spurious={} elapsed={:.1}s unsupported={}",
+            subjects.len(),
+            nondet,
+            derived.len(),
+            gold_restricted.len(),
+            gold_restricted.difference(&derived).count(),
+            derived.difference(&gold_restricted).count(),
+            elapsed.as_secs_f64(),
+            bridged.unsupported,
+        );
     }
 
     /// Fragment-coverage report on a REAL ontology: set `KM_BRIDGE_ONT` to an
