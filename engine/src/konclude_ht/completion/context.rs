@@ -43,7 +43,7 @@ use super::super::process::representative::{
     RepresentativeVariableBindingPathJoiningKeyHashId, RepresentativeVariableBindingPathSetHash,
     RepresentativeVariableBindingPathSetHashId,
 };
-use super::super::process::{BranchNodeId, DependencyId, NodeId};
+use super::super::process::{BranchNodeId, DependencyId, NodeId, TrackPointId};
 use super::super::task::adapters::{
     IndividualDependenceTrackingCollector, IndividualDependenceTrackingCollectorId,
     IndividualDependenceTrackingMarker, IndividualDependenceTrackingMarkerId,
@@ -856,6 +856,13 @@ pub struct CalculationAlgorithmContextBase {
     pub branch_tree_node: BranchNodeId,
     /// `CDependencyNode* mBaseDepNode`.
     pub base_dep_node: DependencyId,
+    /// Port-owned cache: a deterministic track point on the branching tree's
+    /// INDEPENDENT base dependency node, lazily materialized by
+    /// [`Self::get_or_create_base_dependency_track_point`]. Konclude
+    /// semantics: with dependency building ON nothing is untracked — an
+    /// untracked clash descriptor is a tracking ERROR that aborts the whole
+    /// `clashedBacktracking` analysis.
+    pub base_independent_track_point: TrackPointId,
     /// `CIndividualNodeManager* mIndiNodeManager`.
     pub indi_node_manager: Id<IndividualNodeManager>,
     /// `CUnsatisfiableCacheHandler* mUnsatCacheHandler`.
@@ -908,6 +915,7 @@ impl CalculationAlgorithmContextBase {
             proc_stat_gath: Id::NONE,
             branch_tree_node: Id::NONE,
             base_dep_node: Id::NONE,
+            base_independent_track_point: Id::NONE,
             indi_node_manager: Id::NONE,
             unsat_cache_handler: Id::NONE,
             clash_descriptor_factory: Id::NONE,
@@ -1119,6 +1127,36 @@ impl CalculationAlgorithmContextBase {
         let b = &mut self.base;
         b.used_process_context
             .processing_data_box_branching_tree(&mut b.used_processing_data_box, create)
+    }
+
+    /// Lazily materialize the branching tree's INDEPENDENT base dependency
+    /// node and return a (cached) deterministic track point on it.
+    ///
+    /// Konclude semantics: when dependency building is ON, nothing is ever
+    /// untracked — base/seeded concept insertions carry the independent base
+    /// dependency. An untracked clash descriptor is a tracking ERROR that
+    /// aborts the whole `clashedBacktracking` analysis (measured on
+    /// ore_ont_541: every clash closure carried one untracked seed partner,
+    /// so no clash was ever analyzed and DDB never fired).
+    pub fn get_or_create_base_dependency_track_point(&mut self) -> TrackPointId {
+        if self.base_independent_track_point.is_some() {
+            return self.base_independent_track_point;
+        }
+        let tree = self.branching_tree(true);
+        let (dep, tp) = {
+            let b = &mut self.base;
+            let dep = b
+                .used_process_context
+                .branching_tree_base_dependency_node(tree, true);
+            let tp = b
+                .used_process_context
+                .materialize_continue_dependency_track_point(dep);
+            (dep, tp)
+        };
+        self.base_dep_node = dep;
+        self.base.used_base_dep_node = dep;
+        self.base_independent_track_point = tp;
+        tp
     }
 
     /// Context-threaded port of

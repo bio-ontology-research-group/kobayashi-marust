@@ -659,6 +659,21 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: clashes where the analysis marked NO open branch
     /// point (chronological fallback taken).
     pub ddb_fallback_count: u64,
+    /// DDB diagnostics: `set_clashes` markings performed by the analysis.
+    pub ddb_mark_count: u64,
+    /// Advances where the snapshot restore was SKIPPED (successor nodes were
+    /// created since the push, so the single-node snapshot cannot restore the
+    /// graph). While this is non-zero the labels may carry branch-dependent
+    /// leftovers, so the DDB pop-unmarked backjump is DISABLED (a clash
+    /// involving leftovers would implicate stale track points and the
+    /// level-ordering argument no longer covers the open branch points).
+    /// Root-level cancellation stays trustworthy: a leftover descriptor
+    /// carries its ORIGINAL non-deterministic tag, so it cannot appear in a
+    /// branching-level-0 closure.
+    pub unrestored_advance_count: u64,
+    /// DDB diagnostics: clash-closure dumps emitted so far (first few
+    /// analyses under KM_BRIDGE_PROGRESS).
+    pub ddb_analysis_dumps: u64,
 }
 
 impl CompletionTaskHandleAlgorithm {
@@ -1053,6 +1068,9 @@ impl CompletionTaskHandleAlgorithm {
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,
+            ddb_mark_count: 0,
+            ddb_analysis_dumps: 0,
+            unrestored_advance_count: 0,
         }
     }
 

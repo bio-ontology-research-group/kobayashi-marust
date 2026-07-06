@@ -29,7 +29,7 @@
 //!   - everything else (multiple role atoms, head role atoms / role
 //!     hierarchy, `Eq`, body `Exist`, nominals, card_defs, chains) counts as
 //!     unsupported in v1.
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use super::completion::algorithm::CompletionTaskHandleAlgorithm;
 use super::completion::context::CalculationAlgorithmContextBase;
@@ -413,6 +413,128 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             dump(cl, "body-eq-or-exist");
             continue 'clause;
         }
+        // ---- ≥k-recognition: guards(0) ∧ C(t_i) ∧ R(0,t_i) → D(0)… ∨ all-pairs eq ----
+        // `⋀guards ⊓ ≥k R.C ⊑ ⋁D` ⟺ `implication(guards → ⋁D ∨ ≤(k−1) R.C)`:
+        // k pairwise-distinct R.C-successors force some D, and the ≤(k−1)
+        // qualified at-most (the ported CCATMOST merge rule) carries the
+        // eq-head semantics exactly — so the clause is CONSUMED, not
+        // unsupported. A shared-TARGET orientation (`R(t_i,0)`, e.g. inverse-
+        // functional) encodes on the concrete inverse-role object.
+        //
+        // KM_HT_BRIDGE_RECOG (opt-in): measured on ore_ont_12653, enabling
+        // this arm produced 3 spurious subsumptions onto `Path` (the ≤(k−1)
+        // disjunct's qualified merge appears to over-clash, suspect: the
+        // atleast-created successors' distinctness vs the qualifier check in
+        // the merge). Until that is root-caused against gold, the arm stays
+        // OFF and such clauses count unsupported (the production driver then
+        // correctly DECLINES rather than answer unsoundly).
+        if !body_roles.is_empty()
+            && cl.head.iter().any(|a| matches!(a, HAtom::Eq { .. }))
+            && std::env::var_os("KM_HT_BRIDGE_RECOG").is_some()
+        {
+            let recog = (|| -> Option<(RoleId, usize, Option<usize>, Vec<(usize, bool)>, Vec<usize>, usize)> {
+                let r0 = body_roles[0].0;
+                if body_roles.iter().any(|&(r, _, _)| r != r0) {
+                    return None;
+                }
+                // orientation: all roles share the source var (hub) or all
+                // share the target var (inverse orientation).
+                let (role_obj, hub, mut targets): (RoleId, usize, Vec<usize>) =
+                    if body_roles.iter().all(|&(_, s, _)| s == body_roles[0].1) {
+                        (roles[r0], body_roles[0].1, body_roles.iter().map(|&(_, _, t)| t).collect())
+                    } else if body_roles.iter().all(|&(_, _, t)| t == body_roles[0].2) {
+                        (inv_roles[r0], body_roles[0].2, body_roles.iter().map(|&(_, s, _)| s).collect())
+                    } else {
+                        return None;
+                    };
+                targets.sort_unstable();
+                let k = targets.len();
+                if k < 2 {
+                    return None;
+                }
+                targets.dedup();
+                if targets.len() != k || targets.contains(&hub) {
+                    return None;
+                }
+                let mut guards: Vec<(usize, bool)> = Vec::new();
+                let mut per_target: HashMap<usize, Vec<usize>> = HashMap::new();
+                for a in &cl.body {
+                    if let HAtom::Concept { neg, c, t } = a {
+                        if *t == hub {
+                            guards.push((*c, *neg));
+                        } else if targets.binary_search(t).is_ok() {
+                            if *neg {
+                                return None;
+                            }
+                            per_target.entry(*t).or_default().push(*c);
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+                // the qualifier: the SAME (≤1-element) positive concept list
+                // on every successor variable.
+                let mut qual: Option<Vec<usize>> = None;
+                for t in &targets {
+                    let mut v = per_target.remove(t).unwrap_or_default();
+                    v.sort_unstable();
+                    match &qual {
+                        None => qual = Some(v),
+                        Some(q) if *q == v => {}
+                        _ => return None,
+                    }
+                }
+                let qual = qual.unwrap_or_default();
+                if qual.len() > 1 {
+                    return None;
+                }
+                let mut heads: Vec<usize> = Vec::new();
+                let mut eqs: BTreeSet<(usize, usize)> = BTreeSet::new();
+                for a in &cl.head {
+                    match a {
+                        HAtom::Concept { neg, c, t } => {
+                            if *neg || *t != hub {
+                                return None;
+                            }
+                            heads.push(*c);
+                        }
+                        HAtom::Eq { s, t } => {
+                            eqs.insert((*s.min(t), *s.max(t)));
+                        }
+                        _ => return None,
+                    }
+                }
+                let mut want: BTreeSet<(usize, usize)> = BTreeSet::new();
+                for i in 0..k {
+                    for j in (i + 1)..k {
+                        want.insert((targets[i], targets[j]));
+                    }
+                }
+                if eqs != want {
+                    return None;
+                }
+                Some((role_obj, k, qual.first().copied(), guards, heads, r0))
+            })();
+            if let Some((role_obj, k, qual, guards, heads, _r0)) = recog {
+                let am = match qual {
+                    Some(c) => b.atmost_q(role_obj, (k - 1) as Cint64, (named[c], false)),
+                    None => b.atmost(role_obj, (k - 1) as Cint64),
+                };
+                let mut head_ops: Vec<(ConceptId, bool)> =
+                    heads.iter().map(|&c| (named[c], false)).collect();
+                head_ops.push((am, false));
+                let head = b.or_of(&head_ops);
+                let triggers: Vec<(ConceptId, bool)> =
+                    guards.iter().map(|&(c, n)| (named[c], n)).collect();
+                let imp = b.implication(head, &triggers);
+                tbox.push(imp);
+                match triggers.iter().find(|&&(_, neg)| !neg) {
+                    Some(&(host, _)) => absorbed_pairs.push((host, imp)),
+                    None => top_gcis.push(imp),
+                }
+                continue 'clause;
+            }
+        }
         if cl.head.iter().any(|a| matches!(a, HAtom::Role { .. } | HAtom::Eq { .. })) {
             unsupported += 1;
             dump(cl, "head-role-or-eq");
@@ -711,7 +833,11 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
         // SemanticBranching=false, AtomicSemanticBranching=true — a new
         // alternative asserts the negation of every previously refuted ATOMIC
         // disjunct, so sibling subtrees cannot re-explore failed disjuncts.
-        algo.conf_atomic_semantic_branching = true;
+        // KM_HT_NO_SEMB: diagnostic opt-out to isolate its effect on the
+        // search shape (541: node growth appeared with semb on).
+        if std::env::var_os("KM_HT_NO_SEMB").is_none() {
+            algo.conf_atomic_semantic_branching = true;
+        }
     }
     // KM_BRIDGE_NO_BLOCKING: diagnostic knob — run the probe with blocking OFF
     // (∃-cycles then hit the drive cap ⇒ Stop/None). If a verdict that flips
@@ -733,16 +859,25 @@ fn seed_concept_on_queue(
     root: NodeId,
     concept: ConceptId,
 ) {
+    // TBox seeds carry the INDEPENDENT base dependency track point (Konclude:
+    // base assertions are never untracked; an untracked descriptor is a
+    // tracking ERROR that aborts the whole clashedBacktracking analysis).
+    let base_tp = ctx.get_or_create_base_dependency_track_point();
     let queue = ctx
         .process_context_mut()
         .node_concept_processing_queue(root, true);
     let con_des = ctx
         .process_context_mut()
         .alloc_con_desc(ConceptDescriptor::new());
-    ctx.process_context_mut().con_desc_mut(con_des).concept = concept;
+    {
+        let cd = ctx.process_context_mut().con_desc_mut(con_des);
+        cd.concept = concept;
+        cd.dep_track_point = base_tp;
+    }
     let mut cpd_val = ConceptProcessDescriptor::new();
     cpd_val.concept_des = con_des;
     cpd_val.priority = ConceptProcessPriority::new(8.0);
+    cpd_val.dep_track_point = base_tp;
     let cpd = ctx.process_context_mut().alloc_con_proc_desc(cpd_val);
     ConceptProcessingQueue::insert_concept_process_descriptor(
         queue,
@@ -785,16 +920,11 @@ pub fn bridged_unsat(
         .individual_process_node_vector_mut()
         .set_local_data(id, root);
 
+    // Probe seeds are BASE assertions — track them on the independent base
+    // dependency (a NONE would read as an unported rule path downstream).
+    let seed_tp = ctx.get_or_create_base_dependency_track_point();
     for &(concept, negated) in seeds {
-        algo.add_concept_to_individual(
-            concept,
-            negated,
-            &mut root,
-            TrackPointId::NONE,
-            false,
-            true,
-            ctx,
-        );
+        algo.add_concept_to_individual(concept, negated, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
             return Some(true);
         }
@@ -1157,11 +1287,13 @@ pub fn bridged_classify_subject(
         .individual_process_node_vector_mut()
         .set_local_data(id, root);
 
+    // The subject seed is a BASE assertion — independent base dependency.
+    let seed_tp = ctx.get_or_create_base_dependency_track_point();
     algo.add_concept_to_individual(
         bridged.named[subject],
         false,
         &mut root,
-        TrackPointId::NONE,
+        seed_tp,
         false,
         true,
         ctx,

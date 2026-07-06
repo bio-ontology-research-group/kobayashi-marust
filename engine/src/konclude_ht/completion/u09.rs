@@ -773,6 +773,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // the FIRST absent trigger (the C++ `triggerLinkerIt` cursor left at the
         // break position) — the install-to-trigger target below.
         let mut missing_trigger: Option<NegLink<ConceptId>> = None;
+        // Satisfied triggers whose dependency differs from the implication's —
+        // the CONNECTION-dependency chain hung onto the fired implication
+        // (Konclude accumulates these on the triggered-implication restriction
+        // spec; this port re-scans ALL triggers per invocation, so the chain
+        // is built locally at fire time).
+        let mut satisfied_trigger_deps: Vec<(ConDescId, TrackPointId)> = Vec::new();
         for trigger in op_linker.iter().skip(1) {
             // nextTrigger->getData() / nextTrigger->isNegated()
             let trigger_concept: ConceptId = trigger.target;
@@ -797,6 +803,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     &mut trigger_dep_track_point,
                 );
             if has_trigger_con_des {
+                // The ls1 lookup cannot resolve the stored descriptor's track
+                // point (ctx-less stub → NONE) — resolve it here, the C++
+                // `triggerConDes->getDependencyTrackPoint()` (same caller-side
+                // fix as the u36 insert-clash path).
+                if trigger_dep_track_point.is_none() && trigger_con_des.is_some() {
+                    trigger_dep_track_point = calc_alg_context
+                        .process_context()
+                        .con_desc(trigger_con_des)
+                        .get_dependency_track_point();
+                }
                 // if (triggerConDes->isNegated() == nextTrigger->isNegated()) return;
                 let trigger_con_des_negated = calc_alg_context
                     .process_context()
@@ -806,10 +822,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return;
                 }
                 // else: present with the OPPOSITE polarity ⇒ trigger satisfied; advance.
-                if trigger_dep_track_point != dep_track_point {
-                    // add dependency track point — W3-DEFER[api]: createCONNECTIONDependency(...)
-                    // accumulation onto triggImpProcRes->getImplicationDependency()
-                    // (dependency-directed backtracking; the unported trigger spec holds the chain).
+                if trigger_dep_track_point != dep_track_point && trigger_dep_track_point.is_some()
+                {
+                    // createCONNECTIONDependency accumulation (cpp 10425–10429):
+                    // WITHOUT this a head fired by a BRANCH-added trigger
+                    // inherits only the implication concept's own (base) tag —
+                    // clashes over it then trace to branching level 0 and
+                    // wrongly cancel the root (measured: ore_ont_12653
+                    // spurious=4 under KM_HT_DDB).
+                    satisfied_trigger_deps.push((trigger_con_des, trigger_dep_track_point));
                 }
             } else {
                 // not present ⇒ break to install-to-trigger.
@@ -853,10 +874,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         } else {
             // W3-DEFER[macro]: STATINC(IMPLICATIONEXECUTINGCOUNT, calc_alg_context)
-            // W3-DEFER[api]: triggImpProcRes->getImplicationDependency() — the trigger
-            // restriction-spec (CTriggeredImplicationProcessingRestrictionSpecification) is
-            // unported, so its accumulated implication-dependency chain is empty here.
-            let trigger_deps: DepLinkId = Id::NONE;
+            // The trigger CONNECTION-dependency chain (the accumulated
+            // `triggImpProcRes->getImplicationDependency()` in Konclude; built
+            // locally here because this port re-scans all triggers per
+            // invocation). Each satisfied trigger with a different dependency
+            // becomes a CONNECTION node whose continue track point rides an
+            // additional-dependency link on the fired implication — so the
+            // implication's branching tag is the MAX over the implication
+            // concept AND every trigger (`depended_branching_tag` walks
+            // `additional_after`), and the u29 closure unwind reaches the
+            // trigger concepts.
+            let mut trigger_deps: DepLinkId = Id::NONE;
+            for &(t_con_des, t_tp) in &satisfied_trigger_deps {
+                let conn = self.create_connection_dependency(
+                    process_indi,
+                    t_con_des,
+                    t_tp,
+                    calc_alg_context,
+                );
+                if conn.is_some() {
+                    let conn_tp = calc_alg_context
+                        .process_context_mut()
+                        .materialize_continue_dependency_track_point(conn);
+                    let link = calc_alg_context.process_context_mut().alloc_dep_link(
+                        super::super::process::dependency::DependencyLink {
+                            dep_track_point: conn_tp,
+                            next: trigger_deps,
+                        },
+                    );
+                    trigger_deps = link;
+                }
+            }
             let mut next_dep_track_point: TrackPointId = Id::NONE;
             // createIMPLICATIONDependency(nextDepTrackPoint, processIndi, conDes, depTrackPoint, triggerDeps, ...) [u29]
             self.create_implication_dependency(

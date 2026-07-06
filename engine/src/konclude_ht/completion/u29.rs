@@ -769,6 +769,54 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .get_next_descriptor();
         }
 
+        // DDB diagnostics (KM_BRIDGE_PROGRESS): dump the first few clash
+        // closures — descriptor classes and tags decide the whole analysis.
+        if self.ddb_analysis_dumps < 8 && std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            self.ddb_analysis_dumps += 1;
+            let pc = calc_alg_context.process_context();
+            let mut it = tracked_clash_descriptors;
+            let mut parts: Vec<String> = Vec::new();
+            while it.is_some() && parts.len() < 12 {
+                let d = pc.clash_desc(it);
+                let (ctag, cneg) = if let super::super::process::descriptor::ClashDescriptorKind::Tracked {
+                    concept_descriptor, ..
+                } = &d.kind
+                {
+                    if concept_descriptor.is_some() {
+                        let cd = pc.con_desc(*concept_descriptor);
+                        let con = cd.get_concept();
+                        (
+                            if con.is_some() {
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(con)
+                                    .get_concept_tag()
+                            } else {
+                                -1
+                            },
+                            cd.is_negated(),
+                        )
+                    } else {
+                        (-1, false)
+                    }
+                } else {
+                    (-1, false)
+                };
+                parts.push(format!(
+                    "[c={}{} ind={} det={} tag={} lvl={} tp={}]",
+                    if cneg { "¬" } else { "" },
+                    ctag,
+                    d.is_pointing_to_independent_dependency_node(),
+                    !d.is_pointing_to_non_deterministic_dependency_node(),
+                    d.get_branching_level_tag(),
+                    d.get_appropriated_individual_level(),
+                    d.get_dependency_track_point().is_some(),
+                ));
+                it = d.get_next_descriptor();
+            }
+            eprintln!("DDB-CLOSURE n<={} {}", parts.len(), parts.join(" "));
+        }
+
         let mut tracking_line = TrackedClashedDependencyLine::new();
         // W6-DEFER[backend]: if fixed backend-reuse expansion mode is active,
         // Konclude allocates and installs an involved-individual tracking set here.
@@ -777,6 +825,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             tracked_clash_descriptors,
             calc_alg_context,
         ) {
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() && self.ddb_analysis_dumps <= 8 {
+                eprintln!(
+                    "DDB-LINE branching_level={}",
+                    tracking_line.get_branching_level(),
+                );
+            }
             if tracking_line.get_branching_level() == 0 {
                 self.cancellation_root_task(calc_alg_context);
             }
@@ -1001,6 +1055,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         {
             return false;
         }
+        self.ddb_mark_count += 1;
         calc_alg_context
             .process_context_mut()
             .track_point_mut(dep_track_point)

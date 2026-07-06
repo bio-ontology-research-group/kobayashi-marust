@@ -146,7 +146,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             drives += 1;
             if progress && drives % 4096 == 0 {
                 eprintln!(
-                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={} ddb_jumps={} ddb_pops={} ddb_fallbacks={}",
+                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={} ddb_jumps={} ddb_pops={} ddb_fallbacks={} ddb_marks={}",
                     self.or_backtrack_count,
                     calc_alg_context.process_context().node_count(),
                     self.stat_con_des_insertion_count,
@@ -154,6 +154,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     self.ddb_jump_count,
                     self.ddb_jump_pop_total,
                     self.ddb_fallback_count,
+                    self.ddb_mark_count,
                 );
             }
             if !calc_alg_context.has_pending_signal() {
@@ -263,6 +264,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        // Leftover guard: once ANY advance skipped its snapshot restore the
+        // labels may carry branch-dependent leftovers whose descriptors
+        // reference STALE track points — a clash involving them does not
+        // satisfy the level-ordering argument, so the pop-unmarked skip could
+        // discard live alternatives (measured: ore_ont_12653 under DDB grew 4
+        // spurious subsumptions). Chronological fallback owns the search then;
+        // the root-level cancellation stays in force (leftovers cannot appear
+        // in a branching-level-0 closure — their tags are > 0).
+        if self.unrestored_advance_count > 0 {
+            return self.try_backtrack_or_branch(calc_alg_context);
+        }
         // Scan (no mutation) from the top for the first branch point whose
         // CURRENT alternative the analysis marked clashed and which still has
         // an unexplored alternative.
@@ -377,6 +389,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // cannot restore the graph (that needs the full task-fork restore), so we
         // leave the chronological behaviour unchanged for that case (no regression).
         let restored = calc_alg_context.process_context().node_count() == node_count_at_push;
+        if !restored {
+            self.unrestored_advance_count += 1;
+        }
         if restored {
             let (label_snapshot, queue_snapshot) = {
                 let bp = self.or_branch_stack.last().expect("checked non-empty");

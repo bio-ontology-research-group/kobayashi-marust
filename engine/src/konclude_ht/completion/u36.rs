@@ -482,6 +482,40 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         allow_initalization: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // With dependency building ON, an untracked insertion would poison
+        // every clash analysis it later participates in (tracking ERROR) —
+        // substitute the INDEPENDENT base dependency track point, exactly
+        // Konclude's base-assertion tracking.
+        //
+        // CAUTION[ddb-soundness]: a NONE here on a RULE path (not a base
+        // seed) means the caller's dependency threading is unported — the
+        // substitution then paints a branch-dependent addition as
+        // independent, and a clash over it traces to branching level 0 →
+        // wrong root cancellation (measured: 12653 spurious=4 under DDB).
+        // The diagnostic below surfaces such callers so their faithful track
+        // points get threaded.
+        if self.conf_build_dependencies
+            && dependency_track_point.is_none()
+            && self.ddb_analysis_dumps < 3
+            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+        {
+            self.ddb_analysis_dumps += 1;
+            eprintln!(
+                "NONE-TP-ADD(single) c={} at:\n{}",
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag(),
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
+        let dependency_track_point = if self.conf_build_dependencies
+            && dependency_track_point.is_none()
+        {
+            calc_alg_context.get_or_create_base_dependency_track_point()
+        } else {
+            dependency_track_point
+        };
         // conProQueue = processIndi->getConceptProcessingQueue(true);
         // conLabelSet = processIndi->getReapplyConceptLabelSet(true);
         // W5: the create branch's arena allocation cannot run from the superseded
@@ -748,6 +782,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         concept_count: Option<&mut Cint64>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // Untracked-insertion substitution — see `add_concept_to_individual`
+        // (including the CAUTION[ddb-soundness] note).
+        if self.conf_build_dependencies
+            && dependency_track_point.is_none()
+            && self.ddb_analysis_dumps < 3
+            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+        {
+            self.ddb_analysis_dumps += 1;
+            eprintln!(
+                "NONE-TP-ADD(multi n={}) at:\n{}",
+                concept_add_linker_it.len(),
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
+        let dependency_track_point = if self.conf_build_dependencies
+            && dependency_track_point.is_none()
+        {
+            calc_alg_context.get_or_create_base_dependency_track_point()
+        } else {
+            dependency_track_point
+        };
         // W8: route the node's concept queue + reapply label set through the
         // context-threaded lazy getters (W3b/W8.1) — the superseded `&mut self` node
         // getters return `Id::NONE` (they cannot run the arena allocation), so the
@@ -1076,6 +1131,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         *calc_alg_context
             .process_context_mut()
             .label_set_mut(con_label_set) = lifted_label_set;
+        // The ls1 label set cannot resolve the stored descriptor's dependency
+        // track point (`con_des_dep_track_point` is a ctx-less stub returning
+        // NONE) — resolve it here, exactly the C++
+        // `containedConDes->getDependencyTrackPoint()`. Without this every
+        // insert-clash reported its contained partner UNTRACKED, which is a
+        // tracking ERROR that aborted every `clashedBacktracking` analysis
+        // (measured on ore_ont_541: ddb_marks=0, fallbacks=100%).
+        if clashed_concept_descriptor.is_some() && clashed_dependency_track_point.is_none() {
+            clashed_dependency_track_point = calc_alg_context
+                .process_context()
+                .con_desc(clashed_concept_descriptor)
+                .get_dependency_track_point();
+        }
         if !contained {
             if let Some(out) = reapply_it {
                 *out = calc_alg_context
@@ -1214,6 +1282,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         dependency_track_point: TrackPointId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // DDB diagnostics: an untracked descriptor poisons every clash
+        // analysis it joins (tracking ERROR). Print the first offenders WITH
+        // the call path so the untracked creator can be closed.
+        if self.conf_build_dependencies
+            && dependency_track_point.is_none()
+            && self.ddb_analysis_dumps < 3
+            && std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+        {
+            self.ddb_analysis_dumps += 1;
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            eprintln!(
+                "UNTRACKED-CONDES c={}{} at:\n{}",
+                if negate { "¬" } else { "" },
+                tag,
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
         let cd = calc_alg_context
             .process_context_mut()
             .con_desc_mut(concept_descriptor);
