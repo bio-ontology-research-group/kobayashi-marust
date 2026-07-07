@@ -212,20 +212,20 @@ const INPROC_ELC_MAX: u64 = 4 << 20;
 /// or narrowly losing on wall because of the worker-fork/thread-startup
 /// contention).
 ///
-/// Sound+complete gate: only when the clause set carries NO DL-safe rules
-/// (`input.rules` empty) — rule ontologies need the KM_HT_RULES route, where
-/// the plain CB engine over the clauses alone would miss the rule-induced
-/// (in)consistency. The CB engine is otherwise the trusted sound+complete
-/// path (complete since 2026-06-13; the HT/portfolio arms are speed
-/// fallbacks, preferred-CB-when-it-finishes), so on a small ont where CB
-/// finishes fast the in-process answer is exactly what the race would yield.
-///
-/// Bounded by a wall-clock budget on the worker thread: a small-FILE but
-/// search-HARD ont (e.g. the disjunction family) that overruns is abandoned
-/// (the thread is detached) and the caller falls through to the normal
-/// forked adaptive/HT path, which owns the timeout+memcap. The budget is
-/// short enough that the near-tie band (km < ~0.6 s) always completes and
-/// only the rare hard-small ont pays it.
+/// Sound+complete + no-blowup gates (checked in the body): NO DL-safe rules
+/// (rule onts need the KM_HT_RULES route, where plain CB over the clauses
+/// alone would miss the rule-induced (in)consistency) AND no INTERNAL DEFINER
+/// DISJUNCTION (`Reasoner::has_internal_definer_disjunction` — the signature
+/// of the CB memory-blowup family, ore_ont_9635: 45 GB). The definer gate is
+/// what makes the budgeted-detach safe: only non-blowup onts saturate here,
+/// so a worker still running when the budget trips holds BOUNDED memory and
+/// detaching it cannot OOM the forked fallthrough (the failure mode of the
+/// first version, which regressed 9635/12698). The CB engine is otherwise the
+/// trusted sound+complete path (complete since 2026-06-13; the HT/portfolio
+/// arms are speed fallbacks, preferred-CB-when-it-finishes), and onts that
+/// decline or overrun take that forked adaptive/HT path unchanged (keeping HT
+/// recovery for e.g. 5303). A completed in-process run is byte-identical to
+/// the forked engine worker, minus the fork/stdin overhead.
 fn try_inproc_engine(
     clauses_path: &Path,
     budget: std::time::Duration,
@@ -237,38 +237,48 @@ fn try_inproc_engine(
         return Ok(None); // rule ontologies need the HT-rules route
     }
     let clauses = input.clauses;
+    // Worker sends `None` (decline) fast if the clause set carries an INTERNAL
+    // DEFINER DISJUNCTION — the signature of the CB memory-blowup family
+    // (ore_ont_9635: 45 GB). Only NON-blowup onts saturate here, so a worker
+    // still running when the budget trips holds BOUNDED memory: detaching it
+    // and falling through to the forked path cannot OOM (the failure mode of
+    // the first budgeted-detach version, which regressed 9635/12698). Onts
+    // that decline OR overrun take the forked adaptive/HT path unchanged
+    // (keeping HT recovery for e.g. 5303). A completed run is byte-identical
+    // to the forked engine worker, minus the fork/stdin overhead.
     let (tx, rx) = std::sync::mpsc::channel();
-    // Detached-on-overrun worker: if it does not answer within `budget` we
-    // stop waiting and fall through; the thread finishes on its own and the
-    // process reaps it at exit. (No shared mutable state — the clauses are
-    // moved in — so a lingering worker cannot corrupt the fallback path.)
     std::thread::Builder::new()
         .name("inproc-cb".into())
         .stack_size(256 << 20)
         .spawn(move || {
             use crate::reasoner::Reasoner;
             let mut r = Reasoner::new(&clauses);
+            if r.has_internal_definer_disjunction() {
+                let _ = tx.send(None); // blow-up-prone ⇒ decline, use forked path
+                return;
+            }
             r.saturate();
-            let subs = r.subsumptions();
-            let subsumptions = subs
+            let subsumptions = r
+                .subsumptions()
                 .into_iter()
                 .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
                 .collect();
             let inconsistent = r.inconsistent();
-            let _ = tx.send(EngineOut {
+            let _ = tx.send(Some(EngineOut {
                 subsumptions,
                 inconsistent,
                 dropped: 0,
                 unresolved: Vec::new(),
-            });
+            }));
         })
         .map_err(|e| OrchestrateError::Spawn {
             bin: "inproc-cb".into(),
             source: e,
         })?;
     match rx.recv_timeout(budget) {
-        Ok(out) => Ok(Some(out)),
-        Err(_) => Ok(None), // overran the budget ⇒ fall through to the forked path
+        Ok(Some(out)) => Ok(Some(out)),
+        Ok(None) => Ok(None),  // declined (definer disjunction)
+        Err(_) => Ok(None),    // overran the budget ⇒ fall through (bounded mem)
     }
 }
 
@@ -477,13 +487,13 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         // (ore_ont_12698: 84 missing subsumptions).
         let named_set: HashSet<String> = meta.named.iter().cloned().collect();
 
-        // In-process CB engine fast path for SMALL NON-EL ontologies: run the
-        // trusted CB engine as a library call on a budgeted worker thread and,
-        // when it finishes, skip the fork/race entirely. Eligible when the ont
-        // is small (same file gate as in-process elc) and NOT EL-safe (EL-safe
-        // small onts already took the in-process elc above). The rule gate +
+        // In-process CB engine fast path for SMALL NON-EL HORN ontologies: run
+        // the trusted CB engine as a library call and, when it finishes, skip
+        // the fork/race entirely. Eligible when the ont is small (same file
+        // gate as in-process elc) and NOT EL-safe (EL-safe small onts already
+        // took the in-process elc above). The rule + Horn (no-blowup) gates and
         // soundness argument live in `try_inproc_engine`. Opt out
-        // KM_NO_INPROC_ENGINE; budget override KM_INPROC_ENGINE_BUDGET_S.
+        // KM_NO_INPROC_ENGINE.
         if out.is_none()
             && small
             && !meta.el_rbox_safe
@@ -492,7 +502,7 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
             let budget_s: f64 = std::env::var("KM_INPROC_ENGINE_BUDGET_S")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(3.0);
+                .unwrap_or(4.0);
             out = try_inproc_engine(
                 clauses_path.path(),
                 std::time::Duration::from_secs_f64(budget_s),

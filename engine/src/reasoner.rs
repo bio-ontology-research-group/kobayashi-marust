@@ -397,7 +397,7 @@ impl Reasoner {
     /// introduced) definer? This is the routing feature for `KM_SEQ_ORDER`:
     /// only such ontologies benefit from the Sequoia definer ordering (see
     /// `calc::set_seq_order_auto`).
-    fn has_internal_definer_disjunction(&self) -> bool {
+    pub fn has_internal_definer_disjunction(&self) -> bool {
         self.clauses0.iter().any(|c| {
             let mut nconc = 0usize;
             let mut has_internal = false;
