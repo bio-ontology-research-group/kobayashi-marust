@@ -1071,6 +1071,9 @@ pub fn bridged_unsat(
     for &(concept, negated) in seeds {
         algo.add_concept_to_individual(concept, negated, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
+            if std::env::var_os("KM_BRIDGE_TRACE2").is_some() {
+                eprintln!("UNSAT-EXIT seed-insert");
+            }
             return Some(true);
         }
     }
@@ -1118,8 +1121,24 @@ pub fn bridged_unsat(
             // A Clash is a genuine UNSAT; a Stop (iteration cap / task fork)
             // is an UNKNOWN — folding it into unsat would be UNSOUND, folding
             // it into sat would be INCOMPLETE.
+            if std::env::var_os("KM_BRIDGE_TRACE2").is_some() {
+                eprintln!(
+                    "UNSAT-EXIT pass={pass} signal={:?}",
+                    matches!(ctx.pending_signal(), super::completion::clash::CalcSignal::Clash(_))
+                );
+            }
             return match ctx.pending_signal() {
                 super::completion::clash::CalcSignal::Clash(clash) => {
+                    if std::env::var_os("KM_BRIDGE_TRACE2").is_some() {
+                        eprintln!(
+                            "UNSAT-EXIT probe-clash: ddb={} cow={} root_cancelled={} backtracks={} dumps_used={}",
+                            algo.conf_dependency_backjumping,
+                            algo.conf_inprocess_cow,
+                            algo.ddb_root_cancelled,
+                            algo.or_backtrack_count,
+                            algo.ddb_analysis_dumps
+                        );
+                    }
                     if trace {
                         // walk the clash descriptor chain: which concepts on
                         // which nodes clashed (diff a clash run vs a SAT run).
@@ -1816,6 +1835,52 @@ mod tests {
         assert_eq!(env.unsupported, 0, "chain TBox fully bridged");
         assert!(env.subsumes("A", "C"), "A ⊑ C (chained)");
         assert!(!env.subsumes("C", "A"), "C ⊑ A must NOT hold");
+    }
+
+    /// Miniature of the ore_ont_12653 wrong-root-cancel (memory
+    /// project_km_bridge_disjunction_probe cont-11): a TOP covering
+    /// `⊤ ⊑ A ⊔ B` with A,B disjoint; `A ⊑ ≤2 r.E` kills the A-branch on X
+    /// (X has three pairwise-disjoint E-successors); the B-branch adds three
+    /// FRESH pairwise-disjoint E-successors, and X's `≤3 r.E` then forces a
+    /// 6→3 CROSS-GROUP merge matching — which EXISTS (cross pairs are
+    /// compatible), so **X is SATISFIABLE** (the B-branch model) and X ⊑ Y
+    /// must NOT hold for an unrelated Y. The 12653 kernel bug: the u29
+    /// all-siblings-refuted propagation reads the pairing deaths' remainders
+    /// as deterministic-only and wrongly ROOT-CANCELS, declaring X unsat
+    /// (⇒ X ⊑ everything). Run plain AND with
+    /// `KM_HT_COW=1 KM_HT_DDB=1 KM_HT_DDB_REFUTED_DISCARD=1` (the fast
+    /// path that reaches the propagation); both must pass once u29's
+    /// before-proc-tag remainder is fixed. `#[ignore]` while env-driven.
+    #[test]
+    #[ignore]
+    fn covering_atmost_cross_merge_sat() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:E))\n\
+             Declaration(Class(:D1)) Declaration(Class(:D2)) Declaration(Class(:D3))\n\
+             Declaration(Class(:E1)) Declaration(Class(:E2)) Declaration(Class(:E3))\n\
+             Declaration(Class(:X)) Declaration(Class(:Y))\n\
+             Declaration(ObjectProperty(:r))\n\
+             SubClassOf(owl:Thing ObjectUnionOf(:A :B))\n\
+             DisjointClasses(:A :B)\n\
+             SubClassOf(:A ObjectMaxCardinality(2 :r :E))\n\
+             SubClassOf(:B ObjectIntersectionOf(ObjectSomeValuesFrom(:r :D1) \
+             ObjectSomeValuesFrom(:r :D2) ObjectSomeValuesFrom(:r :D3)))\n\
+             DisjointClasses(:D1 :D2 :D3)\n\
+             SubClassOf(:D1 :E) SubClassOf(:D2 :E) SubClassOf(:D3 :E)\n\
+             SubClassOf(:X ObjectIntersectionOf(ObjectSomeValuesFrom(:r :E1) \
+             ObjectSomeValuesFrom(:r :E2) ObjectSomeValuesFrom(:r :E3) \
+             ObjectMaxCardinality(3 :r :E)))\n\
+             DisjointClasses(:E1 :E2 :E3)\n\
+             SubClassOf(:E1 :E) SubClassOf(:E2 :E) SubClassOf(:E3 :E)\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        assert!(
+            !env.subsumes("X", "Y"),
+            "X must be satisfiable (B-branch cross-merge model) — a spurious \
+             X ⊑ Y means the search wrongly refuted every covering branch \
+             (the u29 wrong-root-cancel in miniature)"
+        );
     }
 
     #[test]
