@@ -278,6 +278,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Discard the topmost branch point: pop its stack entry, close its
     /// branch epoch (in-process COW — the complete-state rollback), restore
     /// the used branch tree node.
+    /// Epoch/branch-stack alignment check (KM_BRIDGE_SEARCH_LOG active):
+    /// the number of open branch epochs must equal the number of open
+    /// branch points that OWN an epoch — a mismatch means some path pushed
+    /// or popped an epoch without its branch point (the roll-back-too-far
+    /// corruption).
+    fn ht_check_epoch_alignment(
+        &mut self,
+        wher: &str,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) {
+        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_none() {
+            return;
+        }
+        let owned = self.or_branch_stack.iter().filter(|bp| bp.own_epoch).count();
+        let epochs = calc_alg_context.databox_epoch_stack.len();
+        if owned != epochs {
+            eprintln!(
+                "SL EPOCH-MISALIGN at {wher}: owned_bps={owned} epochs={epochs} depth={}",
+                self.or_branch_stack.len()
+            );
+        }
+    }
+
     /// KM_BRIDGE_SEARCH_LOG=<N>: print the first N search events
     /// (advance/discard with bp kind + alternative index + node) — diff a
     /// failing mode's log against a passing mode's to find the first
@@ -328,6 +351,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
         self.or_backtrack_count += 1;
+        self.ht_check_epoch_alignment("discard", calc_alg_context);
     }
 
     fn try_backtrack_or_branch(
@@ -536,6 +560,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // the clash is being recovered from — clear it (the C++ catch consumes the
         // exception, then `clashedBacktracking` re-drives the chosen branch).
         calc_alg_context.clear_pending_signal();
+
+        self.ht_check_epoch_alignment("advance", calc_alg_context);
+        // KM_BRIDGE_SEARCH_LOG: post-restore label of the advanced node — the
+        // per-event state diff for the COW-restore hunt (memory cont-12).
+        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+            if let Some(bp) = self.or_branch_stack.last() {
+                let node = bp.node;
+                let pc = calc_alg_context.process_context();
+                let ls = pc.node(node).use_reapply_con_label_set;
+                let mut tags: Vec<String> = Vec::new();
+                if ls.is_some() {
+                    let mut v: Vec<(i64, bool)> = pc
+                        .label_set(ls)
+                        .concept_des_dep_map
+                        .iter()
+                        .filter_map(|(tag, data)| {
+                            let cd = data.concept_descriptor;
+                            if cd.is_none() {
+                                return None;
+                            }
+                            Some((*tag, pc.con_desc(cd).is_negated()))
+                        })
+                        .collect();
+                    v.sort_unstable();
+                    tags = v
+                        .into_iter()
+                        .map(|(t, n)| format!("{}{}", if n { "-" } else { "" }, t))
+                        .collect();
+                }
+                let m = format!("  label node={} [{}]", node.index(), tags.join(","));
+                self.ht_search_log(&m);
+            }
+        }
 
         // At-most merge branch point: the next alternative MERGES a different
         // successor pair (`mergeMergingIndividualNodesPairwise` sibling task).
