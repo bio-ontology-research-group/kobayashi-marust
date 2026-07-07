@@ -50,7 +50,7 @@ use super::super::process::{
     BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
     TrackPointId,
 };
-use super::algorithm::{IndiNodeQueueType, OrBranchPoint};
+use super::algorithm::{BranchKind, IndiNodeQueueType, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
 
@@ -757,43 +757,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // "all sibling track points clashed" as "the whole disjunction is
         // refuted"; lazily-minted siblings would fire it early.
         let parent_used_branch_node = calc_alg_context.base.used_branch_tree_node;
-        let alt_track_points: Vec<TrackPointId> = if self.conf_dependency_backjumping
-            && or_dependency_node.is_some()
-        {
-            let (parent_level, parent_root) = if parent_used_branch_node.is_some() {
-                let pb = calc_alg_context
-                    .process_context()
-                    .branch_node(parent_used_branch_node);
-                (pb.get_branching_level(), pb.get_root_node())
-            } else {
-                (0, BranchNodeId::NONE)
-            };
-            operands
-                .iter()
-                .map(|_| {
-                    let pc = calc_alg_context.process_context_mut();
-                    // `initBranchingChildNode`: tag = parent level, then
-                    // `branchingIncrement` bumps it to parent level + 1.
-                    let alt_branch = pc.alloc_branch_node(BranchTreeNode {
-                        process_tag: parent_level,
-                        parent_node: parent_used_branch_node,
-                        root_node: parent_root,
-                        branched_dep_track_point: Id::NONE,
-                        sat_calc_task: INVALID,
-                    });
-                    let tp = pc.dependency_track_point_branch(or_dependency_node);
-                    pc.branch_node_mut(alt_branch).branching_increment(tp);
-                    // `CNonDeterministicDependencyTrackPoint::initBranch`.
-                    let level = pc.branch_node(alt_branch).get_branching_level();
-                    let t = pc.track_point_mut(tp);
-                    t.branch_node = alt_branch;
-                    t.add_maximum_branching_tag_candidate(level);
-                    tp
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let alt_track_points: Vec<TrackPointId> = self.ht_mint_alternative_track_points(
+            or_dependency_node,
+            operands.len(),
+            parent_used_branch_node,
+            calc_alg_context,
+        );
         let branch_node: BranchNodeId =
             calc_alg_context
                 .process_context_mut()
@@ -863,6 +832,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             node_label_snapshot,
             node_queue_snapshot,
             node_count_at_push,
+            kind: BranchKind::Disjunction,
+            own_epoch: self.conf_inprocess_cow,
         });
 
         // addConceptToIndividual(operand, opNegated, processIndi, depTrackPoint, ...).
@@ -894,6 +865,58 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
 
         true
+    }
+
+    /// DDB: mint ONE non-deterministic track point PER ALTERNATIVE of a branch
+    /// point, upfront (Konclude's per-forked-task
+    /// `createNonDeterministicDependencyTrackPointBranch` in `executeORBranching`
+    /// / `createMergeBranchingTask`; each child task's used branch tree node is a
+    /// fresh copy of the parent's, so every sibling gets branching tag = parent
+    /// level + 1 on its OWN branch node). Upfront minting is a soundness
+    /// requirement: the u29 propagation reads "all sibling track points clashed"
+    /// as "the whole decision is refuted"; lazily-minted siblings would fire it
+    /// early. Shared by the OR rule and the at-most merge branching. Empty when
+    /// DDB is off or the decision has no dependency node.
+    pub(super) fn ht_mint_alternative_track_points(
+        &mut self,
+        dependency_node: DependencyId,
+        n_alternatives: usize,
+        parent_used_branch_node: BranchNodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Vec<TrackPointId> {
+        if !self.conf_dependency_backjumping || dependency_node.is_none() {
+            return Vec::new();
+        }
+        let (parent_level, parent_root) = if parent_used_branch_node.is_some() {
+            let pb = calc_alg_context
+                .process_context()
+                .branch_node(parent_used_branch_node);
+            (pb.get_branching_level(), pb.get_root_node())
+        } else {
+            (0, BranchNodeId::NONE)
+        };
+        (0..n_alternatives)
+            .map(|_| {
+                let pc = calc_alg_context.process_context_mut();
+                // `initBranchingChildNode`: tag = parent level, then
+                // `branchingIncrement` bumps it to parent level + 1.
+                let alt_branch = pc.alloc_branch_node(BranchTreeNode {
+                    process_tag: parent_level,
+                    parent_node: parent_used_branch_node,
+                    root_node: parent_root,
+                    branched_dep_track_point: Id::NONE,
+                    sat_calc_task: INVALID,
+                });
+                let tp = pc.dependency_track_point_branch(dependency_node);
+                pc.branch_node_mut(alt_branch).branching_increment(tp);
+                // `CNonDeterministicDependencyTrackPoint::initBranch`.
+                let level = pc.branch_node(alt_branch).get_branching_level();
+                let t = pc.track_point_mut(tp);
+                t.branch_node = alt_branch;
+                t.add_maximum_branching_tag_candidate(level);
+                tp
+            })
+            .collect()
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::planORProcessing`.

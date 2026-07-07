@@ -23,7 +23,7 @@ use super::super::model::ConceptId;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
 use super::super::process::{ConDescId, LabelSetId, NodeId, TrackPointId};
-use super::algorithm::{IndiNodeQueueType, DETERMINISTIC_PROCESS_PRIORITY};
+use super::algorithm::{BranchKind, IndiNodeQueueType, DETERMINISTIC_PROCESS_PRIORITY};
 use super::clash::CalcSignal;
 use super::context::CalculationAlgorithmContextBase;
 
@@ -184,11 +184,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         if self.ddb_root_cancelled {
                             // The clash traced to branching level 0: independent
                             // of every open alternative ⇒ INCONSISTENT.
+                            self.ht_dump_final_clash(clash, "ddb-root-cancel", calc_alg_context);
                             return false;
                         }
                         if self.try_backtrack_or_branch_ddb(calc_alg_context) {
                             continue;
                         }
+                        self.ht_dump_final_clash(clash, "ddb-exhausted", calc_alg_context);
                         return false;
                     }
                     if self.try_backtrack_or_branch(calc_alg_context) {
@@ -197,6 +199,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                     // no open branch point with a remaining alternative ⇒ the clash is
                     // unrecoverable: the completion graph is INCONSISTENT.
+                    self.ht_dump_final_clash(clash, "chrono-exhausted", calc_alg_context);
                     return false;
                 }
                 // a stop is the C++ `CCalculationStopProcessingException` (task forked
@@ -230,8 +233,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         let bp = self.or_branch_stack.pop().expect("caller checked non-empty");
-        if self.conf_inprocess_cow {
+        if bp.own_epoch {
             calc_alg_context.pop_branch_epoch();
+        } else {
+            // No COW: nodes created since the push belong to REFUTED
+            // alternatives and linger in the arena as phantoms — record the
+            // interval so the singleton scan skips them.
+            let now = calc_alg_context.process_context().node_count();
+            if now > bp.node_count_at_push && !self.singleton_concepts.is_empty() {
+                self.phantom_node_intervals
+                    .push((bp.node_count_at_push, now));
+            }
         }
         calc_alg_context.base.used_branch_tree_node = bp.parent_used_branch_node;
         self.or_backtrack_count += 1;
@@ -243,7 +255,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         // discard branch points whose every alternative has already clashed.
         while let Some(bp) = self.or_branch_stack.last() {
-            if bp.next_alt < bp.disjuncts.len() {
+            if bp.next_alt < bp.alternatives_len() {
                 break;
             }
             self.discard_topmost_or_branch(calc_alg_context);
@@ -315,7 +327,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context()
                     .track_point(cur_tp)
                     .is_clashed_or_irelevant_branch();
-            if refuted && bp.next_alt < bp.disjuncts.len() {
+            if refuted && bp.next_alt < bp.alternatives_len() {
                 target = Some(i);
                 break;
             }
@@ -354,15 +366,56 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // graph rollback to the pre-alternative state) and open a fresh one
         // for the next alternative — the in-process equivalent of killing the
         // clashed branch task and starting its sibling from the parent's
-        // copy-on-write databox.
-        if self.conf_inprocess_cow {
+        // copy-on-write databox. Keyed on the branch point's OWN epoch flag:
+        // at-most merge branch points carry an epoch even when the global COW
+        // mode is off (a merge is not undoable by the label snapshot).
+        let topmost_own_epoch = self
+            .or_branch_stack
+            .last()
+            .map(|bp| bp.own_epoch)
+            .unwrap_or(false);
+        if topmost_own_epoch {
             calc_alg_context.pop_branch_epoch();
             calc_alg_context.push_branch_epoch();
+        } else if !self.singleton_concepts.is_empty() {
+            // No COW: the FAILED alternative's created nodes linger as
+            // phantoms (see `phantom_node_intervals`) — record them before
+            // the next alternative starts appending.
+            let at_push = self
+                .or_branch_stack
+                .last()
+                .map(|bp| bp.node_count_at_push)
+                .unwrap_or(usize::MAX);
+            let now = calc_alg_context.process_context().node_count();
+            if now > at_push {
+                self.phantom_node_intervals.push((at_push, now));
+            }
         }
 
         // the clash is being recovered from — clear it (the C++ catch consumes the
         // exception, then `clashedBacktracking` re-drives the chosen branch).
         calc_alg_context.clear_pending_signal();
+
+        // At-most merge branch point: the next alternative MERGES a different
+        // successor pair (`mergeMergingIndividualNodesPairwise` sibling task).
+        // The epoch pop above restored the exact push-time state, so the pair's
+        // node ids are valid again.
+        if matches!(
+            self.or_branch_stack.last().map(|bp| &bp.kind),
+            Some(BranchKind::AtMostMerge(_))
+        ) {
+            self.advance_atmost_merge_alternative(calc_alg_context);
+            return;
+        }
+        // Choose branch point: the second alternative qualifies the successor
+        // POSITIVELY (the `qualNeg = false` sibling task).
+        if matches!(
+            self.or_branch_stack.last().map(|bp| &bp.kind),
+            Some(BranchKind::AtMostQualify { .. })
+        ) {
+            self.advance_atmost_qualify_alternative(calc_alg_context);
+            return;
+        }
 
         // advance the topmost open branch to its next unexplored alternative.
         let (node, target, op_negated, dep_track_point, node_count_at_push, sem_branch) = {
@@ -422,12 +475,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // leave the chronological behaviour unchanged for that case (no regression).
         // Under in-process COW the epoch rollback already restored the
         // complete state — the single-node snapshot is redundant (and empty).
-        let restored = self.conf_inprocess_cow
+        let restored = topmost_own_epoch
             || calc_alg_context.process_context().node_count() == node_count_at_push;
         if !restored {
             self.unrestored_advance_count += 1;
         }
-        if !self.conf_inprocess_cow && restored {
+        if !topmost_own_epoch && restored {
             let (label_snapshot, queue_snapshot) = {
                 let bp = self.or_branch_stack.last().expect("checked non-empty");
                 (bp.node_label_snapshot.clone(), bp.node_queue_snapshot.clone())
@@ -505,6 +558,184 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     );
                 }
             }
+        }
+    }
+
+    /// Advance the topmost (at-most merge) branch point to its next merge-pair
+    /// alternative: perform the pair's merge under the alternative's track
+    /// point, relocate the counted parent's links, re-seed the parent, and
+    /// re-check the at-most bound (which may push a nested merge branch point
+    /// or raise the genuine at-most clash). The caller has already rolled the
+    /// epoch back to the push-time state and cleared the pending signal.
+    ///
+    /// This is the in-process realisation of one sibling
+    /// `createMergeBranchingTask` of `mergeMergingIndividualNodesPairwise`
+    /// (cpp 15044–15093); the bound RE-CHECK stands in for Konclude's
+    /// reapplication-driven re-fire of the at-most concept (cpp 15001–15005).
+    fn advance_atmost_merge_alternative(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let (parent, into, from, alt_tp, dep_track_point, role, concept_linker, negate, cardinality, con_des) = {
+            let bp = self.or_branch_stack.last_mut().expect("caller checked topmost");
+            let BranchKind::AtMostMerge(m) = &bp.kind else {
+                unreachable!("caller checked kind")
+            };
+            let (into, from) = m.pairs[bp.next_alt];
+            let alt_tp = bp
+                .alt_track_points
+                .get(bp.next_alt)
+                .copied()
+                .filter(|tp| tp.is_some());
+            bp.next_alt += 1;
+            (
+                m.parent,
+                into,
+                from,
+                alt_tp,
+                bp.dep_track_point,
+                m.role,
+                m.concept_linker.clone(),
+                m.negate,
+                m.cardinality,
+                m.con_des,
+            )
+        };
+        // DDB: the alternative's branch node becomes the used branch tree node
+        // (decisions nested under this merge nest one branching level deeper).
+        let add_tp = if let Some(tp) = alt_tp {
+            calc_alg_context.base.used_branch_tree_node = calc_alg_context
+                .process_context()
+                .track_point(tp)
+                .get_branch_node();
+            tp
+        } else {
+            dep_track_point
+        };
+        if std::env::var_os("KM_BRIDGE_WATCH_MERGE").is_some() {
+            eprintln!(
+                "ATMOST-MERGE-ALT parent=n{} merge n{} -> n{}",
+                parent.index(),
+                from.index(),
+                into.index()
+            );
+        }
+        self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
+        if !calc_alg_context.has_pending_signal() {
+            self.ht_relocate_incoming_links(parent, from, into, add_tp, calc_alg_context);
+        }
+        // re-seed the counted parent so the drive picks it up again.
+        let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_unsorted_proc_queue_mut(iq)
+            .insert_indiviudal_process_node(parent);
+        // bound re-check on the merged graph (the reapplication re-fire).
+        if !calc_alg_context.has_pending_signal() {
+            let mut parent_m = parent;
+            self.ht_apply_atmost_merge(
+                &mut parent_m,
+                role,
+                &concept_linker,
+                negate,
+                cardinality,
+                dep_track_point,
+                con_des,
+                calc_alg_context,
+            );
+        }
+    }
+
+    /// Advance the topmost (choose) branch point to its second alternative:
+    /// qualify the successor POSITIVELY (each operand added with its own
+    /// polarity — Konclude's `addConceptsToIndividual(conceptOpLinkerIt, false,
+    /// …)` in the `qualNeg = false` sibling of `qualifyMergingIndividualNodes`,
+    /// cpp 15787), re-seed successor + parent, and re-fire the at-most bound
+    /// check (the successor is now a merge candidate). The caller has already
+    /// rolled the epoch back and cleared the pending signal.
+    fn advance_atmost_qualify_alternative(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let (succ, alt_tp, dep_track_point, parent, role, concept_linker, negate, cardinality, con_des) = {
+            let bp = self.or_branch_stack.last_mut().expect("caller checked topmost");
+            let BranchKind::AtMostQualify { succ, atmost } = &bp.kind else {
+                unreachable!("caller checked kind")
+            };
+            let alt_tp = bp
+                .alt_track_points
+                .get(bp.next_alt)
+                .copied()
+                .filter(|tp| tp.is_some());
+            bp.next_alt += 1;
+            (
+                *succ,
+                alt_tp,
+                bp.dep_track_point,
+                atmost.parent,
+                atmost.role,
+                atmost.concept_linker.clone(),
+                atmost.negate,
+                atmost.cardinality,
+                atmost.con_des,
+            )
+        };
+        let add_tp = if let Some(tp) = alt_tp {
+            calc_alg_context.base.used_branch_tree_node = calc_alg_context
+                .process_context()
+                .track_point(tp)
+                .get_branch_node();
+            tp
+        } else {
+            dep_track_point
+        };
+        if std::env::var_os("KM_BRIDGE_WATCH_MERGE").is_some() {
+            eprintln!(
+                "ATMOST-QUALIFY-ALT parent=n{} succ=n{} qualNeg=false",
+                parent.index(),
+                succ.index()
+            );
+        }
+        // qualify positively: each operand with its OWN polarity (qualNeg=false).
+        for nl in &concept_linker {
+            if calc_alg_context.has_pending_signal() {
+                break;
+            }
+            let mut s = succ;
+            self.add_concept_to_individual(
+                nl.target,
+                nl.negated,
+                &mut s,
+                add_tp,
+                true,
+                true,
+                calc_alg_context,
+            );
+        }
+        // re-seed the qualified successor and the counted parent.
+        let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_unsorted_proc_queue_mut(iq)
+            .insert_indiviudal_process_node(succ);
+        let iq2 = calc_alg_context.get_individual_immediately_processing_queue(true);
+        calc_alg_context
+            .process_context_mut()
+            .indi_unsorted_proc_queue_mut(iq2)
+            .insert_indiviudal_process_node(parent);
+        // the at-most re-fire (the successor now counts).
+        if !calc_alg_context.has_pending_signal() {
+            let mut parent_m = parent;
+            self.ht_apply_atmost_merge(
+                &mut parent_m,
+                role,
+                &concept_linker,
+                negate,
+                cardinality,
+                dep_track_point,
+                con_des,
+                calc_alg_context,
+            );
         }
     }
 
@@ -640,6 +871,63 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
     }
 
+    /// KM_BRIDGE_DUMP_CLASH: print the FINAL (verdict-deciding) clash's
+    /// descriptor chain — concept tags, polarity, node ids — the ground truth
+    /// for spurious-unsat hunts (which concepts on which nodes actually
+    /// contradicted, and via which backtrack outcome).
+    fn ht_dump_final_clash(
+        &mut self,
+        clash: super::super::process::ClashDescId,
+        how: &str,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_none() || self.ddb_analysis_dumps >= 8 {
+            return;
+        }
+        self.ddb_analysis_dumps += 1;
+        let ctx = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
+        let mut it = clash;
+        let mut parts: Vec<String> = Vec::new();
+        let mut n = 0;
+        while it.is_some() && n < 16 {
+            let cd = ctx.clash_desc(it);
+            match cd.kind {
+                super::super::process::descriptor::ClashDescriptorKind::Concept {
+                    concept_descriptor,
+                    individual_node,
+                } => {
+                    if concept_descriptor.is_some() {
+                        let des = ctx.con_desc(concept_descriptor);
+                        let tag = onto.concept(des.get_concept()).get_concept_tag();
+                        let node_id = if individual_node.is_some() {
+                            ctx.node(individual_node).individual_node_id()
+                        } else {
+                            -1
+                        };
+                        parts.push(format!(
+                            "{}{}@n{}",
+                            if des.is_negated() { "¬" } else { "" },
+                            tag,
+                            node_id
+                        ));
+                    } else {
+                        parts.push("concept(NONE)".into());
+                    }
+                }
+                _ => parts.push(format!("{:?}-kind", cd.dep_track_point)),
+            }
+            it = cd.next;
+            n += 1;
+        }
+        eprintln!(
+            "FINAL-CLASH[{how}] backtracks={} bp_depth={}: {}",
+            self.or_backtrack_count,
+            self.or_branch_stack.len(),
+            parts.join(" ")
+        );
+    }
+
     /// Deterministic singleton-concept merge rule — the bridge's realisation
     /// of the clausal datatype value-identity `C(x) ∧ C(y) → x = y` (a
     /// role-free eq-head clause; Konclude never sees this shape because its
@@ -670,6 +958,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let con_tag = onto.concept(concept).get_concept_tag();
                     let n = ctx.node_count();
                     for i in 0..n {
+                        // skip PHANTOM nodes (created by refuted alternatives,
+                        // lingering in the arena under chronological no-COW
+                        // backtracking — dead state, never merge with them)
+                        if self
+                            .phantom_node_intervals
+                            .iter()
+                            .any(|&(a, b)| i >= a && i < b)
+                        {
+                            continue;
+                        }
                         let node_id: NodeId = Id::new(i as Cint64);
                         let node = ctx.node(node_id);
                         // skip nodes already merged away
@@ -704,6 +1002,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let (Some((into, into_tp)), Some((from, from_tp))) = (first, second) else {
                     break; // zero or one carrier: this concept is done
                 };
+                // KM_BRIDGE_WATCH_SINGLETON: provenance for every singleton
+                // merge (phantom-merge hunts: a `from`/`into` node id that was
+                // created by an ABANDONED alternative marks the cross-branch
+                // pollution case).
+                if std::env::var_os("KM_BRIDGE_WATCH_SINGLETON").is_some() {
+                    let ctx = calc_alg_context.process_context();
+                    eprintln!(
+                        "SINGLETON-MERGE tag={} into=#{}(indi {}) from=#{}(indi {}) bp_depth={} backtracks={}",
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag(),
+                        into.raw,
+                        ctx.node(into).individual_node_id(),
+                        from.raw,
+                        ctx.node(from).individual_node_id(),
+                        self.or_branch_stack.len(),
+                        self.or_backtrack_count,
+                    );
+                }
                 let mut merge_dep_track_point: TrackPointId = Id::NONE;
                 let mut into_mut = into;
                 self.create_same_individual_merge_dependency(

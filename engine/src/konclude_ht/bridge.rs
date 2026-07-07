@@ -521,6 +521,14 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 Some((role_obj, k, qual.first().copied(), guards, heads, r0))
             })();
             if let Some((role_obj, k, qual, guards, heads, _r0)) = recog {
+                // KM_BRIDGE_DUMP_RECOG: print each recognized ≥k clause's
+                // encoding parameters (spurious-subsumption hunts).
+                if std::env::var_os("KM_BRIDGE_DUMP_RECOG").is_some() {
+                    eprintln!(
+                        "RECOG r={_r0} k={k} qual={qual:?} guards={guards:?} heads={heads:?} ({})",
+                        if guards.is_empty() { "TOP-ATTACHED" } else { "absorbed" }
+                    );
+                }
                 let am = match qual {
                     Some(c) => b.atmost_q(role_obj, (k - 1) as Cint64, (named[c], false)),
                     None => b.atmost(role_obj, (k - 1) as Cint64),
@@ -549,7 +557,14 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         // (u02 `ht_apply_singleton_merges`) realises the eq head exactly —
         // deterministic (single-disjunct head), no branch point. General
         // structural rule: any concept in this shape is a singleton.
-        if body_roles.is_empty() && cl.body.len() == 2 && cl.head.len() == 1 {
+        // KM_HT_NO_SINGLETON: diagnostic A/B gate — count the shape
+        // unsupported instead (the pre-d58c2b2 behaviour: the driver then
+        // DECLINES, isolating the merge rule's effect on spuriousness).
+        if body_roles.is_empty()
+            && cl.body.len() == 2
+            && cl.head.len() == 1
+            && std::env::var_os("KM_HT_NO_SINGLETON").is_none()
+        {
             if let (
                 HAtom::Concept { neg: false, c: c0, t: t0 },
                 HAtom::Concept { neg: false, c: c1, t: t1 },

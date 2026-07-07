@@ -68,11 +68,14 @@
 
 use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{op, ConceptId, RoleId};
+use super::super::process::dependency::BranchTreeNode;
 use super::super::process::edge::{DistinctEdge, IndividualLinkEdge};
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::{
-    ConDescId, ConProcDescId, EdgeId, NodeId, RestrictionSpecId, TrackPointId,
+    BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
+    TrackPointId,
 };
+use super::algorithm::{AtMostMergeBranch, BranchKind, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -1127,20 +1130,33 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> Vec<NodeId> {
         // KONCLUDE-PORT-NOTE[api]: the label set is keyed by `CConcept::getConceptTag`,
         // but `ReapplyConceptLabelSet::has_concept` / the `concept_tag` static are
-        // W2-DEFER stubs that key by the raw arena index (and `con_des_negated` is
-        // stubbed to `false`). To test qualifier membership reliably, resolve the real
-        // concept tag through the ontology arena and probe via `get_concept_descriptor_by_tag`
-        // (the same surface the selftests read the label set with). Negation matching is
-        // limited by the `con_des_negated` stub — positive qualifiers (the ≥n/≤n common
-        // case) match exactly; the negated-qualifier path inherits the W2-DEFER gap.
+        // W2-DEFER stubs that key by the raw arena index. To test qualifier
+        // membership reliably, resolve the real concept tag through the ontology
+        // arena, probe via `get_concept_descriptor_by_tag`, and resolve the found
+        // descriptor's POLARITY through the process arena (`con_desc(cd)
+        // .is_negated()` — the same caller-side resolution as the ls1 tp-stub
+        // fix). Konclude counts a successor ONLY on positive-polarity qualifier
+        // containment (`initializeMergingIndividualNodes` cpp 15879:
+        // `if (!containsNegation)`): a successor whose label carries ¬C is NOT
+        // an R.C-successor — counting it over-merges/over-clashes the ≤n rule
+        // (measured: ore_ont_12653 `X ⊑ Path` spurious family). The qualifier
+        // linker's own negation is respected; the rule-level `negate` does NOT
+        // flip it (¬≥n R.C ≡ ≤(n−1) R.C — the filler polarity is unchanged;
+        // Konclude reads the operand linker raw in the merge-candidate
+        // collection). A successor carrying NEITHER polarity is skipped here —
+        // Konclude installs choose-triggering for those (cpp 15934+, the
+        // completeness half; PORT-PENDING).
         let _ = negate;
-        let tags: Vec<Cint64> = concept_linker
+        let want: Vec<(Cint64, bool)> = concept_linker
             .iter()
             .map(|nl| {
-                calc_alg_context
-                    .ontology_arenas()
-                    .concept(nl.target)
-                    .get_concept_tag()
+                (
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(nl.target)
+                        .get_concept_tag(),
+                    nl.negated,
+                )
             })
             .collect();
         let mut out: Vec<NodeId> = Vec::new();
@@ -1149,7 +1165,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 continue;
             }
             let mut all = true;
-            if !tags.is_empty() {
+            if !want.is_empty() {
                 let ls = calc_alg_context
                     .process_context()
                     .node(succ)
@@ -1157,13 +1173,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if ls.is_none() {
                     all = false;
                 } else {
-                    for &t in &tags {
+                    for &(t, expected_neg) in &want {
                         let mut cd: ConDescId = Id::NONE;
                         let mut dtp: TrackPointId = TrackPointId::NONE;
-                        if !calc_alg_context
+                        let found = calc_alg_context
                             .process_context()
                             .label_set(ls)
-                            .get_concept_descriptor_by_tag(t, &mut cd, &mut dtp)
+                            .get_concept_descriptor_by_tag(t, &mut cd, &mut dtp);
+                        if !found
+                            || calc_alg_context.process_context().con_desc(cd).is_negated()
+                                != expected_neg
                         {
                             all = false;
                             break;
@@ -1176,6 +1195,65 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
         out
+    }
+
+    /// The first `role`-successor of `source` whose label decides NEITHER
+    /// polarity of some qualifier operand — the choose rule's both-qualify
+    /// candidate (`initializeMergingIndividualNodes`' else-branch, cpp 15931:
+    /// `containsIndividualNodeConcepts` false ⇒ some operand ABSENT in both
+    /// polarities). A successor carrying an operand with the OPPOSITE polarity
+    /// but no absent operand is DECIDED (anti-qualified) and not a candidate.
+    pub fn ht_find_both_qualify_successor(
+        &mut self,
+        source: NodeId,
+        role: RoleId,
+        concept_linker: &[NegLink<ConceptId>],
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Option<NodeId> {
+        let want: Vec<Cint64> = concept_linker
+            .iter()
+            .map(|nl| {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(nl.target)
+                    .get_concept_tag()
+            })
+            .collect();
+        if want.is_empty() {
+            return None;
+        }
+        let mut seen: Vec<NodeId> = Vec::new();
+        for (_link, succ) in self.ht_role_successor_links(source, role, calc_alg_context) {
+            if seen.contains(&succ) {
+                continue;
+            }
+            seen.push(succ);
+            let ls = calc_alg_context
+                .process_context()
+                .node(succ)
+                .use_reapply_con_label_set;
+            let mut undecided = false;
+            if ls.is_none() {
+                undecided = true;
+            } else {
+                for &t in &want {
+                    let mut cd: ConDescId = Id::NONE;
+                    let mut dtp: TrackPointId = TrackPointId::NONE;
+                    if !calc_alg_context
+                        .process_context()
+                        .label_set(ls)
+                        .get_concept_descriptor_by_tag(t, &mut cd, &mut dtp)
+                    {
+                        undecided = true;
+                        break;
+                    }
+                }
+            }
+            if undecided {
+                return Some(succ);
+            }
+        }
+        None
     }
 
     /// Are `indi1` and `indi2` mergeable? `false` iff `indi1`'s active distinct hash
@@ -1267,15 +1345,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         false
     }
 
-    /// The merge/clash spine of `applyATMOSTRule` / `mergeMergingIndividualNodes`
-    /// (cpp 14861–15006). Gather the `role`-successors carrying the qualifier, then while
-    /// they exceed the bound: merge the first MERGEABLE pair (`merge_individual_node_into`,
-    /// unit 15), else — every excess pair is pairwise-distinct — raise the at-most CLASH.
+    /// The merge/clash spine of `applyATMOSTRule` / the PAIRWISE merge branching
+    /// `mergeMergingIndividualNodesPairwise` (cpp 14861–15006 / 15044–15093).
+    /// Gather the `role`-successors carrying the qualifier; while they exceed the
+    /// bound, enumerate every MERGEABLE pair: which pair merges is a
+    /// NON-DETERMINISTIC choice (Konclude forks one `createMergeBranchingTask`
+    /// per pair) — the port pushes an `AtMostMerge` branch point whose
+    /// alternatives are the pairs, performs pair 0 (the pair the previous greedy
+    /// realisation merged, so deterministic runs are unchanged), and loops to
+    /// re-check the bound; backtracking (u02 `advance_atmost_merge_alternative`)
+    /// tries the sibling pairs. No mergeable pair at all ⇒ the at-most CLASH.
     ///
-    /// KONCLUDE-PORT-NOTE[api]: the full NN-rule / global pairwise-blocking / branching
-    /// restriction-spec machinery (`mConfPairwiseMerging` / the non-deterministic merge
-    /// branch) stays W3-DEFER; this is the minimal `choose`+merge realisation the task
-    /// scopes — deterministic greedy merge, faithful distinct-edge clash.
+    /// Every merge branch point OWNS a branch epoch, even when the global
+    /// in-process COW is off: a merge mutates labels / links / distinct hashes
+    /// across nodes, which the single-node label snapshot cannot undo — the
+    /// previous epoch-less greedy merge leaked refuted alternatives' merges into
+    /// their siblings and manufactured spurious unsats (measured: ore_ont_12653
+    /// `X ⊑ Path` spurious family — a definer pulled into the root by an
+    /// unrolled-back merge).
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: the NN-rule / nominal machinery of
+    /// `mergeMergingIndividualNodes` stays W3-DEFER; the choose-triggering for
+    /// neither-polarity successors (cpp 15934+) is the pending completeness half.
     pub fn ht_apply_atmost_merge(
         &mut self,
         process_indi: &mut NodeId,
@@ -1287,64 +1378,312 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_des: ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let mut succs = self.ht_role_successors_with_concepts(
-            *process_indi,
-            role,
-            concept_linker,
-            negate,
-            calc_alg_context,
-        );
-        while (succs.len() as Cint64) > cardinality {
-            // find a mergeable pair (min-id merge target is the C++ refinement; the
-            // first mergeable pair is the minimal faithful choose).
-            let mut pair: Option<(usize, usize)> = None;
-            'outer: for i in 0..succs.len() {
+        let watch = std::env::var_os("KM_BRIDGE_WATCH_MERGE").is_some();
+        loop {
+            // --- choose rule (`qualifyMergingIndividualNodes`, cpp 15677–15816).
+            // A `role`-successor whose label decides NEITHER polarity of the
+            // qualifier is qualified BEFORE any merging — regardless of the
+            // current qualified count (in the positive alternative it becomes a
+            // merge candidate and can push the count over the bound; skipping
+            // undecided successors loses that refutation = incompleteness).
+            // One candidate per iteration (Konclude forks + reapplication
+            // re-fires for the rest).
+            if !concept_linker.is_empty() {
+                if let Some(qsucc) = self.ht_find_both_qualify_successor(
+                    *process_indi,
+                    role,
+                    concept_linker,
+                    calc_alg_context,
+                ) {
+                    // `createQUALIFYDependency` — the decision node.
+                    let qualify_dep: DependencyId = {
+                        let mut pi = *process_indi;
+                        self.create_qualify_dependency(
+                            &mut pi,
+                            con_des,
+                            dep_track_point,
+                            calc_alg_context,
+                        )
+                    };
+                    let parent_used_branch_node = calc_alg_context.base.used_branch_tree_node;
+                    if cardinality <= 0 {
+                        // ≤0 R.C: only the NEGATED qualification is consistent —
+                        // deterministic (cpp 15721–15733, "qualify only negated").
+                        let tps = self.ht_mint_alternative_track_points(
+                            qualify_dep,
+                            1,
+                            parent_used_branch_node,
+                            calc_alg_context,
+                        );
+                        let add_tp = tps.first().copied().unwrap_or(dep_track_point);
+                        for nl in concept_linker {
+                            if calc_alg_context.has_pending_signal() {
+                                return;
+                            }
+                            let mut s = qsucc;
+                            self.add_concept_to_individual(
+                                nl.target,
+                                !nl.negated,
+                                &mut s,
+                                add_tp,
+                                true,
+                                true,
+                                calc_alg_context,
+                            );
+                        }
+                        self.add_individual_to_processing_queue(qsucc, calc_alg_context);
+                        if calc_alg_context.has_pending_signal() {
+                            return;
+                        }
+                        continue;
+                    }
+                    // choose branching: alternative 0 = ¬C (qualNeg = true first),
+                    // alternative 1 = C. Own-epoch: the qualification's downstream
+                    // derivations must be undone before the sibling alternative.
+                    let parent_branch: BranchNodeId = self
+                        .or_branch_stack
+                        .last()
+                        .map(|bp| bp.branch_node)
+                        .unwrap_or(BranchNodeId::NONE);
+                    let root_branch: BranchNodeId = self
+                        .or_branch_stack
+                        .first()
+                        .map(|bp| bp.branch_node)
+                        .unwrap_or(BranchNodeId::NONE);
+                    let alt_track_points = self.ht_mint_alternative_track_points(
+                        qualify_dep,
+                        2,
+                        parent_used_branch_node,
+                        calc_alg_context,
+                    );
+                    let branch_node: BranchNodeId = calc_alg_context
+                        .process_context_mut()
+                        .alloc_branch_node(BranchTreeNode {
+                            process_tag: 0,
+                            parent_node: parent_branch,
+                            root_node: root_branch,
+                            branched_dep_track_point: Id::NONE,
+                            sat_calc_task: INVALID,
+                        });
+                    let node_count_at_push = calc_alg_context.process_context().node_count();
+                    let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
+                    calc_alg_context.push_branch_epoch();
+                    self.or_branch_open_count += 1;
+                    self.or_branch_stack.push(OrBranchPoint {
+                        node: qsucc,
+                        disjuncts: Vec::new(),
+                        negate: false,
+                        next_alt: 1,
+                        dep_track_point,
+                        branch_node,
+                        or_dependency_node: qualify_dep,
+                        alt_track_points,
+                        parent_used_branch_node,
+                        node_label_snapshot: Default::default(),
+                        node_queue_snapshot: Default::default(),
+                        node_count_at_push,
+                        kind: BranchKind::AtMostQualify {
+                            succ: qsucc,
+                            atmost: AtMostMergeBranch {
+                                pairs: Vec::new(),
+                                parent: *process_indi,
+                                role,
+                                concept_linker: concept_linker.to_vec(),
+                                negate,
+                                cardinality,
+                                con_des,
+                            },
+                        },
+                        own_epoch: true,
+                    });
+                    let add_tp = if first_alt_tp.is_some() {
+                        calc_alg_context.base.used_branch_tree_node = calc_alg_context
+                            .process_context()
+                            .track_point(first_alt_tp)
+                            .get_branch_node();
+                        first_alt_tp
+                    } else {
+                        dep_track_point
+                    };
+                    if watch {
+                        eprintln!(
+                            "ATMOST-QUALIFY parent=n{} succ=n{} qualNeg=true",
+                            process_indi.index(),
+                            qsucc.index()
+                        );
+                    }
+                    for nl in concept_linker {
+                        if calc_alg_context.has_pending_signal() {
+                            return;
+                        }
+                        let mut s = qsucc;
+                        self.add_concept_to_individual(
+                            nl.target,
+                            !nl.negated,
+                            &mut s,
+                            add_tp,
+                            true,
+                            true,
+                            calc_alg_context,
+                        );
+                    }
+                    self.add_individual_to_processing_queue(qsucc, calc_alg_context);
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                    // re-gather: the ¬C successor is now decided (excluded);
+                    // further undecided successors branch one at a time.
+                    continue;
+                }
+            }
+
+            let succs = self.ht_role_successors_with_concepts(
+                *process_indi,
+                role,
+                concept_linker,
+                negate,
+                calc_alg_context,
+            );
+            if (succs.len() as Cint64) <= cardinality {
+                return;
+            }
+            // enumerate every mergeable pair — the merge alternatives
+            // (`isIndividualNodesMergeable` per pair, cpp 15071).
+            let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
+            for i in 0..succs.len() {
                 for j in (i + 1)..succs.len() {
                     if self.ht_individuals_mergeable(succs[i], succs[j], calc_alg_context) {
-                        pair = Some((i, j));
-                        break 'outer;
+                        pairs.push((succs[i], succs[j]));
                     }
                 }
             }
-            match pair {
-                Some((i, j)) => {
-                    // merge succs[j] INTO succs[i].
-                    let into = succs[i];
-                    let from = succs[j];
-                    self.merge_individual_node_into(into, from, dep_track_point, calc_alg_context);
-                    if calc_alg_context.has_pending_signal() {
-                        return;
-                    }
-                    // phase-5 relocation from the COUNTED parent: the merge's
-                    // ancestor-scoped relocation covers `from`'s creator; when
-                    // `process_indi` reached `from` through an earlier relocation
-                    // its own link must be re-pointed too (idempotent — the
-                    // helper skips existing links).
-                    self.ht_relocate_incoming_links(
-                        *process_indi,
-                        from,
-                        into,
-                        dep_track_point,
-                        calc_alg_context,
-                    );
-                    succs.remove(j);
-                    if calc_alg_context.has_pending_signal() {
-                        return;
-                    }
-                }
-                None => {
-                    // every excess successor is pairwise-distinct ⇒ at-most violated.
-                    let clash = self.create_clashed_concept_descriptor(
-                        Id::NONE,
-                        process_indi,
-                        con_des,
-                        dep_track_point,
-                        calc_alg_context,
-                    );
-                    calc_alg_context.raise_clash(clash);
-                    return;
-                }
+            if pairs.is_empty() {
+                // every excess successor is pairwise-distinct ⇒ at-most violated
+                // (the `!newTaskList` clash, cpp 15085–15088).
+                let clash = self.create_clashed_concept_descriptor(
+                    Id::NONE,
+                    process_indi,
+                    con_des,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                calc_alg_context.raise_clash(clash);
+                return;
             }
+
+            // --- push the merge branch point (the sibling task fan-out). ---
+            // Records that belong to the PARENT state (dependency node,
+            // alternative track points) are created BEFORE the epoch opens,
+            // mirroring the OR-rule push (u03).
+            let parent_branch: BranchNodeId = self
+                .or_branch_stack
+                .last()
+                .map(|bp| bp.branch_node)
+                .unwrap_or(BranchNodeId::NONE);
+            let root_branch: BranchNodeId = self
+                .or_branch_stack
+                .first()
+                .map(|bp| bp.branch_node)
+                .unwrap_or(BranchNodeId::NONE);
+            // `createMERGEDependency` (cpp 15054) — the non-deterministic
+            // decision node the DDB analysis walks through.
+            let merge_dependency_node: DependencyId = {
+                let mut pi = *process_indi;
+                self.create_merge_dependency(&mut pi, con_des, dep_track_point, calc_alg_context)
+            };
+            let parent_used_branch_node = calc_alg_context.base.used_branch_tree_node;
+            let alt_track_points = self.ht_mint_alternative_track_points(
+                merge_dependency_node,
+                pairs.len(),
+                parent_used_branch_node,
+                calc_alg_context,
+            );
+            let branch_node: BranchNodeId =
+                calc_alg_context
+                    .process_context_mut()
+                    .alloc_branch_node(BranchTreeNode {
+                        process_tag: 0,
+                        parent_node: parent_branch,
+                        root_node: root_branch,
+                        branched_dep_track_point: Id::NONE,
+                        sat_calc_task: INVALID,
+                    });
+            let node_count_at_push = calc_alg_context.process_context().node_count();
+            let (into, from) = pairs[0];
+            let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
+
+            // the merge epoch: everything from here to this branch point's
+            // discard/advance is rolled back by the epoch pop.
+            calc_alg_context.push_branch_epoch();
+            self.or_branch_open_count += 1;
+            self.or_branch_stack.push(OrBranchPoint {
+                node: *process_indi,
+                disjuncts: Vec::new(),
+                negate: false,
+                next_alt: 1,
+                dep_track_point,
+                branch_node,
+                or_dependency_node: merge_dependency_node,
+                alt_track_points,
+                parent_used_branch_node,
+                node_label_snapshot: Default::default(),
+                node_queue_snapshot: Default::default(),
+                node_count_at_push,
+                kind: BranchKind::AtMostMerge(AtMostMergeBranch {
+                    pairs,
+                    parent: *process_indi,
+                    role,
+                    concept_linker: concept_linker.to_vec(),
+                    negate,
+                    cardinality,
+                    con_des,
+                }),
+                own_epoch: true,
+            });
+
+            // --- perform alternative 0: merge `from` INTO `into`. ---
+            let add_tp = if first_alt_tp.is_some() {
+                calc_alg_context.base.used_branch_tree_node = calc_alg_context
+                    .process_context()
+                    .track_point(first_alt_tp)
+                    .get_branch_node();
+                first_alt_tp
+            } else {
+                dep_track_point
+            };
+            if watch {
+                eprintln!(
+                    "ATMOST-MERGE parent=n{} merge n{} -> n{} (alternatives={})",
+                    process_indi.index(),
+                    from.index(),
+                    into.index(),
+                    self.or_branch_stack
+                        .last()
+                        .map(|bp| bp.alternatives_len())
+                        .unwrap_or(0),
+                );
+            }
+            self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            // phase-5 relocation from the COUNTED parent: the merge's
+            // ancestor-scoped relocation covers `from`'s creator; when
+            // `process_indi` reached `from` through an earlier relocation
+            // its own link must be re-pointed too (idempotent — the
+            // helper skips existing links).
+            self.ht_relocate_incoming_links(
+                *process_indi,
+                from,
+                into,
+                add_tp,
+                calc_alg_context,
+            );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            // loop: re-gather on the merged graph (count dropped by one); if
+            // still over the bound, a NESTED merge branch point is pushed.
         }
     }
 

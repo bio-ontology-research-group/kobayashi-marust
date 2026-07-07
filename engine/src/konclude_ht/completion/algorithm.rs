@@ -115,6 +115,60 @@ pub const DETERMINISTIC_PROCESS_PRIORITY: Cint64 = 4;
 /// `mImmediatelyProcessPriority`.
 pub const IMMEDIATELY_PROCESS_PRIORITY: Cint64 = 8;
 
+/// The at-most merge-branching payload (`mergeMergingIndividualNodesPairwise`,
+/// cpp 15044–15093): Konclude forks one `createMergeBranchingTask` PER MERGEABLE
+/// PAIR of the counted successors — which pair merges is a non-deterministic
+/// CHOICE, and a clash under one pairing must backtrack into trying another.
+/// The in-process realisation makes each pairing an alternative of an
+/// `OrBranchPoint`: alternative `k` merges `pairs[k].1` INTO `pairs[k].0`, then
+/// re-checks the bound (Konclude re-fires via reapplication; the port re-enters
+/// `ht_atmost_merge_loop`, which pushes a nested branch point if still over).
+/// A merge mutates node labels / links / distinct hashes across nodes, which
+/// the single-node label snapshot cannot undo — merge branch points therefore
+/// ALWAYS own a branch epoch (`own_epoch`), independent of the global COW mode.
+pub struct AtMostMergeBranch {
+    /// The mergeable `(into, from)` pairs, in gather order (alternative k
+    /// merges `pairs[k].1` into `pairs[k].0`; pair 0 is the pair the previous
+    /// greedy realisation merged, so deterministic runs are unchanged).
+    pub pairs: Vec<(NodeId, NodeId)>,
+    /// The counted parent (the at-most rule's process individual): re-seeded
+    /// onto the immediately-processing queue and used as the link-relocation
+    /// source after each merge alternative.
+    pub parent: NodeId,
+    /// The at-most concept's role.
+    pub role: super::super::model::RoleId,
+    /// The at-most qualifier operand list (for the bound re-check re-gather).
+    pub concept_linker: Vec<NegLink<ConceptId>>,
+    /// The rule-level negation flag the at-most was dispatched with.
+    pub negate: bool,
+    /// The at-most bound (already `getParameter() - 1*negate`-adjusted).
+    pub cardinality: Cint64,
+    /// The at-most concept descriptor (the clash anchor for the re-check).
+    pub con_des: super::super::process::ConDescId,
+}
+
+/// What the alternatives of an `OrBranchPoint` DO: add a disjunct (the OR rule),
+/// merge a successor pair (the at-most rule's non-deterministic merging), or
+/// qualify a successor (the choose rule).
+pub enum BranchKind {
+    /// The alternatives live in `OrBranchPoint::disjuncts`.
+    Disjunction,
+    /// The alternatives are the merge pairs (see [`AtMostMergeBranch`]).
+    AtMostMerge(AtMostMergeBranch),
+    /// The choose rule (`qualifyMergingIndividualNodes`, cpp 15677–15816): a
+    /// `role`-successor whose label decides NEITHER polarity of the at-most
+    /// qualifier is non-deterministically qualified — alternative 0 adds the
+    /// NEGATED qualifier (Konclude's `qualNeg = true` first task), alternative
+    /// 1 adds the positive qualifier (making it a merge candidate); both
+    /// re-fire the at-most bound check on the counted parent.
+    AtMostQualify {
+        /// The successor being qualified.
+        succ: NodeId,
+        /// The at-most re-check payload.
+        atmost: AtMostMergeBranch,
+    },
+}
+
 /// An open disjunction branch point on the in-process chronological search stack.
 ///
 /// KONCLUDE-PORT-NOTE[branching]: Konclude does NOT keep an in-process branch stack
@@ -183,6 +237,24 @@ pub struct OrBranchPoint {
     /// `process_context.node_count()` at push — the guard: restore the snapshot
     /// only if no new node was created (i.e. the disjunct stayed on `node`).
     pub node_count_at_push: usize,
+    /// What this branch point's alternatives do (disjunct add vs successor merge).
+    pub kind: BranchKind,
+    /// Whether THIS branch point pushed a branch epoch at push time (and so must
+    /// pop it on discard / pop+re-push on advance). True for every branch point
+    /// under global in-process COW; ALWAYS true for at-most merge branch points
+    /// (their mutations are only undoable by epoch rollback).
+    pub own_epoch: bool,
+}
+
+impl OrBranchPoint {
+    /// Number of alternatives this branch point enumerates.
+    pub fn alternatives_len(&self) -> usize {
+        match &self.kind {
+            BranchKind::Disjunction => self.disjuncts.len(),
+            BranchKind::AtMostMerge(m) => m.pairs.len(),
+            BranchKind::AtMostQualify { .. } => 2,
+        }
+    }
 }
 
 /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm`.
@@ -558,6 +630,16 @@ pub struct CompletionTaskHandleAlgorithm {
     /// empty on ontologies without such clauses — the rule is then inert.
     pub singleton_concepts: Vec<ConceptId>,
     pub applied_singleton_merge_count: Cint64,
+    /// Node-arena index intervals `[at_push, at_pop)` created by REFUTED
+    /// alternatives that were advanced/discarded WITHOUT a complete restore
+    /// (no in-process COW): chronological backtracking leaves those nodes in
+    /// the arena as PHANTOMS — dead state no longer part of the current
+    /// branch. The global singleton scan must skip them (merging a live
+    /// carrier with a phantom entangles live labels with clash-laden dead
+    /// ones → spurious unsat). Under COW the epochs truncate the arenas, so
+    /// no intervals are recorded (indices are reused — an interval would be
+    /// wrong). Never cleared within a drive: a phantom stays a phantom.
+    pub phantom_node_intervals: Vec<(usize, usize)>,
 
     // --- variable-binding stats (.h 1504–1513) ---
     pub stat_var_binding_created_count: Cint64,
@@ -1018,6 +1100,7 @@ impl CompletionTaskHandleAlgorithm {
 
             singleton_concepts: Vec::new(),
             applied_singleton_merge_count: 0,
+            phantom_node_intervals: Vec::new(),
 
             stat_var_binding_created_count: 0,
             stat_var_binding_grounding_count: 0,
