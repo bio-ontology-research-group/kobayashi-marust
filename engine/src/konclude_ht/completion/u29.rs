@@ -1176,6 +1176,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         let s = self
                             .ht_fmt_tracked_closure(collected_tracked_clashed_des, calc_alg_context);
                         eprintln!("DDB-ROOT-CANCEL[propagated] collected closure: {s}");
+                        // per-sibling stored clash sets of the refuted decision
+                        // — is the tag-0 degeneration a STORAGE bug (empty /
+                        // thin sets) or a semantics bug upstream?
+                        let mut tp_it = calc_alg_context
+                            .process_context()
+                            .dep_node(non_det_dependency_node)
+                            .branch_track_points();
+                        let mut k = 0;
+                        while tp_it.is_some() && k < 8 {
+                            let (clashes, marked, tag) = {
+                                let t = calc_alg_context.process_context().track_point(tp_it);
+                                (t.get_clashes(), t.is_clashed_or_irelevant_branch(), t.process_tag)
+                            };
+                            let cs = self.ht_fmt_tracked_closure(clashes, calc_alg_context);
+                            eprintln!(
+                                "  SIBLING[{k}] tp#{} tag={} marked={} stored: {}",
+                                tp_it.index(),
+                                tag,
+                                marked,
+                                if cs.is_empty() { "(EMPTY)".into() } else { cs }
+                            );
+                            tp_it = calc_alg_context.process_context().track_point(tp_it).next;
+                            k += 1;
+                        }
                     }
                     self.cancellation_root_task(calc_alg_context);
                 }
