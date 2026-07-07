@@ -1553,6 +1553,54 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     concept_linker,
                     calc_alg_context,
                 ) {
+                    // KM_BRIDGE_WATCH_ATMOST: identify the at-most driving a
+                    // choose qualification (concept/role/bound/negate + the
+                    // at-most descriptor's own track point tag).
+                    if std::env::var_os("KM_BRIDGE_WATCH_ATMOST").is_some()
+                        && self.ddb_analysis_dumps < 12
+                    {
+                        self.ddb_analysis_dumps += 1;
+                        let am_tag = calc_alg_context
+                            .process_context()
+                            .con_desc(con_des)
+                            .get_concept();
+                        let am_tag = calc_alg_context
+                            .ontology_arenas()
+                            .concept(am_tag)
+                            .get_concept_tag();
+                        let quals: Vec<String> = concept_linker
+                            .iter()
+                            .map(|nl| {
+                                format!(
+                                    "{}{}",
+                                    if nl.negated { "¬" } else { "" },
+                                    calc_alg_context
+                                        .ontology_arenas()
+                                        .concept(nl.target)
+                                        .get_concept_tag()
+                                )
+                            })
+                            .collect();
+                        let dep_tag = if dep_track_point.is_some() {
+                            calc_alg_context
+                                .process_context()
+                                .track_point(dep_track_point)
+                                .process_tag
+                        } else {
+                            -1
+                        };
+                        eprintln!(
+                            "WATCH-ATMOST choose: atmost_tag={} card={} negate={} role_tag={} quals=[{}] parent=n{} succ=n{} dep_tag={}",
+                            am_tag,
+                            cardinality,
+                            negate,
+                            calc_alg_context.ontology_arenas().role(role).get_role_tag(),
+                            quals.join(","),
+                            process_indi.index(),
+                            qsucc.index(),
+                            dep_tag
+                        );
+                    }
                     // `createQUALIFYDependency` — the decision node.
                     let qualify_dep: DependencyId = {
                         let mut pi = *process_indi;
