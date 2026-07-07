@@ -1174,6 +1174,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
         self.ddb_mark_count += 1;
+        // KM_BRIDGE_DUMP_CLASH: every refuted-alternative MARK with the stored
+        // closure — an EMPTY store here is the taint-death fingerprint of the
+        // 12653 wrong-root-cancel (memory cont-14).
+        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some() {
+            eprintln!(
+                "DDB-MARK tp#{} tag={} stored: {}",
+                dep_track_point.index(),
+                calc_alg_context
+                    .process_context()
+                    .track_point(dep_track_point)
+                    .process_tag,
+                if branch_mem_con_clashed_des_list.is_none() {
+                    "(EMPTY)".to_string()
+                } else {
+                    self.ht_fmt_tracked_closure(branch_mem_con_clashed_des_list, calc_alg_context)
+                }
+            );
+        }
         calc_alg_context
             .process_context_mut()
             .track_point_mut(dep_track_point)
@@ -1215,6 +1233,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     INVALID,
                 );
 
+            // KM_BRIDGE_DUMP_CLASH: format the collected closure BEFORE
+            // initialize_tracking_line consumes the chain (it redistributes
+            // the descriptors and rewrites their next pointers — formatting
+            // afterwards shows only the residual head, which mis-shrank the
+            // 12653 wrong-root-cancel closure to one element).
+            let collected_dump: Option<String> = if std::env::var_os("KM_BRIDGE_DUMP_CLASH")
+                .is_some()
+            {
+                Some(self.ht_fmt_tracked_closure(collected_tracked_clashed_des, calc_alg_context))
+            } else {
+                None
+            };
             if self.initialize_tracking_line(
                 tracking_line,
                 collected_tracked_clashed_des,
@@ -1225,8 +1255,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         && self.ddb_analysis_dumps < 16
                     {
                         self.ddb_analysis_dumps += 1;
-                        let s = self
-                            .ht_fmt_tracked_closure(collected_tracked_clashed_des, calc_alg_context);
+                        let s = collected_dump.unwrap_or_default();
                         eprintln!("DDB-ROOT-CANCEL[propagated] collected closure: {s}");
                         // per-sibling stored clash sets of the refuted decision
                         // — is the tag-0 degeneration a STORAGE bug (empty /
@@ -1442,6 +1471,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         None,
                         calc_alg_context,
                     );
+                // KM_BRIDGE_DUMP_CLASH: an after-tag descriptor whose unwind
+                // produces NOTHING silently erases its branch taint from the
+                // stored closure (dedup-freed causes are fine; a NONE unwind
+                // is the suspect) — surface both counts.
+                if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
+                    && new_tracked_clashed_descriptor_it.is_none()
+                {
+                    eprintln!(
+                        "DDB-UNWIND-NONE after-tag desc: {}",
+                        self.ht_fmt_tracked_closure(tracked_clashed_descriptor, calc_alg_context)
+                    );
+                }
+                let mut unwind_inserted = 0usize;
+                let mut unwind_deduped = 0usize;
                 while new_tracked_clashed_descriptor_it.is_some() {
                     let new_tracked_clashed_descriptor = new_tracked_clashed_descriptor_it;
                     new_tracked_clashed_descriptor_it = calc_alg_context
@@ -1462,12 +1505,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .clash_desc_mut(new_tracked_clashed_descriptor)
                             .set_next(tracked_clashed_descriptors);
                         tracked_clashed_descriptors = new_tracked_clashed_descriptor;
+                        unwind_inserted += 1;
                     } else {
+                        unwind_deduped += 1;
                         tracking_line.add_free_tracked_clashed_descriptor(
                             new_tracked_clashed_descriptor,
                             calc_alg_context,
                         );
                     }
+                }
+                if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
+                    && unwind_inserted == 0
+                    && unwind_deduped > 0
+                {
+                    eprintln!(
+                        "DDB-UNWIND-ALLDEDUP after-tag desc ({} causes deduped): {}",
+                        unwind_deduped,
+                        self.ht_fmt_tracked_closure(tracked_clashed_descriptor, calc_alg_context)
+                    );
                 }
                 tracking_line.add_free_tracked_clashed_descriptor(
                     tracked_clashed_descriptor,
