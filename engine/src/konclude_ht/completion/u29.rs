@@ -729,6 +729,58 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // ported (`ClashDescId`). `cint64* minIndiLevel` → `Option<&mut Cint64>`.
     // =======================================================================
 
+    /// Compact dependency-graph walk from a track point (tp → dep node →
+    /// prev/additional), printing tag + kind per hop — the taint-lie hunter
+    /// (see the SIBLING late-desc dump).
+    fn ht_dump_dep_chain_of(
+        &self,
+        tp: TrackPointId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) {
+        let ctx = calc_alg_context.process_context();
+        let mut stack: Vec<(TrackPointId, usize)> = vec![(tp, 2)];
+        let mut seen: std::collections::HashSet<usize> = Default::default();
+        let mut lines = 0;
+        while let Some((t, d)) = stack.pop() {
+            if t.is_none() || lines > 24 || d > 12 {
+                continue;
+            }
+            if !seen.insert(t.index()) {
+                continue;
+            }
+            lines += 1;
+            let tpr = ctx.track_point(t);
+            let dn = tpr.dependency_node();
+            if dn.is_none() {
+                eprintln!(
+                    "{:indent$}tp#{} tag={} (BASE)",
+                    "",
+                    t.index(),
+                    tpr.process_tag,
+                    indent = d * 2
+                );
+                continue;
+            }
+            let node = ctx.dep_node(dn);
+            let base = node.base();
+            eprintln!(
+                "{:indent$}tp#{} tag={} node={:?} nondet={}",
+                "",
+                t.index(),
+                tpr.process_tag,
+                node.kind(),
+                node.kind().is_non_deterministic(),
+                indent = d * 2
+            );
+            stack.push((base.dep_track_point, d + 1));
+            let mut al = base.additional_after;
+            while al.is_some() {
+                stack.push((ctx.dep_link(al).dep_track_point, d + 1));
+                al = ctx.dep_link(al).next;
+            }
+        }
+    }
+
     /// Format a tracked-clash descriptor chain (concept tag/polarity, pointer
     /// class, branching-level tag, node level) — shared by the DDB-CLOSURE and
     /// the root-cancel dumps.
@@ -1197,6 +1249,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 marked,
                                 if cs.is_empty() { "(EMPTY)".into() } else { cs }
                             );
+                            // chain-walk the first LATE-tp stored descriptor —
+                            // a late tag-0 continue point built from
+                            // branch-dependent inputs is the taint lie.
+                            let mut d_it = clashes;
+                            while d_it.is_some() {
+                                let dtp = calc_alg_context
+                                    .process_context()
+                                    .clash_desc(d_it)
+                                    .get_dependency_track_point();
+                                if dtp.is_some() && dtp.index() > 10_000 {
+                                    eprintln!("  SIBLING[{k}] late-desc chain:");
+                                    self.ht_dump_dep_chain_of(dtp, calc_alg_context);
+                                    break;
+                                }
+                                d_it = calc_alg_context
+                                    .process_context()
+                                    .clash_desc(d_it)
+                                    .get_next_descriptor();
+                            }
                             tp_it = calc_alg_context.process_context().track_point(tp_it).next;
                             k += 1;
                         }
