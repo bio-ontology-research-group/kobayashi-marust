@@ -785,6 +785,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
+        // KONCLUDE-PORT-NOTE[lazy-cover]: a "lazy covering-OR" over atomic
+        // operands (defer while the label decides none of them) was tried here
+        // and is UNSOUND-for-completeness: case-split entailments (`A ⊑ B ⊔ C`
+        // with both branches closing ⇒ `A ⊑ D`) require branching on UNDECIDED
+        // disjuncts, and the OR-concept level cannot distinguish definer
+        // excluded-middle coverings from genuine case splits (suite:
+        // disjunction_all_branches_unsat / subsumption_via_disjunction /
+        // disjunction_branch_explored fail under it). The at-most defer above
+        // is different in kind: the deferred disjunct's satisfaction is
+        // structurally CHECKED (pessimistic count ≤ bound) and re-checked on
+        // every link event — nothing is left undecided that the verdict
+        // depends on. Reducing the EM-pair branching needs the real absorption
+        // complementarity analysis (EMELIM-style proof), not a defer.
+
         // --- createBranchingTreeNode / createORDependency (the ported records). ---
         // The parent / root branch nodes chain chronologically (the topmost open
         // branch is this one's parent), mirroring `CBranchTreeNode`'s parent/root
