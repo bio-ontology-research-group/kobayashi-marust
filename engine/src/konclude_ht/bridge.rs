@@ -2224,6 +2224,60 @@ mod tests {
                 }
             }
         }
+        // KM_BRIDGE_GREP_CLAUSES=<c:IDX|r:IDX>[,...]: print every TInput
+        // clause mentioning any listed concept (c:) or role (r:) index,
+        // with concept names resolved — the clause-level entailment-check
+        // input (the UNSUP-dumper format).
+        if let Ok(spec) = std::env::var("KM_BRIDGE_GREP_CLAUSES") {
+            let mut cons: Vec<usize> = Vec::new();
+            let mut rols: Vec<usize> = Vec::new();
+            for part in spec.split(',') {
+                let part = part.trim();
+                if let Some(i) = part.strip_prefix("c:").and_then(|s| s.parse().ok()) {
+                    cons.push(i);
+                } else if let Some(i) = part.strip_prefix("r:").and_then(|s| s.parse().ok()) {
+                    rols.push(i);
+                }
+            }
+            let name = |c: usize| -> &str {
+                env.tin.concepts.get(c).map(String::as_str).unwrap_or("?")
+            };
+            let show = |a: &crate::orchestrate::cb_to_ht::HAtom| -> String {
+                use crate::orchestrate::cb_to_ht::HAtom;
+                match a {
+                    HAtom::Concept { neg, c, t } => {
+                        format!("{}{}({t})", if *neg { "¬" } else { "" }, name(*c))
+                    }
+                    HAtom::Role { r, s, t } => format!(
+                        "{}({s},{t})",
+                        env.tin.roles.get(*r).map(String::as_str).unwrap_or("?")
+                    ),
+                    HAtom::Eq { s, t } => format!("eq({s},{t})"),
+                    HAtom::Exist { r, neg, c, t } => format!(
+                        "∃{}.{}{}({t})",
+                        env.tin.roles.get(*r).map(String::as_str).unwrap_or("?"),
+                        if *neg { "¬" } else { "" },
+                        name(*c)
+                    ),
+                }
+            };
+            for cl in &env.tin.clauses {
+                use crate::orchestrate::cb_to_ht::HAtom;
+                let hit = cl.body.iter().chain(cl.head.iter()).any(|a| match a {
+                    HAtom::Concept { c, .. } | HAtom::Exist { c, .. } => cons.contains(c),
+                    HAtom::Role { r, .. } => rols.contains(r),
+                    HAtom::Eq { .. } => false,
+                }) || cl.body.iter().chain(cl.head.iter()).any(|a| match a {
+                    HAtom::Exist { r, .. } => rols.contains(r),
+                    _ => false,
+                });
+                if hit {
+                    let b: Vec<String> = cl.body.iter().map(show).collect();
+                    let h: Vec<String> = cl.head.iter().map(show).collect();
+                    eprintln!("CLAUSE: {} -> {}", b.join(" ∧ "), h.join(" ∨ "));
+                }
+            }
+        }
         // KM_BRIDGE_ROLE_NAMES=<idx>[,<idx>...]: print TInput role names.
         if let Ok(idxs) = std::env::var("KM_BRIDGE_ROLE_NAMES") {
             for i in idxs.split(',') {
