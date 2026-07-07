@@ -638,6 +638,42 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     b.or_of(&y_ops)
                 };
                 let all = (b.all(roles[r], y_disj), false);
+                // KM_BRIDGE_DUMP_FORALL=<role_idx>: print the antecedent
+                // (trigger tags) of every ∀<role>.… implication built here —
+                // reveals whether a ∀ is concept-gated or global (all-negative
+                // triggers ⇒ TOP-attached ⇒ fires on every node).
+                if std::env::var("KM_BRIDGE_DUMP_FORALL")
+                    .ok()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    == Some(r)
+                {
+                    let tt: Vec<String> = triggers
+                        .iter()
+                        .map(|&(c, n)| {
+                            format!(
+                                "{}{}",
+                                if n { "¬" } else { "" },
+                                b.ctx.ontology_arenas().concept(c).get_concept_tag()
+                            )
+                        })
+                        .collect();
+                    let ft: Vec<String> = y_ops
+                        .iter()
+                        .map(|&(c, n)| {
+                            format!(
+                                "{}{}",
+                                if n { "¬" } else { "" },
+                                b.ctx.ontology_arenas().concept(c).get_concept_tag()
+                            )
+                        })
+                        .collect();
+                    let global = triggers.iter().all(|&(_, n)| n);
+                    eprintln!(
+                        "DUMP-FORALL role={r} triggers=[{}] fillers=[{}] GLOBAL={global}",
+                        tt.join(" "),
+                        ft.join(" ")
+                    );
+                }
                 let head = if head_x.is_empty() {
                     all
                 } else {

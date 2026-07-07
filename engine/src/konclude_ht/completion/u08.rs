@@ -828,8 +828,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return;
         }
         // Collect the operands first (the iterator borrows the context immutably);
-        // then add them (mutating) after the borrow ends.
-        let mut ops: Vec<(ConceptId, bool)> = Vec::new();
+        // then add them (mutating) after the borrow ends. Each op carries the
+        // SOURCE ∀ concept descriptor `cd` — its dependency track point must be
+        // combined with the edge's when the operand is added to the successor
+        // (Konclude's applyALLRule createALLDependency, cpp 16334): without it
+        // the propagated concept loses the ∀'s branch provenance, so a clash
+        // on the successor traces to the (deterministic) edge instead of the
+        // disjunction that introduced the ∀, and DDB wrongly root-cancels
+        // (measured: ore_ont_541 Cell spuriously UNSAT via Q_70 ≡
+        // ∀projectsOnto.PointInTime).
+        let mut ops: Vec<(ConceptId, bool, ConDescId)> = Vec::new();
         {
             let pc = calc_alg_context.process_context();
             let onto = calc_alg_context.ontology_arenas();
@@ -884,7 +892,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         );
                     }
                     for nl in onto.concept(con).get_operand_list() {
-                        ops.push((nl.target, nl.negated));
+                        ops.push((nl.target, nl.negated, cd));
                     }
                 } else if oc == op::CCAQAND || oc == op::CCIMPLAQAND || oc == op::CCBRANCHAQAND {
                     // Walk the automaton state graph exactly as
@@ -914,7 +922,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 && role_matches(onto.concept(nl.target).get_role())
                             {
                                 for tl in onto.concept(nl.target).get_operand_list() {
-                                    ops.push((tl.target, tl.negated ^ nl.negated));
+                                    ops.push((tl.target, tl.negated ^ nl.negated, cd));
                                 }
                             }
                         }
@@ -922,12 +930,45 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
-        for (op_concept, op_neg) in ops {
+        // Per-source-∀ ALL dependency (Konclude builds one `allDepNode` per
+        // conProDes, shared across that ∀'s operands): its continue track
+        // point depends on BOTH the ∀ concept descriptor's track point
+        // (`prev`) and the edge's (`link`). Memoized by `cd` so operands of
+        // the same ∀ share one dependency, matching the C++ `allDepNodeCreated`
+        // flag. When dependency building is off (baseline), the operand is
+        // added under the plain edge track point, exactly as before.
+        let mut all_dep_cache: std::collections::HashMap<ConDescId, TrackPointId> =
+            std::collections::HashMap::new();
+        for (op_concept, op_neg, cd) in ops {
+            let add_tp = if self.conf_build_dependencies {
+                if let Some(&tp) = all_dep_cache.get(&cd) {
+                    tp
+                } else {
+                    let forall_dep = calc_alg_context
+                        .process_context()
+                        .con_desc(cd)
+                        .get_dependency_track_point();
+                    let mut next_tp = TrackPointId::NONE;
+                    let mut src = source;
+                    self.create_all_dependency(
+                        &mut next_tp,
+                        &mut src,
+                        cd,
+                        forall_dep,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                    all_dep_cache.insert(cd, next_tp);
+                    next_tp
+                }
+            } else {
+                dep_track_point
+            };
             self.add_concept_to_individual(
                 op_concept,
                 op_neg,
                 successor,
-                dep_track_point,
+                add_tp,
                 true,
                 true,
                 calc_alg_context,
