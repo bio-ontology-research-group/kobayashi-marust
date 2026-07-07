@@ -918,6 +918,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // CConcept* implConcept = opLinker->getData(); bool impConNeg = opLinker->isNegated();
             let impl_concept: ConceptId = op_linker.first().map(|l| l.target).unwrap_or(Id::NONE);
             let imp_con_neg: bool = op_linker.first().map(|l| l.negated).unwrap_or(false);
+            // KM_BRIDGE_WATCH_TAG: when the fired head matches, dump the whole
+            // implication (head + trigger linkers with polarities) so the
+            // source clause is identifiable.
+            if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_TAG") {
+                let head_tag = if impl_concept.is_some() {
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(impl_concept)
+                        .get_concept_tag()
+                } else {
+                    -1
+                };
+                if w.parse::<Cint64>() == Ok(head_tag) && !imp_con_neg {
+                    let ops: Vec<String> = op_linker
+                        .iter()
+                        .map(|l| {
+                            format!(
+                                "{}{}",
+                                if l.negated { "¬" } else { "" },
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(l.target)
+                                    .get_concept_tag()
+                            )
+                        })
+                        .collect();
+                    eprintln!(
+                        "WATCH-IMPL fire head={head_tag} node={} ops=[{}]",
+                        calc_alg_context
+                            .process_context()
+                            .node(*process_indi)
+                            .individual_node_id(),
+                        ops.join(" ")
+                    );
+                }
+            }
             // addConceptToIndividual(implConcept, impConNeg, processIndi, nextDepTrackPoint, true, false, ...) [u36]
             self.add_concept_to_individual(
                 impl_concept,

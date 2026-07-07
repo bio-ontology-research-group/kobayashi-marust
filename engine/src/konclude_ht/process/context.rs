@@ -2643,12 +2643,21 @@ impl ProcessContext {
         self.branching_merging_candidate_linkers.push_epoch();
         self.branching_trees.push_epoch();
         self.branch_instrs.push_epoch();
-        self.clash_descs.push_epoch();
+        // clash_descs is epoch-EXEMPT: the DDB marks (`set_clashes`) store
+        // ClashDescId lists on track points that SURVIVE alternative pops
+        // (watermark-only arenas) — truncating the descriptors would leave
+        // dangling ids in surviving branch memory (Konclude allocates these
+        // from the branch-shared pool for exactly this reason). Append-only;
+        // persists until the probe environment is dropped.
         self.concept_nominal_schema_grounding_datas.push_epoch();
         self.concept_nominal_schema_grounding_hashes.push_epoch();
         self.concept_process_linkers.push_epoch();
         self.concept_proc_queues.push_epoch();
-        self.con_descs.push_epoch();
+        // con_descs: epoch-exempt — persisted DDB marks reference concept
+        // descriptors transitively (tracked-copy hasher/tag reads); label
+        // CONTENT is governed by the journaled label-set map, and ported
+        // label descriptors do not chain `.next`, so persistence cannot leak
+        // popped concepts back into a restored label.
         self.cond_reapply_con_descs.push_epoch();
         self.conn_succ_corr_hashes.push_epoch();
         self.conn_succ_sets.push_epoch();
@@ -2665,8 +2674,8 @@ impl ProcessContext {
         self.critical_sat_concept_type_queues.push_epoch();
         self.datatypes_value_space_datas.push_epoch();
         self.data_value_role_assertion_linkers.push_epoch();
-        self.dep_links.push_epoch();
-        self.dep_nodes.push_epoch();
+        // dep_links: epoch-exempt — dependency spine is branch-SHARED memory
+        // dep_nodes: epoch-exempt — dependency spine is branch-SHARED memory
         self.disjoint_edges.push_epoch();
         self.disjoint_succ_role_hashes.push_epoch();
         self.distinct_edges.push_epoch();
@@ -2773,8 +2782,14 @@ impl ProcessContext {
         self.var_bindings.push_epoch();
         self.var_binding_trigger_hashes.push_epoch();
         self.var_binding_trigger_linkers.push_epoch();
-        self.track_points.push_epoch_watermark();
-        self.branch_nodes.push_epoch_watermark();
+        // track_points / branch_nodes: epoch-exempt — in Konclude the whole
+        // dependency spine (nodes, links, track points, branch tree) lives in
+        // branch-SHARED memory that outlives every alternative of the task
+        // subtree: the DDB marks stored on surviving track points reference
+        // dependency chains transitively, so truncating ANY spine arena per
+        // alternative leaves dangling ids in persisted clash sets (measured:
+        // ore_ont_541 Plan⊑Particular probe panicked reading a truncated
+        // continue track point). Append-only per probe environment.
         self.branch_epoch_depth += 1;
     }
 
@@ -2801,12 +2816,12 @@ impl ProcessContext {
         self.branching_merging_candidate_linkers.pop_epoch();
         self.branching_trees.pop_epoch();
         self.branch_instrs.pop_epoch();
-        self.clash_descs.pop_epoch();
+        // clash_descs: epoch-exempt (see push_branch_epoch).
         self.concept_nominal_schema_grounding_datas.pop_epoch();
         self.concept_nominal_schema_grounding_hashes.pop_epoch();
         self.concept_process_linkers.pop_epoch();
         self.concept_proc_queues.pop_epoch();
-        self.con_descs.pop_epoch();
+        // con_descs: epoch-exempt (see push_branch_epoch).
         self.cond_reapply_con_descs.pop_epoch();
         self.conn_succ_corr_hashes.pop_epoch();
         self.conn_succ_sets.pop_epoch();
@@ -2823,8 +2838,8 @@ impl ProcessContext {
         self.critical_sat_concept_type_queues.pop_epoch();
         self.datatypes_value_space_datas.pop_epoch();
         self.data_value_role_assertion_linkers.pop_epoch();
-        self.dep_links.pop_epoch();
-        self.dep_nodes.pop_epoch();
+        // dep_links: epoch-exempt (see push)
+        // dep_nodes: epoch-exempt (see push)
         self.disjoint_edges.pop_epoch();
         self.disjoint_succ_role_hashes.pop_epoch();
         self.distinct_edges.pop_epoch();
@@ -2931,8 +2946,7 @@ impl ProcessContext {
         self.var_bindings.pop_epoch();
         self.var_binding_trigger_hashes.pop_epoch();
         self.var_binding_trigger_linkers.pop_epoch();
-        self.track_points.pop_epoch_watermark();
-        self.branch_nodes.pop_epoch_watermark();
+        // dependency spine arenas: epoch-exempt (see push_branch_epoch).
         self.branch_epoch_depth -= 1;
     }
 

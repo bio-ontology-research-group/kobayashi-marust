@@ -139,9 +139,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // genuine ⇒ INCONSISTENT. (Konclude does this with per-alternative task forks +
         // `clashedBacktracking`; see the `OrBranchPoint` KONCLUDE-PORT-NOTE.)
         let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        // KM_BRIDGE_MAX_DRIVES: per-call drive cap — on overrun raise a STOP
+        // (an UNKNOWN verdict; callers defer). A single pathological search
+        // must never wedge a classify run.
+        let max_drives: u64 = std::env::var("KM_BRIDGE_MAX_DRIVES")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(u64::MAX);
         let mut drives: u64 = 0;
         self.ddb_root_cancelled = false;
         loop {
+            if drives >= max_drives {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
             self.run_saturation_loop(calc_alg_context);
             drives += 1;
             if progress && drives % 4096 == 0 {

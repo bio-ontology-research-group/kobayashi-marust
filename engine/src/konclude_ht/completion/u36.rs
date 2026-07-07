@@ -516,6 +516,54 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         } else {
             dependency_track_point
         };
+        // KM_BRIDGE_WATCH_TAG=<tag>: print the call path of every POSITIVE
+        // addition of that concept tag (provenance for over-derivation hunts).
+        if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_TAG") {
+            if let Ok(wt) = w.parse::<Cint64>() {
+                let tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag();
+                if tag == wt && !negate && self.ddb_analysis_dumps < 6 {
+                    self.ddb_analysis_dumps += 1;
+                    eprintln!(
+                        "WATCH-TAG {} pos add to node {} at:\n{}",
+                        wt,
+                        calc_alg_context
+                            .process_context()
+                            .node(*process_indi)
+                            .individual_node_id(),
+                        std::backtrace::Backtrace::force_capture()
+                    );
+                }
+            }
+        }
+        // KM_BRIDGE_WATCH_NODE=<id>: print the first ~24 POSITIVE NAMED-tag
+        // additions to that node in arrival order with a short call path —
+        // catches the ENTRY POINT of an over-derivation cascade.
+        if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_NODE") {
+            if let Ok(wn) = w.parse::<Cint64>() {
+                let node_id = calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .individual_node_id();
+                let tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag();
+                if node_id == wn && !negate && (10..320).contains(&tag) && self.ddb_analysis_dumps < 24
+                {
+                    self.ddb_analysis_dumps += 1;
+                    let bt = std::backtrace::Backtrace::force_capture().to_string();
+                    let frames: Vec<&str> = bt
+                        .lines()
+                        .filter(|l| l.contains("konclude_ht::completion::u"))
+                        .take(3)
+                        .collect();
+                    eprintln!("WATCH-NODE {wn} += {tag} via {}", frames.join(" <- "));
+                }
+            }
+        }
         // conProQueue = processIndi->getConceptProcessingQueue(true);
         // conLabelSet = processIndi->getReapplyConceptLabelSet(true);
         // W5: the create branch's arena allocation cannot run from the superseded

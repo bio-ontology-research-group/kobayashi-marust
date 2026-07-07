@@ -771,7 +771,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // DDB diagnostics (KM_BRIDGE_PROGRESS): dump the first few clash
         // closures — descriptor classes and tags decide the whole analysis.
-        if self.ddb_analysis_dumps < 8 && std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        let dump_this_call =
+            self.ddb_analysis_dumps < 8 && std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        if dump_this_call {
             self.ddb_analysis_dumps += 1;
             let pc = calc_alg_context.process_context();
             let mut it = tracked_clash_descriptors;
@@ -825,7 +827,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             tracked_clash_descriptors,
             calc_alg_context,
         ) {
-            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() && self.ddb_analysis_dumps <= 8 {
+            if dump_this_call {
                 eprintln!(
                     "DDB-LINE branching_level={}",
                     tracking_line.get_branching_level(),

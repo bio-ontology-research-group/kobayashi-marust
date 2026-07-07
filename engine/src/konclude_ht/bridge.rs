@@ -943,8 +943,21 @@ pub fn bridged_unsat(
     // GLOBAL fixpoint on total insertions (see `bridged_classify_subject`):
     // root-label-count-stable is order-dependent and declared a false fixpoint.
     let trace = std::env::var_os("KM_BRIDGE_TRACE").is_some();
+    // KM_BRIDGE_PROBE_BUDGET_S: wall-clock budget per probe. On overrun the
+    // probe returns None (STOP — an UNKNOWN verdict the caller must treat as
+    // a DEFER). A single pathological probe must never wedge a classify run.
+    let budget: Option<std::time::Duration> = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(std::time::Duration::from_secs);
+    let probe_t0 = std::time::Instant::now();
     let mut prev_inserts: i64 = -1;
     for pass in 0..256 {
+        if let Some(b) = budget {
+            if probe_t0.elapsed() > b {
+                return None;
+            }
+        }
         for &g in &bridged.tbox {
             seed_concept_on_queue(ctx, root, g);
         }
@@ -1007,6 +1020,35 @@ pub fn bridged_unsat(
                                 eprintln!(
                                     "TRACE CLASH concept tag={tag} neg={neg} node={node_id}"
                                 );
+                                // full label of the clash node: which class was
+                                // wrongly pushed is usually visible here (its
+                                // disjointness supplies the negation).
+                                if individual_node.is_some() {
+                                    let ls = ctx
+                                        .process_context_mut()
+                                        .node_reapply_concept_label_set(individual_node);
+                                    let mut parts: Vec<String> = ctx
+                                        .process_context()
+                                        .label_set(ls)
+                                        .concept_des_dep_map
+                                        .iter()
+                                        .map(|(t, data)| {
+                                            let n = if data.concept_descriptor.is_some()
+                                                && ctx
+                                                    .process_context()
+                                                    .con_desc(data.concept_descriptor)
+                                                    .is_negated()
+                                            {
+                                                "¬"
+                                            } else {
+                                                ""
+                                            };
+                                            format!("{n}{t}")
+                                        })
+                                        .collect();
+                                    parts.sort();
+                                    eprintln!("TRACE CLASH-NODE-LABEL {}", parts.join(" "));
+                                }
                             } else {
                                 use super::process::descriptor::ClashDescriptorKind as K;
                                 match &d.kind {
@@ -1978,6 +2020,58 @@ mod tests {
         let mut env = bridge_ofn_path(&path);
         // KM_BRIDGE_DUMP_NAMES: print the concept TAG of each listed name so a
         // numeric KM_BRIDGE_FIND_TAG follow-up can watch the chain.
+        // KM_BRIDGE_DUMP_ROLE_SUPERS=<role-name>: print the bridged indirect
+        // super-role list (as role TAGS: 100+i forward, 100+n_roles+i inverse)
+        // for the named role — verifies the pass-1 hierarchy closure.
+        if let Ok(rn) = std::env::var("KM_BRIDGE_DUMP_ROLE_SUPERS") {
+            for (i, name) in env.tin.roles.iter().enumerate() {
+                if name == &rn {
+                    // rebuild a bridged env to inspect the arena role objects
+                    let mut ctxr = CalculationAlgorithmContextBase::new();
+                    let topr = {
+                        let mut c = Concept::new();
+                        c.set_concept_tag(1);
+                        c.set_operator_code(op::CCTOP);
+                        ctxr.ontology_arenas_mut().alloc_concept(c)
+                    };
+                    ctxr.processing_data_box_mut().ontology_top_concept = topr;
+                    let br = bridge_tinput(&mut ctxr, &env.tin);
+                    let robj = br.roles[i];
+                    let sup_tags: Vec<Cint64> = ctxr
+                        .ontology_arenas()
+                        .role(robj)
+                        .indirect_super_roles
+                        .iter()
+                        .map(|l| ctxr.ontology_arenas().role(l.target).get_role_tag())
+                        .collect();
+                    let n = env.tin.roles.len() as Cint64;
+                    let named_sups: Vec<String> = sup_tags
+                        .iter()
+                        .map(|&t| {
+                            let fwd = t - 100;
+                            if fwd < n {
+                                env.tin.roles[fwd as usize].clone()
+                            } else {
+                                format!("INV({})", env.tin.roles[(fwd - n) as usize])
+                            }
+                        })
+                        .collect();
+                    eprintln!("ROLE-SUPERS {rn} (tag {}): {:?}", 100 + i, named_sups);
+                }
+            }
+        }
+        // KM_BRIDGE_TAG_NAMES=<tag>[,<tag>...]: reverse map concept TAGs to
+        // TInput names (tag = TAG_BASE + index).
+        if let Ok(tags) = std::env::var("KM_BRIDGE_TAG_NAMES") {
+            for t in tags.split(',') {
+                if let Ok(tag) = t.trim().parse::<i64>() {
+                    let i = (tag - TAG_BASE) as usize;
+                    if i < env.tin.concepts.len() {
+                        eprintln!("TAG-NAME {}={}", tag, env.tin.concepts[i]);
+                    }
+                }
+            }
+        }
         if let Ok(names) = std::env::var("KM_BRIDGE_DUMP_NAMES") {
             for n in names.split(',') {
                 if let Some(&idx) = env.con_id.get(n.trim()) {
@@ -2207,6 +2301,10 @@ mod tests {
                         if sup == s || !gold_universe.contains(&tin.concepts[sup]) {
                             continue;
                         }
+                        let tp0 = std::time::Instant::now();
+                        if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                            eprintln!("PAIR-START {} vs {}", tin.concepts[s], tin.concepts[sup]);
+                        }
                         let mut algo3 = CompletionTaskHandleAlgorithm::new();
                         configure_default_blocking(&mut algo3);
                         let mut ctx3 = CalculationAlgorithmContextBase::new();
@@ -2233,6 +2331,18 @@ mod tests {
                                 tin.concepts[s].clone(),
                                 tin.concepts[sup].clone(),
                             ));
+                        }
+                        // Surface slow pair probes (the read-offs are ms; a
+                        // probe that takes seconds is the scaling story).
+                        let dt = tp0.elapsed();
+                        if dt.as_millis() > 500 {
+                            eprintln!(
+                                "SLOW-PAIR {} vs {}: {:.1}s (backtracks={})",
+                                tin.concepts[s],
+                                tin.concepts[sup],
+                                dt.as_secs_f64(),
+                                algo3.or_backtrack_count,
+                            );
                         }
                     }
                 }

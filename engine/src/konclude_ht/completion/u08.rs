@@ -858,6 +858,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     || oc == op::CCBRANCHAQALL)
                     && role_matches(onto.concept(con).get_role())
                 {
+                    // KM_BRIDGE_WATCH_NODE diagnostics: which ∀ matched this edge.
+                    if std::env::var("KM_BRIDGE_WATCH_NODE")
+                        .ok()
+                        .and_then(|w| w.parse::<Cint64>().ok())
+                        == Some(pc.node(*successor).individual_node_id())
+                    {
+                        let fillers: Vec<String> = onto
+                            .concept(con)
+                            .get_operand_list()
+                            .iter()
+                            .map(|nl| {
+                                format!(
+                                    "{}{}",
+                                    if nl.negated { "¬" } else { "" },
+                                    onto.concept(nl.target).get_concept_tag()
+                                )
+                            })
+                            .collect();
+                        eprintln!(
+                            "WATCH-ALL edge_role_tag={} forall_role_tag={} oc={oc} fillers=[{}]",
+                            onto.role(role).get_role_tag(),
+                            onto.role(onto.concept(con).get_role()).get_role_tag(),
+                            fillers.join(" ")
+                        );
+                    }
                     for nl in onto.concept(con).get_operand_list() {
                         ops.push((nl.target, nl.negated));
                     }
