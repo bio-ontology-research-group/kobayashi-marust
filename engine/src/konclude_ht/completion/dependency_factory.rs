@@ -164,6 +164,34 @@ impl ProcessContext {
         })
     }
 
+    /// Bind a DetLink node's inline back-edge AND chain it onto the node's
+    /// additional-after list — Konclude's `addAfterDependency(&mPrevLinkDep);
+    /// mPrevLinkDep.initDependency(tp)` pair (constructor-chained for
+    /// ALL/MERGEDCONCEPT/MERGEDLINK/AUTOMATTRANSACTION/REPRESENTATIVE{ALL,JOIN},
+    /// init-conditional for VALUE/NEGVALUE/NOMINAL/ROLEASSERTION/…). The chain
+    /// membership is LOAD-BEARING: `getDependedBranchingLevel` and the u29
+    /// tracked-clash additional-dependency traversal only walk
+    /// `additional_after` — a detached back-edge hid e.g. a MERGEDCONCEPT's
+    /// merge-decision taint, making merged-label clashes look deterministic
+    /// (measured: ore_ont_12653 AlternativePath ⊑ PathOfLength2 wrong
+    /// ROOT-CANCEL under DDB). No-op when `tp` is NONE (the conditional
+    /// classes skip both calls then).
+    pub fn bind_det_link_prev(&mut self, dep_node: DependencyId, tp: TrackPointId) {
+        if dep_node.is_none() || tp.is_none() {
+            return;
+        }
+        let prev = if let DependencyNode::DetLink { prev, .. } = self.dep_node(dep_node) {
+            *prev
+        } else {
+            return;
+        };
+        if prev.is_none() {
+            return;
+        }
+        self.dep_link_mut(prev).init_dependency(tp);
+        self.dep_node_mut(dep_node).base_mut().additional_after = prev;
+    }
+
     /// Port of `CDependencyFactory::createDATAASSERTIONDependency`.
     /// Upstream `CDependencyFactory.cpp` 380–388.
     ///
@@ -201,20 +229,12 @@ impl ProcessContext {
         link_prev_dep_track_point: TrackPointId,
     ) -> DependencyId {
         let dep_node = self.alloc_det_link_dependency_node(DepKind::MergedLink);
-        let prev_link = {
+        {
             let dep = self.dep_node_mut(dep_node);
             dep.init_dependency_node(DepKind::MergedLink, ConDescId::NONE);
             dep.base_mut().dep_track_point = merge_prev_dep_track_point;
-            if let DependencyNode::DetLink { prev, .. } = dep {
-                *prev
-            } else {
-                DepLinkId::NONE
-            }
-        };
-        if prev_link.is_some() {
-            self.dep_link_mut(prev_link)
-                .init_dependency(link_prev_dep_track_point);
         }
+        self.bind_det_link_prev(dep_node, link_prev_dep_track_point);
         self.update_dependency_branching_tag(dep_node);
         *merged_link_continue_dep_track_point =
             self.materialize_continue_dependency_track_point(dep_node);
@@ -229,20 +249,12 @@ impl ProcessContext {
         individual_prev_dep_track_point: TrackPointId,
     ) -> DependencyId {
         let dep_node = self.alloc_det_link_dependency_node(DepKind::MergedIndividual);
-        let prev_link = {
+        {
             let dep = self.dep_node_mut(dep_node);
             dep.init_dependency_node(DepKind::MergedIndividual, ConDescId::NONE);
             dep.base_mut().dep_track_point = merge_prev_dep_track_point;
-            if let DependencyNode::DetLink { prev, .. } = dep {
-                *prev
-            } else {
-                DepLinkId::NONE
-            }
-        };
-        if prev_link.is_some() {
-            self.dep_link_mut(prev_link)
-                .init_dependency(individual_prev_dep_track_point);
         }
+        self.bind_det_link_prev(dep_node, individual_prev_dep_track_point);
         self.update_dependency_branching_tag(dep_node);
         *merged_individual_continue_dep_track_point =
             self.materialize_continue_dependency_track_point(dep_node);
@@ -314,20 +326,12 @@ impl ProcessContext {
         prev_other_dep_track_point: TrackPointId,
     ) -> DependencyId {
         let dep_node = self.alloc_det_link_dependency_node(DepKind::SameIndividualsMerge);
-        let prev_link = {
+        {
             let dep = self.dep_node_mut(dep_node);
             dep.init_dependency_node(DepKind::SameIndividualsMerge, ConDescId::NONE);
             dep.base_mut().dep_track_point = prev_dep_track_point;
-            if let DependencyNode::DetLink { prev, .. } = dep {
-                *prev
-            } else {
-                DepLinkId::NONE
-            }
-        };
-        if prev_link.is_some() {
-            self.dep_link_mut(prev_link)
-                .init_dependency(prev_other_dep_track_point);
         }
+        self.bind_det_link_prev(dep_node, prev_other_dep_track_point);
         self.update_dependency_branching_tag(dep_node);
         *exp_continue_dep_track_point = self.materialize_continue_dependency_track_point(dep_node);
         dep_node
@@ -464,7 +468,10 @@ mod tests {
                 .previous_dependency_track_point(),
             other_tp
         );
-        assert_eq!(ctx.dep_node(merged_link).base().process_tag, 3);
+        // max over BOTH back-edges: the bound merging-step dependency is
+        // CHAINED onto additional-after (Konclude addAfterDependency), so its
+        // tag (7) dominates the concept-prev tag (3).
+        assert_eq!(ctx.dep_node(merged_link).base().process_tag, 7);
         assert_eq!(
             ctx.track_point(merged_link_continue).dependency_node(),
             merged_link

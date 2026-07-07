@@ -1580,7 +1580,10 @@ mod tests {
             ctx.process_context()
                 .track_point(continue_track_point)
                 .get_branching_tag(),
-            7
+            // max over BOTH back-edges: the bound link dependency is CHAINED
+            // onto additional-after (Konclude addAfterDependency), so its tag
+            // (13) dominates the prev tag (7).
+            13
         );
     }
 
@@ -1651,7 +1654,9 @@ mod tests {
             ctx.process_context()
                 .track_point(continue_track_point)
                 .get_branching_tag(),
-            8
+            // max over BOTH back-edges (the chained other-dependency tag 14
+            // dominates the prev tag 8) — see the RepresentativeAll twin.
+            14
         );
     }
 

@@ -433,23 +433,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             dep_node = calc_alg_context
                 .process_context_mut()
                 .alloc_det_link_dependency_node(DepKind::MergedConcept);
-            let merge_prev_dep = {
+            {
                 let process_context = calc_alg_context.process_context_mut();
                 let dep = process_context.dep_node_mut(dep_node);
                 dep.init_dependency_node(DepKind::MergedConcept, con_des);
                 dep.base_mut().dep_track_point = concept_prev_dep_track_point;
-                if let DependencyNode::DetLink { prev, .. } = dep {
-                    *prev
-                } else {
-                    DepLinkId::NONE
-                }
-            };
-            if merge_prev_dep.is_some() {
-                calc_alg_context
-                    .process_context_mut()
-                    .dep_link_mut(merge_prev_dep)
-                    .init_dependency(merge_prev_dep_track_point);
             }
+            // bind + CHAIN the merge back-edge (CMERGEDCONCEPTDependencyNode's
+            // constructor `addAfterDependency(&mPrevLinkDep)` — chain membership
+            // is what lets the branching-tag update and the u29 traversal see
+            // the merge decision's taint).
+            calc_alg_context
+                .process_context_mut()
+                .bind_det_link_prev(dep_node, merge_prev_dep_track_point);
             calc_alg_context
                 .process_context_mut()
                 .update_dependency_branching_tag(dep_node);
