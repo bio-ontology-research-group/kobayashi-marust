@@ -1197,6 +1197,164 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         out
     }
 
+    /// Port of `createIndividualMergeCausingDescriptors` (cpp 16690–16713):
+    /// the per-successor merge-causing clash descriptors — the LINK's
+    /// dependency (when it differs from the successor's own) and each
+    /// qualifier operand's CONTAINED descriptor on the successor. These carry
+    /// the branch taint of WHY the successor counts toward the at-most;
+    /// omitting them over-localised the at-most refutation and made the u29
+    /// analysis wrongly ROOT-CANCEL (measured: ore_ont_12653
+    /// AlternativePath ⊑ PathOfLength2 spurious under DDB — the collected
+    /// closure degenerated to the decision's own tag-0 cause).
+    pub fn ht_create_individual_merge_causing_descriptors(
+        &mut self,
+        prev_clashes: super::super::process::ClashDescId,
+        succ: NodeId,
+        link: EdgeId,
+        concept_add_linker: &[NegLink<ConceptId>],
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> super::super::process::ClashDescId {
+        let mut clash_des = prev_clashes;
+        let link_tp = calc_alg_context
+            .process_context()
+            .edge(link)
+            .get_dependency_track_point();
+        let succ_tp = calc_alg_context
+            .process_context()
+            .node(succ)
+            .dependency_track_point();
+        if link_tp != succ_tp {
+            clash_des = self.create_clashed_individual_link_descriptor(
+                clash_des,
+                link,
+                link_tp,
+                calc_alg_context,
+            );
+        }
+        let ls = calc_alg_context
+            .process_context()
+            .node(succ)
+            .use_reapply_con_label_set;
+        for nl in concept_add_linker {
+            let t = calc_alg_context
+                .ontology_arenas()
+                .concept(nl.target)
+                .get_concept_tag();
+            let mut cd: ConDescId = Id::NONE;
+            let mut dtp: TrackPointId = TrackPointId::NONE;
+            if ls.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .label_set(ls)
+                    .get_concept_descriptor_by_tag(t, &mut cd, &mut dtp)
+            {
+                // resolve the contained descriptor's track point (the ls1
+                // lookup out-tp is a W2-DEFER stub returning NONE).
+                if dtp.is_none() && cd.is_some() {
+                    dtp = calc_alg_context
+                        .process_context()
+                        .con_desc(cd)
+                        .get_dependency_track_point();
+                }
+                let mut s = succ;
+                clash_des = self.create_clashed_concept_descriptor(
+                    clash_des,
+                    &mut s,
+                    cd,
+                    dtp,
+                    calc_alg_context,
+                );
+            }
+        }
+        clash_des
+    }
+
+    /// Port of `CNonDeterministicDependencyNode::addBranchClashes` (the
+    /// `mClashTrackPoint.addClashes(clash)` idiom): append the clash
+    /// descriptors to the decision node's CLASH track point — the "all
+    /// alternatives failed" continuation that
+    /// `get_collected_filtered_clashed_descriptors_from_branch` walks (the
+    /// clash track point heads the `branch_track_points` chain), so a fully
+    /// refuted decision propagates these causes upward.
+    pub fn ht_add_branch_clashes(
+        &mut self,
+        dep_node: DependencyId,
+        clashes: super::super::process::ClashDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if dep_node.is_none() || clashes.is_none() {
+            return;
+        }
+        let pc = calc_alg_context.process_context_mut();
+        let ctp = pc.dep_node(dep_node).clash_track_point();
+        if ctp.is_none() {
+            return;
+        }
+        let old = pc.track_point(ctp).get_clashes();
+        let joined = pc.append_clash_descriptor_chain(clashes, old);
+        pc.track_point_mut(ctp).set_clashes(joined, false);
+    }
+
+    /// The PESSIMISTIC qualified `role`-successor count of `source`: distinct
+    /// successors whose label is NOT decided AGAINST the qualifier (undecided
+    /// ones count — they could still become qualifier members). Used by the
+    /// lazy triggered-OR defer (u03): this count can only grow through NEW
+    /// `role`-links, so a role-keyed reapply re-fires the deferred disjunction
+    /// exactly when the count can change upward.
+    pub fn ht_role_successor_count_possibly_qualified(
+        &mut self,
+        source: NodeId,
+        role: RoleId,
+        concept_linker: &[NegLink<ConceptId>],
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Cint64 {
+        let want: Vec<(Cint64, bool)> = concept_linker
+            .iter()
+            .map(|nl| {
+                (
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(nl.target)
+                        .get_concept_tag(),
+                    nl.negated,
+                )
+            })
+            .collect();
+        let mut seen: Vec<NodeId> = Vec::new();
+        let mut count: Cint64 = 0;
+        for (_link, succ) in self.ht_role_successor_links(source, role, calc_alg_context) {
+            if seen.contains(&succ) {
+                continue;
+            }
+            seen.push(succ);
+            let ls = calc_alg_context
+                .process_context()
+                .node(succ)
+                .use_reapply_con_label_set;
+            let mut decided_anti = false;
+            if ls.is_some() {
+                for &(t, expected_neg) in &want {
+                    let mut cd: ConDescId = Id::NONE;
+                    let mut dtp: TrackPointId = TrackPointId::NONE;
+                    if calc_alg_context
+                        .process_context()
+                        .label_set(ls)
+                        .get_concept_descriptor_by_tag(t, &mut cd, &mut dtp)
+                        && calc_alg_context.process_context().con_desc(cd).is_negated()
+                            != expected_neg
+                    {
+                        decided_anti = true;
+                        break;
+                    }
+                }
+            }
+            if !decided_anti {
+                count += 1;
+            }
+        }
+        count
+    }
+
     /// The first `role`-successor of `source` whose label decides NEITHER
     /// polarity of some qualifier operand — the choose rule's both-qualify
     /// candidate (`initializeMergingIndividualNodes`' else-branch, cpp 15931:
@@ -1405,6 +1563,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         )
                     };
+                    // `qualifyDepNode->addBranchClashes(clashDes)` with the
+                    // qualified successor's LINK descriptor (cpp 15711–15716):
+                    // the choose decision's refutation must carry the link's
+                    // branch taint.
+                    if let Some(&(qlink, _)) = self
+                        .ht_role_successor_links(*process_indi, role, calc_alg_context)
+                        .iter()
+                        .find(|&&(_, n)| n == qsucc)
+                    {
+                        let qlink_tp = calc_alg_context
+                            .process_context()
+                            .edge(qlink)
+                            .get_dependency_track_point();
+                        let qclash = self.create_clashed_individual_link_descriptor(
+                            Id::NONE,
+                            qlink,
+                            qlink_tp,
+                            calc_alg_context,
+                        );
+                        self.ht_add_branch_clashes(qualify_dep, qclash, calc_alg_context);
+                    }
                     let parent_used_branch_node = calc_alg_context.base.used_branch_tree_node;
                     if cardinality <= 0 {
                         // ≤0 R.C: only the NEGATED qualification is consistent —
@@ -1547,6 +1726,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if (succs.len() as Cint64) <= cardinality {
                 return;
             }
+            // merge-causing descriptors for every counted successor (link +
+            // contained qualifier descriptors, cpp 15062/15069): the branch
+            // taint of WHY each successor counts — chained into the at-most
+            // clash AND recorded on the MERGE decision (`addBranchClashes`)
+            // so a fully refuted merge decision propagates them upward.
+            let succ_links = self.ht_role_successor_links(*process_indi, role, calc_alg_context);
+            let mut merge_causing: super::super::process::ClashDescId = Id::NONE;
+            for &s in &succs {
+                if let Some(&(link, _)) = succ_links.iter().find(|&&(_, n)| n == s) {
+                    merge_causing = self.ht_create_individual_merge_causing_descriptors(
+                        merge_causing,
+                        s,
+                        link,
+                        concept_linker,
+                        calc_alg_context,
+                    );
+                }
+            }
             // enumerate every mergeable pair — the merge alternatives
             // (`isIndividualNodesMergeable` per pair, cpp 15071).
             let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
@@ -1559,9 +1756,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             if pairs.is_empty() {
                 // every excess successor is pairwise-distinct ⇒ at-most violated
-                // (the `!newTaskList` clash, cpp 15085–15088).
+                // (the `!newTaskList` clash, cpp 15085–15088), blamed on the
+                // merge-causing descriptors + the at-most concept.
                 let clash = self.create_clashed_concept_descriptor(
-                    Id::NONE,
+                    merge_causing,
                     process_indi,
                     con_des,
                     dep_track_point,
@@ -1591,6 +1789,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let mut pi = *process_indi;
                 self.create_merge_dependency(&mut pi, con_des, dep_track_point, calc_alg_context)
             };
+            // `mergeDependencyNode->addBranchClashes(clashDescriptors)`
+            // (cpp 15078–15080).
+            self.ht_add_branch_clashes(merge_dependency_node, merge_causing, calc_alg_context);
             let parent_used_branch_node = calc_alg_context.base.used_branch_tree_node;
             let alt_track_points = self.ht_mint_alternative_track_points(
                 merge_dependency_node,

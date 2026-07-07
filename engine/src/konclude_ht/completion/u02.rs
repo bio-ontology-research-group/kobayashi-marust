@@ -905,11 +905,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         } else {
                             -1
                         };
+                        // provenance: the descriptor's own dependency track
+                        // point and its branch node's branching level — a
+                        // level-0 tp on a branch-dependent concept is the
+                        // wrong-root-cancel smoking gun.
+                        let des_tp = des.get_dependency_track_point();
+                        let lvl = if des_tp.is_some() {
+                            let bn = ctx.track_point(des_tp).get_branch_node();
+                            if bn.is_some() {
+                                ctx.branch_node(bn).get_branching_level()
+                            } else {
+                                -1
+                            }
+                        } else {
+                            -2
+                        };
                         parts.push(format!(
-                            "{}{}@n{}",
+                            "{}{}@n{}[tp={:?} lvl={}]",
                             if des.is_negated() { "¬" } else { "" },
                             tag,
-                            node_id
+                            node_id,
+                            des_tp,
+                            lvl
                         ));
                     } else {
                         parts.push("concept(NONE)".into());
@@ -926,6 +943,67 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             self.or_branch_stack.len(),
             parts.join(" ")
         );
+        // KM_BRIDGE_DUMP_DEP_CHAIN: additionally walk each clash descriptor's
+        // dependency graph (tp → dep node → prev/additional tps) so a taint
+        // loss (a branch-dependent derivation whose chain bottoms out at tag 0
+        // without passing a non-deterministic node) is visible directly.
+        if std::env::var_os("KM_BRIDGE_DUMP_DEP_CHAIN").is_some() {
+            let mut it2 = clash;
+            let mut n2 = 0;
+            while it2.is_some() && n2 < 4 {
+                let (des_tp, kind_str) = {
+                    let cd = ctx.clash_desc(it2);
+                    match cd.kind {
+                        super::super::process::descriptor::ClashDescriptorKind::Concept {
+                            concept_descriptor,
+                            ..
+                        } if concept_descriptor.is_some() => (
+                            ctx.con_desc(concept_descriptor).get_dependency_track_point(),
+                            "concept",
+                        ),
+                        _ => (cd.dep_track_point, "other"),
+                    }
+                };
+                eprintln!("DEP-CHAIN[{n2}] ({kind_str}):");
+                let mut stack: Vec<(TrackPointId, usize)> = vec![(des_tp, 1)];
+                let mut seen: std::collections::HashSet<usize> = Default::default();
+                let mut lines = 0;
+                while let Some((t, d)) = stack.pop() {
+                    if t.is_none() || lines > 48 || d > 14 {
+                        continue;
+                    }
+                    if !seen.insert(t.index()) {
+                        continue;
+                    }
+                    lines += 1;
+                    let tpr = ctx.track_point(t);
+                    let dn = tpr.dependency_node();
+                    if dn.is_none() {
+                        eprintln!("{:indent$}tp#{} tag={} (BASE)", "", t.index(), tpr.process_tag, indent = d * 2);
+                        continue;
+                    }
+                    let node = ctx.dep_node(dn);
+                    let base = node.base();
+                    eprintln!(
+                        "{:indent$}tp#{} tag={} node={:?} nondet={}",
+                        "",
+                        t.index(),
+                        tpr.process_tag,
+                        node.kind(),
+                        node.kind().is_non_deterministic(),
+                        indent = d * 2
+                    );
+                    stack.push((base.dep_track_point, d + 1));
+                    let mut al = base.additional_after;
+                    while al.is_some() {
+                        stack.push((ctx.dep_link(al).dep_track_point, d + 1));
+                        al = ctx.dep_link(al).next;
+                    }
+                }
+                it2 = ctx.clash_desc(it2).next;
+                n2 += 1;
+            }
+        }
     }
 
     /// Deterministic singleton-concept merge rule — the bridge's realisation

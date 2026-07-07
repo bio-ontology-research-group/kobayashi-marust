@@ -246,6 +246,13 @@ impl SuccessorRoleHash {
                 }
             }
         }
+        // Deterministic order: the backing HashMap iterates in a per-process
+        // RANDOM order (std RandomState), which leaked run-to-run search
+        // nondeterminism into every successor scan (measured: identical
+        // ore_ont_12653 probes backtracking 155 vs 723 vs 1388 across runs).
+        // Konclude's QMultiHash order is arbitrary but fixed; the port picks
+        // ascending individual id (also the min-id merge-target refinement).
+        entries.sort_unstable_by_key(|&(indi, _)| indi);
         SuccessorIterator::from_entries(entries)
     }
 }

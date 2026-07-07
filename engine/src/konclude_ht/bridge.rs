@@ -271,6 +271,43 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             dumped += 1;
         }
     };
+    // Diagnostic (KM_BRIDGE_DUMP_TOPGCI=N): record the shape of the first N
+    // clauses that become TOP-attached GCIs (no positive absorption guard) —
+    // these branch on EVERY node and are the disjunction-search cost centre.
+    let dump_topgci: usize = std::env::var("KM_BRIDGE_DUMP_TOPGCI")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let mut dumped_top = 0usize;
+    let topgci_names = &tin.concepts;
+    let mut dump_top = |cl: &HtClause, why: &str| {
+        if dumped_top < dump_topgci {
+            let show = |a: &HAtom| -> String {
+                match a {
+                    HAtom::Concept { neg, c, t } => {
+                        format!(
+                            "{}C{c}:{}({t})",
+                            if *neg { "¬" } else { "" },
+                            topgci_names.get(*c).map(String::as_str).unwrap_or("?")
+                        )
+                    }
+                    HAtom::Role { r, s, t } => format!("R{r}({s},{t})"),
+                    HAtom::Eq { s, t } => format!("eq({s},{t})"),
+                    HAtom::Exist { r, neg, c, t } => {
+                        format!(
+                            "∃R{r}.{}C{c}:{}({t})",
+                            if *neg { "¬" } else { "" },
+                            topgci_names.get(*c).map(String::as_str).unwrap_or("?")
+                        )
+                    }
+                }
+            };
+            let b: Vec<String> = cl.body.iter().map(show).collect();
+            let h: Vec<String> = cl.head.iter().map(show).collect();
+            eprintln!("TOPGCI[{why}]: {} -> {}", b.join(" ∧ "), h.join(" ∨ "));
+            dumped_top += 1;
+        }
+    };
     // Structures outside the v1 clause encoder count as unsupported input
     // (card_defs are ENCODED below — first-class ≥n/≤n via the ported
     // CCATLEAST/CCATMOST rules — so they are no longer counted here).
@@ -543,7 +580,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 tbox.push(imp);
                 match triggers.iter().find(|&&(_, neg)| !neg) {
                     Some(&(host, _)) => absorbed_pairs.push((host, imp)),
-                    None => top_gcis.push(imp),
+                    None => {
+                        dump_top(cl, "recog");
+                        top_gcis.push(imp)
+                    }
                 }
                 continue 'clause;
             }
@@ -630,7 +670,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             tbox.push(imp);
             match triggers.iter().find(|&&(_, neg)| !neg) {
                 Some(&(host, _)) => absorbed_pairs.push((host, imp)),
-                None => top_gcis.push(imp),
+                None => {
+                    dump_top(cl, "pure-concept");
+                    top_gcis.push(imp)
+                }
             }
             continue;
         }
@@ -734,7 +777,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 tbox.push(imp);
                 match triggers.iter().find(|&&(_, neg)| !neg) {
                     Some(&(host, _)) => absorbed_pairs.push((host, imp)),
-                    None => top_gcis.push(imp),
+                    None => {
+                        dump_top(cl, "forall-residue");
+                        top_gcis.push(imp)
+                    }
                 }
             } else if !succ_body.is_empty() {
                 // ---- y-triggered (the absorption shape): ------------------
@@ -763,7 +809,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 tbox.push(imp);
                 match succ_body.iter().find(|&&(_, neg)| !neg) {
                     Some(&(host, _)) => absorbed_pairs.push((host, imp)),
-                    None => top_gcis.push(imp),
+                    None => {
+                        dump_top(cl, "inv-forall-residue");
+                        top_gcis.push(imp)
+                    }
                 }
             } else if head_y.is_empty() && !head_x.is_empty() {
                 // ---- domain axiom `R(x,y) → C(x) [∨ D(x) …]` ----------------

@@ -720,6 +720,71 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
 
+        // --- Lazy triggered-OR (KM_HT_NO_LAZY_OR opt-out). ---------------------
+        // The absorption stand-in for TOP-attached recognition disjunctions
+        // `⊤ ⊑ Q ∨ ≤n R.C` (the ≥k-recognition / definer shapes that otherwise
+        // branch on EVERY node — the disjunction-search cost centre, measured on
+        // ore_ont_12653/541): if some effectively-POSITIVE ATMOST operand's bound
+        // currently HOLDS under the PESSIMISTIC successor count (successors not
+        // decided AGAINST the qualifier — undecided ones count), the disjunction
+        // is satisfied by the present graph, so DEFER instead of branching:
+        // register this OR on the at-most's role reapply queue and return. Sound
+        // (deferring asserts nothing). Complete: the pessimistic count can only
+        // grow through NEW `role`-links (an undecided successor deciding the
+        // qualifier positively was already counted; deciding negatively shrinks
+        // it), and every new link re-fires this OR via the role reapply — the
+        // Konclude equivalent is the branching-trigger machinery installed by
+        // absorption (`CConceptRoleBranchingTrigger`).
+        if std::env::var_os("KM_HT_NO_LAZY_OR").is_none() {
+            for l in &operands {
+                if l.negated ^ negate {
+                    continue;
+                }
+                let oc = l.target;
+                if calc_alg_context
+                    .ontology_arenas()
+                    .concept(oc)
+                    .get_operator_code()
+                    != op::CCATMOST
+                {
+                    continue;
+                }
+                let bound: Cint64 = calc_alg_context
+                    .ontology_arenas()
+                    .concept(oc)
+                    .get_parameter();
+                let am_role = calc_alg_context.ontology_arenas().concept(oc).get_role();
+                let am_ops: Vec<NegLink<ConceptId>> = calc_alg_context
+                    .ontology_arenas()
+                    .concept(oc)
+                    .get_operand_list()
+                    .to_vec();
+                let cnt = self.ht_role_successor_count_possibly_qualified(
+                    process_indi,
+                    am_role,
+                    &am_ops,
+                    calc_alg_context,
+                );
+                if cnt <= bound {
+                    let is_concept_reapplied: bool = calc_alg_context
+                        .process_context()
+                        .con_proc_desc(con_pro_des)
+                        .is_concept_reapplied();
+                    if !is_concept_reapplied {
+                        self.add_concept_to_reapply_queue_role(
+                            con_des,
+                            am_role,
+                            process_indi,
+                            true,
+                            dep_track_point,
+                            calc_alg_context,
+                        );
+                    }
+                    return true;
+                }
+            }
+        }
+
         // --- createBranchingTreeNode / createORDependency (the ported records). ---
         // The parent / root branch nodes chain chronologically (the topmost open
         // branch is this one's parent), mirroring `CBranchTreeNode`'s parent/root

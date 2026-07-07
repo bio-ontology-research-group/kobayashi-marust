@@ -538,6 +538,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
+        // KM_BRIDGE_WATCH_NEGTAG=<tag>: the negated-add twin of WATCH_TAG (e.g.
+        // tag 1 negated = a ⊥ insertion), with the dependency track point id —
+        // provenance for wrong-root-cancel hunts.
+        if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_NEGTAG") {
+            if let Ok(wt) = w.parse::<Cint64>() {
+                let tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag();
+                if tag == wt && negate && self.ddb_analysis_dumps < 6 {
+                    self.ddb_analysis_dumps += 1;
+                    let bt = std::backtrace::Backtrace::force_capture().to_string();
+                    let frames: Vec<&str> = bt
+                        .lines()
+                        .filter(|l| l.contains("konclude_ht::completion::u"))
+                        .take(6)
+                        .collect();
+                    eprintln!(
+                        "WATCH-NEGTAG ¬{} add to node {} under tp={:?} via {}",
+                        wt,
+                        calc_alg_context
+                            .process_context()
+                            .node(*process_indi)
+                            .individual_node_id(),
+                        dependency_track_point,
+                        frames.join(" <- ")
+                    );
+                }
+            }
+        }
         // KM_BRIDGE_WATCH_NODE=<id>: print the first ~24 POSITIVE NAMED-tag
         // additions to that node in arrival order with a short call path —
         // catches the ENTRY POINT of an over-derivation cascade.

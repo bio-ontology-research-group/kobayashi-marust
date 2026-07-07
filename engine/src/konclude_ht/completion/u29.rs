@@ -729,6 +729,60 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // ported (`ClashDescId`). `cint64* minIndiLevel` → `Option<&mut Cint64>`.
     // =======================================================================
 
+    /// Format a tracked-clash descriptor chain (concept tag/polarity, pointer
+    /// class, branching-level tag, node level) — shared by the DDB-CLOSURE and
+    /// the root-cancel dumps.
+    fn ht_fmt_tracked_closure(
+        &self,
+        head: ClashDescId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> String {
+        let pc = calc_alg_context.process_context();
+        let mut it = head;
+        let mut parts: Vec<String> = Vec::new();
+        while it.is_some() && parts.len() < 12 {
+            let d = pc.clash_desc(it);
+            let (ctag, cneg) =
+                if let super::super::process::descriptor::ClashDescriptorKind::Tracked {
+                    concept_descriptor,
+                    ..
+                } = &d.kind
+                {
+                    if concept_descriptor.is_some() {
+                        let cd = pc.con_desc(*concept_descriptor);
+                        let con = cd.get_concept();
+                        (
+                            if con.is_some() {
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(con)
+                                    .get_concept_tag()
+                            } else {
+                                -1
+                            },
+                            cd.is_negated(),
+                        )
+                    } else {
+                        (-1, false)
+                    }
+                } else {
+                    (-1, false)
+                };
+            parts.push(format!(
+                "[c={}{} ind={} det={} tag={} lvl={} tp={:?}]",
+                if cneg { "¬" } else { "" },
+                ctag,
+                d.is_pointing_to_independent_dependency_node(),
+                !d.is_pointing_to_non_deterministic_dependency_node(),
+                d.get_branching_level_tag(),
+                d.get_appropriated_individual_level(),
+                d.get_dependency_track_point(),
+            ));
+            it = d.get_next_descriptor();
+        }
+        parts.join(" ")
+    }
+
     /// Port of `clashedBacktracking`. cpp 6774–6861.
     ///
     /// Entry point: installs the clash descriptor linker, builds the tracked-clash
@@ -773,50 +827,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // closures — descriptor classes and tags decide the whole analysis.
         let dump_this_call =
             self.ddb_analysis_dumps < 8 && std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        // KM_BRIDGE_DUMP_CLASH additionally dumps the closure at the ROOT-CANCEL
+        // moment (the verdict-deciding analysis), however late it happens.
+        let dump_on_root_cancel = std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some();
+        let mut closure_parts: Vec<String> = Vec::new();
+        if dump_this_call || dump_on_root_cancel {
+            closure_parts =
+                vec![self.ht_fmt_tracked_closure(tracked_clash_descriptors, calc_alg_context)];
+        }
         if dump_this_call {
             self.ddb_analysis_dumps += 1;
-            let pc = calc_alg_context.process_context();
-            let mut it = tracked_clash_descriptors;
-            let mut parts: Vec<String> = Vec::new();
-            while it.is_some() && parts.len() < 12 {
-                let d = pc.clash_desc(it);
-                let (ctag, cneg) = if let super::super::process::descriptor::ClashDescriptorKind::Tracked {
-                    concept_descriptor, ..
-                } = &d.kind
-                {
-                    if concept_descriptor.is_some() {
-                        let cd = pc.con_desc(*concept_descriptor);
-                        let con = cd.get_concept();
-                        (
-                            if con.is_some() {
-                                calc_alg_context
-                                    .ontology_arenas()
-                                    .concept(con)
-                                    .get_concept_tag()
-                            } else {
-                                -1
-                            },
-                            cd.is_negated(),
-                        )
-                    } else {
-                        (-1, false)
-                    }
-                } else {
-                    (-1, false)
-                };
-                parts.push(format!(
-                    "[c={}{} ind={} det={} tag={} lvl={} tp={}]",
-                    if cneg { "¬" } else { "" },
-                    ctag,
-                    d.is_pointing_to_independent_dependency_node(),
-                    !d.is_pointing_to_non_deterministic_dependency_node(),
-                    d.get_branching_level_tag(),
-                    d.get_appropriated_individual_level(),
-                    d.get_dependency_track_point().is_some(),
-                ));
-                it = d.get_next_descriptor();
-            }
-            eprintln!("DDB-CLOSURE n<={} {}", parts.len(), parts.join(" "));
+            eprintln!("DDB-CLOSURE {}", closure_parts.join(" "));
         }
 
         let mut tracking_line = TrackedClashedDependencyLine::new();
@@ -834,6 +855,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 );
             }
             if tracking_line.get_branching_level() == 0 {
+                if dump_on_root_cancel && self.ddb_analysis_dumps < 16 {
+                    self.ddb_analysis_dumps += 1;
+                    eprintln!(
+                        "DDB-ROOT-CANCEL closure: {}",
+                        closure_parts.join(" ")
+                    );
+                }
                 self.cancellation_root_task(calc_alg_context);
             }
             if tracking_line.has_only_current_individual_node_level_clashes_descriptors() {
@@ -1105,6 +1133,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             ) {
                 if tracking_line.get_branching_level() == 0 {
+                    if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
+                        && self.ddb_analysis_dumps < 16
+                    {
+                        self.ddb_analysis_dumps += 1;
+                        let s = self
+                            .ht_fmt_tracked_closure(collected_tracked_clashed_des, calc_alg_context);
+                        eprintln!("DDB-ROOT-CANCEL[propagated] collected closure: {s}");
+                    }
                     self.cancellation_root_task(calc_alg_context);
                 }
                 if tracking_line.has_only_current_individual_node_level_clashes_descriptors() {
