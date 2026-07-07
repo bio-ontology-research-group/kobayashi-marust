@@ -1151,6 +1151,9 @@ impl CalculationAlgorithmContextBase {
         if let Some(db) = self.databox_epoch_stack.pop() {
             self.base.used_processing_data_box = db;
         }
+        self.base
+            .used_process_context
+            .ht_check_dangling_satellites("pop_branch_epoch");
     }
 
     /// Lazily materialize the branching tree's INDEPENDENT base dependency

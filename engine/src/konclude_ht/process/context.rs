@@ -2793,6 +2793,43 @@ impl ProcessContext {
         self.branch_epoch_depth += 1;
     }
 
+    /// KM_BRIDGE_SEARCH_LOG diagnostics: verify node→satellite id coherence —
+    /// a node surviving a pop must not point at a TRUNCATED satellite slot
+    /// (the dangling-id corruption fingerprint: empty/aliased labels →
+    /// duplicate ∃-successors → phantom at-most violations).
+    pub fn ht_check_dangling_satellites(&self, wher: &str) {
+        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_none() {
+            return;
+        }
+        let n_ls = self.label_sets.len();
+        let n_q = self.concept_proc_queues.len();
+        let n_srh = self.succ_role_hashes.len();
+        for ix in 0..self.nodes.len() {
+            let n = self.nodes.get(super::NodeId::new(ix as Cint64));
+            let ls = n.use_reapply_con_label_set;
+            if ls.is_some() && ls.index() >= n_ls {
+                eprintln!(
+                    "SL DANGLING at {wher} node={ix} label_set={} >= len {n_ls}",
+                    ls.index()
+                );
+            }
+            let q = n.use_concept_processing_queue;
+            if q.is_some() && q.index() >= n_q {
+                eprintln!(
+                    "SL DANGLING at {wher} node={ix} proc_queue={} >= len {n_q}",
+                    q.index()
+                );
+            }
+            let h = n.use_succ_role_hash;
+            if h.is_some() && h.index() >= n_srh {
+                eprintln!(
+                    "SL DANGLING at {wher} node={ix} succ_hash={} >= len {n_srh}",
+                    h.index()
+                );
+            }
+        }
+    }
+
     /// Close the innermost branch epoch: journal-rollback + truncate.
     pub fn pop_branch_epoch(&mut self) {
         self.additional_data_assertion_linkers.pop_epoch();
