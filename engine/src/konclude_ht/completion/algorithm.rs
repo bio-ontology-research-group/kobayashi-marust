@@ -748,6 +748,13 @@ pub struct CompletionTaskHandleAlgorithm {
     /// root-task cancellation (the Task-subsystem side of `cancellationTask`
     /// is W6-DEFER). Reset at the top of `run_completion_on`.
     pub ddb_root_cancelled: bool,
+    /// Wall-clock deadline for the drive loop (`run_completion_on`): on
+    /// overrun the drive raises a STOP (an UNKNOWN verdict — callers DEFER).
+    /// Set per-probe by `bridged_unsat` from `KM_BRIDGE_PROBE_BUDGET_S`; the
+    /// between-passes budget check alone cannot bound a single search (one
+    /// `run_completion_on` call owns the whole backtracking loop — measured:
+    /// a 5 s budget probe ran 10+ min to 117 GB before the pass check).
+    pub drive_deadline: Option<std::time::Instant>,
     /// DDB diagnostics: backjumps taken (target found by the scan).
     pub ddb_jump_count: u64,
     /// DDB diagnostics: branch points POPPED PAST by backjumps (jump distance
@@ -1168,6 +1175,7 @@ impl CompletionTaskHandleAlgorithm {
             or_backtrack_count: 0,
             or_branch_open_count: 0,
             ddb_root_cancelled: false,
+            drive_deadline: None,
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,

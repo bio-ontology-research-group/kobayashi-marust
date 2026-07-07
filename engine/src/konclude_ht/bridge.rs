@@ -1086,6 +1086,10 @@ pub fn bridged_unsat(
         .and_then(|s| s.parse::<u64>().ok())
         .map(std::time::Duration::from_secs);
     let probe_t0 = std::time::Instant::now();
+    // Thread the deadline INTO the drive loop: one `run_completion_on` call
+    // owns the whole backtracking search, so the between-passes check below
+    // cannot bound it on its own.
+    algo.drive_deadline = budget.map(|b| probe_t0 + b);
     let mut prev_inserts: i64 = -1;
     for pass in 0..256 {
         if let Some(b) = budget {

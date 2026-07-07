@@ -153,6 +153,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context.raise_stop(false);
                 return false;
             }
+            // Per-probe wall-clock deadline (see `drive_deadline`): a STOP is
+            // an UNKNOWN verdict — the caller DEFERS; never fold into (un)sat.
+            if let Some(deadline) = self.drive_deadline {
+                if std::time::Instant::now() >= deadline {
+                    calc_alg_context.raise_stop(false);
+                    return false;
+                }
+            }
             self.run_saturation_loop(calc_alg_context);
             drives += 1;
             if progress && drives % 4096 == 0 {
@@ -775,6 +783,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         while indi_proc_node.is_some() {
             drive_iters += 1;
             drive_progress!();
+            // Per-probe wall-clock deadline also applies WITHIN a drive: a
+            // single saturation drive can run millions of rule firings (and
+            // under COW journaling, tens of GB) before returning to the outer
+            // drive loop's check.
+            if drive_iters % 4096 == 0 {
+                if let Some(deadline) = self.drive_deadline {
+                    if std::time::Instant::now() >= deadline {
+                        calc_alg_context.raise_stop(false);
+                        return;
+                    }
+                }
+            }
             if drive_iters > MAX_DRIVE_ITERATIONS {
                 calc_alg_context.raise_stop(false);
                 return;
