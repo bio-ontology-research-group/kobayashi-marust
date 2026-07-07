@@ -71,8 +71,10 @@ fn spawn_tableau(
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
-        let f = File::open(clauses_path).ok()?;
-        let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
+        // from_slice on a read buffer, not from_reader — the clause file is
+        // multi-MB on large onts and the reader path is markedly slower.
+        let buf = std::fs::read(clauses_path).ok()?;
+        let v: JInput = serde_json::from_slice(&buf).ok()?;
         (v.clauses, v.cardinalities)
     };
     // giants: the engine path owns them
@@ -547,8 +549,10 @@ fn spawn_ht(
 ) -> Option<(Child, super::tmpfile::TempPath, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
-        let f = File::open(clauses_path).ok()?;
-        let v: JInput = serde_json::from_reader(BufReader::new(f)).ok()?;
+        // from_slice on a read buffer, not from_reader — the clause file is
+        // multi-MB on large onts and the reader path is markedly slower.
+        let buf = std::fs::read(clauses_path).ok()?;
+        let v: JInput = serde_json::from_slice(&buf).ok()?;
         (v.clauses, v.cardinalities)
     };
     let _tconv = Instant::now();

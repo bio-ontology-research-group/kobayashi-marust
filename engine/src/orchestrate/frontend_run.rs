@@ -134,7 +134,13 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
             stderr: msg,
         });
     }
-    let meta_parsed: Meta = serde_json::from_reader(File::open(meta.path())?)?;
+    // Read the whole meta file and parse with `from_slice`, NOT
+    // `from_reader(File)`: serde_json's reader path is unbuffered here and
+    // parses a large meta (ore_ont_10073: 21 MB, 473k iri_map entries) ~14 s
+    // vs <1 s from a slice — it was the dominant cost of the frontend phase on
+    // large ontologies (19 s → 5 s).
+    let meta_bytes = std::fs::read(meta.path())?;
+    let meta_parsed: Meta = serde_json::from_slice(&meta_bytes)?;
     Ok((clauses, meta_parsed))
 }
 
