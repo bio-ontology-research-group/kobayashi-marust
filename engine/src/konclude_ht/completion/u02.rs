@@ -416,6 +416,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.unrestored_advance_count > 0 {
             return self.try_backtrack_or_branch(calc_alg_context);
         }
+        // KM_HT_DDB_NO_SKIP (diagnostic): keep the u29 marking + root-cancel
+        // machinery but never let marks drive the stack walk — pure
+        // chronological backtracking. Splits the wrong-UNSAT blame between
+        // the mark-driven discard/advance (spurious becomes budget-STOP) and
+        // the cancel propagation itself (spurious persists).
+        if std::env::var_os("KM_HT_DDB_NO_SKIP").is_some() {
+            return self.try_backtrack_or_branch(calc_alg_context);
+        }
         // Scan (no mutation) from the top for the first branch point whose
         // CURRENT alternative the analysis marked clashed. Two cases:
         // - it still has an unexplored alternative → backjump and ADVANCE it;
