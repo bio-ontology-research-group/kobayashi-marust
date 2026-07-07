@@ -1795,12 +1795,53 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // enumerate every mergeable pair — the merge alternatives
             // (`isIndividualNodesMergeable` per pair, cpp 15071).
             let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
+            let pair_log = std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some();
+            let mut pair_verdicts: Vec<String> = Vec::new();
             for i in 0..succs.len() {
                 for j in (i + 1)..succs.len() {
-                    if self.ht_individuals_mergeable(succs[i], succs[j], calc_alg_context) {
+                    let ok = self.ht_individuals_mergeable(succs[i], succs[j], calc_alg_context);
+                    if pair_log {
+                        // annotate WHY a pair is blocked (distinct edge vs
+                        // label clash-set) — the cross-pair-exclusion hunt.
+                        let why = if ok {
+                            "ok".to_string()
+                        } else {
+                            let dh = calc_alg_context
+                                .process_context()
+                                .node(succs[i])
+                                .use_distinct_hash;
+                            let dist = dh.is_some() && {
+                                let id2 = calc_alg_context
+                                    .process_context()
+                                    .node(succs[j])
+                                    .individual_node_id();
+                                calc_alg_context
+                                    .process_context()
+                                    .distinct_hash(dh)
+                                    .is_individual_distinct(id2)
+                            };
+                            if dist { "DISTINCT".into() } else { "LABELCLASH".into() }
+                        };
+                        pair_verdicts.push(format!(
+                            "({},{}):{}",
+                            succs[i].index(),
+                            succs[j].index(),
+                            why
+                        ));
+                    }
+                    if ok {
                         pairs.push((succs[i], succs[j]));
                     }
                 }
+            }
+            if pair_log {
+                let m = format!(
+                    "atmost-pairs parent={} succs={:?} verdicts=[{}]",
+                    process_indi.index(),
+                    succs.iter().map(|n| n.index()).collect::<Vec<_>>(),
+                    pair_verdicts.join(" ")
+                );
+                self.ht_search_log(&m);
             }
             if pairs.is_empty() {
                 // every excess successor is pairwise-distinct ⇒ at-most violated

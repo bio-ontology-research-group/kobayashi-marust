@@ -305,7 +305,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// (advance/discard with bp kind + alternative index + node) — diff a
     /// failing mode's log against a passing mode's to find the first
     /// divergence (the COW-restore hunt).
-    fn ht_search_log(&mut self, msg: &str) {
+    pub(super) fn ht_search_log(&mut self, msg: &str) {
         if let Ok(n) = std::env::var("KM_BRIDGE_SEARCH_LOG") {
             if let Ok(n) = n.parse::<u64>() {
                 if self.search_log_count < n {
