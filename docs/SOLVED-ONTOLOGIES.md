@@ -158,7 +158,7 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 541 | bridge | nodes=4 FLAT, 2.6M chronological backtracks/120 s, branch depth 55–56 (≈2^56 space) | Port u29 `clashedBacktracking` (dependency-directed backjumping) + Unit 28/30 tracking-line records + arena watermark restore. Chronological search cannot finish; no constant factor helps. |
+| 541 | bridge | read-offs SOLVED by DDB+COW (2026-07-07): the subject that thrashed 1M+ backtracks decides in 16 ms / 435 backtracks under `KM_HT_DDB=1 KM_HT_COW=1` (u29 backjumping + atomic semantic branching + complete-state branch epochs, commits 93e62e4 + d5603a0) | Residual: the pairwise verification probes for NONDET subjects dominate full-classify wall time (fresh env per probe); needs probe-env reuse or the unsat cache. Full classify-vs-gold tally pending. |
 | 3215 | bridge | covered (unsupported=0), per-subject read-off terminates 0.4–6 s deterministic-after-gate; Konclude itself needs 22 s (-w8) | Correctness sample validating; the blocker is O(subjects) fresh saturations — needs databox-COW reuse per subject (Konclude reuses the preprocessed task). |
 | 7914 | bridge | 46k nodes, hits the 5M drive cap, backtracks=0 | Model explosion, not search: blocking effectiveness + lazy-∀ extension (the giants' family). Production route: r-Succ completeness gap needs edge-conditioned forward push + Lean re-cert. |
 | 9663, 9724 | production | central memory blowup (9663 saturation 115 GB) | Deterministic ≤n bounds in `saturate_global` + interning; see `KONCLUDE-SATURATION-CACHE-SPEC.md`. |

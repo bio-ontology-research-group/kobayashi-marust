@@ -342,11 +342,25 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         }
     }
 
-    // iri_map / named: every internal name registered to a real IRI.
+    // iri_map / named: every internal name registered to a real IRI, EXCEPT
+    // anonymous blank nodes (`_:genidN` — OWL structure nodes for complex
+    // class expressions / restrictions). On ABox-heavy ontologies these
+    // dominate the meta (ore_ont_10073: 457675 of 473278 entries, 21 MB → the
+    // ofn serialisation + the orchestrator's meta parse both scale with it).
+    // A blank node is never a queryable NAMED class and a `_:genidN` string in
+    // the class-hierarchy output is meaningless, so excluding it from both the
+    // query/output `named` set and the output `iri_map` is output-neutral (the
+    // blank-node CONCEPT stays in the clause set — only its query/output
+    // registration is dropped). Gated by KM_KEEP_BLANK_NAMES for A/B.
+    let drop_blank = std::env::var_os("KM_KEEP_BLANK_NAMES").is_none();
     let mut iri_map = std::collections::BTreeMap::new();
     let mut named = Vec::new();
     for internal in reg.owned_names() {
-        iri_map.insert(internal.clone(), reg.full_iri(&internal));
+        let iri = reg.full_iri(&internal);
+        if drop_blank && iri.starts_with("_:") {
+            continue;
+        }
+        iri_map.insert(internal.clone(), iri);
         named.push(internal);
     }
     named.sort();
