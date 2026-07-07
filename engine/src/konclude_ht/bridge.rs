@@ -2224,6 +2224,16 @@ mod tests {
                 }
             }
         }
+        // KM_BRIDGE_ROLE_NAMES=<idx>[,<idx>...]: print TInput role names.
+        if let Ok(idxs) = std::env::var("KM_BRIDGE_ROLE_NAMES") {
+            for i in idxs.split(',') {
+                if let Ok(i) = i.trim().parse::<usize>() {
+                    if i < env.tin.roles.len() {
+                        eprintln!("ROLE-NAME {}={}", i, env.tin.roles[i]);
+                    }
+                }
+            }
+        }
         if let Ok(names) = std::env::var("KM_BRIDGE_DUMP_NAMES") {
             for n in names.split(',') {
                 if let Some(&idx) = env.con_id.get(n.trim()) {
