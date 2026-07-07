@@ -764,6 +764,8 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: refuted-and-exhausted decisions discarded (with their
     /// stacked subtrees) by the backjump scan.
     pub ddb_refuted_discard_count: u64,
+    /// KM_BRIDGE_SEARCH_LOG budget counter.
+    pub search_log_count: u64,
     /// DDB diagnostics: backjumps taken (target found by the scan).
     pub ddb_jump_count: u64,
     /// DDB diagnostics: branch points POPPED PAST by backjumps (jump distance
@@ -1188,6 +1190,7 @@ impl CompletionTaskHandleAlgorithm {
             ddb_line_init_fail_count: 0,
             ddb_already_marked_count: 0,
             ddb_refuted_discard_count: 0,
+            search_log_count: 0,
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,

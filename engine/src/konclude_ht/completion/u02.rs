@@ -187,6 +187,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             match calc_alg_context.pending_signal() {
                 CalcSignal::Clash(clash) => {
+                    if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+                        let mut parts: Vec<String> = Vec::new();
+                        let mut it = clash;
+                        let mut n = 0;
+                        while it.is_some() && n < 3 {
+                            let cd = calc_alg_context.process_context().clash_desc(it);
+                            if let super::super::process::descriptor::ClashDescriptorKind::Concept {
+                                concept_descriptor,
+                                individual_node,
+                            } = cd.kind
+                            {
+                                if concept_descriptor.is_some() {
+                                    let pc = calc_alg_context.process_context();
+                                    let des = pc.con_desc(concept_descriptor);
+                                    let tag = calc_alg_context
+                                        .ontology_arenas()
+                                        .concept(des.get_concept())
+                                        .get_concept_tag();
+                                    let nid = if individual_node.is_some() {
+                                        pc.node(individual_node).individual_node_id()
+                                    } else {
+                                        -1
+                                    };
+                                    parts.push(format!(
+                                        "{}{}@n{}",
+                                        if des.is_negated() { "¬" } else { "" },
+                                        tag,
+                                        nid
+                                    ));
+                                }
+                            }
+                            it = cd.next;
+                            n += 1;
+                        }
+                        let m = format!("clash {}", parts.join(" "));
+                        self.ht_search_log(&m);
+                    }
                     if self.conf_dependency_backjumping {
                         // Dependency-directed backjumping: run the ported
                         // `clashedBacktracking` (u29) — it walks the clash's
@@ -241,11 +278,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Discard the topmost branch point: pop its stack entry, close its
     /// branch epoch (in-process COW — the complete-state rollback), restore
     /// the used branch tree node.
+    /// KM_BRIDGE_SEARCH_LOG=<N>: print the first N search events
+    /// (advance/discard with bp kind + alternative index + node) — diff a
+    /// failing mode's log against a passing mode's to find the first
+    /// divergence (the COW-restore hunt).
+    fn ht_search_log(&mut self, msg: &str) {
+        if let Ok(n) = std::env::var("KM_BRIDGE_SEARCH_LOG") {
+            if let Ok(n) = n.parse::<u64>() {
+                if self.search_log_count < n {
+                    self.search_log_count += 1;
+                    eprintln!("SL {}", msg);
+                }
+            }
+        }
+    }
+
     fn discard_topmost_or_branch(
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         let bp = self.or_branch_stack.pop().expect("caller checked non-empty");
+        {
+            let kind = match &bp.kind {
+                BranchKind::Disjunction => "or",
+                BranchKind::AtMostMerge(_) => "merge",
+                BranchKind::AtMostQualify { .. } => "choose",
+            };
+            let m = format!(
+                "discard {} node={} next_alt={}/{} depth={}",
+                kind,
+                bp.node.index(),
+                bp.next_alt,
+                bp.alternatives_len(),
+                self.or_branch_stack.len()
+            );
+            self.ht_search_log(&m);
+        }
         if bp.own_epoch {
             calc_alg_context.pop_branch_epoch();
         } else {
@@ -412,6 +480,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         self.or_backtrack_count += 1;
+        {
+            let m = self
+                .or_branch_stack
+                .last()
+                .map(|bp| {
+                    let kind = match &bp.kind {
+                        BranchKind::Disjunction => "or",
+                        BranchKind::AtMostMerge(_) => "merge",
+                        BranchKind::AtMostQualify { .. } => "choose",
+                    };
+                    format!(
+                        "advance {} node={} to_alt={}/{} depth={}",
+                        kind,
+                        bp.node.index(),
+                        bp.next_alt,
+                        bp.alternatives_len(),
+                        self.or_branch_stack.len()
+                    )
+                })
+                .unwrap_or_default();
+            self.ht_search_log(&m);
+        }
 
         // In-process COW: close the FAILED alternative's epoch (complete
         // graph rollback to the pre-alternative state) and open a fresh one
