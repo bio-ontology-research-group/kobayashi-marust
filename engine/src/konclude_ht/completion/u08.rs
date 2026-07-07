@@ -1835,10 +1835,53 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
             if pair_log {
+                let am_tag = {
+                    let c = calc_alg_context
+                        .process_context()
+                        .con_desc(con_des)
+                        .get_concept();
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(c)
+                        .get_concept_tag()
+                };
+                let succ_labels: Vec<String> = succs
+                    .iter()
+                    .map(|&n| {
+                        let pc = calc_alg_context.process_context();
+                        let ls = pc.node(n).use_reapply_con_label_set;
+                        if ls.is_none() {
+                            return format!("n{}:[]", n.index());
+                        }
+                        let mut v: Vec<(i64, bool)> = pc
+                            .label_set(ls)
+                            .concept_des_dep_map
+                            .iter()
+                            .filter_map(|(tag, data)| {
+                                let cd = data.concept_descriptor;
+                                if cd.is_none() {
+                                    return None;
+                                }
+                                Some((*tag, pc.con_desc(cd).is_negated()))
+                            })
+                            .collect();
+                        v.sort_unstable();
+                        format!(
+                            "n{}:[{}]",
+                            n.index(),
+                            v.iter()
+                                .map(|(t, neg)| format!("{}{}", if *neg { "-" } else { "" }, t))
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        )
+                    })
+                    .collect();
                 let m = format!(
-                    "atmost-pairs parent={} succs={:?} verdicts=[{}]",
+                    "atmost-pairs am={} card={} parent={} {} verdicts=[{}]",
+                    am_tag,
+                    cardinality,
                     process_indi.index(),
-                    succs.iter().map(|n| n.index()).collect::<Vec<_>>(),
+                    succ_labels.join(" "),
                     pair_verdicts.join(" ")
                 );
                 self.ht_search_log(&m);
