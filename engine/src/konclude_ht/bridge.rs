@@ -877,6 +877,14 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // marker's absorption (CCSUB → AND rule asserts the restriction exactly
     // on marker-labelled nodes). The clausal `⋁ eq` pigeonhole for each
     // marker was already dropped by `cb_to_ht::convert(card_enabled=true)`.
+    // NOT in `tbox`: the root re-seed loop dispatches every tbox concept on
+    // the probe root QUEUE-ONLY (no label add). Implications self-gate on
+    // their retained trigger linkers, but a raw CCATLEAST/CCATMOST enforces
+    // UNCONDITIONALLY — seeding it applied the marker's number restriction
+    // to every probe subject (measured: covering_atmost_cross_merge_sat,
+    // the guard-less `≤2 r.E` armed on the root at branch depth 0 refuted
+    // the SAT covering branch). The restriction reaches exactly the
+    // marker-labelled nodes through the absorption unfold below.
     for cd in &tin.card_defs {
         let filler = (named[cd.filler], false);
         let c = if cd.min {
@@ -884,7 +892,6 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         } else {
             b.atmost_q(roles[cd.role], cd.n as Cint64, filler)
         };
-        tbox.push(c);
         absorbed_pairs.push((named[cd.marker], c));
     }
 

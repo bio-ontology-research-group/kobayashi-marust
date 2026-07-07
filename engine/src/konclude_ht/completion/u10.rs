@@ -656,6 +656,46 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node_concept_processing_queue(process_indi, true);
                 con_pro_queue_set = true;
             }
+            // KM_BRIDGE_SEARCH_LOG: every role-reapply re-fire — the stale-≤n
+            // hunt (a reapplied concept must still be IN the node's label).
+            if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+                let pc = calc_alg_context.process_context();
+                let cd = pc.con_desc(con_des);
+                let tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(cd.get_concept())
+                    .get_concept_tag();
+                let neg = cd.is_negated();
+                let ls = pc.node(process_indi).use_reapply_con_label_set;
+                let (tag_present, desc_same) = if ls.is_some() {
+                    match pc.label_set(ls).concept_des_dep_map.get(&tag) {
+                        Some(d) if !d.concept_descriptor.is_none() => {
+                            let same_pol =
+                                pc.con_desc(d.concept_descriptor).is_negated() == neg;
+                            (same_pol, d.concept_descriptor == con_des)
+                        }
+                        _ => (false, false),
+                    }
+                } else {
+                    (false, false)
+                };
+                let opc = calc_alg_context
+                    .ontology_arenas()
+                    .concept(cd.get_concept())
+                    .get_operator_code();
+                let m = format!(
+                    "reapply-fire node={} tag={}{} op={:?} static={} tag_present={} desc_same={} depth={}",
+                    process_indi.index(),
+                    if neg { "-" } else { "" },
+                    tag,
+                    opc,
+                    is_static_descriptor,
+                    tag_present,
+                    desc_same,
+                    pc.branch_epoch_depth()
+                );
+                self.ht_search_log(&m);
+            }
             if proc_rest == INVALID {
                 if link_proc_rest == INVALID {
                     let mut link_rest =
@@ -1273,6 +1313,62 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 dependency_track_point,
                 is_static_des,
             ));
+        // KM_BRIDGE_SEARCH_LOG: pair each ARM with its branch-epoch depth so a
+        // fire at a SHALLOWER depth than every arm exposes a journal miss.
+        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(
+                    calc_alg_context
+                        .process_context()
+                        .con_desc(concept_descriptor)
+                        .get_concept(),
+                )
+                .get_concept_tag();
+            let opc = calc_alg_context
+                .ontology_arenas()
+                .concept(
+                    calc_alg_context
+                        .process_context()
+                        .con_desc(concept_descriptor)
+                        .get_concept(),
+                )
+                .get_operator_code();
+            let label: Vec<i64> = {
+                let pc = calc_alg_context.process_context();
+                let ls = pc.node(process_indi).use_reapply_con_label_set;
+                if ls.is_some() {
+                    let mut v: Vec<i64> = pc
+                        .label_set(ls)
+                        .concept_des_dep_map
+                        .iter()
+                        .filter_map(|(t, d)| {
+                            if d.concept_descriptor.is_none() {
+                                None
+                            } else if pc.con_desc(d.concept_descriptor).is_negated() {
+                                Some(-*t)
+                            } else {
+                                Some(*t)
+                            }
+                        })
+                        .collect();
+                    v.sort_unstable();
+                    v
+                } else {
+                    Vec::new()
+                }
+            };
+            let m = format!(
+                "reapply-arm node={} tag={} op={:?} static={} depth={} label={:?}",
+                process_indi.index(),
+                tag,
+                opc,
+                is_static_des,
+                calc_alg_context.process_context().branch_epoch_depth(),
+                label
+            );
+            self.ht_search_log(&m);
+        }
         calc_alg_context
             .process_context_mut()
             .node_add_role_reapply_concept_descriptor(process_indi, role, reapply_con_des);

@@ -404,6 +404,57 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
         if already_exist == NodeId::NONE {
             self.applied_some_rule_count += 1;
+            // KM_BRIDGE_SEARCH_LOG: every ∃ successor CREATE with the parent,
+            // filler, and the labels of the parent's EXISTING same-role
+            // successors — why did the already-exists check miss them (the
+            // COW duplicate-generation hunt, memory cont-12+).
+            if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+                let filler_tags: Vec<i64> = concept_op_linker
+                    .iter()
+                    .map(|nl| {
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(nl.target)
+                            .get_concept_tag()
+                    })
+                    .collect();
+                let existing: Vec<String> = self
+                    .ht_role_successor_links(*process_indi, role, calc_alg_context)
+                    .iter()
+                    .map(|&(_, n)| {
+                        let pc = calc_alg_context.process_context();
+                        let ls = pc.node(n).use_reapply_con_label_set;
+                        let mut v: Vec<i64> = if ls.is_some() {
+                            pc.label_set(ls)
+                                .concept_des_dep_map
+                                .iter()
+                                .filter_map(|(t, d)| {
+                                    if d.concept_descriptor.is_none() {
+                                        None
+                                    } else if pc.con_desc(d.concept_descriptor).is_negated() {
+                                        None
+                                    } else {
+                                        Some(*t)
+                                    }
+                                })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        v.sort_unstable();
+                        format!("n{}:{:?}", n.index(), v)
+                    })
+                    .collect();
+                let m = format!(
+                    "CREATE parent={} role={} filler={:?} nodes_len={} existing: {}",
+                    process_indi.index(),
+                    calc_alg_context.ontology_arenas().role(role).get_role_tag(),
+                    filler_tags,
+                    calc_alg_context.process_context().node_count(),
+                    existing.join(" ")
+                );
+                self.ht_search_log(&m);
+            }
             // W3-DEFER[api]: testUnsatisfiableCacheForSuccessorGeneration / unsat-cache strategy.
             // succIndi = tryExtendFunctionalSuccessorIndividual(...) — W3-DEFER (functional
             // reuse + merge subsystem); falls through to a fresh successor.

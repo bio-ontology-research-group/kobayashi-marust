@@ -432,6 +432,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let cpd = &mut cpd;
         let mut dispatched = true;
 
+        // KM_BRIDGE_SEARCH_LOG: every rule dispatch — node, concept tag,
+        // polarity, op, epoch depth (the queued-descriptor provenance trace).
+        if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_some() {
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_concept_tag();
+            let in_label = {
+                let pc = calc_alg_context.process_context();
+                let ls = pc.node(*indi).use_reapply_con_label_set;
+                ls.is_some()
+                    && pc.label_set(ls).has_concept_in_context(
+                        pc,
+                        calc_alg_context.ontology_arenas(),
+                        concept,
+                        con_neg,
+                    )
+            };
+            let m = format!(
+                "proc node={} tag={}{} op={} depth={} in_label={}",
+                indi.index(),
+                if con_neg { "-" } else { "" },
+                tag,
+                con_op_code,
+                calc_alg_context.process_context().branch_epoch_depth(),
+                in_label
+            );
+            self.ht_search_log(&m);
+        }
+
         if !con_neg {
             // func = mPosJumpFuncVec[conOpCode];
             match con_op_code {
