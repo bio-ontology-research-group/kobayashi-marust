@@ -203,6 +203,75 @@ const INPROC_ELC_MAX: u64 = 4 << 20;
 /// — while removing the per-ont worker forks that dominate the wall on the
 /// trivial band (where km already uses less memory than Konclude but ties or
 /// narrowly loses on time because of the fork/thread-startup contention).
+/// In-process CB engine fast path for small NON-EL ontologies
+/// (`KM_NO_INPROC_ENGINE` to opt out). Runs `Reasoner::{new,saturate,
+/// subsumptions}` directly on a worker thread, skipping the fork/exec of the
+/// engine worker and the clause-JSON stdin round-trip — the same
+/// fork-elimination the in-process elc gave the EL band, extended to the
+/// small non-EL near-tie band (km already lighter than Konclude there, tying
+/// or narrowly losing on wall because of the worker-fork/thread-startup
+/// contention).
+///
+/// Sound+complete gate: only when the clause set carries NO DL-safe rules
+/// (`input.rules` empty) — rule ontologies need the KM_HT_RULES route, where
+/// the plain CB engine over the clauses alone would miss the rule-induced
+/// (in)consistency. The CB engine is otherwise the trusted sound+complete
+/// path (complete since 2026-06-13; the HT/portfolio arms are speed
+/// fallbacks, preferred-CB-when-it-finishes), so on a small ont where CB
+/// finishes fast the in-process answer is exactly what the race would yield.
+///
+/// Bounded by a wall-clock budget on the worker thread: a small-FILE but
+/// search-HARD ont (e.g. the disjunction family) that overruns is abandoned
+/// (the thread is detached) and the caller falls through to the normal
+/// forked adaptive/HT path, which owns the timeout+memcap. The budget is
+/// short enough that the near-tie band (km < ~0.6 s) always completes and
+/// only the rare hard-small ont pays it.
+fn try_inproc_engine(
+    clauses_path: &Path,
+    budget: std::time::Duration,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    use crate::json_io::JInput;
+    let buf = std::fs::read(clauses_path)?;
+    let input: JInput = serde_json::from_slice(&buf)?;
+    if !input.rules.is_empty() {
+        return Ok(None); // rule ontologies need the HT-rules route
+    }
+    let clauses = input.clauses;
+    let (tx, rx) = std::sync::mpsc::channel();
+    // Detached-on-overrun worker: if it does not answer within `budget` we
+    // stop waiting and fall through; the thread finishes on its own and the
+    // process reaps it at exit. (No shared mutable state — the clauses are
+    // moved in — so a lingering worker cannot corrupt the fallback path.)
+    std::thread::Builder::new()
+        .name("inproc-cb".into())
+        .stack_size(256 << 20)
+        .spawn(move || {
+            use crate::reasoner::Reasoner;
+            let mut r = Reasoner::new(&clauses);
+            r.saturate();
+            let subs = r.subsumptions();
+            let subsumptions = subs
+                .into_iter()
+                .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
+                .collect();
+            let inconsistent = r.inconsistent();
+            let _ = tx.send(EngineOut {
+                subsumptions,
+                inconsistent,
+                dropped: 0,
+                unresolved: Vec::new(),
+            });
+        })
+        .map_err(|e| OrchestrateError::Spawn {
+            bin: "inproc-cb".into(),
+            source: e,
+        })?;
+    match rx.recv_timeout(budget) {
+        Ok(out) => Ok(Some(out)),
+        Err(_) => Ok(None), // overran the budget ⇒ fall through to the forked path
+    }
+}
+
 fn try_inproc_elc(
     cfg: &Config,
     clauses_path: &Path,
@@ -407,6 +476,35 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
         // HT/tableau arms silently drop such classes from their answers
         // (ore_ont_12698: 84 missing subsumptions).
         let named_set: HashSet<String> = meta.named.iter().cloned().collect();
+
+        // In-process CB engine fast path for SMALL NON-EL ontologies: run the
+        // trusted CB engine as a library call on a budgeted worker thread and,
+        // when it finishes, skip the fork/race entirely. Eligible when the ont
+        // is small (same file gate as in-process elc) and NOT EL-safe (EL-safe
+        // small onts already took the in-process elc above). The rule gate +
+        // soundness argument live in `try_inproc_engine`. Opt out
+        // KM_NO_INPROC_ENGINE; budget override KM_INPROC_ENGINE_BUDGET_S.
+        if out.is_none()
+            && small
+            && !meta.el_rbox_safe
+            && std::env::var_os("KM_NO_INPROC_ENGINE").is_none()
+        {
+            let budget_s: f64 = std::env::var("KM_INPROC_ENGINE_BUDGET_S")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(3.0);
+            out = try_inproc_engine(
+                clauses_path.path(),
+                std::time::Duration::from_secs_f64(budget_s),
+            )?;
+            if timing && out.is_some() {
+                eprintln!(
+                    "KM_TIMING in-process engine done @ {:.2}s (no race)",
+                    t_start.elapsed().as_secs_f64()
+                );
+            }
+        }
+
         match out {
             Some(o) => o,
             None => {
