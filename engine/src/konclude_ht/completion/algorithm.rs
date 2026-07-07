@@ -755,6 +755,15 @@ pub struct CompletionTaskHandleAlgorithm {
     /// `run_completion_on` call owns the whole backtracking loop — measured:
     /// a 5 s budget probe ran 10+ min to 117 GB before the pass check).
     pub drive_deadline: Option<std::time::Instant>,
+    /// DDB diagnostics: analyses aborted at tracking-line initialization
+    /// (error-flagged closures — the fallback precursor).
+    pub ddb_line_init_fail_count: u64,
+    /// DDB diagnostics: analyses that reached an ALREADY-MARKED nondet track
+    /// point and early-returned without a new mark (stale-mark thrash).
+    pub ddb_already_marked_count: u64,
+    /// DDB diagnostics: refuted-and-exhausted decisions discarded (with their
+    /// stacked subtrees) by the backjump scan.
+    pub ddb_refuted_discard_count: u64,
     /// DDB diagnostics: backjumps taken (target found by the scan).
     pub ddb_jump_count: u64,
     /// DDB diagnostics: branch points POPPED PAST by backjumps (jump distance
@@ -1176,6 +1185,9 @@ impl CompletionTaskHandleAlgorithm {
             or_branch_open_count: 0,
             ddb_root_cancelled: false,
             drive_deadline: None,
+            ddb_line_init_fail_count: 0,
+            ddb_already_marked_count: 0,
+            ddb_refuted_discard_count: 0,
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,

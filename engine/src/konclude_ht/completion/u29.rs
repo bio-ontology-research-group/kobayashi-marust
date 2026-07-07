@@ -843,11 +843,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut tracking_line = TrackedClashedDependencyLine::new();
         // W6-DEFER[backend]: if fixed backend-reuse expansion mode is active,
         // Konclude allocates and installs an involved-individual tracking set here.
-        if self.initialize_tracking_line(
+        let line_ok = self.initialize_tracking_line(
             &mut tracking_line,
             tracked_clash_descriptors,
             calc_alg_context,
-        ) {
+        );
+        if !line_ok {
+            // diagnostics: how often the whole analysis aborts at line init
+            // (tracking ERRORs in the closure) — the ddb_fallback precursor.
+            self.ddb_line_init_fail_count += 1;
+        }
+        if line_ok {
             if dump_this_call {
                 eprintln!(
                     "DDB-LINE branching_level={}",
@@ -1032,6 +1038,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .track_point(dep_track_point)
             .is_clashed_or_irelevant_branch()
         {
+            // diagnostics: the analysis reached a nondet tp that is ALREADY
+            // marked — no new mark, likely followed by a fallback (the tp is
+            // stale w.r.t. the current stack).
+            self.ddb_already_marked_count += 1;
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some()
+                && self.ddb_already_marked_count <= 4
+            {
+                let (in_stack, cur, rem) = {
+                    let mut in_stack = false;
+                    let mut cur = false;
+                    let mut rem = false;
+                    for bp in &self.or_branch_stack {
+                        if bp.alt_track_points.iter().any(|&t| t == dep_track_point) {
+                            in_stack = true;
+                            cur = bp
+                                .alt_track_points
+                                .get(bp.next_alt.wrapping_sub(1))
+                                .map(|&t| t == dep_track_point)
+                                .unwrap_or(false);
+                            rem = bp.next_alt < bp.alternatives_len();
+                            break;
+                        }
+                    }
+                    (in_stack, cur, rem)
+                };
+                eprintln!(
+                    "DDB-ALREADY-MARKED tp={:?} in_stack={} current_alt={} remaining={}",
+                    dep_track_point, in_stack, cur, rem
+                );
+            }
             return false;
         }
 

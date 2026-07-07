@@ -2403,6 +2403,12 @@ mod tests {
             };
             ctx2.processing_data_box_mut().ontology_top_concept = top2;
             let bridged2 = bridge_tinput(&mut ctx2, &tin);
+            // thread the singleton (value-identity) concepts — WITHOUT them
+            // the kernel under-merges value nodes and unsat proofs that need
+            // the merges cannot close (measured: PathOfLength3 ⊑ Path
+            // converged in the probe harness, which threads them, but burned
+            // its whole budget in this loop, which did not).
+            algo2.singleton_concepts = bridged2.singleton_concepts.clone();
             let mut n2 = 0i64;
             let t_subj = std::time::Instant::now();
             let verdict = bridged_classify_subject(&mut algo2, &mut ctx2, &bridged2, &mut n2, s, n_named);
@@ -2470,6 +2476,8 @@ mod tests {
                         };
                         ctx3.processing_data_box_mut().ontology_top_concept = top3;
                         let bridged3 = bridge_tinput(&mut ctx3, &tin);
+                        // value-identity singletons (see the subject loop).
+                        algo3.singleton_concepts = bridged3.singleton_concepts.clone();
                         let mut n3 = 0i64;
                         if bridged_unsat(
                             &mut algo3,

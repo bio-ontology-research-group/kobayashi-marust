@@ -165,7 +165,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             drives += 1;
             if progress && drives % 4096 == 0 {
                 eprintln!(
-                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={} ddb_jumps={} ddb_pops={} ddb_fallbacks={} ddb_marks={}",
+                    "PROGRESS drives={drives} backtracks={} nodes={} inserts={} bp_depth={} ddb_jumps={} ddb_pops={} ddb_fallbacks={} ddb_marks={} ddb_line_fails={}",
                     self.or_backtrack_count,
                     calc_alg_context.process_context().node_count(),
                     self.stat_con_des_insertion_count,
@@ -174,6 +174,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     self.ddb_jump_pop_total,
                     self.ddb_fallback_count,
                     self.ddb_mark_count,
+                    self.ddb_line_init_fail_count,
+                );
+                eprintln!(
+                    "PROGRESS-DDB already_marked={} refuted_discards={}",
+                    self.ddb_already_marked_count, self.ddb_refuted_discard_count
                 );
             }
             if !calc_alg_context.has_pending_signal() {
@@ -320,9 +325,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return self.try_backtrack_or_branch(calc_alg_context);
         }
         // Scan (no mutation) from the top for the first branch point whose
-        // CURRENT alternative the analysis marked clashed and which still has
-        // an unexplored alternative.
-        let mut target: Option<usize> = None;
+        // CURRENT alternative the analysis marked clashed. Two cases:
+        // - it still has an unexplored alternative → backjump and ADVANCE it;
+        // - it is EXHAUSTED → the whole decision is refuted, and every branch
+        //   point ABOVE it lives inside the refuted alternative's context —
+        //   DISCARD through it and re-run the backtrack on the remaining
+        //   stack. Without this second case the chronological fallback keeps
+        //   searching INSIDE the refuted subtree: the same clash re-traces to
+        //   the same marked track point, the analysis early-outs
+        //   (already-marked), and the search thrashes (measured on
+        //   ore_ont_12653 PathOfLength3: already_marked == fallbacks ==
+        //   ~100% of 2.9M backtracks against one exhausted mid-stack mark —
+        //   Konclude gets the escape for free from branch-task cancellation).
+        let mut target: Option<(usize, bool)> = None;
         for i in (0..self.or_branch_stack.len()).rev() {
             let bp = &self.or_branch_stack[i];
             let cur_tp = bp
@@ -335,14 +350,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context()
                     .track_point(cur_tp)
                     .is_clashed_or_irelevant_branch();
-            if refuted && bp.next_alt < bp.alternatives_len() {
-                target = Some(i);
+            if refuted {
+                target = Some((i, bp.next_alt < bp.alternatives_len()));
                 break;
             }
         }
-        let Some(target) = target else {
-            // No marked branch point with a remaining alternative — do NOT
-            // trust the analysis for an UNSAT verdict; chronological fallback.
+        let Some((target, has_remaining)) = target else {
+            // No marked branch point — do NOT trust the analysis for an UNSAT
+            // verdict; chronological fallback.
+            self.ddb_fallback_count += 1;
+            return self.try_backtrack_or_branch(calc_alg_context);
+        };
+        if !has_remaining {
+            // refuted AND exhausted: discard the refuted decision (and the
+            // subtree stacked above it), then retry the backtrack below.
+            //
+            // KM_HT_DDB_REFUTED_DISCARD (opt-in): this escape collapses the
+            // stale-mark thrash (ore_ont_12653 PathOfLength3 read-off: 120 s /
+            // 2.9 M backtracks → 10.5 s), BUT it drives the search into the
+            // still-buggy u29 all-siblings-refuted propagation, whose
+            // collected closure degenerates to the decision's own tag-0 cause
+            // and wrongly ROOT-CANCELS (measured: 12 spurious
+            // PathOfLength3 ⊑ X; same single-descriptor closure signature as
+            // the pre-2a869e8 bug — the before-proc-tag remainder loses the
+            // non-local causes). Default OFF until that stepping is fixed
+            // against cpp 7677–7776; the fast repro NEEDS this flag.
+            if std::env::var_os("KM_HT_DDB_REFUTED_DISCARD").is_some() {
+                self.ddb_refuted_discard_count += 1;
+                while self.or_branch_stack.len() > target {
+                    self.discard_topmost_or_branch(calc_alg_context);
+                }
+                if self.or_branch_stack.is_empty() {
+                    return false;
+                }
+                return self.try_backtrack_or_branch_ddb(calc_alg_context);
+            }
+            // default: chronological fallback (sound; thrashy on stale marks).
             self.ddb_fallback_count += 1;
             return self.try_backtrack_or_branch(calc_alg_context);
         };
