@@ -1465,6 +1465,17 @@ pub fn bridged_classify_subject(
 ) -> Option<(Vec<usize>, bool)> {
     ctx.clear_pending_signal();
     algo.or_branch_stack.clear();
+    // KM_BRIDGE_PROBE_BUDGET_S also bounds the READ-OFF search: before the
+    // DDB taint fix (2a869e8) heavy subjects' read-offs looked fast only
+    // because wrong root-cancels cut them short; the genuine search is
+    // unbounded without a deadline (measured: SUBJ PathOfLength3 read-off ran
+    // 10 min to 126 GB). On overrun the drive raises a STOP → verdict None →
+    // the caller records NO derivations for the subject (sound; shows as
+    // missing vs gold, never spurious).
+    algo.drive_deadline = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|b| std::time::Instant::now() + std::time::Duration::from_secs(b));
 
     let id = *next_indi_id;
     *next_indi_id += 1;
