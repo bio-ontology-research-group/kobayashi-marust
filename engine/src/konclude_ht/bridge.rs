@@ -67,6 +67,10 @@ pub struct Bridged {
     /// Implications with no positive concept trigger, attached to the
     /// ontology TOP concept (scanned by EVERY node).
     pub top_attached: usize,
+    /// Singleton concepts (`C(x) ∧ C(y) → x = y` clause shape — datatype
+    /// value identity): consumed by the kernel's deterministic
+    /// scan-at-fixpoint merge; must be installed on every probe algorithm.
+    pub singleton_concepts: Vec<ConceptId>,
 }
 
 /// Tag base for bridged concepts (tag 1 is the ontology TOP sentinel).
@@ -238,6 +242,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // rest go to TOP.
     let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
     let mut top_gcis: Vec<ConceptId> = Vec::new();
+    let mut singleton_concepts: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
     // Diagnostic (KM_BRIDGE_DUMP_UNSUP=N): record the shape of the first N
     // unsupported clauses so the next coverage wave can be scoped.
@@ -533,6 +538,35 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     None => top_gcis.push(imp),
                 }
                 continue 'clause;
+            }
+        }
+        // ---- singleton-concept recognition: `C(v1) ∧ C(v2) → v1 = v2` ------
+        // The clausal datatype value-identity shape (a literal value is one
+        // semantic object, so any two carriers of `__dt__val__…` are equal;
+        // Konclude gets this natively from its databox literal handling, the
+        // clausal frontend surfaces it role-free). CONSUMED as a singleton
+        // registration: the kernel's deterministic scan-at-fixpoint merge
+        // (u02 `ht_apply_singleton_merges`) realises the eq head exactly —
+        // deterministic (single-disjunct head), no branch point. General
+        // structural rule: any concept in this shape is a singleton.
+        if body_roles.is_empty() && cl.body.len() == 2 && cl.head.len() == 1 {
+            if let (
+                HAtom::Concept { neg: false, c: c0, t: t0 },
+                HAtom::Concept { neg: false, c: c1, t: t1 },
+                HAtom::Eq { s: es, t: et },
+            ) = (&cl.body[0], &cl.body[1], &cl.head[0])
+            {
+                if c0 == c1 && t0 != t1 {
+                    let (a, bb) = (*t0.min(t1), *t0.max(t1));
+                    let (ea, eb) = (*es.min(et), *es.max(et));
+                    if (a, bb) == (ea, eb) {
+                        let sc = named[*c0];
+                        if !singleton_concepts.contains(&sc) {
+                            singleton_concepts.push(sc);
+                        }
+                        continue 'clause;
+                    }
+                }
             }
         }
         if cl.head.iter().any(|a| matches!(a, HAtom::Role { .. } | HAtom::Eq { .. })) {
@@ -840,6 +874,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         unsupported,
         absorbed: absorbed_pairs.len(),
         top_attached: top_gcis.len(),
+        singleton_concepts,
     }
 }
 
@@ -1493,6 +1528,7 @@ fn fresh_bridge_env(
     };
     ctx.processing_data_box_mut().ontology_top_concept = top;
     let bridged = bridge_tinput(&mut ctx, tin);
+    algo.singleton_concepts = bridged.singleton_concepts.clone();
     (algo, ctx, bridged)
 }
 
@@ -1663,6 +1699,7 @@ mod tests {
             };
             ctx.processing_data_box_mut().ontology_top_concept = top;
             let bridged = bridge_tinput(&mut ctx, &self.tin);
+            algo.singleton_concepts = bridged.singleton_concepts.clone();
             self.unsupported = bridged.unsupported;
             let idx = |s: &str| -> usize {
                 *self
@@ -2415,6 +2452,78 @@ mod tests {
             derived.difference(&gold_restricted).count(),
             elapsed.as_secs_f64(),
             bridged.unsupported,
+        );
+    }
+
+    /// Singleton-concept merge (the datatype value-identity clause shape
+    /// `V(x) ∧ V(y) → x = y`): X has an r-successor forced into `V ⊓ A` and
+    /// an s-successor forced into `V ⊓ ¬A` (via `VA2 ⊓ A ⊑ ⊥`). The two
+    /// V-carriers are ONE semantic object, so the deterministic
+    /// scan-at-fixpoint merge (u02) must unite them and clash `A ⊓ ¬A` ⇒ X
+    /// unsatisfiable. Without the merge the graph is clash-free and the
+    /// probe under-detects (the earlier state counted the clause unsupported
+    /// and DECLINED). Also asserts the clause is CONSUMED (unsupported == 0,
+    /// no defer) and that a singleton-free sibling Y stays satisfiable.
+    #[test]
+    fn singleton_concept_merge_value_identity_unsat() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, c: usize, t: usize| HAtom::Concept { neg, c, t };
+        // concepts: 0=X 1=V 2=A 3=VA1 4=VA2 5=Y
+        let tin = TInput {
+            concepts: vec![
+                "X".into(),
+                "V".into(),
+                "A".into(),
+                "VA1".into(),
+                "VA2".into(),
+                "Y".into(),
+            ],
+            roles: vec!["r".into(), "s".into()],
+            clauses: vec![
+                // V(x) ∧ V(y) → x = y  (the singleton / value-identity shape)
+                HtClause {
+                    body: vec![c(false, 1, 1), c(false, 1, 2)],
+                    head: vec![HAtom::Eq { s: 1, t: 2 }],
+                },
+                // X ⊑ ∃r.VA1 ; X ⊑ ∃s.VA2
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![HAtom::Exist { r: 0, neg: false, c: 3, t: 0 }],
+                },
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![HAtom::Exist { r: 1, neg: false, c: 4, t: 0 }],
+                },
+                // VA1 ⊑ V ; VA1 ⊑ A ; VA2 ⊑ V ; VA2 ⊓ A ⊑ ⊥
+                HtClause {
+                    body: vec![c(false, 3, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 3, 0)],
+                    head: vec![c(false, 2, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 4, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 4, 0), c(false, 2, 0)],
+                    head: vec![],
+                },
+            ],
+            ..Default::default()
+        };
+        let r = bridged_classify(&tin)
+            .expect("singleton clause must be CONSUMED (no defer)");
+        assert!(
+            r.unsatisfiable.contains(&0),
+            "X must be UNSAT via the value-identity merge (got unsat={:?})",
+            r.unsatisfiable
+        );
+        assert!(
+            !r.unsatisfiable.contains(&5),
+            "Y (singleton-free) must stay satisfiable"
         );
     }
 

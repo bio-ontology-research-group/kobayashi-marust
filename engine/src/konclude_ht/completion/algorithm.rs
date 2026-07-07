@@ -548,6 +548,17 @@ pub struct CompletionTaskHandleAlgorithm {
     pub applied_atmost_rule_count: Cint64,
     pub applied_total_rule_count: Cint64,
 
+    /// KM-BRIDGE: singleton concepts — any two distinct nodes positively
+    /// carrying one are the SAME individual (the bridge's realisation of the
+    /// clausal datatype value-identity `C(x) ∧ C(y) → x = y`; Konclude gets
+    /// this identity natively from its databox literal handling, the clausal
+    /// frontend surfaces it as a role-free eq-head clause). Consumed by the
+    /// deterministic scan-at-fixpoint merge in `run_saturation_loop` (u02).
+    /// Tiny (the distinct literal VALUES a counting constraint compares);
+    /// empty on ontologies without such clauses — the rule is then inert.
+    pub singleton_concepts: Vec<ConceptId>,
+    pub applied_singleton_merge_count: Cint64,
+
     // --- variable-binding stats (.h 1504–1513) ---
     pub stat_var_binding_created_count: Cint64,
     pub stat_var_binding_grounding_count: Cint64,
@@ -1004,6 +1015,9 @@ impl CompletionTaskHandleAlgorithm {
             applied_atleast_rule_count: 0,
             applied_atmost_rule_count: 0,
             applied_total_rule_count: 0,
+
+            singleton_concepts: Vec::new(),
+            applied_singleton_merge_count: 0,
 
             stat_var_binding_created_count: 0,
             stat_var_binding_grounding_count: 0,

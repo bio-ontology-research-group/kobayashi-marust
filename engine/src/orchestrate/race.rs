@@ -958,8 +958,36 @@ where
         let timing = std::env::var_os("KM_TIMING").is_some();
         let mut cb_logged = false;
 
+        // RSS cap on the HT racer (KM_HT_MEM_GB, default 12): the HT arm is a
+        // helper — it must never grow until the harness memcap kills the WHOLE
+        // process group (observed: ore_ont_541's bridge arm reached 56 GB in
+        // 51 s and turned a CB timeout into a memout). Kill the arm over-cap
+        // and let CB keep its full budget; monotone-safe (same as HT erroring).
+        let ht_cap_bytes: u64 = {
+            let gb = std::env::var("KM_HT_MEM_GB")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok())
+                .unwrap_or(12.0);
+            (gb * (1u64 << 30) as f64) as u64
+        };
+
         let mut interval = Duration::from_millis(1);
         loop {
+            // watchdog the still-running HT racer's RSS
+            if !ht_polled {
+                if let Some(rss) = engine_run::read_rss(ht.id()) {
+                    if rss > ht_cap_bytes {
+                        if timing {
+                            eprintln!(
+                                "KM_TIMING race: HT worker over memcap ({} MB) @ {:.2}s, killed",
+                                rss >> 20,
+                                t0.elapsed().as_secs_f64()
+                            );
+                        }
+                        let _ = ht.kill();
+                    }
+                }
+            }
             // poll HT once it finishes (capture its valid answer)
             if !ht_polled {
                 if let Ok(Some(st)) = ht.try_wait() {

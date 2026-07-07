@@ -18,7 +18,7 @@
 
 #![allow(dead_code, unused_variables, unused_mut)]
 
-use super::super::model::substrate::{Cint64, NegLink};
+use super::super::model::substrate::{Cint64, Id, NegLink};
 use super::super::model::ConceptId;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::queues::{ConceptProcessingQueue, ConceptProcessingQueueId};
@@ -619,7 +619,114 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if calc_alg_context.has_pending_signal() {
                 return;
             }
+            // KM-BRIDGE singleton-concept merge: at candidate fixpoint (no next
+            // individual) run the deterministic value-identity merges; a merge
+            // re-queues work, so re-take. True fixpoint only when the scan is
+            // dry. Scan-at-fixpoint (not insert-hooked) is branch-safe by
+            // construction: it is a pure function of the CURRENT branch state,
+            // so backtracking needs no queue rollback.
+            if indi_proc_node.is_none() && !self.singleton_concepts.is_empty() {
+                let merged = self.ht_apply_singleton_merges(calc_alg_context);
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+                if merged {
+                    indi_proc_node = self.take_next_process_individual(calc_alg_context);
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+            }
         }
+    }
+
+    /// Deterministic singleton-concept merge rule — the bridge's realisation
+    /// of the clausal datatype value-identity `C(x) ∧ C(y) → x = y` (a
+    /// role-free eq-head clause; Konclude never sees this shape because its
+    /// databox literal handling gives value identity natively). Scans the
+    /// live nodes for two distinct positive carriers of a singleton concept
+    /// and merges the later into the earlier (the u08 min-id refinement),
+    /// under a SameIndividualsMerge dependency joining BOTH carriers'
+    /// concept-descriptor track points — faithful DDB provenance (a NONE or
+    /// base track point here would repaint branch-dependent merges as
+    /// independent: the u08 wrong-root-cancel class). Returns true when a
+    /// merge happened (the caller re-drives before claiming fixpoint).
+    fn ht_apply_singleton_merges(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let mut merged_any = false;
+        let singleton_concepts = self.singleton_concepts.clone(); // tiny (distinct literal values)
+        for &concept in &singleton_concepts {
+            loop {
+                // Collect the first two LIVE positive carriers (read-only
+                // label access: skip nodes with no materialised label set —
+                // never allocate during the scan).
+                let mut first: Option<(NodeId, TrackPointId)> = None;
+                let mut second: Option<(NodeId, TrackPointId)> = None;
+                {
+                    let ctx = calc_alg_context.process_context();
+                    let onto = calc_alg_context.ontology_arenas();
+                    let con_tag = onto.concept(concept).get_concept_tag();
+                    let n = ctx.node_count();
+                    for i in 0..n {
+                        let node_id: NodeId = Id::new(i as Cint64);
+                        let node = ctx.node(node_id);
+                        // skip nodes already merged away
+                        if node.has_merged_into_individual_node_id() {
+                            continue;
+                        }
+                        let label = node.reapply_con_label_set;
+                        if label.is_none() {
+                            continue;
+                        }
+                        let mut con_des: ConDescId = Id::NONE;
+                        let mut dep_track_point: TrackPointId = Id::NONE;
+                        let found = ctx
+                            .label_set(label)
+                            .get_concept_descriptor_by_tag_in_context(
+                                ctx,
+                                con_tag,
+                                &mut con_des,
+                                &mut dep_track_point,
+                            );
+                        if !found || ctx.con_desc(con_des).is_negated() {
+                            continue;
+                        }
+                        if first.is_none() {
+                            first = Some((node_id, dep_track_point));
+                        } else {
+                            second = Some((node_id, dep_track_point));
+                            break;
+                        }
+                    }
+                }
+                let (Some((into, into_tp)), Some((from, from_tp))) = (first, second) else {
+                    break; // zero or one carrier: this concept is done
+                };
+                let mut merge_dep_track_point: TrackPointId = Id::NONE;
+                let mut into_mut = into;
+                self.create_same_individual_merge_dependency(
+                    &mut merge_dep_track_point,
+                    &mut into_mut,
+                    into_tp,
+                    from_tp,
+                    calc_alg_context,
+                );
+                self.merge_individual_node_into(
+                    into,
+                    from,
+                    merge_dep_track_point,
+                    calc_alg_context,
+                );
+                self.applied_singleton_merge_count += 1;
+                merged_any = true;
+                if calc_alg_context.has_pending_signal() {
+                    return true; // a clash raised during the merge unwinds to the drive
+                }
+            }
+        }
+        merged_any
     }
 
     /// Shared body for the early/late `CIndividualReactivationProcessingQueue`
