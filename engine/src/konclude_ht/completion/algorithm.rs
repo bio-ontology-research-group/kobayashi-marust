@@ -755,6 +755,21 @@ pub struct CompletionTaskHandleAlgorithm {
     /// `run_completion_on` call owns the whole backtracking loop — measured:
     /// a 5 s budget probe ran 10+ min to 117 GB before the pass check).
     pub drive_deadline: Option<std::time::Instant>,
+    /// Reverse the disjunct exploration order at every OR branch point
+    /// (u03). Pure search-ORDER change on a complete search — any model
+    /// found is valid, so verdicts are unaffected. Used by the bridge's
+    /// possible-subsumer extraction: a second read-off model under the
+    /// reversed order intersects away branch-choice pollution (a candidate
+    /// riding ONE disjunct choice disappears from the sibling model, while a
+    /// true subsumer appears positively in EVERY clash-free saturated
+    /// graph — the intersection remains a complete candidate filter).
+    pub conf_or_reverse: bool,
+    /// Per-probe wall-clock budget override: when set, the probe drivers
+    /// (`bridged_unsat` / `bridged_classify_subject`) derive `drive_deadline`
+    /// from THIS instead of `KM_BRIDGE_PROBE_BUDGET_S` — the retry rounds of
+    /// `bridged_classify` escalate deferred subjects' budgets through it
+    /// without mutating process-global env.
+    pub probe_budget: Option<std::time::Duration>,
     /// DDB diagnostics: analyses aborted at tracking-line initialization
     /// (error-flagged closures — the fallback precursor).
     pub ddb_line_init_fail_count: u64,
@@ -1193,6 +1208,8 @@ impl CompletionTaskHandleAlgorithm {
             or_branch_open_count: 0,
             ddb_root_cancelled: false,
             drive_deadline: None,
+            conf_or_reverse: false,
+            probe_budget: None,
             ddb_line_init_fail_count: 0,
             ddb_already_marked_count: 0,
             ddb_refuted_discard_count: 0,

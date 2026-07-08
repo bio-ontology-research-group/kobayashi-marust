@@ -254,11 +254,11 @@ fn short(n: &str) -> &str {
     let after_hash = n.rsplit('#').next().unwrap_or(n);
     after_hash.rsplit('/').next().unwrap_or(after_hash)
 }
-fn is_bottom(n: &str) -> bool {
+pub(crate) fn is_bottom(n: &str) -> bool {
     let s = short(n);
     s == "Nothing" || s == "owl:Nothing"
 }
-fn is_internal(n: &str) -> bool {
+pub(crate) fn is_internal(n: &str) -> bool {
     let s = short(n);
     s.starts_with("Q_")
         || s.starts_with("__")

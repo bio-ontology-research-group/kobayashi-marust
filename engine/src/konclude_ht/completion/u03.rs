@@ -738,7 +738,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // concept->getOperandList() — the disjunction's operands (lives in the
         // ctx-owned concept arena; collected to an owned Vec before the &mut calls,
         // exactly as `apply_and_rule`/`execute_or_branching` do).
-        let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+        let mut operands: Vec<NegLink<ConceptId>> = calc_alg_context
             .ontology_arenas()
             .concept(concept)
             .get_operand_list()
@@ -748,6 +748,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // (clash / AND-rule); nothing to branch — let `plan_or_processing` fall
             // through.
             return false;
+        }
+        // conf_or_reverse: explore alternatives in reversed order (a pure
+        // search-order change on a complete search; see the flag doc). The
+        // reversal happens at COLLECTION so the alternative track points,
+        // snapshots and advance indices all see one consistent order.
+        if self.conf_or_reverse {
+            operands.reverse();
         }
 
         // --- Lazy triggered-OR (KM_HT_NO_LAZY_OR opt-out). ---------------------

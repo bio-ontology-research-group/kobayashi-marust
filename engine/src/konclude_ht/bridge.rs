@@ -463,16 +463,18 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         // unsupported. A shared-TARGET orientation (`R(t_i,0)`, e.g. inverse-
         // functional) encodes on the concrete inverse-role object.
         //
-        // KM_HT_BRIDGE_RECOG (opt-in): measured on ore_ont_12653, enabling
-        // this arm produced 3 spurious subsumptions onto `Path` (the ≤(k−1)
-        // disjunct's qualified merge appears to over-clash, suspect: the
-        // atleast-created successors' distinctness vs the qualifier check in
-        // the merge). Until that is root-caused against gold, the arm stays
-        // OFF and such clauses count unsupported (the production driver then
-        // correctly DECLINES rather than answer unsoundly).
+        // Recognition encoding: DEFAULT ON (`KM_HT_BRIDGE_NO_RECOG` opts
+        // out). The early "3 spurious onto `Path`" measurement that kept this
+        // arm opt-in was NOT this encoding's fault: the answers rode the
+        // phantom card-def root re-seed (fixed 84e38bf) and the u29 DDB
+        // leftover-poisoning wrong-cancel (fixed 7c521cb). With both fixed,
+        // ore_ont_12653 classifies gold-clean (missing=0 spurious=0) with
+        // this arm on, and the oracle suite is green in all 6 search-mode
+        // combos. Without it every eq-head clause counts unsupported and the
+        // production driver declines whole recognition-family ontologies.
         if !body_roles.is_empty()
             && cl.head.iter().any(|a| matches!(a, HAtom::Eq { .. }))
-            && std::env::var_os("KM_HT_BRIDGE_RECOG").is_some()
+            && std::env::var_os("KM_HT_BRIDGE_NO_RECOG").is_none()
         {
             let recog = (|| -> Option<(RoleId, usize, Option<usize>, Vec<(usize, bool)>, Vec<usize>, usize)> {
                 let r0 = body_roles[0].0;
@@ -1091,10 +1093,14 @@ pub fn bridged_unsat(
     // KM_BRIDGE_PROBE_BUDGET_S: wall-clock budget per probe. On overrun the
     // probe returns None (STOP — an UNKNOWN verdict the caller must treat as
     // a DEFER). A single pathological probe must never wedge a classify run.
-    let budget: Option<std::time::Duration> = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .map(std::time::Duration::from_secs);
+    // `algo.probe_budget` (set by `bridged_classify`'s retry rounds) takes
+    // precedence over the env so escalation needs no env mutation.
+    let budget: Option<std::time::Duration> = algo.probe_budget.or_else(|| {
+        std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .map(std::time::Duration::from_secs)
+    });
     let probe_t0 = std::time::Instant::now();
     // Thread the deadline INTO the drive loop: one `run_completion_on` call
     // owns the whole backtracking search, so the between-passes check below
@@ -1498,10 +1504,15 @@ pub fn bridged_classify_subject(
     // 10 min to 126 GB). On overrun the drive raises a STOP → verdict None →
     // the caller records NO derivations for the subject (sound; shows as
     // missing vs gold, never spurious).
-    algo.drive_deadline = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-        .map(|b| std::time::Instant::now() + std::time::Duration::from_secs(b));
+    algo.drive_deadline = algo
+        .probe_budget
+        .or_else(|| {
+            std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .map(std::time::Duration::from_secs)
+        })
+        .map(|b| std::time::Instant::now() + b);
 
     let id = *next_indi_id;
     *next_indi_id += 1;
@@ -1637,6 +1648,56 @@ fn fresh_bridge_env(
     (algo, ctx, bridged)
 }
 
+/// Reset the probe environment to its post-`bridge_tinput` pristine state
+/// WITHOUT rebuilding the bridged terminology. Sound because the ontology
+/// arenas are READ-ONLY during bridge probes: the only drive paths that
+/// mutate them (nominal grounding, temporary nominal individuals) are gated
+/// out of the bridge fragment (`tin.nominals.is_empty()`), so keeping the
+/// arenas and replacing every piece of per-probe state reproduces
+/// `fresh_bridge_env`'s output exactly — the arena content is a
+/// deterministic function of `tin` alone. This is the v2 stand-in for
+/// Konclude's per-task databox COW: O(processing state) per probe instead
+/// of O(TBox) (measured ~seconds + hundreds of MB per probe on the 3215
+/// family).
+fn reset_probe_env(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) {
+    use super::model::ontology::OntologyArenas;
+    // Fresh algorithm: search state (OR stack, DDB marks, blocking caches,
+    // stats, deadlines) must not leak between probes. Same construction as
+    // `fresh_bridge_env` so verdicts are identical.
+    let budget = algo.probe_budget;
+    let mut a = CompletionTaskHandleAlgorithm::new();
+    configure_default_blocking(&mut a);
+    a.singleton_concepts = bridged.singleton_concepts.clone();
+    a.probe_budget = budget;
+    *algo = a;
+    // Fresh context EXCEPT the shared read-only terminology: rebuild through
+    // the same ctor as `fresh_bridge_env`, then graft the arenas back. This
+    // resets EVERY per-probe field (process context, databox, dependency
+    // factory ids, epoch stack, pending signal) by construction rather than
+    // by enumeration.
+    let arenas = std::mem::replace(&mut ctx.base.ontology_arenas, OntologyArenas::new());
+    let strategy = ctx.base.used_concept_priority_strategy.take();
+    let top = ctx.base.used_processing_data_box.ontology_top_concept;
+    *ctx = CalculationAlgorithmContextBase::new();
+    ctx.base.ontology_arenas = arenas;
+    ctx.base.used_concept_priority_strategy = strategy;
+    ctx.base.used_processing_data_box.ontology_top_concept = top;
+}
+
+/// Production search configuration for `bridged_classify`: PLAIN
+/// chronological search — the mode validated gold-clean on the recognition
+/// family (ore_ont_12653: missing=0 spurious=0). DDB stays env-opt-in
+/// (`KM_HT_DDB`, via `configure_default_blocking`): it is SOUND since the
+/// leftover-poisoning guard (7c521cb), but measured ~100× slower on
+/// genuinely-UNSAT probes (the guard degrades node-creating searches to
+/// chronological while still paying full dependency building), so it is a
+/// net loss as a default until per-node COW localization lands.
+fn configure_production_search(_algo: &mut CompletionTaskHandleAlgorithm) {}
+
 /// Production classification of a `TInput` over the konclude_ht bridge.
 ///
 /// Per subject: model read-off when the saturation was deterministic
@@ -1650,14 +1711,42 @@ fn fresh_bridge_env(
 /// arm) when the answer would not be both sound and complete:
 /// - the encoder could not express every clause (`unsupported > 0`);
 /// - the input carries nominals/ABox content (not bridged);
-/// - any subject drive or verification probe STOPped without a verdict.
+/// - a subject still lacks a verdict after every retry round (a STOPped
+///   drive/probe defers the SUBJECT first; only subjects that exhaust the
+///   escalated budgets defer the whole classification).
+///
+/// Per-probe budget: `KM_BRIDGE_PROBE_BUDGET_S` (default 10 s) for the first
+/// round; deferred subjects are retried with the budget escalated ×4 per
+/// round for `KM_BRIDGE_RETRY_ROUNDS` (default 2) extra rounds — so one
+/// pathological subject costs bounded time while the cheap bulk completes,
+/// instead of the first budget-STOP discarding all finished work.
 pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
     if !tin.nominals.is_empty() {
         return None;
     }
     let n_named = tin.concepts.len();
+    // The classification UNIVERSE: real named classes only. `tin.concepts`
+    // also carries frontend-SYNTHETIC concepts (recognition markers `Q_n`,
+    // `aux_`/`def_` definers, `__`-markers) — the signature never contains
+    // them, and treating them as candidate supers is ruinous: refuting one
+    // marker "candidate" costs a full SAT search per subject (measured on
+    // ore_ont_12653: every subject burnt its whole probe budget refuting
+    // Q_n markers; with the universe filter the candidate sets collapse to
+    // the real taxonomy).
+    let universe: std::collections::HashSet<usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| {
+            !crate::orchestrate::cb_to_ht::is_internal(n)
+                && !crate::orchestrate::cb_to_ht::is_bottom(n)
+        })
+        .map(|(i, _)| i)
+        .collect();
     let subjects: Vec<usize> = if tin.queries.is_empty() {
-        (0..n_named).collect()
+        let mut v: Vec<usize> = universe.iter().copied().collect();
+        v.sort_unstable();
+        v
     } else {
         tin.queries.iter().map(|&q| q as usize).collect()
     };
@@ -1666,70 +1755,198 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         unsatisfiable: Vec::new(),
         subsumptions: Vec::new(),
     };
-    for (k, &s) in subjects.iter().enumerate() {
-        let (mut algo, mut ctx, bridged) = fresh_bridge_env(tin);
-        if bridged.unsupported > 0 {
-            return None;
-        }
+    // ONE bridged environment for the whole classification (#13): built once,
+    // reset to pristine between probes (`reset_probe_env`), instead of an
+    // O(TBox) rebuild per subject AND per pairwise probe.
+    let (mut algo, mut ctx, bridged) = fresh_bridge_env(tin);
+    if bridged.unsupported > 0 {
+        return None;
+    }
+    let base_budget = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(10);
+    let retry_rounds = std::env::var("KM_BRIDGE_RETRY_ROUNDS")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(2);
+    // Classify one subject end-to-end (read-off + any needed verification
+    // probes) into `out`. `None` ⇔ some probe STOPped — the subject is
+    // DEFERRED, `out` untouched for it (pairs are only pushed once every
+    // probe of the subject has a verdict).
+    // KM_BRIDGE_FRESH_ENV=1 (diagnostic): rebuild the env per probe instead
+    // of resetting — the pre-#13 isolation, for A/B against the reset path.
+    let fresh_env = std::env::var_os("KM_BRIDGE_FRESH_ENV").is_some();
+    let mut classify_one = |s: usize,
+                            algo: &mut CompletionTaskHandleAlgorithm,
+                            ctx: &mut CalculationAlgorithmContextBase,
+                            out: &mut BridgedClassification|
+     -> Option<()> {
+        let t_subj = std::time::Instant::now();
+        let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
+                         ctx: &mut CalculationAlgorithmContextBase| {
+            if fresh_env {
+                let budget = algo.probe_budget;
+                let (a2, c2, _b2) = fresh_bridge_env(tin);
+                *algo = a2;
+                *ctx = c2;
+                algo.probe_budget = budget;
+            } else {
+                reset_probe_env(algo, ctx, &bridged);
+            }
+            configure_production_search(algo);
+        };
+        renew(algo, ctx);
         let mut next_indi_id: i64 = 1_000;
-        let (subs, authoritative) =
-            bridged_classify_subject(&mut algo, &mut ctx, &bridged, &mut next_indi_id, s, n_named)?;
-        if progress && (k % 64 == 0 || k + 1 == subjects.len()) {
+        let readoff = bridged_classify_subject(algo, ctx, &bridged, &mut next_indi_id, s, n_named);
+        if readoff.is_none() && progress {
             eprintln!(
-                "BRIDGE-CLASSIFY subject {}/{} auth={} subs={}",
-                k + 1,
-                subjects.len(),
-                authoritative,
-                subs.len()
+                "BRIDGE-DEFER subject {s}: READ-OFF stop after {:.1}s (signal={:?})",
+                t_subj.elapsed().as_secs_f64(),
+                ctx.pending_signal()
             );
+        }
+        let (mut subs, authoritative) = readoff?;
+        // Non-authoritative read-off: the positives are one branch's model —
+        // candidates polluted by that branch's disjunct choices, and each
+        // false candidate costs a full SAT probe to refute (measured on
+        // ore_ont_12653: ~all probe budget burnt refuting recognition-branch
+        // pollution). Konclude's possible-subsumer extraction intersects
+        // MODELS instead: re-drive the subject with REVERSED disjunct order
+        // (`conf_or_reverse` — order-only, sound) and keep only candidates
+        // positive in BOTH models. A true subsumer is positive in EVERY
+        // clash-free saturated graph, so the intersection stays a complete
+        // filter; a candidate riding one branch choice drops out. If the
+        // second drive STOPs or (exotically) clashes, keep the unintersected
+        // set — the intersection is purely an optimization.
+        if !authoritative {
+            renew(algo, ctx);
+            algo.conf_or_reverse = true;
+            let mut id_rev: i64 = 1_000;
+            if let Some((subs_rev, _)) =
+                bridged_classify_subject(algo, ctx, &bridged, &mut id_rev, s, n_named)
+            {
+                if subs_rev.len() < n_named {
+                    let keep: std::collections::HashSet<usize> = subs_rev.into_iter().collect();
+                    let before = subs.len();
+                    subs.retain(|c| keep.contains(c));
+                    if progress && subs.len() != before {
+                        let names: Vec<&str> = subs
+                            .iter()
+                            .take(48)
+                            .map(|&c| tin.concepts[c].as_str())
+                            .collect();
+                        eprintln!(
+                            "BRIDGE-INTERSECT subject {s} ({}): candidates {before} -> {} [{}]",
+                            tin.concepts[s],
+                            subs.len(),
+                            names.join(",")
+                        );
+                    }
+                }
+            }
+            algo.conf_or_reverse = false;
         }
         // The subject-unsatisfiable signal is the FULL index range
         // (authoritative). A tiny ontology can legitimately have a subject
         // subsumed by every named concept, so disambiguate with a direct
         // single-seed unsat probe.
         if authoritative && subs.len() == n_named {
-            let (mut a2, mut c2, b2) = fresh_bridge_env(tin);
+            renew(algo, ctx);
             let mut id2: i64 = 1_000;
-            match bridged_unsat(&mut a2, &mut c2, &b2, &mut id2, &[(b2.named[s], false)]) {
+            match bridged_unsat(algo, ctx, &bridged, &mut id2, &[(bridged.named[s], false)]) {
                 Some(true) => {
                     out.unsatisfiable.push(s);
-                    continue;
+                    return Some(());
                 }
                 Some(false) => {} // genuinely subsumed by everything — keep pairs
                 None => return None,
             }
         }
+        // Restrict candidates to the classification universe (real named
+        // classes; see the `universe` doc above). AFTER the full-range unsat
+        // disambiguation — that signal is defined on the raw read-off.
+        subs.retain(|&c| c == s || universe.contains(&c));
         if authoritative {
             for c in subs {
                 if c != s {
                     out.subsumptions.push((s, c));
                 }
             }
-            continue;
+            return Some(());
         }
-        // Non-deterministic subject: verify each candidate pairwise.
+        // Non-deterministic subject: verify each candidate pairwise. Collect
+        // locally and commit only when EVERY probe answered, so a deferred
+        // subject leaves no partial pairs behind for the retry round.
+        let mut pairs: Vec<(usize, usize)> = Vec::new();
         for c in subs {
             if c == s {
                 continue;
             }
-            let (mut a2, mut c2, b2) = fresh_bridge_env(tin);
+            renew(algo, ctx);
             let mut id2: i64 = 1_000;
             match bridged_unsat(
-                &mut a2,
-                &mut c2,
-                &b2,
+                algo,
+                ctx,
+                &bridged,
                 &mut id2,
-                &[(b2.named[s], false), (b2.named[c], true)],
+                &[(bridged.named[s], false), (bridged.named[c], true)],
             ) {
-                Some(true) => out.subsumptions.push((s, c)),
+                Some(true) => pairs.push((s, c)),
                 Some(false) => {}
-                None => return None,
+                None => {
+                    if progress {
+                        eprintln!(
+                            "BRIDGE-DEFER subject {s}: PAIR {}v{} stop after {:.1}s subj-total",
+                            tin.concepts[s],
+                            tin.concepts[c],
+                            t_subj.elapsed().as_secs_f64()
+                        );
+                    }
+                    return None;
+                }
             }
         }
+        out.subsumptions.extend(pairs);
         // A non-deterministic subject can also be unsatisfiable without the
         // read-off reporting the full range (a clash IS reported full-range,
         // so this is only reachable when the drive found a model — the
         // subject is satisfiable; nothing to check).
+        Some(())
+    };
+    let mut pending: Vec<usize> = subjects;
+    for round in 0..=retry_rounds {
+        algo.probe_budget = Some(std::time::Duration::from_secs(
+            base_budget.saturating_mul(4u64.saturating_pow(round)),
+        ));
+        let total = pending.len();
+        let mut deferred: Vec<usize> = Vec::new();
+        for (k, &s) in pending.iter().enumerate() {
+            if classify_one(s, &mut algo, &mut ctx, &mut out).is_none() {
+                deferred.push(s);
+            }
+            if progress && (k % 64 == 0 || k + 1 == total) {
+                eprintln!(
+                    "BRIDGE-CLASSIFY round {round} subject {}/{total} deferred={}",
+                    k + 1,
+                    deferred.len()
+                );
+            }
+        }
+        pending = deferred;
+        if pending.is_empty() {
+            break;
+        }
+    }
+    if !pending.is_empty() {
+        if progress {
+            eprintln!(
+                "BRIDGE-CLASSIFY defer: {} subjects without verdict after {} rounds",
+                pending.len(),
+                retry_rounds + 1
+            );
+        }
+        return None;
     }
     Some(out)
 }
@@ -2712,6 +2929,107 @@ mod tests {
             derived.difference(&gold_restricted).count(),
             elapsed.as_secs_f64(),
             bridged.unsupported,
+        );
+    }
+
+    /// PRODUCTION-PATH gold driver: run the shipped entry point
+    /// `bridged_classify` (single reused env, production DDB search,
+    /// per-subject defer + budget-escalating retry rounds) on
+    /// `KM_BRIDGE_ONT` and diff the result against `KM_BRIDGE_GOLD` —
+    /// the same gold format as `bridge_classify_full`, which by contrast
+    /// drives the subject/probe layers directly with fresh envs. Restrict
+    /// subjects via `queries` when `KM_BRIDGE_MAX_SUBJECTS` is set.
+    #[test]
+    #[ignore]
+    fn bridge_classify_prod() {
+        let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
+        let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
+        let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
+        let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
+        let local = |iri: &str| -> String {
+            iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string()
+        };
+        let mut gold_pairs: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        let mut gold_universe: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut gold_subs: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
+            let sub = local(pair[0].as_str().unwrap());
+            let sup = local(pair[1].as_str().unwrap());
+            gold_universe.insert(sub.clone());
+            gold_universe.insert(sup.clone());
+            gold_subs.insert(sub.clone());
+            gold_pairs.insert((sub, sup));
+        }
+
+        let text = std::fs::read_to_string(&path).expect("readable ontology");
+        let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
+        let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses, None, &named_set, &fr.cardinalities, true, &fr.rules, false,
+        );
+        // subjects = gold-classified (sub-side) names, optionally capped —
+        // expressed through the production `queries` mechanism.
+        let mut subjects: Vec<usize> = (0..tin.concepts.len())
+            .filter(|&i| gold_subs.contains(&tin.concepts[i]))
+            .collect();
+        if let Some(cap) = std::env::var("KM_BRIDGE_MAX_SUBJECTS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            subjects.truncate(cap);
+        }
+        let subj_names: std::collections::HashSet<String> =
+            subjects.iter().map(|&i| tin.concepts[i].clone()).collect();
+        tin.queries = subjects.clone();
+
+        let t0 = std::time::Instant::now();
+        let res = bridged_classify(&tin);
+        let elapsed = t0.elapsed();
+        let Some(r) = res else {
+            eprintln!("BRIDGE-CLASSIFY-PROD {path}: DEFERRED after {:.1}s", elapsed.as_secs_f64());
+            return;
+        };
+        let mut derived: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        for &(a, b) in &r.subsumptions {
+            let (sub, sup) = (tin.concepts[a].clone(), tin.concepts[b].clone());
+            if gold_universe.contains(&sup) {
+                derived.insert((sub, sup));
+            }
+        }
+        // unsat subjects subsume-into everything in gold's universe rows;
+        // gold encodes them as pairs already, so expand for the diff.
+        for &u in &r.unsatisfiable {
+            let sub = tin.concepts[u].clone();
+            for sup in &gold_universe {
+                if *sup != sub {
+                    derived.insert((sub.clone(), sup.clone()));
+                }
+            }
+        }
+        let gold_restricted: std::collections::HashSet<(String, String)> = gold_pairs
+            .iter()
+            .filter(|(sub, sup)| subj_names.contains(sub) && gold_universe.contains(sup))
+            .cloned()
+            .collect();
+        for m in gold_restricted.difference(&derived).take(20) {
+            eprintln!("MISSING (incomplete): {} ⊑ {}", m.0, m.1);
+        }
+        for sp in derived.difference(&gold_restricted).take(20) {
+            eprintln!("SPURIOUS (unsound): {} ⊑ {}", sp.0, sp.1);
+        }
+        eprintln!(
+            "BRIDGE-CLASSIFY-PROD {path}: subjects={} derived={} gold={} missing={} \
+             spurious={} unsat={} elapsed={:.1}s",
+            subjects.len(),
+            derived.len(),
+            gold_restricted.len(),
+            gold_restricted.difference(&derived).count(),
+            derived.difference(&gold_restricted).count(),
+            r.unsatisfiable.len(),
+            elapsed.as_secs_f64(),
         );
     }
 
