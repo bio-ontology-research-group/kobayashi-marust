@@ -1060,6 +1060,7 @@ pub fn bridged_unsat(
 ) -> Option<bool> {
     ctx.clear_pending_signal();
     algo.or_branch_stack.clear();
+    algo.completeness_poisoned = false;
 
     // fresh root node (the classify_test `make_root`)
     let id = *next_indi_id;
@@ -1116,6 +1117,10 @@ pub fn bridged_unsat(
         for &g in &bridged.tbox {
             seed_concept_on_queue(ctx, root, g);
         }
+        // Plain-mode completeness repair: reprocess every label concept each
+        // pass, so the insertion-stable break below certifies genuine closure
+        // under ALL rules (see `requeue_all_node_labels`).
+        algo.requeue_all_node_labels(ctx);
         let iq = ctx.get_individual_immediately_processing_queue(true);
         ctx.process_context_mut()
             .indi_unsorted_proc_queue_mut(iq)
@@ -1463,6 +1468,13 @@ pub fn bridged_unsat(
             }
         }
     }
+    // A clash-free fixpoint after a cross-branch WIPE (see
+    // `completeness_poisoned`) is not a model certificate — the graph may be
+    // missing branch-independent consequences whose clash would have proved
+    // UNSAT. Answer UNKNOWN (defer); clash exits above remain sound.
+    if algo.completeness_poisoned {
+        return None;
+    }
     Some(false)
 }
 
@@ -1497,6 +1509,7 @@ pub fn bridged_classify_subject(
 ) -> Option<(Vec<usize>, bool)> {
     ctx.clear_pending_signal();
     algo.or_branch_stack.clear();
+    algo.completeness_poisoned = false;
     // KM_BRIDGE_PROBE_BUDGET_S also bounds the READ-OFF search: before the
     // DDB taint fix (2a869e8) heavy subjects' read-offs looked fast only
     // because wrong root-cancels cut them short; the genuine search is
@@ -1556,6 +1569,10 @@ pub fn bridged_classify_subject(
         for &g in &bridged.tbox {
             seed_concept_on_queue(ctx, root, g);
         }
+        // Plain-mode completeness repair: reprocess every label concept each
+        // pass, so the insertion-stable break below certifies genuine closure
+        // under ALL rules (see `requeue_all_node_labels`).
+        algo.requeue_all_node_labels(ctx);
         let iq = ctx.get_individual_immediately_processing_queue(true);
         ctx.process_context_mut()
             .indi_unsorted_proc_queue_mut(iq)
@@ -1574,6 +1591,13 @@ pub fn bridged_classify_subject(
             break;
         }
         prev_inserts = inserts;
+    }
+    // A cross-branch WIPE (see `completeness_poisoned`) invalidates BOTH
+    // read-off directions: the label may miss branch-independent positives
+    // (candidate set no longer ⊇ true subsumers) AND absences are no longer
+    // countermodels. No usable verdict — defer the subject.
+    if algo.completeness_poisoned {
+        return None;
     }
     // Non-deterministic saturation ⇒ single branch is not authoritative.
     // Opened branch points count even without backtracks: a drive committing
@@ -1777,6 +1801,13 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
     // KM_BRIDGE_FRESH_ENV=1 (diagnostic): rebuild the env per probe instead
     // of resetting — the pre-#13 isolation, for A/B against the reset path.
     let fresh_env = std::env::var_os("KM_BRIDGE_FRESH_ENV").is_some();
+    // KM_BRIDGE_COW_CONFIRM=1 (opt-in): re-run poison-deferred probes under
+    // COW branch epochs to CONFIRM them instead of deferring. Correct
+    // (complete restore ⇒ classically complete) but measured too slow inside
+    // the probe budgets on the recognition family (the uniform first-touch
+    // journal cost — ore_ont_12653 subjects blew their 900 s validation
+    // window). Becomes the default once per-node COW localization lands.
+    let cow_confirm = std::env::var_os("KM_BRIDGE_COW_CONFIRM").is_some();
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
                             ctx: &mut CalculationAlgorithmContextBase,
@@ -1784,7 +1815,8 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
      -> Option<()> {
         let t_subj = std::time::Instant::now();
         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
-                         ctx: &mut CalculationAlgorithmContextBase| {
+                         ctx: &mut CalculationAlgorithmContextBase,
+                         cow: bool| {
             if fresh_env {
                 let budget = algo.probe_budget;
                 let (a2, c2, _b2) = fresh_bridge_env(tin);
@@ -1795,10 +1827,27 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
                 reset_probe_env(algo, ctx, &bridged);
             }
             configure_production_search(algo);
+            // VERDICT TRUST HIERARCHY, escalation leg: re-run an untrusted
+            // probe under COW branch epochs — complete per-alternative state
+            // restore, so chronological search is classically complete and
+            // the unrestored-advance poison never fires. Slower (journaling)
+            // — used only to CONFIRM a plain-mode verdict tainted by
+            // phantomized nodes. Oracle-validated (plain/COW matrix).
+            if cow {
+                algo.conf_inprocess_cow = true;
+            }
         };
-        renew(algo, ctx);
+        renew(algo, ctx, false);
         let mut next_indi_id: i64 = 1_000;
-        let readoff = bridged_classify_subject(algo, ctx, &bridged, &mut next_indi_id, s, n_named);
+        let mut readoff =
+            bridged_classify_subject(algo, ctx, &bridged, &mut next_indi_id, s, n_named);
+        if readoff.is_none() && algo.completeness_poisoned && cow_confirm {
+            // Plain search untrusted (an unrestored advance phantomized
+            // nodes) — the poison deferred the read-off. Escalate to COW.
+            renew(algo, ctx, true);
+            let mut id_cow: i64 = 1_000;
+            readoff = bridged_classify_subject(algo, ctx, &bridged, &mut id_cow, s, n_named);
+        }
         if readoff.is_none() && progress {
             eprintln!(
                 "BRIDGE-DEFER subject {s}: READ-OFF stop after {:.1}s (signal={:?})",
@@ -1820,7 +1869,7 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         // second drive STOPs or (exotically) clashes, keep the unintersected
         // set — the intersection is purely an optimization.
         if !authoritative {
-            renew(algo, ctx);
+            renew(algo, ctx, false);
             algo.conf_or_reverse = true;
             let mut id_rev: i64 = 1_000;
             if let Some((subs_rev, _)) =
@@ -1852,9 +1901,15 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         // subsumed by every named concept, so disambiguate with a direct
         // single-seed unsat probe.
         if authoritative && subs.len() == n_named {
-            renew(algo, ctx);
+            renew(algo, ctx, false);
             let mut id2: i64 = 1_000;
-            match bridged_unsat(algo, ctx, &bridged, &mut id2, &[(bridged.named[s], false)]) {
+            let mut v = bridged_unsat(algo, ctx, &bridged, &mut id2, &[(bridged.named[s], false)]);
+            if v.is_none() && algo.completeness_poisoned && cow_confirm {
+                renew(algo, ctx, true);
+                let mut id_cow: i64 = 1_000;
+                v = bridged_unsat(algo, ctx, &bridged, &mut id_cow, &[(bridged.named[s], false)]);
+            }
+            match v {
                 Some(true) => {
                     out.unsatisfiable.push(s);
                     return Some(());
@@ -1883,15 +1938,28 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
             if c == s {
                 continue;
             }
-            renew(algo, ctx);
+            renew(algo, ctx, false);
             let mut id2: i64 = 1_000;
-            match bridged_unsat(
+            let mut v = bridged_unsat(
                 algo,
                 ctx,
                 &bridged,
                 &mut id2,
                 &[(bridged.named[s], false), (bridged.named[c], true)],
-            ) {
+            );
+            if v.is_none() && algo.completeness_poisoned && cow_confirm {
+                // plain verdict untrusted — confirm under COW epochs
+                renew(algo, ctx, true);
+                let mut id_cow: i64 = 1_000;
+                v = bridged_unsat(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_cow,
+                    &[(bridged.named[s], false), (bridged.named[c], true)],
+                );
+            }
+            match v {
                 Some(true) => pairs.push((s, c)),
                 Some(false) => {}
                 None => {
@@ -1915,6 +1983,13 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         Some(())
     };
     let mut pending: Vec<usize> = subjects;
+    // Subjects whose defer is DETERMINISTIC (completeness poison — an
+    // unrestored advance phantomized nodes): retrying with a bigger budget
+    // re-runs the identical search to the identical poison, so they must
+    // skip the retry rounds (measured: retrying them tripled the wall to a
+    // 900 s validation timeout on ore_ont_12653). Any permanent defer means
+    // the whole classification defers — stop the rounds early.
+    let mut permanent_defer = 0usize;
     for round in 0..=retry_rounds {
         algo.probe_budget = Some(std::time::Duration::from_secs(
             base_budget.saturating_mul(4u64.saturating_pow(round)),
@@ -1923,27 +1998,39 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         let mut deferred: Vec<usize> = Vec::new();
         for (k, &s) in pending.iter().enumerate() {
             if classify_one(s, &mut algo, &mut ctx, &mut out).is_none() {
-                deferred.push(s);
+                if algo.completeness_poisoned {
+                    permanent_defer += 1;
+                } else {
+                    deferred.push(s);
+                }
             }
-            if progress && (k % 64 == 0 || k + 1 == total) {
+            if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
                 eprintln!(
-                    "BRIDGE-CLASSIFY round {round} subject {}/{total} deferred={}",
+                    "BRIDGE-CLASSIFY round {round} subject {}/{total} deferred={} permanent={}",
                     k + 1,
-                    deferred.len()
+                    deferred.len(),
+                    permanent_defer
                 );
+            }
+            if permanent_defer > 0 {
+                // One deterministic defer decides the whole classification
+                // (complete-or-defer contract) — finishing the remaining
+                // subjects is pure waste, and in the race the bridge worker
+                // shares the node with the CB engine.
+                break;
             }
         }
         pending = deferred;
-        if pending.is_empty() {
+        if pending.is_empty() || permanent_defer > 0 {
             break;
         }
     }
-    if !pending.is_empty() {
+    if !pending.is_empty() || permanent_defer > 0 {
         if progress {
             eprintln!(
-                "BRIDGE-CLASSIFY defer: {} subjects without verdict after {} rounds",
+                "BRIDGE-CLASSIFY defer: {} budget + {} permanent subjects without verdict",
                 pending.len(),
-                retry_rounds + 1
+                permanent_defer
             );
         }
         return None;
@@ -2008,6 +2095,14 @@ mod tests {
         /// Task layer); the v1 driver rebuilds instead — same verdicts,
         /// O(TBox) per probe.
         fn subsumes(&mut self, sub: &str, sup: &str) -> bool {
+            self.try_subsumes(sub, sup)
+                .unwrap_or_else(|| panic!("probe {sub} ⊑ {sup} raised STOP (undecided)"))
+        }
+
+        /// Like [`Self::subsumes`] but surfaces STOP/DEFER as `None` instead
+        /// of panicking — for tests asserting "must not answer WRONG"
+        /// (a defer is acceptable, a wrong verdict is not).
+        fn try_subsumes(&mut self, sub: &str, sup: &str) -> Option<bool> {
             let mut algo = CompletionTaskHandleAlgorithm::new();
             configure_default_blocking(&mut algo);
             let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2040,7 +2135,7 @@ mod tests {
                 &[(a, false), (b, true)],
             );
             self.ctx = Some(ctx);
-            r.unwrap_or_else(|| panic!("probe {sub} ⊑ {sup} raised STOP (undecided)"))
+            r
         }
     }
 
@@ -2136,8 +2231,13 @@ mod tests {
              EquivalentClasses(:PathOfLength2 ObjectExactCardinality(2 :hasPathElement :PathElement))\n)"
         );
         let mut env = bridge_ofn(&ofn);
-        assert!(
-            !env.subsumes("AlternativePath", "PathOfLength2"),
+        // Under the plain-mode multi-node completeness gate this probe's SAT
+        // verdict becomes a DEFER (None) — acceptable. The regression this
+        // test guards is the WRONG UNSAT (Some(true)) from the poisoned u29
+        // analysis.
+        assert_ne!(
+            env.try_subsumes("AlternativePath", "PathOfLength2"),
+            Some(true),
             "AlternativePath ⊑ PathOfLength2 must NOT hold (3-element Path \
              countermodel) — a spurious UNSAT here means the u29 analysis ran \
              on leftover-poisoned state after an unrestored advance"
@@ -2266,6 +2366,112 @@ mod tests {
         }
         assert!(holds, "A unsat via R⊑S hierarchy ⇒ A ⊑ D vacuously");
         assert!(!env.subsumes("D", "A"), "D ⊑ A must NOT hold");
+    }
+
+    /// Role DOMAIN through a forced successor (the ore_ont_9635 gap):
+    /// `Domain(r, D)` + `A ⊑ ∃r.⊤` entails `A ⊑ D` DETERMINISTICALLY —
+    /// the successor's existence fires the domain clause on the edge.
+    /// The 9635 shape adds exact cardinality; test both.
+    #[test]
+    fn bridge_domain_via_forced_successor() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:T))\n\
+             Declaration(ObjectProperty(:r))\n\
+             ObjectPropertyDomain(:r :D)\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:r :T))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        assert!(
+            env.subsumes("A", "D"),
+            "A ⊑ D via domain(r)=D and A's forced r-successor"
+        );
+        assert!(!env.subsumes("D", "A"), "D ⊑ A must NOT hold");
+        // the 9635 shape: exact cardinality forces the successor
+        let ofn2 = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:D))\n\
+             Declaration(ObjectProperty(:r))\n\
+             ObjectPropertyDomain(:r :D)\n\
+             SubClassOf(:A ObjectExactCardinality(1 :r))\n)"
+        );
+        let mut env2 = bridge_ofn(&ofn2);
+        assert!(
+            env2.subsumes("A", "D"),
+            "A ⊑ D via domain(r)=D and A's =1 r-successor"
+        );
+    }
+
+    /// The ore_ont_9635 completeness gap (ddmin, 294 → 2+2 axioms): the
+    /// domain entailment `A ⊑ =1 r` + `Domain(r, D)` ⇒ `A ⊑ D` (covered
+    /// bare by `bridge_domain_via_forced_successor`) MUST survive the
+    /// presence of unrelated DataHasValue axioms — their value-identity
+    /// clausification introduces singleton concepts, and the singleton
+    /// path broke the pairwise probe (`unsat(A ⊓ ¬D)` found a spurious
+    /// model: pairwise=false while readoff_has=true).
+    #[test]
+    fn bridge_domain_survives_datatype_singletons() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:I))\n\
+             Declaration(Class(:P)) Declaration(Class(:L)) Declaration(Class(:RL))\n\
+             Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:h))\n\
+             Declaration(DataProperty(:v))\n\
+             SubClassOf(:A ObjectExactCardinality(1 :r))\n\
+             ObjectPropertyDomain(:r :D)\n\
+             EquivalentClasses(:P ObjectIntersectionOf(\
+             DataHasValue(:v \"true\"^^xsd:boolean) :I))\n\
+             EquivalentClasses(:L ObjectIntersectionOf(\
+             ObjectAllValuesFrom(:h :P) :RL))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        // The cross-branch wipe DETECTOR turns the previously-WRONG SAT
+        // verdict into a DEFER (None) — acceptable: the production driver
+        // then defers the subject and the caller falls back to a complete
+        // arm. `Some(false)` (the wrong verdict) is the regression.
+        let verdict = env.try_subsumes("A", "D");
+        let holds = verdict == Some(true);
+        if verdict == Some(false) {
+            let show = |a: &HAtom| -> String {
+                match a {
+                    HAtom::Concept { neg, c, t } => format!(
+                        "{}{}({t})",
+                        if *neg { "¬" } else { "" },
+                        env.tin.concepts.get(*c).map(String::as_str).unwrap_or("?")
+                    ),
+                    HAtom::Role { r, s, t } => {
+                        format!("{}({s},{t})", env.tin.roles.get(*r).map(String::as_str).unwrap_or("?"))
+                    }
+                    HAtom::Eq { s, t } => format!("eq({s},{t})"),
+                    HAtom::Exist { r, neg, c, t } => format!(
+                        "∃{}.{}{}({t})",
+                        env.tin.roles.get(*r).map(String::as_str).unwrap_or("?"),
+                        if *neg { "¬" } else { "" },
+                        env.tin.concepts.get(*c).map(String::as_str).unwrap_or("?")
+                    ),
+                }
+            };
+            for (i, cl) in env.tin.clauses.iter().enumerate() {
+                let b: Vec<String> = cl.body.iter().map(show).collect();
+                let h: Vec<String> = cl.head.iter().map(show).collect();
+                eprintln!("DBG clause {i}: {} -> {}", b.join(" ∧ "), h.join(" ∨ "));
+            }
+            for (i, n) in env.tin.concepts.iter().enumerate() {
+                eprintln!("DBG concept idx {i} = tag {} = {n}", 10 + i);
+            }
+            for (i, n) in env.tin.roles.iter().enumerate() {
+                eprintln!("DBG role idx {i} = arena-tag {} = {n}", 100 + i);
+            }
+            dump_nodes(&mut env, "after A⊑D probe (datatype singleton)");
+        }
+        assert_ne!(
+            verdict,
+            Some(false),
+            "A ⊑ D holds (domain via forced successor): answering NOT-subsumed is unsound; \
+             DEFER (None) is the acceptable degradation, deriving it the aspirational fix"
+        );
+        let _ = holds;
+        assert_ne!(env.try_subsumes("D", "A"), Some(true), "D ⊑ A must NOT hold");
     }
 
     #[test]

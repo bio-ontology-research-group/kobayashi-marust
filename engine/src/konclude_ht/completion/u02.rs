@@ -814,6 +814,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             || calc_alg_context.process_context().node_count() == node_count_at_push;
         if !restored {
             self.unrestored_advance_count += 1;
+            // PLAIN-MODE COMPLETENESS POISON — the precise trigger: an
+            // UNRESTORED advance tombstones the failed alternative's created
+            // nodes as PHANTOMS, including successors a DETERMINISTIC ∃
+            // created while the branch merely happened to be open (measured
+            // on ore_ont_9635, ddmin to 4 axioms: the r-successor carrying
+            // `∀r⁻.D` was phantomized by an unrelated TOP-EM's advance; the
+            // per-pass requeue skips phantoms and the ∃ is not requeued —
+            // successor-creating ops cannot be, see
+            // `requeue_all_node_labels` — so the domain consequence D(root)
+            // was silently lost and the probe found a spurious model that
+            // even violates the ∃ obligation). RESTORED advances stay
+            // trustworthy: no phantoms arise and cross-node losses re-derive
+            // through the per-pass requeue of live nodes. The flag poisons
+            // SAT/read-off verdicts only (drivers DEFER); a clash (UNSAT)
+            // remains sound — losing derivations can only lose clashes.
+            self.completeness_poisoned = true;
         }
         if !topmost_own_epoch && restored {
             let (label_snapshot, queue_snapshot) = {
@@ -849,6 +865,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // `executeORBranching` per-alternative add. May itself raise a clash (the
         // alternative also contradicts the label set), which the outer loop catches
         // and backtracks again.
+        // The alternative's own adds are SAME-node by definition — mark the
+        // node current for the cross-node bookkeeping.
+        calc_alg_context.base.current_indi_node = node;
         let mut node_m: NodeId = node;
         let _target: ConceptId = target;
         self.add_concept_to_individual(
@@ -1074,6 +1093,123 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
     }
 
+    /// Re-queue every live node's PROPAGATION-class label concepts for
+    /// reprocessing — the plain-mode COMPLETENESS REPAIR the probe drivers
+    /// run once per re-drive pass. The single-node advance restore cannot
+    /// undo/replay consequences that CROSSED nodes during a failed
+    /// alternative: a consumed ∀/∀⁻/role-trigger application never re-fires
+    /// on its own in the sibling world, so a deterministic consequence can
+    /// silently go missing and a later clash-free fixpoint is NOT a model
+    /// (measured on ore_ont_9635, ddmin to 4 axioms: the domain consequence
+    /// `D(root)` arrived via the successor-create reapply cascade while the
+    /// unrelated TOP-EM `Q_7∨Q_8` was open; the D/¬D clash chronologically
+    /// advanced that innocent decision and the probe found a spurious
+    /// model — an incomplete classification). Re-queuing at every PASS (not
+    /// every advance — measured prohibitive: heavy-backtracking suite tests
+    /// went from ms to minutes) makes the drivers' insertion-stable fixpoint
+    /// break certify closure under the cross-node propagation rules.
+    ///
+    /// ONLY label-IDEMPOTENT operator classes are requeued: `CCALL` (∀
+    /// re-application over edges — re-adds are `contained`) and the
+    /// unfolding class `CCIMPL`/`CCSUB`/`CCAND`/TOP (label-containment
+    /// checked). Successor-GENERATING concepts (`CCSOME`/`CCATLEAST`) are
+    /// EXCLUDED — a fresh process descriptor loses the processed state, so
+    /// requeuing them re-creates successors every pass (measured: node
+    /// blowup wedged the build host). Their consequences need no repair:
+    /// created successors are never rolled back by the single-node restore.
+    /// `CCOR`/`CCATMOST` are excluded likewise (branch/merge points — the
+    /// existing branch discipline owns them; nodes keep their chosen
+    /// disjuncts). Skips phantom nodes, merged-away nodes, and nodes
+    /// without a materialised label. Konclude needs none of this — task
+    /// forks restore the complete graph.
+    pub(crate) fn requeue_all_node_labels(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        use super::super::model::op;
+        use super::super::process::descriptor::{ConceptProcessDescriptor, ConceptProcessPriority};
+        let mut work: Vec<(NodeId, Vec<ConDescId>)> = Vec::new();
+        {
+            let ctx = calc_alg_context.process_context();
+            let onto = calc_alg_context.ontology_arenas();
+            let n = ctx.node_count();
+            for i in 0..n {
+                if self
+                    .phantom_node_intervals
+                    .iter()
+                    .any(|&(a, b)| i >= a && i < b)
+                {
+                    continue;
+                }
+                let node_id: NodeId = Id::new(i as Cint64);
+                let nd = ctx.node(node_id);
+                if nd.has_merged_into_individual_node_id() {
+                    continue;
+                }
+                let label = nd.reapply_con_label_set;
+                if label.is_none() {
+                    continue;
+                }
+                let entries: Vec<ConDescId> = ctx
+                    .label_set(label)
+                    .concept_des_dep_map
+                    .values()
+                    .filter(|d| {
+                        if d.concept_descriptor.is_none() {
+                            return false;
+                        }
+                        let cd = ctx.con_desc(d.concept_descriptor);
+                        let oc = onto.concept(cd.get_concept()).get_operator_code();
+                        let neg = cd.is_negated();
+                        // idempotent propagation/unfold classes only; a
+                        // NEGATED CCSOME is a ∀ (and vice versa) — classify
+                        // by the EFFECTIVE rule.
+                        match oc {
+                            op::CCALL => !neg,
+                            op::CCSOME => neg,
+                            op::CCIMPL | op::CCSUB => true,
+                            op::CCAND => !neg,
+                            op::CCOR => neg,
+                            _ => false,
+                        }
+                    })
+                    .map(|d| d.concept_descriptor)
+                    .collect();
+                if !entries.is_empty() {
+                    work.push((node_id, entries));
+                }
+            }
+        }
+        if work.is_empty() {
+            return;
+        }
+        let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
+        for (m, entries) in work {
+            let queue = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(m, true);
+            for cd in entries {
+                let tp = calc_alg_context.process_context().con_desc(cd).dep_track_point;
+                let mut cpd_val = ConceptProcessDescriptor::new();
+                cpd_val.concept_des = cd;
+                cpd_val.priority = ConceptProcessPriority::new(DETERMINISTIC_PROCESS_PRIORITY as f64);
+                cpd_val.dep_track_point = tp;
+                let cpd = calc_alg_context
+                    .process_context_mut()
+                    .alloc_con_proc_desc(cpd_val);
+                ConceptProcessingQueue::insert_concept_process_descriptor(
+                    queue,
+                    cpd,
+                    calc_alg_context.process_context_mut(),
+                );
+            }
+            calc_alg_context
+                .process_context_mut()
+                .indi_unsorted_proc_queue_mut(iq)
+                .insert_indiviudal_process_node(m);
+        }
+    }
+
     /// The deterministic completion main loop (`handleTask` inner loop, cpp
     /// 1112-1236), factored out of [`Self::run_completion_on`] so the outer search
     /// loop can re-enter it after a disjunction backtrack. Drives until the
@@ -1108,6 +1244,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return;
         }
         while indi_proc_node.is_some() {
+            // The currently processed individual — rule firings during this
+            // iteration that insert into a DIFFERENT node are cross-node
+            // writes (see `record_cross_branch_write`).
+            calc_alg_context.base.current_indi_node = indi_proc_node;
             drive_iters += 1;
             drive_progress!();
             // Per-probe wall-clock deadline also applies WITHIN a drive: a
@@ -1204,6 +1344,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // construction: it is a pure function of the CURRENT branch state,
             // so backtracking needs no queue rollback.
             if indi_proc_node.is_none() && !self.singleton_concepts.is_empty() {
+                // Merges union labels ACROSS nodes — no single "current"
+                // individual; every write into a branch-holding node must
+                // count as cross-node.
+                calc_alg_context.base.current_indi_node = Id::NONE;
                 let merged = self.ht_apply_singleton_merges(calc_alg_context);
                 if calc_alg_context.has_pending_signal() {
                     return;

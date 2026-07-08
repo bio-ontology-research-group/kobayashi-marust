@@ -764,6 +764,17 @@ pub struct CompletionTaskHandleAlgorithm {
     /// true subsumer appears positively in EVERY clash-free saturated
     /// graph — the intersection remains a complete candidate filter).
     pub conf_or_reverse: bool,
+    /// Set when an alternative advance ran UNRESTORED (nodes created under
+    /// the failed alternative block the single-node snapshot restore): the
+    /// graph may now be missing
+    /// branch-INDEPENDENT consequences (measured: ore_ont_9635's domain
+    /// propagation `⊤ ⊑ ∀r⁻.D` wiped from the root by an unrelated TOP-EM
+    /// disjunction's restore → spurious SAT → incomplete classification).
+    /// A clash-free fixpoint after this is NOT a model certificate: probe
+    /// drivers must answer STOP/DEFER instead of SAT, and the read-off must
+    /// defer its subject. Clash (UNSAT) verdicts remain sound — lost
+    /// derivations can only lose clashes.
+    pub completeness_poisoned: bool,
     /// Per-probe wall-clock budget override: when set, the probe drivers
     /// (`bridged_unsat` / `bridged_classify_subject`) derive `drive_deadline`
     /// from THIS instead of `KM_BRIDGE_PROBE_BUDGET_S` — the retry rounds of
@@ -1209,6 +1220,7 @@ impl CompletionTaskHandleAlgorithm {
             ddb_root_cancelled: false,
             drive_deadline: None,
             conf_or_reverse: false,
+            completeness_poisoned: false,
             probe_budget: None,
             ddb_line_init_fail_count: 0,
             ddb_already_marked_count: 0,
