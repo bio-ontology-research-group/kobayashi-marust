@@ -1439,6 +1439,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node_add_role_reapply_concept_descriptor(process_indi, role, reapply_con_des);
     }
 
+    /// The at-most resume install (`applyATMOSTRule` cpp 15001–15005 through the
+    /// `CProcessingRestrictionSpecification*` overload of `addConceptToReapplyQueue`).
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: Konclude installs a CONSUMED-per-fire dynamic
+    /// descriptor and re-installs after every application (each forked task has
+    /// its own queue copy, so consumption cannot leak). The port's in-place
+    /// backtracking cannot restore a cross-node queue consumption on branch
+    /// advance — a consumed-but-not-reinstalled descriptor would permanently
+    /// DISARM the ≤n restriction in the sibling world (missed merges = wrong
+    /// SAT). The port therefore installs a STATIC descriptor (never consumed,
+    /// fires on every later `role`-link) that CARRIES the branching-merging
+    /// rest; the rest's arena slot is mutated in place across fires and its
+    /// rollback at branch points is the epoch journal's job.
+    pub fn add_concept_to_reapply_queue_role_restricted_static(
+        &mut self,
+        concept_descriptor: ConDescId,
+        role: RoleId,
+        process_indi: NodeId,
+        proc_rest: ProcRestrictionHandle,
+        dependency_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let mut reapply_con_des =
+            ReapplyConceptDescriptor::new(concept_descriptor, dependency_track_point, true);
+        reapply_con_des.processing_restriction = proc_rest;
+        let reapply_con_des = calc_alg_context
+            .process_context_mut()
+            .alloc_reapply_con_desc(reapply_con_des);
+        calc_alg_context
+            .process_context_mut()
+            .node_add_role_reapply_concept_descriptor(process_indi, role, reapply_con_des);
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::addConceptToReapplyQueue`
     /// (the `CConcept*` + `negation` + `CProcessingRestrictionSpecification*` overload, cpp 26671).
     pub fn add_concept_to_reapply_queue_concept_restricted(

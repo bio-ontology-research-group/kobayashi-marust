@@ -930,7 +930,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let (parent, into, from, alt_tp, dep_track_point, role, concept_linker, negate, cardinality, con_des) = {
+        let (parent, into, from, alt_tp, dep_track_point, role, concept_linker, negate, cardinality, con_des, rest) = {
             let bp = self.or_branch_stack.last_mut().expect("caller checked topmost");
             let BranchKind::AtMostMerge(m) = &bp.kind else {
                 unreachable!("caller checked kind")
@@ -953,6 +953,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 m.negate,
                 m.cardinality,
                 m.con_des,
+                m.rest,
             )
         };
         // DDB: the alternative's branch node becomes the used branch tree node
@@ -985,18 +986,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .indi_unsorted_proc_queue_mut(iq)
             .insert_indiviudal_process_node(parent);
         // bound re-check on the merged graph (the reapplication re-fire).
+        // With a branching-merging rest, resume from its candidate lists
+        // (the epoch pop before this advance journal-restored the rest to
+        // its push-time state); without one, the legacy full re-gather.
         if !calc_alg_context.has_pending_signal() {
             let mut parent_m = parent;
-            self.ht_apply_atmost_merge(
-                &mut parent_m,
-                role,
-                &concept_linker,
-                negate,
-                cardinality,
-                dep_track_point,
-                con_des,
-                calc_alg_context,
-            );
+            if rest.is_some() {
+                self.ht_atmost_qualify_merge_rest(
+                    &mut parent_m,
+                    role,
+                    &concept_linker,
+                    negate,
+                    cardinality,
+                    dep_track_point,
+                    con_des,
+                    rest,
+                    calc_alg_context,
+                );
+            } else {
+                self.ht_apply_atmost_merge(
+                    &mut parent_m,
+                    role,
+                    &concept_linker,
+                    negate,
+                    cardinality,
+                    dep_track_point,
+                    con_des,
+                    calc_alg_context,
+                );
+            }
         }
     }
 
@@ -1011,7 +1029,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let (succ, alt_tp, dep_track_point, parent, role, concept_linker, negate, cardinality, con_des) = {
+        let (succ, alt_tp, dep_track_point, parent, role, concept_linker, negate, cardinality, con_des, rest) = {
             let bp = self.or_branch_stack.last_mut().expect("caller checked topmost");
             let BranchKind::AtMostQualify { succ, atmost } = &bp.kind else {
                 unreachable!("caller checked kind")
@@ -1032,6 +1050,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 atmost.negate,
                 atmost.cardinality,
                 atmost.con_des,
+                atmost.rest,
             )
         };
         let add_tp = if let Some(tp) = alt_tp {
@@ -1080,16 +1099,52 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // the at-most re-fire (the successor now counts).
         if !calc_alg_context.has_pending_signal() {
             let mut parent_m = parent;
-            self.ht_apply_atmost_merge(
-                &mut parent_m,
-                role,
-                &concept_linker,
-                negate,
-                cardinality,
-                dep_track_point,
-                con_des,
-                calc_alg_context,
-            );
+            if rest.is_some() {
+                // the positively-qualified successor is now a COUNTED merge
+                // candidate: move it into the rest's candidate list before the
+                // re-check (Konclude cpp 15774–15780, the `!qualNeg` fork's
+                // moved candidate). The epoch pop before this advance restored
+                // the rest to its push-time state, where the successor had
+                // just been cut from the both-qualify list.
+                if let Some(&(qlink, _)) = self
+                    .ht_role_successor_links(parent, role, calc_alg_context)
+                    .iter()
+                    .find(|&&(_, n)| n == succ)
+                {
+                    let linker = {
+                        let mut l = super::super::process::stubs::BranchingMergingIndividualNodeCandidateLinker::new();
+                        l.init_branching_merging_individual_node_candidate(succ, qlink);
+                        calc_alg_context
+                            .process_context_mut()
+                            .alloc_branching_merging_candidate_linker(l)
+                    };
+                    self.ht_with_atmost_rest(rest, calc_alg_context, |_alg, r, ctx| {
+                        r.add_merging_candidate_node_linker(linker, ctx.process_context_mut());
+                    });
+                }
+                self.ht_atmost_qualify_merge_rest(
+                    &mut parent_m,
+                    role,
+                    &concept_linker,
+                    negate,
+                    cardinality,
+                    dep_track_point,
+                    con_des,
+                    rest,
+                    calc_alg_context,
+                );
+            } else {
+                self.ht_apply_atmost_merge(
+                    &mut parent_m,
+                    role,
+                    &concept_linker,
+                    negate,
+                    cardinality,
+                    dep_track_point,
+                    con_des,
+                    calc_alg_context,
+                );
+            }
         }
     }
 

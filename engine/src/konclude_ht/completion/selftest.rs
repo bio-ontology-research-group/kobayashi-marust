@@ -23451,6 +23451,280 @@ fn cardinality_clash() {
 }
 
 // ===========================================================================
+// At-most RESUME (`KM_HT_ATMOST_REST` / `conf_atmost_rest`): the
+// `branchingMergingProcRest` machinery must reproduce the legacy outcomes
+// (same clash/consistency verdicts) while classifying each link only once
+// and resuming across re-fires. Same scenarios as the block above, plus the
+// reapply-driven resume itself.
+// ===========================================================================
+
+/// `≥2 R.C ⊓ ≤1 R.⊤` under the rest machinery: the two forced-distinct
+/// successors trip the DISTINCT-CLIQUE initialization clash (cpp 15988–16015)
+/// — inconsistent, same verdict as the legacy spine.
+#[test]
+fn atmost_rest_functional_distinct_clash() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_atmost_rest = true;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1650);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2650);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atmost_1_top = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2651);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_root_immediate(&mut env, root);
+    assert!(env.algo.run_completion_on(&mut env.ctx), "≥2 R.C alone is consistent");
+
+    seed_concept_on_queue(&mut env, root, atmost_1_top);
+    seed_root_immediate(&mut env, root);
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(
+        !consistent,
+        "rest path: two forced-distinct successors over ≤1 must be INCONSISTENT"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
+/// `≥2 R.C ⊓ ≤1 R.C` under the rest machinery — the QUALIFIED variant of the
+/// distinct clash. Same verdict as the legacy `cardinality_clash`.
+#[test]
+fn atmost_rest_qualified_distinct_clash() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_atmost_rest = true;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1651);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2652);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atmost_1_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2653);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_root_immediate(&mut env, root);
+    assert!(env.algo.run_completion_on(&mut env.ctx), "≥2 R.C alone is consistent");
+
+    seed_concept_on_queue(&mut env, root, atmost_1_rc);
+    seed_root_immediate(&mut env, root);
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(
+        !consistent,
+        "rest path: qualified ≤1 R.C over two distinct C-successors must be INCONSISTENT"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
+/// The resume itself: `∃R.C`, then `≤1 R.⊤` (fires below the bound, arms the
+/// rest-carrying static reapply), THEN `∃R.D` adds a second — mergeable —
+/// successor. The reapply must re-fire the ≤1 with the persisted rest (only
+/// the NEW link is classified) and merge the two successors: consistent, ONE
+/// live R-successor carrying both C and D.
+#[test]
+fn atmost_rest_reapply_resumes_and_merges() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_atmost_rest = true;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1652);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1653);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2654);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let some_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2655);
+        c.set_operator_code(op::CCSOME);
+        c.set_role(role_r);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atmost_1_top = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2656);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    // run 1: one successor, ≤1 fires below the bound and arms the resume.
+    seed_concept_on_queue(&mut env, root, some_rc);
+    seed_concept_on_queue(&mut env, root, atmost_1_top);
+    seed_root_immediate(&mut env, root);
+    assert!(
+        env.algo.run_completion_on(&mut env.ctx),
+        "∃R.C ⊓ ≤1 R.⊤ is consistent"
+    );
+    assert_eq!(
+        role_successors(&env, root, role_r).len(),
+        1,
+        "one successor after run 1"
+    );
+
+    // run 2: a second successor arrives; the armed reapply must re-fire the
+    // ≤1 and merge (the two successors are mergeable — no distinct edge).
+    seed_concept_on_queue(&mut env, root, some_rd);
+    seed_root_immediate(&mut env, root);
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(
+        consistent,
+        "∃R.C ⊓ ∃R.D ⊓ ≤1 R.⊤ is consistent (the successors merge)"
+    );
+    let succs = role_successors(&env, root, role_r);
+    assert_eq!(
+        succs.len(),
+        1,
+        "the rest-driven reapply must merge the two successors into one (got {})",
+        succs.len()
+    );
+    assert!(
+        label_set_has_tag(&mut env, succs[0], 1652),
+        "the merged successor carries C"
+    );
+    assert!(
+        label_set_has_tag(&mut env, succs[0], 1653),
+        "the merged successor carries D"
+    );
+}
+
+/// The choose rule under the rest machinery: `≥2 R.C ⊓ ≤1 R.D` — the two
+/// C-successors are UNDECIDED for D, so the choose rule qualifies them; the
+/// ¬D alternatives leave the ≤1 D-count at zero ⇒ CONSISTENT (still two
+/// R-successors, both forced distinct by the ≥2).
+#[test]
+fn atmost_rest_choose_qualifies_undecided() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_atmost_rest = true;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1654);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1655);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2657);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atmost_1_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2658);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_root_immediate(&mut env, root);
+    assert!(env.algo.run_completion_on(&mut env.ctx), "≥2 R.C alone is consistent");
+
+    seed_concept_on_queue(&mut env, root, atmost_1_rd);
+    seed_root_immediate(&mut env, root);
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(
+        consistent,
+        "≥2 R.C ⊓ ≤1 R.D is consistent (choose decides ¬D on the C-successors)"
+    );
+    assert_eq!(
+        role_successors(&env, root, role_r).len(),
+        2,
+        "both distinct C-successors survive (no D-merge needed)"
+    );
+}
+
+// ===========================================================================
 // W15-rbox: the SHIQ RBox-side propagation that ∀/∃ depend on — role HIERARCHY
 // (`R ⊑ S`), INVERSE roles (`R⁻`), and TRANSITIVE roles (`Trans(R)`). Resolved by
 // `apply_all_rule` (u09) via the `ht_all_rule_targets` lookup (u10): a ∀S restriction

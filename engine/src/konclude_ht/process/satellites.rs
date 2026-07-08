@@ -659,6 +659,26 @@ pub struct BranchingMergingProcessingRestrictionSpecification {
     // `CLinkProcessingRestrictionSpecification::mRestLink` payload for the live
     // restricted-reapply path.
     pub link_restriction: EdgeId,
+
+    // --- at-most resume (the port's realisation of Konclude's incremental ---
+    // --- reapplication; see `apply_atmost_rule` in completion/u08) --------
+    /// `true` iff this record was initialised as a BRANCHING-MERGING rest (the
+    /// C++ subclass discriminant: `applyATMOSTRule` may only resume from a
+    /// `CBranchingMergingProcessingRestrictionSpecification`, never from the
+    /// link-restriction payload the restricted-reapply path attaches).
+    pub is_branching_merging: bool,
+    /// KONCLUDE-PORT-NOTE[api]: Konclude resumes the successor scan from
+    /// `mIndiLink` (its role-successor linker is newest-first, so iteration
+    /// stops at the previously-newest link). The port's successor list is in
+    /// edge-ARENA order, so the resume point is the edge-arena length at the
+    /// end of the last scan: links with `index() >= scan_edge_watermark` are
+    /// unseen. Consistency with epoch rollback: every truncating branch-epoch
+    /// pop also journal-restores THIS record (`restriction_spec_mut` routes
+    /// through `get_mut_journaled`), so the watermark and the edge arena roll
+    /// back together — a watermark above the live edge-arena length is
+    /// impossible; callers still clamp defensively and re-scan from 0 if it
+    /// ever exceeds the arena length.
+    pub scan_edge_watermark: Cint64,
 }
 
 impl Default for BranchingMergingProcessingRestrictionSpecification {
@@ -692,6 +712,8 @@ impl Default for BranchingMergingProcessingRestrictionSpecification {
             succ_choice_triggering_installed_count: 0,
             last_checked_succ_choice_trigger_linker: Vec::new(),
             link_restriction: Id::NONE,
+            is_branching_merging: false,
+            scan_edge_watermark: 0,
         }
     }
 }

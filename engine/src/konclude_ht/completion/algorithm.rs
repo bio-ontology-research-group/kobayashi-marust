@@ -145,6 +145,15 @@ pub struct AtMostMergeBranch {
     pub cardinality: Cint64,
     /// The at-most concept descriptor (the clash anchor for the re-check).
     pub con_des: super::super::process::ConDescId,
+    /// The branching-merging restriction (`branchingMergingProcRest`) the
+    /// at-most fired with — `NONE` on the legacy (re-gather-per-fire) path.
+    /// When set, the u02 advance handlers re-enter the REST-driven spine so
+    /// the bound re-check resumes from the persistent candidate lists instead
+    /// of re-scanning every link (`KM_HT_ATMOST_REST`). Rollback of the rest's
+    /// state at this branch point is the epoch journal's job
+    /// (`restriction_spec_mut` is journal-routed and merge/qualify branch
+    /// points always own an epoch).
+    pub rest: super::super::process::RestrictionSpecId,
 }
 
 /// What the alternatives of an `OrBranchPoint` DO: add a disjunct (the OR rule),
@@ -385,6 +394,13 @@ pub struct CompletionTaskHandleAlgorithm {
     pub conf_semantic_branching: bool,
     pub conf_atomic_semantic_branching: bool,
     pub conf_branch_triggering: bool,
+    /// `KM_HT_ATMOST_REST`: route `applyATMOSTRule` through the ported
+    /// `branchingMergingProcRest` resume machinery (incremental successor
+    /// scan + persistent qualify/merge candidate lists + the distinct-clique
+    /// initialization clash) instead of the legacy re-gather-per-fire spine.
+    /// Konclude runs this unconditionally; the port gates it for A/B until
+    /// the corpus panel validates it, then it becomes the default.
+    pub conf_atmost_rest: bool,
     pub conf_strict_indi_node_processing: bool,
     pub conf_id_indi_priorization: bool,
     pub conf_propagate_node_processed: bool,
@@ -937,6 +953,7 @@ impl CompletionTaskHandleAlgorithm {
             conf_semantic_branching: false,
             conf_atomic_semantic_branching: false,
             conf_branch_triggering: false,
+            conf_atmost_rest: std::env::var_os("KM_HT_ATMOST_REST").is_some(),
             conf_strict_indi_node_processing: false,
             conf_id_indi_priorization: false,
             conf_propagate_node_processed: false,

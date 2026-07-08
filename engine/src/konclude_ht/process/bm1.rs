@@ -44,7 +44,11 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
         prev_rest: Option<&Self>,
     ) -> &mut Self {
         self.init_processing_restriction(prev_rest);
+        // subclass discriminant (see `is_branching_merging` in satellites.rs):
+        // a record initialised through here may be resumed by `applyATMOSTRule`.
+        self.is_branching_merging = true;
         if let Some(prev_rest) = prev_rest {
+            self.scan_edge_watermark = prev_rest.scan_edge_watermark;
             self.distinct_merged_nodes_set = None;
             self.last_distinct_merged_nodes_set = None;
             if let Some(prev_last) = &prev_rest.last_distinct_merged_nodes_set {
@@ -103,6 +107,7 @@ impl super::satellites::BranchingMergingProcessingRestrictionSpecification {
             self.merging_dependency_node = super::DependencyId::NONE;
             self.init_merging_nodes_clashes = super::ClashDescId::NONE;
             self.multiple_init_merging_nodes_clashes = super::ClashDescId::NONE;
+            self.scan_edge_watermark = 0;
         }
         self
     }
