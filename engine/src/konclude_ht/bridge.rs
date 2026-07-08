@@ -1890,6 +1890,43 @@ mod tests {
         );
     }
 
+    /// ddmin-minimal ore_ont_12653 wrong-root-cancel oracle (the leftover
+    /// poisoning defect): under an Or on a successor node, alternative 1
+    /// fires the node's own ≥2-expansion (creates successor nodes), so the
+    /// advance cannot restore the single-node label snapshot — alt-1's
+    /// disjunct SURVIVES into alternative 2's world. Alt-2's ⊥-derivation
+    /// then carries connection dependencies to BOTH alternatives' track
+    /// points, the u29 all-siblings-refuted propagation reads the decision
+    /// as fully refuted with root-level externals only, and ROOT-CANCELS ⇒
+    /// spurious AlternativePath ⊑ PathOfLength2 (a Path with three elements
+    /// is a countermodel). Fixed by gating the u29 analysis — not just the
+    /// DDB stack walk — on `unrestored_advance_count == 0` (u02). Passes in
+    /// plain mode by construction; the KM_HT_DDB=1 matrix leg is the
+    /// regression proof.
+    #[test]
+    fn unrestored_advance_leftover_no_root_cancel() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:AlternativePath)) Declaration(Class(:Path))\n\
+             Declaration(Class(:MainPath)) Declaration(Class(:PathElement))\n\
+             Declaration(Class(:PathOfLength2))\n\
+             Declaration(ObjectProperty(:hasPathElement))\n\
+             SubClassOf(:AlternativePath :Path)\n\
+             EquivalentClasses(:MainPath ObjectIntersectionOf(\
+             ObjectComplementOf(:AlternativePath) :Path))\n\
+             SubClassOf(:Path ObjectMinCardinality(2 :hasPathElement :PathElement))\n\
+             DisjointClasses(:Path :PathElement)\n\
+             EquivalentClasses(:PathOfLength2 ObjectExactCardinality(2 :hasPathElement :PathElement))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        assert!(
+            !env.subsumes("AlternativePath", "PathOfLength2"),
+            "AlternativePath ⊑ PathOfLength2 must NOT hold (3-element Path \
+             countermodel) — a spurious UNSAT here means the u29 analysis ran \
+             on leftover-poisoned state after an unrestored advance"
+        );
+    }
+
     #[test]
     fn bridge_disjunction_by_cases() {
         // A ⊑ B ⊔ C, B ⊑ D, C ⊑ D ⇒ A ⊑ D — exercises the OR rule + the

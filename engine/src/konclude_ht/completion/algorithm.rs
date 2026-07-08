@@ -790,6 +790,12 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: clash-closure dumps emitted so far (first few
     /// analyses under KM_BRIDGE_PROGRESS).
     pub ddb_analysis_dumps: u64,
+    /// KM_BRIDGE_DUMP_CLASH: line budget for the per-walk DDB-DISCARD-LIVE
+    /// dump (task #12 — which live alternatives the mark-driven walk drops).
+    pub ddb_discard_dump_lines: u64,
+    /// KM_BRIDGE_DUMP_DEP_CHAIN: how many live-discarding walks already got
+    /// a driving-clash dependency-chain dump.
+    pub ddb_walk_chain_dumps: u64,
 }
 
 impl CompletionTaskHandleAlgorithm {
@@ -1196,6 +1202,8 @@ impl CompletionTaskHandleAlgorithm {
             ddb_fallback_count: 0,
             ddb_mark_count: 0,
             ddb_analysis_dumps: 0,
+            ddb_discard_dump_lines: 0,
+            ddb_walk_chain_dumps: 0,
             unrestored_advance_count: 0,
         }
     }

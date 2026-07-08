@@ -224,12 +224,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         let m = format!("clash {}", parts.join(" "));
                         self.ht_search_log(&m);
                     }
-                    if self.conf_dependency_backjumping {
+                    if self.conf_dependency_backjumping
+                        && self.unrestored_advance_count == 0
+                    {
                         // Dependency-directed backjumping: run the ported
                         // `clashedBacktracking` (u29) — it walks the clash's
                         // dependency closure and marks the responsible
                         // non-deterministic track points clashed (propagating
                         // through decisions whose every sibling is clashed).
+                        //
+                        // LEFTOVER POISONING GUARD: once ANY advance skipped
+                        // its snapshot restore (`unrestored_advance_count`),
+                        // labels can carry a failed alternative's leftovers
+                        // whose descriptors reference STALE alternative track
+                        // points. The u29 ANALYSIS itself — not just the stack
+                        // walk — is then unsound: a later clash's dependency
+                        // closure can carry BOTH alternatives of one decision
+                        // (the leftover's tp plus the live alternative's tp),
+                        // the all-siblings-refuted propagation reads that as a
+                        // fully refuted decision, and the collected closure
+                        // degenerates to root-level facts ⇒ wrong ROOT-CANCEL
+                        // (measured: ore_ont_12653 ddmin 5-axiom oracle,
+                        // AlternativePath ⊑ PathOfLength2 — alt-1's disjunct
+                        // survived an unrestored advance after the alternative
+                        // created successor nodes; alt-2's ⊥-chain then held
+                        // connections to tp#54 AND tp#55 of the same Or).
+                        // Konclude cannot reach this state (branch tasks fork
+                        // the complete graph), so the faithful in-process
+                        // continuation is the validated plain chronological
+                        // backtracking. COW epochs (`KM_HT_COW`) restore
+                        // completely and never trip this guard.
                         self.clashed_backtracking(clash, calc_alg_context);
                         if self.ddb_root_cancelled {
                             // The clash traced to branching level 0: independent
@@ -237,7 +261,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             self.ht_dump_final_clash(clash, "ddb-root-cancel", calc_alg_context);
                             return false;
                         }
-                        if self.try_backtrack_or_branch_ddb(calc_alg_context) {
+                        if self.try_backtrack_or_branch_ddb(clash, calc_alg_context) {
                             continue;
                         }
                         self.ht_dump_final_clash(clash, "ddb-exhausted", calc_alg_context);
@@ -403,6 +427,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// skip, which is justified per-clash by the level-ordering argument).
     fn try_backtrack_or_branch_ddb(
         &mut self,
+        clash: super::super::process::ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // Leftover guard: once ANY advance skipped its snapshot restore the
@@ -483,7 +508,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if self.or_branch_stack.is_empty() {
                     return false;
                 }
-                return self.try_backtrack_or_branch_ddb(calc_alg_context);
+                return self.try_backtrack_or_branch_ddb(clash, calc_alg_context);
             }
             // default: chronological fallback (sound; thrashy on stale marks).
             self.ddb_fallback_count += 1;
@@ -491,6 +516,110 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         };
         self.ddb_jump_count += 1;
         self.ddb_jump_pop_total += (self.or_branch_stack.len() - 1 - target) as u64;
+        // KM_BRIDGE_DUMP_CLASH: record every branch point this backjump is
+        // about to discard while it STILL has unexplored alternatives (task
+        // #12). Sound backjumping needs the driving clash to be independent
+        // of those choices; the discarded-with-remaining branch point whose
+        // choice the (wrong) verdict-deciding closure should have depended on
+        // fingers the rule path that under-tracked its premises.
+        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
+            && self.ddb_discard_dump_lines < 4000
+        {
+            let clash_line = {
+                let pc = calc_alg_context.process_context();
+                let onto = calc_alg_context.ontology_arenas();
+                let mut parts: Vec<String> = Vec::new();
+                let mut it = clash;
+                let mut n = 0;
+                while it.is_some() && n < 3 {
+                    let cd = pc.clash_desc(it);
+                    if let super::super::process::descriptor::ClashDescriptorKind::Concept {
+                        concept_descriptor,
+                        individual_node,
+                    } = cd.kind
+                    {
+                        if concept_descriptor.is_some() {
+                            let des = pc.con_desc(concept_descriptor);
+                            let tag = onto.concept(des.get_concept()).get_concept_tag();
+                            let nid = if individual_node.is_some() {
+                                pc.node(individual_node).individual_node_id()
+                            } else {
+                                -1
+                            };
+                            parts.push(format!(
+                                "{}{}@n{}",
+                                if des.is_negated() { "¬" } else { "" },
+                                tag,
+                                nid
+                            ));
+                        }
+                    }
+                    it = cd.next;
+                    n += 1;
+                }
+                parts.join(" ")
+            };
+            let mut printed_live = false;
+            for i in (target + 1)..self.or_branch_stack.len() {
+                if self.ddb_discard_dump_lines >= 4000 {
+                    break;
+                }
+                let (has_remaining, cur_tp, kind, node, next_alt, alts) = {
+                    let bp = &self.or_branch_stack[i];
+                    (
+                        bp.next_alt < bp.alternatives_len(),
+                        bp.alt_track_points
+                            .get(bp.next_alt.wrapping_sub(1))
+                            .copied()
+                            .unwrap_or(TrackPointId::NONE),
+                        match &bp.kind {
+                            BranchKind::Disjunction => "or",
+                            BranchKind::AtMostMerge(_) => "merge",
+                            BranchKind::AtMostQualify { .. } => "choose",
+                        },
+                        bp.node.index(),
+                        bp.next_alt,
+                        bp.alternatives_len(),
+                    )
+                };
+                if !has_remaining {
+                    continue;
+                }
+                let marked = cur_tp.is_some()
+                    && calc_alg_context
+                        .process_context()
+                        .track_point(cur_tp)
+                        .is_clashed_or_irelevant_branch();
+                self.ddb_discard_dump_lines += 1;
+                printed_live = true;
+                eprintln!(
+                    "DDB-DISCARD-LIVE walk#{} bp[{}/{}→{}] {} node={} alt={}/{} cur_tp={:?} marked={} clash: {}",
+                    self.ddb_jump_count,
+                    i,
+                    self.or_branch_stack.len(),
+                    target,
+                    kind,
+                    node,
+                    next_alt,
+                    alts,
+                    cur_tp,
+                    marked,
+                    clash_line
+                );
+            }
+            // For the first few live-discarding walks additionally dump the
+            // driving clash's dependency chains: if the discarded decisions'
+            // cur_tp indices are unreachable from the clash, the rule that
+            // derived the clashing concept lost the taint.
+            if printed_live
+                && self.ddb_walk_chain_dumps < 6
+                && std::env::var_os("KM_BRIDGE_DUMP_DEP_CHAIN").is_some()
+            {
+                self.ddb_walk_chain_dumps += 1;
+                eprintln!("DEP-CHAIN for walk#{}:", self.ddb_jump_count);
+                self.ht_dump_dep_chains(clash, calc_alg_context);
+            }
+        }
         // The backjump: discard everything above the target. Unmarked branch
         // points there are not in the clash's dependency closure (the tracked
         // line analyses the deepest branching level first), so the clash
@@ -1166,61 +1295,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // loss (a branch-dependent derivation whose chain bottoms out at tag 0
         // without passing a non-deterministic node) is visible directly.
         if std::env::var_os("KM_BRIDGE_DUMP_DEP_CHAIN").is_some() {
-            let mut it2 = clash;
-            let mut n2 = 0;
-            while it2.is_some() && n2 < 4 {
-                let (des_tp, kind_str) = {
-                    let cd = ctx.clash_desc(it2);
-                    match cd.kind {
-                        super::super::process::descriptor::ClashDescriptorKind::Concept {
-                            concept_descriptor,
-                            ..
-                        } if concept_descriptor.is_some() => (
-                            ctx.con_desc(concept_descriptor).get_dependency_track_point(),
-                            "concept",
-                        ),
-                        _ => (cd.dep_track_point, "other"),
-                    }
-                };
-                eprintln!("DEP-CHAIN[{n2}] ({kind_str}):");
-                let mut stack: Vec<(TrackPointId, usize)> = vec![(des_tp, 1)];
-                let mut seen: std::collections::HashSet<usize> = Default::default();
-                let mut lines = 0;
-                while let Some((t, d)) = stack.pop() {
-                    if t.is_none() || lines > 48 || d > 14 {
-                        continue;
-                    }
-                    if !seen.insert(t.index()) {
-                        continue;
-                    }
-                    lines += 1;
-                    let tpr = ctx.track_point(t);
-                    let dn = tpr.dependency_node();
-                    if dn.is_none() {
-                        eprintln!("{:indent$}tp#{} tag={} (BASE)", "", t.index(), tpr.process_tag, indent = d * 2);
-                        continue;
-                    }
-                    let node = ctx.dep_node(dn);
-                    let base = node.base();
-                    eprintln!(
-                        "{:indent$}tp#{} tag={} node={:?} nondet={}",
-                        "",
-                        t.index(),
-                        tpr.process_tag,
-                        node.kind(),
-                        node.kind().is_non_deterministic(),
-                        indent = d * 2
-                    );
-                    stack.push((base.dep_track_point, d + 1));
-                    let mut al = base.additional_after;
-                    while al.is_some() {
-                        stack.push((ctx.dep_link(al).dep_track_point, d + 1));
-                        al = ctx.dep_link(al).next;
-                    }
+            self.ht_dump_dep_chains(clash, calc_alg_context);
+        }
+    }
+
+    /// KM_BRIDGE_DUMP_DEP_CHAIN body: walk each clash descriptor's dependency
+    /// graph (tp → dep node → prev/additional tps). Shared by the final-clash
+    /// dump and the per-walk DDB-DISCARD-LIVE dump — for a walk that discards
+    /// live branch points, the chain shows whether the discarded decisions'
+    /// non-deterministic track points are reachable from the clash at all
+    /// (absent ⇒ the rule that derived the clashing concept lost the taint).
+    fn ht_dump_dep_chains(
+        &mut self,
+        clash: super::super::process::ClashDescId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let ctx = calc_alg_context.process_context();
+        let mut it2 = clash;
+        let mut n2 = 0;
+        while it2.is_some() && n2 < 4 {
+            let (des_tp, kind_str) = {
+                let cd = ctx.clash_desc(it2);
+                match cd.kind {
+                    super::super::process::descriptor::ClashDescriptorKind::Concept {
+                        concept_descriptor,
+                        ..
+                    } if concept_descriptor.is_some() => (
+                        ctx.con_desc(concept_descriptor).get_dependency_track_point(),
+                        "concept",
+                    ),
+                    _ => (cd.dep_track_point, "other"),
                 }
-                it2 = ctx.clash_desc(it2).next;
-                n2 += 1;
+            };
+            eprintln!("DEP-CHAIN[{n2}] ({kind_str}):");
+            let mut stack: Vec<(TrackPointId, usize)> = vec![(des_tp, 1)];
+            let mut seen: std::collections::HashSet<usize> = Default::default();
+            let mut lines = 0;
+            while let Some((t, d)) = stack.pop() {
+                if lines > 64 || d > 14 {
+                    continue;
+                }
+                if t.is_none() {
+                    // A NONE child edge — for a Connection this means the
+                    // trigger's descriptor carried NO dependency track point
+                    // at fire time (the taint-loss signature).
+                    lines += 1;
+                    eprintln!("{:indent$}(NONE prev)", "", indent = d * 2);
+                    continue;
+                }
+                if !seen.insert(t.index()) {
+                    lines += 1;
+                    eprintln!("{:indent$}(dup tp#{})", "", t.index(), indent = d * 2);
+                    continue;
+                }
+                lines += 1;
+                let tpr = ctx.track_point(t);
+                let dn = tpr.dependency_node();
+                if dn.is_none() {
+                    eprintln!("{:indent$}tp#{} tag={} (BASE)", "", t.index(), tpr.process_tag, indent = d * 2);
+                    continue;
+                }
+                let node = ctx.dep_node(dn);
+                let base = node.base();
+                eprintln!(
+                    "{:indent$}tp#{} tag={} node={:?} nondet={}",
+                    "",
+                    t.index(),
+                    tpr.process_tag,
+                    node.kind(),
+                    node.kind().is_non_deterministic(),
+                    indent = d * 2
+                );
+                stack.push((base.dep_track_point, d + 1));
+                let mut al = base.additional_after;
+                while al.is_some() {
+                    stack.push((ctx.dep_link(al).dep_track_point, d + 1));
+                    al = ctx.dep_link(al).next;
+                }
             }
+            it2 = ctx.clash_desc(it2).next;
+            n2 += 1;
         }
     }
 
