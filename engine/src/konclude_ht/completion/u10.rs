@@ -85,7 +85,9 @@ use super::super::process::reapply_sat::{
 use super::super::process::rs1::ReapplyQueueIterator;
 use super::super::process::satellites::BranchingMergingProcessingRestrictionSpecification;
 use super::super::process::stubs::ConceptProcessingQueueId;
-use super::super::process::{ConDescId, EdgeId, LabelSetId, NodeId, TrackPointId};
+use super::super::process::{
+    ConDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+};
 use super::context::CalculationAlgorithmContextBase;
 
 /// KONCLUDE-PORT-NOTE[api]: `CProcessingRestrictionSpecification*` is not yet
@@ -741,7 +743,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if reapply_concept_des.is_none() {
                 continue;
             }
-            let (con_des, dep_track_point, proc_rest, is_static_descriptor) = {
+            let (con_des, dep_track_point, proc_rest, is_static_descriptor, extended) = {
                 let reapply_concept_des_ref = calc_alg_context
                     .process_context()
                     .cond_reapply_con_desc(reapply_concept_des);
@@ -750,8 +752,60 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     reapply_concept_des_ref.get_dependency_track_point(),
                     reapply_concept_des_ref.get_reapply_processing_restriction(),
                     reapply_concept_des_ref.is_static_descriptor(),
+                    reapply_concept_des_ref.extended,
                 )
             };
+            if extended {
+                // `applyExtendedReapplyConceptDescriptor` (cpp 26492), ATMOST
+                // reactivation: a missing qualifier operand just landed on
+                // THIS node (an at-most candidate that was undecided when the
+                // ≤n fired). Hand the candidate back to the rest's
+                // both-qualify list — the resumed spine re-classifies it —
+                // and re-queue the ≤n on the counted parent.
+                let (parent, link) = {
+                    let d = calc_alg_context
+                        .process_context()
+                        .cond_reapply_con_desc(reapply_concept_des);
+                    (d.atmost_reactivation_node, d.atmost_reactivation_link)
+                };
+                let parent_dead = {
+                    let n = calc_alg_context.process_context().node(parent);
+                    n.has_merged_into_individual_node_id()
+                        || n.has_purged_blocked_processing_restriction_flags()
+                };
+                if !parent_dead {
+                    if proc_rest != INVALID {
+                        let rest_id = RestrictionSpecId::new(proc_rest);
+                        let linker = {
+                            let mut l = super::super::process::stubs::BranchingMergingIndividualNodeCandidateLinker::new();
+                            l.init_branching_merging_individual_node_candidate(process_indi, link);
+                            calc_alg_context
+                                .process_context_mut()
+                                .alloc_branching_merging_candidate_linker(l)
+                        };
+                        self.ht_with_atmost_rest(rest_id, calc_alg_context, |_alg, rest, ctx| {
+                            rest.add_both_qualify_candidate_node_linker(
+                                linker,
+                                ctx.process_context_mut(),
+                            );
+                        });
+                    }
+                    let parent_queue = calc_alg_context
+                        .process_context_mut()
+                        .node_concept_processing_queue(parent, true);
+                    self.add_concept_restricted_to_processing_queue(
+                        con_des,
+                        dep_track_point,
+                        parent_queue,
+                        parent,
+                        true,
+                        proc_rest,
+                        calc_alg_context,
+                    );
+                    self.add_individual_to_processing_queue(parent, calc_alg_context);
+                }
+                continue;
+            }
             if !con_pro_queue_set {
                 con_pro_queue = calc_alg_context
                     .process_context_mut()

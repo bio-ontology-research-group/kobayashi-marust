@@ -23724,6 +23724,87 @@ fn atmost_rest_choose_qualifies_undecided() {
     );
 }
 
+/// The choose-trigger REACTIVATION end-to-end: `≥2 R.C ⊓ ≤1 R.D` defers the
+/// undecided successors (atomic qualifier D → hooks, no eager branch); a
+/// LATER `∀R.D` pushes D onto both successors, the hooks fire, the ≤1 R.D
+/// re-queues on the root, sees two counted forced-distinct D-successors and
+/// CLASHES ⇒ INCONSISTENT.
+#[test]
+fn atmost_rest_trigger_reactivation_clashes() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_atmost_rest = true;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1656);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_d = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1657);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2659);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atmost_1_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2660);
+        c.set_operator_code(op::CCATMOST);
+        c.set_role(role_r);
+        c.set_parameter(1);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let all_rd = {
+        let mut c = Concept::new();
+        c.set_concept_tag(2661);
+        c.set_operator_code(op::CCALL);
+        c.set_role(role_r);
+        c.add_operand_linker(con_d, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let root = env.root;
+    // run 1: two distinct C-successors, ≤1 R.D defers (both undecided for D).
+    seed_concept_on_queue(&mut env, root, atleast_2_rc);
+    seed_concept_on_queue(&mut env, root, atmost_1_rd);
+    seed_root_immediate(&mut env, root);
+    assert!(
+        env.algo.run_completion_on(&mut env.ctx),
+        "≥2 R.C ⊓ ≤1 R.D is consistent (deferred choose)"
+    );
+    assert_eq!(role_successors(&env, root, role_r).len(), 2);
+
+    // run 2: ∀R.D lands D on both successors → reactivation hooks fire →
+    // ≤1 R.D re-fires and the two forced-distinct D-successors clash.
+    seed_concept_on_queue(&mut env, root, all_rd);
+    seed_root_immediate(&mut env, root);
+    let consistent = env.algo.run_completion_on(&mut env.ctx);
+    assert!(
+        !consistent,
+        "∀R.D must reactivate the deferred ≤1 R.D and refute (two distinct D-successors)"
+    );
+    match env.ctx.pending_signal() {
+        CalcSignal::Clash(_) => {}
+        other => panic!("expected a Clash signal, got {:?}", other),
+    }
+}
+
 // ===========================================================================
 // W15-rbox: the SHIQ RBox-side propagation that ∀/∃ depend on — role HIERARCHY
 // (`R ⊑ S`), INVERSE roles (`R⁻`), and TRANSITIVE roles (`Trans(R)`). Resolved by

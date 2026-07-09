@@ -984,12 +984,20 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
         }
     }
     // KM_HT_COW (opt-in, composable with KM_HT_DDB): complete-state restore
-    // per alternative via arena journals + databox snapshots. Measured cost:
-    // the uniform first-touch journal re-clones the alternative's touched
-    // slot set on EVERY backtrack cycle — 12653 DDB classify 0.9s → 260s —
-    // so this is NOT coupled to DDB. It targets flat-graph deep-backtracking
-    // onts (the 541 family); the path to defaulting it on is per-node
-    // localization (Konclude's task-fork shape), not uniform journaling.
+    // per alternative via arena journals. The per-node localization landed
+    // 2026-07-09: the heavy per-node satellites (label sets, processing
+    // queues) are Arc-COW in the process context — a journal save is an O(1)
+    // Arc clone and the deep copy happens only for objects the alternative
+    // actually writes (Konclude's task-fork copy-on-first-write shape). That
+    // removed the uniform-journal whale (12653 DDB classify 0.9s → 260s was
+    // the old cost), but COW remains NON-default: measured 2026-07-09
+    // (cowddb-48445184), 12653's probes under COW and under COW+DDB both
+    // exceed 600s where plain DEFERS in 10s — with complete restores the
+    // search must genuinely explore the alternatives that plain-mode
+    // leftovers (unsoundly, hence the poison discipline) prune, so the
+    // residual gap is SEARCH VOLUME (clause learning / better ordering), not
+    // restore cost. Localizing the remaining map-bearing satellites
+    // (role-successor / distinct hashes) is the next constant-factor lever.
     if std::env::var_os("KM_HT_COW").is_some() {
         algo.conf_inprocess_cow = true;
     }

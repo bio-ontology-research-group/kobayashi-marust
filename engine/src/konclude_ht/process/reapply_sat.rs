@@ -1442,6 +1442,16 @@ pub struct CondensedReapplyConceptDescriptor {
     pub positive: bool,
     /// `CCondensedReapplyConceptDescriptor::mExtended`.
     pub extended: bool,
+    /// `CExtendedCondensedReapplyConceptDescriptorATMOSTReactivation` payload,
+    /// folded into the single arena record (live iff `extended`): the counted
+    /// PARENT node whose ≤n must re-fire when the trigger concept lands. The
+    /// at-most's own `ConDescId` rides in `data` and its branching-merging
+    /// rest in `processing_restriction`.
+    pub atmost_reactivation_node: super::NodeId,
+    /// The parent→successor link of the (now partially qualified) candidate —
+    /// `CExtendedCondensedReapplyConceptDescriptorATMOSTReactivation`'s
+    /// `mIndividualLink`.
+    pub atmost_reactivation_link: super::EdgeId,
 }
 
 impl Default for CondensedReapplyConceptDescriptor {
@@ -1456,6 +1466,8 @@ impl Default for CondensedReapplyConceptDescriptor {
             processing_restriction: INVALID,
             positive: true,
             extended: false,
+            atmost_reactivation_node: Id::NONE,
+            atmost_reactivation_link: Id::NONE,
         }
     }
 }
@@ -1475,7 +1487,39 @@ impl CondensedReapplyConceptDescriptor {
             processing_restriction: INVALID,
             positive: is_positive_des,
             extended: false,
+            atmost_reactivation_node: Id::NONE,
+            atmost_reactivation_link: Id::NONE,
         }
+    }
+
+    /// Port of `CExtendedCondensedReapplyConceptDescriptorATMOSTReactivation::
+    /// initAtmostExtendedReapllyDescriptor(conDes, depTrackPoint, positive,
+    /// branchingMergingProcRest, processIndi, link)` — the choose-trigger
+    /// reactivation hook: installed on an UNDECIDED successor keyed by a
+    /// missing qualifier operand; when that operand lands in the successor's
+    /// label, the fire path re-queues the at-most on the counted parent and
+    /// hands the successor back to the rest's both-qualify list. STATIC so an
+    /// in-place backtrack cannot permanently disarm it (a consumed hook is
+    /// unrestorable in plain mode — same argument as the rest-carrying role
+    /// reapply descriptor).
+    pub fn init_atmost_extended_reapply_descriptor(
+        &mut self,
+        atmost_con_des: ConDescId,
+        dep_track_point: TrackPointId,
+        positive: bool,
+        proc_rest: Cint64,
+        parent: super::NodeId,
+        link: super::EdgeId,
+    ) -> &mut Self {
+        self.data = atmost_con_des;
+        self.track_point = dep_track_point;
+        self.positive = positive;
+        self.static_descriptor = true;
+        self.processing_restriction = proc_rest;
+        self.extended = true;
+        self.atmost_reactivation_node = parent;
+        self.atmost_reactivation_link = link;
+        self
     }
 
     /// Port of `getNext`.

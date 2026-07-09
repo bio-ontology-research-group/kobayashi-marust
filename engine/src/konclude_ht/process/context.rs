@@ -49,7 +49,7 @@
 
 use std::collections::HashMap;
 
-use super::super::model::substrate::{Arena, Cint64, NegLink, INVALID};
+use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 
 use super::analized_concept_expansion::{
@@ -353,7 +353,18 @@ pub struct ProcessContext {
 
     // --- the satellites ---
     /// `CReapplyConceptLabelSet` pool.
-    label_sets: Arena<ReapplyConceptLabelSet>,
+    // KONCLUDE-PORT-NOTE[cow]: the two HEAVY per-node satellites (concept
+    // label set + concept processing queue) are Arc-wrapped — the per-node
+    // COW localization of Konclude's task-fork shape. A branch-epoch journal
+    // save is then an O(1) Arc clone; the deep copy happens only when an
+    // alternative actually WRITES the shared object (`Arc::make_mut` in the
+    // `label_set_mut`/`concept_proc_queue_mut` accessors — Konclude's
+    // `getLocalizedIndividual` copy-on-first-write, one deep copy per
+    // (object, alternative-that-mutates-it)). Untouched-but-journaled slots
+    // never deep-copy; this is what makes own-epoch OR branch points
+    // affordable (measured before: uniform journaling re-cloned the touched
+    // set every backtrack cycle — 12653 classify 0.9s -> 260s).
+    label_sets: Arena<std::sync::Arc<ReapplyConceptLabelSet>>,
     /// `CCoreConceptDescriptor` pool.
     core_con_descs: Arena<CoreConceptDescriptor>,
     /// `CReapplyRoleSuccessorHash` pool.
@@ -659,7 +670,8 @@ pub struct ProcessContext {
     /// `CIndividualReactivationProcessingQueue` pool.
     indi_reactivation_proc_queues: Arena<IndividualReactivationProcessingQueue>,
     /// `CConceptProcessingQueue` pool (per-node concept-descriptor queue).
-    concept_proc_queues: Arena<ConceptProcessingQueue>,
+    // Arc-COW like `label_sets` (see the KONCLUDE-PORT-NOTE[cow] there).
+    concept_proc_queues: Arena<std::sync::Arc<ConceptProcessingQueue>>,
 
     // --- the opaque CProcessContext handles (filled when those subsystems land) ---
     /// `CProcessMemoryPoolAllocationManager* mUsedMemMan`.
@@ -914,14 +926,30 @@ impl ProcessContext {
         indi_reactivation_proc_queue_mut,
         alloc_indi_reactivation_proc_queue
     );
-    arena_accessors!(
-        concept_proc_queues,
-        ConceptProcessingQueue,
-        ConceptProcessingQueueId,
-        concept_proc_queue,
-        concept_proc_queue_mut,
-        alloc_concept_proc_queue
-    );
+    // Hand-written Arc-COW accessors — see `label_set*` / the
+    // KONCLUDE-PORT-NOTE[cow] on the `label_sets` field.
+    /// Resolve an id to a shared borrow (the `obj->` read path). Raw-index
+    /// rebuild: the id stays phantom-typed by the inner type (see `label_set`).
+    #[inline]
+    pub fn concept_proc_queue(&self, id: ConceptProcessingQueueId) -> &ConceptProcessingQueue {
+        self.concept_proc_queues.get(Id::new(id.raw)).as_ref()
+    }
+    /// Resolve an id to a mutable borrow — copy-on-write when shared.
+    #[inline]
+    pub fn concept_proc_queue_mut(
+        &mut self,
+        id: ConceptProcessingQueueId,
+    ) -> &mut ConceptProcessingQueue {
+        std::sync::Arc::make_mut(self.concept_proc_queues.get_mut_journaled(Id::new(id.raw)))
+    }
+    /// Pool-allocate a new concept processing queue, returning its stable id.
+    #[inline]
+    pub fn alloc_concept_proc_queue(
+        &mut self,
+        v: ConceptProcessingQueue,
+    ) -> ConceptProcessingQueueId {
+        Id::new(self.concept_proc_queues.push(std::sync::Arc::new(v)).raw)
+    }
     arena_accessors!(
         branching_merging_candidate_linkers,
         BranchingMergingIndividualNodeCandidateLinker,
@@ -1781,14 +1809,27 @@ impl ProcessContext {
         branch_instr_mut,
         alloc_branch_instr
     );
-    arena_accessors!(
-        label_sets,
-        ReapplyConceptLabelSet,
-        LabelSetId,
-        label_set,
-        label_set_mut,
-        alloc_label_set
-    );
+    // Hand-written Arc-COW accessors (see the KONCLUDE-PORT-NOTE[cow] on the
+    // field): same signatures the macro would generate, so no call-site
+    // changes — the read path derefs the Arc, the mutate path journals the
+    // O(1) Arc clone and deep-copies only when the slot is shared.
+    /// Resolve an id to a shared borrow (the `obj->` read path).
+    /// (`LabelSetId` stays phantom-typed by the INNER type; the Arc wrapper is
+    /// an arena-internal representation detail, hence the raw-index rebuild.)
+    #[inline]
+    pub fn label_set(&self, id: LabelSetId) -> &ReapplyConceptLabelSet {
+        self.label_sets.get(Id::new(id.raw)).as_ref()
+    }
+    /// Resolve an id to a mutable borrow — copy-on-write when shared.
+    #[inline]
+    pub fn label_set_mut(&mut self, id: LabelSetId) -> &mut ReapplyConceptLabelSet {
+        std::sync::Arc::make_mut(self.label_sets.get_mut_journaled(Id::new(id.raw)))
+    }
+    /// Pool-allocate a new label set, returning its stable id.
+    #[inline]
+    pub fn alloc_label_set(&mut self, v: ReapplyConceptLabelSet) -> LabelSetId {
+        Id::new(self.label_sets.push(std::sync::Arc::new(v)).raw)
+    }
     arena_accessors!(
         core_con_descs,
         CoreConceptDescriptor,

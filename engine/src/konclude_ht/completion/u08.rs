@@ -2480,6 +2480,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                     Some(false) => {}
                     None => {
+                        // CHOOSE-TRIGGER deferral (Konclude's
+                        // installedChoiseTriggering, cpp 15933–15957): for an
+                        // ALL-ATOMIC qualifier the eager C-vs-¬C branch is
+                        // replaced by reactivation hooks on the missing
+                        // operands. Completeness is the read-off's own
+                        // argument: in a clash-free SATURATED graph an
+                        // underived atom is FALSE in the canonical model, so
+                        // the undecided successor simply never counts; if any
+                        // rule later derives a missing operand, the hook
+                        // re-queues the ≤n on the parent and the candidate
+                        // re-enters this loop. COMPLEX qualifiers keep the
+                        // eager choose branch (Konclude covers those via
+                        // absorption-computed triggers — PORT-PENDING).
+                        let all_atomic = concept_linker.iter().all(|nl| {
+                            let opc = calc_alg_context
+                                .ontology_arenas()
+                                .concept(nl.target)
+                                .get_operator_code();
+                            opc == op::CCATOM || opc == op::CCSUB
+                        });
+                        if all_atomic {
+                            self.ht_atmost_install_choose_triggers(
+                                *process_indi,
+                                cand,
+                                link,
+                                concept_linker,
+                                con_des,
+                                dep_track_point,
+                                rest_id,
+                                calc_alg_context,
+                            );
+                            continue;
+                        }
                         choose = Some((cand, link));
                         break;
                     }
@@ -2738,6 +2771,70 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             // loop: bound re-check on the merged graph (the merged-away
             // candidate drops out via the validity filter).
+        }
+    }
+
+    /// Install the ATMOST-reactivation hooks for one undecided successor —
+    /// the choose-trigger deferral's arming half (Konclude installs
+    /// `CExtendedCondensedReapplyConceptDescriptorATMOSTReactivation` on the
+    /// successor's concept reapply queue, cpp 15949–15957). One STATIC hook
+    /// per MISSING qualifier operand, keyed (tag, counted polarity): when the
+    /// operand lands, the condensed fire path (u10) hands the candidate back
+    /// to the rest's both-qualify list and re-queues the ≤n on `parent`.
+    /// Duplicate installs are cheap no-ops at fire time (the qualify loop
+    /// dedups candidates by node).
+    #[allow(clippy::too_many_arguments)]
+    fn ht_atmost_install_choose_triggers(
+        &mut self,
+        parent: NodeId,
+        succ: NodeId,
+        link: EdgeId,
+        concept_linker: &[NegLink<ConceptId>],
+        con_des: ConDescId,
+        dep_track_point: TrackPointId,
+        rest_id: RestrictionSpecId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let ls = calc_alg_context
+            .process_context()
+            .node(succ)
+            .use_reapply_con_label_set;
+        for nl in concept_linker {
+            let tag = calc_alg_context
+                .ontology_arenas()
+                .concept(nl.target)
+                .get_concept_tag();
+            // only the MISSING operands need hooks; present ones are decided.
+            if ls.is_some() {
+                let mut cd: ConDescId = Id::NONE;
+                let mut dtp: TrackPointId = TrackPointId::NONE;
+                if calc_alg_context
+                    .process_context()
+                    .label_set(ls)
+                    .get_concept_descriptor_by_tag(tag, &mut cd, &mut dtp)
+                {
+                    continue;
+                }
+            }
+            let mut desc = super::super::process::reapply_sat::CondensedReapplyConceptDescriptor::new(
+                con_des,
+                dep_track_point,
+                !nl.negated,
+            );
+            desc.init_atmost_extended_reapply_descriptor(
+                con_des,
+                dep_track_point,
+                !nl.negated,
+                rest_id.raw,
+                parent,
+                link,
+            );
+            let desc = calc_alg_context
+                .process_context_mut()
+                .alloc_cond_reapply_con_desc(desc);
+            calc_alg_context
+                .process_context_mut()
+                .node_add_concept_reapply_concept_descriptor_by_tag(succ, tag, nl.negated, desc);
         }
     }
 
