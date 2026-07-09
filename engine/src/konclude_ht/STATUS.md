@@ -2328,8 +2328,13 @@ ssh ws 'cd ~/km-frontend/kobayashi-marust/engine && cargo test --release konclud
    `getSortedClashedDescriptors`, plus the two Unit 22
    `writeClashDescriptorsToCache` overload wrappers that drain/restore tracking
    lines and prepend/remove additional descriptors, and the core overload's
-   descriptor validation/sort/cache-write gate up to the still-null unsat-cache
-   handler, plus `markRelevanceForTrackedClashedDescriptors` and the Unit 29
+   descriptor validation/sort/cache-write gate up to the unsat-cache
+   handler (LIVE since `1fc2618`: the bridge installs an
+   `OccurrenceUnsatisfiableCache` handler under `KM_HT_UNSATCACHE`, carries it
+   across probe resets, and probes it at the OR/SOME/ATLEAST/at-most/merge
+   rule points — Konclude's learned-nogood store, targeted at the
+   disjunction-family search volume), plus
+   `markRelevanceForTrackedClashedDescriptors` and the Unit 29
    `backtrackFromTrackingLine` / `backtrackFromTrackingLineStep` dispatcher over
    the live tracking-line buckets, plus Unit 29's ordinary deterministic
    descriptor re-derivation over previous dependency track points and additional
