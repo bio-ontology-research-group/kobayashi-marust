@@ -69,8 +69,12 @@ use super::satellites::{
 // `CCriticalConceptType` enum tags used by `addCriticalConceptDescriptor`.
 // File-local mirror of the (file-private) `CCT_*` copy in `s09.rs` — same C++
 // enum values; the canonical owner is the critical-concept unit (PU-SAT-9).
-const CCT_DISJUNCTION: Cint64 = 4;
-const CCT_EQCANDIDATE: Cint64 = 5;
+// Konclude's CRITICALSATURATIONCONCEPTQUEUETYPE (.h 68): FORALL=0, ATMOST=1,
+// DISJUNCTION=2, EQCANDIDATE=3, VALUE=4, NOMINAL=5. These MUST match s09 —
+// the old 4/5 values here silently routed every disjunction critical into the
+// always-defer VALUE stub queue (541 lost all its OR criticals to it).
+const CCT_DISJUNCTION: Cint64 = 2;
+const CCT_EQCANDIDATE: Cint64 = 3;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================

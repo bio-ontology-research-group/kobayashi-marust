@@ -2297,6 +2297,15 @@ pub fn bridged_saturate(tin: &TInput) -> Option<SaturationOutcome> {
         return None;
     }
     if std::env::var_os("KM_SAT_DEBUG").is_some() {
+        eprintln!(
+            "SAT-STATS: insufficient all={} atmost={} or={} eqcand={} value={} nominal={}",
+            sat_algo.insufficient_all_count,
+            sat_algo.insufficient_atmost_count,
+            sat_algo.insufficient_or_count,
+            sat_algo.insufficient_eqcand_count,
+            sat_algo.insufficient_value_count,
+            sat_algo.insufficient_nominal_count,
+        );
         debug_dump_saturation_nodes(&ctx);
     }
     Some(extract_saturation_outcome(&mut ctx, &bridged))

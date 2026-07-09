@@ -566,6 +566,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     indi_proc_sat_node,
                     calc_alg_context,
                 ) {
+                    self.insufficient_value_count += 1;
                     self.update_direct_adding_individual_status_flags(
                         *indi_proc_sat_node,
                         IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
@@ -603,6 +604,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     indi_proc_sat_node,
                     calc_alg_context,
                 ) {
+                    self.insufficient_nominal_count += 1;
                     self.update_direct_adding_individual_status_flags(
                         *indi_proc_sat_node,
                         IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
@@ -646,6 +648,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     // node). That fan-out is deferred; the dependent-walking update below
                     // marks the same depending set (transitively) INSUFFICIENT — a
                     // conservative superset that only skips the tested-pair dedup.
+                    self.insufficient_or_count += 1;
                     self.update_direct_adding_individual_status_flags(
                         *indi_proc_sat_node,
                         IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
@@ -674,6 +677,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     indi_proc_sat_node,
                     calc_alg_context,
                 ) {
+                    self.insufficient_eqcand_count += 1;
                     self.update_direct_not_dependent_adding_individual_status_flags(
                         *indi_proc_sat_node,
                         IndividualSaturationProcessNodeStatusFlags::INDSATFLAGEQCANDPROPLEMATIC,

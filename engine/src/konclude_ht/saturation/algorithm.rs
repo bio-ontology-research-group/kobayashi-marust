@@ -164,6 +164,12 @@ pub struct SaturationTaskHandleAlgorithm {
     // --- insufficiency counters (.h 588–589) ---
     pub insufficient_atmost_count: Cint64,
     pub insufficient_all_count: Cint64,
+    // KM diagnostic counters (no C++ analogue): per-type critical-deferral
+    // tallies surfaced through the KM_SAT_DEBUG stats line.
+    pub insufficient_or_count: Cint64,
+    pub insufficient_eqcand_count: Cint64,
+    pub insufficient_value_count: Cint64,
+    pub insufficient_nominal_count: Cint64,
 }
 
 impl SaturationTaskHandleAlgorithm {
@@ -268,6 +274,10 @@ impl SaturationTaskHandleAlgorithm {
 
             insufficient_atmost_count: 0,
             insufficient_all_count: 0,
+            insufficient_or_count: 0,
+            insufficient_eqcand_count: 0,
+            insufficient_value_count: 0,
+            insufficient_nominal_count: 0,
         }
     }
 

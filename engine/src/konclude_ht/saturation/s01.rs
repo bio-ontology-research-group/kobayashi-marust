@@ -277,6 +277,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
             self.insufficient_all_count = 0; // 280
             self.insufficient_atmost_count = 0; // 281
+            self.insufficient_or_count = 0;
+            self.insufficient_eqcand_count = 0;
+            self.insufficient_value_count = 0;
+            self.insufficient_nominal_count = 0;
 
             self.cached_completion_graph_loaded = false; // 284
             self.representative_data_loaded = false; // 285
