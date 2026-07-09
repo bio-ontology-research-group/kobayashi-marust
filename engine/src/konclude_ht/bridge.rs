@@ -1123,6 +1123,15 @@ pub fn bridged_unsat(
     // Probe seeds are BASE assertions — track them on the independent base
     // dependency (a NONE would read as an unported rule path downstream).
     let seed_tp = ctx.get_or_create_base_dependency_track_point();
+    // KONCLUDE-PORT-NOTE[root-top]: see `bridged_classify_subject` — every node
+    // carries ⊤ in Konclude; a bare root swallowed derived ⊥ (¬⊤ met no ⊤).
+    let top = ctx.processing_data_box().ontology_top_concept;
+    if top.is_some() {
+        algo.add_concept_to_individual(top, false, &mut root, seed_tp, false, true, ctx);
+        if ctx.has_pending_signal() {
+            return Some(true);
+        }
+    }
     for &(concept, negated) in seeds {
         algo.add_concept_to_individual(concept, negated, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
@@ -1586,6 +1595,21 @@ pub fn bridged_classify_subject(
 
     // The subject seed is a BASE assertion — independent base dependency.
     let seed_tp = ctx.get_or_create_base_dependency_track_point();
+    // KONCLUDE-PORT-NOTE[root-top]: Konclude's node initialization labels EVERY
+    // node with ⊤ (`create_new_individual` does it for successors); bridge roots
+    // were created bare, so the bottom rule's faithful ¬⊤ insert (u08) met no ⊤
+    // and a derived ⊥ on the ROOT was silently satisfiable — an under-detected
+    // unsat (found by the saturation-first oracle tests: A ⊑ B, A ⊓ B ⊑ ⊥ was
+    // classified SAT). Labeling the root with ⊤ arms the ⊤/¬⊤ clash pair and,
+    // via the CCTOP AND-unfold, delivers the top-attached GCIs exactly like the
+    // per-pass re-seed already did (idempotent).
+    let top = ctx.processing_data_box().ontology_top_concept;
+    if top.is_some() {
+        algo.add_concept_to_individual(top, false, &mut root, seed_tp, false, true, ctx);
+        if ctx.has_pending_signal() {
+            return Some(((0..n_named).collect(), true));
+        }
+    }
     algo.add_concept_to_individual(
         bridged.named[subject],
         false,
@@ -1838,6 +1862,478 @@ fn reset_probe_env(
 /// chronological while still paying full dependency building), so it is a
 /// net loss as a default until per-node COW localization lands.
 fn configure_production_search(_algo: &mut CompletionTaskHandleAlgorithm) {}
+
+// ---------------------------------------------------------------------------
+// Saturation-first probe answering (task #23).
+//
+// Konclude decides ~95% of its classification work by the cheap non-branching
+// approximation saturation and runs the backtracking tableau only on the
+// residue (docs/KONCLUDE-STUDY.md). This section wires the ported saturation
+// units (saturation/s01..s12) in front of the bridge's completion probes:
+// saturate ONCE per classification in a dedicated env, extract per-named
+// verdicts + certain subsumers, and let `bridged_classify` answer whole
+// subjects from them — every UNKNOWN falls through to the existing probe path
+// unchanged. Opt-in via KM_HT_SATURATION=1 (how to run it in production is a
+// separate decision; nothing in the default path changes).
+// ---------------------------------------------------------------------------
+
+/// Konclude's PRODUCTION saturation configuration: `readCalculationConfig`
+/// (CCalculationTableauApproximationSaturationTaskHandleAlgorithm cpp 180–237,
+/// config-present branch, non-EL structure path) with the config defaults from
+/// CReasonerConfigurationGroup.cpp 440–451 (SaturationCriticalConceptTesting =
+/// true, SaturationDirectCriticalToInsufficient = false,
+/// SaturationSuccessorExtension = true) plus the ctor defaults (cpp 130–170)
+/// for the fields readCalculationConfig leaves untouched.
+fn configure_production_saturation(
+    algo: &mut super::saturation::algorithm::SaturationTaskHandleAlgorithm,
+) {
+    algo.conf_force_all_concept_insertion = true; // cpp 191 (non-EL / ABox path)
+    algo.conf_implication_adding_skipping = false; // cpp 192
+    algo.conf_force_all_copy_instead_of_substituition = false; // cpp 185
+    algo.conf_directly_critical_to_insufficient = false; // cfg 444 default false
+    algo.conf_add_critical_concepts_to_queues = true; // cfg 440 default true
+    algo.conf_check_critical_concepts = true; // cfg 440 default true
+    algo.conf_concepts_extension_processing = true; // cfg 448 default true
+    algo.conf_all_concepts_extension_processing = true; // cpp 232
+    algo.conf_functional_concepts_extension_processing = true; // cpp 233
+    algo.conf_nominal_processing = true; // cfg 497 (inert: nominal-free fragment)
+    // ctor defaults (cpp 152–168):
+    algo.conf_copy_node_from_top_individual_for_many_concepts = true;
+    algo.conf_detailed_merging_test_for_atmost_critical_testing = true;
+    algo.conf_simple_merging_test_for_atmost_critical_testing = true;
+    algo.conf_delayed_merging_critical_atmost_concepts = true;
+    algo.conf_delayed_merging_critical_atmost_concepts_cardinality_size = 100;
+    algo.conf_resolve_operand_concept_size = 100;
+    algo.conf_referred_node_many_concept_count = 500;
+    algo.conf_many_concept_referred_node_count_process_limit = 2;
+    algo.conf_referred_node_concept_count_process_limit = 1500;
+    algo.conf_referred_node_unprocessed_count_process_limit = 1;
+    algo.conf_referred_node_checking_depth = 5;
+}
+
+/// Port of `CExtractPropagationIntoCreationDirectionPreProcess::preprocess`
+/// (Reasoner/Preprocess, cpp 39–105) over the bridged arenas: mark every
+/// ∀/∃-family concept whose role can also appear in successor-CREATION
+/// direction — the saturation ALL rule keys its criticality escape hatch on
+/// this flag (without it a `∃R.C ⊓ ∀R.¬C` node would complete SAT-certain).
+///
+/// KONCLUDE-PORT-NOTE[identity]: `creationRoleHash` is filled from the
+/// creation role's indirect super-role list, which in Konclude STARTS with the
+/// role itself; the bridge builds strict lists, so the role is inserted
+/// explicitly (see `saturation_indirect_super_roles`).
+/// KONCLUDE-PORT-NOTE[api]: the C++ also stamps
+/// `CRoleProcessData::setPropagationAndCreationConceptsFlag` — CRoleProcessData
+/// is unported; the single consumer (applyALLRule's else arm) treats absent
+/// role data exactly as flag-set (see the s04 port note).
+fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmContextBase) {
+    use super::model::concept_process::ConceptProcessData;
+    use super::model::op::{CCFS_ALL_AQALL_TYPE, CCFS_POSSIBLE_ROLE_CREATION_TYPE};
+    let n = ctx.ontology_arenas().concept_count();
+    let mut creation_roles: std::collections::HashSet<RoleId> = std::collections::HashSet::new();
+    for i in 0..n {
+        let cid = ConceptId::new(i);
+        let (is_creation, role) = {
+            let c = ctx.ontology_arenas().concept(cid);
+            (
+                c.get_concept_operator()
+                    .has_partial_operator_code_flag(CCFS_POSSIBLE_ROLE_CREATION_TYPE),
+                c.get_role(),
+            )
+        };
+        if is_creation && role.is_some() && !creation_roles.contains(&role) {
+            creation_roles.insert(role); // [identity]
+            let supers: Vec<super::model::substrate::NegLink<RoleId>> = ctx
+                .ontology_arenas()
+                .role(role)
+                .get_indirect_super_role_list()
+                .to_vec();
+            for s in supers {
+                if !s.negated {
+                    creation_roles.insert(s.target);
+                }
+            }
+        }
+    }
+    for i in 0..n {
+        let cid = ConceptId::new(i);
+        let (flagged, role, concept_data) = {
+            let c = ctx.ontology_arenas().concept(cid);
+            (
+                c.get_concept_operator().has_partial_operator_code_flag(
+                    CCFS_ALL_AQALL_TYPE | CCFS_POSSIBLE_ROLE_CREATION_TYPE,
+                ),
+                c.get_role(),
+                c.get_concept_data(),
+            )
+        };
+        if flagged && role.is_some() && creation_roles.contains(&role) {
+            let arenas = ctx.ontology_arenas_mut();
+            let con_proc_data = if concept_data == super::model::substrate::INVALID {
+                let fresh = arenas.alloc_concept_process_data(ConceptProcessData::new());
+                arenas.concept_mut(cid).set_concept_data(fresh.raw);
+                fresh
+            } else {
+                super::model::concept_process::ConceptProcessDataId::new(concept_data)
+            };
+            arenas
+                .concept_process_data_mut(con_proc_data)
+                .propagation_into_creation_direction = true;
+        }
+    }
+}
+
+/// Port of the CONSTRUCTION half of
+/// `CTotallyPrecomputationThread::createConceptSaturationProcessingJob`
+/// (Reasoner/Consistiser cpp 2022–2230) +
+/// `CSatisfiableCalculationTaskFromCalculationJobGenerator::createApproximatedSaturationCalculationTask`
+/// (Reasoner/Generator cpp 40–163): one saturation seed per (concept, polarity)
+/// item — ⊤ positive, every named class positive, and every ∃/∀/≥/≤ filler
+/// under its rule polarity — each getting a pre-built saturation node wired
+/// through the concept's saturation reference linking, registered in the
+/// databox node vector, and queued for processing.
+///
+/// KONCLUDE-PORT-NOTE[reduced]: two job-construction refinements are not (yet)
+/// ported, both PURE OPTIMIZATIONS of the special-reference machinery whose
+/// absence the initialization handles by the NONE-mode root path:
+/// the leaf-first ordering + SUBSTITUTE/COPY special-reference assignment
+/// (cpp 2129–2206), and the disjunct-candidate extension items
+/// (`extendDisjunctionsCandidateAlternativesItems`, cpp 1153–1268). Role-range
+/// successor items (cpp 2059–2074) are skipped because bridged roles carry no
+/// domain/range concept lists (domains/ranges arrive as clauses).
+fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
+    use super::model::concept_process::{
+        ConceptProcessData, ConceptSaturationReferenceLinkingData, SaturationConceptReferenceLinking,
+    };
+    use super::model::op::{CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCSOME};
+    use super::process::sat_node::IndividualSaturationProcessNode;
+    use super::process::sat_ref::ExtendedConceptReferenceLinkingData;
+
+    // --- collect the seed list (deterministic order, deduped) ---
+    let mut seeds: Vec<(ConceptId, bool)> = Vec::new();
+    let mut seen: std::collections::HashSet<(ConceptId, bool)> = std::collections::HashSet::new();
+    let mut push = |seeds: &mut Vec<(ConceptId, bool)>,
+                    seen: &mut std::collections::HashSet<(ConceptId, bool)>,
+                    c: ConceptId,
+                    neg: bool| {
+        if c.is_some() && seen.insert((c, neg)) {
+            seeds.push((c, neg));
+        }
+    };
+    let top = ctx.processing_data_box().ontology_top_concept;
+    push(&mut seeds, &mut seen, top, false);
+    for &named in &bridged.named {
+        push(&mut seeds, &mut seen, named, false);
+    }
+    let n = ctx.ontology_arenas().concept_count();
+    for i in 0..n {
+        let cid = ConceptId::new(i);
+        let (op_code, operands) = {
+            let c = ctx.ontology_arenas().concept(cid);
+            (c.get_operator_code(), c.get_operand_list().to_vec())
+        };
+        match op_code {
+            CCSOME | CCAQSOME | CCALL => {
+                // negation = (opCode == CCALL); operand negation = isNegated ^ negation
+                let negation = op_code == CCALL;
+                for op_link in &operands {
+                    push(
+                        &mut seeds,
+                        &mut seen,
+                        op_link.target,
+                        op_link.negated ^ negation,
+                    );
+                }
+                if operands.is_empty() {
+                    push(&mut seeds, &mut seen, top, false); // filler defaults to ⊤
+                }
+            }
+            CCATLEAST | CCATMOST => {
+                // ≥/≤: operand polarity as-is (cpp 2049–2054)
+                for op_link in &operands {
+                    push(&mut seeds, &mut seen, op_link.target, op_link.negated);
+                }
+                if operands.is_empty() {
+                    push(&mut seeds, &mut seen, top, false);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // --- build one node per seed (the generator's construction loop) ---
+    let mut next_indi_id: Cint64 = 1; // generator cpp 67: nextIndiID = max(1, …)
+    for (concept, negation) in seeds {
+        // Ensure the concept's process data + saturation reference-linking data.
+        let con_proc_data = {
+            let concept_data = ctx.ontology_arenas().concept(concept).get_concept_data();
+            if concept_data == super::model::substrate::INVALID {
+                let arenas = ctx.ontology_arenas_mut();
+                let fresh = arenas.alloc_concept_process_data(ConceptProcessData::new());
+                arenas.concept_mut(concept).set_concept_data(fresh.raw);
+                fresh
+            } else {
+                super::model::concept_process::ConceptProcessDataId::new(concept_data)
+            }
+        };
+        let mut ref_linking_data = ctx
+            .ontology_arenas()
+            .concept_process_data(con_proc_data)
+            .get_concept_reference_linking();
+        if ref_linking_data.is_none() {
+            let arenas = ctx.ontology_arenas_mut();
+            ref_linking_data = arenas.alloc_concept_saturation_reference_linking_data(
+                ConceptSaturationReferenceLinkingData::new(),
+            );
+            arenas
+                .concept_process_data_mut(con_proc_data)
+                .set_concept_reference_linking(ref_linking_data);
+        }
+        // One item per (concept, polarity): skip if already wired.
+        let existing = ctx
+            .ontology_arenas()
+            .concept_saturation_reference_linking_data(ref_linking_data)
+            .get_concept_saturation_reference_linking_data(negation);
+        if existing.is_some() {
+            continue;
+        }
+        // Ontology-side item (CSaturationConceptDataItem).
+        let onto_item = {
+            let arenas = ctx.ontology_arenas_mut();
+            let mut item = SaturationConceptReferenceLinking::new();
+            item.init_concept_saturation_testing_item(concept, negation, RoleId::NONE);
+            item.set_potentially_exist_initialization_concept(true);
+            let onto_item = arenas.alloc_saturation_concept_reference_linking(item);
+            arenas
+                .concept_saturation_reference_linking_data_mut(ref_linking_data)
+                .set_saturation_reference_linking_data(onto_item, negation);
+            onto_item
+        };
+        // Process-side item mirror + the node (generator cpp 108–135).
+        let ext_item = {
+            let mut ext = ExtendedConceptReferenceLinkingData::new();
+            ext.init_concept_saturation_testing_item(concept, negation, RoleId::NONE);
+            ext.set_concept_reference_linking(onto_item.raw);
+            ctx.process_context_mut()
+                .alloc_extended_con_ref_linking_data(ext)
+        };
+        let individual_id = next_indi_id;
+        next_indi_id += 1;
+        let node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(
+                super::model::substrate::INVALID,
+            ));
+        ctx.process_context_mut()
+            .sat_node_mut(node)
+            .init_individual_saturation_process_node(individual_id, ext_item, Id::NONE);
+        ctx.ontology_arenas_mut()
+            .saturation_concept_reference_linking_mut(onto_item)
+            .set_individual_process_node_for_concept(node);
+        ctx.processing_data_box_mut()
+            .individual_saturation_process_node_vector(true)
+            .expect("create=true yields CIndividualSaturationProcessNodeVector")
+            .set_data(individual_id, node);
+        // indiProcNodeLinker: initProcessNodeLinker(node, processing=true) +
+        // dataBox->addIndividualSaturationProcessNodeLinker (generator cpp 129–134).
+        let linker = ctx
+            .process_context_mut()
+            .sat_node_individual_saturation_process_node_linker(node, true);
+        ctx.process_context_mut()
+            .indi_sat_process_node_linker_mut(linker)
+            .set_processing_queued(true);
+        ctx.processing_data_box_mut()
+            .add_individual_saturation_process_node_linker(linker);
+    }
+}
+
+/// Per-classification saturation outcome, extracted into plain data so the
+/// probe env's resets cannot invalidate it.
+pub struct SaturationOutcome {
+    /// Per named index: `Some(true)` = UNSAT-certain, `Some(false)` =
+    /// SAT-certain, `None` = unknown (probe needed).
+    pub sat_verdict: Vec<Option<bool>>,
+    /// Per named index: the COMPLETE certain-subsumer set (named indices,
+    /// self excluded) — present exactly when the node is sufficient
+    /// (SAT-certain), per `CPrecomputedSaturationSubsumerExtractor`.
+    pub certain_subsumers: Vec<Option<Vec<usize>>>,
+}
+
+/// `CPrecomputedSaturationSubsumerExtractor::getConceptFlags` + `extractSubsumers`
+/// over the saturated bridge env: follow the POSITIVE node (substitute-chain
+/// resolved), read INDIRECT flags of base + resolved node —
+/// CLASHED ⇒ UNSAT-certain; ¬INSUFFICIENT ∧ ¬UNPROCESSED (+ completed, and no
+/// direct EQ-candidate problematic) ⇒ SAT-certain with the label's non-negated
+/// named entries as the exact subsumer set; anything else ⇒ unknown.
+fn extract_saturation_outcome(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> SaturationOutcome {
+    use super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
+    let n_named = bridged.named.len();
+    let named_index: std::collections::HashMap<ConceptId, usize> = bridged
+        .named
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| (c, i))
+        .collect();
+    let mut sat_verdict: Vec<Option<bool>> = vec![None; n_named];
+    let mut certain_subsumers: Vec<Option<Vec<usize>>> = vec![None; n_named];
+    for (i, &named) in bridged.named.iter().enumerate() {
+        let base_node = super::saturation::algorithm::SaturationTaskHandleAlgorithm::
+            s07_concept_reference_node(named, false, ctx);
+        if base_node.is_none() {
+            continue;
+        }
+        // Substitute-chain resolution (extractor cpp 273–283).
+        let mut resolved = base_node;
+        while ctx
+            .process_context()
+            .sat_node(resolved)
+            .has_substitute_individual_node()
+        {
+            resolved = ctx
+                .process_context()
+                .sat_node(resolved)
+                .get_substitute_individual_node();
+        }
+        let read = |node: super::process::SatNodeId,
+                    ctx: &CalculationAlgorithmContextBase|
+         -> (bool, bool, bool, bool, bool) {
+            let sat_node = ctx.process_context().sat_node(node);
+            let ind = sat_node.indirect_status_flags.get_flags();
+            let dir = sat_node.direct_status_flags.get_flags();
+            (
+                ind & F::INDSATFLAGCLASHED != 0,
+                ind & F::INDSATFLAGINSUFFICIENT != 0,
+                ind & F::INDSATFLAGUNPROCESSED != 0,
+                dir & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
+                sat_node.is_completed(),
+            )
+        };
+        let (b_clash, b_insuf, b_unproc, b_eqprob, b_done) = read(base_node, ctx);
+        let (r_clash, r_insuf, r_unproc, r_eqprob, r_done) = read(resolved, ctx);
+        let clashed = b_clash || r_clash;
+        let insufficient = b_insuf || r_insuf;
+        let unprocessed = b_unproc || r_unproc;
+        if clashed {
+            sat_verdict[i] = Some(true);
+            continue;
+        }
+        if insufficient || unprocessed || !(b_done && r_done) || b_eqprob || r_eqprob {
+            continue; // unknown — probe needed
+        }
+        sat_verdict[i] = Some(false);
+        // extractSubsumers (cpp 40–130): non-negated class-named label entries of
+        // the RESOLVED node (substitute-chain concepts are class-named only under
+        // the not-yet-ported substitute assignment; the chain is walked above).
+        let mut subs: Vec<usize> = Vec::new();
+        let label = ctx
+            .process_context()
+            .sat_node(resolved)
+            .reapply_con_sat_label_set;
+        if label.is_some() {
+            let mut des = ctx
+                .process_context()
+                .reapply_con_sat_label_set(label)
+                .get_concept_saturation_description_linker();
+            while des.is_some() {
+                let (concept, negated) = {
+                    let d = ctx.process_context().con_sat_desc(des);
+                    (d.get_concept(), d.get_negation())
+                };
+                if !negated {
+                    if let Some(&idx) = named_index.get(&concept) {
+                        if idx != i {
+                            subs.push(idx);
+                        }
+                    }
+                }
+                des = ctx
+                    .process_context()
+                    .con_sat_desc(des)
+                    .get_next_concept_desciptor();
+            }
+        }
+        subs.sort_unstable();
+        subs.dedup();
+        certain_subsumers[i] = Some(subs);
+    }
+    SaturationOutcome {
+        sat_verdict,
+        certain_subsumers,
+    }
+}
+
+/// Saturate the bridged ontology once (dedicated env — the probe env and its
+/// resets are untouched) and extract the verdicts. `None` when the input is
+/// outside the bridge fragment.
+pub fn bridged_saturate(tin: &TInput) -> Option<SaturationOutcome> {
+    if !tin.nominals.is_empty() {
+        return None;
+    }
+    let (_completion_algo, mut ctx, bridged) = fresh_bridge_env(tin);
+    if bridged.unsupported > 0 {
+        return None;
+    }
+    let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
+    configure_production_saturation(&mut sat_algo);
+    extract_propagation_into_creation_direction(&mut ctx);
+    build_saturation_seeds(&mut ctx, &bridged);
+    if !sat_algo.run_saturation_on(&mut ctx) {
+        // Budget overrun: unfinished queues may hold unchecked critical concepts,
+        // so no per-node flags are trustworthy — discard the whole pass (every
+        // subject goes to the completion probes, exactly as without saturation).
+        return None;
+    }
+    if std::env::var_os("KM_SAT_DEBUG").is_some() {
+        debug_dump_saturation_nodes(&ctx);
+    }
+    Some(extract_saturation_outcome(&mut ctx, &bridged))
+}
+
+/// Temporary diagnostic (env `KM_SAT_DEBUG=1`): per saturation node, dump the
+/// completion state, direct/indirect flag words and the full saturated label
+/// (concept id, op code, negation).
+fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
+    let n = ctx.process_context().sat_node_count();
+    for i in 0..n {
+        let node = super::process::SatNodeId::new(i as Cint64);
+        let sat_node = ctx.process_context().sat_node(node);
+        let label = sat_node.reapply_con_sat_label_set;
+        eprintln!(
+            "SAT-NODE {}: indi={} completed={} dir={:#x} ind={:#x} subst={:?}",
+            i,
+            sat_node.get_individual_id(),
+            sat_node.is_completed(),
+            sat_node.direct_status_flags.get_flags(),
+            sat_node.indirect_status_flags.get_flags(),
+            sat_node.get_substitute_individual_node(),
+        );
+        if label.is_some() {
+            let ls = ctx.process_context().reapply_con_sat_label_set(label);
+            let mut entries: Vec<(Cint64, String)> = Vec::new();
+            for (tag, data) in ls
+                .concept_des_dep_hash
+                .iter()
+                .chain(ls.additional_concept_des_dep_hash.iter())
+            {
+                let des = data.con_sat_des;
+                if des.is_some() {
+                    let c = ctx.process_context().con_sat_desc(des).get_concept();
+                    let neg = ctx.process_context().con_sat_desc(des).get_negation();
+                    let op = ctx.ontology_arenas().concept(c).get_operator_code();
+                    entries.push((*tag, format!("c{}(op{},neg={})", c.index(), op, neg)));
+                } else {
+                    entries.push((*tag, "reapply-only".to_string()));
+                }
+            }
+            entries.sort();
+            for (tag, s) in entries {
+                eprintln!("    tag {} -> {}", tag, s);
+            }
+        }
+    }
+}
 
 /// Production classification of a `TInput` over the konclude_ht bridge.
 ///
@@ -2100,6 +2596,53 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         Some(())
     };
     let mut pending: Vec<usize> = subjects;
+    // Saturation-first probe answering (task #23, opt-in KM_HT_SATURATION=1):
+    // saturate the bridged ontology ONCE in a dedicated env, then answer whole
+    // subjects from certain verdicts — UNSAT-certain subjects land in
+    // `unsatisfiable`, SAT-certain-with-sufficient-label subjects get their
+    // COMPLETE subsumer set from the saturated label (Konclude's
+    // CPrecomputedSaturationSubsumerExtractor consumption) — and only the
+    // UNKNOWN residue runs the completion probes below, unchanged.
+    if std::env::var_os("KM_HT_SATURATION").is_some() {
+        let t_sat = std::time::Instant::now();
+        if let Some(outcome) = bridged_saturate(tin) {
+            let mut answered_unsat = 0usize;
+            let mut answered_sat = 0usize;
+            pending.retain(|&s| match outcome.sat_verdict[s] {
+                Some(true) => {
+                    out.unsatisfiable.push(s);
+                    answered_unsat += 1;
+                    false
+                }
+                Some(false) => {
+                    if let Some(subs) = &outcome.certain_subsumers[s] {
+                        for &c in subs {
+                            if c != s && universe.contains(&c) {
+                                out.subsumptions.push((s, c));
+                            }
+                        }
+                        answered_sat += 1;
+                        false
+                    } else {
+                        true
+                    }
+                }
+                None => true,
+            });
+            if progress {
+                eprintln!(
+                    "BRIDGE-SATURATION: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes)",
+                    t_sat.elapsed().as_secs_f64(),
+                    answered_unsat,
+                    answered_sat,
+                    answered_unsat + answered_sat + pending.len(),
+                    pending.len()
+                );
+            }
+        } else if progress {
+            eprintln!("BRIDGE-SATURATION: input outside bridge fragment, skipped");
+        }
+    }
     // Subjects whose defer is DETERMINISTIC (completeness poison — an
     // unrestored advance phantomized nodes): retrying with a bigger budget
     // re-runs the identical search to the identical poison, so they must
@@ -3558,5 +4101,267 @@ mod tests {
             tin.card_defs.len(),
             tin.chains.len(),
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Task #23: saturation-first probe answering.
+    //
+    // These tests drive `bridged_saturate` DIRECTLY (no env flag — env vars
+    // are process-global and the suite runs multi-threaded) and cross-check
+    // every certain verdict against the completion-probe classification as
+    // the oracle.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn saturation_answers_simple_taxonomy() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        // A ⊑ B, B ⊑ C — the pure-Horn case saturation must fully answer.
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 1, 0)],
+                    head: vec![c(false, 2, 0)],
+                },
+            ],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_eq!(
+            out.sat_verdict,
+            vec![Some(false); 3],
+            "all three classes are satisfiable and must be SAT-certain"
+        );
+        assert_eq!(out.certain_subsumers[0].as_deref(), Some(&[1usize, 2][..]));
+        assert_eq!(out.certain_subsumers[1].as_deref(), Some(&[2usize][..]));
+        assert_eq!(out.certain_subsumers[2].as_deref(), Some(&[][..]));
+        // Oracle: the probe path derives the same taxonomy.
+        let r = bridged_classify(&tin).expect("classify");
+        let mut probe_subs = r.subsumptions.clone();
+        probe_subs.sort_unstable();
+        assert_eq!(probe_subs, vec![(0, 1), (0, 2), (1, 2)]);
+        assert!(r.unsatisfiable.is_empty());
+    }
+
+    #[test]
+    fn saturation_detects_unsat_concept() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        // A ⊑ B and A ⊓ B ⊑ ⊥ — the deterministic clash must surface as
+        // UNSAT-certain on A while B stays SAT-certain.
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 0, 0), c(false, 1, 0)],
+                    head: vec![],
+                },
+            ],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_eq!(out.sat_verdict[0], Some(true), "A is unsatisfiable");
+        assert_eq!(out.sat_verdict[1], Some(false), "B is satisfiable");
+        // Oracle agreement.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(r.unsatisfiable.contains(&0));
+        assert!(!r.unsatisfiable.contains(&1));
+    }
+
+    #[test]
+    fn probe_oracle_alone_detects_unsat_concept() {
+        // DIAGNOSTIC twin of `saturation_detects_unsat_concept` WITHOUT the
+        // saturation pre-pass: isolates whether the probe path alone answers
+        // the tiny A ⊑ B, A ⊓ B ⊑ ⊥ input (checks the oracle, not saturation).
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 0, 0), c(false, 1, 0)],
+                    head: vec![],
+                },
+            ],
+            ..Default::default()
+        };
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(
+            r.unsatisfiable.contains(&0),
+            "probe path must detect A unsat (got unsat={:?} subs={:?})",
+            r.unsatisfiable,
+            r.subsumptions
+        );
+    }
+
+    #[test]
+    fn saturation_defers_disjunction_subjects() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        // A ⊑ B ⊔ C — branching: the non-branching saturation must NOT claim
+        // a certain verdict built on one disjunct (the OR rule goes critical;
+        // with no disjunct entailed the node is insufficient ⇒ unknown).
+        // B and C stay plain satisfiable classes.
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into()],
+            clauses: vec![HtClause {
+                body: vec![c(false, 0, 0)],
+                head: vec![c(false, 1, 0), c(false, 2, 0)],
+            }],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        // Soundness bar: whatever A gets, it must not be a WRONG certainty.
+        // A is satisfiable with no named subsumers; SAT-certain is acceptable
+        // ONLY with an empty subsumer set; unknown (defer) is acceptable.
+        match out.sat_verdict[0] {
+            Some(true) => panic!("A is satisfiable — UNSAT-certain is unsound"),
+            Some(false) => {
+                assert_eq!(
+                    out.certain_subsumers[0].as_deref(),
+                    Some(&[][..]),
+                    "a certain subsumer from ONE disjunct branch would be unsound"
+                );
+            }
+            None => {}
+        }
+        assert_eq!(out.sat_verdict[1], Some(false));
+        assert_eq!(out.sat_verdict[2], Some(false));
+    }
+
+    #[test]
+    fn saturation_never_sat_certain_on_forall_exists_clash() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        // A ⊑ ∃r.B and A ⊑ ∀r.¬B ⇒ A unsatisfiable. The cheap saturation
+        // shares successor nodes, so it may not DETECT the clash — but it must
+        // never claim SAT-certain (the ∀-into-creation-direction escape hatch:
+        // criticality/insufficiency must fire).
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            roles: vec!["r".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![HAtom::Exist {
+                        r: 0,
+                        neg: false,
+                        c: 1,
+                        t: 0,
+                    }],
+                },
+                // A(x) ∧ r(x,y) ∧ B(y) → ⊥  (A ⊑ ∀r.¬B)
+                HtClause {
+                    body: vec![c(false, 0, 0), HAtom::Role { r: 0, s: 0, t: 1 }, c(false, 1, 1)],
+                    head: vec![],
+                },
+            ],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_ne!(
+            out.sat_verdict[0],
+            Some(false),
+            "A is UNSAT — SAT-certain would be a soundness bug \
+             (the ∀-into-creation-direction hatch must defer or clash)"
+        );
+        assert_eq!(out.sat_verdict[1], Some(false), "B alone is satisfiable");
+        // Oracle: the probe path proves A unsatisfiable.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(r.unsatisfiable.contains(&0));
+    }
+
+    /// Full-agreement harness: saturation certainties vs the probe-path
+    /// classification on a small mixed ontology (Horn taxonomy + one
+    /// disjunction + one ∃/∀ interaction). Every CERTAIN saturation answer
+    /// must match the oracle exactly; unknowns are free.
+    #[test]
+    fn saturation_certainties_agree_with_probe_classification() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        // 0=A 1=B 2=C 3=D 4=E; r
+        // A ⊑ B, B ⊑ C, D ⊑ B ⊔ C, E ⊑ ∃r.A, E ⊑ ∀r.B (entailed anyway), C ⊓ A ⊑ D? no — keep simple.
+        let tin = TInput {
+            concepts: vec![
+                "A".into(),
+                "B".into(),
+                "C".into(),
+                "D".into(),
+                "E".into(),
+            ],
+            roles: vec!["r".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 1, 0)],
+                    head: vec![c(false, 2, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 3, 0)],
+                    head: vec![c(false, 1, 0), c(false, 2, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 4, 0)],
+                    head: vec![HAtom::Exist {
+                        r: 0,
+                        neg: false,
+                        c: 0,
+                        t: 0,
+                    }],
+                },
+            ],
+            ..Default::default()
+        };
+        let oracle = bridged_classify(&tin).expect("classify");
+        let oracle_subs: std::collections::HashSet<(usize, usize)> =
+            oracle.subsumptions.iter().copied().collect();
+        let out = bridged_saturate(&tin).expect("in fragment");
+        for i in 0..tin.concepts.len() {
+            match out.sat_verdict[i] {
+                Some(true) => assert!(
+                    oracle.unsatisfiable.contains(&i),
+                    "saturation UNSAT-certain on {} disagrees with oracle",
+                    tin.concepts[i]
+                ),
+                Some(false) => {
+                    assert!(
+                        !oracle.unsatisfiable.contains(&i),
+                        "saturation SAT-certain on {} but oracle says unsat",
+                        tin.concepts[i]
+                    );
+                    if let Some(subs) = &out.certain_subsumers[i] {
+                        let sat_set: std::collections::HashSet<(usize, usize)> =
+                            subs.iter().map(|&cc| (i, cc)).collect();
+                        let oracle_row: std::collections::HashSet<(usize, usize)> = oracle_subs
+                            .iter()
+                            .filter(|&&(s, _)| s == i)
+                            .copied()
+                            .collect();
+                        assert_eq!(
+                            sat_set, oracle_row,
+                            "certain-subsumer row for {} diverges from oracle",
+                            tin.concepts[i]
+                        );
+                    }
+                }
+                None => {}
+            }
+        }
     }
 }

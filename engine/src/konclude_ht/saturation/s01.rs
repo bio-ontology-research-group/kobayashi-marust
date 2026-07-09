@@ -532,6 +532,162 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         false // 513
     }
 
+    /// Ctx-threaded driver: the LOOP BODY of `handleTask` (cpp 326–450) run
+    /// against a caller-owned context.
+    ///
+    /// KONCLUDE-PORT-NOTE[driver]: `handle_task` above preserves Konclude's
+    /// scheduler shape, but its task-creation preamble is W6-DEFER'd
+    /// (`sat_calc_task == Id::NONE`), so its loop body is unreachable. This is the
+    /// SAME loop body, faithful statement-for-statement to cpp 326–450, operating
+    /// on the context the caller (the bridge's saturation pre-pass, or a future
+    /// Task layer) already owns — the exact seam convention the completion layer
+    /// uses (`run_completion_on` vs Konclude's satisfiable task handler). Returns
+    /// `true` (the C++ `satisfiable = true` tail; a clash never terminates the
+    /// saturation loop — clashes are recorded as node status flags, not raised).
+    pub fn run_saturation_on(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        // KONCLUDE-PORT-NOTE[budget]: port-side safety valve, NOT in the C++ (its
+        // scheduler can interrupt tasks; this driver owns the whole loop). On
+        // overrun the driver returns `false` BEFORE
+        // `complete_saturated_individual_nodes` (see the bail at the bottom): a
+        // tripped valve can leave CRITICAL concepts queued but never tested, so no
+        // per-node flag is trustworthy — the caller must discard the whole pass.
+        let budget = std::time::Duration::from_secs(
+            std::env::var("KM_HT_SATURATION_BUDGET_S")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(120),
+        );
+        let t0 = std::time::Instant::now();
+
+        self.continue_nominal_delayed_individual_node_processing(calc_alg_context); // 326
+
+        while t0.elapsed() < budget
+            && self.has_remaining_merging_critical_extension_processing_nodes(calc_alg_context)
+        {
+            while t0.elapsed() < budget
+                && self.has_remaining_extension_processing_nodes(calc_alg_context)
+            {
+                while t0.elapsed() < budget
+                    && self.has_remaining_processing_nodes(calc_alg_context)
+                {
+                    while t0.elapsed() < budget
+                        && calc_alg_context
+                            .processing_data_box()
+                            .has_individual_saturation_process_node_linker()
+                    {
+                        let indi_proc_sat_node_linker = calc_alg_context
+                            .processing_data_box_mut()
+                            .take_individual_saturation_process_node_linker();
+                        let mut indi_proc_sat_node = calc_alg_context
+                            .process_context()
+                            .indi_sat_process_node_linker(indi_proc_sat_node_linker)
+                            .get_processing_individual();
+                        // (separated-saturation + first-processed-node-id tracking,
+                        // cpp 338–349: debug/statistics bookkeeping only.)
+                        if self.individual_node_initializing(
+                            &mut indi_proc_sat_node,
+                            calc_alg_context,
+                        ) {
+                            let mut concept_saturation_process_linker = calc_alg_context
+                                .process_context_mut()
+                                .sat_node_take_concept_saturation_process_linker(
+                                    indi_proc_sat_node,
+                                );
+                            while concept_saturation_process_linker.is_some() {
+                                self.apply_tableau_saturation_rule(
+                                    &mut indi_proc_sat_node,
+                                    concept_saturation_process_linker,
+                                    calc_alg_context,
+                                );
+                                self.release_concept_saturation_process_linker(
+                                    concept_saturation_process_linker,
+                                    calc_alg_context,
+                                );
+                                concept_saturation_process_linker = calc_alg_context
+                                    .process_context_mut()
+                                    .sat_node_take_concept_saturation_process_linker(
+                                        indi_proc_sat_node,
+                                    );
+                            }
+                        }
+                        calc_alg_context
+                            .process_context_mut()
+                            .indi_sat_process_node_linker_mut(indi_proc_sat_node_linker)
+                            .clear_processing_queued();
+                        self.individual_node_conclusion(&mut indi_proc_sat_node, calc_alg_context);
+                        // 363
+                    }
+
+                    if calc_alg_context
+                        .processing_data_box()
+                        .has_individual_disjunct_common_concept_extract_process_linker()
+                    {
+                        let indi_disj_common_con_ext_process_linker = calc_alg_context
+                            .processing_data_box_mut()
+                            .take_individual_disjunct_common_concept_extract_process_linker();
+                        calc_alg_context
+                            .process_context_mut()
+                            .indi_sat_process_node_linker_mut(
+                                indi_disj_common_con_ext_process_linker,
+                            )
+                            .set_processing_queued(false);
+                        let mut indi_proc_sat_node = calc_alg_context
+                            .process_context()
+                            .indi_sat_process_node_linker(indi_disj_common_con_ext_process_linker)
+                            .get_processing_individual();
+                        if self.individual_node_initializing(
+                            &mut indi_proc_sat_node,
+                            calc_alg_context,
+                        ) {
+                            self.update_extract_disjunct_common_concept(
+                                &mut indi_proc_sat_node,
+                                calc_alg_context,
+                            ); // 379
+                        }
+                        self.individual_node_conclusion(&mut indi_proc_sat_node, calc_alg_context);
+                        // 381
+                    }
+                }
+
+                self.process_next_successor_extensions(calc_alg_context); // 396
+            }
+
+            if self.conf_check_critical_concepts
+                && self.has_next_critical_concepts(calc_alg_context)
+            {
+                // KONCLUDE-PORT-NOTE[budget]: same port-side valve as the outer loops —
+                // an overrun here leaves the remaining critical nodes unchecked and
+                // therefore un-completed (UNKNOWN to every consumer), a sound defer.
+                while t0.elapsed() < budget && self.has_next_critical_concepts(calc_alg_context) {
+                    self.check_next_critical_concepts(calc_alg_context); // 414
+                }
+                self.check_critical_individuals(calc_alg_context); // 416
+            }
+
+            if calc_alg_context
+                .processing_data_box()
+                .has_saturation_atmost_merging_process_linker()
+            {
+                self.try_atmost_concept_successor_merging(calc_alg_context); // 432
+            }
+        }
+
+        // KONCLUDE-PORT-NOTE[budget]: if the valve tripped, work remains queued —
+        // including possibly UNCHECKED critical concepts. Completing nodes now would
+        // let a node with a pending (never-tested) critical ∀/⊔/≤ read as
+        // SAT-certain in the outcome extraction. Skip completion and report the
+        // abort; the caller must discard the whole saturation pass.
+        if self.has_remaining_merging_critical_extension_processing_nodes(calc_alg_context) {
+            return false; // budget overrun — results unusable
+        }
+
+        self.complete_saturated_individual_nodes(calc_alg_context); // 438
+        true // 450 (satisfiable)
+    }
+
     /// Port of `hasRemainingExtensionProcessingNodes` (.cpp 689-698).
     pub fn has_remaining_extension_processing_nodes(
         &mut self,

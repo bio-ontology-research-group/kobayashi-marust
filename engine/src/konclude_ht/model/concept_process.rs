@@ -8,6 +8,7 @@
 #![allow(dead_code)]
 
 use super::substrate::{Cint64, Id, INVALID};
+use super::{ConceptId, RoleId};
 use crate::konclude_ht::process::SatNodeId;
 
 /// `CConceptProcessData*` → `ConceptProcessDataId`.
@@ -597,7 +598,20 @@ impl ConceptSaturationReferenceLinkingData {
     }
 }
 
-/// Port of `CSaturationConceptReferenceLinking`.
+/// Port of `CSaturationConceptDataItem::SATURATIONITEMREFERENCESPECIALMODE`
+/// (`Reasoner/Consistiser/CSaturationConceptDataItem.h` line 91).
+pub const SATURATION_NONE_MODE: Cint64 = 0;
+/// `SATURATIONCOPYMODE`.
+pub const SATURATION_COPY_MODE: Cint64 = 1;
+/// `SATURATIONSUBSTITUTEMODE`.
+pub const SATURATION_SUBSTITUTE_MODE: Cint64 = 2;
+
+/// Port of `CSaturationConceptReferenceLinking` FLATTENED with its only concrete
+/// subclass `CSaturationConceptDataItem` (Consistiser). Konclude always allocates
+/// the derived item (`CTotallyPrecomputationThread::createConceptSaturationProcessingJob`)
+/// and downcasts at the use sites (`initializeInitializationConcepts` cpp 5475-5476);
+/// the port stores the item fields directly on the linking so no downcast seam is
+/// needed.
 pub struct SaturationConceptReferenceLinking {
     /// `CSaturationConceptReferenceLinking::mPotentiallyExistInitConcept`.
     pub potentially_exist_init_concept: bool,
@@ -605,6 +619,19 @@ pub struct SaturationConceptReferenceLinking {
     pub data_range_concept: bool,
     /// `CSaturationConceptReferenceLinking::mIndiProcessNodeForConcept`.
     pub individual_process_node_for_concept: SatNodeId,
+    /// `CSaturationConceptDataItem::mSaturationConcept` — the init concept.
+    pub saturation_concept: ConceptId,
+    /// `CSaturationConceptDataItem::mSaturationNegation`.
+    pub saturation_negation: bool,
+    /// `CSaturationConceptDataItem::mSaturationRoleRanges` (`CRole*`; NONE = no
+    /// role-successor ranges item).
+    pub saturation_role_ranges: RoleId,
+    /// `CSaturationConceptDataItem::mSpecialItemReference` — the reference ITEM
+    /// whose node substitution/copy starts from (id of another linking).
+    pub special_item_reference: SaturationConceptReferenceLinkingId,
+    /// `CSaturationConceptDataItem::mSpecialReferenceMode`
+    /// (`SATURATION_{NONE,COPY,SUBSTITUTE}_MODE`).
+    pub special_reference_mode: Cint64,
 }
 
 impl Default for SaturationConceptReferenceLinking {
@@ -613,6 +640,11 @@ impl Default for SaturationConceptReferenceLinking {
             potentially_exist_init_concept: false,
             data_range_concept: false,
             individual_process_node_for_concept: SatNodeId::NONE,
+            saturation_concept: ConceptId::NONE,
+            saturation_negation: false,
+            saturation_role_ranges: RoleId::NONE,
+            special_item_reference: SaturationConceptReferenceLinkingId::NONE,
+            special_reference_mode: SATURATION_NONE_MODE,
         }
     }
 }
@@ -656,6 +688,64 @@ impl SaturationConceptReferenceLinking {
     /// Port of `setIndividualProcessNodeForConcept`.
     pub fn set_individual_process_node_for_concept(&mut self, indi_node: SatNodeId) -> &mut Self {
         self.individual_process_node_for_concept = indi_node;
+        self
+    }
+
+    // --- CSaturationConceptDataItem accessors (flattened subclass; see the
+    // struct doc) ---
+
+    /// Port of `CSaturationConceptDataItem::initConceptSaturationTestingItem`.
+    pub fn init_concept_saturation_testing_item(
+        &mut self,
+        concept: ConceptId,
+        negation: bool,
+        role_ranges: RoleId,
+    ) -> &mut Self {
+        self.saturation_concept = concept;
+        self.saturation_negation = negation;
+        self.saturation_role_ranges = role_ranges;
+        self.special_item_reference = SaturationConceptReferenceLinkingId::NONE;
+        self.special_reference_mode = SATURATION_NONE_MODE;
+        self
+    }
+
+    /// Port of `CSaturationConceptDataItem::getSaturationConcept`.
+    pub fn get_saturation_concept(&self) -> ConceptId {
+        self.saturation_concept
+    }
+
+    /// Port of `CSaturationConceptDataItem::getSaturationNegation`.
+    pub fn get_saturation_negation(&self) -> bool {
+        self.saturation_negation
+    }
+
+    /// Port of `CSaturationConceptDataItem::getSaturationRoleRanges`.
+    pub fn get_saturation_role_ranges(&self) -> RoleId {
+        self.saturation_role_ranges
+    }
+
+    /// Port of `CSaturationConceptDataItem::getSpecialItemReference`.
+    pub fn get_special_item_reference(&self) -> SaturationConceptReferenceLinkingId {
+        self.special_item_reference
+    }
+
+    /// Port of `CSaturationConceptDataItem::setSpecialItemReference`.
+    pub fn set_special_item_reference(
+        &mut self,
+        item: SaturationConceptReferenceLinkingId,
+    ) -> &mut Self {
+        self.special_item_reference = item;
+        self
+    }
+
+    /// Port of `CSaturationConceptDataItem::getSpecialReferenceMode`.
+    pub fn get_special_reference_mode(&self) -> Cint64 {
+        self.special_reference_mode
+    }
+
+    /// Port of `CSaturationConceptDataItem::setSpecialItemReferenceMode`.
+    pub fn set_special_item_reference_mode(&mut self, mode: Cint64) -> &mut Self {
+        self.special_reference_mode = mode;
         self
     }
 }

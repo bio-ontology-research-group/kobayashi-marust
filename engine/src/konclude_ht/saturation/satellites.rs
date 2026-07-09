@@ -249,11 +249,17 @@ impl ConceptSaturationProcessLinker {
         Self::default()
     }
     /// Port of `initConceptSaturationProcessLinker` (`initLinker(conPilDes)`).
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: `CLinkerBase::initLinker(data)` RESETS the next
+    /// pointer — a pool-reused linker that kept its stale `next` created a CYCLE
+    /// in the node's process-linker chain and the chain-append walk span forever
+    /// (gdb-proven on the first saturation-first test run).
     pub fn init_concept_saturation_process_linker(
         &mut self,
         con_pil_des: ConceptSaturationDescriptorId,
     ) -> &mut Self {
         self.data = con_pil_des;
+        self.next = ConceptSaturationProcessLinkerId::NONE;
         self
     }
     /// Port of `getConceptSaturationDescriptor` (`return getData()`).

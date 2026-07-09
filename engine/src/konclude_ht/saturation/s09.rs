@@ -82,12 +82,16 @@
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::substrate::{Cint64, INVALID};
-use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
+use super::super::model::{ConceptId, NegLink};
+use super::super::process::sat_node::{
+    IndividualSaturationProcessNode, IndividualSaturationProcessNodeStatusFlags,
+};
 use super::super::process::sat_queue::CriticalSaturationConceptQueueType;
 use super::super::process::stubs::{
     ConceptSaturationDescriptorId, ConceptSaturationProcessLinkerId,
 };
 use super::super::process::SatNodeId;
+use super::satellites::SaturationSuccessorDataId;
 
 // ---------------------------------------------------------------------------
 // W4-DEFER[api]: pending `CCriticalSaturationConceptTypeQueues::CRITICALSATURATIONCONCEPTQUEUETYPE`
@@ -141,21 +145,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let crit_ind_node_proc_queue =
             calc_alg_context.saturation_critical_individual_node_processing_queue(false);
         if !crit_ind_node_proc_queue.is_none() {
-            // W4-DEFER[api]: the body iterates the unported processing queue +
-            //   per-node critical-queue / status-flag satellites; transcribed:
-            //   CIndividualSaturationProcessNode* indiProcSatNode = critIndNodeProcQueue->takeNextProcessIndividual();
-            //   bool checkCriticalConcepts = true;
-            //   if (indiProcSatNode->getDirectStatusFlags()->hasMissedABoxConsistencyFlag()) {
-            //       if (!isConsistenceDataAvailable(calcAlgContext)) {
-            //           checkCriticalConcepts = false;
-            //           CCriticalSaturationConceptTypeQueues* criticalConceptQueues = indiProcSatNode->getCriticalConceptTypeQueues(false);
-            //           if (criticalConceptQueues) criticalConceptQueues->setProcessNodeQueued(false);
-            //       }
-            //   }
-            //   if (checkCriticalConcepts) checkCriticalConceptsForNode(indiProcSatNode, calcAlgContext);
-            // The resolvable leaves are the sibling `self.is_consistence_data_available`
-            // (group N) and `self.check_critical_concepts_for_node` (below); they fire
-            // once the queue `takeNextProcessIndividual` yields a concrete `SatNodeId`.
+            // CIndividualSaturationProcessNode* indiProcSatNode = critIndNodeProcQueue->takeNextProcessIndividual();
+            let mut indi_proc_sat_node = calc_alg_context
+                .process_context_mut()
+                .sat_critical_ind_node_proc_queue_mut(crit_ind_node_proc_queue)
+                .take_next_process_individual();
+            if indi_proc_sat_node.is_some() {
+                // bool checkCriticalConcepts = true;
+                // if (indiProcSatNode->getDirectStatusFlags()->hasMissedABoxConsistencyFlag()) {
+                //     if (!isConsistenceDataAvailable(calcAlgContext)) { checkCriticalConcepts = false; ... } }
+                // W2-DEFER[api]: the `hasMissedABoxConsistencyFlag` status bit is not
+                // ported (constant false, same deferral as the s01 driver), so
+                // checkCriticalConcepts is always true here.
+                self.check_critical_concepts_for_node(&mut indi_proc_sat_node, calc_alg_context);
+            }
         }
     }
 
@@ -341,75 +344,353 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // CCriticalSaturationConceptTypeQueues* criticalConceptQueues = indiProcSatNode->getCriticalConceptTypeQueues(false);
-        // CIndividualSaturationProcessNodeStatusFlags* indirectFlags = indiProcSatNode->getIndirectStatusFlags();
-        // CIndividualSaturationProcessNodeStatusFlags* directFlags = indiProcSatNode->getDirectStatusFlags();
-        // CProcessingDataBox* processingDataBox = calcAlgContext->getUsedProcessingDataBox();
+        let critical_concept_queues =
+            IndividualSaturationProcessNode::get_critical_concept_type_queues_in_context(
+                calc_alg_context.process_context_mut(),
+                *indi_proc_sat_node,
+                false,
+            );
         // CCriticalIndividualNodeConceptTestSet* criticalIndiNodeConTestSet =
         //     processingDataBox->getSaturationCriticalIndividualNodeConceptTestSet(true);
+        let critical_indi_node_con_test_set =
+            calc_alg_context.saturation_critical_individual_node_concept_test_set(true);
+        if critical_concept_queues.is_none() {
+            // Queued without allocated typed queues — nothing to drain. (The C++
+            // never queues a node before its queues satellite exists.)
+            return;
+        }
         // criticalConceptQueues->setProcessNodeQueued(false);
-        let _critical_concept_queues = calc_alg_context
+        calc_alg_context
             .process_context_mut()
-            .sat_node_mut(*indi_proc_sat_node)
-            .get_critical_concept_type_queues(false);
-        let _ = calc_alg_context.saturation_critical_individual_node_concept_test_set(true);
-        //
-        // W4-DEFER[api]: the six per-type queue-drain blocks all iterate the unported
-        //   CCriticalSaturationConceptQueue (CConceptSaturationProcessLinker linkers) under
-        //   the CCriticalIndividualNodeConceptTestSet tested-pair set and the indirect/direct
-        //   CIndividualSaturationProcessNodeStatusFlags masks; the descriptor `criticalConDes`
-        //   feeding each `self.is_critical_*` test comes from `takeNextCriticalConceptDescriptor`.
-        //   Faithful transcription (each block guarded by `!indirectFlags->hasInsufficientFlag()
-        //   && !indirectFlags->hasClashedFlag()`, the last two by `!hasClashedFlag()` only):
-        //
-        //   1. CCT_FORALL  → isCriticalALLConceptDescriptorInsufficient:
-        //        if insufficient: updateDirectAddingIndividualStatusFlags(node, INDSATFLAGINSUFFICIENT);
-        //                         if (node->isABoxIndividualRepresentationNode())
-        //                             updateDirectAddingIndividualStatusFlags(node, INDSATFLAGPROPAGATIONINCOMPLETE);
-        //                         setInsufficientNodeOccured(); ++mInsufficientALLCount;
-        //        else: addCriticalConceptForDependentNodes(conDes, CCT_FORALL, node, false, INDSATFLAGINSUFFICIENT);
-        //   2. CCT_ATMOST  → isCriticalATMOSTConceptDescriptorInsufficient(conDes, ancestorPossiblyInsufficient,
-        //                        functionallyRestrictedSuccessorNode, functionallyRestrictedSuccessorCreationRoleLinker, node):
-        //        if insufficient:
-        //          if (mConfDelayedMergingCriticalATMOSTConcepts && node->getMaxAtleastCardinalityCandidate()
-        //                  > mConfDelayedMergingCriticalATMOSTConceptsCardinalitySize):
-        //              if (!indirect insufficient/clashed): queue the ATMOST merging via
-        //                  node->getATMOSTSuccessorMergingData(true) + processingDataBox
-        //                  ->addSaturationATMOSTMergingProcessLinker(...) + addMergingProcessingConcept(conDes);
-        //          else: ++mInsufficientATMOSTCount;
-        //                updateDirectAddingIndividualStatusFlags(node, INDSATFLAGINSUFFICIENT); setInsufficientNodeOccured();
-        //        else: addCriticalConceptForDependentNodes(conDes, CCT_ATMOST, node, false, INDSATFLAGINSUFFICIENT);
-        //        if (node->hasNominalIntegrated()) markNominalATMOSTRestrictedAncestorsAsInsufficient(conDes, node);
-        //        if (ancestorPossiblyInsufficient) {
-        //            markATMOSTRestrictedAncestorsAsInsufficient(conDes, functionallyRestrictedSuccessorNode,
-        //                functionallyRestrictedSuccessorCreationRoleLinker, node);
-        //            updateDirectAddingIndividualStatusFlags(node, INDSATFLAGCARDINALITYPROPLEMATIC);
-        //        }
-        //   3. CCT_VALUE   → isCriticalVALUEConceptDescriptorInsufficient:
-        //        if insufficient: updateDirectAddingIndividualStatusFlags(node, INDSATFLAGINSUFFICIENT); setInsufficientNodeOccured();
-        //        else: addCriticalConceptForDependentNodes(conDes, CCT_VALUE, node, false, INDSATFLAGINSUFFICIENT);
-        //   4. CCT_NOMINAL → isCriticalNOMINALConceptDescriptorInsufficient: (same shape as VALUE, tag CCT_NOMINAL)
-        //   5. CCT_DISJUNCTION → isCriticalORConceptDescriptorInsufficient:
-        //        if insufficient: updateDirectNotDependentAddingIndividualStatusFlags(node, INDSATFLAGINSUFFICIENT);
-        //                         setInsufficientNodeOccured();
-        //                         addCriticalORConceptTestedForDependentNodes(conDes, CCT_DISJUNCTION, node, criticalIndiNodeConTestSet);
-        //   6. CCT_EQCANDIDATE → isCriticalEQCANDConceptDescriptorProblematic:
-        //        if problematic: updateDirectNotDependentAddingIndividualStatusFlags(node, INDSATFLAGEQCANDPROPLEMATIC);
-        //                        setProblematicEQCandidateOccured();
-        //                        addCriticalConceptForDependentNodes(conDes, CCT_EQCANDIDATE, node, true, 0);
-        //   (each drained descriptor released via releaseConceptSaturationProcessLinker.)
-        //
-        // The `self.*` critical tests, status-flag updates, fan-outs and counters above
-        // are the resolvable leaves; the queue/test-set/flag-mask iteration that selects
-        // `criticalConDes` is deferred to the satellite port. The CCT_* tags use the
-        // pending discriminants declared at module top.
-        let _ = (
-            CCT_FORALL,
-            CCT_ATMOST,
-            CCT_VALUE,
-            CCT_NOMINAL,
-            CCT_DISJUNCTION,
-            CCT_EQCANDIDATE,
-        );
+            .critical_sat_concept_type_queues_mut(critical_concept_queues)
+            .set_process_node_queued(false);
+
+        // Drain helper reads, re-evaluated per iteration: the C++ holds live
+        // pointers to the node's flag objects, which mutate inside the loops.
+        macro_rules! indirect_flags {
+            () => {{
+                let flags = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node)
+                    .indirect_status_flags;
+                (flags.has_insufficient_flag(), flags.has_clashed_flag())
+            }};
+        }
+        macro_rules! take_untested {
+            ($queue_type:expr) => {{
+                let queue = calc_alg_context
+                    .process_context()
+                    .critical_sat_concept_type_queues(critical_concept_queues)
+                    .get_critical_saturation_concept_queue_id($queue_type);
+                if queue.is_none()
+                    || !calc_alg_context
+                        .process_context()
+                        .critical_sat_concept_queue(queue)
+                        .has_critical_concept_descriptor_linker()
+                {
+                    None
+                } else {
+                    let critical_con_proc_des = calc_alg_context
+                        .process_context_mut()
+                        .critical_sat_concept_queue_take_next_critical_concept_descriptor(queue);
+                    let critical_con_des = calc_alg_context
+                        .process_context()
+                        .con_sat_proc_linker(critical_con_proc_des)
+                        .get_concept_saturation_descriptor();
+                    let concept = calc_alg_context
+                        .process_context()
+                        .con_sat_desc(critical_con_des)
+                        .get_concept();
+                    let already_tested = calc_alg_context
+                        .process_context()
+                        .sat_critical_ind_node_con_test_set(critical_indi_node_con_test_set)
+                        .is_concept_tested_for_individual(concept, *indi_proc_sat_node);
+                    if !already_tested {
+                        calc_alg_context
+                            .process_context_mut()
+                            .sat_critical_ind_node_con_test_set_mut(critical_indi_node_con_test_set)
+                            .insert_concept_tested_for_individual(concept, *indi_proc_sat_node);
+                    }
+                    Some((critical_con_proc_des, critical_con_des, already_tested))
+                }
+            }};
+        }
+
+        // ---- 1. CCT_FORALL (cpp 3010-3037) ----
+        loop {
+            let (insufficient, clashed) = indirect_flags!();
+            if insufficient || clashed {
+                break;
+            }
+            let Some((critical_con_proc_des, critical_con_des, already_tested)) =
+                take_untested!(CriticalSaturationConceptQueueType::Forall)
+            else {
+                break;
+            };
+            if !already_tested {
+                // STATINC(SATURATIONCRITICALTESTCOUNT, calcAlgContext);
+                if self.is_critical_all_concept_descriptor_insufficient(
+                    critical_con_des,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ) {
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    let is_abox = calc_alg_context
+                        .process_context()
+                        .sat_node(*indi_proc_sat_node)
+                        .is_abox_individual_representation_node();
+                    if is_abox {
+                        self.update_direct_adding_individual_status_flags(
+                            *indi_proc_sat_node,
+                            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGPROPAGATIONINCOMPLETE,
+                            calc_alg_context,
+                        );
+                    }
+                    self.set_insufficient_node_occured(calc_alg_context);
+                    self.insufficient_all_count += 1;
+                } else {
+                    self.add_critical_concept_for_dependent_nodes(
+                        critical_con_des,
+                        CCT_FORALL,
+                        indi_proc_sat_node,
+                        false,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                }
+            }
+            self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
+        }
+
+        // ---- 2. CCT_ATMOST (cpp 3039-3091) ----
+        loop {
+            let (insufficient, clashed) = indirect_flags!();
+            if insufficient || clashed {
+                break;
+            }
+            let Some((critical_con_proc_des, critical_con_des, already_tested)) =
+                take_untested!(CriticalSaturationConceptQueueType::Atmost)
+            else {
+                break;
+            };
+            if !already_tested {
+                let mut ancestor_possibly_insufficient = false;
+                let mut functionally_restricted_successor_node = SatNodeId::NONE;
+                let mut functionally_restricted_successor_creation_role_linker: Cint64 = INVALID;
+                // STATINC(SATURATIONCRITICALTESTCOUNT, calcAlgContext);
+                if self.is_critical_atmost_concept_descriptor_insufficient(
+                    critical_con_des,
+                    &mut ancestor_possibly_insufficient,
+                    &mut functionally_restricted_successor_node,
+                    &mut functionally_restricted_successor_creation_role_linker,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ) {
+                    // KONCLUDE-PORT-NOTE[conservative]: the C++ delayed-merging arm
+                    // (mConfDelayedMergingCriticalATMOSTConcepts && maxAtleastCardinality >
+                    // threshold ⇒ queue via getATMOSTSuccessorMergingData +
+                    // addSaturationATMOSTMergingProcessLinker + addMergingProcessingConcept)
+                    // is deferred — the merging-queue enqueue plumbing has no live producer
+                    // yet. Marking INSUFFICIENT immediately (the C++ else-arm) is strictly
+                    // more conservative: the node reads as UNKNOWN and defers to the
+                    // tableau probe. Costs saturation coverage only on nodes with
+                    // atleast-cardinality > 100.
+                    self.insufficient_atmost_count += 1;
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                } else {
+                    self.add_critical_concept_for_dependent_nodes(
+                        critical_con_des,
+                        CCT_ATMOST,
+                        indi_proc_sat_node,
+                        false,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                }
+                let nominal_integrated = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node)
+                    .has_nominal_integrated();
+                if nominal_integrated {
+                    // KONCLUDE-PORT-NOTE[conservative]: markNominalATMOSTRestrictedAncestors-
+                    // AsInsufficient is deferred; marking THIS node INSUFFICIENT (below /
+                    // above) back-propagates through the indirect-flag walk (backward
+                    // sources + non-inverse-connected linkers), so every upstream cone
+                    // still reads UNKNOWN — sound, weaker only in saturation coverage.
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                }
+                if ancestor_possibly_insufficient {
+                    // KONCLUDE-PORT-NOTE[conservative]: markATMOSTRestrictedAncestorsAs-
+                    // Insufficient deferred (see note above) — same conservative substitute.
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
+                            | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYPROPLEMATIC,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                }
+            }
+            self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
+        }
+
+        // ---- 3. CCT_VALUE (cpp 3096-3120) ----
+        loop {
+            let (insufficient, clashed) = indirect_flags!();
+            if insufficient || clashed {
+                break;
+            }
+            let Some((critical_con_proc_des, critical_con_des, already_tested)) =
+                take_untested!(CriticalSaturationConceptQueueType::Value)
+            else {
+                break;
+            };
+            if !already_tested {
+                if self.is_critical_value_concept_descriptor_insufficient(
+                    critical_con_des,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ) {
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                } else {
+                    self.add_critical_concept_for_dependent_nodes(
+                        critical_con_des,
+                        CCT_VALUE,
+                        indi_proc_sat_node,
+                        false,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                }
+            }
+            self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
+        }
+
+        // ---- 4. CCT_NOMINAL (cpp 3124-3148) ----
+        loop {
+            let (insufficient, clashed) = indirect_flags!();
+            if insufficient || clashed {
+                break;
+            }
+            let Some((critical_con_proc_des, critical_con_des, already_tested)) =
+                take_untested!(CriticalSaturationConceptQueueType::Nominal)
+            else {
+                break;
+            };
+            if !already_tested {
+                if self.is_critical_nominal_concept_descriptor_insufficient(
+                    critical_con_des,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ) {
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                } else {
+                    self.add_critical_concept_for_dependent_nodes(
+                        critical_con_des,
+                        CCT_NOMINAL,
+                        indi_proc_sat_node,
+                        false,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                }
+            }
+            self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
+        }
+
+        // ---- 5. CCT_DISJUNCTION (cpp 3153-3177) — guarded by !clashed only ----
+        loop {
+            let (_, clashed) = indirect_flags!();
+            if clashed {
+                break;
+            }
+            let Some((critical_con_proc_des, critical_con_des, already_tested)) =
+                take_untested!(CriticalSaturationConceptQueueType::Disjunction)
+            else {
+                break;
+            };
+            if !already_tested {
+                if self.is_critical_or_concept_descriptor_insufficient(
+                    critical_con_des,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ) {
+                    // KONCLUDE-PORT-NOTE[conservative]: the C++ pairs updateDirectNot-
+                    // DependentAdding(INSUFFICIENT) with addCriticalORConceptTestedFor-
+                    // DependentNodes (mark + tested-pair insert on every copy-depending
+                    // node). That fan-out is deferred; the dependent-walking update below
+                    // marks the same depending set (transitively) INSUFFICIENT — a
+                    // conservative superset that only skips the tested-pair dedup.
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    );
+                    self.set_insufficient_node_occured(calc_alg_context);
+                }
+            }
+            self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
+        }
+
+        // ---- 6. CCT_EQCANDIDATE (cpp 3169-3188) — guarded by !clashed only ----
+        loop {
+            let (_, clashed) = indirect_flags!();
+            if clashed {
+                break;
+            }
+            let Some((critical_con_proc_des, critical_con_des, already_tested)) =
+                take_untested!(CriticalSaturationConceptQueueType::EqCandidate)
+            else {
+                break;
+            };
+            if !already_tested {
+                if self.is_critical_eqcand_concept_descriptor_problematic(
+                    critical_con_des,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ) {
+                    self.update_direct_not_dependent_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGEQCANDPROPLEMATIC,
+                        calc_alg_context,
+                    );
+                    self.set_problematic_eq_candidate_occured(calc_alg_context);
+                    self.add_critical_concept_for_dependent_nodes(
+                        critical_con_des,
+                        CCT_EQCANDIDATE,
+                        indi_proc_sat_node,
+                        true,
+                        0,
+                        calc_alg_context,
+                    );
+                }
+            }
+            self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
+        }
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::addCriticalConceptDescriptor`
@@ -545,39 +826,109 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .has_substitute_individual_node();
         if !has_substitute {
             // CConcept* concept = conDes->getConcept(); bool conceptNegation = conDes->isNegated();
+            let concept = calc_alg_context
+                .process_context()
+                .con_sat_desc(con_des)
+                .get_concept();
+            let concept_negation = calc_alg_context
+                .process_context()
+                .con_sat_desc(con_des)
+                .get_negation();
             // CRole* role = concept->getRole();
-            //
-            // W4-DEFER[api]: (a) the data-role branch — if role->isDataRole() and the node's
-            //   CLinkedDataValueAssertionSaturationData lists an asserted data-role whose
-            //   indirect super-role list contains `role`, return true; and (b) the main
-            //   successor-hash walk: collectLinkedSuccessorNodes then, for each active
-            //   CSaturationSuccessorData of `role`, check the successor's
-            //   CReapplyConceptSaturationLabelSet (or, for a VALUE-nominal connection under
-            //   isConsistenceDataAvailable, the corrected node's CReapplyConceptLabelSet via
-            //   getCorrectedNode) contains every `concept` operand at the xor-ed negation;
-            //   a missing operand (or absent label set / absent corrected node) ⇒ return true.
-            //   The `concept->getRole()` / `getOperandList()` / `containsConcept` and the
-            //   CLinkedRoleSaturationSuccessorHash are unported satellites. Live leaves:
-            //   `self.collect_linked_successor_nodes`, `self.is_consistence_data_available`,
-            //   `self.get_corrected_node` (over mDetCachedCGIndiVector). Faithful body:
-            //
-            //   if (role->isDataRole() && indiProcSatNode->getIndividualExtensionData(false)) { ...data-role return true... }
-            //   collectLinkedSuccessorNodes(indiProcSatNode, calcAlgContext);
-            //   CLinkedRoleSaturationSuccessorHash* linkedSuccHash = indiProcSatNode->getLinkedRoleSuccessorHash(false);
-            //   if (linkedSuccHash) { succData = succHash->value(role);
-            //       for (indiSuccData : succData->mSuccNodeDataMap) if (mActiveCount >= 1) {
-            //           if (mVALUENominalConnection) { if (isConsistenceDataAvailable) {
-            //               indiProcNode = getCorrectedNode(mVALUENominalID, mDetCachedCGIndiVector, mCalcAlgContext);
-            //               if (!indiProcNode) return true;
-            //               reapplyConSet = indiProcNode->getReapplyConceptLabelSet(false);
-            //               operantsContained = reapplyConSet && all operands contained; if (!operantsContained) return true;
-            //           } } else {
-            //               succConSet = succNode->getReapplyConceptSaturationLabelSet(false);
-            //               operantsContained = succConSet && all operands contained; if (!operantsContained) return true;
-            //           }
-            //       }
-            //   }
-            let _ = (con_des,);
+            let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+
+            // if (role->isDataRole() && indiProcSatNode->getIndividualExtensionData(false)) { ... }
+            // KONCLUDE-PORT-NOTE[conservative]: the asserted-data-role walk over
+            // CLinkedDataValueAssertionSaturationData is deferred — a data-role ∀ is
+            // reported insufficient outright (the C++ returns true exactly when a
+            // matching assertion exists; without the walk, assuming "exists" is the
+            // sound direction and only defers the subject to the tableau probe).
+            if role.is_some()
+                && calc_alg_context.ontology_arenas().role(role).is_data_role()
+            {
+                return true;
+            }
+
+            // collectLinkedSuccessorNodes(indiProcSatNode, calcAlgContext);
+            self.collect_linked_successor_nodes(indi_proc_sat_node, calc_alg_context, INVALID);
+            // CLinkedRoleSaturationSuccessorHash* linkedSuccHash = indiProcSatNode->getLinkedRoleSuccessorHash(false);
+            let linked_succ_hash =
+                IndividualSaturationProcessNode::get_linked_role_successor_hash_in_context(
+                    calc_alg_context.process_context_mut(),
+                    *indi_proc_sat_node,
+                    false,
+                );
+            if linked_succ_hash.is_some() {
+                // CLinkedRoleSaturationSuccessorData* succData = succHash->value(role);
+                let succ_data = calc_alg_context
+                    .process_context()
+                    .linked_role_sat_succ_hash(linked_succ_hash)
+                    .role_succ_data_hash
+                    .get(&role)
+                    .copied();
+                if let Some(succ_data) = succ_data.filter(|d| d.is_some()) {
+                    let indi_succ_datas: Vec<SaturationSuccessorDataId> = calc_alg_context
+                        .process_context()
+                        .linked_role_sat_succ_data(succ_data)
+                        .succ_node_data_map
+                        .values()
+                        .copied()
+                        .collect();
+                    for indi_succ_data in indi_succ_datas {
+                        let (active, value_nominal_connection, succ_node) = {
+                            let d = calc_alg_context
+                                .process_context()
+                                .sat_succ_data(indi_succ_data);
+                            (
+                                d.active_count >= 1,
+                                d.value_nominal_connection,
+                                d.succ_indi_node,
+                            )
+                        };
+                        if !active {
+                            continue;
+                        }
+                        if value_nominal_connection {
+                            // KONCLUDE-PORT-NOTE[conservative]: the C++ checks the
+                            // corrected completion-graph nominal node's label under
+                            // isConsistenceDataAvailable (and silently skips without
+                            // consistence data — impossible there, saturation runs
+                            // after ABox consistency). The getCorrectedNode label walk
+                            // is deferred; a VALUE-nominal-connected successor is
+                            // reported insufficient outright — sound defer.
+                            return true;
+                        }
+                        // succConSet = succNode->getReapplyConceptSaturationLabelSet(false);
+                        let succ_con_set = calc_alg_context
+                            .process_context()
+                            .sat_node(succ_node)
+                            .reapply_con_sat_label_set;
+                        let mut operants_contained = succ_con_set.is_some();
+                        if operants_contained {
+                            let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_operand_list()
+                                .to_vec();
+                            for op_linker_it in op_linker {
+                                // succConSet->containsConcept(opConcept, opLinker->isNegated() ^ conceptNegation)
+                                let contained = Self::sat_label_set_contains_concept_get_negation(
+                                    succ_con_set,
+                                    op_linker_it.target,
+                                    calc_alg_context,
+                                ) == Some(op_linker_it.negated ^ concept_negation);
+                                if !contained {
+                                    operants_contained = false;
+                                    break;
+                                }
+                            }
+                        }
+                        if !operants_contained {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         false
     }
@@ -593,25 +944,48 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) -> bool {
         // STATINC(SATURATIONCRITICALORCOUNT, calcAlgContext);
         // CConcept* concept = conDes->getConcept(); bool conceptNegation = conDes->isNegated();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let concept_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
         // CReapplyConceptSaturationLabelSet* conSet = indiProcSatNode->getReapplyConceptSaturationLabelSet(false);
-        let _con_set = calc_alg_context
-            .process_context_mut()
-            .sat_node_mut(*indi_proc_sat_node)
-            .get_reapply_concept_saturation_label_set(false);
-        // W4-DEFER[api]: walks `concept->getOperandList()` and for each operand applies
-        //   `getDisjunctCheckingConcept` (live sibling, group D) then tests the node's
-        //   CReapplyConceptSaturationLabelSet `containsConcept(opCheckingConcept, checkingNegation)`;
-        //   any contained disjunct ⇒ return false. The concept-operand iteration + the
-        //   label-set `containsConcept` are unported satellites. Faithful body:
-        //
-        //   if (conSet) for (opLinkerIt : concept->getOperandList()) {
-        //       opConcept = opLinkerIt->getData(); opConceptNegation = opLinkerIt->isNegated() ^ conceptNegation;
-        //       checkingNegation = opConceptNegation;
-        //       opCheckingConcept = getDisjunctCheckingConcept(opConcept, opConceptNegation, &checkingNegation, calcAlgContext);
-        //       if (conSet->containsConcept(opCheckingConcept, checkingNegation)) return false;
-        //   }
-        //   return true;
-        let _ = con_des;
+        let con_set = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .reapply_con_sat_label_set;
+        if con_set.is_some() {
+            let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            for op_linker_it in op_linker {
+                let op_concept = op_linker_it.target; // getData()
+                let op_concept_negation = op_linker_it.negated ^ concept_negation;
+
+                let mut checking_negation = op_concept_negation;
+                let op_checking_concept = self.get_disjunct_checking_concept(
+                    op_concept,
+                    op_concept_negation,
+                    Some(&mut checking_negation),
+                    calc_alg_context,
+                );
+
+                // conSet->containsConcept(opCheckingConcept, checkingNegation)
+                let contained = Self::sat_label_set_contains_concept_get_negation(
+                    con_set,
+                    op_checking_concept,
+                    calc_alg_context,
+                ) == Some(checking_negation);
+                if contained {
+                    return false;
+                }
+            }
+        }
         true
     }
 
@@ -626,20 +1000,37 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) -> bool {
         // STATINC(SATURATIONCRITICALORCOUNT, calcAlgContext);
         // CConcept* concept = conDes->getConcept(); bool conceptNegation = conDes->isNegated();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let concept_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
         // CReapplyConceptSaturationLabelSet* conSet = indiProcSatNode->getReapplyConceptSaturationLabelSet(false);
-        let _con_set = calc_alg_context
-            .process_context_mut()
-            .sat_node_mut(*indi_proc_sat_node)
-            .get_reapply_concept_saturation_label_set(false);
-        // W4-DEFER[api]: walks `concept->getOperandList()` and tests
-        //   `conSet->containsConcept(opConcept, opLinkerIt->isNegated() ^ conceptNegation)`;
-        //   any contained operand ⇒ return false; else return true. Concept-operand
-        //   iteration + label-set `containsConcept` are unported satellites. Faithful body:
-        //
-        //   if (conSet) for (opLinkerIt : concept->getOperandList())
-        //       if (conSet->containsConcept(opLinkerIt->getData(), opLinkerIt->isNegated() ^ conceptNegation)) return false;
-        //   return true;
-        let _ = con_des;
+        let con_set = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .reapply_con_sat_label_set;
+        if con_set.is_some() {
+            let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            for op_linker_it in op_linker {
+                // conSet->containsConcept(opConcept, opLinker->isNegated() ^ conceptNegation)
+                let contained = Self::sat_label_set_contains_concept_get_negation(
+                    con_set,
+                    op_linker_it.target,
+                    calc_alg_context,
+                ) == Some(op_linker_it.negated ^ concept_negation);
+                if contained {
+                    return false;
+                }
+            }
+        }
         true
     }
 
@@ -723,6 +1114,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 &mut *functionally_restricted_successor_node,
                 &mut *functionally_restricted_successor_creation_role_linker,
             );
+            // KONCLUDE-PORT-NOTE[conservative]: until the cardinality-counting core
+            // (collectATMOSTConceptRelevantSuccessors + the simple/detailed merging
+            // tests) lands, the deferred verdict must be INSUFFICIENT (true): a
+            // critical ≤n whose successors are silently assumed mergeable would let
+            // an over-restricted node complete SAT-certain — unsound. The
+            // conservative verdict only defers the subject to the tableau probe.
+            return true;
         }
         false
     }
@@ -757,10 +1155,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             //   return false;
             //   Live leaf: `self.get_corrected_node` (group C) over the cached det/non-det
             //   CG vectors `det_cached_cg_indi_vector` / `non_det_cached_cg_indi_vector`; the
-            //   label sets + `containsConcept` are unported satellites. Default (det node present,
-            //   no extra non-det concept) ⇒ false.
+            //   label sets + `containsConcept` are unported satellites.
+            //
+            // KONCLUDE-PORT-NOTE[conservative]: the deferred verdict must be
+            // INSUFFICIENT (true), not the C++ all-checks-passed default (false):
+            // assuming the cached nominal node carries no extra non-deterministic
+            // concept without actually checking would let a nominal-dependent node
+            // complete SAT-certain — unsound. Sound defer instead.
             let _ = (con_des, *indi_proc_sat_node);
-            false
+            true
         } else {
             true
         }
@@ -814,9 +1217,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             //   }
             //   return false;
             //   Live leaves: `self.get_corrected_node` (group C), `self.test_automate_transition_operands_addable`
-            //   (group D, s03). Default ⇒ false.
+            //   (group D, s03).
+            //
+            // KONCLUDE-PORT-NOTE[conservative]: the deferred verdict must be
+            // INSUFFICIENT (true), not the C++ all-checks-passed default (false):
+            // assuming no super-role reapplication is pending on the cached nominal
+            // node without walking it would let a VALUE-connected node complete
+            // SAT-certain — unsound. Sound defer instead.
             let _ = (con_des, *indi_proc_sat_node);
-            false
+            true
         } else {
             true
         }

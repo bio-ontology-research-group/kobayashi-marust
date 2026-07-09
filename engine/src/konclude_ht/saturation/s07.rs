@@ -100,7 +100,7 @@ use super::satellites::{
 };
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
-    fn s07_concept_reference_node(
+    pub(in crate::konclude_ht) fn s07_concept_reference_node(
         concept: ConceptId,
         concept_negation: bool,
         calc_alg_context: &CalculationAlgorithmContextBase,
@@ -144,7 +144,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         Self::s07_reference_linking_node(sat_calc_ref_link_data_id, calc_alg_context)
     }
 
-    fn s07_existential_successor_reference_node(
+    pub(in crate::konclude_ht) fn s07_existential_successor_reference_node(
         concept: ConceptId,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> SatNodeId {
@@ -226,11 +226,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         {
             return;
         }
-        let super_roles = calc_alg_context
-            .ontology_arenas()
-            .role(role)
-            .get_indirect_super_role_list()
-            .to_vec();
+        // KONCLUDE-PORT-NOTE[identity]: Konclude's indirect super-role lists START
+        // with the role itself; the bridge builds strict lists. Without the identity
+        // entry the successor is never registered under its own creation role and
+        // `isCriticalALLConceptDescriptorInsufficient` sees an empty successor hash —
+        // ∃r.B ⊓ ∀r.¬B then completes SAT-certain (unsound, caught by
+        // `saturation_never_sat_certain_on_forall_exists_clash`).
+        let super_roles = Self::saturation_indirect_super_roles(role, calc_alg_context);
         for super_role_it in super_roles {
             if !super_role_it.negated {
                 if nominal_successor {
@@ -1336,11 +1338,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let super_roles = calc_alg_context
-            .ontology_arenas()
-            .role(role)
-            .get_indirect_super_role_list()
-            .to_vec();
+        // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see
+        // `s07_add_linked_successors_for_resolved_node`).
+        let super_roles = Self::saturation_indirect_super_roles(role, calc_alg_context);
         for super_role_it in super_roles {
             if !super_role_it.negated ^ role_inversion {
                 calc_alg_context

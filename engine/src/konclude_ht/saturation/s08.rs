@@ -179,22 +179,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         }
         if inv_role.is_none() {
-            let super_role_list = calc_alg_context
-                .ontology_arenas()
-                .role(role)
-                .get_indirect_super_role_list()
-                .to_vec();
+            // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+            let super_role_list =
+                Self::saturation_indirect_super_roles(role, calc_alg_context);
             for inv_super_role_linker_it in &super_role_list {
                 if inv_role.is_some() {
                     break;
                 }
                 if inv_super_role_linker_it.negated {
                     let inv_super_role = inv_super_role_linker_it.target;
-                    let super_super_role_list = calc_alg_context
-                        .ontology_arenas()
-                        .role(inv_super_role)
-                        .get_indirect_super_role_list()
-                        .to_vec();
+                    // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+                    let super_super_role_list =
+                        Self::saturation_indirect_super_roles(inv_super_role, calc_alg_context);
                     for super_super_role_linker_it in &super_super_role_list {
                         if inv_role.is_some() {
                             break;
@@ -352,11 +348,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     1,
                                 )
                         {
-                            let inv_creation_super_roles = calc_alg_context
-                                .ontology_arenas()
-                                .role(inv_creation_role)
-                                .get_indirect_super_role_list()
-                                .to_vec();
+                            // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+                            let inv_creation_super_roles =
+                                Self::saturation_indirect_super_roles(
+                                    inv_creation_role,
+                                    calc_alg_context,
+                                );
                             for inv_creation_super_role_it in inv_creation_super_roles {
                                 let creation_super_role = inv_creation_super_role_it.target;
                                 if !inv_creation_super_role_it.negated {
@@ -743,11 +740,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 }
                             }
                             if deactivate_link {
-                                let creation_super_roles = calc_alg_context
-                                    .ontology_arenas()
-                                    .role(creation_role)
-                                    .get_indirect_super_role_list()
-                                    .to_vec();
+                                // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+                                let creation_super_roles =
+                                    Self::saturation_indirect_super_roles(
+                                        creation_role,
+                                        calc_alg_context,
+                                    );
                                 for creation_super_role_it in creation_super_roles {
                                     if !creation_super_role_it.negated {
                                         calc_alg_context
@@ -1221,7 +1219,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         found_cardinality
     }
 
-    fn sat_label_set_contains_concept_get_negation(
+    pub(in crate::konclude_ht) fn sat_label_set_contains_concept_get_negation(
         label_set: ReapplyConceptSaturationLabelSetId,
         concept: ConceptId,
         calc_alg_context: &CalculationAlgorithmContextBase,

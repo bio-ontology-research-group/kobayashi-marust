@@ -513,11 +513,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             {
                 updated = true;
                 let mut backward_link_connected = false;
-                let super_roles = calc_alg_context
-                    .ontology_arenas()
-                    .role(role)
-                    .get_indirect_super_role_list()
-                    .to_vec();
+                // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+                let super_roles =
+                    Self::saturation_indirect_super_roles(role, calc_alg_context);
 
                 if last_resolved_indi_node.is_some() {
                     for super_role_it in super_roles.iter().copied() {
@@ -955,11 +953,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                                 remove_previous_successor_connections = false;
                                             }
                                         }
-                                        let creation_super_roles = calc_alg_context
-                                            .ontology_arenas()
-                                            .role(creation_role)
-                                            .get_indirect_super_role_list()
-                                            .to_vec();
+                                        // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+                                        let creation_super_roles =
+                                            Self::saturation_indirect_super_roles(
+                                                creation_role,
+                                                calc_alg_context,
+                                            );
                                         for creation_super_role_it in creation_super_roles {
                                             let creation_super_role = creation_super_role_it.target;
                                             if !creation_super_role_it.negated {

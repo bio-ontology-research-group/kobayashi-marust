@@ -222,13 +222,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         }
 
         // Snapshot the (superRole, rangeConcept-list) structure once for the resolve pass.
-        let super_role_list: Vec<(RoleId, bool)> = calc_alg_context
-            .ontology_arenas()
-            .role(role)
-            .get_indirect_super_role_list()
-            .iter()
-            .map(|r| (r.target, r.negated))
-            .collect();
+        // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
+        let super_role_list: Vec<(RoleId, bool)> =
+            Self::saturation_indirect_super_roles(role, calc_alg_context)
+                .iter()
+                .map(|r| (r.target, r.negated))
+                .collect();
         for &(super_role, super_role_negated) in &super_role_list {
             let range_con_linker: Vec<(ConceptId, bool)> = calc_alg_context
                 .ontology_arenas()
@@ -1303,25 +1302,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         negated: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
-        let node = SatNodeId::NONE;
-        // CConceptData* conceptData = concept->getConceptData();
-        let concept_data = calc_alg_context
-            .ontology_arenas()
-            .concept(concept)
-            .get_concept_data();
-        if concept_data != INVALID {
-            // W4-DEFER[api]: conProcData = (CConceptProcessData*)conceptData;
-            //   conRefLinking = conProcData->getConceptReferenceLinking();
-            //   if (conRefLinking) {
-            //     confSatRefLinkingData = (CConceptSaturationReferenceLinkingData*)conRefLinking;
-            //     satCalcRefLinkData = confSatRefLinkingData->getConceptSaturationReferenceLinkingData(negated);
-            //     if (satCalcRefLinkData) node = (CIndividualSaturationProcessNode*)satCalcRefLinkData->getIndividualProcessNodeForConcept();
-            //   }
-            //   — CConceptProcessData / CConceptReferenceLinking / CConceptSaturationReferenceLinkingData /
-            //   CSaturationConceptReferenceLinking unported; the cached-node lookup resolves when they land.
-            let _ = negated;
-        }
-        node
+        // The dynamic_cast ladder (CConceptData → CConceptProcessData →
+        // CConceptReferenceLinking → CConceptSaturationReferenceLinkingData →
+        // CSaturationConceptReferenceLinking → node) is the shared s07 resolver.
+        Self::s07_concept_reference_node(concept, negated, calc_alg_context)
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::getSaturationIDForIndividualNode`

@@ -69,9 +69,11 @@
 #![allow(unused_variables)]
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
+use super::super::model::concept_process::ConceptProcessDataId;
 use super::super::model::op::{CCATLEAST, CCATMOST, CCATOM};
 use super::super::model::substrate::Cint64;
 use super::super::model::RoleId;
+use super::super::model::{ConceptId, NegLink};
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::SatNodeId;
@@ -79,6 +81,7 @@ use super::satellites::ConceptSaturationDescriptorId;
 
 // `CCriticalConceptType` enum tags used by `addCriticalConceptDescriptor`.
 // File-local mirror of the (file-private) copies in `s08.rs` / `s09.rs`.
+const CCT_FORALL: Cint64 = 0;
 const CCT_ATMOST: Cint64 = 1;
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
@@ -251,19 +254,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// extension processing or flags the node for an unregistered-propagation
     /// end-check.
     ///
-    /// PORT-PENDING — faithful structure recorded below. Needs: the task memory
-    /// allocator (`getUsedProcessTaskMemoryAllocationManager`, `[memory-pool]`),
-    /// the saturation node `getRoleBackwardPropagationHash`, the unported
-    /// `CRoleBackwardSaturationPropagationHash` /
-    /// `CBackwardSaturationPropagationReapplyDescriptor` /
-    /// `CRoleBackwardSaturationPropagationHashData` /
-    /// `CBackwardSaturationPropagationLink` satellite types, the descriptor chain,
-    /// the concept reads (`getRole`/`getOperandList`, model-ported) +
-    /// `getConceptData`/`hasPropagationIntoCreationDirection` (`CConceptProcessData`,
-    /// unported) + `getRoleData`/`hasPropagationAndCreationConceptsFlag`
-    /// (`CRoleProcessData`, unported), the status-flag masks, and the siblings
-    /// `addConceptFilteredToIndividual` / `addALLConceptExtensionProcessingRole` /
-    /// `updateDirectAddingIndividualStatusFlags` / `addCriticalConceptDescriptor`.
+    /// Live port (task #23 saturation-first). The one remaining seam:
+    /// `CRoleProcessData::hasPropagationAndCreationConceptsFlag` is unported — the
+    /// bridge never allocates role data, so the C++ `!roleProData` arm applies and
+    /// the node is marked for the unregistered-propagation end check (see the
+    /// KONCLUDE-PORT-NOTE in the body).
     ///
     /// C++ structure:
     /// ```text
@@ -309,15 +304,171 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: the
-        // backward-propagation hash/reapply-descriptor/link satellites and the
-        // process-data flag accessors are unported; the descriptor chain, the
-        // status-flag masks and the four siblings land in later PU-SAT units.
-        let _ = (
-            &mut *process_indi,
-            con_sat_pro_linker,
-            &mut *calc_alg_context,
-        );
+        // STATINC(ALLRULEAPPLICATIONCOUNT) — profiling stat, elided.
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
+
+        // backPropHash = processIndi->getRoleBackwardPropagationHash(true);
+        // backPropReapplyDes = alloc; initBackwardPropagationReapplyDescriptor(conDes);
+        // backPropHashData = backPropHash->addBackwardPropagationConceptDescriptor(role, backPropReapplyDes);
+        //   (CRoleBackwardSaturationPropagationHash cpp 96–100: prepend the reapply
+        //   descriptor onto the role's mReapplyLinker chain.)
+        let back_prop_hash = calc_alg_context
+            .process_context_mut()
+            .sat_node_role_backward_propagation_hash(*process_indi, true);
+        let back_prop_link_it = {
+            let old_reapply = calc_alg_context
+                .process_context()
+                .role_backward_sat_prop_hash(back_prop_hash)
+                .role_back_prop_data_hash
+                .get(&role)
+                .map(|data| data.reapply_linker)
+                .unwrap_or(
+                    super::satellites::BackwardSaturationPropagationReapplyDescriptorId::NONE,
+                );
+            let mut reapply_des = super::satellites::BackwardSaturationPropagationReapplyDescriptor::new();
+            reapply_des.init_backward_propagation_reapply_descriptor(con_des);
+            reapply_des.set_next(old_reapply);
+            let reapply_des = calc_alg_context
+                .process_context_mut()
+                .alloc_backward_sat_prop_reapply_desc(reapply_des);
+            let data = calc_alg_context
+                .process_context_mut()
+                .role_backward_sat_prop_hash_mut(back_prop_hash)
+                .role_back_prop_data_hash
+                .entry(role)
+                .or_insert_with(
+                    super::satellites::RoleBackwardSaturationPropagationHashData::new,
+                );
+            data.reapply_linker = reapply_des;
+            data.link_linker
+        };
+
+        // Replay the ∀-operands onto every already backward-linked source node.
+        if back_prop_link_it.is_some() {
+            let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            let mut link_it = back_prop_link_it;
+            while link_it.is_some() {
+                let mut back_prop_indi_node = calc_alg_context
+                    .process_context()
+                    .backward_sat_prop_link(link_it)
+                    .get_source_individual();
+                for op_link in &operands {
+                    let op_concept = op_link.target; // getData()
+                    let op_con_negation = op_link.negated ^ con_negation; // isNegated()^conNegation
+                                                                          // STATINC(ALLROLERESTRICTIONCOUNT) — elided.
+                    self.add_concept_filtered_to_individual_update_copy(
+                        op_concept,
+                        op_con_negation,
+                        &mut back_prop_indi_node,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+                link_it = calc_alg_context
+                    .process_context()
+                    .backward_sat_prop_link(link_it)
+                    .get_next();
+            }
+        }
+
+        // conProData = (CConceptProcessData*)concept->getConceptData();
+        // if (role->isDataRole() || conProData) { … }
+        let is_data_role = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .is_data_role();
+        let con_proc_data_id = {
+            let c = calc_alg_context.ontology_arenas().concept(concept);
+            if c.has_concept_data() {
+                ConceptProcessDataId::new(c.get_concept_data())
+            } else {
+                ConceptProcessDataId::NONE
+            }
+        };
+        if is_data_role || con_proc_data_id.is_some() {
+            let propagation_into_creation_direction = con_proc_data_id.is_some()
+                && calc_alg_context
+                    .ontology_arenas()
+                    .concept_process_data(con_proc_data_id)
+                    .propagation_into_creation_direction;
+            if is_data_role || propagation_into_creation_direction {
+                // addALLConceptExtensionProcessingRole(role, backPropHashData, processIndi);
+                // KONCLUDE-PORT-NOTE[ownership]: the C++ passes the hash-map entry by
+                // reference; the port clones it out, calls the sibling (which mutates
+                // only the queued flag on the entry plus node/queue state through the
+                // context), and writes the entry back. Nothing else touches this
+                // role's entry during the call.
+                let mut data = calc_alg_context
+                    .process_context()
+                    .role_backward_sat_prop_hash(back_prop_hash)
+                    .role_back_prop_data_hash
+                    .get(&role)
+                    .cloned()
+                    .unwrap_or_else(
+                        super::satellites::RoleBackwardSaturationPropagationHashData::new,
+                    );
+                self.add_all_concept_extension_processing_role(
+                    role,
+                    &mut data,
+                    process_indi,
+                    calc_alg_context,
+                );
+                calc_alg_context
+                    .process_context_mut()
+                    .role_backward_sat_prop_hash_mut(back_prop_hash)
+                    .role_back_prop_data_hash
+                    .insert(role, data);
+                self.update_direct_adding_individual_status_flags(
+                    *process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCRITICAL,
+                    calc_alg_context,
+                );
+                self.add_critical_concept_descriptor(
+                    con_des,
+                    CCT_FORALL,
+                    process_indi,
+                    calc_alg_context,
+                );
+            } else {
+                // roleProData = (CRoleProcessData*)role->getRoleData();
+                // if (!roleProData || roleProData->hasPropagationAndCreationConceptsFlag())
+                // KONCLUDE-PORT-NOTE[api]: CRoleProcessData is unported and the bridge
+                // never allocates role data, so the C++ `!roleProData` arm applies —
+                // mark the node for the unregistered-propagation end check exactly as
+                // Konclude does for data-less roles.
+                let role_data_missing = calc_alg_context
+                    .ontology_arenas()
+                    .role(role)
+                    .get_role_data()
+                    .is_none();
+                if role_data_missing {
+                    self.update_direct_adding_individual_status_flags(
+                        *process_indi,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNREGISTEREDPROPAGATION,
+                        calc_alg_context,
+                    );
+                }
+            }
+        }
     }
 
     // =======================================================================

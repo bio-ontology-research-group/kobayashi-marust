@@ -61,8 +61,9 @@
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::substrate::Cint64;
 use super::super::model::Id;
-use super::super::model::{ConceptId, RoleId};
+use super::super::model::{ConceptId, NegLink, RoleId};
 use super::super::process::node_resolution::IndividualProcessNodeVector;
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::{NodeId, SatNodeId};
 use super::algorithm::SaturationTaskHandleAlgorithm;
@@ -83,6 +84,37 @@ type ConceptSaturationProcessLinkerHandle = Cint64;
 type DataLiteralHandle = Cint64;
 
 impl SaturationTaskHandleAlgorithm {
+    /// The saturation view of `role->getIndirectSuperRoleList()`.
+    ///
+    /// KONCLUDE-PORT-NOTE[identity]: Konclude's indirect super-role list STARTS
+    /// with the role itself (`CSubroleTransformationPreProcess` cpp 221–224:
+    /// `superRoleLinker->init(role,false); role->setIndirectSuperRoleLinker(...)`),
+    /// but the bridge builds STRICT lists (its DFS skips `s == sub`) and the
+    /// validated completion consumers depend on that shape. The saturation rules
+    /// (successor creation, init-role ranges, the propagation-into-creation
+    /// preprocess) semantically need the reflexive entry — restore it LOCALLY
+    /// here instead of mutating the shared arenas.
+    pub(in crate::konclude_ht) fn saturation_indirect_super_roles(
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<NegLink<RoleId>> {
+        let list = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_indirect_super_role_list();
+        let mut out = Vec::with_capacity(list.len() + 1);
+        out.push(NegLink {
+            target: role,
+            negated: false,
+        });
+        for link in list {
+            if !(link.target == role && !link.negated) {
+                out.push(*link);
+            }
+        }
+        out
+    }
+
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::individualNodeInitializing`
     /// (.cpp 796–835).
     ///
@@ -129,11 +161,34 @@ impl SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let _ = (&indi_proc_sat_node, &calc_alg_context);
-        // W6-DEFER[api]: see the PORT-PENDING transcription above (sat_node SAT-1 +
-        // ontology triples accessor + sibling initialize_* calls). The C++ tail
-        // unconditionally `return true;`.
-        true
+        if !calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .is_initialized()
+        {
+            // Nominal triples-assertion loading (cpp 799–819):
+            // `hasNominalIndividualTriplesAssertions && !areLoaded` → visit the
+            // ontology triples accessor. KONCLUDE-PORT-NOTE[api]: the ontology
+            // triples subsystem is unported and the port's node construction
+            // (`CSatisfiableCalculationTaskFromCalculationJobGenerator` analogue in
+            // bridge.rs) never sets the triples-assertion flag, so the guard is
+            // statically false here.
+
+            self.initialize_initialization_concepts(indi_proc_sat_node, calc_alg_context); // 821
+            self.initialize_role_assertions(indi_proc_sat_node, calc_alg_context); // 822
+            self.initialize_data_assertions(indi_proc_sat_node, calc_alg_context); // 823
+
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(*indi_proc_sat_node)
+                .set_initialized(true); // 825
+
+            // cpp 827–833: nominal + saturation-individuals analysation observer →
+            // addIndividualSaturationAnalysationNodeLinker. KONCLUDE-PORT-NOTE[api]:
+            // the Task subsystem's analysation observer is never installed in the
+            // port, so the guard is statically false.
+        }
+        true // 835
     }
 
     /// Port of `initializeInitializationConcepts` (.cpp 5464–5706) — the 245-line
@@ -183,13 +238,476 @@ impl SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (&indi_proc_sat_node, &calc_alg_context);
-        // Config reads that already resolve (recorded for the eventual body):
-        let _force_all_concept_insertion = self.conf_force_all_concept_insertion;
-        let _force_all_copy = self.conf_force_all_copy_instead_of_substituition;
-        let _copy_from_top_many = self.conf_copy_node_from_top_individual_for_many_concepts;
-        // self.substituited_indi_node_count += 1;  // (on the substitute-install path)
-        // W6-DEFER[api]: PORT-PENDING — see the structured transcription above.
+        use super::super::model::concept_process::{
+            SaturationConceptReferenceLinkingId, SATURATION_COPY_MODE, SATURATION_SUBSTITUTE_MODE,
+        };
+        use super::super::model::op::{CCAND, CCEQ, CCOR};
+
+        let mut required_back_prop = true; // 5466
+        let mut special_indi_node = SatNodeId::NONE; // 5468
+        let mut copy_individual_node = false; // 5472
+        let mut substituite_individual_node = false; // 5473
+
+        // conceptSatItem = node->getSaturationConceptReferenceLinking() (5475–5476).
+        // KONCLUDE-PORT-NOTE[api]: the single C++ CSaturationConceptDataItem is split
+        // across two arenas in the port — the process-side
+        // ExtendedConceptReferenceLinkingData (concept/negation/role-ranges) whose
+        // `concept_reference_linking` raw handle points at the ontology-side
+        // SaturationConceptReferenceLinking (exist-init/data-range flags, special
+        // reference + mode, node pointer).
+        let concept_sat_item = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_saturation_concept_reference_linking();
+
+        let mut init_concept = ConceptId::NONE; // 5478
+        let mut init_negated = false; // 5479
+        let mut data_range_concept = false; // 5480
+        let mut init_role = RoleId::NONE; // 5481
+        let mut onto_item = SaturationConceptReferenceLinkingId::NONE;
+
+        if concept_sat_item.is_some() {
+            let (concept, negated, role, onto_ref) = {
+                let item = calc_alg_context
+                    .process_context()
+                    .extended_con_ref_linking_data(concept_sat_item);
+                (
+                    item.get_saturation_concept(),
+                    item.get_saturation_negation(),
+                    item.get_saturation_role_ranges(),
+                    item.get_concept_reference_linking(),
+                )
+            };
+            init_concept = concept; // 5484
+            init_negated = negated; // 5485
+            init_role = role; // 5486
+            onto_item = SaturationConceptReferenceLinkingId::new(onto_ref);
+            if onto_item.is_some() {
+                let onto = calc_alg_context
+                    .ontology_arenas()
+                    .saturation_concept_reference_linking(onto_item);
+                if !self.conf_force_all_concept_insertion {
+                    required_back_prop = onto.is_potentially_exist_initialization_concept();
+                    // 5489
+                }
+                data_range_concept = onto.is_data_range_concept(); // 5491
+            }
+        }
+
+        // specialRefItem → specialIndiNode (5494–5499).
+        if onto_item.is_some() {
+            let special_ref_item = calc_alg_context
+                .ontology_arenas()
+                .saturation_concept_reference_linking(onto_item)
+                .get_special_item_reference();
+            if special_ref_item.is_some() {
+                special_indi_node = calc_alg_context
+                    .ontology_arenas()
+                    .saturation_concept_reference_linking(special_ref_item)
+                    .get_individual_process_node_for_concept();
+            }
+        }
+
+        // mode → copy / substitute (5501–5509).
+        if onto_item.is_some() {
+            let mode = calc_alg_context
+                .ontology_arenas()
+                .saturation_concept_reference_linking(onto_item)
+                .get_special_reference_mode();
+            if mode == SATURATION_COPY_MODE {
+                copy_individual_node = true;
+            } else if mode == SATURATION_SUBSTITUTE_MODE {
+                substituite_individual_node = true;
+            }
+        }
+
+        let mut add_initialization_concepts = true; // 5511
+        let mut initialized = false; // 5512
+        if special_indi_node.is_some()
+            && !calc_alg_context
+                .process_context()
+                .sat_node(special_indi_node)
+                .is_initialized()
+        {
+            special_indi_node = SatNodeId::NONE; // 5514
+        }
+        if special_indi_node.is_some() {
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(*indi_proc_sat_node)
+                .set_reference_individual_saturation_process_node(special_indi_node); // 5517
+        }
+        if special_indi_node.is_some()
+            && substituite_individual_node
+            && (self.conf_force_all_copy_instead_of_substituition || init_role.is_some())
+        {
+            substituite_individual_node = false; // 5520
+            copy_individual_node = true; // 5521
+        }
+        if special_indi_node.is_some() && substituite_individual_node {
+            // Chase the substitute chain to the block node (5524–5527).
+            let mut blocked_indi_node = special_indi_node;
+            while calc_alg_context
+                .process_context()
+                .sat_node(blocked_indi_node)
+                .has_substitute_individual_node()
+            {
+                blocked_indi_node = calc_alg_context
+                    .process_context()
+                    .sat_node(blocked_indi_node)
+                    .get_substitute_individual_node();
+            }
+            // contained = blockConSet->getConceptDescriptorAndReapplyQueue(initConcept, …) (5528–5534).
+            let block_con_set = calc_alg_context
+                .process_context()
+                .sat_node(blocked_indi_node)
+                .reapply_con_sat_label_set;
+            let mut contained = false;
+            if block_con_set.is_some() {
+                let init_con_tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(init_concept)
+                    .get_concept_tag();
+                let mut con_sat_des = super::satellites::ConceptSaturationDescriptorId::NONE;
+                let mut imp_reapply =
+                    super::satellites::ImplicationReapplyConceptSaturationDescriptorId::NONE;
+                contained = calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(block_con_set)
+                    .get_concept_descriptor_and_reapply_queue_by_tag(
+                        init_con_tag,
+                        &mut con_sat_des,
+                        &mut imp_reapply,
+                    );
+            }
+            if !contained {
+                self.substituited_indi_node_count += 1; // 5537
+                                                        // initSubstituitingIndividualSaturationProcessNode(blocked) copies the
+                                                        // blocked node's flag words (5538).
+                let (blocked_direct, blocked_indirect) = {
+                    let blocked = calc_alg_context
+                        .process_context()
+                        .sat_node(blocked_indi_node);
+                    (blocked.direct_status_flags, blocked.indirect_status_flags)
+                };
+                {
+                    let node = calc_alg_context
+                        .process_context_mut()
+                        .sat_node_mut(*indi_proc_sat_node);
+                    node.direct_status_flags = blocked_direct;
+                    node.indirect_status_flags = blocked_indirect;
+                    node.set_substitute_individual_node(special_indi_node); // 5539
+                    node.set_reference_mode(1); // 5540
+                    node.clear_concept_saturation_process_linker(); // 5541
+                }
+                add_initialization_concepts = false; // 5542
+                initialized = true; // 5543
+                self.update_direct_adding_individual_status_flags_with_flags(
+                    *indi_proc_sat_node,
+                    &blocked_direct,
+                    calc_alg_context,
+                ); // 5545
+                self.update_indirect_adding_individual_status_flags(
+                    *indi_proc_sat_node,
+                    &blocked_indirect,
+                    calc_alg_context,
+                ); // 5546
+                let blocked_nominal_set = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_successor_connected_nominal_set(blocked_indi_node, false);
+                self.update_adding_successor_connected_nominal_set(
+                    *indi_proc_sat_node,
+                    blocked_nominal_set,
+                    calc_alg_context,
+                ); // 5547
+            } else {
+                copy_individual_node = true; // 5550
+            }
+        }
+
+        let try_flat_label_copy = false; // 5554 (set true only on the ABox representative path)
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(*indi_proc_sat_node)
+            .set_required_backward_propagation(required_back_prop); // 5555
+
+        if special_indi_node.is_none() {
+            let nominal_indi = calc_alg_context
+                .process_context()
+                .sat_node(*indi_proc_sat_node)
+                .get_nominal_individual();
+            if nominal_indi.is_some() {
+                // ABox-representative initialization (5558–5590): resolve the
+                // representative-assertion node (named nominal) or add the asserted
+                // concepts (anonymous nominal). W6-DEFER[api]: the representative
+                // resolve helpers are unported and the bridge pre-build creates no
+                // nominal nodes. FAIL-SAFE: mark insufficiently saturated instead of
+                // dropping assertions (never silently approximate).
+                self.update_direct_adding_individual_status_flags(
+                    *indi_proc_sat_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
+        }
+
+        // ⊤-copy heuristic (5594–5620): copy from ⊤'s node when it carries > 10
+        // concepts.
+        if special_indi_node.is_none()
+            && !data_range_concept
+            && self.conf_copy_node_from_top_individual_for_many_concepts
+        {
+            let top_concept = calc_alg_context.processing_data_box().ontology_top_concept;
+            special_indi_node =
+                Self::s07_concept_reference_node(top_concept, false, calc_alg_context);
+            if special_indi_node.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .sat_node(special_indi_node)
+                    .is_initialized()
+            {
+                let top_con_set = calc_alg_context
+                    .process_context()
+                    .sat_node(special_indi_node)
+                    .reapply_con_sat_label_set;
+                let mut many = false;
+                if top_con_set.is_some() {
+                    many = calc_alg_context
+                        .process_context()
+                        .reapply_con_sat_label_set(top_con_set)
+                        .get_concept_count()
+                        > 10;
+                }
+                if many {
+                    copy_individual_node = true; // 5613
+                }
+            } else {
+                special_indi_node = SatNodeId::NONE; // 5617
+            }
+        }
+
+        if special_indi_node.is_some() && copy_individual_node {
+            // 5622–5638
+            let concept_sat_item_handle: Cint64 = concept_sat_item.raw;
+            if self.is_processing_critical(
+                *indi_proc_sat_node,
+                concept_sat_item_handle,
+                special_indi_node,
+                calc_alg_context,
+            ) {
+                self.update_direct_adding_individual_status_flags(
+                    *indi_proc_sat_node,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                        | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                ); // 5625
+                self.set_insufficient_node_occured(calc_alg_context); // 5626
+                add_initialization_concepts = false; // 5627
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_node_mut(*indi_proc_sat_node)
+                    .clear_concept_saturation_process_linker(); // 5628
+            } else {
+                let mut blocked_indi_node = special_indi_node;
+                while calc_alg_context
+                    .process_context()
+                    .sat_node(blocked_indi_node)
+                    .has_substitute_individual_node()
+                {
+                    blocked_indi_node = calc_alg_context
+                        .process_context()
+                        .sat_node(blocked_indi_node)
+                        .get_substitute_individual_node();
+                } // 5630–5633
+                self.initialize_individual_node_by_coping(
+                    *indi_proc_sat_node,
+                    blocked_indi_node,
+                    try_flat_label_copy,
+                    calc_alg_context,
+                ); // 5634
+            }
+            initialized = true; // 5636
+        }
+
+        if !initialized {
+            // 5638–5660: root initialization.
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(*indi_proc_sat_node)
+                .init_root_individual_saturation_process_node(); // 5640
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(*indi_proc_sat_node)
+                .set_reference_mode(4); // 5641
+            let base_top_concept = if !data_range_concept {
+                calc_alg_context.processing_data_box().ontology_top_concept
+            } else {
+                calc_alg_context
+                    .processing_data_box()
+                    .ontology_top_data_range_concept
+            }; // 5642–5647
+            if base_top_concept.is_some() {
+                self.add_concept_filtered_to_individual(
+                    base_top_concept,
+                    false,
+                    indi_proc_sat_node,
+                    calc_alg_context,
+                ); // 5649
+            }
+            // univConnNomValueConcept (5651–5654): the TBox
+            // universal-connection-nominal-value concept.
+            // KONCLUDE-PORT-NOTE[api]: not modeled in the port's databox and never
+            // built by the bridge (nominal-free fragment); statically absent.
+        }
+
+        self.add_individual_to_completion_queue(indi_proc_sat_node, calc_alg_context); // 5662
+
+        if add_initialization_concepts {
+            // 5667–5697
+            if init_concept.is_some() {
+                let label_set = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_reapply_concept_saturation_label_set(*indi_proc_sat_node, true);
+                self.add_concept_filtered_to_individual_label_set(
+                    init_concept,
+                    init_negated,
+                    indi_proc_sat_node,
+                    label_set,
+                    false,
+                    calc_alg_context,
+                ); // 5669
+                if special_indi_node.is_some() {
+                    // Disjunction already present in the special node's label →
+                    // requeue a process linker for it (5670–5688).
+                    let init_con_op_code = calc_alg_context
+                        .ontology_arenas()
+                        .concept(init_concept)
+                        .get_operator_code();
+                    let init_concept_disjunction = (init_negated
+                        && (init_con_op_code == CCAND || init_con_op_code == CCEQ))
+                        || (!init_negated && init_con_op_code == CCOR);
+                    if init_concept_disjunction {
+                        let spec_con_set = calc_alg_context
+                            .process_context()
+                            .sat_node(special_indi_node)
+                            .reapply_con_sat_label_set;
+                        if spec_con_set.is_some() {
+                            let init_con_tag = calc_alg_context
+                                .ontology_arenas()
+                                .concept(init_concept)
+                                .get_concept_tag();
+                            let mut init_con_sat_des =
+                                super::satellites::ConceptSaturationDescriptorId::NONE;
+                            let mut init_con_imp_des =
+                                super::satellites::ImplicationReapplyConceptSaturationDescriptorId::NONE;
+                            let found = calc_alg_context
+                                .process_context()
+                                .reapply_con_sat_label_set(spec_con_set)
+                                .get_concept_saturation_descriptor_by_tag(
+                                    init_con_tag,
+                                    &mut init_con_sat_des,
+                                    &mut init_con_imp_des,
+                                );
+                            if found
+                                && calc_alg_context
+                                    .process_context()
+                                    .con_sat_desc(init_con_sat_des)
+                                    .get_negation()
+                                    == init_negated
+                            {
+                                let linker_payload =
+                                    self.create_concept_saturation_process_linker(calc_alg_context);
+                                let linker =
+                                    ConceptSaturationProcessLinkerId::new(linker_payload.raw);
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .con_sat_proc_linker_mut(linker)
+                                    .init_concept_saturation_process_linker(init_con_sat_des);
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .sat_node_add_concept_saturation_process_linker(
+                                        *indi_proc_sat_node,
+                                        linker,
+                                    );
+                            }
+                        }
+                    }
+                }
+            }
+            if init_role.is_some() {
+                // Init-role RANGE concepts of every indirect super-role (5689–5697).
+                let super_roles: Vec<NegLink<RoleId>> =
+                    Self::saturation_indirect_super_roles(init_role, calc_alg_context); // ([identity])
+                for super_role_link in super_roles {
+                    let range_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
+                        .ontology_arenas()
+                        .role(super_role_link.target)
+                        .get_domain_range_concept_list(!super_role_link.negated)
+                        .to_vec();
+                    for range_link in range_concepts {
+                        self.add_concept_filtered_to_individual(
+                            range_link.target,
+                            range_link.negated,
+                            indi_proc_sat_node,
+                            calc_alg_context,
+                        );
+                    }
+                }
+            }
+        }
+
+        // Drain the node's initializing backward-propagation links (5699–5705):
+        // install each and propagate the node's indirect status + nominal set back
+        // to the source.
+        let mut back_sat_prop_link_it = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_initializing_backward_propagation_links();
+        while back_sat_prop_link_it.is_some() {
+            let back_prop_link = back_sat_prop_link_it;
+            back_sat_prop_link_it = calc_alg_context
+                .process_context()
+                .backward_sat_prop_link(back_prop_link)
+                .get_next();
+            calc_alg_context
+                .process_context_mut()
+                .backward_sat_prop_link_mut(back_prop_link)
+                .set_next(super::satellites::BackwardSaturationPropagationLinkId::NONE); // clearNext()
+            let (source, link_role) = {
+                let link = calc_alg_context
+                    .process_context()
+                    .backward_sat_prop_link(back_prop_link);
+                (link.get_source_individual(), link.get_link_role())
+            };
+            self.install_backward_propagation_link(
+                source,
+                *indi_proc_sat_node,
+                link_role,
+                back_prop_link,
+                true,
+                true,
+                calc_alg_context,
+            );
+            let node_indirect_flags = calc_alg_context
+                .process_context()
+                .sat_node(*indi_proc_sat_node)
+                .indirect_status_flags;
+            self.update_indirect_adding_individual_status_flags(
+                source,
+                &node_indirect_flags,
+                calc_alg_context,
+            );
+            let node_nominal_set = calc_alg_context
+                .process_context_mut()
+                .sat_node_successor_connected_nominal_set(*indi_proc_sat_node, false);
+            self.update_adding_successor_connected_nominal_set(
+                source,
+                node_nominal_set,
+                calc_alg_context,
+            );
+        }
     }
 
     /// Port of `individualNodeConclusion` (.cpp 5709–5714).
@@ -206,10 +724,13 @@ impl SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (&indi_proc_sat_node, &calc_alg_context);
-        // W6-DEFER[api]: indiProcSatNode->getConceptSaturationProcessLinker() is a
-        // SAT-1 sat_node getter; `add_individual_to_processing_queue` is a sibling
-        // (group B) s-unit method. Faithful guard recorded above.
+        let con_sat_pro_linker = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_concept_saturation_process_linker();
+        if con_sat_pro_linker.is_some() {
+            self.add_individual_to_processing_queue(indi_proc_sat_node, calc_alg_context);
+        }
     }
 
     /// Port of `countConceptsOfReferredNodes` (.cpp 5369–5400).
@@ -394,9 +915,27 @@ impl SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (&indi_proc_sat_node, &calc_alg_context);
-        // W6-DEFER[api]: see the PORT-PENDING summary above. Guarded by
-        // `indiProcSatNode->getNominalIndividual() != nullptr`.
+        // C++ 5081–5082: the ENTIRE body is guarded by
+        // `indiProcSatNode->getNominalIndividual() != nullptr` — for concept-seeded
+        // nodes (the only kind the bridge pre-build creates) this is an exact no-op.
+        let nominal_indi = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_nominal_individual();
+        if nominal_indi.is_some() {
+            // W6-DEFER[api]: the assertion/reverse-assertion double loop (see the
+            // PORT-PENDING summary above) is not yet ported. FAIL-SAFE: a nominal
+            // node whose role assertions cannot be installed is INSUFFICIENTLY
+            // saturated — defer it to the completion tableau rather than silently
+            // dropping assertions (never silently approximate).
+            self.update_direct_adding_individual_status_flags(
+                *indi_proc_sat_node,
+                super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                    | super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                calc_alg_context,
+            );
+            self.set_insufficient_node_occured(calc_alg_context);
+        }
     }
 
     /// Port of `initializeDataAssertions` (.cpp 5145–5167).
@@ -427,10 +966,23 @@ impl SaturationTaskHandleAlgorithm {
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (&indi_proc_sat_node, &calc_alg_context);
-        // W6-DEFER[api]: PORT-PENDING — see transcription above (sat_node SAT-1 +
-        // model::Individual data-assertion linker + sibling resolve helpers + in-unit
-        // create_successor_for_data_literal).
+        // C++ 5147–5148: guarded by `getNominalIndividual() != nullptr` — an exact
+        // no-op for concept-seeded nodes (the only kind the bridge pre-build
+        // creates). FAIL-SAFE for nominal nodes, mirroring
+        // `initialize_role_assertions`.
+        let nominal_indi = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_nominal_individual();
+        if nominal_indi.is_some() {
+            self.update_direct_adding_individual_status_flags(
+                *indi_proc_sat_node,
+                super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                    | super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                calc_alg_context,
+            );
+            self.set_insufficient_node_occured(calc_alg_context);
+        }
     }
 
     /// Port of `createRoleAssertionLink` (.cpp 5024–5076).
@@ -543,13 +1095,300 @@ impl SaturationTaskHandleAlgorithm {
         cardinality: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (
-            &process_indi,
-            con_pro_linker,
-            cardinality,
-            &calc_alg_context,
-        );
-        // W6-DEFER[api]: PORT-PENDING — see the structured transcription above.
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_pro_linker)
+            .get_concept_saturation_descriptor();
+        let con_negation = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_negation();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
+
+        // --- existIndiNode resolution cascade (cpp 6939–7005) ---
+        // 1. the concept's existential-successor reference linking;
+        let mut exist_indi_node =
+            Self::s07_existential_successor_reference_node(concept, calc_alg_context);
+        // 2. per-operand reference linking under (opNegated ^ conNegation);
+        if exist_indi_node.is_none() {
+            let operands: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            for op_link in operands {
+                if exist_indi_node.is_some() {
+                    break;
+                }
+                let op_con_negation = op_link.negated ^ con_negation;
+                exist_indi_node = Self::s07_concept_reference_node(
+                    op_link.target,
+                    op_con_negation,
+                    calc_alg_context,
+                );
+            }
+        }
+        // 3. base-⊤ fallback (data roles use the ⊤-data-range concept; the bridge
+        //    routes data-range-free input, matched by the plain ⊤ read).
+        if exist_indi_node.is_none() {
+            let is_data_role = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .is_data_role();
+            let base_top_concept = if !is_data_role {
+                calc_alg_context.processing_data_box().ontology_top_concept
+            } else {
+                calc_alg_context
+                    .processing_data_box()
+                    .ontology_top_data_range_concept
+            };
+            exist_indi_node =
+                Self::s07_concept_reference_node(base_top_concept, false, calc_alg_context);
+        }
+
+        // KONCLUDE_ASSERT_X(existIndiNode, "SOME saturation rule", …): a missing
+        // reference node means the pre-build pass did not cover this filler.
+        // FAIL-SAFE (never silently approximate): mark the node insufficiently
+        // saturated so the verdict defers to the completion tableau.
+        if exist_indi_node.is_none() {
+            self.update_direct_adding_individual_status_flags(
+                *process_indi,
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGUNPROCESSED
+                    | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                calc_alg_context,
+            );
+            self.set_insufficient_node_occured(calc_alg_context);
+            return;
+        }
+
+        // --- cpp 7009–7099 ---
+        let separated_mode = calc_alg_context
+            .process_context()
+            .sat_node(*process_indi)
+            .is_separated()
+            && !calc_alg_context
+                .process_context()
+                .sat_node(exist_indi_node)
+                .is_separated(); // 7010
+        if !separated_mode {
+            let mut exist_node = exist_indi_node;
+            self.add_uninitialized_individual_to_processing_queue(
+                &mut exist_node,
+                calc_alg_context,
+            ); // 7012
+        }
+
+        let exist_indirect_flags = *calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(exist_indi_node)
+            .get_indirect_status_flags();
+        self.update_indirect_adding_individual_status_flags(
+            *process_indi,
+            &exist_indirect_flags,
+            calc_alg_context,
+        ); // 7015
+        let exist_nominal_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_successor_connected_nominal_set(exist_indi_node, false);
+        self.update_adding_successor_connected_nominal_set(
+            *process_indi,
+            exist_nominal_set,
+            calc_alg_context,
+        ); // 7016
+        let (exist_atleast, exist_atmost) = {
+            let exist_node = calc_alg_context.process_context().sat_node(exist_indi_node);
+            (
+                exist_node.get_max_atleast_cardinality_candidate(),
+                exist_node.get_max_atmost_cardinality_candidate(),
+            )
+        };
+        self.update_max_cardinality_candidates(
+            *process_indi,
+            exist_atleast,
+            exist_atmost,
+            calc_alg_context,
+        ); // 7017
+
+        if cardinality > 1 {
+            if calc_alg_context
+                .process_context()
+                .sat_node(exist_indi_node)
+                .has_nominal_integrated()
+            {
+                self.update_direct_adding_individual_status_flags(
+                    *process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
+                    calc_alg_context,
+                ); // 7022
+            } else {
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_node_mut(exist_indi_node)
+                    .add_multiple_cardinality_ancestor_nodes_linker(*process_indi); // 7024–7026
+            }
+        }
+
+        let exist_indi_initialized = calc_alg_context
+            .process_context()
+            .sat_node(exist_indi_node)
+            .is_initialized(); // 7030
+        let exist_indi_completed = calc_alg_context
+            .process_context()
+            .sat_node(exist_indi_node)
+            .is_completed(); // 7031
+        if separated_mode && !exist_indi_completed {
+            self.update_direct_adding_individual_status_flags(
+                *process_indi,
+                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                calc_alg_context,
+            ); // 7033
+            self.set_insufficient_node_occured(calc_alg_context); // 7034
+        } else {
+            let mut con_set = super::satellites::ReapplyConceptSaturationLabelSetId::NONE; // 7037
+            let super_roles: Vec<NegLink<RoleId>> =
+                Self::saturation_indirect_super_roles(role, calc_alg_context); // 7038 ([identity])
+            let mut connected = false; // 7039
+            for super_role_link in super_roles {
+                let super_role = super_role_link.target;
+                let super_role_inversed = super_role_link.negated;
+                if !calc_alg_context
+                    .ontology_arenas()
+                    .role(super_role)
+                    .disjoint_roles
+                    .is_empty()
+                {
+                    self.update_direct_adding_individual_status_flags(
+                        *process_indi,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        calc_alg_context,
+                    ); // 7043
+                    self.set_insufficient_node_occured(calc_alg_context); // 7044
+                }
+                let domain_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
+                    .ontology_arenas()
+                    .role(super_role)
+                    .get_domain_range_concept_list(super_role_inversed)
+                    .to_vec(); // 7046
+                for domain_link in domain_concepts {
+                    if con_set.is_none() {
+                        con_set = calc_alg_context
+                            .process_context_mut()
+                            .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
+                        // 7051
+                    }
+                    self.add_concept_filtered_to_individual_label_set(
+                        domain_link.target,
+                        domain_link.negated,
+                        process_indi,
+                        con_set,
+                        false,
+                        calc_alg_context,
+                    ); // 7053
+                }
+
+                if super_role_inversed {
+                    connected = true; // 7058
+                    if !separated_mode {
+                        let mut back_prop_link =
+                            super::satellites::BackwardSaturationPropagationLink::new();
+                        back_prop_link.init_backward_propagation_link(*process_indi, super_role); // 7062
+                        let back_prop_link = calc_alg_context
+                            .process_context_mut()
+                            .alloc_backward_sat_prop_link(back_prop_link);
+                        if !exist_indi_initialized {
+                            // existIndiNode->addInitializingBackwardPropagationLinks(backPropLink)
+                            // — prepend onto the node's initializing-links chain. // 7064
+                            let pc = calc_alg_context.process_context_mut();
+                            let old_head = pc
+                                .sat_node(exist_indi_node)
+                                .get_initializing_backward_propagation_links();
+                            pc.backward_sat_prop_link_mut(back_prop_link)
+                                .set_next(old_head);
+                            pc.sat_node_mut(exist_indi_node)
+                                .set_initializing_backward_propagation_links(back_prop_link);
+                        } else {
+                            self.install_backward_propagation_link(
+                                *process_indi,
+                                exist_indi_node,
+                                super_role,
+                                back_prop_link,
+                                true,
+                                true,
+                                calc_alg_context,
+                            ); // 7066
+                        }
+                    } else {
+                        // separated mode (cpp 7069–7086): replay the existing reapply
+                        // descriptors of the (completed) successor node, and detect a
+                        // critical predecessor role cardinality.
+                        let back_prop_hash = calc_alg_context
+                            .process_context()
+                            .sat_node(exist_indi_node)
+                            .role_back_prop_hash;
+                        if back_prop_hash.is_some() {
+                            let back_prop_reapply_des = calc_alg_context
+                                .process_context()
+                                .role_backward_sat_prop_hash(back_prop_hash)
+                                .get_backward_propagation_backward_propagation_concept_descriptor(
+                                    super_role,
+                                );
+                            if back_prop_reapply_des.is_some() {
+                                self.apply_backward_propagation_concepts(
+                                    *process_indi,
+                                    back_prop_reapply_des,
+                                    calc_alg_context,
+                                ); // 7075
+                            }
+                        }
+                        let critical_pred_role_card_hash = calc_alg_context
+                            .process_context_mut()
+                            .sat_node_ext_critical_predecessor_role_cardinality_hash(
+                                exist_indi_node,
+                                false,
+                            );
+                        if critical_pred_role_card_hash.is_some() {
+                            let has_critical_data = calc_alg_context
+                                .process_context_mut()
+                                .critical_predecessor_role_cardinality_hash_data(
+                                    critical_pred_role_card_hash,
+                                    role,
+                                    false,
+                                )
+                                .is_some();
+                            if has_critical_data {
+                                self.update_direct_adding_individual_status_flags(
+                                    *process_indi,
+                                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                                    calc_alg_context,
+                                ); // 7082
+                                self.set_insufficient_node_occured(calc_alg_context); // 7083
+                            }
+                        }
+                    }
+                } else {
+                    self.add_new_linked_extension_processing_role(
+                        super_role,
+                        process_indi,
+                        true,
+                        true,
+                        calc_alg_context,
+                    ); // 7089
+                }
+            }
+            if !connected && !separated_mode {
+                calc_alg_context
+                    .process_context_mut()
+                    .sat_node_mut(exist_indi_node)
+                    .add_non_inverse_connected_individual_node_linker(*process_indi); // 7094–7096
+            }
+        }
     }
 
     /// Port of `initializeIndividualNodeByCoping` (.cpp 2022–2065).
@@ -604,16 +1443,177 @@ impl SaturationTaskHandleAlgorithm {
         try_flat_label_copy: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (
+        self.copied_indi_node_count += 1; // 2023
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_init_coping_individual_saturation_process_node(
+                indi_proc_sat_node,
+                copy_from_indi_proc_sat_node,
+                try_flat_label_copy,
+            ); // 2024
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(indi_proc_sat_node)
+            .set_reference_mode(2); // 2025
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(indi_proc_sat_node)
+            .set_copy_individual_node(copy_from_indi_proc_sat_node); // 2026
+        calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(indi_proc_sat_node)
+            .set_reference_individual_saturation_process_node(copy_from_indi_proc_sat_node); // 2027
+
+        let copy_direct_flags = *calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(copy_from_indi_proc_sat_node)
+            .get_direct_status_flags();
+        let copy_indirect_flags = *calc_alg_context
+            .process_context_mut()
+            .sat_node_mut(copy_from_indi_proc_sat_node)
+            .get_indirect_status_flags();
+        self.update_direct_adding_individual_status_flags_with_flags(
             indi_proc_sat_node,
-            copy_from_indi_proc_sat_node,
-            try_flat_label_copy,
-            &calc_alg_context,
-        );
-        self.copied_indi_node_count += 1;
-        // W6-DEFER[api]: PORT-PENDING — see the structured transcription above
-        // (SAT-1 copy-init + sibling status/extension propagation + pool-linker
-        // cloning). Only the `copied_indi_node_count` bump resolves today.
+            &copy_direct_flags,
+            calc_alg_context,
+        ); // 2029
+        self.update_indirect_adding_individual_status_flags(
+            indi_proc_sat_node,
+            &copy_indirect_flags,
+            calc_alg_context,
+        ); // 2030
+        let copy_nominal_set = calc_alg_context
+            .process_context_mut()
+            .sat_node_successor_connected_nominal_set(copy_from_indi_proc_sat_node, false);
+        self.update_adding_successor_connected_nominal_set(
+            indi_proc_sat_node,
+            copy_nominal_set,
+            calc_alg_context,
+        ); // 2031
+        let (copy_atleast, copy_atmost) = {
+            let copy_node = calc_alg_context
+                .process_context()
+                .sat_node(copy_from_indi_proc_sat_node);
+            (
+                copy_node.get_max_atleast_cardinality_candidate(),
+                copy_node.get_max_atmost_cardinality_candidate(),
+            )
+        };
+        self.update_max_cardinality_candidates(
+            indi_proc_sat_node,
+            copy_atleast,
+            copy_atmost,
+            calc_alg_context,
+        ); // 2032
+
+        // Clone every queued concept-saturation process linker (2035–2039).
+        let mut con_sat_pro_linker_it = calc_alg_context
+            .process_context()
+            .sat_node(copy_from_indi_proc_sat_node)
+            .get_concept_saturation_process_linker();
+        while con_sat_pro_linker_it.is_some() {
+            let con_des = calc_alg_context
+                .process_context()
+                .con_sat_proc_linker(con_sat_pro_linker_it)
+                .get_concept_saturation_descriptor();
+            let new_linker_payload = self.create_concept_saturation_process_linker(calc_alg_context);
+            let new_linker = ConceptSaturationProcessLinkerId::new(new_linker_payload.raw);
+            calc_alg_context
+                .process_context_mut()
+                .con_sat_proc_linker_mut(new_linker)
+                .init_concept_saturation_process_linker(con_des);
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_add_concept_saturation_process_linker(indi_proc_sat_node, new_linker);
+            con_sat_pro_linker_it = calc_alg_context
+                .process_context()
+                .con_sat_proc_linker(con_sat_pro_linker_it)
+                .get_next();
+        }
+
+        // Successor-extension re-queueing (2041–2064).
+        let copy_succ_extension_data = calc_alg_context
+            .process_context_mut()
+            .sat_node_ext_successor_extension_data(copy_from_indi_proc_sat_node, false);
+        if copy_succ_extension_data.is_some() {
+            let copy_all_ext = calc_alg_context
+                .process_context_mut()
+                .sat_successor_extension_all_concepts_extension_data(
+                    copy_succ_extension_data,
+                    false,
+                );
+            if copy_all_ext.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .sat_indi_node_all_concept_ext_data(copy_all_ext)
+                    .is_successor_extension_initialized()
+            {
+                let mut node = indi_proc_sat_node;
+                self.add_successor_extension_to_processing_queue(&mut node, calc_alg_context);
+            }
+            let copy_functional_ext = calc_alg_context
+                .process_context_mut()
+                .sat_successor_extension_functional_concepts_extension_data(
+                    copy_succ_extension_data,
+                    false,
+                );
+            if copy_functional_ext.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .sat_indi_node_functional_concept_ext_data(copy_functional_ext)
+                    .is_successor_extension_initialized()
+            {
+                let succ_ext_data = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_ext_successor_extension_data(indi_proc_sat_node, true);
+                let functional_concepts_extension = calc_alg_context
+                    .process_context_mut()
+                    .sat_successor_extension_functional_concepts_extension_data(
+                        succ_ext_data,
+                        true,
+                    );
+                let mut node = indi_proc_sat_node;
+                self.add_successor_extension_to_processing_queue(&mut node, calc_alg_context);
+                let mut role_linker_it = calc_alg_context
+                    .process_context()
+                    .sat_indi_node_functional_concept_ext_data(copy_functional_ext)
+                    .copying_initializing_role_process_linker;
+                while role_linker_it.is_some() {
+                    let role = calc_alg_context
+                        .process_context()
+                        .role_sat_proc_linker(role_linker_it)
+                        .get_role();
+                    let tmp_role_linker_payload =
+                        self.create_role_saturation_process_linker(calc_alg_context);
+                    let tmp_role_linker =
+                        super::satellites::RoleSaturationProcessLinkerId::new(
+                            tmp_role_linker_payload.raw,
+                        );
+                    calc_alg_context
+                        .process_context_mut()
+                        .role_sat_proc_linker_mut(tmp_role_linker)
+                        .init_role_process_linker(role);
+                    let old_head = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_functional_concept_ext_data(functional_concepts_extension)
+                        .functionality_added_role_process_linker;
+                    calc_alg_context
+                        .process_context_mut()
+                        .role_sat_proc_linker_mut(tmp_role_linker)
+                        .set_next(old_head);
+                    calc_alg_context
+                        .process_context_mut()
+                        .sat_indi_node_functional_concept_ext_data_mut(
+                            functional_concepts_extension,
+                        )
+                        .functionality_added_role_process_linker = tmp_role_linker;
+                    role_linker_it = calc_alg_context
+                        .process_context()
+                        .role_sat_proc_linker(role_linker_it)
+                        .get_next();
+                }
+            }
+        }
     }
 
     /// Port of `getCorrectedNode` (.cpp 6461–6470).

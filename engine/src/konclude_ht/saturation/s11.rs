@@ -1122,7 +1122,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_des: Id<ConceptSaturationDescriptor>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: conSatDes->clearNext();
+        // conSatDes->clearNext() — a pooled descriptor keeping its stale next
+        // re-enters chains as a CYCLE (see init_concept_saturation_process_linker).
+        calc_alg_context
+            .process_context_mut()
+            .con_sat_desc_mut(con_sat_des)
+            .set_next(Id::NONE);
         calc_alg_context
             .processing_data_box_mut()
             .add_remaining_concept_saturation_descriptor(con_sat_des);
@@ -1134,7 +1139,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_proc_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: conSatProcLinker->clearNext();
+        // conSatProcLinker->clearNext() — stale next on a pooled linker cycles
+        // the node process-linker chain (gdb-proven infinite append walk).
+        calc_alg_context
+            .process_context_mut()
+            .con_sat_proc_linker_mut(Id::new(con_sat_proc_linker.raw))
+            .set_next(Id::NONE);
         // W4-RECONCILE[api]: the databox remaining-list is keyed by the linker
         // *payload* marker (`ConceptSaturationProcess`); the saturation layer threads
         // the linker id (`ConceptSaturationProcessLinkerId`). Same arena index, distinct
@@ -1150,7 +1160,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         role_sat_proc_linker: Id<RoleSaturationProcess>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // W4-DEFER[api]: roleSatProcLinker->clearNext();
+        // roleSatProcLinker->clearNext() — same stale-next pooling hazard.
+        calc_alg_context
+            .process_context_mut()
+            .role_sat_proc_linker_mut(Id::new(role_sat_proc_linker.raw))
+            .set_next(Id::NONE);
         calc_alg_context
             .processing_data_box_mut()
             .add_remaining_role_saturation_process_linker(role_sat_proc_linker);
@@ -1383,10 +1397,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // labelSet = processIndi->getReapplyConceptSaturationLabelSet();
+        // KONCLUDE-PORT-NOTE[api]: the C++ no-arg getter DEFAULTS to create=true
+        // (CIndividualSaturationProcessNode.h line 96) — reading the raw field
+        // here passed NONE for a fresh node and blew up the label-set insert.
         let label_set = calc_alg_context
-            .process_context()
-            .sat_node(*process_indi)
-            .reapply_con_sat_label_set;
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
         self.add_concept_filtered_to_individual_label_set(
             adding_concept,
             negate,
@@ -1407,10 +1423,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         update_copy_depended_individual: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // KONCLUDE-PORT-NOTE[api]: create=true default — see the 4-arg overload.
         let label_set = calc_alg_context
-            .process_context()
-            .sat_node(*process_indi)
-            .reapply_con_sat_label_set;
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
         self.add_concept_filtered_to_individual_label_set(
             adding_concept,
             negate,
@@ -1523,10 +1539,23 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         );
         if !contained {
             // STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT) + g_ksat_* — debug stats, elided.
-            let concept_saturation_process_linker =
+            let concept_saturation_process_linker_payload =
                 self.create_concept_saturation_process_linker(calc_alg_context);
-            // W4-DEFER[api]: conceptSaturationProcessLinker->initConceptSaturationProcessLinker(conceptSaturationDescriptor);
-            // W4-DEFER[api]: rootProcessIndi->addConceptSaturationProcessLinker(conceptSaturationProcessLinker);
+            let concept_saturation_process_linker = ConceptSaturationProcessLinkerId::new(
+                concept_saturation_process_linker_payload.raw,
+            );
+            // conceptSaturationProcessLinker->initConceptSaturationProcessLinker(conceptSaturationDescriptor);
+            calc_alg_context
+                .process_context_mut()
+                .con_sat_proc_linker_mut(concept_saturation_process_linker)
+                .init_concept_saturation_process_linker(concept_saturation_descriptor);
+            // rootProcessIndi->addConceptSaturationProcessLinker(conceptSaturationProcessLinker);
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_add_concept_saturation_process_linker(
+                    *root_process_indi,
+                    concept_saturation_process_linker,
+                );
             self.add_individual_to_processing_queue(root_process_indi, calc_alg_context);
 
             // if (updateCopyDependedIndividual && rootProcessIndi->hasCopyDependingIndividualNodeLinker())
