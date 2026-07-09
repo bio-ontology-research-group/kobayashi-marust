@@ -649,7 +649,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// ancestor under a functional role, or an ATMOST/ATLEAST reapply restriction on
     /// that super-role forces the effective cardinality to <= 1.
     ///
-    /// PORT-PENDING: faithful transcription of cpp 14175–14211. Outline:
+    /// Ported LIVE (task #24 wave 2b). Faithful transcription of cpp 14175–14211:
     ///
     ///   ancestorIndiNode = getAncestorIndividual(processIndi, ctx);   // sibling
     ///   if ancestorIndiNode:
@@ -674,14 +674,104 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_des: ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: the structural body needs node accessors not yet ported —
-        // `getAncestorIndividual` (sibling), `hasRoleSuccessorToIndividual`,
-        // `getReapplyRoleSuccessorHash` + its `CReapplyQueueIterator` (the
-        // role-successor-hash satellite). The concept/role/op-code reads
-        // (`getRole`/`getIndirectSuperRoleList`/`isFunctional`/`CCATMOST`/`CCATLEAST`)
-        // map directly to `model::concept`/`model::role`/`model::op`. Default is the
-        // C++ fall-through `true`.
-        let _ = (process_indi, con_des, calc_alg_context);
+        use super::super::model::op::{CCATLEAST, CCATMOST};
+        use super::super::model::substrate::NegLink;
+        let mut indi = *process_indi;
+        let ancestor_indi_node = calc_alg_context.get_ancestor_individual(&mut indi);
+        if ancestor_indi_node.is_some() {
+            let concept = calc_alg_context
+                .process_context()
+                .con_desc(con_des)
+                .get_concept();
+            let role = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_role();
+            // KONCLUDE-PORT-NOTE[identity]: Konclude's getIndirectSuperRoleList
+            // STARTS with the role itself; the bridge builds STRICT lists, so the
+            // role is walked explicitly first.
+            let mut super_roles: Vec<NegLink<RoleId>> = vec![NegLink {
+                target: role,
+                negated: false,
+            }];
+            super_roles.extend(
+                calc_alg_context
+                    .ontology_arenas()
+                    .role(role)
+                    .get_indirect_super_role_list()
+                    .iter()
+                    .copied(),
+            );
+            let ancestor_indi_id = calc_alg_context
+                .process_context()
+                .node(ancestor_indi_node)
+                .individual_node_id();
+            for super_role_link in super_roles {
+                if super_role_link.negated {
+                    continue;
+                }
+                let super_role = super_role_link.target;
+                if calc_alg_context
+                    .process_context_mut()
+                    .node_has_role_successor_to_individual_id(
+                        *process_indi,
+                        super_role,
+                        ancestor_indi_id,
+                        true,
+                    )
+                {
+                    if calc_alg_context
+                        .ontology_arenas()
+                        .role(super_role)
+                        .is_functional()
+                    {
+                        return false;
+                    }
+                    // check additional for ATMOST restriction
+                    let mut reapply_queue_it =
+                        IndividualProcessNode::get_role_reapply_iterator_in_context(
+                            calc_alg_context.process_context_mut(),
+                            *process_indi,
+                            super_role,
+                            false,
+                        );
+                    loop {
+                        let reapply_concept_des = reapply_queue_it
+                            .next(calc_alg_context.process_context(), true);
+                        if reapply_concept_des.is_none() {
+                            break;
+                        }
+                        let reapply_con_des = calc_alg_context
+                            .process_context()
+                            .reapply_con_desc(reapply_concept_des)
+                            .get_concept_descriptor();
+                        if reapply_con_des.is_none() {
+                            continue;
+                        }
+                        let (reapply_concept, reapply_con_neg) = {
+                            let d = calc_alg_context.process_context().con_desc(reapply_con_des);
+                            (d.get_concept(), d.is_negated())
+                        };
+                        let op_code = calc_alg_context
+                            .ontology_arenas()
+                            .concept(reapply_concept)
+                            .get_operator_code();
+                        if op_code == CCATMOST || op_code == CCATLEAST {
+                            // Faithful C++: the GENERATING concept's parameter (an ∃
+                            // has parameter 0 ⇒ cardinality ≤ 1 ⇒ not absorbable).
+                            let cardinality = calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_parameter()
+                                + if reapply_con_neg { 1 } else { 0 };
+                            if cardinality <= 1 {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
         true
     }
 

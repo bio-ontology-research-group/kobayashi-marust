@@ -2406,10 +2406,15 @@ fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
 /// instead of the first budget-STOP discarding all finished work.
 pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
     // Saturation-first probe answering (task #23, opt-in KM_HT_SATURATION=1)
-    // + the saturation-node coupling into the residue probes (task #24 wave 2;
-    // KM_HT_NO_SATCACHE=1 is the coupling's A/B escape hatch).
+    // + the saturation-node coupling into the residue probes (task #24 wave 2,
+    // opt-in KM_HT_SATCACHE=1 on top). The coupling stays OPT-IN because
+    // without the extension-resolving refinement (needs the ext machinery,
+    // currently unsound/off) the replayed labels under-approximate the
+    // ∀-restricted successors, establish fails there, and the enlarged labels
+    // measurably POISON probes earlier (12653: permanent defer at subject 1
+    // vs 14 plain). Re-evaluate the default after the ext-machinery audit.
     let use_saturation = std::env::var_os("KM_HT_SATURATION").is_some();
-    let use_satcache = use_saturation && std::env::var_os("KM_HT_NO_SATCACHE").is_none();
+    let use_satcache = use_saturation && std::env::var_os("KM_HT_SATCACHE").is_some();
     bridged_classify_opts(tin, use_saturation, use_satcache)
 }
 
@@ -2581,6 +2586,11 @@ pub fn bridged_classify_opts(
             if satcache_active && !fresh_env {
                 algo.conf_expand_created_successors_from_saturation = true;
                 algo.conf_caching_blocking_from_saturation = true;
+                // C++ default TRUE (cpp 154): a node whose successors are
+                // certified (PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED)
+                // ABSORBS its generating ∃/≥ concepts instead of growing the
+                // tree — this is what makes the caching terminate probes.
+                algo.conf_sat_exp_cached_succ_absorp = true;
             }
             // VERDICT TRUST HIERARCHY, escalation leg: re-run an untrusted
             // probe under COW branch epochs — complete per-alternative state
@@ -4770,6 +4780,43 @@ mod tests {
         let coupled = norm(bridged_classify_opts(&env.tin, true, true).expect("coupled arm"));
         assert_eq!(plain, sat_only, "saturation-only must not change verdicts");
         assert_eq!(plain, coupled, "the saturation-node coupling must not change verdicts");
+    }
+
+    /// Horn ∃-cycle equality: `B ⊑ ∃r.B` grows an unbounded chain that the
+    /// coupled arm must terminate via successor absorption (the cached
+    /// successor's generating ∃ is absorbed instead of expanded) with the
+    /// SAME classification as the plain arm (which terminates via blocking).
+    /// Horn-only so every read-off is authoritative — no branch probes, no
+    /// poison-defer noise in either arm.
+    #[test]
+    fn satcache_absorption_terminates_exists_cycle() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:X)) Declaration(Class(:Y))\n\
+             Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D))\n\
+             Declaration(ObjectProperty(:r))\n\
+             SubClassOf(:X :Y)\n\
+             SubClassOf(:Y ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(:B :C)\n\
+             SubClassOf(:B ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(:C :D)\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let norm = |r: BridgedClassification| {
+            let mut u = r.unsatisfiable;
+            let mut s = r.subsumptions;
+            u.sort_unstable();
+            s.sort_unstable();
+            (u, s)
+        };
+        let plain = norm(bridged_classify_opts(&env.tin, false, false).expect("plain arm"));
+        let coupled = norm(bridged_classify_opts(&env.tin, true, true).expect("coupled arm"));
+        assert_eq!(plain, coupled, "absorption must preserve the classification");
+        assert!(
+            plain.1.len() >= 4,
+            "sanity: the taxonomy has X⊑Y, B⊑C, B⊑D, C⊑D (got {:?})",
+            plain.1
+        );
     }
 
     /// Full-agreement harness: saturation certainties vs the probe-path

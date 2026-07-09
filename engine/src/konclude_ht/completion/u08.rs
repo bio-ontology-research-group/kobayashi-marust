@@ -417,6 +417,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             calc_alg_context,
         );
         if already_exist == NodeId::NONE {
+            // Satisfiable-cached successor absorption (cpp 14340–14345): on a node
+            // whose successors are certified by a cache — here saturation-node
+            // caching via PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED — the
+            // generating ∃ is recorded on the absorbed-generating linker instead
+            // of creating a successor; the caching-loss reactivation (u21
+            // detect_individual_node_saturation_cached) re-fires it.
+            if self.conf_sat_exp_cached_succ_absorp
+                && calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .has_partial_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SATISFIABLECACHED
+                            | IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED
+                            | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED
+                            | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
+                    )
+                && self.is_generating_concept_satisfiable_cached_absorpable(
+                    process_indi,
+                    con_des,
+                    calc_alg_context,
+                )
+            {
+                // STATINC(SATCACHEDABSORBEDGENERATINGCONCEPTSCOUNT)
+                self.add_satisfiable_cached_absorbed_generating_concept(
+                    con_des,
+                    *process_indi,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                return;
+            }
             self.applied_some_rule_count += 1;
             // Unsat-cache probe before generating the new role successor (cpp
             // 14351: `testUnsatisfiableCacheForSuccessorGeneration` is
