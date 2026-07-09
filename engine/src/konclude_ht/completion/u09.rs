@@ -544,18 +544,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let add_op_negated = negate;
                 // W3-DEFER[api]: addConceptToIndividual(operandConcept->getData(), addOpNegated, processIndi, newDependencyTrackPoint, true, false, calcAlgContext)
 
-                // W6-DEFER[api]: calcAlgContext->getUsedUnsatisfiableCacheRetrievalStrategy()->testUnsatisfiableCacheForBranchedDisjuncts(conProDes, processIndi, operandConcept)
+                // testUnsatisfiableCacheForBranchedDisjuncts (constant-true in the
+                // generative strategy) → testIndividualNodeUnsatisfiableCached.
+                // LIVE ELSEWHERE: this transcription path is dead (the in-process
+                // branch machinery in u03 `initialize_or_processing` / u02's
+                // disjunction advance carries the live probe after each disjunct
+                // addition) — do not double-wire here.
                 let test_unsat_cache = false;
                 if test_unsat_cache {
-                    // W3-DEFER[api]: testIndividualNodeUnsatisfiableCached(processIndi, calcAlgContext)
+                    // testIndividualNodeUnsatisfiableCached(processIndi, calcAlgContext)
                 }
             } else if not_pos_and_neg_contained_operand_count > 1 {
                 // W3-DEFER[macro]: STATINC(ORMULTIPLEBRANCHCOUNT, calc_alg_context)
 
-                // W6-DEFER[api]: calcAlgContext->getUsedUnsatisfiableCacheRetrievalStrategy()->testUnsatisfiableCacheForDisjunctionBranching(conProDes, processIndi, &notContainedOperandsList)
+                // testUnsatisfiableCacheForDisjunctionBranching (constant-true in
+                // the generative strategy) → testIndividualNodeUnsatisfiableCached.
+                // LIVE ELSEWHERE: dead transcription path — the live probes ride
+                // the in-process branch machinery (u03 push / u02 advance).
                 let test_unsat_cache = false;
                 if test_unsat_cache {
-                    // W3-DEFER[api]: testIndividualNodeUnsatisfiableCached(processIndi, calcAlgContext)
+                    // testIndividualNodeUnsatisfiableCached(processIndi, calcAlgContext)
                 }
 
                 // W3-DEFER[api]: createORDependency(processIndi, conDes, depTrackPoint, calcAlgContext)

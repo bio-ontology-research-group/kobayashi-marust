@@ -1001,6 +1001,25 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
     if std::env::var_os("KM_HT_COW").is_some() {
         algo.conf_inprocess_cow = true;
     }
+    // KM_HT_UNSATCACHE (opt-in, composable with DDB/COW): Konclude's
+    // unsatisfiable-cache LEARNING — the search-volume lever the 2026-07-09
+    // COW+DDB measurement demands. The write side is u29's clashedBacktracking
+    // (`writeClashDescriptorsToCache`, cpp 6844/7009/7056/7332 — already
+    // ported and called; it no-ops without an installed handler), validated by
+    // u22's guards (single node level, terminology concepts only, no nominals,
+    // no atomic clash) so an entry is a self-contained label subset that is
+    // unsatisfiable wrt the TBox — a learned nogood, valid across probes. The
+    // read side is `testIndividualNodeUnsatisfiableCached` (u21, cpp
+    // 4363–4392) probed at Konclude's rule points (OR disjunct addition,
+    // SOME/ATLEAST successor generation, at-most init/merge — the constant
+    // `CGenerativeNonDeterministicUnsatisfiableCacheRetrievalStrategy`).
+    // Konclude runs both ON by default (u31 cpp 604–697). The write side only
+    // fires inside DDB's tracked-clash analysis, so this is inert without
+    // KM_HT_DDB; the intended production combo is COW+DDB+UNSATCACHE.
+    if std::env::var_os("KM_HT_UNSATCACHE").is_some() {
+        algo.conf_write_unsat_caching = true;
+        algo.conf_test_occur_unsat_cached = true;
+    }
     // KM_BRIDGE_NO_BLOCKING: diagnostic knob — run the probe with blocking OFF
     // (∃-cycles then hit the drive cap ⇒ Stop/None). If a verdict that flips
     // WITH blocking becomes stable WITHOUT it, the blocking establish/review
@@ -1655,6 +1674,54 @@ pub struct BridgedClassification {
 /// terminology. Konclude isolates probes via per-task databox COW (the
 /// unported Task layer); the v1 driver rebuilds — same verdicts, O(TBox)
 /// per subject/probe.
+/// Install a live `CUnsatisfiableCacheHandler` (occurrence unsat cache +
+/// reader/writer) into the probe context — the store `KM_HT_UNSATCACHE`'s
+/// write/read paths use. One cache per bridge env; `reset_probe_env` carries
+/// it across probe resets so nogoods learned in probe k prune probe k+1
+/// (Konclude shares the cache across ALL tests of an ontology).
+fn install_bridge_unsat_cache(ctx: &mut CalculationAlgorithmContextBase) {
+    use super::cache::context::CacheContext;
+    use super::cache::unsat::OccurrenceUnsatisfiableCache;
+    use super::completion::unsat_handler::UnsatisfiableCacheHandler;
+    let mut cache_context = CacheContext::new();
+    let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(1, "", 0));
+    {
+        let CacheContext {
+            unsat_caches,
+            unsat_cache_entries,
+            unsat_cache_update_slot_items,
+            ..
+        } = &mut cache_context;
+        unsat_caches
+            .get_mut(cache)
+            .thread_started(unsat_cache_entries, unsat_cache_update_slot_items);
+    }
+    let reader = {
+        let CacheContext {
+            unsat_caches,
+            unsat_cache_readers,
+            ..
+        } = &mut cache_context;
+        unsat_caches
+            .get_mut(cache)
+            .get_cache_reader(cache, unsat_cache_readers)
+    };
+    let writer = {
+        let CacheContext {
+            unsat_caches,
+            unsat_cache_writers,
+            ..
+        } = &mut cache_context;
+        unsat_caches
+            .get_mut(cache)
+            .get_cache_writer(cache, unsat_cache_writers)
+    };
+    ctx.base.install_used_unsatisfiable_cache_handler(
+        UnsatisfiableCacheHandler::new(reader, writer),
+        cache_context,
+    );
+}
+
 fn fresh_bridge_env(
     tin: &TInput,
 ) -> (
@@ -1668,6 +1735,9 @@ fn fresh_bridge_env(
     let mut ctx = CalculationAlgorithmContextBase::new();
     ctx.base.used_concept_priority_strategy =
         Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+    if std::env::var_os("KM_HT_UNSATCACHE").is_some() {
+        install_bridge_unsat_cache(&mut ctx);
+    }
     let top = {
         let mut c = Concept::new();
         c.set_concept_tag(1);
@@ -1714,10 +1784,24 @@ fn reset_probe_env(
     let arenas = std::mem::replace(&mut ctx.base.ontology_arenas, OntologyArenas::new());
     let strategy = ctx.base.used_concept_priority_strategy.take();
     let top = ctx.base.used_processing_data_box.ontology_top_concept;
+    // KM_HT_UNSATCACHE: the learned-nogood store DELIBERATELY survives the
+    // probe reset (Konclude shares its unsatisfiable cache across all tests
+    // of an ontology). Sound: each entry is a label subset validated by the
+    // u22 write guards to be unsatisfiable wrt the shared TBox alone, so it
+    // prunes any later probe identically. Note the cache write path also
+    // stamps caching tags into the ontology arenas' concept process data — a
+    // monotone cache-metadata mutation; with the flag OFF the arenas stay
+    // read-only and the reset reproduces `fresh_bridge_env` exactly, with it
+    // ON later probes are deliberately order-dependent (they prune using
+    // earlier probes' nogoods) while verdicts stay sound+complete.
+    let unsat_cache = ctx.base.take_used_unsatisfiable_cache_handler();
     *ctx = CalculationAlgorithmContextBase::new();
     ctx.base.ontology_arenas = arenas;
     ctx.base.used_concept_priority_strategy = strategy;
     ctx.base.used_processing_data_box.ontology_top_concept = top;
+    if let Some(state) = unsat_cache {
+        ctx.base.restore_used_unsatisfiable_cache_handler(state);
+    }
 }
 
 /// Production search configuration for `bridged_classify`: PLAIN
@@ -2162,6 +2246,75 @@ mod tests {
         assert_eq!(env.unsupported, 0, "chain TBox fully bridged");
         assert!(env.subsumes("A", "C"), "A ⊑ C (chained)");
         assert!(!env.subsumes("C", "A"), "C ⊑ A must NOT hold");
+    }
+
+    /// KM_HT_UNSATCACHE integration: the learned-nogood store survives
+    /// `reset_probe_env` and never flips a verdict. Drives the SAME env
+    /// lifecycle as `bridged_classify` (fresh env → probe → reset → probe)
+    /// with the handler installed and the DDB+unsat-cache flags set
+    /// programmatically (env-var-independent, so the test is meaningful in
+    /// every suite mode). Asserts: (1) an UNSAT probe stays UNSAT when
+    /// re-probed against the warm cache; (2) a SAT probe on overlapping
+    /// vocabulary is NOT corrupted by cache entries learned from the UNSAT
+    /// one (the critical soundness control — a nogood must only fire on a
+    /// label that genuinely contains it).
+    #[test]
+    fn unsat_cache_warm_probes_keep_verdicts() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:X)) Declaration(Class(:Y))\n\
+             Declaration(Class(:A1)) Declaration(Class(:A2))\n\
+             Declaration(Class(:Z))\n\
+             SubClassOf(:X ObjectUnionOf(:A1 :A2))\n\
+             SubClassOf(:A1 :Y)\n\
+             SubClassOf(:A2 :Y)\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+        assert_eq!(bridged.unsupported, 0, "fully bridged");
+        install_bridge_unsat_cache(&mut ctx);
+        let set_flags = |algo: &mut CompletionTaskHandleAlgorithm| {
+            algo.conf_build_dependencies = true;
+            algo.conf_dependency_backjumping = true;
+            algo.conf_atomic_semantic_branching = true;
+            algo.conf_write_unsat_caching = true;
+            algo.conf_test_occur_unsat_cached = true;
+        };
+        set_flags(&mut algo);
+        let idx = |s: &str| -> usize {
+            env.tin
+                .concepts
+                .iter()
+                .position(|n| n == s)
+                .unwrap_or_else(|| panic!("concept {s} not in TInput"))
+        };
+        let (x, y, z) = (
+            bridged.named[idx("X")],
+            bridged.named[idx("Y")],
+            bridged.named[idx("Z")],
+        );
+        let mut id = 0i64;
+        // Probe 1: X ⊓ ¬Y — UNSAT (X ⊑ Y through both disjuncts); the DDB
+        // analysis may write nogoods into the shared cache here.
+        let cold = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (y, true)]);
+        assert_eq!(cold, Some(true), "X ⊑ Y must hold (cold cache)");
+        // Probe 2 (warm): the same seed re-probed after the classify-style
+        // reset — the carried cache must reproduce the verdict.
+        reset_probe_env(&mut algo, &mut ctx, &bridged);
+        set_flags(&mut algo);
+        let warm = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (y, true)]);
+        assert_eq!(warm, Some(true), "X ⊑ Y must hold (warm cache)");
+        // Probe 3 (warm, SAT control): X ⊓ ¬Z is satisfiable — a nogood
+        // learned from the ¬Y run must not fire on this overlapping label.
+        reset_probe_env(&mut algo, &mut ctx, &bridged);
+        set_flags(&mut algo);
+        let sat = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (z, true)]);
+        assert_eq!(sat, Some(false), "X ⊑ Z must NOT hold (warm cache)");
+        // The handler must still be installed after the resets (the carry).
+        assert!(
+            ctx.base.take_used_unsatisfiable_cache_handler().is_some(),
+            "unsat-cache handler must survive reset_probe_env"
+        );
     }
 
     /// Miniature of the ore_ont_12653 wrong-root-cancel (memory

@@ -634,6 +634,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         mut individual_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        // KONCLUDE-PORT-NOTE[leftovers]: an UNRESTORED advance (a plain-mode
+        // in-process backtrack that could not roll the failed alternative
+        // back) leaves PHANTOM concepts in node labels. A cached nogood
+        // firing on a phantom-contaminated label would MANUFACTURE a clash —
+        // breaking the poison discipline's soundness argument that phantoms
+        // can only LOSE clashes (wrong UNSAT, the same class as the u29
+        // leftover-poisoning bug, 7c521cb). Gate ALL cache reads on a
+        // phantom-free task state, exactly like the u29 write side. Vacuous
+        // in Konclude: task-fork restores are always complete.
+        if self.unrestored_advance_count != 0 {
+            return;
+        }
         if self.conf_test_occur_unsat_cached {
             let label_set_id = calc_alg_context
                 .process_context_mut()

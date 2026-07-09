@@ -53,7 +53,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::model::concept_process::UnsatisfiableCachingTags;
+use super::super::model::concept_process::{ConceptProcessData, UnsatisfiableCachingTags};
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::substrate::{Arena, Cint64, Id, INVALID};
 use super::super::model::{ConceptId, ConceptProcessDataId};
@@ -1508,8 +1508,21 @@ impl OccurrenceUnsatisfiableCache {
             let identification = cache_value.get_identification();
             let concept = ConceptId::new(identification);
             if concept.is_some() && concept.raw < ontology.concept_count() {
-                let concept_data = ontology.concept(concept).get_concept_data();
-                if concept_data != INVALID {
+                let mut concept_data = ontology.concept(concept).get_concept_data();
+                // KONCLUDE-PORT-NOTE[lazy-alloc]: in Konclude every concept
+                // carries its `CConceptProcessData` from the ontology
+                // preprocess, so `getConceptData()` is never null here. The
+                // bridge builds concepts without process data — allocate on
+                // first stamp to reproduce the "data exists when needed"
+                // invariant (otherwise the whole unsat cache is silently
+                // inert on bridged ontologies: no tags ⇒ the read precheck
+                // and the hash collection never match anything).
+                if concept_data == INVALID {
+                    let fresh = ontology.alloc_concept_process_data(ConceptProcessData::new());
+                    ontology.concept_mut(concept).set_concept_data(fresh.raw);
+                    concept_data = fresh.raw;
+                }
+                {
                     let con_proc_data = ConceptProcessDataId::new(concept_data);
                     let mut unsat_caching_tags = ontology
                         .concept_process_data(con_proc_data)
@@ -1822,7 +1835,10 @@ mod tests {
     }
 
     #[test]
-    fn occurrence_unsat_write_cache_tags_returns_false_without_concept_process_data() {
+    fn occurrence_unsat_write_cache_tags_lazy_allocates_concept_process_data() {
+        // KONCLUDE-PORT-NOTE[lazy-alloc]: bridged concepts carry no
+        // ConceptProcessData; the stamp path allocates it on first write so
+        // the unsat cache is not silently inert on bridged ontologies.
         let mut ontology = OntologyArenas::new();
         let concept_id = ontology.alloc_concept(Concept::new());
         let mut cache = OccurrenceUnsatisfiableCache::new(1, "", INVALID);
@@ -1832,6 +1848,12 @@ mod tests {
             CacheValueIdentifier::CacheValTagAndConcept,
         );
 
-        assert!(!cache.write_cache_tags(&cache_value, 3, 7, 2, &mut ontology));
+        assert!(cache.write_cache_tags(&cache_value, 3, 7, 2, &mut ontology));
+        let concept_data = ontology.concept(concept_id).get_concept_data();
+        assert_ne!(concept_data, INVALID, "process data lazily allocated");
+        let tags = ontology
+            .concept_process_data(ConceptProcessDataId::new(concept_data))
+            .get_unsatisfiable_caching_tags(false);
+        assert!(tags.is_some(), "caching tags installed on the fresh data");
     }
 }

@@ -288,8 +288,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         indi_proc_node: NodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if self.indi_node_conclude_unsat_caching {
-            // W3-DEFER[api]: testIndividualNodeUnsatisfiableCached(indiProcNode, calcAlgContext)
+        if self.indi_node_conclude_unsat_caching && !calc_alg_context.has_pending_signal() {
+            self.test_individual_node_unsatisfiable_cached(indi_proc_node, calc_alg_context);
         }
 
         calc_alg_context
@@ -979,6 +979,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             true,
             calc_alg_context,
         );
+
+        // Unsat-cache probe after the branched disjunct lands (cpp 16908:
+        // `testUnsatisfiableCacheForBranchedDisjuncts` is constant-true in the
+        // generative strategy). A hit clashes this alternative immediately —
+        // a learned nogood short-circuits the whole subtree. Pending-gated:
+        // `raise_clash` OVERWRITES the signal, so a clash already raised by
+        // the disjunct addition itself must win.
+        if !calc_alg_context.has_pending_signal() {
+            self.test_individual_node_unsatisfiable_cached(process_indi_m, calc_alg_context);
+        }
 
         true
     }

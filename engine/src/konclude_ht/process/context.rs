@@ -368,7 +368,9 @@ pub struct ProcessContext {
     /// `CCoreConceptDescriptor` pool.
     core_con_descs: Arena<CoreConceptDescriptor>,
     /// `CReapplyRoleSuccessorHash` pool.
-    role_succ_hashes: Arena<ReapplyRoleSuccessorHash>,
+    // Arc-COW like `label_sets` (see the KONCLUDE-PORT-NOTE[cow] above): the
+    // per-node role-successor hash is the third heavy journaled satellite.
+    role_succ_hashes: Arena<std::sync::Arc<ReapplyRoleSuccessorHash>>,
     /// `CBranchingMergingProcessingRestrictionSpecification` pool.
     restriction_specs: Arena<BranchingMergingProcessingRestrictionSpecification>,
     /// `CBranchingMergingIndividualNodeCandidateLinker` pool.
@@ -412,7 +414,8 @@ pub struct ProcessContext {
 
     // --- W2.7 distinct / connection-successor / disjoint-role satellites (distinct.rs) ---
     /// `CDistinctHash` pool.
-    distinct_hashes: Arena<DistinctHash>,
+    // Arc-COW like `label_sets` (see the KONCLUDE-PORT-NOTE[cow] there).
+    distinct_hashes: Arena<std::sync::Arc<DistinctHash>>,
     /// `CConnectionSuccessorSet` pool.
     conn_succ_sets: Arena<ConnectionSuccessorSet>,
     /// `CConnectionSuccessorCorrectionHash` pool.
@@ -650,7 +653,10 @@ pub struct ProcessContext {
     /// `CIndividualMergingHash` pool (per-node merge hash).
     individual_merging_hashes: Arena<IndividualMergingHash>,
     /// `CSuccessorRoleHash` pool (per-node successor-role hash backend).
-    succ_role_hashes: Arena<SuccessorRoleHash>,
+    // Arc-COW like `label_sets` (see the KONCLUDE-PORT-NOTE[cow] there).
+    // (`disjoint_succ_role_hashes` stays plain: disjoint-role content is rare
+    // and small, the journal clone is already cheap.)
+    succ_role_hashes: Arena<std::sync::Arc<SuccessorRoleHash>>,
 
     // --- processing-queue subsystem pools (queues.rs) ---
     /// `CIndividualUnsortedProcessingQueue` pool.
@@ -1863,14 +1869,24 @@ impl ProcessContext {
             .add_core_concept_descriptor(core_con_des);
         core_con_des
     }
-    arena_accessors!(
-        role_succ_hashes,
-        ReapplyRoleSuccessorHash,
-        RoleSuccHashId,
-        role_succ_hash,
-        role_succ_hash_mut,
-        alloc_role_succ_hash
-    );
+    // Hand-written Arc-COW accessors (see the KONCLUDE-PORT-NOTE[cow] on the
+    // `label_sets` field): same signatures the macro generated, raw-index id
+    // rebuild at the Arc boundary.
+    /// Resolve an id to a shared borrow (the `obj->` read path).
+    #[inline]
+    pub fn role_succ_hash(&self, id: RoleSuccHashId) -> &ReapplyRoleSuccessorHash {
+        self.role_succ_hashes.get(Id::new(id.raw)).as_ref()
+    }
+    /// Resolve an id to a mutable borrow — copy-on-write when shared.
+    #[inline]
+    pub fn role_succ_hash_mut(&mut self, id: RoleSuccHashId) -> &mut ReapplyRoleSuccessorHash {
+        std::sync::Arc::make_mut(self.role_succ_hashes.get_mut_journaled(Id::new(id.raw)))
+    }
+    /// Pool-allocate a new role-successor hash, returning its stable id.
+    #[inline]
+    pub fn alloc_role_succ_hash(&mut self, v: ReapplyRoleSuccessorHash) -> RoleSuccHashId {
+        Id::new(self.role_succ_hashes.push(std::sync::Arc::new(v)).raw)
+    }
     arena_accessors!(
         restriction_specs,
         BranchingMergingProcessingRestrictionSpecification,
@@ -2000,14 +2016,23 @@ impl ProcessContext {
     );
 
     // --- W2.7 distinct / connection-successor / disjoint-role satellite trios ---
-    arena_accessors!(
-        distinct_hashes,
-        DistinctHash,
-        DistinctHashId,
-        distinct_hash,
-        distinct_hash_mut,
-        alloc_distinct_hash
-    );
+    // Hand-written Arc-COW accessors (see the KONCLUDE-PORT-NOTE[cow] on the
+    // `label_sets` field).
+    /// Resolve an id to a shared borrow (the `obj->` read path).
+    #[inline]
+    pub fn distinct_hash(&self, id: DistinctHashId) -> &DistinctHash {
+        self.distinct_hashes.get(Id::new(id.raw)).as_ref()
+    }
+    /// Resolve an id to a mutable borrow — copy-on-write when shared.
+    #[inline]
+    pub fn distinct_hash_mut(&mut self, id: DistinctHashId) -> &mut DistinctHash {
+        std::sync::Arc::make_mut(self.distinct_hashes.get_mut_journaled(Id::new(id.raw)))
+    }
+    /// Pool-allocate a new distinct hash, returning its stable id.
+    #[inline]
+    pub fn alloc_distinct_hash(&mut self, v: DistinctHash) -> DistinctHashId {
+        Id::new(self.distinct_hashes.push(std::sync::Arc::new(v)).raw)
+    }
     arena_accessors!(
         conn_succ_sets,
         ConnectionSuccessorSet,
@@ -6119,14 +6144,23 @@ impl ProcessContext {
         individual_merging_hash_mut,
         alloc_individual_merging_hash
     );
-    arena_accessors!(
-        succ_role_hashes,
-        SuccessorRoleHash,
-        SuccessorRoleHashId,
-        succ_role_hash,
-        succ_role_hash_mut,
-        alloc_succ_role_hash
-    );
+    // Hand-written Arc-COW accessors (see the KONCLUDE-PORT-NOTE[cow] on the
+    // `label_sets` field).
+    /// Resolve an id to a shared borrow (the `obj->` read path).
+    #[inline]
+    pub fn succ_role_hash(&self, id: SuccessorRoleHashId) -> &SuccessorRoleHash {
+        self.succ_role_hashes.get(Id::new(id.raw)).as_ref()
+    }
+    /// Resolve an id to a mutable borrow — copy-on-write when shared.
+    #[inline]
+    pub fn succ_role_hash_mut(&mut self, id: SuccessorRoleHashId) -> &mut SuccessorRoleHash {
+        std::sync::Arc::make_mut(self.succ_role_hashes.get_mut_journaled(Id::new(id.raw)))
+    }
+    /// Pool-allocate a new successor-role hash, returning its stable id.
+    #[inline]
+    pub fn alloc_succ_role_hash(&mut self, v: SuccessorRoleHash) -> SuccessorRoleHashId {
+        Id::new(self.succ_role_hashes.push(std::sync::Arc::new(v)).raw)
+    }
 
     // =======================================================================
     // u15 CONTEXT-THREADED node successor-role / disjoint-role wiring.
@@ -6306,8 +6340,8 @@ impl ProcessContext {
             ref mut role_succ_hashes,
             ..
         } = *self;
-        role_succ_hashes
-            .get_mut_journaled(hash)
+        // Arc-COW split-borrow: `make_mut` deep-copies only when shared.
+        std::sync::Arc::make_mut(role_succ_hashes.get_mut_journaled(Id::new(hash.raw)))
             .has_role_successor_to_individual(
                 nodes,
                 edges,
@@ -6339,8 +6373,8 @@ impl ProcessContext {
             ref mut role_succ_hashes,
             ..
         } = *self;
-        role_succ_hashes
-            .get_mut_journaled(hash)
+        // Arc-COW split-borrow: `make_mut` deep-copies only when shared.
+        std::sync::Arc::make_mut(role_succ_hashes.get_mut_journaled(Id::new(hash.raw)))
             .get_role_successor_to_individual_link(
                 nodes,
                 edges,
@@ -6399,9 +6433,10 @@ impl ProcessContext {
             ref mut edges,
             ..
         } = *self;
-        let link_count = role_succ_hashes
-            .get_mut_journaled(reapply_hash)
-            .insert_role_successor_link(nodes, edges, role, link, Some(reapply_queue_it));
+        // Arc-COW split-borrow: `make_mut` deep-copies only when shared.
+        let link_count =
+            std::sync::Arc::make_mut(role_succ_hashes.get_mut_journaled(Id::new(reapply_hash.raw)))
+                .insert_role_successor_link(nodes, edges, role, link, Some(reapply_queue_it));
 
         let succ_hash = self.node_successor_role_hash(source);
         self.succ_role_hash_mut(succ_hash)
@@ -6895,8 +6930,8 @@ impl ProcessContext {
             ref mut edges,
             ..
         } = *self;
-        role_succ_hashes
-            .get_mut_journaled(reapply_hash)
+        // Arc-COW split-borrow: `make_mut` deep-copies only when shared.
+        std::sync::Arc::make_mut(role_succ_hashes.get_mut_journaled(Id::new(reapply_hash.raw)))
             .remove_role_successor_link_by_link(nodes, edges, role, link);
     }
 

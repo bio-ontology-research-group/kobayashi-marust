@@ -751,6 +751,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         self.add_individual_to_processing_queue(merge_into_individual_node, calc_alg_context);
         // KONCLUCE_TASK_ALGORITHM_MODEL_STRING_INSTRUCTION — debug-only, omitted.
+
+        // Unsat-cache probe on the merged node (cpp 15457:
+        // `testUnsatisfiableCacheForMergedIndividualNodes`, constant-true —
+        // Konclude tests right after `getMergedIndividualNodes` in the merging
+        // loop; probing at the shared primitive's tail covers every KM merge
+        // path identically). Pending-gated: the merge itself may have raised
+        // a clash, and `raise_clash` overwrites the signal.
+        if !calc_alg_context.has_pending_signal() {
+            self.test_individual_node_unsatisfiable_cached(
+                merge_into_individual_node,
+                calc_alg_context,
+            );
+        }
     }
 
     /// Port of

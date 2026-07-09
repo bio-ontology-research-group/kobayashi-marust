@@ -913,6 +913,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
+
+        // Unsat-cache probe after this alternative's disjunct (+ semantic
+        // negations) land — the same cpp 16908 branched-disjunct probe the
+        // OR push runs for the first alternative (u03). Pending-gated:
+        // `raise_clash` overwrites the signal.
+        if !calc_alg_context.has_pending_signal() {
+            self.test_individual_node_unsatisfiable_cached(node_m, calc_alg_context);
+        }
     }
 
     /// Advance the topmost (at-most merge) branch point to its next merge-pair

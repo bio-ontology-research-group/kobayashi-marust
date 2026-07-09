@@ -404,6 +404,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
         if already_exist == NodeId::NONE {
             self.applied_some_rule_count += 1;
+            // Unsat-cache probe before generating the new role successor (cpp
+            // 14351: `testUnsatisfiableCacheForSuccessorGeneration` is
+            // constant-true in the generative strategy). A hit clashes the
+            // parent and ABORTS the generation (Konclude throws out of the
+            // rule here). Pending-gated: `raise_clash` overwrites the signal.
+            if !calc_alg_context.has_pending_signal() {
+                self.test_individual_node_unsatisfiable_cached(*process_indi, calc_alg_context);
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
             // KM_BRIDGE_SEARCH_LOG: every ∃ successor CREATE with the parent,
             // filler, and the labels of the parent's EXISTING same-role
             // successors — why did the already-exists check miss them (the
@@ -3158,6 +3169,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 proc_rest,
                 calc_alg_context,
             );
+            // Unsat-cache probe after the fresh merging-restriction init (cpp
+            // 14959: `testUnsatisfiableCacheForMergingInitialization`,
+            // constant-true; Konclude throws out of the rule on a hit).
+            // Pending-gated: `raise_clash` overwrites the signal.
+            if !calc_alg_context.has_pending_signal() {
+                self.test_individual_node_unsatisfiable_cached(*process_indi, calc_alg_context);
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
             // fast clash (cpp 14902–14908 / 14967–14973): an unqualified ≤0
             // with any `role`-link is refuted by the link itself.
             if cardinality <= 0 && !has_operands {
@@ -3382,6 +3403,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // PORT-PENDING: the at-least fast-clash label walk
             // (`mConfAtleastAtmostFastClashCheck`), the unsat-cache retrieval strategy
             // (W6 Strategy) and `createATLEASTDependency` stay deferred.
+            // Unsat-cache probe before generating the ≥n successors (cpp
+            // 16132: `testUnsatisfiableCacheForSuccessorGeneration`,
+            // constant-true). A hit clashes the parent and aborts the
+            // generation. Pending-gated: `raise_clash` overwrites the signal.
+            if !calc_alg_context.has_pending_signal() {
+                self.test_individual_node_unsatisfiable_cached(*process_indi, calc_alg_context);
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
             self.applied_atleast_rule_count += 1; // ++mAppliedATLEASTRuleCount
             self.ht_create_distinct_successors(
                 *process_indi,
