@@ -2944,7 +2944,7 @@ fn tracked_chain_tags(env: &SelfTestEnv, mut head: ClashDescId) -> Vec<i64> {
 
 fn install_unsat_cache_handler(env: &mut SelfTestEnv) {
     let mut cache_context = CacheContext::new();
-    let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(1, "", 0));
+    let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(3, "", 0));
     {
         let CacheContext {
             unsat_caches,

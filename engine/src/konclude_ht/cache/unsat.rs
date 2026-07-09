@@ -1413,16 +1413,22 @@ impl OccurrenceUnsatisfiableCache {
             }
             i -= 1;
         }
+        // KONCLUDE-PORT-NOTE[threading]: C++ `QThread::msleep(10)` then re-scans
+        // until a CONCURRENT reader releases a slot. In-process there is no
+        // concurrent releaser — reader releases only happen inside
+        // `activate_cache_update` on THIS thread, i.e. never while we wait —
+        // so any state where every used slot is reader-pinned would spin
+        // forever (measured: the 1-slot ring deadlocked the tiny warm-probes
+        // test at 100% CPU; with slots ≥ 2 the next-pointer walk frees
+        // predecessors and this path is normally never taken). Bound the
+        // re-scan: if a full pass frees nothing, report no slot — the caller
+        // skips this cache write (a lost nogood line, never a hang).
         while self.notused_updates_slots_list.is_empty() {
-            // KONCLUDE-PORT-NOTE[threading]: C++ `QThread::msleep(10)` then re-scans
-            // until a reader releases a slot. Single-threaded there is no concurrent
-            // reader pinning a slot, so a re-scan with no movable slot would spin
-            // forever; the `j == 0` break keeps the staged port progress-safe while
-            // preserving the re-scan structure.
             let mut j = self.used_updates_slots_list.len() as i64;
             if j == 0 {
                 break;
             }
+            let mut freed = false;
             while j > 0 {
                 let slot_item = self.used_updates_slots_list.remove(0);
                 if !slot_arena.get(slot_item).has_cache_readers() {
@@ -1430,13 +1436,17 @@ impl OccurrenceUnsatisfiableCache {
                         .get_mut(slot_item)
                         .clean_slot_update_items(hash_arena);
                     self.notused_updates_slots_list.push(slot_item);
+                    freed = true;
                 } else {
                     self.used_updates_slots_list.push(slot_item);
                 }
                 j -= 1;
             }
+            if !freed {
+                break;
+            }
         }
-        true
+        !self.notused_updates_slots_list.is_empty()
     }
 
     /// Port of

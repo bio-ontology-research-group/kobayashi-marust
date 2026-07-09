@@ -1939,7 +1939,7 @@ mod tests {
 
     fn cache_context_with_current_tag(tag: Cint64) -> (CacheContext, ReaderId, WriterId) {
         let mut cache_context = CacheContext::new();
-        let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(1, "", 0));
+        let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(3, "", 0));
         {
             let CacheContext {
                 unsat_caches,

@@ -939,6 +939,24 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         top_concept.set_operand_count(count + n);
     }
 
+    // KONCLUDE-PORT-NOTE[terminology]: in Konclude every TBox concept carries
+    // its owning CTerminology; several guards key on `getTerminology() !=
+    // nullptr` — notably u22's unsat-cache write validation, which REJECTS
+    // descriptors of terminology-less concepts (meant to exclude fresh
+    // query/nominal concepts whose semantics are not ontology-stable).
+    // Bridged concepts ARE the ontology (a deterministic function of `tin`,
+    // stable across probes), so stamp them all — without this the unsat
+    // cache silently never writes a line (measured on ore_ont_12653:
+    // 0 written / 0 hits). The sweep covers every builder helper plus the
+    // caller-created TOP.
+    {
+        let arenas = ctx.ontology_arenas_mut();
+        let n = arenas.concept_count();
+        for i in 0..n {
+            arenas.concept_mut(ConceptId::new(i as Cint64)).set_terminology(1);
+        }
+    }
+
     let _ = functional_count;
     Bridged {
         named,
@@ -1684,7 +1702,14 @@ fn install_bridge_unsat_cache(ctx: &mut CalculationAlgorithmContextBase) {
     use super::cache::unsat::OccurrenceUnsatisfiableCache;
     use super::completion::unsat_handler::UnsatisfiableCacheHandler;
     let mut cache_context = CacheContext::new();
-    let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(1, "", 0));
+    // KONCLUDE-PORT-NOTE[slots]: Konclude sizes the write-slot ring as
+    // `workControllerCount + 2` (CExperimentalReasonerManager cpp 58). With
+    // ONE slot the ring deadlocks after the first write: the activation pins
+    // the slot through the reader's next-pointer, and the release needs a
+    // SECOND slot to displace it — `wait_cache_write_prepared` then spins
+    // forever (measured: the tiny warm-probes test hung at 100% CPU). The
+    // bridge is single-threaded ⇒ 1 worker + 2 = 3.
+    let cache = cache_context.alloc_unsat_cache(OccurrenceUnsatisfiableCache::new(3, "", 0));
     {
         let CacheContext {
             unsat_caches,
