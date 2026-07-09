@@ -2117,6 +2117,20 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
             break;
         }
     }
+    // KM_HT_UNSATCACHE diagnostics: writes vs hits across the WHOLE
+    // classification (the handler is carried across probe resets, so these
+    // are cumulative). Interprets a null A/B result: 0 writes = the u22
+    // guards rejected every candidate line; writes>0 hits=0 = the read
+    // points never matched (label shapes / caching-tag mismatch).
+    if progress {
+        if let Some(state) = ctx.base.take_used_unsatisfiable_cache_handler() {
+            eprintln!(
+                "BRIDGE-CLASSIFY unsatcache: {} lines written, {} read hits",
+                state.handler.stat_write_count, state.handler.stat_hit_count
+            );
+            ctx.base.restore_used_unsatisfiable_cache_handler(state);
+        }
+    }
     if !pending.is_empty() || permanent_defer > 0 {
         if progress {
             eprintln!(

@@ -29,6 +29,12 @@ pub struct UnsatisfiableCacheHandler {
     pub conf_concept_data_unsatisfiable_precheck: bool,
     /// `mUnsatItemList`.
     pub unsat_item_list: Vec<CacheValue>,
+    /// KM diagnostics (not in Konclude): cache lines written this
+    /// classification. Lives on the handler so it survives the per-probe env
+    /// reset (the handler is CARRIED, see `reset_probe_env`).
+    pub stat_write_count: u64,
+    /// KM diagnostics: read probes answered "cached unsatisfiable".
+    pub stat_hit_count: u64,
 }
 
 impl Default for UnsatisfiableCacheHandler {
@@ -38,6 +44,8 @@ impl Default for UnsatisfiableCacheHandler {
             occur_unsat_cache_writer: WriterId::NONE,
             conf_concept_data_unsatisfiable_precheck: true,
             unsat_item_list: Vec::new(),
+            stat_write_count: 0,
+            stat_hit_count: 0,
         }
     }
 }
@@ -125,6 +133,7 @@ impl UnsatisfiableCacheHandler {
                     calc_alg_context,
                 )
             {
+                self.stat_hit_count += 1;
                 return true;
             }
         }
@@ -137,7 +146,10 @@ impl UnsatisfiableCacheHandler {
                 calc_alg_context,
                 cache_context,
             ) {
-                HashCachedUnsatisfiableResult::Unsatisfiable => return true,
+                HashCachedUnsatisfiableResult::Unsatisfiable => {
+                    self.stat_hit_count += 1;
+                    return true;
+                }
                 HashCachedUnsatisfiableResult::CheckedSatisfiable => {
                     unsatisfiable_checked = true;
                 }
@@ -205,7 +217,11 @@ impl UnsatisfiableCacheHandler {
                 .get_next_descriptor();
         }
 
-        self.write_unsat_item_list_to_cache(calc_alg_context, cache_context)
+        let written = self.write_unsat_item_list_to_cache(calc_alg_context, cache_context);
+        if written {
+            self.stat_write_count += 1;
+        }
+        written
     }
 
     /// Port slice of `writeUnsatisfiableClashedConcept`.
@@ -230,7 +246,11 @@ impl UnsatisfiableCacheHandler {
             concept.raw,
             CacheValueIdentifier::CacheValTagAndConcept,
         ));
-        self.write_unsat_item_list_to_cache(calc_alg_context, cache_context)
+        let written = self.write_unsat_item_list_to_cache(calc_alg_context, cache_context);
+        if written {
+            self.stat_write_count += 1;
+        }
+        written
     }
 
     fn write_unsat_item_list_to_cache(
