@@ -73,7 +73,7 @@ use super::super::process::edge::{DistinctEdge, IndividualLinkEdge};
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::{
     BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
-    TrackPointId,
+    SatNodeId, TrackPointId,
 };
 use super::algorithm::{AtMostMergeBranch, BranchKind, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
@@ -388,6 +388,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_operand_list()
             .to_vec();
 
+        // saturationNode = getCreationSuccessorSaturationNode(processIndi, conDes)
+        // (cpp 14224). KONCLUDE-PORT-NOTE[reduced]: unconditional in C++ (a pure
+        // lookup that returns null without installed reference linkings); gated on
+        // the two consuming confs here so the non-saturation default path stays
+        // untouched byte-for-byte.
+        let mut saturation_node: SatNodeId = if self.conf_expand_created_successors_from_saturation
+            || self.conf_caching_blocking_from_saturation
+        {
+            let mut pi = *process_indi;
+            self.get_creation_successor_saturation_node(&mut pi, con_des, calc_alg_context)
+        } else {
+            Id::NONE
+        };
+
         // (1) backend-cache neighbour reuse + (2) the single-nominal VALUE shortcut
         // (cpp 14220–14379) stay W3-DEFER: they need the backend-cache handler / the
         // nominal-localisation subsystem, neither ported. The general ∃ successor
@@ -480,6 +494,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let is_data_role: bool = calc_alg_context.ontology_arenas().role(role).is_data_role();
             let mut succ_indi: NodeId =
                 self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
+            // tryExpansionFromSaturatedData (createSuccessorIndividual cpp 21640–21645,
+            // BEFORE the links/concepts): replay the saturated filler label onto the
+            // fresh successor, or raise the clash when the filler's saturation node
+            // CLASHED (the ∃ is then unsatisfiable on this node).
+            let mut sat_caching_possible = true;
+            let mut last_sat_cach_possible_con_des: ConDescId = Id::NONE;
+            if self.conf_expand_created_successors_from_saturation {
+                self.try_expansion_from_saturated_data(
+                    process_indi,
+                    succ_indi,
+                    con_des,
+                    dep_track_point,
+                    &mut saturation_node,
+                    &mut sat_caching_possible,
+                    &mut last_sat_cach_possible_con_des,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+            }
             // createNewIndividualsLinksReapplyed → the directed R link-edge + succ-role-hash.
             let anc_link: EdgeId = self.ht_install_role_successor_edge(
                 *process_indi,
@@ -493,10 +528,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .node(*process_indi)
                 .individual_ancestor_depth();
+            let source_flags: Cint64 = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .processing_restriction_flags();
             {
                 let n = calc_alg_context.process_context_mut().node_mut(succ_indi);
                 n.set_ancestor_link(anc_link);
                 n.set_individual_ancestor_depth(depth + 1);
+                // Ancestor saturation-blocked inheritance (createSuccessorIndividual
+                // cpp 21657–21665; the SATISFIABLECACHED / SIGNATUREBLOCKING twins
+                // stay W3-DEFER with their subsystems).
+                if source_flags
+                    & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
+                        | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
+                    != 0
+                {
+                    n.add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
+                    );
+                }
             }
             // addConcepts(conceptOpLinker, negate, succIndi, ...) — the ∃ qualifier C.
             for nl in &concept_op_linker {
@@ -529,6 +580,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
             if calc_alg_context.has_pending_signal() {
                 return;
+            }
+            // tryEstablishSaturationCaching (createSuccessorIndividual cpp 21666–21668,
+            // AFTER the successor's label is complete — qualifiers + reapplied ∀s):
+            // when the label is covered by a completed sufficient saturation node,
+            // the successor is saturation-blocked and never processed.
+            if self.conf_caching_blocking_from_saturation {
+                self.try_establish_saturation_caching(
+                    process_indi,
+                    succ_indi,
+                    saturation_node,
+                    &mut sat_caching_possible,
+                    &mut last_sat_cach_possible_con_des,
+                    calc_alg_context,
+                );
             }
             // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
             // flag bookkeeping, then the successor is enqueued so

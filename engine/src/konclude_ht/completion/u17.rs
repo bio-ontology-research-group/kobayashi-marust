@@ -481,6 +481,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// cached saturation node's concept set onto a freshly created successor
     /// `created_succ_indi` (the SOME/ATLEAST expansion shortcut), with the same
     /// clash / nominal-connection / deterministic-expansion handling.
+    /// Ported LIVE (task #24 wave 2). Faithful transcription of cpp 22081–22140:
+    ///
+    ///   if saturationIndiNode && saturationIndiNode->isInitialized():
+    ///     satConSet = saturationIndiNode->getReapplyConceptSaturationLabelSet(false);
+    ///     if satConSet:
+    ///       nominalConnectionFlag = saturationIndiNode->getIndirectStatusFlags()->hasNominalConnectionFlag();
+    ///       if clashed-flag:
+    ///         if !nominalConnectionFlag || !mOptIncrementalExpansion:
+    ///           build clashed-concept descriptor from (indi, conDes, depTrackPoint)
+    ///           and throw CCalculationClashProcessingException   // [exceptions]
+    ///       else:
+    ///         if !mOptIncrementalExpansion || !nominalConnectionFlag:
+    ///           if nominalConnectionFlag:
+    ///             propagateIndividualNodeNominalConnectionToAncestors(createdSuccIndi, ctx);
+    ///             if mConfExactNominalDependencyTracking: copy successor-connected-nominal set
+    ///             propagateIndividualNodeNominalConnectionStatusToAncestors(indi, createdSuccIndi, ctx);
+    ///           for each CConceptSaturationDescriptor in satConSet:
+    ///             addConceptToIndividualSkipANDProcessing(satConcept, satConceptNegation,
+    ///                 createdSuccIndi, depTrackPoint, true, false, true, ctx);
+    ///             validateSaturationCachingPossible(createdSuccIndi, saturationIndiNode,
+    ///                 satCachingPossible, lastSatCachPossibleConDes, satConcept, satConceptNegation, ctx);
+    ///           replay cached deterministic expansion from
+    ///             getUsedSaturationNodeExpansionCacheHandler() (same gating as above);
+    ///           return true;
+    ///   return false;
     pub fn try_expansion_from_saturated_data(
         &mut self,
         indi: &mut NodeId,
@@ -492,41 +517,125 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         last_sat_cach_possible_con_des: &mut ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // PORT-PENDING: faithful transcription of cpp 22081–22140. Driven by the
-        // saturation subsystem (W6-DEFER[api]):
-        //   if saturationIndiNode && saturationIndiNode->isInitialized():
-        //     satConSet = saturationIndiNode->getReapplyConceptSaturationLabelSet(false);
-        //     if satConSet:
-        //       nominalConnectionFlag = saturationIndiNode->getIndirectStatusFlags()->hasNominalConnectionFlag();
-        //       if clashed-flag:
-        //         if !nominalConnectionFlag || !mOptIncrementalExpansion:
-        //           build clashed-concept descriptor from (indi, conDes, depTrackPoint)
-        //           and throw CCalculationClashProcessingException   // [exceptions]
-        //       else:
-        //         if !mOptIncrementalExpansion || !nominalConnectionFlag:
-        //           if nominalConnectionFlag:
-        //             propagateIndividualNodeNominalConnectionToAncestors(createdSuccIndi, ctx);
-        //             if mConfExactNominalDependencyTracking: copy successor-connected-nominal set
-        //             propagateIndividualNodeNominalConnectionStatusToAncestors(indi, createdSuccIndi, ctx);
-        //           for each CConceptSaturationDescriptor in satConSet:
-        //             addConceptToIndividualSkipANDProcessing(satConcept, satConceptNegation,
-        //                 createdSuccIndi, depTrackPoint, true, false, true, ctx);
-        //             validateSaturationCachingPossible(createdSuccIndi, saturationIndiNode,
-        //                 satCachingPossible, lastSatCachPossibleConDes, satConcept, satConceptNegation, ctx);
-        //           replay cached deterministic expansion from
-        //             getUsedSaturationNodeExpansionCacheHandler() (same gating as above);
-        //           return true;
-        //   return false;
-        let _ = (
-            indi,
-            created_succ_indi,
-            con_des,
-            dep_track_point,
-            saturation_indi_node,
-            sat_caching_possible,
-            last_sat_cach_possible_con_des,
-            calc_alg_context,
-        );
+        use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as SatF;
+        if saturation_indi_node.is_none() {
+            return false;
+        }
+        let (initialized, sat_con_set, flags) = {
+            let sat_node = calc_alg_context
+                .process_context()
+                .sat_node(*saturation_indi_node);
+            (
+                sat_node.is_initialized(),
+                sat_node.reapply_con_sat_label_set,
+                sat_node.indirect_status_flags.get_flags(),
+            )
+        };
+        if !initialized || sat_con_set.is_none() {
+            return false;
+        }
+        let nominal_connection_flag = flags & SatF::INDSATFLAGNOMINALCONNECTION != 0;
+        if flags & SatF::INDSATFLAGCLASHED != 0 {
+            if !nominal_connection_flag || !self.opt_incremental_expansion {
+                // KONCLUDE-PORT-NOTE[exceptions]: C++ throws
+                // CCalculationClashProcessingException(clashDes); the port raises the
+                // pending clash signal — the enclosing rule must check
+                // `has_pending_signal()` after this call and abort, which is exactly
+                // the unwind the exception performs.
+                let clash_des = self.create_clashed_concept_descriptor(
+                    Id::NONE,
+                    indi,
+                    con_des,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                calc_alg_context.raise_clash(clash_des);
+                return false;
+            }
+        } else if !self.opt_incremental_expansion || !nominal_connection_flag {
+            if nominal_connection_flag {
+                self.propagate_individual_node_nominal_connection_to_ancestors(
+                    created_succ_indi,
+                    calc_alg_context,
+                );
+                if self.conf_exact_nominal_dependency_tracking {
+                    let sat_succ_conn_nom_set = calc_alg_context
+                        .process_context_mut()
+                        .sat_node_successor_connected_nominal_set_existing(*saturation_indi_node);
+                    if sat_succ_conn_nom_set.is_some() {
+                        let nominal_ids = calc_alg_context
+                            .process_context()
+                            .nominal_conn_set(sat_succ_conn_nom_set)
+                            .iter_snapshot();
+                        let succ_conn_nom_set = calc_alg_context
+                            .process_context_mut()
+                            .node_successor_nominal_connection_set(created_succ_indi);
+                        for nominal_id in nominal_ids {
+                            calc_alg_context
+                                .process_context_mut()
+                                .nominal_conn_set_mut(succ_conn_nom_set)
+                                .add_successor_connected_nominal(-nominal_id);
+                        }
+                    }
+                }
+                self.propagate_individual_node_nominal_connection_status_to_ancestors(
+                    *indi,
+                    created_succ_indi,
+                    calc_alg_context,
+                );
+            }
+
+            // Replay the saturated concept set onto the fresh successor.
+            let mut con_sat_des_it = calc_alg_context
+                .process_context()
+                .reapply_con_sat_label_set(sat_con_set)
+                .get_concept_saturation_description_linker();
+            while con_sat_des_it.is_some() {
+                let (sat_concept, sat_concept_negation, next) = {
+                    let d = calc_alg_context.process_context().con_sat_desc(con_sat_des_it);
+                    (
+                        d.get_concept(),
+                        d.get_negation(),
+                        d.get_next_concept_desciptor(),
+                    )
+                };
+                self.saturation_expansion_concept_count += 1; // STATINC(SATURATIONCACHECONCEPTEXPANSIONCOUNT)
+                self.add_concept_to_individual_skip_and_processing(
+                    sat_concept,
+                    sat_concept_negation,
+                    created_succ_indi,
+                    dep_track_point,
+                    true,
+                    false,
+                    true,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    // [exceptions]: a clash inside the replay unwinds in C++; the
+                    // caller sees the pending signal and aborts identically.
+                    return false;
+                }
+                self.validate_saturation_caching_possible(
+                    created_succ_indi,
+                    saturation_indi_node,
+                    Some(sat_caching_possible),
+                    Some(last_sat_cach_possible_con_des),
+                    sat_concept,
+                    sat_concept_negation,
+                    calc_alg_context,
+                );
+                con_sat_des_it = next;
+            }
+
+            // W6-DEFER[api]: the cached deterministic expansion replay
+            // (`getUsedSaturationNodeExpansionCacheHandler()->getCachedDeterministicExpansion`)
+            // is the saturation-node ASSOCIATED-expansion cache — Konclude's
+            // production completion profile runs with its writing OFF
+            // (mConfSaturationSatisfiabilitiyExpansionCacheWriting = false), no
+            // handler is installed in the bridge, and the block is a no-op there.
+            // Lands with the cache/satnode.rs wiring if ever enabled.
+            return true;
+        }
         false
     }
 

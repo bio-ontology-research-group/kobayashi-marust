@@ -1814,6 +1814,7 @@ fn reset_probe_env(
     algo: &mut CompletionTaskHandleAlgorithm,
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
+    preserve_saturation: bool,
 ) {
     use super::model::ontology::OntologyArenas;
     // Fresh algorithm: search state (OR stack, DDB marks, blocking caches,
@@ -1844,7 +1845,22 @@ fn reset_probe_env(
     // ON later probes are deliberately order-dependent (they prune using
     // earlier probes' nogoods) while verdicts stay sound+complete.
     let unsat_cache = ctx.base.take_used_unsatisfiable_cache_handler();
-    *ctx = CalculationAlgorithmContextBase::new();
+    // KM_HT_SATURATION: the saturation-side arenas DELIBERATELY survive the
+    // probe reset when a saturation pass ran on this env — the ontology
+    // arenas (kept above) hold concept→saturation reference linkings whose
+    // node ids point into these arenas, and the saturation-node coupling
+    // (u08/u17/u22, Konclude's expand-from-saturation + caching-blocking)
+    // reads them during every probe. Probes never write them, so the carry
+    // reproduces Konclude's stable saturation-task pointers. Carried even
+    // when the coupling is off (budget-aborted pass) so the linkings never
+    // dangle.
+    let mut fresh = CalculationAlgorithmContextBase::new();
+    if preserve_saturation {
+        fresh
+            .process_context_mut()
+            .adopt_saturation_state_from(ctx.process_context_mut());
+    }
+    *ctx = fresh;
     ctx.base.ontology_arenas = arenas;
     ctx.base.used_concept_priority_strategy = strategy;
     ctx.base.used_processing_data_box.ontology_top_concept = top;
@@ -2286,15 +2302,26 @@ pub fn bridged_saturate(tin: &TInput) -> Option<SaturationOutcome> {
     if bridged.unsupported > 0 {
         return None;
     }
+    if !run_bridged_saturation(&mut ctx, &bridged) {
+        return None;
+    }
+    Some(extract_saturation_outcome(&mut ctx, &bridged))
+}
+
+/// Run the production approximation saturation ON the given bridge env
+/// (preprocess + seeds + drive). Returns false on a budget overrun: unfinished
+/// queues may hold unchecked critical concepts, so no per-node flags are
+/// trustworthy — the caller must discard the pass (no verdict extraction, no
+/// saturation-node coupling). The saturation NODES remain in the env's arenas
+/// either way (the concept→saturation reference linkings installed by the
+/// seeds point at them; see `reset_probe_env`'s saturation carry).
+fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
     configure_production_saturation(&mut sat_algo);
-    extract_propagation_into_creation_direction(&mut ctx);
-    build_saturation_seeds(&mut ctx, &bridged);
-    if !sat_algo.run_saturation_on(&mut ctx) {
-        // Budget overrun: unfinished queues may hold unchecked critical concepts,
-        // so no per-node flags are trustworthy — discard the whole pass (every
-        // subject goes to the completion probes, exactly as without saturation).
-        return None;
+    extract_propagation_into_creation_direction(ctx);
+    build_saturation_seeds(ctx, bridged);
+    if !sat_algo.run_saturation_on(ctx) {
+        return false;
     }
     if std::env::var_os("KM_SAT_DEBUG").is_some() {
         eprintln!(
@@ -2306,9 +2333,9 @@ pub fn bridged_saturate(tin: &TInput) -> Option<SaturationOutcome> {
             sat_algo.insufficient_value_count,
             sat_algo.insufficient_nominal_count,
         );
-        debug_dump_saturation_nodes(&ctx);
+        debug_dump_saturation_nodes(ctx);
     }
-    Some(extract_saturation_outcome(&mut ctx, &bridged))
+    true
 }
 
 /// Temporary diagnostic (env `KM_SAT_DEBUG=1`): per saturation node, dump the
@@ -2378,6 +2405,23 @@ fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
 /// pathological subject costs bounded time while the cheap bulk completes,
 /// instead of the first budget-STOP discarding all finished work.
 pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
+    // Saturation-first probe answering (task #23, opt-in KM_HT_SATURATION=1)
+    // + the saturation-node coupling into the residue probes (task #24 wave 2;
+    // KM_HT_NO_SATCACHE=1 is the coupling's A/B escape hatch).
+    let use_saturation = std::env::var_os("KM_HT_SATURATION").is_some();
+    let use_satcache = use_saturation && std::env::var_os("KM_HT_NO_SATCACHE").is_none();
+    bridged_classify_opts(tin, use_saturation, use_satcache)
+}
+
+/// The env-independent core of [`bridged_classify`] — `use_saturation` answers
+/// whole subjects from a pre-probe saturation pass, `use_satcache` additionally
+/// arms the saturation-node coupling (expand-from-saturation + caching-blocking,
+/// Konclude's production completion profile) inside the residue probes.
+pub fn bridged_classify_opts(
+    tin: &TInput,
+    use_saturation: bool,
+    use_satcache: bool,
+) -> Option<BridgedClassification> {
     if !tin.nominals.is_empty() {
         return None;
     }
@@ -2427,6 +2471,73 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(2);
+    let mut pending: Vec<usize> = subjects;
+    // Saturation-first probe answering (task #23): saturate the bridged
+    // ontology ONCE — on the SAME env the probes will use, so the saturation
+    // nodes + concept→saturation reference linkings stay live for the
+    // saturation-node coupling — then answer whole subjects from certain
+    // verdicts: UNSAT-certain subjects land in `unsatisfiable`, SAT-certain
+    // subjects with a sufficient label get their COMPLETE subsumer set from
+    // the saturated label (Konclude's CPrecomputedSaturationSubsumerExtractor
+    // consumption). Only the UNKNOWN residue runs the completion probes,
+    // with the coupling (u08/u17/u22) armed when `use_satcache`.
+    let mut saturation_ran = false;
+    let mut satcache_active = false;
+    if use_saturation {
+        let t_sat = std::time::Instant::now();
+        saturation_ran = true;
+        if run_bridged_saturation(&mut ctx, &bridged) {
+            let outcome = extract_saturation_outcome(&mut ctx, &bridged);
+            let mut answered_unsat = 0usize;
+            let mut answered_sat = 0usize;
+            pending.retain(|&s| match outcome.sat_verdict[s] {
+                Some(true) => {
+                    if std::env::var_os("KM_SAT_DEBUG").is_some() {
+                        eprintln!(
+                            "SAT-UNSAT-VERDICT subject {} ({})",
+                            s,
+                            tin.concepts.get(s).map(|n| n.as_str()).unwrap_or("?")
+                        );
+                    }
+                    out.unsatisfiable.push(s);
+                    answered_unsat += 1;
+                    false
+                }
+                Some(false) => {
+                    if let Some(subs) = &outcome.certain_subsumers[s] {
+                        for &c in subs {
+                            if c != s && universe.contains(&c) {
+                                out.subsumptions.push((s, c));
+                            }
+                        }
+                        answered_sat += 1;
+                        false
+                    } else {
+                        true
+                    }
+                }
+                None => true,
+            });
+            satcache_active = use_satcache;
+            if progress {
+                eprintln!(
+                    "BRIDGE-SATURATION: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes, satcache={})",
+                    t_sat.elapsed().as_secs_f64(),
+                    answered_unsat,
+                    answered_sat,
+                    answered_unsat + answered_sat + pending.len(),
+                    pending.len(),
+                    satcache_active,
+                );
+            }
+        } else if progress {
+            // Budget overrun — no flag is trustworthy; the pass answers nothing
+            // and the coupling stays off. The saturation arenas are still
+            // carried through resets so the installed reference linkings
+            // (surviving in the ontology arenas) never dangle.
+            eprintln!("BRIDGE-SATURATION: budget overrun, pass discarded");
+        }
+    }
     // Classify one subject end-to-end (read-off + any needed verification
     // probes) into `out`. `None` ⇔ some probe STOPped — the subject is
     // DEFERRED, `out` untouched for it (pairs are only pushed once every
@@ -2457,9 +2568,20 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
                 *ctx = c2;
                 algo.probe_budget = budget;
             } else {
-                reset_probe_env(algo, ctx, &bridged);
+                reset_probe_env(algo, ctx, &bridged, saturation_ran);
             }
             configure_production_search(algo);
+            // Saturation-node coupling (task #24 wave 2): Konclude's production
+            // completion profile — expand created successors from saturation +
+            // caching-blocking from saturation (the associated-expansion cache
+            // WRITING stays off, as in Konclude). Re-armed after every reset
+            // because the reset rebuilds the algorithm. The KM_BRIDGE_FRESH_ENV
+            // diagnostic path rebuilds an UNsaturated env, so the coupling
+            // stays off there (the lookups would find no reference linkings).
+            if satcache_active && !fresh_env {
+                algo.conf_expand_created_successors_from_saturation = true;
+                algo.conf_caching_blocking_from_saturation = true;
+            }
             // VERDICT TRUST HIERARCHY, escalation leg: re-run an untrusted
             // probe under COW branch epochs — complete per-alternative state
             // restore, so chronological search is classically complete and
@@ -2615,61 +2737,6 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
         // subject is satisfiable; nothing to check).
         Some(())
     };
-    let mut pending: Vec<usize> = subjects;
-    // Saturation-first probe answering (task #23, opt-in KM_HT_SATURATION=1):
-    // saturate the bridged ontology ONCE in a dedicated env, then answer whole
-    // subjects from certain verdicts — UNSAT-certain subjects land in
-    // `unsatisfiable`, SAT-certain-with-sufficient-label subjects get their
-    // COMPLETE subsumer set from the saturated label (Konclude's
-    // CPrecomputedSaturationSubsumerExtractor consumption) — and only the
-    // UNKNOWN residue runs the completion probes below, unchanged.
-    if std::env::var_os("KM_HT_SATURATION").is_some() {
-        let t_sat = std::time::Instant::now();
-        if let Some(outcome) = bridged_saturate(tin) {
-            let mut answered_unsat = 0usize;
-            let mut answered_sat = 0usize;
-            pending.retain(|&s| match outcome.sat_verdict[s] {
-                Some(true) => {
-                    if std::env::var_os("KM_SAT_DEBUG").is_some() {
-                        eprintln!(
-                            "SAT-UNSAT-VERDICT subject {} ({})",
-                            s,
-                            tin.concepts.get(s).map(|n| n.as_str()).unwrap_or("?")
-                        );
-                    }
-                    out.unsatisfiable.push(s);
-                    answered_unsat += 1;
-                    false
-                }
-                Some(false) => {
-                    if let Some(subs) = &outcome.certain_subsumers[s] {
-                        for &c in subs {
-                            if c != s && universe.contains(&c) {
-                                out.subsumptions.push((s, c));
-                            }
-                        }
-                        answered_sat += 1;
-                        false
-                    } else {
-                        true
-                    }
-                }
-                None => true,
-            });
-            if progress {
-                eprintln!(
-                    "BRIDGE-SATURATION: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes)",
-                    t_sat.elapsed().as_secs_f64(),
-                    answered_unsat,
-                    answered_sat,
-                    answered_unsat + answered_sat + pending.len(),
-                    pending.len()
-                );
-            }
-        } else if progress {
-            eprintln!("BRIDGE-SATURATION: input outside bridge fragment, skipped");
-        }
-    }
     // Subjects whose defer is DETERMINISTIC (completeness poison — an
     // unrestored advance phantomized nodes): retrying with a bigger budget
     // re-runs the identical search to the identical poison, so they must
@@ -2909,13 +2976,13 @@ mod tests {
         assert_eq!(cold, Some(true), "X ⊑ Y must hold (cold cache)");
         // Probe 2 (warm): the same seed re-probed after the classify-style
         // reset — the carried cache must reproduce the verdict.
-        reset_probe_env(&mut algo, &mut ctx, &bridged);
+        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
         set_flags(&mut algo);
         let warm = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (y, true)]);
         assert_eq!(warm, Some(true), "X ⊑ Y must hold (warm cache)");
         // Probe 3 (warm, SAT control): X ⊓ ¬Z is satisfiable — a nogood
         // learned from the ¬Y run must not fire on this overlapping label.
-        reset_probe_env(&mut algo, &mut ctx, &bridged);
+        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
         set_flags(&mut algo);
         let sat = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (z, true)]);
         assert_eq!(sat, Some(false), "X ⊑ Z must NOT hold (warm cache)");
@@ -4559,6 +4626,150 @@ mod tests {
             "probe oracle must prove A unsat (got {:?})",
             r.unsatisfiable
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Saturation-node coupling into the completion probes (task #24 wave 2):
+    // expand-from-saturation (u17) + caching-blocking (u22) armed inside the
+    // probe env after a same-env saturation pass. Driven programmatically
+    // (env-var-independent).
+    // -----------------------------------------------------------------------
+
+    /// The ∃-rule must replay the filler's saturated label onto the fresh
+    /// successor (expansion) and establish saturation blocking on it — and
+    /// both must KEEP firing after a `reset_probe_env` carry (the arenas +
+    /// reference linkings survive the reset).
+    #[test]
+    fn satcache_expansion_and_blocking_fire_in_probe() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:B))\n\
+             Declaration(Class(:C)) Declaration(Class(:D))\n\
+             Declaration(ObjectProperty(:r))\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(:B :C)\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+        assert_eq!(bridged.unsupported, 0, "fully bridged");
+        assert!(
+            run_bridged_saturation(&mut ctx, &bridged),
+            "saturation within budget"
+        );
+        let arm = |algo: &mut CompletionTaskHandleAlgorithm| {
+            algo.conf_expand_created_successors_from_saturation = true;
+            algo.conf_caching_blocking_from_saturation = true;
+        };
+        arm(&mut algo);
+        let idx = |s: &str| -> usize {
+            env.tin
+                .concepts
+                .iter()
+                .position(|n| n == s)
+                .unwrap_or_else(|| panic!("concept {s} not in TInput"))
+        };
+        let (a, d) = (bridged.named[idx("A")], bridged.named[idx("D")]);
+        let mut id = 0i64;
+        // A ⊓ ¬D is satisfiable (A ⋢ D); the drive expands A's ∃r.B.
+        let verdict = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(a, false), (d, true)]);
+        assert_eq!(verdict, Some(false), "A ⊑ D must NOT hold");
+        assert!(
+            algo.saturation_expansion_concept_count > 0,
+            "the saturated filler label must be replayed onto the ∃-successor"
+        );
+        assert!(
+            algo.saturation_cache_establish_count > 0,
+            "the ∃-successor must be established saturation-blocked"
+        );
+        // The classify-style reset must CARRY the saturation state: the
+        // coupling keeps firing on the warm env.
+        reset_probe_env(&mut algo, &mut ctx, &bridged, true);
+        arm(&mut algo);
+        let mut id2 = 0i64;
+        let warm = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id2, &[(a, false), (d, true)]);
+        assert_eq!(warm, Some(false), "verdict stable across the carry");
+        assert!(
+            algo.saturation_expansion_concept_count > 0
+                && algo.saturation_cache_establish_count > 0,
+            "the coupling must survive reset_probe_env (saturation arenas carried)"
+        );
+    }
+
+    /// A clashed saturation node must replay as a CLASH in the probe: with
+    /// B deterministically unsatisfiable (B ⊑ C ⊓ ¬C), probing A (⊑ ∃r.B)
+    /// must answer UNSAT through `try_expansion_from_saturated_data`'s
+    /// clash arm — and agree with the plain (uncoupled) probe.
+    #[test]
+    fn satcache_clash_replay_probe_unsat() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
+             Declaration(ObjectProperty(:r))\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(:B :C)\n\
+             SubClassOf(:B ObjectComplementOf(:C))\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let idx = |s: &str| -> usize {
+            env.tin
+                .concepts
+                .iter()
+                .position(|n| n == s)
+                .unwrap_or_else(|| panic!("concept {s} not in TInput"))
+        };
+        // Plain probe (no saturation, no coupling): A unsat.
+        {
+            let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+            assert_eq!(bridged.unsupported, 0);
+            let a = bridged.named[idx("A")];
+            let mut id = 0i64;
+            let plain = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(a, false)]);
+            assert_eq!(plain, Some(true), "A is unsatisfiable (plain probe)");
+        }
+        // Coupled probe: the ∃-rule must clash from B's CLASHED saturation node.
+        {
+            let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+            assert!(run_bridged_saturation(&mut ctx, &bridged));
+            algo.conf_expand_created_successors_from_saturation = true;
+            algo.conf_caching_blocking_from_saturation = true;
+            let a = bridged.named[idx("A")];
+            let mut id = 0i64;
+            let coupled = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(a, false)]);
+            assert_eq!(coupled, Some(true), "A is unsatisfiable (coupled probe)");
+        }
+    }
+
+    /// Public-API A/B/C: plain probes vs saturation-only vs saturation +
+    /// coupling must classify identically on a mixed ontology whose
+    /// disjunction forces a probe residue (the coupling actually runs).
+    #[test]
+    fn satcache_classification_matches_plain() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))\n\
+             Declaration(Class(:A1)) Declaration(Class(:A2))\n\
+             Declaration(Class(:B)) Declaration(Class(:C))\n\
+             Declaration(ObjectProperty(:r))\n\
+             SubClassOf(:X ObjectUnionOf(:A1 :A2))\n\
+             SubClassOf(:A1 :Y)\n\
+             SubClassOf(:A2 :Y)\n\
+             SubClassOf(:Y ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(:B :C)\n\
+             SubClassOf(:Z ObjectAllValuesFrom(:r ObjectComplementOf(:B)))\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let norm = |r: BridgedClassification| {
+            let mut u = r.unsatisfiable;
+            let mut s = r.subsumptions;
+            u.sort_unstable();
+            s.sort_unstable();
+            (u, s)
+        };
+        let plain = norm(bridged_classify_opts(&env.tin, false, false).expect("plain arm"));
+        let sat_only = norm(bridged_classify_opts(&env.tin, true, false).expect("sat-only arm"));
+        let coupled = norm(bridged_classify_opts(&env.tin, true, true).expect("coupled arm"));
+        assert_eq!(plain, sat_only, "saturation-only must not change verdicts");
+        assert_eq!(plain, coupled, "the saturation-node coupling must not change verdicts");
     }
 
     /// Full-agreement harness: saturation certainties vs the probe-path

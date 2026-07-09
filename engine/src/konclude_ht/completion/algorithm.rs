@@ -636,6 +636,14 @@ pub struct CompletionTaskHandleAlgorithm {
     pub applied_atmost_rule_count: Cint64,
     pub applied_total_rule_count: Cint64,
 
+    // --- saturation-node coupling counters (task #24 wave 2) ---
+    /// STATINC(SATURATIONCACHEESTABLISHCOUNT): successors established as
+    /// saturation-blocked (`try_establish_saturation_caching` success).
+    pub saturation_cache_establish_count: Cint64,
+    /// STATINC(SATURATIONCACHECONCEPTEXPANSIONCOUNT): saturated-label concepts
+    /// replayed onto fresh successors (`try_expansion_from_saturated_data`).
+    pub saturation_expansion_concept_count: Cint64,
+
     /// KM-BRIDGE: singleton concepts — any two distinct nodes positively
     /// carrying one are the SAME individual (the bridge's realisation of the
     /// clausal datatype value-identity `C(x) ∧ C(y) → x = y`; Konclude gets
@@ -1164,6 +1172,9 @@ impl CompletionTaskHandleAlgorithm {
             applied_atleast_rule_count: 0,
             applied_atmost_rule_count: 0,
             applied_total_rule_count: 0,
+
+            saturation_cache_establish_count: 0,
+            saturation_expansion_concept_count: 0,
 
             singleton_concepts: Vec::new(),
             applied_singleton_merge_count: 0,

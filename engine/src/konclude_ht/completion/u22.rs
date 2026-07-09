@@ -85,9 +85,12 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use super::super::model::concept_process::ConceptProcessDataId;
 use super::super::model::op::CCFS_PROPAGATION_TYPE;
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, RoleId};
+use super::super::process::node::IndividualProcessNode;
+use super::super::process::sat_block::IndividualNodeSaturationBlockingData;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::{ClashDescId, ConDescId, NodeId, SatNodeId};
 use super::super::task::adapters::EFEXTRACTSUBSUMERSROOTNODE;
@@ -814,7 +817,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// unproblematic) and propagate the indirect-successor saturation-blocked flag.
     /// Returns whether caching was established.
     ///
-    /// PORT-PENDING: faithful transcription of cpp 21674–21723. Outline:
+    /// Ported LIVE (task #24 wave 2). Faithful transcription of cpp 21674–21723:
     ///
     ///   if saturationIndiNode && saturationIndiNode->isInitialized() && saturationIndiNode->isCompleted():
     ///       cachingEstablishmentPossible = false;
@@ -850,19 +853,111 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         last_sat_cach_possible_con_des: &mut ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: the saturation node status flags + successor-connected
-        // nominal set are the W4 saturation subsystem; the `CIndividualNodeSaturationBlockingData`
-        // satellite (W6-DEFER[memory-pool]) and the
-        // `propagateIndirectSuccessorSaturationBlocked` / saturation-reactivation
-        // siblings are later units. Body PORT-PENDING per outline.
-        let _ = (
-            indi,
-            succ_indi,
-            saturation_indi_node,
-            sat_caching_possible,
-            last_sat_cach_possible_con_des,
-            calc_alg_context,
-        );
+        let _ = indi;
+        type SatF = IndividualSaturationProcessNodeStatusFlags;
+        if saturation_indi_node.is_none() {
+            return false;
+        }
+        let (initialized, completed, flags) = {
+            let sat_node = calc_alg_context
+                .process_context()
+                .sat_node(saturation_indi_node);
+            (
+                sat_node.is_initialized(),
+                sat_node.is_completed(),
+                sat_node.indirect_status_flags.get_flags(),
+            )
+        };
+        if initialized && completed {
+            let mut caching_establishment_possible = false;
+
+            if flags & (SatF::INDSATFLAGINSUFFICIENT | SatF::INDSATFLAGCLASHED) == 0 {
+                let mut sat_node_ref = saturation_indi_node;
+                if self.validate_saturation_caching_possible(
+                    succ_indi,
+                    &mut sat_node_ref,
+                    Some(sat_caching_possible),
+                    Some(last_sat_cach_possible_con_des),
+                    Id::NONE,
+                    false,
+                    calc_alg_context,
+                ) {
+                    let mut nominal_nodes_compatible = true;
+
+                    if flags & SatF::INDSATFLAGNOMINALCONNECTION != 0 {
+                        if !self.conf_saturation_caching_with_nominals {
+                            nominal_nodes_compatible = false;
+                        }
+                        let succ_conn_nominal_set = calc_alg_context
+                            .process_context_mut()
+                            .sat_node_successor_connected_nominal_set_existing(
+                                saturation_indi_node,
+                            );
+                        if succ_conn_nominal_set.is_none() {
+                            nominal_nodes_compatible = false;
+                        } else if !self.try_install_saturation_caching_reactivation(
+                            succ_indi,
+                            succ_conn_nominal_set,
+                            calc_alg_context,
+                        ) {
+                            nominal_nodes_compatible = false;
+                        }
+                    }
+
+                    if nominal_nodes_compatible {
+                        caching_establishment_possible = true;
+                    }
+                }
+            }
+
+            let succ_label = calc_alg_context
+                .process_context()
+                .node(succ_indi)
+                .use_reapply_con_label_set;
+            let succ_indi_con_count = if succ_label.is_some() {
+                calc_alg_context
+                    .process_context()
+                    .label_set(succ_label)
+                    .get_concept_count()
+            } else {
+                0
+            };
+            let mut sat_blocking_data = IndividualNodeSaturationBlockingData::new();
+            sat_blocking_data.init_saturation_blocking_data(
+                succ_indi_con_count,
+                *last_sat_cach_possible_con_des,
+                saturation_indi_node,
+            );
+            let sat_blocking_data_id = calc_alg_context
+                .process_context_mut()
+                .alloc_indi_sat_block_data(sat_blocking_data);
+            calc_alg_context
+                .process_context_mut()
+                .node_mut(succ_indi)
+                .set_individual_saturation_blocking_data(sat_blocking_data_id);
+
+            if caching_establishment_possible {
+                self.saturation_cache_establish_count += 1; // STATINC(SATURATIONCACHEESTABLISHCOUNT)
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(succ_indi)
+                    .add_processing_restriction_flags(
+                        IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED,
+                    );
+                self.propagate_indirect_successor_saturation_blocked(succ_indi, calc_alg_context);
+
+                if flags & SatF::INDSATFLAGCARDINALITYPROPLEMATIC == 0 {
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(succ_indi)
+                        .add_processing_restriction_flags(
+                            IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
+                        );
+                }
+                return true;
+            }
+        }
+
         false
     }
 
@@ -878,7 +973,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// `CConceptDescriptor** lastSatCachPossibleConDes` are NULLABLE; ported as
     /// `Option<&mut bool>` / `Option<&mut ConDescId>` to preserve the null checks.
     ///
-    /// PORT-PENDING: faithful transcription of cpp 21866–21911. Outline:
+    /// Ported LIVE (task #24 wave 2). Faithful transcription of cpp 21866–21911:
     ///
     ///   satCachingStillPossible = satCachingPossible ? *satCachingPossible : true;
     ///   if satCachingStillPossible:
@@ -911,27 +1006,96 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         added_concept_negation: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // W4-DEFER[api]: the saturation node's `CReapplyConceptSaturationLabelSet`
-        // (`hasConcept`) and `isCompleted` are W4; the node's
-        // `CReapplyConceptLabelSet` adding-sorted concept-descriptor linker is the
-        // label-set satellite. Body PORT-PENDING per outline; the C++ fall-through is
-        // the inbound `*satCachingPossible` (true when null).
-        let still_possible = match &sat_caching_possible {
+        let mut sat_caching_still_possible = match &sat_caching_possible {
             Some(p) => **p,
             None => true,
         };
-        let _ = (
-            indi,
-            saturation_indi_node,
-            last_sat_cach_possible_con_des,
-            added_concept,
-            added_concept_negation,
-            calc_alg_context,
-        );
-        if let Some(p) = sat_caching_possible {
-            *p = still_possible;
+        if sat_caching_still_possible {
+            if !calc_alg_context
+                .process_context()
+                .sat_node(*saturation_indi_node)
+                .is_completed()
+            {
+                sat_caching_still_possible = false;
+            } else {
+                let con_set = calc_alg_context
+                    .process_context()
+                    .node(indi)
+                    .use_reapply_con_label_set;
+                let sat_con_set = calc_alg_context
+                    .process_context()
+                    .sat_node(*saturation_indi_node)
+                    .reapply_con_sat_label_set;
+                if con_set.is_some() && sat_con_set.is_some() {
+                    let pc = calc_alg_context.process_context();
+                    let arenas = calc_alg_context.ontology_arenas();
+                    let con_des_linker =
+                        pc.label_set(con_set).get_adding_sorted_concept_description_linker();
+                    let mut con_des_it = con_des_linker;
+                    let last_tested_con_des_it = match &last_sat_cach_possible_con_des {
+                        Some(p) => **p,
+                        None => Id::NONE,
+                    };
+                    if added_concept.is_some()
+                        && con_des_it != last_tested_con_des_it
+                        && con_des_it.is_some()
+                    {
+                        // Faithful C++ condition (`getConcept()==addedConcept ||
+                        // isNegated()==addedConceptNegation`) — the `||` is Konclude's.
+                        let d = pc.con_desc(con_des_it);
+                        if d.get_concept() == added_concept
+                            || d.is_negated() == added_concept_negation
+                        {
+                            con_des_it = d.get_next_concept_descriptor();
+                        }
+                    }
+                    // KONCLUDE-PORT-NOTE[defensive]: the `is_some()` guard has no C++
+                    // twin (a pointer walk would just deref null) — the adding-sorted
+                    // linker is head-grown, so `lastTested` (a previous head) is always
+                    // reachable and the guard is only an arena-panic shield.
+                    while con_des_it != last_tested_con_des_it
+                        && con_des_it.is_some()
+                        && sat_caching_still_possible
+                    {
+                        let (concept, negated, next) = {
+                            let d = pc.con_desc(con_des_it);
+                            (
+                                d.get_concept(),
+                                d.is_negated(),
+                                d.get_next_concept_descriptor(),
+                            )
+                        };
+                        // satConSet->hasConcept(concept, negated): tag lookup + descriptor
+                        // negation compare (satellites.rs `has_concept_by_tag` semantics).
+                        let con_tag = arenas.concept(concept).get_concept_tag();
+                        let mut con_sat_des = Id::NONE;
+                        let mut imp_reapply = Id::NONE;
+                        let present = pc
+                            .reapply_con_sat_label_set(sat_con_set)
+                            .get_concept_saturation_descriptor_by_tag(
+                                con_tag,
+                                &mut con_sat_des,
+                                &mut imp_reapply,
+                            )
+                            && con_sat_des.is_some()
+                            && pc.con_sat_desc(con_sat_des).get_negation() == negated;
+                        if !present {
+                            sat_caching_still_possible = false;
+                        }
+                        con_des_it = next;
+                    }
+                    if let Some(p) = last_sat_cach_possible_con_des {
+                        *p = con_des_linker;
+                    }
+                } else {
+                    sat_caching_still_possible = false;
+                }
+            }
         }
-        still_possible
+        if let Some(p) = sat_caching_possible {
+            *p = sat_caching_still_possible;
+        }
+        sat_caching_still_possible
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getCreationSuccessorSaturationNode`.
@@ -944,7 +1108,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// (automat-transaction) restrictions into a concept-extension map and resolving
     /// the extended saturation node.
     ///
-    /// PORT-PENDING: faithful transcription of cpp 21917–22013. Outline:
+    /// Ported LIVE (task #24 wave 2) except the extension-resolving refinement
+    /// (see the body's W4-DEFER note). Faithful transcription of cpp 21917–22013:
     ///
     ///   concept = conDes->getConcept(); conceptNegation = conDes->isNegated();
     ///   existIndiNode = concept->getConceptData() ? existential-successor saturation ref linking node : nullptr;  // W4-DEFER[api]
@@ -976,13 +1141,86 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         con_des: ConDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
-        // W4-DEFER[api]: the concept→saturation reference linking (existential-
-        // successor + operand variants), the saturation successor-extension /
-        // resolve data, and the saturation label set are the W4 saturation subsystem;
-        // `collectReapplyAutomatTransactionsRestrictions` is a sibling reapply-queue
-        // method. Body PORT-PENDING per outline.
-        let _ = (indi, con_des, calc_alg_context);
-        Id::NONE
+        let _ = indi;
+        // KONCLUDE-PORT-NOTE[defensive]: no C++ twin — every C++ caller passes a
+        // live conDes; the arena would panic where the C++ pointer would crash.
+        if con_des.is_none() {
+            return Id::NONE;
+        }
+        let (concept, concept_negation) = {
+            let d = calc_alg_context.process_context().con_desc(con_des);
+            (d.get_concept(), d.is_negated())
+        };
+        // Resolve a (concept, negation)'s saturation node through the ontology-side
+        // reference-linking chain (CConceptData → CConceptProcessData →
+        // CConceptSaturationReferenceLinkingData → CSaturationConceptReferenceLinking).
+        let ref_linking_of = |calc_alg_context: &CalculationAlgorithmContextBase,
+                              c: ConceptId|
+         -> super::super::model::concept_process::ConceptSaturationReferenceLinkingDataId {
+            let arenas = calc_alg_context.ontology_arenas();
+            let concept_data = arenas.concept(c).get_concept_data();
+            if concept_data == INVALID {
+                return Id::NONE;
+            }
+            arenas
+                .concept_process_data(ConceptProcessDataId::new(concept_data))
+                .get_concept_reference_linking()
+        };
+
+        let mut exist_indi_node: SatNodeId = Id::NONE;
+        let ref_linking = ref_linking_of(calc_alg_context, concept);
+        if ref_linking.is_some() {
+            let ext_sat_calc_ref_link_data = calc_alg_context
+                .ontology_arenas()
+                .concept_saturation_reference_linking_data(ref_linking)
+                .get_existential_successor_concept_saturation_reference_linking_data();
+            if ext_sat_calc_ref_link_data.is_some() {
+                exist_indi_node = calc_alg_context
+                    .ontology_arenas()
+                    .saturation_concept_reference_linking(ext_sat_calc_ref_link_data)
+                    .get_individual_process_node_for_concept();
+            }
+        }
+
+        if exist_indi_node.is_none() {
+            // Single-operand fallback: the ∃/≥ filler's own (concept, polarity)
+            // saturation node (cpp 21935–21952). The bridge's saturation seeds
+            // (`build_saturation_seeds`) create exactly these per-filler nodes;
+            // the existential-successor linking above is only installed by the
+            // not-yet-ported precomputation job refinement.
+            let operands = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            if operands.len() == 1 {
+                let op_concept = operands[0].target;
+                let op_con_negation = operands[0].negated ^ concept_negation;
+                let op_ref_linking = ref_linking_of(calc_alg_context, op_concept);
+                if op_ref_linking.is_some() {
+                    let sat_calc_ref_link_data = calc_alg_context
+                        .ontology_arenas()
+                        .concept_saturation_reference_linking_data(op_ref_linking)
+                        .get_concept_saturation_reference_linking_data(op_con_negation);
+                    if sat_calc_ref_link_data.is_some() {
+                        exist_indi_node = calc_alg_context
+                            .ontology_arenas()
+                            .saturation_concept_reference_linking(sat_calc_ref_link_data)
+                            .get_individual_process_node_for_concept();
+                    }
+                }
+            }
+        }
+
+        // mConfSuccessorSaturationExpansionRestrictionsResolving refinement
+        // (cpp 21955–22010): refine `existIndiNode` through the successor-extension
+        // resolve hash using the predecessor's deterministic ∀-restrictions.
+        // W4-DEFER[api]: the resolve data only EXISTS when the saturation
+        // successor-EXTENSION machinery ran (KM_HT_SAT_EXT, default OFF — currently
+        // unsound, see configure_production_saturation); with extensions off
+        // Konclude falls through to the unrefined node exactly like this. Port the
+        // interior together with the extension-machinery audit.
+        exist_indi_node
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getSaturationResolvedIndividualNodeExtension`.

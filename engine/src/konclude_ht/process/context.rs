@@ -3660,6 +3660,182 @@ impl ProcessContext {
     pub fn con_sat_desc_count(&self) -> usize {
         self.con_sat_descs.len()
     }
+
+    /// Move the SATURATION-side arena state out of `other` into `self` (swap).
+    ///
+    /// KONCLUDE-PORT-NOTE[api]: in Konclude the approximation-saturation task
+    /// stays alive for the whole (pre)computation and the completion tasks
+    /// dereference raw pointers into its memory (via the concept↔saturation
+    /// reference linkings). The port keeps saturation nodes in the SAME
+    /// `ProcessContext` id space as the completion probes, so a probe-env
+    /// reset (`bridge::reset_probe_env`) must carry the saturation arenas
+    /// over — this method is that carry. The completion probes only READ
+    /// these arenas (the saturation drive is the sole writer), so moving
+    /// them across resets reproduces Konclude's stable-pointer semantics.
+    ///
+    /// `indi_sat_block_datas` (the COMPLETION node's saturation-blocking
+    /// satellite) is deliberately NOT moved: it is per-probe search state.
+    pub fn adopt_saturation_state_from(&mut self, other: &mut ProcessContext) {
+        use std::mem::swap;
+        swap(&mut self.sat_nodes, &mut other.sat_nodes);
+        swap(
+            &mut self.sat_nominal_handling_datas,
+            &mut other.sat_nominal_handling_datas,
+        );
+        swap(
+            &mut self.sat_succ_ext_ind_node_proc_queues,
+            &mut other.sat_succ_ext_ind_node_proc_queues,
+        );
+        swap(
+            &mut self.sat_critical_ind_node_proc_queues,
+            &mut other.sat_critical_ind_node_proc_queues,
+        );
+        swap(
+            &mut self.sat_critical_ind_node_con_test_sets,
+            &mut other.sat_critical_ind_node_con_test_sets,
+        );
+        swap(
+            &mut self.critical_sat_concept_queues,
+            &mut other.critical_sat_concept_queues,
+        );
+        swap(
+            &mut self.critical_sat_concept_type_queues,
+            &mut other.critical_sat_concept_type_queues,
+        );
+        swap(
+            &mut self.sat_influenced_nominal_sets,
+            &mut other.sat_influenced_nominal_sets,
+        );
+        swap(
+            &mut self.sat_nominal_dependent_node_hashes,
+            &mut other.sat_nominal_dependent_node_hashes,
+        );
+        swap(
+            &mut self.sat_nominal_dependent_node_datas,
+            &mut other.sat_nominal_dependent_node_datas,
+        );
+        swap(&mut self.con_sat_descs, &mut other.con_sat_descs);
+        swap(&mut self.con_sat_proc_linkers, &mut other.con_sat_proc_linkers);
+        swap(
+            &mut self.role_sat_proc_linkers,
+            &mut other.role_sat_proc_linkers,
+        );
+        swap(
+            &mut self.backward_sat_prop_links,
+            &mut other.backward_sat_prop_links,
+        );
+        swap(
+            &mut self.backward_sat_prop_reapply_descs,
+            &mut other.backward_sat_prop_reapply_descs,
+        );
+        swap(
+            &mut self.role_backward_sat_prop_hashes,
+            &mut other.role_backward_sat_prop_hashes,
+        );
+        swap(&mut self.sat_succ_datas, &mut other.sat_succ_datas);
+        swap(&mut self.sat_succ_ext_datas, &mut other.sat_succ_ext_datas);
+        swap(
+            &mut self.indi_sat_succ_link_data_linkers,
+            &mut other.indi_sat_succ_link_data_linkers,
+        );
+        swap(
+            &mut self.linked_role_sat_succ_datas,
+            &mut other.linked_role_sat_succ_datas,
+        );
+        swap(
+            &mut self.linked_role_sat_succ_hashes,
+            &mut other.linked_role_sat_succ_hashes,
+        );
+        swap(
+            &mut self.indi_sat_node_ext_datas,
+            &mut other.indi_sat_node_ext_datas,
+        );
+        swap(
+            &mut self.sat_indi_node_succ_ext_datas,
+            &mut other.sat_indi_node_succ_ext_datas,
+        );
+        swap(
+            &mut self.sat_indi_node_all_concept_ext_datas,
+            &mut other.sat_indi_node_all_concept_ext_datas,
+        );
+        swap(
+            &mut self.sat_linked_succ_indi_all_concept_ext_datas,
+            &mut other.sat_linked_succ_indi_all_concept_ext_datas,
+        );
+        swap(
+            &mut self.sat_successor_all_concept_ext_datas,
+            &mut other.sat_successor_all_concept_ext_datas,
+        );
+        swap(
+            &mut self.sat_indi_node_ext_resolve_datas,
+            &mut other.sat_indi_node_ext_resolve_datas,
+        );
+        swap(
+            &mut self.sat_indi_node_ext_resolve_hashes,
+            &mut other.sat_indi_node_ext_resolve_hashes,
+        );
+        swap(
+            &mut self.sat_concept_extension_maps,
+            &mut other.sat_concept_extension_maps,
+        );
+        swap(
+            &mut self.sat_successor_concept_extension_maps,
+            &mut other.sat_successor_concept_extension_maps,
+        );
+        swap(
+            &mut self.sat_indi_node_functional_concept_ext_datas,
+            &mut other.sat_indi_node_functional_concept_ext_datas,
+        );
+        swap(
+            &mut self.sat_successor_functional_concept_ext_datas,
+            &mut other.sat_successor_functional_concept_ext_datas,
+        );
+        swap(
+            &mut self.sat_disjunct_common_concept_extraction_datas,
+            &mut other.sat_disjunct_common_concept_extraction_datas,
+        );
+        swap(
+            &mut self.sat_disjunct_extraction_linkers,
+            &mut other.sat_disjunct_extraction_linkers,
+        );
+        swap(
+            &mut self.sat_atmost_successor_merging_datas,
+            &mut other.sat_atmost_successor_merging_datas,
+        );
+        swap(
+            &mut self.sat_atmost_successor_merging_hashes,
+            &mut other.sat_atmost_successor_merging_hashes,
+        );
+        swap(
+            &mut self.sat_indi_node_datatype_datas,
+            &mut other.sat_indi_node_datatype_datas,
+        );
+        swap(
+            &mut self.sat_succ_role_assertion_linkers,
+            &mut other.sat_succ_role_assertion_linkers,
+        );
+        swap(
+            &mut self.reapply_con_sat_label_sets,
+            &mut other.reapply_con_sat_label_sets,
+        );
+        swap(
+            &mut self.imp_reapply_con_sat_descs,
+            &mut other.imp_reapply_con_sat_descs,
+        );
+        swap(
+            &mut self.sat_modified_process_update_linkers,
+            &mut other.sat_modified_process_update_linkers,
+        );
+        swap(
+            &mut self.indi_sat_process_node_linkers,
+            &mut other.indi_sat_process_node_linkers,
+        );
+        swap(
+            &mut self.extended_con_ref_linking_datas,
+            &mut other.extended_con_ref_linking_datas,
+        );
+    }
+
     arena_accessors!(
         con_sat_proc_linkers,
         ConceptSaturationProcessLinker,
