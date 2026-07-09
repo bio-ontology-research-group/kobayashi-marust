@@ -748,7 +748,12 @@ impl IndividualSaturationSuccessorLinkDataLinker {
 #[derive(Clone)]
 pub struct LinkedRoleSaturationSuccessorData {
     /// `mSuccNodeDataMap` (`CPROCESSMAP<cint64,CSaturationSuccessorData*>`).
-    pub succ_node_data_map: HashMap<Cint64, SaturationSuccessorDataId>,
+    /// KONCLUDE-PORT-NOTE[ordering]: `CPROCESSMAP` is a sorted map — every
+    /// verdict-relevant walk (collectATMOSTConceptRelevantSuccessors, the
+    /// successor extensions) iterates it in individual-id order. A `HashMap`
+    /// here made the extension machinery nondeterministic; `BTreeMap` restores
+    /// the C++ iteration order.
+    pub succ_node_data_map: std::collections::BTreeMap<Cint64, SaturationSuccessorDataId>,
     /// `mLastLink`.
     pub last_link: SaturationSuccessorDataId,
     /// `mSuccCount`.
@@ -768,7 +773,7 @@ pub struct LinkedRoleSaturationSuccessorData {
 impl Default for LinkedRoleSaturationSuccessorData {
     fn default() -> Self {
         LinkedRoleSaturationSuccessorData {
-            succ_node_data_map: HashMap::new(),
+            succ_node_data_map: std::collections::BTreeMap::new(),
             last_link: SaturationSuccessorDataId::NONE,
             succ_count: 0,
             extension_data: SaturationSuccessorExtensionDataId::NONE,
@@ -786,13 +791,15 @@ impl LinkedRoleSaturationSuccessorData {
         Self::default()
     }
     /// Port of `getSuccessorNodeDataMap` (`return &mSuccNodeDataMap`).
-    pub fn get_successor_node_data_map(&self) -> &HashMap<Cint64, SaturationSuccessorDataId> {
+    pub fn get_successor_node_data_map(
+        &self,
+    ) -> &std::collections::BTreeMap<Cint64, SaturationSuccessorDataId> {
         &self.succ_node_data_map
     }
     /// Mutable accessor for the successor-node map (`create == true` path).
     pub fn get_successor_node_data_map_mut(
         &mut self,
-    ) -> &mut HashMap<Cint64, SaturationSuccessorDataId> {
+    ) -> &mut std::collections::BTreeMap<Cint64, SaturationSuccessorDataId> {
         &mut self.succ_node_data_map
     }
     /// Port of `getLastSuccessorLinkData` (`return mLastLink`).

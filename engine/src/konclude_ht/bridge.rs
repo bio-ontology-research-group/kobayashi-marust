@@ -4302,6 +4302,256 @@ mod tests {
         assert!(r.unsatisfiable.contains(&0));
     }
 
+    // -----------------------------------------------------------------------
+    // Task #24: precise ATMOST criticality test (isCriticalATMOSTConcept-
+    // DescriptorInsufficient + collect + simple/detailed mergeability).
+    // -----------------------------------------------------------------------
+
+    /// `A ⊑ ∃r.B, A ⊑ ≤2 r.B`: one successor against a bound of two — the
+    /// precise test must answer SAT-certain (the old conservative stub
+    /// deferred EVERY critical ≤n).
+    #[test]
+    fn saturation_answers_atmost_within_bound() {
+        use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            roles: vec!["r".into()],
+            clauses: vec![HtClause {
+                body: vec![c(false, 0, 0)],
+                head: vec![HAtom::Exist {
+                    r: 0,
+                    neg: false,
+                    c: 1,
+                    t: 0,
+                }],
+            }],
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 2,
+                role: 0,
+                filler: 1,
+            }],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_eq!(
+            out.sat_verdict[0],
+            Some(false),
+            "A has 1 r.B successor against ≤2 r.B — must be SAT-certain"
+        );
+        assert_eq!(out.sat_verdict[1], Some(false));
+        // Oracle agreement.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(r.unsatisfiable.is_empty());
+    }
+
+    /// `A ⊑ ∃r.B, A ⊑ ∃r.C, A ⊑ ≤1 r.B`: the C-successor does not count
+    /// toward the qualified bound (its label cannot positively satisfy B) —
+    /// SAT-certain with the precise qualified counting.
+    #[test]
+    fn saturation_atmost_qualified_counting_sat() {
+        use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        let ex = |r: usize, cc: usize| HAtom::Exist {
+            r,
+            neg: false,
+            c: cc,
+            t: 0,
+        };
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into()],
+            roles: vec!["r".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![ex(0, 1)],
+                },
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![ex(0, 2)],
+                },
+            ],
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 1,
+            }],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_eq!(
+            out.sat_verdict[0],
+            Some(false),
+            "only the B-successor counts toward ≤1 r.B — A is SAT-certain"
+        );
+        // Oracle agreement.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(r.unsatisfiable.is_empty());
+    }
+
+    /// `A ⊑ ∃r.B1, A ⊑ ∃r.B2, B1 ⊑ B, B2 ⊑ B, A ⊑ ≤1 r.B`: both successors
+    /// count, but their labels are compatible — the mergeability discount
+    /// brings the residual cardinality back to the bound ⇒ SAT-certain.
+    #[test]
+    fn saturation_atmost_merging_discount_sat() {
+        use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        let ex = |r: usize, cc: usize| HAtom::Exist {
+            r,
+            neg: false,
+            c: cc,
+            t: 0,
+        };
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "B1".into(), "B2".into()],
+            roles: vec!["r".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![ex(0, 2)],
+                },
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![ex(0, 3)],
+                },
+                HtClause {
+                    body: vec![c(false, 2, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 3, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+            ],
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 1,
+            }],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_eq!(
+            out.sat_verdict[0],
+            Some(false),
+            "the two r-successors are label-mergeable — ≤1 r.B holds, A SAT-certain"
+        );
+        // Oracle agreement.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(r.unsatisfiable.is_empty());
+    }
+
+    /// The disjoint twin of the merging-discount case: `B1 ⊓ B2 ⊑ ⊥` makes
+    /// the merge clash, so A is UNSATISFIABLE — the saturation must NOT
+    /// claim SAT-certain (label-merging-problematic must veto the discount).
+    #[test]
+    fn saturation_atmost_disjoint_successors_not_sat_certain() {
+        use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
+        let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
+        let ex = |r: usize, cc: usize| HAtom::Exist {
+            r,
+            neg: false,
+            c: cc,
+            t: 0,
+        };
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "B1".into(), "B2".into()],
+            roles: vec!["r".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![ex(0, 2)],
+                },
+                HtClause {
+                    body: vec![c(false, 0, 0)],
+                    head: vec![ex(0, 3)],
+                },
+                HtClause {
+                    body: vec![c(false, 2, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                HtClause {
+                    body: vec![c(false, 3, 0)],
+                    head: vec![c(false, 1, 0)],
+                },
+                // B1 ⊓ B2 ⊑ ⊥
+                HtClause {
+                    body: vec![c(false, 2, 0), c(false, 3, 0)],
+                    head: vec![],
+                },
+            ],
+            card_defs: vec![CardDefJson {
+                marker: 0,
+                min: false,
+                n: 1,
+                role: 0,
+                filler: 1,
+            }],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_ne!(
+            out.sat_verdict[0],
+            Some(false),
+            "A is UNSAT (disjoint successors under ≤1 r.B) — SAT-certain would \
+             mean the mergeability discount ignored the disjointness"
+        );
+        // Oracle: the probe path proves A unsatisfiable.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(r.unsatisfiable.contains(&0));
+    }
+
+    /// `A ⊑ ≥3 r.B, A ⊑ ≤2 r.B`: the pairwise-distinct ≥3 successors exceed
+    /// the bound — the saturation must not read SAT-certain (Konclude clashes
+    /// the node in collectATMOSTConceptRelevantSuccessors when a single
+    /// distinct-successor block already exceeds the allowance).
+    #[test]
+    fn saturation_atleast_over_atmost_not_sat_certain() {
+        use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into()],
+            roles: vec!["r".into()],
+            clauses: vec![],
+            card_defs: vec![
+                CardDefJson {
+                    marker: 0,
+                    min: true,
+                    n: 3,
+                    role: 0,
+                    filler: 1,
+                },
+                CardDefJson {
+                    marker: 0,
+                    min: false,
+                    n: 2,
+                    role: 0,
+                    filler: 1,
+                },
+            ],
+            ..Default::default()
+        };
+        let out = bridged_saturate(&tin).expect("in fragment");
+        assert_ne!(
+            out.sat_verdict[0],
+            Some(false),
+            "A is UNSAT (≥3 r.B vs ≤2 r.B) — SAT-certain is unsound"
+        );
+        assert_eq!(out.sat_verdict[1], Some(false), "B alone is satisfiable");
+        // Oracle: the probe path proves A unsatisfiable.
+        let r = bridged_classify(&tin).expect("classify");
+        assert!(
+            r.unsatisfiable.contains(&0),
+            "probe oracle must prove A unsat (got {:?})",
+            r.unsatisfiable
+        );
+    }
+
     /// Full-agreement harness: saturation certainties vs the probe-path
     /// classification on a small mixed ontology (Horn taxonomy + one
     /// disjunction + one ∃/∀ interaction). Every CERTAIN saturation answer

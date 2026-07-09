@@ -82,7 +82,7 @@
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::substrate::{Cint64, INVALID};
-use super::super::model::{ConceptId, NegLink};
+use super::super::model::{ConceptId, NegLink, RoleId};
 use super::super::process::sat_node::{
     IndividualSaturationProcessNode, IndividualSaturationProcessNodeStatusFlags,
 };
@@ -91,7 +91,9 @@ use super::super::process::stubs::{
     ConceptSaturationDescriptorId, ConceptSaturationProcessLinkerId,
 };
 use super::super::process::SatNodeId;
-use super::satellites::SaturationSuccessorDataId;
+use super::satellites::{
+    IndividualSaturationSuccessorLinkDataLinkerId, SaturationSuccessorDataId,
+};
 
 // ---------------------------------------------------------------------------
 // W4-DEFER[api]: pending `CCriticalSaturationConceptTypeQueues::CRITICALSATURATIONCONCEPTQUEUETYPE`
@@ -480,7 +482,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             if !already_tested {
                 let mut ancestor_possibly_insufficient = false;
                 let mut functionally_restricted_successor_node = SatNodeId::NONE;
-                let mut functionally_restricted_successor_creation_role_linker: Cint64 = INVALID;
+                let mut functionally_restricted_successor_creation_role_linker: Vec<
+                    NegLink<RoleId>,
+                > = Vec::new();
                 // STATINC(SATURATIONCRITICALTESTCOUNT, calcAlgContext);
                 if self.is_critical_atmost_concept_descriptor_insufficient(
                     critical_con_des,
@@ -521,28 +525,25 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .sat_node(*indi_proc_sat_node)
                     .has_nominal_integrated();
                 if nominal_integrated {
-                    // KONCLUDE-PORT-NOTE[conservative]: markNominalATMOSTRestrictedAncestors-
-                    // AsInsufficient is deferred; marking THIS node INSUFFICIENT (below /
-                    // above) back-propagates through the indirect-flag walk (backward
-                    // sources + non-inverse-connected linkers), so every upstream cone
-                    // still reads UNKNOWN — sound, weaker only in saturation coverage.
-                    self.update_direct_adding_individual_status_flags(
-                        *indi_proc_sat_node,
-                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    self.mark_nominal_atmost_restricted_ancestors_as_insufficient(
+                        critical_con_des,
+                        indi_proc_sat_node,
                         calc_alg_context,
                     );
-                    self.set_insufficient_node_occured(calc_alg_context);
                 }
                 if ancestor_possibly_insufficient {
-                    // KONCLUDE-PORT-NOTE[conservative]: markATMOSTRestrictedAncestorsAs-
-                    // Insufficient deferred (see note above) — same conservative substitute.
-                    self.update_direct_adding_individual_status_flags(
-                        *indi_proc_sat_node,
-                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
-                            | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYPROPLEMATIC,
+                    self.mark_atmost_restricted_ancestors_as_insufficient(
+                        critical_con_des,
+                        functionally_restricted_successor_node,
+                        &functionally_restricted_successor_creation_role_linker,
+                        indi_proc_sat_node,
                         calc_alg_context,
                     );
-                    self.set_insufficient_node_occured(calc_alg_context);
+                    self.update_direct_adding_individual_status_flags(
+                        *indi_proc_sat_node,
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCARDINALITYPROPLEMATIC,
+                        calc_alg_context,
+                    );
                 }
             }
             self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
@@ -1051,76 +1052,231 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_des: ConceptSaturationDescriptorId,
         ancestor_possibly_critical_flag: &mut bool,
         functionally_restricted_successor_node: &mut SatNodeId,
-        functionally_restricted_successor_creation_role_linker: &mut Cint64,
+        functionally_restricted_successor_creation_role_linker: &mut Vec<NegLink<RoleId>>,
         indi_proc_sat_node: &mut SatNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // STATINC(SATURATIONCRITICALATMOSTCOUNT, calcAlgContext);
-        // CConcept* concept = conDes->getConcept(); bool conceptNegation = conDes->isNegated();
+        let (concept, concept_negation) = {
+            let con_des_ref = calc_alg_context.process_context().con_sat_desc(con_des);
+            (con_des_ref.get_concept(), con_des_ref.get_negation())
+        };
         // CRole* role = concept->getRole();
         // cint64 allowedCardinality = concept->getParameter() - 1*conceptNegation;
-        // if (allowedCardinality < 0) return true;
-        //
-        // W4-DEFER[api]: `concept->getParameter()` / `getRole()` are unported `CConcept`
-        //   accessors, so `allowedCardinality` and the `< 0 ⇒ return true` early exit are
-        //   deferred (descriptor is a process::stubs marker).
-        // cint64 foundCardinality = 0;
+        let (role, allowed_cardinality) = {
+            let concept_ref = calc_alg_context.ontology_arenas().concept(concept);
+            (
+                concept_ref.get_role(),
+                concept_ref.get_parameter() - Cint64::from(concept_negation),
+            )
+        };
+        if allowed_cardinality < 0 {
+            return true;
+        }
+
+        let mut found_cardinality: Cint64 = 0;
         // if (!indiProcSatNode->hasSubstituteIndividualNode()) {
         let has_substitute = calc_alg_context
             .process_context_mut()
             .sat_node_mut(*indi_proc_sat_node)
             .has_substitute_individual_node();
         if !has_substitute {
+            // if (role->isDataRole() && indiProcSatNode->getIndividualExtensionData(false)) { ... }
+            // KONCLUDE-PORT-NOTE[conservative]: the asserted data-value walk over
+            // CLinkedDataValueAssertionSaturationData is deferred — a data-role ≤n
+            // is reported insufficient outright (the C++ counts matching asserted
+            // data roles against the bound; assuming "over the bound" is the sound
+            // direction and only defers the subject to the tableau probe).
+            if role.is_some() && calc_alg_context.ontology_arenas().role(role).is_data_role() {
+                return true;
+            }
+
             // collectLinkedSuccessorNodes(indiProcSatNode, calcAlgContext);
             self.collect_linked_successor_nodes(indi_proc_sat_node, calc_alg_context, INVALID);
-            // W4-DEFER[api]: the cardinality core over unported satellites:
-            //   (a) data-role branch: count asserted data-roles whose indirect super-role list
-            //       contains `role`; if foundCardinality > allowedCardinality ⇒ return true;
-            //   (b) the successor-hash walk: succData = linkedSuccHash->getLinkedRoleSuccessorHash()->value(role);
-            //       if (succData->mSuccCount >= allowedCardinality) {
-            //           foundCardinality += collectATMOSTConceptRelevantSuccessors(conDes, indiProcSatNode, succData,
-            //               mergingSuccDataLinker, lastSuccessorNode, lastSuccessorCreationRoleLinker, minCardinality, calcAlgContext);
-            //           if (foundCardinality >= allowedCardinality && foundCardinality > 1) {
-            //               // simple merging (mConfSimpleMergingTestForATMOSTCriticalTesting):
-            //               //   getSuccessorLinkSimplyMergeableCardinalityCount(...) into remainMergeableCardHash;
-            //               // detailed merging (mConfDetailedMergingTestForATMOSTCriticalTesting,
-            //               //   foundCard-mergeable in [allowed, 2*allowed]):
-            //               //   getSuccessorLinkExtendedMergeableCardinalityCount(...);
-            //               // (the temp CPROCESSHASH/CPROCESSSET come from the task temporary allocator)
-            //               releaseIndividualSaturationSuccessorLinkDataLinker(mergingSuccDataLinker, calcAlgContext);
-            //           }
-            //           if (foundCardinality-mergeableCardinality == allowedCardinality || minCardinality >= allowedCardinality) {
-            //               ancestorPossiblyCriticalFlag = true;
-            //               if (allowedCardinality == 1) {
-            //                   functionallyRestrictedSuccessorNode = lastSuccessorNode;
-            //                   functionallyRestrictedSuccessorCreationRoleLinker = lastSuccessorCreationRoleLinker;
-            //               }
-            //           }
-            //           if (foundCardinality-mergeableCardinality > allowedCardinality) return true;
-            //       }
-            //   }
-            //   Live leaves: `self.collect_linked_successor_nodes`,
-            //   `self.collect_atmost_concept_relevant_successors`,
-            //   `self.get_successor_link_simply_mergeable_cardinality_count`,
-            //   `self.get_successor_link_extended_mergeable_cardinality_count`,
-            //   `self.release_individual_saturation_successor_link_data_linker` (group G/M),
-            //   and the `conf_simple_merging_test_for_atmost_critical_testing` /
-            //   `conf_detailed_merging_test_for_atmost_critical_testing` member gates; the
-            //   out-params `ancestor_possibly_critical_flag` / `functionally_restricted_successor_node`
-            //   / `functionally_restricted_successor_creation_role_linker` are written in that branch.
-            let _ = (
-                con_des,
-                &mut *ancestor_possibly_critical_flag,
-                &mut *functionally_restricted_successor_node,
-                &mut *functionally_restricted_successor_creation_role_linker,
-            );
-            // KONCLUDE-PORT-NOTE[conservative]: until the cardinality-counting core
-            // (collectATMOSTConceptRelevantSuccessors + the simple/detailed merging
-            // tests) lands, the deferred verdict must be INSUFFICIENT (true): a
-            // critical ≤n whose successors are silently assumed mergeable would let
-            // an over-restricted node complete SAT-certain — unsound. The
-            // conservative verdict only defers the subject to the tableau probe.
-            return true;
+            // CLinkedRoleSaturationSuccessorHash* linkedSuccHash = indiProcSatNode->getLinkedRoleSuccessorHash(false);
+            let linked_succ_hash =
+                IndividualSaturationProcessNode::get_linked_role_successor_hash_in_context(
+                    calc_alg_context.process_context_mut(),
+                    *indi_proc_sat_node,
+                    false,
+                );
+            if linked_succ_hash.is_some() {
+                let mut min_cardinality: Cint64 = 0;
+                let mut merging_succ_data_linker = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+
+                // CLinkedRoleSaturationSuccessorData* succData = succHash->value(role);
+                let succ_data = calc_alg_context
+                    .process_context()
+                    .linked_role_sat_succ_hash(linked_succ_hash)
+                    .role_succ_data_hash
+                    .get(&role)
+                    .copied();
+                if let Some(succ_data) = succ_data.filter(|d| d.is_some()) {
+                    // if (succData->mSuccCount >= allowedCardinality) {
+                    let succ_count = calc_alg_context
+                        .process_context()
+                        .linked_role_sat_succ_data(succ_data)
+                        .succ_count;
+                    if succ_count >= allowed_cardinality {
+                        let mut last_successor_node = SatNodeId::NONE;
+                        let mut last_successor_creation_role_linker: Vec<NegLink<RoleId>> =
+                            Vec::new();
+
+                        found_cardinality += self.collect_atmost_concept_relevant_successors(
+                            con_des,
+                            indi_proc_sat_node,
+                            succ_data,
+                            &mut merging_succ_data_linker,
+                            &mut last_successor_node,
+                            &mut last_successor_creation_role_linker,
+                            &mut min_cardinality,
+                            calc_alg_context,
+                        );
+
+                        let mut mergeable_cardinality: Cint64 = 0;
+                        if found_cardinality >= allowed_cardinality && found_cardinality > 1 {
+                            // check whether some trivial merging is possible
+                            let mut remain_mergeable_card_hash: std::collections::HashMap<
+                                SaturationSuccessorDataId,
+                                Cint64,
+                            > = std::collections::HashMap::new();
+                            let mut merge_distint_hash: std::collections::HashMap<
+                                SaturationSuccessorDataId,
+                                Vec<SaturationSuccessorDataId>,
+                            > = std::collections::HashMap::new();
+                            let mut merge_distint_set: std::collections::HashSet<(
+                                SaturationSuccessorDataId,
+                                SaturationSuccessorDataId,
+                            )> = std::collections::HashSet::new();
+
+                            if merging_succ_data_linker.is_some() {
+                                if self.conf_simple_merging_test_for_atmost_critical_testing {
+                                    let mut merging_it = merging_succ_data_linker;
+                                    while merging_it.is_some()
+                                        && found_cardinality - mergeable_cardinality
+                                            >= allowed_cardinality
+                                    {
+                                        let (succ_link_data, next_linker) = {
+                                            let linker = calc_alg_context
+                                                .process_context()
+                                                .indi_sat_succ_link_data_linker(merging_it);
+                                            (linker.get_data(), linker.get_next())
+                                        };
+                                        let link_succ_count = calc_alg_context
+                                            .process_context()
+                                            .sat_succ_data(succ_link_data)
+                                            .succ_count;
+                                        if link_succ_count >= 1 {
+                                            let max_required_merging_cardinality = found_cardinality
+                                                - mergeable_cardinality
+                                                - (allowed_cardinality - 1);
+                                            let merging_cardinality = self
+                                                .get_successor_link_simply_mergeable_cardinality_count(
+                                                    indi_proc_sat_node,
+                                                    succ_link_data,
+                                                    merging_succ_data_linker,
+                                                    &mut remain_mergeable_card_hash,
+                                                    role,
+                                                    max_required_merging_cardinality,
+                                                    &mut merge_distint_hash,
+                                                    &mut merge_distint_set,
+                                                    calc_alg_context,
+                                                );
+                                            let remaining_cardinality =
+                                                link_succ_count - merging_cardinality;
+                                            remain_mergeable_card_hash
+                                                .insert(succ_link_data, remaining_cardinality);
+                                            mergeable_cardinality += merging_cardinality;
+                                        }
+                                        merging_it = next_linker;
+                                    }
+                                }
+
+                                if self.conf_detailed_merging_test_for_atmost_critical_testing
+                                    && found_cardinality - mergeable_cardinality
+                                        >= allowed_cardinality
+                                    && found_cardinality - mergeable_cardinality
+                                        <= allowed_cardinality * 2
+                                {
+                                    let mut merging_it = merging_succ_data_linker;
+                                    while merging_it.is_some()
+                                        && found_cardinality - mergeable_cardinality
+                                            >= allowed_cardinality
+                                    {
+                                        let (succ_link_data, next_linker) = {
+                                            let linker = calc_alg_context
+                                                .process_context()
+                                                .indi_sat_succ_link_data_linker(merging_it);
+                                            (linker.get_data(), linker.get_next())
+                                        };
+                                        let link_succ_count = calc_alg_context
+                                            .process_context()
+                                            .sat_succ_data(succ_link_data)
+                                            .succ_count;
+                                        if link_succ_count >= 1 {
+                                            // remainMergeableCardHash->value(succLinkData, succLinkData->mSuccCount)
+                                            let succ_remaining_cardinality =
+                                                *remain_mergeable_card_hash
+                                                    .get(&succ_link_data)
+                                                    .unwrap_or(&link_succ_count);
+                                            if succ_remaining_cardinality > 0 {
+                                                let max_required_merging_cardinality =
+                                                    found_cardinality
+                                                        - mergeable_cardinality
+                                                        - (allowed_cardinality - 1);
+                                                let merging_cardinality = self
+                                                    .get_successor_link_extended_mergeable_cardinality_count(
+                                                        indi_proc_sat_node,
+                                                        succ_link_data,
+                                                        None,
+                                                        next_linker,
+                                                        &mut remain_mergeable_card_hash,
+                                                        role,
+                                                        max_required_merging_cardinality,
+                                                        &mut merge_distint_hash,
+                                                        &mut merge_distint_set,
+                                                        calc_alg_context,
+                                                    );
+                                                if merging_cardinality > 0 {
+                                                    let new_succ_card = succ_remaining_cardinality
+                                                        .max(merging_cardinality);
+                                                    remain_mergeable_card_hash
+                                                        .insert(succ_link_data, new_succ_card);
+                                                    let removed_succ_card =
+                                                        succ_remaining_cardinality
+                                                            .min(merging_cardinality);
+                                                    mergeable_cardinality += removed_succ_card;
+                                                }
+                                            }
+                                        }
+                                        merging_it = next_linker;
+                                    }
+                                }
+                            }
+                            if merging_succ_data_linker.is_some() {
+                                self.release_individual_saturation_successor_link_data_linker(
+                                    merging_succ_data_linker,
+                                    calc_alg_context,
+                                );
+                            }
+                        }
+
+                        if found_cardinality - mergeable_cardinality == allowed_cardinality
+                            || min_cardinality >= allowed_cardinality
+                        {
+                            *ancestor_possibly_critical_flag = true;
+                            if allowed_cardinality == 1 {
+                                *functionally_restricted_successor_node = last_successor_node;
+                                *functionally_restricted_successor_creation_role_linker =
+                                    last_successor_creation_role_linker;
+                            }
+                        }
+                        if found_cardinality - mergeable_cardinality > allowed_cardinality {
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         false
     }
