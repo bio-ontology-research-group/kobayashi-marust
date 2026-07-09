@@ -1126,7 +1126,7 @@ pub fn bridged_unsat(
     // KONCLUDE-PORT-NOTE[root-top]: see `bridged_classify_subject` — every node
     // carries ⊤ in Konclude; a bare root swallowed derived ⊥ (¬⊤ met no ⊤).
     let top = ctx.processing_data_box().ontology_top_concept;
-    if top.is_some() {
+    if top.is_some() && std::env::var_os("KM_HT_NO_ROOT_TOP").is_none() {
         algo.add_concept_to_individual(top, false, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
             return Some(true);
@@ -1604,7 +1604,7 @@ pub fn bridged_classify_subject(
     // via the CCTOP AND-unfold, delivers the top-attached GCIs exactly like the
     // per-pass re-seed already did (idempotent).
     let top = ctx.processing_data_box().ontology_top_concept;
-    if top.is_some() {
+    if top.is_some() && std::env::var_os("KM_HT_NO_ROOT_TOP").is_none() {
         algo.add_concept_to_individual(top, false, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
             return Some(((0..n_named).collect(), true));
@@ -1893,9 +1893,20 @@ fn configure_production_saturation(
     algo.conf_directly_critical_to_insufficient = false; // cfg 444 default false
     algo.conf_add_critical_concepts_to_queues = true; // cfg 440 default true
     algo.conf_check_critical_concepts = true; // cfg 440 default true
-    algo.conf_concepts_extension_processing = true; // cfg 448 default true
-    algo.conf_all_concepts_extension_processing = true; // cpp 232
-    algo.conf_functional_concepts_extension_processing = true; // cpp 233
+    // Successor-extension machinery (Konclude: SaturationSuccessorExtension,
+    // cfg 448 default true; cpp 232-233): KM_HT_SAT_EXT=1 opt-in, DEFAULT OFF.
+    // The extension paths were inert until the [identity] super-role fix armed
+    // them, and they currently produce WRONG CLASHES on the cardinality family
+    // (541: 11-13 satisfiable classes answered UNSAT-certain, gold #UNSAT
+    // empty; nondeterministic across runs — HashMap-ordered succ maps vs
+    // Konclude's sorted CPROCESSMAP). Extensions-off is a legitimate Konclude
+    // configuration point and bisect-proven sound here (541: 0 wrong verdicts,
+    // 0.34s). Re-enable only after the W6-DEFER extension bodies + resolve-copy
+    // pollution audit land.
+    let sat_ext = std::env::var_os("KM_HT_SAT_EXT").is_some();
+    algo.conf_concepts_extension_processing = sat_ext;
+    algo.conf_all_concepts_extension_processing = sat_ext;
+    algo.conf_functional_concepts_extension_processing = sat_ext;
     algo.conf_nominal_processing = true; // cfg 497 (inert: nominal-free fragment)
     // ctor defaults (cpp 152–168):
     algo.conf_copy_node_from_top_individual_for_many_concepts = true;
@@ -2610,6 +2621,13 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
             let mut answered_sat = 0usize;
             pending.retain(|&s| match outcome.sat_verdict[s] {
                 Some(true) => {
+                    if std::env::var_os("KM_SAT_DEBUG").is_some() {
+                        eprintln!(
+                            "SAT-UNSAT-VERDICT subject {} ({})",
+                            s,
+                            tin.concepts.get(s).map(|n| n.as_str()).unwrap_or("?")
+                        );
+                    }
                     out.unsatisfiable.push(s);
                     answered_unsat += 1;
                     false
