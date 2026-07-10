@@ -1222,6 +1222,16 @@ impl SaturationTaskHandleAlgorithm {
                 .sat_node(exist_indi_node)
                 .has_nominal_integrated()
             {
+                if super::sat_clash_trace_enabled() {
+                    let indi = calc_alg_context
+                        .process_context()
+                        .sat_node(*process_indi)
+                        .get_individual_id();
+                    eprintln!(
+                        "SAT-CLASH s02-nominal-card node={:?} indi={} exist_node={:?}",
+                        process_indi, indi, exist_indi_node
+                    );
+                }
                 self.update_direct_adding_individual_status_flags(
                     *process_indi,
                     IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,

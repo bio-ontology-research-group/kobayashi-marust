@@ -511,6 +511,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .get_operand_count();
         if operand_count == 0 {
             // Empty disjunction ⇒ clash.
+            if super::sat_clash_trace_enabled() {
+                let indi = calc_alg_context
+                    .process_context()
+                    .sat_node(*process_indi)
+                    .get_individual_id();
+                eprintln!(
+                    "SAT-CLASH s03-empty-or node={:?} indi={} concept={:?}",
+                    process_indi, indi, concept
+                );
+            }
             self.update_direct_adding_individual_status_flags(
                 *process_indi,
                 IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,
@@ -637,6 +647,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // W4-DEFER[api]: the `INDSATFLAGCLASHED` mask + the sibling
         // `updateDirectAddingIndividualStatusFlags` land with the saturation
         // status-flag unit (group L, PU-SAT-11); the call is the whole rule.
+        if super::sat_clash_trace_enabled() {
+            let indi = calc_alg_context
+                .process_context()
+                .sat_node(*process_indi)
+                .get_individual_id();
+            eprintln!(
+                "SAT-CLASH s03-bottom node={:?} indi={}",
+                process_indi, indi
+            );
+        }
         self.update_direct_adding_individual_status_flags(
             *process_indi,
             IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,

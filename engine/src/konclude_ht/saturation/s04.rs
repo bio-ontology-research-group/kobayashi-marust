@@ -146,6 +146,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         };
 
         if cardinality < 0 {
+            if super::sat_clash_trace_enabled() {
+                let indi = calc_alg_context
+                    .process_context()
+                    .sat_node(*process_indi)
+                    .get_individual_id();
+                eprintln!(
+                    "SAT-CLASH s04-neg-card node={:?} indi={} concept={:?}",
+                    process_indi, indi, concept
+                );
+            }
             self.update_direct_adding_individual_status_flags(
                 *process_indi,
                 IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,

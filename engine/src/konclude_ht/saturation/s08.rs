@@ -1257,6 +1257,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     && nominal_individual.is_none()
                     && succ_cardinality > allowed_cardinality
                 {
+                    if super::sat_clash_trace_enabled() {
+                        let indi = calc_alg_context
+                            .process_context()
+                            .sat_node(*indi_proc_sat_node)
+                            .get_individual_id();
+                        eprintln!(
+                            "SAT-CLASH s08-atmost node={:?} indi={} succ_card={} allowed={}",
+                            indi_proc_sat_node, indi, succ_cardinality, allowed_cardinality
+                        );
+                    }
                     self.update_direct_adding_individual_status_flags(
                         *indi_proc_sat_node,
                         IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED,

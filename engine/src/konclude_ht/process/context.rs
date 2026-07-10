@@ -3951,10 +3951,21 @@ impl ProcessContext {
 
     /// Context-threaded port of
     /// `CReapplyConceptSaturationLabelSet::insertConceptReapplicationReturnTriggered`.
+    /// KONCLUDE-PORT-NOTE[api-extension]: C++ hardcodes the triggered check to
+    /// `mConSatDes && !mConSatDes->isNegated()` (positive presence) because
+    /// Konclude's absorption only ever builds implication triggers that wait
+    /// for POSITIVE concepts (the trigger linkers store the inverted `¬sub`
+    /// polarity). The bridge's clause encoding (`implication()` in bridge.rs)
+    /// also emits negative-presence triggers (non-negated linkers), for which
+    /// the insert-side reapply match (`linker.negated != con_neg`) is already
+    /// polarity-aware — so the wanted presence polarity is threaded through
+    /// here as `wanted_negation`. For Konclude-shaped triggers callers pass
+    /// `false` and the behaviour is identical to the C++.
     pub fn reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
         &mut self,
         label_set: ReapplyConceptSaturationLabelSetId,
         con_tag: Cint64,
+        wanted_negation: bool,
         reapply_imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId,
         con_sat_des: Option<&mut ConceptSaturationDescriptorId>,
     ) -> bool {
@@ -3996,8 +4007,8 @@ impl ProcessContext {
             let had_reapply = old_head.is_some();
             (old_head, direct_con_sat_des, had_reapply)
         };
-        let triggered =
-            direct_con_sat_des.is_some() && !self.con_sat_desc(direct_con_sat_des).get_negation();
+        let triggered = direct_con_sat_des.is_some()
+            && self.con_sat_desc(direct_con_sat_des).get_negation() == wanted_negation;
 
         if !had_reapply {
             self.reapply_con_sat_label_set_mut(label_set).totel_count += 1;

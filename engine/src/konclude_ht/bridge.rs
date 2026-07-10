@@ -1911,14 +1911,15 @@ fn configure_production_saturation(
     algo.conf_check_critical_concepts = true; // cfg 440 default true
     // Successor-extension machinery (Konclude: SaturationSuccessorExtension,
     // cfg 448 default true; cpp 232-233): KM_HT_SAT_EXT=1 opt-in, DEFAULT OFF.
-    // The extension paths were inert until the [identity] super-role fix armed
-    // them, and they currently produce WRONG CLASHES on the cardinality family
-    // (541: 11-13 satisfiable classes answered UNSAT-certain, gold #UNSAT
-    // empty; nondeterministic across runs — HashMap-ordered succ maps vs
-    // Konclude's sorted CPROCESSMAP). Extensions-off is a legitimate Konclude
-    // configuration point and bisect-proven sound here (541: 0 wrong verdicts,
-    // 0.34s). Re-enable only after the W6-DEFER extension bodies + resolve-copy
-    // pollution audit land.
+    // The historical wrong clashes (541: 11-13 satisfiable classes answered
+    // UNSAT-certain) were ROOT-CAUSED to the implication watch-side trigger
+    // check ignoring the wanted presence polarity (see
+    // reapply_con_sat_label_set_insert_concept_reapplication_return_triggered)
+    // and are FIXED — extensions ON is now sound (541: 3 runs 0 wrong, 6-9 of
+    // 59 family subjects answered SAT-certain). Still OFF by default because
+    // the extension fixpoint is expensive (541 saturation 0.4s -> ~40s) with
+    // run-to-run coverage variance (HashMap-ordered succ maps vs Konclude's
+    // sorted CPROCESSMAP) and the W6-DEFER extension bodies remain partial.
     let sat_ext = std::env::var_os("KM_HT_SAT_EXT").is_some();
     algo.conf_concepts_extension_processing = sat_ext;
     algo.conf_all_concepts_extension_processing = sat_ext;
@@ -2239,6 +2240,12 @@ fn extract_saturation_outcome(
         };
         let (b_clash, b_insuf, b_unproc, b_eqprob, b_done) = read(base_node, ctx);
         let (r_clash, r_insuf, r_unproc, r_eqprob, r_done) = read(resolved, ctx);
+        if std::env::var_os("KM_SAT_DEBUG").is_some() {
+            eprintln!(
+                "SAT-SUBJ {} concept={:?} base={:?} resolved={:?} b_clash={} r_clash={}",
+                i, named, base_node, resolved, b_clash, r_clash
+            );
+        }
         let clashed = b_clash || r_clash;
         let insufficient = b_insuf || r_insuf;
         let unprocessed = b_unproc || r_unproc;
@@ -2492,6 +2499,35 @@ pub fn bridged_classify_opts(
         let t_sat = std::time::Instant::now();
         saturation_ran = true;
         if run_bridged_saturation(&mut ctx, &bridged) {
+            if std::env::var_os("KM_SAT_DEBUG").is_some() {
+                for (i, c) in bridged.named.iter().enumerate() {
+                    eprintln!(
+                        "SAT-NAME {} concept={:?} {}",
+                        i,
+                        c,
+                        tin.concepts.get(i).map(|n| n.as_str()).unwrap_or("?")
+                    );
+                }
+                let n = ctx.ontology_arenas().concept_count();
+                for ci in 0..n {
+                    let cid = super::model::ConceptId::new(ci);
+                    let c = ctx.ontology_arenas().concept(cid);
+                    let ops: Vec<String> = c
+                        .get_operand_list()
+                        .iter()
+                        .map(|l| format!("{}{:?}", if l.negated { "!" } else { "" }, l.target))
+                        .collect();
+                    eprintln!(
+                        "SAT-CONCEPT {:?} op={} tag={} role={:?} param={} operands=[{}]",
+                        cid,
+                        c.get_operator_code(),
+                        c.get_concept_tag(),
+                        c.get_role(),
+                        c.get_parameter(),
+                        ops.join(",")
+                    );
+                }
+            }
             let outcome = extract_saturation_outcome(&mut ctx, &bridged);
             let mut answered_unsat = 0usize;
             let mut answered_sat = 0usize;

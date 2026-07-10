@@ -387,6 +387,7 @@ mod tests {
             .reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
                 label_set,
                 trigger_tag,
+                false,
                 first,
                 Some(&mut out_descriptor),
             ));
@@ -403,6 +404,7 @@ mod tests {
             .reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
                 label_set,
                 trigger_tag,
+                false,
                 second,
                 None,
             ));
@@ -486,14 +488,16 @@ mod tests {
             );
 
         let initial_reapply = {
+            // Trigger linkers store the inverted body polarity (`¬sub`
+            // convention): a POSITIVE-presence trigger is a NEGATED linker.
             let triggers = [
                 NegLink {
                     target: first_trigger,
-                    negated: false,
+                    negated: true,
                 },
                 NegLink {
                     target: second_trigger,
-                    negated: false,
+                    negated: true,
                 },
             ];
             let mut descriptor = ImplicationReapplyConceptSaturationDescriptor::new();
@@ -1524,6 +1528,23 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) {
         // STATINC(CONCEPTSADDEDINDINODELABELSETCOUNT) + g_ksat_concAdds — debug stats, elided.
 
+        if let Some(watch) = super::sat_add_trace_watch() {
+            if watch == adding_concept.index() {
+                let indi = calc_alg_context
+                    .process_context()
+                    .sat_node(*root_process_indi)
+                    .get_individual_id();
+                eprintln!(
+                    "SAT-ADD-TRACE concept={:?} neg={} node={:?} indi={}\n{}",
+                    adding_concept,
+                    negate,
+                    root_process_indi,
+                    indi,
+                    std::backtrace::Backtrace::force_capture()
+                );
+            }
+        }
+
         let concept_saturation_descriptor =
             self.create_concept_saturation_descriptor(calc_alg_context);
         calc_alg_context
@@ -1835,6 +1856,19 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     contained = true;
                 }
             } else {
+                if super::sat_clash_trace_enabled() {
+                    let indi = calc_alg_context
+                        .process_context()
+                        .sat_node(*root_process_indi)
+                        .get_individual_id();
+                    eprintln!(
+                        "SAT-CLASH s11-insert node={:?} indi={} concept={:?} tag={} neg={}",
+                        root_process_indi, indi, concept, con_tag, con_neg
+                    );
+                    if std::env::var_os("KM_SAT_CLASH_BT").is_some() {
+                        eprintln!("{}", std::backtrace::Backtrace::force_capture());
+                    }
+                }
                 calc_alg_context
                     .process_context_mut()
                     .sat_node_add_clashed_concept_saturation_descriptor_linker(
@@ -1947,6 +1981,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .first()
                 .copied()
             {
+                if super::sat_clash_trace_enabled() {
+                    let indi = calc_alg_context
+                        .process_context()
+                        .sat_node(*root_process_indi)
+                        .get_individual_id();
+                    eprintln!(
+                        "SAT-IMPL-EXEC node={:?} indi={} impl={:?} adds concept={:?} neg={}",
+                        root_process_indi,
+                        indi,
+                        impl_concept,
+                        imp_ex_con_op_linker.target,
+                        imp_ex_con_op_linker.negated
+                    );
+                }
                 self.add_concept_filtered_to_individual_label_set(
                     imp_ex_con_op_linker.target,
                     imp_ex_con_op_linker.negated,
@@ -1958,6 +2006,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         } else {
             let next_trigger = next_trigger_concepts[0].target;
+            // Wanted presence polarity of the watched trigger: the linker
+            // stores the inverted body polarity (`¬sub` convention), so a
+            // negated linker waits for POSITIVE presence and vice versa —
+            // matching the insert-side reapply check (`negated != con_neg`).
+            let next_trigger_wanted_negation = !next_trigger_concepts[0].negated;
             let new_reapply_imp_reapply_con_sat_des =
                 self.create_implication_reapply_concept_saturation_descriptor(calc_alg_context);
             calc_alg_context
@@ -1978,6 +2031,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .reapply_con_sat_label_set_insert_concept_reapplication_return_triggered(
                     label_set,
                     next_trigger_tag,
+                    next_trigger_wanted_negation,
                     new_reapply_imp_reapply_con_sat_des,
                     Some(&mut con_sat_des),
                 );
@@ -2402,6 +2456,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        let trace_clash = adding_flags.get_flags()
+            & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED
+            != 0
+            && super::sat_clash_trace_enabled();
         if self.requires_indirect_adding_individual_status_flags_update(
             indi_node,
             adding_flags,
@@ -2430,6 +2488,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         adding_flags,
                         calc_alg_context,
                     ) {
+                        if trace_clash {
+                            eprintln!(
+                                "SAT-CLASH-PROP {:?} -> {:?} (depending)",
+                                update_indi_node, depending_indi
+                            );
+                        }
                         calc_alg_context
                             .process_context_mut()
                             .sat_node_mut(depending_indi)
@@ -2455,6 +2519,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             adding_flags,
                             calc_alg_context,
                         ) {
+                            if trace_clash {
+                                eprintln!(
+                                    "SAT-CLASH-PROP {:?} -> {:?} (backward-source)",
+                                    update_indi_node, source_individual
+                                );
+                            }
                             calc_alg_context
                                 .process_context_mut()
                                 .sat_node_mut(source_individual)
@@ -2477,6 +2547,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             adding_flags,
                             calc_alg_context,
                         ) {
+                            if trace_clash {
+                                eprintln!(
+                                    "SAT-CLASH-PROP {:?} -> {:?} (non-inv-connected)",
+                                    update_indi_node, source_individual
+                                );
+                            }
                             calc_alg_context
                                 .process_context_mut()
                                 .sat_node_mut(source_individual)
