@@ -736,8 +736,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             false,
                         );
                     loop {
-                        let reapply_concept_des = reapply_queue_it
-                            .next(calc_alg_context.process_context(), true);
+                        let reapply_concept_des =
+                            reapply_queue_it.next(calc_alg_context.process_context(), true);
                         if reapply_concept_des.is_none() {
                             break;
                         }
@@ -1119,8 +1119,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if con_set.is_some() && sat_con_set.is_some() {
                     let pc = calc_alg_context.process_context();
                     let arenas = calc_alg_context.ontology_arenas();
-                    let con_des_linker =
-                        pc.label_set(con_set).get_adding_sorted_concept_description_linker();
+                    let con_des_linker = pc
+                        .label_set(con_set)
+                        .get_adding_sorted_concept_description_linker();
                     let mut con_des_it = con_des_linker;
                     let last_tested_con_des_it = match &last_sat_cach_possible_con_des {
                         Some(p) => **p,

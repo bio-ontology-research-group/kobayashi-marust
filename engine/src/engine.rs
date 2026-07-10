@@ -1716,7 +1716,13 @@ impl Engine {
         r
     }
 
-    fn hyper_inner(&self, id: usize, side: &ContextClause, max: Pred, root: bool) -> Vec<ContextClause> {
+    fn hyper_inner(
+        &self,
+        id: usize,
+        side: &ContextClause,
+        max: Pred,
+        root: bool,
+    ) -> Vec<ContextClause> {
         HYPER_CALLS.with(|c| c.set(c.get() + 1));
         let mut out = Vec::new();
         let ctx = &self.contexts[id];

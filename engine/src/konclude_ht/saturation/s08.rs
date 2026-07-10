@@ -123,8 +123,8 @@
 
 use super::super::completion::context::CalculationAlgorithmContextBase;
 use super::super::model::op::{
-    CCAND, CCAQAND, CCATLEAST, CCATMOST, CCATOM, CCBRANCHAQAND, CCF_ATLEAST, CCF_ATMOST, CCF_SELF,
-    CCFS_AQALL_TYPE, CCFS_SOME_TYPE, CCIMPLAQAND, CCOR, CCSUB,
+    CCAND, CCAQAND, CCATLEAST, CCATMOST, CCATOM, CCBRANCHAQAND, CCFS_AQALL_TYPE, CCFS_SOME_TYPE,
+    CCF_ATLEAST, CCF_ATMOST, CCF_SELF, CCIMPLAQAND, CCOR, CCSUB,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::{ConceptId, NegLink, RoleId};
@@ -184,8 +184,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         }
         if inv_role.is_none() {
             // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
-            let super_role_list =
-                Self::saturation_indirect_super_roles(role, calc_alg_context);
+            let super_role_list = Self::saturation_indirect_super_roles(role, calc_alg_context);
             for inv_super_role_linker_it in &super_role_list {
                 if inv_role.is_some() {
                     break;
@@ -353,11 +352,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 )
                         {
                             // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
-                            let inv_creation_super_roles =
-                                Self::saturation_indirect_super_roles(
-                                    inv_creation_role,
-                                    calc_alg_context,
-                                );
+                            let inv_creation_super_roles = Self::saturation_indirect_super_roles(
+                                inv_creation_role,
+                                calc_alg_context,
+                            );
                             for inv_creation_super_role_it in inv_creation_super_roles {
                                 let creation_super_role = inv_creation_super_role_it.target;
                                 if !inv_creation_super_role_it.negated {
@@ -745,11 +743,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             }
                             if deactivate_link {
                                 // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
-                                let creation_super_roles =
-                                    Self::saturation_indirect_super_roles(
-                                        creation_role,
-                                        calc_alg_context,
-                                    );
+                                let creation_super_roles = Self::saturation_indirect_super_roles(
+                                    creation_role,
+                                    calc_alg_context,
+                                );
                                 for creation_super_role_it in creation_super_roles {
                                     if !creation_super_role_it.negated {
                                         calc_alg_context
@@ -804,7 +801,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             let con_des_ref = calc_alg_context.process_context().con_sat_desc(con_des);
             (con_des_ref.get_concept(), con_des_ref.get_negation())
         };
-        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let role = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_role();
         let backward_prop_hash = calc_alg_context
             .process_context()
             .sat_node(*indi_proc_sat_node)
@@ -951,8 +951,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     .succ_node_data_map
                                     .get(&indi_id)
                                     .copied();
-                                if let Some(succ_role_data) =
-                                    succ_role_data.filter(|d| d.is_some())
+                                if let Some(succ_role_data) = succ_role_data.filter(|d| d.is_some())
                                 {
                                     let (active_count, succ_creation_role_linker) = {
                                         let d = calc_alg_context
@@ -2541,8 +2540,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             let pred_con_des = pred_iterator.get_concept_saturation_descriptor();
                             if pred_con_des.is_some() {
                                 let (pred_concept_orig, pred_con_negation) = {
-                                    let con_des_ref =
-                                        calc_alg_context.process_context().con_sat_desc(pred_con_des);
+                                    let con_des_ref = calc_alg_context
+                                        .process_context()
+                                        .con_sat_desc(pred_con_des);
                                     (con_des_ref.get_concept(), con_des_ref.get_negation())
                                 };
                                 let pred_con_op_code = calc_alg_context
@@ -2570,8 +2570,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     }
                                     if pred_op_con.is_none() || pred_op_con == concept {
                                         let (pred_role, pred_parameter, pred_operands) = {
-                                            let pred_concept_ref =
-                                                calc_alg_context.ontology_arenas().concept(pred_concept);
+                                            let pred_concept_ref = calc_alg_context
+                                                .ontology_arenas()
+                                                .concept(pred_concept);
                                             (
                                                 pred_concept_ref.get_role(),
                                                 pred_concept_ref.get_parameter(),
@@ -2591,11 +2592,13 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                             for creation_super_role_it in
                                                 creation_super_roles.iter().filter(|l| !l.negated)
                                             {
-                                                let creation_super_role = creation_super_role_it.target;
+                                                let creation_super_role =
+                                                    creation_super_role_it.target;
                                                 if creation_super_role == pred_role {
                                                     let allowed_cardinality = pred_parameter
                                                         - Cint64::from(pred_con_negation);
-                                                    let qualification = if pred_operands.is_empty() {
+                                                    let qualification = if pred_operands.is_empty()
+                                                    {
                                                         None
                                                     } else {
                                                         Some(pred_operands.as_slice())
@@ -2636,7 +2639,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         || (negation && op_code == CCATLEAST)
                     {
                         let mut prob_node = prob_testing_succ_node;
-                        self.collect_linked_successor_nodes(&mut prob_node, calc_alg_context, INVALID);
+                        self.collect_linked_successor_nodes(
+                            &mut prob_node,
+                            calc_alg_context,
+                            INVALID,
+                        );
                         let prop_test_linked_succ_hash = calc_alg_context
                             .process_context_mut()
                             .sat_node_ext_linked_role_successor_hash(prob_testing_succ_node, false);
@@ -2668,8 +2675,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             CCFS_SOME_TYPE | CCF_SELF | CCF_ATLEAST,
                         ))
                         || (negation
-                            && con_op
-                                .has_partial_operator_code_flag(CCFS_AQALL_TYPE | CCF_ATMOST))
+                            && con_op.has_partial_operator_code_flag(CCFS_AQALL_TYPE | CCF_ATMOST))
                     {
                         let prop_test_backward_prop_hash = calc_alg_context
                             .process_context()

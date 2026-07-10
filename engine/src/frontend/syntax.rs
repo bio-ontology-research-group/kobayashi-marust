@@ -9,7 +9,9 @@ use std::collections::BTreeSet;
 
 /// Role expression in a concept position. Port of `RoleName`/`InverseRole`/
 /// `UniversalRole`.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Role {
     Name(String),
     Inverse(String),
@@ -18,7 +20,9 @@ pub enum Role {
 
 /// SROIQ concept expression. `Ord` is derived for `BTreeSet` membership; its
 /// exact order is irrelevant to semantics (only set membership matters).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Concept {
     Name(String),
     Top,

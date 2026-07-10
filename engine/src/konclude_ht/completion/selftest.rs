@@ -6338,7 +6338,10 @@ fn unit18_update_signature_blocking_expansion_threads_connection_dependencies() 
             assert_eq!(base.concept_descriptor, ConDescId::NONE);
             (base.dep_track_point, base.additional_after)
         }
-        other => panic!("expected expanded deterministic dependency, got {:?}", other),
+        other => panic!(
+            "expected expanded deterministic dependency, got {:?}",
+            other
+        ),
     };
     assert!(first_conn_tp.is_some());
     assert!(extra_conn_link.is_some());
@@ -23497,7 +23500,10 @@ fn atmost_rest_functional_distinct_clash() {
     let root = env.root;
     seed_concept_on_queue(&mut env, root, atleast_2_rc);
     seed_root_immediate(&mut env, root);
-    assert!(env.algo.run_completion_on(&mut env.ctx), "≥2 R.C alone is consistent");
+    assert!(
+        env.algo.run_completion_on(&mut env.ctx),
+        "≥2 R.C alone is consistent"
+    );
 
     seed_concept_on_queue(&mut env, root, atmost_1_top);
     seed_root_immediate(&mut env, root);
@@ -23552,7 +23558,10 @@ fn atmost_rest_qualified_distinct_clash() {
     let root = env.root;
     seed_concept_on_queue(&mut env, root, atleast_2_rc);
     seed_root_immediate(&mut env, root);
-    assert!(env.algo.run_completion_on(&mut env.ctx), "≥2 R.C alone is consistent");
+    assert!(
+        env.algo.run_completion_on(&mut env.ctx),
+        "≥2 R.C alone is consistent"
+    );
 
     seed_concept_on_queue(&mut env, root, atmost_1_rc);
     seed_root_immediate(&mut env, root);
@@ -23708,7 +23717,10 @@ fn atmost_rest_choose_qualifies_undecided() {
     let root = env.root;
     seed_concept_on_queue(&mut env, root, atleast_2_rc);
     seed_root_immediate(&mut env, root);
-    assert!(env.algo.run_completion_on(&mut env.ctx), "≥2 R.C alone is consistent");
+    assert!(
+        env.algo.run_completion_on(&mut env.ctx),
+        "≥2 R.C alone is consistent"
+    );
 
     seed_concept_on_queue(&mut env, root, atmost_1_rd);
     seed_root_immediate(&mut env, root);

@@ -178,7 +178,7 @@ fn build_rule_clause(
 // ---------------------------------------------------------------------------
 // output (TInput) types
 // ---------------------------------------------------------------------------
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq, Hash)]
 #[serde(tag = "k")]
 pub enum HAtom {
     #[serde(rename = "c")]
@@ -245,6 +245,15 @@ pub struct TInput {
     /// Transitive roles (KM_KEEP_CHAIN_AXIOMS), from the raw `R∘R⊑R` axioms.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub transitive: Vec<usize>,
+    /// Fresh-concept structural definitions retained by the frontend. The
+    /// bridge resolves these markers to native signed SOME/ALL/AND/OR concepts
+    /// when triggered absorption is enabled.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub definers: Vec<crate::json_io::DefinerMeta>,
+    /// Normalized source TBox. The bridge absorbs this before clausification,
+    /// matching Konclude's preprocessing boundary.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,6 +1121,8 @@ pub fn convert(
     rbox: Option<&[Vec<String>]>,
     named: &std::collections::HashSet<String>,
     cardinalities: &[crate::json_io::CardMeta],
+    definers: &[crate::json_io::DefinerMeta],
+    source_axioms: &[crate::json_io::SourceAxiomMeta],
     card_enabled: bool,
     rules: &[JRule],
     ht_rules: bool,
@@ -2132,6 +2143,27 @@ pub fn convert(
         }
     }
 
+    // Konclude's implication absorber works over signed literals. EMELIM makes
+    // those signs explicit by replacing an eliminated complement marker with
+    // the retained concept at the opposite polarity. Normalize them into the
+    // DL-clause orientation that the bridge can index: a negative head literal
+    // becomes a positive body trigger, and a negative body literal becomes a
+    // positive head literal. This is propositional literal movement, hence
+    // logically equivalent and independent of the completion calculus.
+    if std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
+        let (out, moved, dropped_tautologies) =
+            normalize_signed_trigger_clauses(ht, definers, &ids.con_names);
+        ht = out;
+        if std::env::var_os("KM_HT_STATS").is_some() {
+            eprintln!(
+                "cb_to_ht [trigger-absorb] definers={} moved={} tautologies={}",
+                definers.len(),
+                moved,
+                dropped_tautologies
+            );
+        }
+    }
+
     nominal_ids.sort();
     nominal_ids.dedup();
     TInput {
@@ -2147,6 +2179,59 @@ pub fn convert(
         card_defs,
         chains: detected_chains,
         transitive: detected_transitive,
+        definers: definers.to_vec(),
+        source_axioms: source_axioms.to_vec(),
+    }
+}
+
+fn normalize_signed_trigger_clauses(
+    ht: Vec<HtClause>,
+    _definers: &[crate::json_io::DefinerMeta],
+    _con_names: &[String],
+) -> (Vec<HtClause>, usize, usize) {
+    let mut out = Vec::with_capacity(ht.len());
+    let mut moved = 0usize;
+    let mut dropped_tautologies = 0usize;
+    for cl in ht {
+        let mut body = Vec::with_capacity(cl.body.len() + cl.head.len());
+        let mut head = Vec::with_capacity(cl.body.len() + cl.head.len());
+        for atom in cl.body {
+            match atom {
+                HAtom::Concept { neg: true, c, t } => {
+                    head.push(HAtom::Concept { neg: false, c, t });
+                    moved += 1;
+                }
+                other => body.push(other),
+            }
+        }
+        for atom in cl.head {
+            match atom {
+                HAtom::Concept { neg: true, c, t } => {
+                    body.push(HAtom::Concept { neg: false, c, t });
+                    moved += 1;
+                }
+                other => head.push(other),
+            }
+        }
+        body.sort_by_key(hatom_sort_key);
+        body.dedup();
+        head.sort_by_key(hatom_sort_key);
+        head.dedup();
+        if body.iter().any(|a| head.contains(a)) {
+            dropped_tautologies += 1;
+            continue;
+        }
+        out.push(HtClause { body, head });
+    }
+    (out, moved, dropped_tautologies)
+}
+
+fn hatom_sort_key(a: &HAtom) -> (u8, usize, usize, usize, bool) {
+    match a {
+        HAtom::Concept { neg, c, t } => (0, *c, *t, 0, *neg),
+        HAtom::Role { r, s, t } => (1, *r, *s, *t, false),
+        HAtom::Eq { s, t } => (2, *s, *t, 0, false),
+        HAtom::Exist { r, neg, c, t } => (3, *r, *c, *t, *neg),
     }
 }
 
@@ -2321,4 +2406,73 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     }
     let n = sub.len();
     (out, n)
+}
+
+#[cfg(test)]
+mod trigger_absorb_tests {
+    use super::*;
+
+    #[test]
+    fn signed_literals_move_to_trigger_orientation() {
+        let input = vec![HtClause {
+            body: vec![
+                HAtom::Concept {
+                    neg: true,
+                    c: 0,
+                    t: 0,
+                },
+                HAtom::Concept {
+                    neg: false,
+                    c: 1,
+                    t: 0,
+                },
+            ],
+            head: vec![
+                HAtom::Concept {
+                    neg: true,
+                    c: 2,
+                    t: 0,
+                },
+                HAtom::Concept {
+                    neg: false,
+                    c: 3,
+                    t: 0,
+                },
+            ],
+        }];
+        let (out, moved, dropped) = normalize_signed_trigger_clauses(input, &[], &Vec::new());
+        assert_eq!(moved, 2);
+        assert_eq!(dropped, 0);
+        assert_eq!(out.len(), 1);
+        assert!(out[0].body.contains(&HAtom::Concept {
+            neg: false,
+            c: 2,
+            t: 0
+        }));
+        assert!(out[0].head.contains(&HAtom::Concept {
+            neg: false,
+            c: 0,
+            t: 0
+        }));
+    }
+
+    #[test]
+    fn signed_normalization_drops_tautology() {
+        let input = vec![HtClause {
+            body: vec![HAtom::Concept {
+                neg: false,
+                c: 0,
+                t: 0,
+            }],
+            head: vec![HAtom::Concept {
+                neg: false,
+                c: 0,
+                t: 0,
+            }],
+        }];
+        let (out, moved, dropped) = normalize_signed_trigger_clauses(input, &[], &Vec::new());
+        assert!(out.is_empty());
+        assert_eq!(moved, 0);
+        assert_eq!(dropped, 1);
+    }
 }

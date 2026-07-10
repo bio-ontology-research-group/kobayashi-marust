@@ -335,7 +335,8 @@ impl SaturationTaskHandleAlgorithm {
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(*indi_proc_sat_node)
-                .set_reference_individual_saturation_process_node(special_indi_node); // 5517
+                .set_reference_individual_saturation_process_node(special_indi_node);
+            // 5517
         }
         if special_indi_node.is_some()
             && substituite_individual_node
@@ -1138,10 +1139,7 @@ impl SaturationTaskHandleAlgorithm {
         // 3. base-⊤ fallback (data roles use the ⊤-data-range concept; the bridge
         //    routes data-range-free input, matched by the plain ⊤ read).
         if exist_indi_node.is_none() {
-            let is_data_role = calc_alg_context
-                .ontology_arenas()
-                .role(role)
-                .is_data_role();
+            let is_data_role = calc_alg_context.ontology_arenas().role(role).is_data_role();
             let base_top_concept = if !is_data_role {
                 calc_alg_context.processing_data_box().ontology_top_concept
             } else {
@@ -1241,7 +1239,8 @@ impl SaturationTaskHandleAlgorithm {
                 calc_alg_context
                     .process_context_mut()
                     .sat_node_mut(exist_indi_node)
-                    .add_multiple_cardinality_ancestor_nodes_linker(*process_indi); // 7024–7026
+                    .add_multiple_cardinality_ancestor_nodes_linker(*process_indi);
+                // 7024–7026
             }
         }
 
@@ -1378,7 +1377,8 @@ impl SaturationTaskHandleAlgorithm {
                                     IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
                                     calc_alg_context,
                                 ); // 7082
-                                self.set_insufficient_node_occured(calc_alg_context); // 7083
+                                self.set_insufficient_node_occured(calc_alg_context);
+                                // 7083
                             }
                         }
                     }
@@ -1396,7 +1396,8 @@ impl SaturationTaskHandleAlgorithm {
                 calc_alg_context
                     .process_context_mut()
                     .sat_node_mut(exist_indi_node)
-                    .add_non_inverse_connected_individual_node_linker(*process_indi); // 7094–7096
+                    .add_non_inverse_connected_individual_node_linker(*process_indi);
+                // 7094–7096
             }
         }
     }
@@ -1526,7 +1527,8 @@ impl SaturationTaskHandleAlgorithm {
                 .process_context()
                 .con_sat_proc_linker(con_sat_pro_linker_it)
                 .get_concept_saturation_descriptor();
-            let new_linker_payload = self.create_concept_saturation_process_linker(calc_alg_context);
+            let new_linker_payload =
+                self.create_concept_saturation_process_linker(calc_alg_context);
             let new_linker = ConceptSaturationProcessLinkerId::new(new_linker_payload.raw);
             calc_alg_context
                 .process_context_mut()
@@ -1595,10 +1597,9 @@ impl SaturationTaskHandleAlgorithm {
                         .get_role();
                     let tmp_role_linker_payload =
                         self.create_role_saturation_process_linker(calc_alg_context);
-                    let tmp_role_linker =
-                        super::satellites::RoleSaturationProcessLinkerId::new(
-                            tmp_role_linker_payload.raw,
-                        );
+                    let tmp_role_linker = super::satellites::RoleSaturationProcessLinkerId::new(
+                        tmp_role_linker_payload.raw,
+                    );
                     calc_alg_context
                         .process_context_mut()
                         .role_sat_proc_linker_mut(tmp_role_linker)

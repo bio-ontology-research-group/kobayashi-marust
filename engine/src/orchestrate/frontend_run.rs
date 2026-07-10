@@ -34,6 +34,10 @@ struct ClausesFile {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    definers: Vec<crate::json_io::DefinerMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     rules: Vec<crate::json_io::JRule>,
 }
 
@@ -71,6 +75,8 @@ fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, Orchestra
     let out = ClausesFile {
         clauses: result.clauses,
         cardinalities: result.cardinalities,
+        definers: result.definers,
+        source_axioms: result.source_axioms,
         rules: result.rules,
     };
     let f = File::create(clauses_path)?;

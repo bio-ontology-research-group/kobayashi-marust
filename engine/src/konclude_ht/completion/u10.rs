@@ -672,8 +672,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let (tag_present, desc_same) = if ls.is_some() {
                     match pc.label_set(ls).concept_des_dep_map.get(&tag) {
                         Some(d) if !d.concept_descriptor.is_none() => {
-                            let same_pol =
-                                pc.con_desc(d.concept_descriptor).is_negated() == neg;
+                            let same_pol = pc.con_desc(d.concept_descriptor).is_negated() == neg;
                             (same_pol, d.concept_descriptor == con_des)
                         }
                         _ => (false, false),

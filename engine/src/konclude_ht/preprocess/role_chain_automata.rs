@@ -222,9 +222,7 @@ impl RoleChainAutomataTransformationPreProcess {
                     return Some(super_role);
                 }
                 for back in &arenas.role(super_role).super_roles {
-                    if arenas.role(back.target).get_role_tag()
-                        == arenas.role(role).get_role_tag()
-                    {
+                    if arenas.role(back.target).get_role_tag() == arenas.role(role).get_role_tag() {
                         return Some(super_role);
                     }
                 }
@@ -382,7 +380,9 @@ impl RoleChainAutomataTransformationPreProcess {
         arenas: &mut OntologyArenas,
         individual: IndividualId,
     ) -> ConceptId {
-        let existing = arenas.individual(individual).get_individual_nominal_concept();
+        let existing = arenas
+            .individual(individual)
+            .get_individual_nominal_concept();
         if existing != ConceptId::NONE {
             return existing;
         }
@@ -561,8 +561,9 @@ impl RoleChainAutomataTransformationPreProcess {
         if testing_implicit_chain_linker.len() != chain_linker.len() {
             return false;
         }
-        for (&testing_chain_role, &chain_role) in
-            testing_implicit_chain_linker.iter().zip(chain_linker.iter())
+        for (&testing_chain_role, &chain_role) in testing_implicit_chain_linker
+            .iter()
+            .zip(chain_linker.iter())
         {
             if !self.has_super_role3(arenas, testing_chain_role, chain_role, inversed_testing) {
                 return false;
@@ -800,11 +801,10 @@ impl RoleChainAutomataTransformationPreProcess {
         if !critical {
             item.direct_sub_role_chain_data_list = relevant;
         } else {
-            let relevant_critical = self
-                .get_relevant_recursive_traversal_critical_roles(
-                    arenas,
-                    &critical_role_negation_hash,
-                );
+            let relevant_critical = self.get_relevant_recursive_traversal_critical_roles(
+                arenas,
+                &critical_role_negation_hash,
+            );
             for chain_data in &relevant {
                 if !self.requires_recursive_traversal_for_role(
                     arenas,
@@ -816,20 +816,20 @@ impl RoleChainAutomataTransformationPreProcess {
                 }
             }
             // deterministic order for the recursion list too.
-            let mut crit_entries: Vec<(RoleId, bool)> = relevant_critical
-                .iter()
-                .map(|(k, v)| (*k, *v))
-                .collect();
+            let mut crit_entries: Vec<(RoleId, bool)> =
+                relevant_critical.iter().map(|(k, v)| (*k, *v)).collect();
             crit_entries.sort_by_key(|(r, _)| r.index());
             for (crit_role, inversed) in crit_entries {
                 let outer = arenas.role(item.role);
                 if outer.is_symmetric() && outer.get_inverse_role() == item.role {
-                    item.rec_traversal_sub_role_list.push((crit_role, !inversed));
+                    item.rec_traversal_sub_role_list
+                        .push((crit_role, !inversed));
                 }
                 item.rec_traversal_sub_role_list.push((crit_role, inversed));
             }
         }
-        self.role_rec_trav_sub_role_chain_data_hash.insert(role, item);
+        self.role_rec_trav_sub_role_chain_data_hash
+            .insert(role, item);
     }
 
     /// Port of `createRecursiveTraversalData`: group the multi-hash per role
@@ -971,12 +971,7 @@ impl RoleChainAutomataTransformationPreProcess {
         }
 
         if trans_type == TranslationType::Normal {
-            self.append_transition_operand(
-                arenas,
-                concept_id,
-                generating_concept,
-                !exist_negation,
-            );
+            self.append_transition_operand(arenas, concept_id, generating_concept, !exist_negation);
             self.append_transition_operand(arenas, concept_id, begin_state, exist_negation);
         }
 
@@ -1318,30 +1313,36 @@ impl RoleChainAutomataTransformationPreProcess {
             let inverse_id = arenas.alloc_role(inverse);
 
             // the defining pair of NEGATED super-role linkers.
-            arenas.role_mut(inverse_id).super_roles.push(
-                super::super::model::substrate::NegLink {
+            arenas
+                .role_mut(inverse_id)
+                .super_roles
+                .push(super::super::model::substrate::NegLink {
                     target: role_id,
                     negated: true,
-                },
-            );
-            arenas.role_mut(role_id).super_roles.push(
-                super::super::model::substrate::NegLink {
+                });
+            arenas
+                .role_mut(role_id)
+                .super_roles
+                .push(super::super::model::substrate::NegLink {
                     target: inverse_id,
                     negated: true,
-                },
-            );
+                });
 
             // every direct sub role of `role` gets the new inverse as an
             // INVERTED super role (and dito the indirect ones).
-            for &(sub_tag, neg) in direct_sub.get(&role_tag).map(|v| v.as_slice()).unwrap_or(&[])
+            for &(sub_tag, neg) in direct_sub
+                .get(&role_tag)
+                .map(|v| v.as_slice())
+                .unwrap_or(&[])
             {
                 let sub_id = RoleId::new(sub_tag);
-                arenas.role_mut(sub_id).super_roles.push(
-                    super::super::model::substrate::NegLink {
+                arenas
+                    .role_mut(sub_id)
+                    .super_roles
+                    .push(super::super::model::substrate::NegLink {
                         target: inverse_id,
                         negated: !neg,
-                    },
-                );
+                    });
             }
             for &(sub_tag, neg) in indirect_sub
                 .get(&role_tag)
@@ -1462,11 +1463,10 @@ impl RoleChainAutomataTransformationPreProcess {
                     continue;
                 }
                 let con_code = arenas.concept(con).get_operator_code();
-                let all_shaped = (con_code == op::CCALL
-                    || con_code == op::CCAQALL
-                    || con_code == op::CCIMPLALL)
-                    && !con_neg
-                    || con_neg && con_code == op::CCSOME;
+                let all_shaped =
+                    (con_code == op::CCALL || con_code == op::CCAQALL || con_code == op::CCIMPLALL)
+                        && !con_neg
+                        || con_neg && con_code == op::CCSOME;
                 if !all_shaped {
                     continue;
                 }
@@ -1517,7 +1517,11 @@ impl RoleChainAutomataTransformationPreProcess {
                 let mut worklist: Vec<RoleSubRoleChainDataItem> = self
                     .role_sub_role_chain_data_hash
                     .get(&role_id)
-                    .map(|v| v.iter().map(|d| RoleSubRoleChainDataItem::new(*d)).collect())
+                    .map(|v| {
+                        v.iter()
+                            .map(|d| RoleSubRoleChainDataItem::new(*d))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let mut prop_concept = ConceptId::NONE;
 
@@ -1576,9 +1580,14 @@ impl RoleChainAutomataTransformationPreProcess {
                         continue;
                     }
                     if prop_concept == ConceptId::NONE {
-                        prop_concept =
-                            self.create_transition_concept(arenas, inv_role, TranslationType::Normal);
-                        arenas.concept_mut(prop_concept).set_operator_code(op::CCALL);
+                        prop_concept = self.create_transition_concept(
+                            arenas,
+                            inv_role,
+                            TranslationType::Normal,
+                        );
+                        arenas
+                            .concept_mut(prop_concept)
+                            .set_operator_code(op::CCALL);
                         self.append_transition_operand(arenas, prop_concept, dom_con, dom_con_neg);
                     }
                     dom_range_prop_concept_set.insert(prop_concept);
@@ -1612,7 +1621,11 @@ impl RoleChainAutomataTransformationPreProcess {
                 let mut worklist: Vec<RoleSubRoleChainDataItem> = self
                     .role_sub_role_chain_data_hash
                     .get(&role_id)
-                    .map(|v| v.iter().map(|d| RoleSubRoleChainDataItem::new(*d)).collect())
+                    .map(|v| {
+                        v.iter()
+                            .map(|d| RoleSubRoleChainDataItem::new(*d))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 let mut prop_concept = ConceptId::NONE;
 
@@ -1671,9 +1684,14 @@ impl RoleChainAutomataTransformationPreProcess {
                         continue;
                     }
                     if prop_concept == ConceptId::NONE {
-                        prop_concept =
-                            self.create_transition_concept(arenas, role_id, TranslationType::Normal);
-                        arenas.concept_mut(prop_concept).set_operator_code(op::CCALL);
+                        prop_concept = self.create_transition_concept(
+                            arenas,
+                            role_id,
+                            TranslationType::Normal,
+                        );
+                        arenas
+                            .concept_mut(prop_concept)
+                            .set_operator_code(op::CCALL);
                         self.append_transition_operand(
                             arenas,
                             prop_concept,

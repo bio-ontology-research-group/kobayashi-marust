@@ -350,7 +350,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .unwrap_or(
                     super::satellites::BackwardSaturationPropagationReapplyDescriptorId::NONE,
                 );
-            let mut reapply_des = super::satellites::BackwardSaturationPropagationReapplyDescriptor::new();
+            let mut reapply_des =
+                super::satellites::BackwardSaturationPropagationReapplyDescriptor::new();
             reapply_des.init_backward_propagation_reapply_descriptor(con_des);
             reapply_des.set_next(old_reapply);
             let reapply_des = calc_alg_context
@@ -361,9 +362,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .role_backward_sat_prop_hash_mut(back_prop_hash)
                 .role_back_prop_data_hash
                 .entry(role)
-                .or_insert_with(
-                    super::satellites::RoleBackwardSaturationPropagationHashData::new,
-                );
+                .or_insert_with(super::satellites::RoleBackwardSaturationPropagationHashData::new);
             data.reapply_linker = reapply_des;
             data.link_linker
         };
@@ -402,10 +401,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
         // conProData = (CConceptProcessData*)concept->getConceptData();
         // if (role->isDataRole() || conProData) { … }
-        let is_data_role = calc_alg_context
-            .ontology_arenas()
-            .role(role)
-            .is_data_role();
+        let is_data_role = calc_alg_context.ontology_arenas().role(role).is_data_role();
         let con_proc_data_id = {
             let c = calc_alg_context.ontology_arenas().concept(concept);
             if c.has_concept_data() {

@@ -592,7 +592,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .get_concept_saturation_description_linker();
             while con_sat_des_it.is_some() {
                 let (sat_concept, sat_concept_negation, next) = {
-                    let d = calc_alg_context.process_context().con_sat_desc(con_sat_des_it);
+                    let d = calc_alg_context
+                        .process_context()
+                        .con_sat_desc(con_sat_des_it);
                     (
                         d.get_concept(),
                         d.get_negation(),

@@ -50,6 +50,10 @@ pub struct FrontendResult {
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
+    /// Fresh-concept structural provenance used by the triggered HT absorber.
+    pub definers: Vec<crate::json_io::DefinerMeta>,
+    /// Normalized source TBox used by pre-clausal triggered absorption.
+    pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
     /// KM_HT_RULES: parsed SWRL DL-safe rules, carried to `cb_to_ht`. Empty unless
     /// the frontend `KM_HT_RULES` flag is set (so the default output is unchanged).
     pub rules: Vec<crate::json_io::JRule>,
@@ -163,6 +167,8 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     let role_inverses = std::mem::take(&mut hooks.role_inverses);
     let symmetric_roles = std::mem::take(&mut hooks.symmetric_roles);
     let cardinalities = std::mem::take(&mut hooks.cardinalities);
+    let definers = std::mem::take(&mut hooks.definers);
+    let source_axioms = std::mem::take(&mut hooks.source_axioms);
     // KM_HT_RULES: keep the ground ABox in the clause set so cb_to_ht can seed the
     // named individuals as nominal nodes (the rules + ABox consistency check runs
     // over that graph). Only when a rule is present (`ht_rules`), so a normal ABox
@@ -375,6 +381,8 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         abox_inconsistent,
         asserted_classes: asserted_classes.into_iter().collect(),
         cardinalities,
+        definers,
+        source_axioms,
         rules,
     })
 }

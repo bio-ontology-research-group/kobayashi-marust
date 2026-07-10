@@ -88,6 +88,10 @@ struct OfnOutput {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    definers: Vec<crate::json_io::DefinerMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     rules: Vec<crate::json_io::JRule>,
 }
 
@@ -106,6 +110,10 @@ struct OfnClausesOnly {
     clauses: Vec<JClause>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    definers: Vec<crate::json_io::DefinerMeta>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     rules: Vec<crate::json_io::JRule>,
 }
@@ -174,6 +182,8 @@ pub fn run_ofn(args: &[String]) {
         let out = OfnClausesOnly {
             clauses: result.clauses,
             cardinalities: result.cardinalities,
+            definers: result.definers,
+            source_axioms: result.source_axioms,
             rules: result.rules,
         };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {
@@ -190,6 +200,8 @@ pub fn run_ofn(args: &[String]) {
             abox_inconsistent: result.abox_inconsistent,
             asserted_classes: result.asserted_classes,
             cardinalities: result.cardinalities,
+            definers: result.definers,
+            source_axioms: result.source_axioms,
             rules: result.rules,
         };
         if let Err(e) = serde_json::to_writer(&mut w, &out) {

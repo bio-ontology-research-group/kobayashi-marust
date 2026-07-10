@@ -44,7 +44,11 @@ use super::process::descriptor::{
 use super::process::node::IndividualProcessNode;
 use super::process::queues::ConceptProcessingQueue;
 use super::process::{NodeId, TrackPointId};
+use crate::json_io::DefinerKind;
 use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+
+type SourceConcept = crate::frontend::syntax::Concept;
+type SourceRole = crate::frontend::syntax::Role;
 
 /// The bridged terminology: arena ids for the TInput's named concepts/roles
 /// plus the per-clause implication concepts the probe driver re-seeds.
@@ -71,6 +75,10 @@ pub struct Bridged {
     /// value identity): consumed by the kernel's deterministic
     /// scan-at-fixpoint merge; must be installed on every probe algorithm.
     pub singleton_concepts: Vec<ConceptId>,
+    /// True when the terminology was built from normalized source axioms.
+    /// Native CCSUB/trigger/range links reach queue fixpoint in one completion
+    /// task and do not need the legacy clause re-drive repair.
+    pub source_tbox: bool,
 }
 
 /// Tag base for bridged concepts (tag 1 is the ontology TOP sentinel).
@@ -109,6 +117,20 @@ impl<'a> Builder<'a> {
         c.set_operand_count(ops.len() as i64);
         (self.ctx.ontology_arenas_mut().alloc_concept(c), false)
     }
+    fn and_of(&mut self, ops: &[(ConceptId, bool)]) -> (ConceptId, bool) {
+        if ops.len() == 1 {
+            return ops[0];
+        }
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCAND);
+        for &(o, n) in ops {
+            c.add_operand_linker(o, n);
+        }
+        c.set_operand_count(ops.len() as i64);
+        (self.ctx.ontology_arenas_mut().alloc_concept(c), false)
+    }
     fn bottom(&mut self) -> ConceptId {
         let tag = self.fresh_tag();
         let mut c = Concept::new();
@@ -135,6 +157,68 @@ impl<'a> Builder<'a> {
         c.add_operand_linker(filler.0, filler.1);
         c.set_operand_count(1);
         self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
+    fn self_restriction(&mut self, role: RoleId) -> ConceptId {
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCSELF);
+        c.set_role(role);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
+    /// Port of `createTriggerConcept(false)` from Konclude's binary absorber.
+    fn implication_trigger(&mut self) -> ConceptId {
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCIMPLTRIG);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
+    /// Port of `createTriggerPropagationConcept`: when the trigger holds on an
+    /// R-successor, `CCIMPLALL(R-, dest)` propagates `dest` to its predecessor.
+    fn implication_all(&mut self, inverse_role: RoleId, dest: ConceptId) -> ConceptId {
+        let tag = self.fresh_tag();
+        let mut c = Concept::new();
+        c.set_concept_tag(tag);
+        c.set_operator_code(op::CCIMPLALL);
+        c.set_role(inverse_role);
+        c.add_operand_linker(dest, false);
+        c.set_operand_count(1);
+        self.ctx.ontology_arenas_mut().alloc_concept(c)
+    }
+    /// Port of `addUnfoldingConceptForConcept`. Absorption may only extend an
+    /// atom/subclass or a generated trigger concept, never a restriction.
+    fn add_unfolding(&mut self, host: ConceptId, added: ConceptId, negated: bool) -> bool {
+        let op_code = self.ctx.ontology_arenas().concept(host).get_operator_code();
+        if !matches!(op_code, op::CCATOM | op::CCSUB | op::CCIMPLTRIG) {
+            return false;
+        }
+        let host_concept = self.ctx.ontology_arenas_mut().concept_mut(host);
+        host_concept.add_operand_linker(added, negated);
+        host_concept.inc_operand_count(1);
+        if op_code == op::CCATOM {
+            host_concept.set_operator_code(op::CCSUB);
+        }
+        true
+    }
+    /// Port of `buildConceptEquivalentClass`: a still-undefined named atom can
+    /// carry one complete equivalent definition directly as `CCEQ`. Positive
+    /// use expands conjunctively and negative use disjunctively, so no reverse
+    /// TOP GCI is required.
+    fn add_equivalent_definition(
+        &mut self,
+        host: ConceptId,
+        definition: ConceptId,
+        negated: bool,
+    ) -> bool {
+        if self.ctx.ontology_arenas().concept(host).get_operator_code() != op::CCATOM {
+            return false;
+        }
+        let concept = self.ctx.ontology_arenas_mut().concept_mut(host);
+        concept.set_operator_code(op::CCEQ);
+        concept.add_operand_linker(definition, negated);
+        concept.set_operand_count(1);
+        true
     }
     /// Unqualified `≤n R.⊤` — `CCATMOST` with parameter `n` and NO operand
     /// (empty qualifier ⇒ every R-successor counts). `n = 1` is a functional
@@ -180,7 +264,11 @@ impl<'a> Builder<'a> {
     /// is present with the OPPOSITE polarity of its linker (see
     /// `apply_implication_rule`): a positive body atom becomes a NEGATED
     /// trigger linker.
-    fn implication(&mut self, head: (ConceptId, bool), triggers: &[(ConceptId, bool)]) -> ConceptId {
+    fn implication(
+        &mut self,
+        head: (ConceptId, bool),
+        triggers: &[(ConceptId, bool)],
+    ) -> ConceptId {
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -194,6 +282,796 @@ impl<'a> Builder<'a> {
         c.set_operand_count(1 + triggers.len() as i64);
         self.ctx.ontology_arenas_mut().alloc_concept(c)
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct AbsorptionTrigger {
+    concept: ConceptId,
+    complexity: usize,
+}
+
+#[derive(Default)]
+struct TriggerCaches {
+    full: HashMap<(ConceptId, bool), Option<AbsorptionTrigger>>,
+    partial: HashMap<(ConceptId, bool), Option<AbsorptionTrigger>>,
+    pairs: HashMap<(ConceptId, ConceptId), AbsorptionTrigger>,
+    role_domains: HashMap<RoleId, AbsorptionTrigger>,
+}
+
+/// Port of `getImplicationTriggeredConceptForTriggers`: combine triggers into
+/// a reusable binary implication chain, ordered by complexity.
+fn combine_absorption_triggers(
+    b: &mut Builder,
+    mut triggers: Vec<AbsorptionTrigger>,
+    caches: &mut TriggerCaches,
+) -> Option<AbsorptionTrigger> {
+    triggers.sort_by_key(|t| (t.complexity, t.concept.raw));
+    triggers.dedup_by_key(|t| t.concept);
+    while triggers.len() > 1 {
+        let left = triggers.remove(0);
+        let right = triggers.remove(0);
+        let key = if left.concept.raw <= right.concept.raw {
+            (left.concept, right.concept)
+        } else {
+            (right.concept, left.concept)
+        };
+        let combined = if let Some(&cached) = caches.pairs.get(&key) {
+            cached
+        } else {
+            let implied = b.implication_trigger();
+            let implication = b.implication((implied, false), &[(right.concept, false)]);
+            if !b.add_unfolding(left.concept, implication, false) {
+                return None;
+            }
+            let combined = AbsorptionTrigger {
+                concept: implied,
+                complexity: left.complexity + right.complexity,
+            };
+            caches.pairs.insert(key, combined);
+            combined
+        };
+        let pos = triggers
+            .binary_search_by_key(&(combined.complexity, combined.concept.raw), |t| {
+                (t.complexity, t.concept.raw)
+            })
+            .unwrap_or_else(|p| p);
+        triggers.insert(pos, combined);
+    }
+    triggers.into_iter().next()
+}
+
+fn role_domain_trigger(
+    b: &mut Builder,
+    role: RoleId,
+    inverse_role: RoleId,
+    caches: &mut TriggerCaches,
+) -> AbsorptionTrigger {
+    if let Some(&trigger) = caches.role_domains.get(&role) {
+        return trigger;
+    }
+    let concept = b.implication_trigger();
+    let link = super::model::substrate::NegLink {
+        target: concept,
+        negated: false,
+    };
+    b.ctx
+        .ontology_arenas_mut()
+        .role_mut(role)
+        .domain_linker
+        .push(link);
+    b.ctx
+        .ontology_arenas_mut()
+        .role_mut(inverse_role)
+        .range_linker
+        .push(link);
+    let trigger = AbsorptionTrigger {
+        concept,
+        complexity: 1,
+    };
+    caches.role_domains.insert(role, trigger);
+    trigger
+}
+
+/// Faithful fragment of Konclude's `getTriggersForConcept`: atoms are direct
+/// triggers, Boolean structure is recursively compiled, and existential
+/// structure becomes an inverse-role `CCIMPLALL` trigger-propagation chain.
+fn full_absorption_trigger(
+    b: &mut Builder,
+    literal: (ConceptId, bool),
+    role_inverses: &HashMap<RoleId, RoleId>,
+    caches: &mut TriggerCaches,
+) -> Option<AbsorptionTrigger> {
+    if let Some(cached) = caches.full.get(&literal) {
+        return *cached;
+    }
+    let (concept, negated) = literal;
+    let (op_code, parameter, role, operands) = {
+        let c = b.ctx.ontology_arenas().concept(concept);
+        (
+            c.get_operator_code(),
+            c.get_parameter(),
+            c.get_role(),
+            c.get_operand_list().to_vec(),
+        )
+    };
+    let result =
+        if !negated && matches!(op_code, op::CCATOM | op::CCSUB | op::CCTOP | op::CCIMPLTRIG) {
+            Some(AbsorptionTrigger {
+                concept,
+                complexity: 1,
+            })
+        } else if (!negated && matches!(op_code, op::CCAND | op::CCEQ))
+            || (negated && op_code == op::CCOR)
+        {
+            let mut triggers = Vec::new();
+            for operand in operands {
+                triggers.push(full_absorption_trigger(
+                    b,
+                    (operand.target, operand.negated ^ negated),
+                    role_inverses,
+                    caches,
+                )?);
+            }
+            combine_absorption_triggers(b, triggers, caches)
+        } else if (!negated && op_code == op::CCOR)
+            || (negated && matches!(op_code, op::CCAND | op::CCEQ))
+        {
+            let implied = b.implication_trigger();
+            let mut complexity = usize::MAX;
+            for operand in operands {
+                let trigger = full_absorption_trigger(
+                    b,
+                    (operand.target, operand.negated ^ negated),
+                    role_inverses,
+                    caches,
+                )?;
+                if !b.add_unfolding(trigger.concept, implied, false) {
+                    return None;
+                }
+                complexity = complexity.min(trigger.complexity);
+            }
+            Some(AbsorptionTrigger {
+                concept: implied,
+                complexity: complexity.max(1),
+            })
+        } else if (!negated && op_code == op::CCSOME)
+            || (negated && op_code == op::CCALL)
+            || (!negated && op_code == op::CCATLEAST && parameter == 1)
+            || (negated && op_code == op::CCATMOST && parameter == 0)
+        {
+            let &inverse = role_inverses.get(&role)?;
+            if operands.is_empty() {
+                Some(role_domain_trigger(b, role, inverse, caches))
+            } else if operands.len() == 1
+                && !operands[0].negated
+                && b.ctx
+                    .ontology_arenas()
+                    .concept(operands[0].target)
+                    .get_operator_code()
+                    == op::CCTOP
+                && !negated
+            {
+                // `∃R.Thing` (and `≥1 R.Thing`) is exactly the existence of an
+                // R edge. Konclude uses the role-domain trigger directly; TOP
+                // is not an unfolding host for a successor propagation.
+                Some(role_domain_trigger(b, role, inverse, caches))
+            } else {
+                let mut filler_triggers = Vec::new();
+                for operand in operands {
+                    let operand_negated = if matches!(op_code, op::CCATLEAST | op::CCATMOST) {
+                        operand.negated
+                    } else {
+                        operand.negated ^ negated
+                    };
+                    filler_triggers.push(full_absorption_trigger(
+                        b,
+                        (operand.target, operand_negated),
+                        role_inverses,
+                        caches,
+                    )?);
+                }
+                let filler = combine_absorption_triggers(b, filler_triggers, caches)?;
+                let propagated = b.implication_trigger();
+                let propagation = b.implication_all(inverse, propagated);
+                if !b.add_unfolding(filler.concept, propagation, false) {
+                    None
+                } else {
+                    Some(AbsorptionTrigger {
+                        concept: propagated,
+                        complexity: filler.complexity + 1,
+                    })
+                }
+            }
+        } else {
+            None
+        };
+    caches.full.insert(literal, result);
+    result
+}
+
+/// Port of `getPartialTriggersForConcept`. The returned trigger is a necessary
+/// condition only; callers unfold the original residual GCI from it, exactly as
+/// `createGCIPartialAbsorbedTriggeredImplication` does in Konclude.
+fn partial_absorption_trigger(
+    b: &mut Builder,
+    literal: (ConceptId, bool),
+    role_inverses: &HashMap<RoleId, RoleId>,
+    caches: &mut TriggerCaches,
+) -> Option<AbsorptionTrigger> {
+    if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
+        return Some(trigger);
+    }
+    if let Some(cached) = caches.partial.get(&literal) {
+        return *cached;
+    }
+    let (concept, negated) = literal;
+    let (op_code, role, operands) = {
+        let c = b.ctx.ontology_arenas().concept(concept);
+        (
+            c.get_operator_code(),
+            c.get_role(),
+            c.get_operand_list().to_vec(),
+        )
+    };
+    let result = if (!negated && op_code == op::CCAND) || (negated && op_code == op::CCOR) {
+        let triggers: Vec<_> = operands
+            .into_iter()
+            .filter_map(|operand| {
+                partial_absorption_trigger(
+                    b,
+                    (operand.target, operand.negated ^ negated),
+                    role_inverses,
+                    caches,
+                )
+            })
+            .collect();
+        combine_absorption_triggers(b, triggers, caches)
+    } else if (!negated && op_code == op::CCOR)
+        || (negated && matches!(op_code, op::CCAND | op::CCEQ))
+    {
+        let mut alternatives = Vec::new();
+        for operand in operands {
+            alternatives.push(partial_absorption_trigger(
+                b,
+                (operand.target, operand.negated ^ negated),
+                role_inverses,
+                caches,
+            )?);
+        }
+        let implied = b.implication_trigger();
+        let mut complexity = usize::MAX;
+        for trigger in alternatives {
+            if !b.add_unfolding(trigger.concept, implied, false) {
+                return None;
+            }
+            complexity = complexity.min(trigger.complexity);
+        }
+        Some(AbsorptionTrigger {
+            concept: implied,
+            complexity: complexity.max(1),
+        })
+    } else if (!negated && matches!(op_code, op::CCSOME | op::CCSELF | op::CCATLEAST))
+        || (negated && matches!(op_code, op::CCALL | op::CCATMOST))
+    {
+        let &inverse = role_inverses.get(&role)?;
+        let mut filler_triggers = Vec::new();
+        for operand in operands {
+            if let Some(trigger) = partial_absorption_trigger(
+                b,
+                (
+                    operand.target,
+                    operand.negated ^ (negated && op_code == op::CCALL),
+                ),
+                role_inverses,
+                caches,
+            ) {
+                filler_triggers.push(trigger);
+            }
+        }
+        if filler_triggers.is_empty() {
+            Some(role_domain_trigger(b, role, inverse, caches))
+        } else {
+            let filler = combine_absorption_triggers(b, filler_triggers, caches)?;
+            let propagated = b.implication_trigger();
+            let propagation = b.implication_all(inverse, propagated);
+            if !b.add_unfolding(filler.concept, propagation, false) {
+                None
+            } else {
+                Some(AbsorptionTrigger {
+                    concept: propagated,
+                    complexity: filler.complexity + 1,
+                })
+            }
+        }
+    } else {
+        None
+    };
+    caches.partial.insert(literal, result);
+    result
+}
+
+/// Port of the full/partial GCI split in
+/// `createGCIAbsorbedTriggeredImplication`. `body` contains conjunctive
+/// antecedents; `heads` contains the disjunctive consequent. Fully triggerable
+/// head complements move into the antecedent. If full absorption is impossible,
+/// a necessary partial trigger unfolds the original GCI instead.
+fn absorb_concept_disjunction(
+    b: &mut Builder,
+    body: &[(ConceptId, bool)],
+    heads: &[(ConceptId, bool)],
+    role_inverses: &HashMap<RoleId, RoleId>,
+    caches: &mut TriggerCaches,
+) -> bool {
+    let mut full_triggers = Vec::new();
+    let mut body_fully_triggerable = true;
+    for &literal in body {
+        if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
+            full_triggers.push(trigger);
+        } else {
+            body_fully_triggerable = false;
+        }
+    }
+
+    let mut residual_heads = Vec::new();
+    for &(concept, negated) in heads {
+        if let Some(trigger) =
+            full_absorption_trigger(b, (concept, !negated), role_inverses, caches)
+        {
+            full_triggers.push(trigger);
+        } else {
+            residual_heads.push((concept, negated));
+        }
+    }
+
+    if body_fully_triggerable && !full_triggers.is_empty() {
+        let Some(trigger) = combine_absorption_triggers(b, full_triggers, caches) else {
+            return false;
+        };
+        let implied = if residual_heads.is_empty() {
+            (b.bottom(), false)
+        } else {
+            b.or_of(&residual_heads)
+        };
+        return b.add_unfolding(trigger.concept, implied.0, implied.1);
+    }
+
+    // Partial absorption is only a gate. Preserve the complete original GCI
+    // under that gate, as Konclude does before installing branch metadata.
+    let mut partial_triggers = Vec::new();
+    for &literal in body {
+        if let Some(trigger) = partial_absorption_trigger(b, literal, role_inverses, caches) {
+            partial_triggers.push(trigger);
+        }
+    }
+    for &(concept, negated) in heads {
+        if let Some(trigger) =
+            partial_absorption_trigger(b, (concept, !negated), role_inverses, caches)
+        {
+            partial_triggers.push(trigger);
+        }
+    }
+    let Some(trigger) = combine_absorption_triggers(b, partial_triggers, caches) else {
+        return false;
+    };
+    let mut original_disjunction: Vec<(ConceptId, bool)> = body
+        .iter()
+        .map(|&(concept, negated)| (concept, !negated))
+        .collect();
+    original_disjunction.extend_from_slice(heads);
+    let original = if original_disjunction.is_empty() {
+        (b.bottom(), false)
+    } else {
+        b.or_of(&original_disjunction)
+    };
+    b.add_unfolding(trigger.concept, original.0, original.1)
+}
+
+/// Build the normalized frontend concept directly in Konclude's native DAG.
+/// This mirrors `CConcreteOntologyUpdateBuilder::buildClassConcept`: structural
+/// expressions are shared, named classes retain their fixed terminology atom,
+/// and inverse role expressions use the role's wired inverse object.
+fn build_source_concept(
+    b: &mut Builder,
+    source: &SourceConcept,
+    concept_index: &HashMap<&str, usize>,
+    role_index: &HashMap<&str, usize>,
+    named: &[ConceptId],
+    roles: &[RoleId],
+    inv_roles: &[RoleId],
+    cache: &mut HashMap<SourceConcept, (ConceptId, bool)>,
+) -> Option<(ConceptId, bool)> {
+    if let Some(&built) = cache.get(source) {
+        return Some(built);
+    }
+    let role = |r: &SourceRole| -> Option<RoleId> {
+        match r {
+            SourceRole::Name(name) => role_index.get(name.as_str()).map(|&i| roles[i]),
+            SourceRole::Inverse(name) => role_index.get(name.as_str()).map(|&i| inv_roles[i]),
+            SourceRole::Universal => None,
+        }
+    };
+    let built = match source {
+        SourceConcept::Name(name) => {
+            let i = *concept_index.get(name.as_str())?;
+            (named[i], false)
+        }
+        SourceConcept::Top => (b.ctx.processing_data_box().ontology_top_concept(), false),
+        SourceConcept::Bottom => (b.bottom(), false),
+        SourceConcept::Nominal(_) => return None,
+        SourceConcept::Not(operand) => {
+            let (concept, negated) = build_source_concept(
+                b,
+                operand,
+                concept_index,
+                role_index,
+                named,
+                roles,
+                inv_roles,
+                cache,
+            )?;
+            (concept, !negated)
+        }
+        SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+            let built_operands: Option<Vec<_>> = operands
+                .iter()
+                .map(|operand| {
+                    build_source_concept(
+                        b,
+                        operand,
+                        concept_index,
+                        role_index,
+                        named,
+                        roles,
+                        inv_roles,
+                        cache,
+                    )
+                })
+                .collect();
+            let built_operands = built_operands?;
+            if matches!(source, SourceConcept::And(_)) {
+                b.and_of(&built_operands)
+            } else {
+                b.or_of(&built_operands)
+            }
+        }
+        SourceConcept::Exists(r, filler) | SourceConcept::Forall(r, filler) => {
+            let filler = build_source_concept(
+                b,
+                filler,
+                concept_index,
+                role_index,
+                named,
+                roles,
+                inv_roles,
+                cache,
+            )?;
+            let role = role(r)?;
+            if matches!(source, SourceConcept::Exists(..)) {
+                (b.some(role, filler), false)
+            } else {
+                (b.all(role, filler), false)
+            }
+        }
+        SourceConcept::AtLeast(n, r, filler) | SourceConcept::AtMost(n, r, filler) => {
+            let filler = build_source_concept(
+                b,
+                filler,
+                concept_index,
+                role_index,
+                named,
+                roles,
+                inv_roles,
+                cache,
+            )?;
+            let role = role(r)?;
+            if matches!(source, SourceConcept::AtLeast(..)) {
+                (b.atleast_q(role, *n, filler), false)
+            } else {
+                (b.atmost_q(role, *n, filler), false)
+            }
+        }
+        SourceConcept::HasSelf(r) => (b.self_restriction(role(r)?), false),
+    };
+    cache.insert(source.clone(), built);
+    Some(built)
+}
+
+fn source_role_id(
+    role: &SourceRole,
+    role_index: &HashMap<&str, usize>,
+    roles: &[RoleId],
+    inv_roles: &[RoleId],
+) -> Option<RoleId> {
+    match role {
+        SourceRole::Name(name) => role_index.get(name.as_str()).map(|&i| roles[i]),
+        SourceRole::Inverse(name) => role_index.get(name.as_str()).map(|&i| inv_roles[i]),
+        SourceRole::Universal => None,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum SourceEncoding {
+    Direct,
+    RoleLink,
+    AbsorbedGci,
+    TopGci,
+    Unsupported,
+}
+
+/// Port of `CConcreteOntologyUpdateBuilder::buildConceptSubClassInclusion`.
+/// Atomic left sides become native `CCSUB` unfoldings; only a structural left
+/// side reaches the binary GCI absorber. Domain/range-shaped inclusions are
+/// stored on the role, matching Konclude's object-property axiom builder.
+#[allow(clippy::too_many_arguments)]
+fn encode_source_subclass(
+    b: &mut Builder,
+    left: &SourceConcept,
+    right: &SourceConcept,
+    concept_index: &HashMap<&str, usize>,
+    role_index: &HashMap<&str, usize>,
+    named: &[ConceptId],
+    roles: &[RoleId],
+    inv_roles: &[RoleId],
+    role_inverses: &HashMap<RoleId, RoleId>,
+    concept_cache: &mut HashMap<SourceConcept, (ConceptId, bool)>,
+    trigger_caches: &mut TriggerCaches,
+    tbox: &mut Vec<ConceptId>,
+    top_gcis: &mut Vec<ConceptId>,
+) -> SourceEncoding {
+    // The frontend represents complex ObjectPropertyDomain/Range axioms by
+    // their DL-equivalent subclass forms. Konclude keeps these as role links.
+    if let SourceConcept::Exists(role, filler) = left {
+        if matches!(filler.as_ref(), SourceConcept::Top) {
+            let Some(role) = source_role_id(role, role_index, roles, inv_roles) else {
+                return SourceEncoding::Unsupported;
+            };
+            let Some((target, negated)) = build_source_concept(
+                b,
+                right,
+                concept_index,
+                role_index,
+                named,
+                roles,
+                inv_roles,
+                concept_cache,
+            ) else {
+                return SourceEncoding::Unsupported;
+            };
+            let link = super::model::substrate::NegLink { target, negated };
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(role)
+                .domain_linker
+                .push(link);
+            if let Some(&inverse) = role_inverses.get(&role) {
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(inverse)
+                    .range_linker
+                    .push(link);
+            }
+            return SourceEncoding::RoleLink;
+        }
+    }
+    if matches!(left, SourceConcept::Top) {
+        if let SourceConcept::Forall(role, filler) = right {
+            let Some(role) = source_role_id(role, role_index, roles, inv_roles) else {
+                return SourceEncoding::Unsupported;
+            };
+            let Some((target, negated)) = build_source_concept(
+                b,
+                filler,
+                concept_index,
+                role_index,
+                named,
+                roles,
+                inv_roles,
+                concept_cache,
+            ) else {
+                return SourceEncoding::Unsupported;
+            };
+            let link = super::model::substrate::NegLink { target, negated };
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(role)
+                .range_linker
+                .push(link);
+            if let Some(&inverse) = role_inverses.get(&role) {
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(inverse)
+                    .domain_linker
+                    .push(link);
+            }
+            return SourceEncoding::RoleLink;
+        }
+    }
+
+    let Some(left_built) = build_source_concept(
+        b,
+        left,
+        concept_index,
+        role_index,
+        named,
+        roles,
+        inv_roles,
+        concept_cache,
+    ) else {
+        return SourceEncoding::Unsupported;
+    };
+    let Some(right_built) = build_source_concept(
+        b,
+        right,
+        concept_index,
+        role_index,
+        named,
+        roles,
+        inv_roles,
+        concept_cache,
+    ) else {
+        return SourceEncoding::Unsupported;
+    };
+
+    if matches!(left, SourceConcept::Name(_))
+        && !left_built.1
+        && b.add_unfolding(left_built.0, right_built.0, right_built.1)
+    {
+        return SourceEncoding::Direct;
+    }
+
+    if absorb_concept_disjunction(
+        b,
+        &[left_built],
+        &[right_built],
+        role_inverses,
+        trigger_caches,
+    ) {
+        return SourceEncoding::AbsorbedGci;
+    }
+
+    // Exact fallback: TOP carries `¬left ∨ right`, so every node checks the
+    // original GCI even when no binary trigger can be constructed.
+    let disjunction = b.or_of(&[(left_built.0, !left_built.1), right_built]);
+    tbox.push(disjunction.0);
+    top_gcis.push(disjunction.0);
+    SourceEncoding::TopGci
+}
+
+fn role_tree_trigger(
+    b: &mut Builder,
+    node: usize,
+    children: &HashMap<usize, Vec<(usize, usize)>>,
+    local: &HashMap<usize, Vec<(ConceptId, bool)>>,
+    roles: &[RoleId],
+    inv_roles: &[RoleId],
+    role_inverses: &HashMap<RoleId, RoleId>,
+    caches: &mut TriggerCaches,
+    visiting: &mut BTreeSet<usize>,
+) -> Option<AbsorptionTrigger> {
+    if !visiting.insert(node) {
+        return None;
+    }
+    let mut triggers = Vec::new();
+    for &literal in local.get(&node).into_iter().flatten() {
+        triggers.push(full_absorption_trigger(b, literal, role_inverses, caches)?);
+    }
+    for &(role_index, child) in children.get(&node).into_iter().flatten() {
+        if let Some(child_trigger) = role_tree_trigger(
+            b,
+            child,
+            children,
+            local,
+            roles,
+            inv_roles,
+            role_inverses,
+            caches,
+            visiting,
+        ) {
+            let propagated = b.implication_trigger();
+            let propagation = b.implication_all(inv_roles[role_index], propagated);
+            if !b.add_unfolding(child_trigger.concept, propagation, false) {
+                return None;
+            }
+            triggers.push(AbsorptionTrigger {
+                concept: propagated,
+                complexity: child_trigger.complexity + 1,
+            });
+        } else if local.get(&child).map_or(true, Vec::is_empty)
+            && children.get(&child).map_or(true, Vec::is_empty)
+        {
+            triggers.push(role_domain_trigger(
+                b,
+                roles[role_index],
+                inv_roles[role_index],
+                caches,
+            ));
+        } else {
+            return None;
+        }
+    }
+    visiting.remove(&node);
+    combine_absorption_triggers(b, triggers, caches)
+}
+
+/// Clause-graph counterpart of Konclude's recursive existential trigger
+/// construction. A rooted role tree is compiled into nested inverse-role
+/// `CCIMPLALL` propagation, rather than emitted as an unsupported multi-role
+/// DL clause.
+fn absorb_role_tree_clause(
+    b: &mut Builder,
+    cl: &HtClause,
+    resolved: &[(ConceptId, bool)],
+    roles: &[RoleId],
+    inv_roles: &[RoleId],
+    role_inverses: &HashMap<RoleId, RoleId>,
+    caches: &mut TriggerCaches,
+) -> bool {
+    let mut children: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+    let mut incoming: HashMap<usize, usize> = HashMap::new();
+    let mut local: HashMap<usize, Vec<(ConceptId, bool)>> = HashMap::new();
+    for atom in &cl.body {
+        match atom {
+            HAtom::Role { r, s, t } if s != t => {
+                if incoming.insert(*t, *s).is_some() {
+                    return false;
+                }
+                children.entry(*s).or_default().push((*r, *t));
+            }
+            HAtom::Concept { neg, c, t } => {
+                local
+                    .entry(*t)
+                    .or_default()
+                    .push((resolved[*c].0, resolved[*c].1 ^ *neg));
+            }
+            _ => return false,
+        }
+    }
+    if incoming.contains_key(&0) {
+        return false;
+    }
+    let mut all_nodes: BTreeSet<usize> = BTreeSet::from([0]);
+    all_nodes.extend(incoming.keys().copied());
+    all_nodes.extend(children.keys().copied());
+    if all_nodes
+        .iter()
+        .any(|&node| node != 0 && !incoming.contains_key(&node))
+    {
+        return false;
+    }
+    let Some(trigger) = role_tree_trigger(
+        b,
+        0,
+        &children,
+        &local,
+        roles,
+        inv_roles,
+        role_inverses,
+        caches,
+        &mut BTreeSet::new(),
+    ) else {
+        return false;
+    };
+    let mut heads = Vec::new();
+    for atom in &cl.head {
+        match atom {
+            HAtom::Concept { neg, c, t } if *t == 0 => {
+                heads.push((resolved[*c].0, resolved[*c].1 ^ *neg));
+            }
+            HAtom::Exist { r, neg, c, t } if *t == 0 => {
+                heads.push((
+                    b.some(roles[*r], (resolved[*c].0, resolved[*c].1 ^ *neg)),
+                    false,
+                ));
+            }
+            _ => return false,
+        }
+    }
+    let implied = if heads.is_empty() {
+        (b.bottom(), false)
+    } else {
+        b.or_of(&heads)
+    };
+    b.add_unfolding(trigger.concept, implied.0, implied.1)
 }
 
 /// Build the bridged terminology for `tin` into `ctx`'s ontology arenas.
@@ -235,6 +1113,98 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             id
         })
         .collect();
+    let role_inverses: HashMap<RoleId, RoleId> = roles
+        .iter()
+        .copied()
+        .zip(inv_roles.iter().copied())
+        .chain(inv_roles.iter().copied().zip(roles.iter().copied()))
+        .collect();
+    let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+
+    // Resolve internal frontend markers to native signed concepts before
+    // building implications. Query concepts remain the atomic `named` vector;
+    // only clause literals use `resolved`. Provenance is emitted in dependency
+    // order (operand definers before their parent), so one forward pass is
+    // sufficient.
+    let mut resolved: Vec<(ConceptId, bool)> = named.iter().copied().map(|c| (c, false)).collect();
+    if trigger_absorb {
+        let concept_index: HashMap<&str, usize> = tin
+            .concepts
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.as_str(), i))
+            .collect();
+        let role_index: HashMap<&str, usize> = tin
+            .roles
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.as_str(), i))
+            .collect();
+        let card_markers: BTreeSet<usize> = tin.card_defs.iter().map(|d| d.marker).collect();
+        for d in &tin.definers {
+            let Some(&marker) = concept_index.get(d.marker.as_str()) else {
+                continue;
+            };
+            if card_markers.contains(&marker) {
+                continue;
+            }
+            let operands: Option<Vec<(ConceptId, bool)>> = d
+                .operands
+                .iter()
+                .map(|n| concept_index.get(n.as_str()).map(|&i| resolved[i]))
+                .collect();
+            let Some(operands) = operands else {
+                continue;
+            };
+            let role = d
+                .role
+                .as_deref()
+                .and_then(|r| role_index.get(r).copied())
+                .map(|r| roles[r]);
+            let value = match d.kind {
+                DefinerKind::Top => {
+                    let top = b.ctx.processing_data_box().ontology_top_concept();
+                    top.is_some().then_some((top, false))
+                }
+                DefinerKind::Bottom => Some((b.bottom(), false)),
+                DefinerKind::Not if operands.len() == 1 => Some((operands[0].0, !operands[0].1)),
+                DefinerKind::And if !operands.is_empty() => Some(b.and_of(&operands)),
+                DefinerKind::Or if !operands.is_empty() => Some(b.or_of(&operands)),
+                DefinerKind::Exists if operands.len() == 1 && role.is_some() => {
+                    Some((b.some(role.unwrap(), operands[0]), false))
+                }
+                DefinerKind::Forall if operands.len() == 1 && role.is_some() => {
+                    Some((b.all(role.unwrap(), operands[0]), false))
+                }
+                DefinerKind::SelfRestriction if role.is_some() => {
+                    Some((b.self_restriction(role.unwrap()), false))
+                }
+                DefinerKind::NotSelf if role.is_some() => {
+                    Some((b.self_restriction(role.unwrap()), true))
+                }
+                DefinerKind::AtLeast if operands.len() == 1 && role.is_some() => Some((
+                    b.atleast_q(role.unwrap(), d.n.unwrap_or(0), operands[0]),
+                    false,
+                )),
+                DefinerKind::AtMost if operands.len() == 1 && role.is_some() => Some((
+                    b.atmost_q(role.unwrap(), d.n.unwrap_or(0), operands[0]),
+                    false,
+                )),
+                DefinerKind::Not
+                | DefinerKind::And
+                | DefinerKind::Or
+                | DefinerKind::Exists
+                | DefinerKind::Forall
+                | DefinerKind::SelfRestriction
+                | DefinerKind::NotSelf
+                | DefinerKind::AtLeast
+                | DefinerKind::AtMost => None,
+            };
+            if let Some(value) = value {
+                resolved[marker] = value;
+            }
+        }
+    }
 
     let mut tbox: Vec<ConceptId> = Vec::new();
     // Absorption bookkeeping (attached after the encode loop): an implication
@@ -242,6 +1212,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // rest go to TOP.
     let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
     let mut top_gcis: Vec<ConceptId> = Vec::new();
+    let mut trigger_caches = TriggerCaches::default();
     let mut singleton_concepts: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
     // Diagnostic (KM_BRIDGE_DUMP_UNSUP=N): record the shape of the first N
@@ -338,8 +1309,18 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         if cl.body.len() != 1 || cl.head.len() != 1 {
             return None;
         }
-        if let (HAtom::Role { r: sr, s: ss, t: st }, HAtom::Role { r: hr, s: hs, t: ht }) =
-            (&cl.body[0], &cl.head[0])
+        if let (
+            HAtom::Role {
+                r: sr,
+                s: ss,
+                t: st,
+            },
+            HAtom::Role {
+                r: hr,
+                s: hs,
+                t: ht,
+            },
+        ) = (&cl.body[0], &cl.head[0])
         {
             if ss == hs && st == ht && ss != st && sr != hr {
                 return Some((*sr, *hr));
@@ -352,8 +1333,18 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         if cl.body.len() != 1 || cl.head.len() != 1 {
             return None;
         }
-        if let (HAtom::Role { r: sr, s: ss, t: st }, HAtom::Role { r: hr, s: hs, t: ht }) =
-            (&cl.body[0], &cl.head[0])
+        if let (
+            HAtom::Role {
+                r: sr,
+                s: ss,
+                t: st,
+            },
+            HAtom::Role {
+                r: hr,
+                s: hs,
+                t: ht,
+            },
+        ) = (&cl.body[0], &cl.head[0])
         {
             if ss == ht && st == hs && ss != st {
                 return Some((*sr, *hr));
@@ -379,18 +1370,24 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 stack.extend(sub_super[s].iter().copied());
             }
         }
-        let sub_obj = if sub % 2 == 0 { roles[sub / 2] } else { inv_roles[sub / 2] };
+        let sub_obj = if sub % 2 == 0 {
+            roles[sub / 2]
+        } else {
+            inv_roles[sub / 2]
+        };
         for s in seen {
-            let sup_obj = if s % 2 == 0 { roles[s / 2] } else { inv_roles[s / 2] };
+            let sup_obj = if s % 2 == 0 {
+                roles[s / 2]
+            } else {
+                inv_roles[s / 2]
+            };
             b.ctx
                 .ontology_arenas_mut()
                 .role_mut(sub_obj)
-                .add_indirect_super_role_linker(
-                    super::model::substrate::NegLink {
-                        target: sup_obj,
-                        negated: false,
-                    },
-                );
+                .add_indirect_super_role_linker(super::model::substrate::NegLink {
+                    target: sup_obj,
+                    negated: false,
+                });
         }
     }
 
@@ -406,8 +1403,16 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         }
         let (b0, b1) = (&cl.body[0], &cl.body[1]);
         if let (
-            HAtom::Role { r: r0, s: s0, t: t0 },
-            HAtom::Role { r: r1, s: s1, t: t1 },
+            HAtom::Role {
+                r: r0,
+                s: s0,
+                t: t0,
+            },
+            HAtom::Role {
+                r: r1,
+                s: s1,
+                t: t1,
+            },
             HAtom::Eq { s: es, t: et },
         ) = (b0, b1, &cl.head[0])
         {
@@ -429,6 +1434,194 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         }
     }
 
+    // Konclude builds the terminology before clausification: named-left
+    // inclusions become CCSUB operands and only residual structural-left GCIs
+    // reach CTriggeredImplicationBinaryAbsorberPreProcess. Use the normalized
+    // source side channel when present, then ignore the frontend's derived
+    // concept clauses below (role hierarchy/functionality clauses remain the
+    // authoritative RBox representation).
+    let source_mode = trigger_absorb
+        && !tin.source_axioms.is_empty()
+        && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    if source_mode {
+        let concept_index: HashMap<&str, usize> = tin
+            .concepts
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (name.as_str(), i))
+            .collect();
+        let role_index: HashMap<&str, usize> = tin
+            .roles
+            .iter()
+            .enumerate()
+            .map(|(i, name)| (name.as_str(), i))
+            .collect();
+        let mut concept_cache = HashMap::new();
+        let mut direct = 0usize;
+        let mut role_links = 0usize;
+        let mut absorbed = 0usize;
+        let mut residual = 0usize;
+        let mut source_unsupported = 0usize;
+        let mut equivalent_definitions = 0usize;
+        let mut equivalent_definition_names = Vec::new();
+        let mut absorbed_equivalent_definitions = 0usize;
+        let mut seen_inclusions = std::collections::HashSet::new();
+        let mut forced_subclass_names = std::collections::HashSet::new();
+        let mut equivalence_name_counts: HashMap<&str, usize> = HashMap::new();
+        for axiom in &tin.source_axioms {
+            match axiom.kind {
+                crate::json_io::SourceAxiomKind::SubClass => {
+                    if let SourceConcept::Name(name) = &axiom.left {
+                        forced_subclass_names.insert(name.as_str());
+                    }
+                }
+                crate::json_io::SourceAxiomKind::Disjoint => {
+                    for side in [&axiom.left, &axiom.right] {
+                        if let SourceConcept::Name(name) = side {
+                            forced_subclass_names.insert(name.as_str());
+                        }
+                    }
+                }
+                crate::json_io::SourceAxiomKind::Equivalent => {
+                    for side in [&axiom.left, &axiom.right] {
+                        if let SourceConcept::Name(name) = side {
+                            *equivalence_name_counts.entry(name.as_str()).or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+        macro_rules! encode {
+            ($left:expr, $right:expr $(,)?) => {{
+                let left = $left;
+                let right = $right;
+                if seen_inclusions.insert((left.clone(), right.clone())) {
+                    match encode_source_subclass(
+                        &mut b,
+                        left,
+                        right,
+                        &concept_index,
+                        &role_index,
+                        &named,
+                        &roles,
+                        &inv_roles,
+                        &role_inverses,
+                        &mut concept_cache,
+                        &mut trigger_caches,
+                        &mut tbox,
+                        &mut top_gcis,
+                    ) {
+                        SourceEncoding::Direct => direct += 1,
+                        SourceEncoding::RoleLink => role_links += 1,
+                        SourceEncoding::AbsorbedGci => absorbed += 1,
+                        SourceEncoding::TopGci => residual += 1,
+                        SourceEncoding::Unsupported => source_unsupported += 1,
+                    }
+                }
+            }};
+        }
+        for axiom in &tin.source_axioms {
+            match axiom.kind {
+                crate::json_io::SourceAxiomKind::SubClass => {
+                    encode!(&axiom.left, &axiom.right);
+                }
+                crate::json_io::SourceAxiomKind::Equivalent => {
+                    // `buildPermutableConceptEquivalentClass` chooses a still
+                    // undefined named side for a direct CCEQ definition.
+                    let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                        .into_iter()
+                        .find_map(|(named_side, definition)| {
+                            let SourceConcept::Name(name) = named_side else {
+                                return None;
+                            };
+                            if forced_subclass_names.contains(name.as_str())
+                                || equivalence_name_counts.get(name.as_str()) != Some(&1)
+                            {
+                                return None;
+                            }
+                            let &index = concept_index.get(name.as_str())?;
+                            (b.ctx
+                                .ontology_arenas()
+                                .concept(named[index])
+                                .get_operator_code()
+                                == op::CCATOM)
+                                .then_some((named[index], definition, name.as_str()))
+                        });
+                    let defined = candidate.is_some_and(|(host, definition, name)| {
+                        let Some(built) = build_source_concept(
+                            &mut b,
+                            definition,
+                            &concept_index,
+                            &role_index,
+                            &named,
+                            &roles,
+                            &inv_roles,
+                            &mut concept_cache,
+                        ) else {
+                            return false;
+                        };
+                        equivalent_definition_names.push(name.to_string());
+                        // Port of the absorber's equivalence pre-pass. A fully
+                        // triggerable definition is changed CCEQ -> CCSUB and
+                        // gets the reverse direction as a binary implication.
+                        let triggerable = full_absorption_trigger(
+                            &mut b,
+                            built,
+                            &role_inverses,
+                            &mut trigger_caches,
+                        )
+                        .is_some();
+                        if triggerable {
+                            let forward = b.add_unfolding(host, built.0, built.1);
+                            let reverse = absorb_concept_disjunction(
+                                &mut b,
+                                &[built],
+                                &[(host, false)],
+                                &role_inverses,
+                                &mut trigger_caches,
+                            );
+                            if forward && reverse {
+                                absorbed_equivalent_definitions += 1;
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            b.add_equivalent_definition(host, built.0, built.1)
+                        }
+                    });
+                    if defined {
+                        equivalent_definitions += 1;
+                    } else {
+                        encode!(&axiom.left, &axiom.right);
+                        encode!(&axiom.right, &axiom.left);
+                    }
+                }
+                crate::json_io::SourceAxiomKind::Disjoint => {
+                    encode!(
+                        &axiom.left,
+                        &SourceConcept::Not(Box::new(axiom.right.clone())),
+                    );
+                }
+            }
+        }
+        unsupported += source_unsupported;
+        if std::env::var_os("KM_HT_STATS").is_some() {
+            eprintln!(
+                "bridge [source-tbox] axioms={} eq={}/{} {:?} direct={} role-links={} absorbed-gci={} top-gci={} unsupported={}",
+                tin.source_axioms.len(),
+                absorbed_equivalent_definitions,
+                equivalent_definitions,
+                equivalent_definition_names,
+                direct,
+                role_links,
+                absorbed,
+                residual,
+                source_unsupported
+            );
+        }
+    }
+
     'clause: for cl in &tin.clauses {
         // hierarchy clauses (plain + inverse) were consumed by pass 1
         if is_hierarchy(cl).is_some() || is_inv_hierarchy(cl).is_some() {
@@ -436,6 +1629,15 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         }
         // functional clauses were consumed by pass 2
         if is_functional(cl).is_some() {
+            continue;
+        }
+        if source_mode
+            && cl
+                .body
+                .iter()
+                .chain(&cl.head)
+                .any(|atom| matches!(atom, HAtom::Concept { .. } | HAtom::Exist { .. }))
+        {
             continue;
         }
         // ---- classify the clause's variable/role shape -------------------
@@ -565,16 +1767,43 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 if std::env::var_os("KM_BRIDGE_DUMP_RECOG").is_some() {
                     eprintln!(
                         "RECOG r={_r0} k={k} qual={qual:?} guards={guards:?} heads={heads:?} ({})",
-                        if guards.is_empty() { "TOP-ATTACHED" } else { "absorbed" }
+                        if guards.is_empty() {
+                            "TOP-ATTACHED"
+                        } else {
+                            "absorbed"
+                        }
                     );
                 }
                 let am = match qual {
-                    Some(c) => b.atmost_q(role_obj, (k - 1) as Cint64, (named[c], false)),
+                    Some(c) => b.atmost_q(role_obj, (k - 1) as Cint64, resolved[c]),
                     None => b.atmost(role_obj, (k - 1) as Cint64),
                 };
-                let mut head_ops: Vec<(ConceptId, bool)> =
-                    heads.iter().map(|&c| (named[c], false)).collect();
+                let mut head_ops: Vec<(ConceptId, bool)> = heads
+                    .iter()
+                    .map(|&c| {
+                        if trigger_absorb {
+                            resolved[c]
+                        } else {
+                            (named[c], false)
+                        }
+                    })
+                    .collect();
                 head_ops.push((am, false));
+                if trigger_absorb {
+                    let body_ops: Vec<(ConceptId, bool)> = guards
+                        .iter()
+                        .map(|&(c, negated)| (resolved[c].0, resolved[c].1 ^ negated))
+                        .collect();
+                    if absorb_concept_disjunction(
+                        &mut b,
+                        &body_ops,
+                        &head_ops,
+                        &role_inverses,
+                        &mut trigger_caches,
+                    ) {
+                        continue 'clause;
+                    }
+                }
                 let head = b.or_of(&head_ops);
                 let triggers: Vec<(ConceptId, bool)> =
                     guards.iter().map(|&(c, n)| (named[c], n)).collect();
@@ -608,8 +1837,16 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             && std::env::var_os("KM_HT_NO_SINGLETON").is_none()
         {
             if let (
-                HAtom::Concept { neg: false, c: c0, t: t0 },
-                HAtom::Concept { neg: false, c: c1, t: t1 },
+                HAtom::Concept {
+                    neg: false,
+                    c: c0,
+                    t: t0,
+                },
+                HAtom::Concept {
+                    neg: false,
+                    c: c1,
+                    t: t1,
+                },
                 HAtom::Eq { s: es, t: et },
             ) = (&cl.body[0], &cl.body[1], &cl.head[0])
             {
@@ -626,7 +1863,11 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 }
             }
         }
-        if cl.head.iter().any(|a| matches!(a, HAtom::Role { .. } | HAtom::Eq { .. })) {
+        if cl
+            .head
+            .iter()
+            .any(|a| matches!(a, HAtom::Role { .. } | HAtom::Eq { .. }))
+        {
             unsupported += 1;
             dump(cl, "head-role-or-eq");
             continue 'clause;
@@ -646,14 +1887,82 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         let lit = |b: &mut Builder, a: &HAtom| -> (ConceptId, bool) {
             match a {
                 HAtom::Concept { neg, c, .. } => (named[*c], *neg),
-                HAtom::Exist { r, neg, c, .. } => (b.some(roles[*r], (named[*c], *neg)), false),
+                HAtom::Exist { r, neg, c, .. } => {
+                    let filler = (named[*c], *neg);
+                    (b.some(roles[*r], filler), false)
+                }
                 _ => unreachable!("filtered above"),
             }
         };
 
         if body_roles.is_empty() && vars.iter().all(|&v| v == 0) {
             // ---- pure concept clause over the root variable --------------
-            let triggers: Vec<(ConceptId, bool)> = cl
+            if trigger_absorb {
+                let body_ops: Vec<(ConceptId, bool)> = cl
+                    .body
+                    .iter()
+                    .map(|a| match a {
+                        HAtom::Concept { neg, c, .. } => (resolved[*c].0, resolved[*c].1 ^ *neg),
+                        _ => unreachable!("role/eq bodies filtered"),
+                    })
+                    .collect();
+                let mut head_ops = Vec::new();
+                for a in &cl.head {
+                    match a {
+                        HAtom::Concept { neg, c, .. } => {
+                            head_ops.push((resolved[*c].0, resolved[*c].1 ^ *neg));
+                        }
+                        HAtom::Exist { r, neg, c, .. } => {
+                            let filler = (resolved[*c].0, resolved[*c].1 ^ *neg);
+                            head_ops.push((b.some(roles[*r], filler), false));
+                        }
+                        _ => unreachable!("role/eq heads filtered"),
+                    }
+                }
+
+                // Konclude `asorbForallsToRanges`: TOP -> ALL R.C is stored on
+                // the role and removed from TOP after GCI absorption.
+                if body_ops.is_empty() && head_ops.len() == 1 && !head_ops[0].1 {
+                    let (op_code, role, operands) = {
+                        let c = b.ctx.ontology_arenas().concept(head_ops[0].0);
+                        (
+                            c.get_operator_code(),
+                            c.get_role(),
+                            c.get_operand_list().to_vec(),
+                        )
+                    };
+                    if op_code == op::CCTOP {
+                        continue 'clause;
+                    }
+                    if op_code == op::CCALL && operands.len() == 1 {
+                        let link = operands[0];
+                        b.ctx
+                            .ontology_arenas_mut()
+                            .role_mut(role)
+                            .range_linker
+                            .push(link);
+                        if let Some(&inverse) = role_inverses.get(&role) {
+                            b.ctx
+                                .ontology_arenas_mut()
+                                .role_mut(inverse)
+                                .domain_linker
+                                .push(link);
+                        }
+                        continue 'clause;
+                    }
+                }
+
+                if absorb_concept_disjunction(
+                    &mut b,
+                    &body_ops,
+                    &head_ops,
+                    &role_inverses,
+                    &mut trigger_caches,
+                ) {
+                    continue 'clause;
+                }
+            }
+            let raw_triggers: Vec<(ConceptId, bool)> = cl
                 .body
                 .iter()
                 .map(|a| match a {
@@ -661,8 +1970,36 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     _ => unreachable!("role/eq bodies filtered"),
                 })
                 .collect();
-            let heads: Vec<(ConceptId, bool)> =
+            let raw_heads: Vec<(ConceptId, bool)> =
                 cl.head.iter().map(|a| lit(&mut b, a)).collect();
+            let mut triggers = Vec::new();
+            let mut heads = Vec::new();
+            for (c, neg) in raw_triggers {
+                if neg {
+                    heads.push((c, false));
+                } else {
+                    triggers.push((c, false));
+                }
+            }
+            for (c, neg) in raw_heads {
+                if neg {
+                    triggers.push((c, false));
+                } else {
+                    heads.push((c, false));
+                }
+            }
+            triggers.sort_by_key(|(c, n)| (c.raw, *n));
+            triggers.dedup();
+            heads.sort_by_key(|(c, n)| (c.raw, *n));
+            heads.dedup();
+            let opposite =
+                |ops: &[(ConceptId, bool)]| ops.iter().any(|&(c, n)| ops.contains(&(c, !n)));
+            if opposite(&triggers)
+                || opposite(&heads)
+                || triggers.iter().any(|lit| heads.contains(lit))
+            {
+                continue 'clause;
+            }
             let head = if heads.is_empty() {
                 (b.bottom(), false)
             } else {
@@ -718,6 +2055,43 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     head_y.push(lit(&mut b, a));
                 }
             }
+            let mut norm_triggers = Vec::new();
+            let mut norm_head_x = Vec::new();
+            for (c, neg) in triggers.drain(..) {
+                if neg {
+                    norm_head_x.push((c, false));
+                } else {
+                    norm_triggers.push((c, false));
+                }
+            }
+            for (c, neg) in head_x.drain(..) {
+                if neg {
+                    norm_triggers.push((c, false));
+                } else {
+                    norm_head_x.push((c, false));
+                }
+            }
+            triggers = norm_triggers;
+            head_x = norm_head_x;
+
+            let mut norm_succ_body = Vec::new();
+            let mut norm_head_y = Vec::new();
+            for (c, neg) in succ_body.drain(..) {
+                if neg {
+                    norm_head_y.push((c, false));
+                } else {
+                    norm_succ_body.push((c, false));
+                }
+            }
+            for (c, neg) in head_y.drain(..) {
+                if neg {
+                    norm_succ_body.push((c, false));
+                } else {
+                    norm_head_y.push((c, false));
+                }
+            }
+            succ_body = norm_succ_body;
+            head_y = norm_head_y;
             if !triggers.is_empty() {
                 // ---- x-triggered: C ⊑ … ∨ ∀R.(¬D ∨ …) ---------------------
                 // ∀R.( ¬D1 ∨ … ∨ F1 ∨ … ) — the y-side residue
@@ -824,24 +2198,57 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 // ht_apply_role_domain_range) — node-count-independent, no
                 // covering disjunction needed.
                 let (c, neg) = b.or_of(&head_x);
-                let nl = super::model::substrate::NegLink { target: c, negated: neg };
-                b.ctx.ontology_arenas_mut().role_mut(roles[r]).domain_linker.push(nl);
+                let nl = super::model::substrate::NegLink {
+                    target: c,
+                    negated: neg,
+                };
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(roles[r])
+                    .domain_linker
+                    .push(nl);
                 // domain(R) = range(R⁻): keep the inverse object consistent so
                 // whichever edge direction is installed applies the concept.
-                b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).range_linker.push(nl);
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(inv_roles[r])
+                    .range_linker
+                    .push(nl);
             } else if head_x.is_empty() && !head_y.is_empty() {
                 // ---- range axiom `R(x,y) → C(y) [∨ D(y) …]` -----------------
                 let (c, neg) = b.or_of(&head_y);
-                let nl = super::model::substrate::NegLink { target: c, negated: neg };
-                b.ctx.ontology_arenas_mut().role_mut(roles[r]).range_linker.push(nl);
-                b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).domain_linker.push(nl);
+                let nl = super::model::substrate::NegLink {
+                    target: c,
+                    negated: neg,
+                };
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(roles[r])
+                    .range_linker
+                    .push(nl);
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(inv_roles[r])
+                    .domain_linker
+                    .push(nl);
             } else if head_x.is_empty() && head_y.is_empty() {
                 // ---- `R(x,y) → ⊥` (empty role): domain ⊥ — any R-edge
                 // immediately clashes its source, exactly the axiom's force.
                 let bot = b.bottom();
-                let nl = super::model::substrate::NegLink { target: bot, negated: false };
-                b.ctx.ontology_arenas_mut().role_mut(roles[r]).domain_linker.push(nl);
-                b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).range_linker.push(nl);
+                let nl = super::model::substrate::NegLink {
+                    target: bot,
+                    negated: false,
+                };
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(roles[r])
+                    .domain_linker
+                    .push(nl);
+                b.ctx
+                    .ontology_arenas_mut()
+                    .role_mut(inv_roles[r])
+                    .range_linker
+                    .push(nl);
             } else {
                 // mixed x/y disjunctive head over an edge with no concept
                 // trigger (`R(x,y) → C(x) ∨ D(y)`) — out of the v1 fragment
@@ -853,6 +2260,20 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             continue;
         }
 
+        if trigger_absorb
+            && body_roles.len() > 1
+            && absorb_role_tree_clause(
+                &mut b,
+                cl,
+                &resolved,
+                &roles,
+                &inv_roles,
+                &role_inverses,
+                &mut trigger_caches,
+            )
+        {
+            continue 'clause;
+        }
         unsupported += 1;
         dump(cl, "multi-role-body");
     }
@@ -887,8 +2308,8 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // the guard-less `≤2 r.E` armed on the root at branch depth 0 refuted
     // the SAT covering branch). The restriction reaches exactly the
     // marker-labelled nodes through the absorption unfold below.
-    for cd in &tin.card_defs {
-        let filler = (named[cd.filler], false);
+    for cd in tin.card_defs.iter().filter(|_| !source_mode) {
+        let filler = resolved[cd.filler];
         let c = if cd.min {
             b.atleast_q(roles[cd.role], cd.n as Cint64, filler)
         } else {
@@ -913,8 +2334,17 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // trivially satisfied at unfold time and the remaining triggers ride the
     // condensed reapply queue (install-to-trigger).
     for &(host, imp) in &absorbed_pairs {
+        let op_code = ctx.ontology_arenas().concept(host).get_operator_code();
+        if !matches!(op_code, op::CCATOM | op::CCSUB | op::CCIMPLTRIG) {
+            // Never mutate a restriction's operand list into an unfolding list.
+            // This guard is the bridge equivalent of Konclude's
+            // `addUnfoldingConceptForConcept` operator check.
+            tbox.push(imp);
+            top_gcis.push(imp);
+            continue;
+        }
         let c = ctx.ontology_arenas_mut().concept_mut(host);
-        if c.get_operator_code() == op::CCATOM {
+        if op_code == op::CCATOM {
             c.set_operator_code(op::CCSUB);
         }
         c.add_operand_linker(imp, false);
@@ -953,7 +2383,9 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         let arenas = ctx.ontology_arenas_mut();
         let n = arenas.concept_count();
         for i in 0..n {
-            arenas.concept_mut(ConceptId::new(i as Cint64)).set_terminology(1);
+            arenas
+                .concept_mut(ConceptId::new(i as Cint64))
+                .set_terminology(1);
         }
     }
 
@@ -966,6 +2398,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         absorbed: absorbed_pairs.len(),
         top_attached: top_gcis.len(),
         singleton_concepts,
+        source_tbox: source_mode,
     }
 }
 
@@ -1001,8 +2434,8 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
             algo.conf_atomic_semantic_branching = true;
         }
     }
-    // KM_HT_COW (opt-in, composable with KM_HT_DDB): complete-state restore
-    // per alternative via arena journals. The per-node localization landed
+    // Complete-state restore per alternative via arena journals. The per-node
+    // localization landed
     // 2026-07-09: the heavy per-node satellites (label sets, processing
     // queues) are Arc-COW in the process context — a journal save is an O(1)
     // Arc clone and the deep copy happens only for objects the alternative
@@ -1013,10 +2446,15 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
     // exceed 600s where plain DEFERS in 10s — with complete restores the
     // search must genuinely explore the alternatives that plain-mode
     // leftovers (unsoundly, hence the poison discipline) prune, so the
-    // residual gap is SEARCH VOLUME (clause learning / better ordering), not
-    // restore cost. Localizing the remaining map-bearing satellites
-    // (role-successor / distinct hashes) is the next constant-factor lever.
-    if std::env::var_os("KM_HT_COW").is_some() {
+    // residual gap was SEARCH VOLUME in the old post-clausal terminology. The
+    // source-level absorber removes that generated search space; complete COW
+    // is therefore the default under KM_TRIGGER_ABSORB and is required for
+    // sound sibling isolation (PathOfLength4 in ore_ont_12653 is the oracle).
+    // KM_HT_COW also enables it independently; KM_NO_TRIGGER_COW is diagnostic.
+    if std::env::var_os("KM_HT_COW").is_some()
+        || (std::env::var_os("KM_TRIGGER_ABSORB").is_some()
+            && std::env::var_os("KM_NO_TRIGGER_COW").is_none())
+    {
         algo.conf_inprocess_cow = true;
     }
     // KM_HT_UNSATCACHE (opt-in, composable with DDB/COW): Konclude's
@@ -1196,7 +2634,10 @@ pub fn bridged_unsat(
             if std::env::var_os("KM_BRIDGE_TRACE2").is_some() {
                 eprintln!(
                     "UNSAT-EXIT pass={pass} signal={:?}",
-                    matches!(ctx.pending_signal(), super::completion::clash::CalcSignal::Clash(_))
+                    matches!(
+                        ctx.pending_signal(),
+                        super::completion::clash::CalcSignal::Clash(_)
+                    )
                 );
             }
             return match ctx.pending_signal() {
@@ -1247,9 +2688,7 @@ pub fn bridged_unsat(
                                         },
                                     )
                                 };
-                                eprintln!(
-                                    "TRACE CLASH concept tag={tag} neg={neg} node={node_id}"
-                                );
+                                eprintln!("TRACE CLASH concept tag={tag} neg={neg} node={node_id}");
                                 // full label of the clash node: which class was
                                 // wrongly pushed is usually visible here (its
                                 // disjointness supplies the negation).
@@ -1332,7 +2771,9 @@ pub fn bridged_unsat(
     if trace {
         // Dump the final root label (sorted tags) so a SAT run can be diffed
         // against a clash run of the same probe.
-        let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
+        let ls = ctx
+            .process_context_mut()
+            .node_reapply_concept_label_set(root);
         let mut tags: Vec<(Cint64, bool)> = ctx
             .process_context()
             .label_set(ls)
@@ -1370,9 +2811,9 @@ pub fn bridged_unsat(
             }
             let nid_idx = nid.index();
             let node = ctx.process_context().node(nid);
-            if !node.has_partial_processing_restriction_flags(
-                IndividualProcessNode::PRF_DIRECTBLOCKED,
-            ) {
+            if !node
+                .has_partial_processing_restriction_flags(IndividualProcessNode::PRF_DIRECTBLOCKED)
+            {
                 continue;
             }
             blocked_count += 1;
@@ -1390,9 +2831,16 @@ pub fn bridged_unsat(
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(blocker_id);
-                if cur.is_some() { cur } else { blocker_raw }
+                if cur.is_some() {
+                    cur
+                } else {
+                    blocker_raw
+                }
             };
-            let blocker_ls = ctx.process_context().node(blocker).use_reapply_con_label_set;
+            let blocker_ls = ctx
+                .process_context()
+                .node(blocker)
+                .use_reapply_con_label_set;
             if blocker_ls.is_none() {
                 eprintln!("TRACE BLOCKVIOLATION node={nid_idx} blocker-label=NONE");
                 continue;
@@ -1641,7 +3089,9 @@ pub fn bridged_classify_subject(
         // Plain-mode completeness repair: reprocess every label concept each
         // pass, so the insertion-stable break below certifies genuine closure
         // under ALL rules (see `requeue_all_node_labels`).
-        algo.requeue_all_node_labels(ctx);
+        if !bridged.source_tbox {
+            algo.requeue_all_node_labels(ctx);
+        }
         let iq = ctx.get_individual_immediately_processing_queue(true);
         ctx.process_context_mut()
             .indi_unsorted_proc_queue_mut(iq)
@@ -1654,6 +3104,9 @@ pub fn bridged_classify_subject(
                 }
                 _ => None, // STOP: no verdict
             };
+        }
+        if bridged.source_tbox {
+            break;
         }
         let inserts = algo.stat_con_des_insertion_count;
         if inserts == prev_inserts {
@@ -1678,7 +3131,9 @@ pub fn bridged_classify_subject(
         && algo.or_branch_open_count == branch_opens_before;
 
     // Read off positive named tags from the root label.
-    let ls = ctx.process_context_mut().node_reapply_concept_label_set(root);
+    let ls = ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(root);
     let mut subsumers: Vec<usize> = Vec::new();
     let entries: Vec<(Cint64, super::process::ConDescId)> = ctx
         .process_context()
@@ -1909,23 +3364,23 @@ fn configure_production_saturation(
     algo.conf_directly_critical_to_insufficient = false; // cfg 444 default false
     algo.conf_add_critical_concepts_to_queues = true; // cfg 440 default true
     algo.conf_check_critical_concepts = true; // cfg 440 default true
-    // Successor-extension machinery (Konclude: SaturationSuccessorExtension,
-    // cfg 448 default true; cpp 232-233): KM_HT_SAT_EXT=1 opt-in, DEFAULT OFF.
-    // The historical wrong clashes (541: 11-13 satisfiable classes answered
-    // UNSAT-certain) were ROOT-CAUSED to the implication watch-side trigger
-    // check ignoring the wanted presence polarity (see
-    // reapply_con_sat_label_set_insert_concept_reapplication_return_triggered)
-    // and are FIXED — extensions ON is now sound (541: 3 runs 0 wrong, 6-9 of
-    // 59 family subjects answered SAT-certain). Still OFF by default because
-    // the extension fixpoint is expensive (541 saturation 0.4s -> ~40s) with
-    // run-to-run coverage variance (HashMap-ordered succ maps vs Konclude's
-    // sorted CPROCESSMAP) and the W6-DEFER extension bodies remain partial.
+                                              // Successor-extension machinery (Konclude: SaturationSuccessorExtension,
+                                              // cfg 448 default true; cpp 232-233): KM_HT_SAT_EXT=1 opt-in, DEFAULT OFF.
+                                              // The historical wrong clashes (541: 11-13 satisfiable classes answered
+                                              // UNSAT-certain) were ROOT-CAUSED to the implication watch-side trigger
+                                              // check ignoring the wanted presence polarity (see
+                                              // reapply_con_sat_label_set_insert_concept_reapplication_return_triggered)
+                                              // and are FIXED — extensions ON is now sound (541: 3 runs 0 wrong, 6-9 of
+                                              // 59 family subjects answered SAT-certain). Still OFF by default because
+                                              // the extension fixpoint is expensive (541 saturation 0.4s -> ~40s) with
+                                              // run-to-run coverage variance (HashMap-ordered succ maps vs Konclude's
+                                              // sorted CPROCESSMAP) and the W6-DEFER extension bodies remain partial.
     let sat_ext = std::env::var_os("KM_HT_SAT_EXT").is_some();
     algo.conf_concepts_extension_processing = sat_ext;
     algo.conf_all_concepts_extension_processing = sat_ext;
     algo.conf_functional_concepts_extension_processing = sat_ext;
     algo.conf_nominal_processing = true; // cfg 497 (inert: nominal-free fragment)
-    // ctor defaults (cpp 152–168):
+                                         // ctor defaults (cpp 152–168):
     algo.conf_copy_node_from_top_individual_for_many_concepts = true;
     algo.conf_detailed_merging_test_for_atmost_critical_testing = true;
     algo.conf_simple_merging_test_for_atmost_critical_testing = true;
@@ -2030,7 +3485,8 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
 /// domain/range concept lists (domains/ranges arrive as clauses).
 fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
     use super::model::concept_process::{
-        ConceptProcessData, ConceptSaturationReferenceLinkingData, SaturationConceptReferenceLinking,
+        ConceptProcessData, ConceptSaturationReferenceLinkingData,
+        SaturationConceptReferenceLinking,
     };
     use super::model::op::{CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCSOME};
     use super::process::sat_node::IndividualSaturationProcessNode;
@@ -2184,6 +3640,10 @@ pub struct SaturationOutcome {
     /// self excluded) — present exactly when the node is sufficient
     /// (SAT-certain), per `CPrecomputedSaturationSubsumerExtractor`.
     pub certain_subsumers: Vec<Option<Vec<usize>>>,
+    /// Sound positive named labels for every processed saturation node,
+    /// including insufficient nodes. Insufficiency means incomplete, not
+    /// incorrect; Konclude seeds KPSet known subsumers from these labels.
+    pub known_subsumers: Vec<Vec<usize>>,
 }
 
 /// `CPrecomputedSaturationSubsumerExtractor::getConceptFlags` + `extractSubsumers`
@@ -2206,9 +3666,12 @@ fn extract_saturation_outcome(
         .collect();
     let mut sat_verdict: Vec<Option<bool>> = vec![None; n_named];
     let mut certain_subsumers: Vec<Option<Vec<usize>>> = vec![None; n_named];
+    let mut known_subsumers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
     for (i, &named) in bridged.named.iter().enumerate() {
-        let base_node = super::saturation::algorithm::SaturationTaskHandleAlgorithm::
-            s07_concept_reference_node(named, false, ctx);
+        let base_node =
+            super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
+                named, false, ctx,
+            );
         if base_node.is_none() {
             continue;
         }
@@ -2249,17 +3712,8 @@ fn extract_saturation_outcome(
         let clashed = b_clash || r_clash;
         let insufficient = b_insuf || r_insuf;
         let unprocessed = b_unproc || r_unproc;
-        if clashed {
-            sat_verdict[i] = Some(true);
-            continue;
-        }
-        if insufficient || unprocessed || !(b_done && r_done) || b_eqprob || r_eqprob {
-            continue; // unknown — probe needed
-        }
-        sat_verdict[i] = Some(false);
-        // extractSubsumers (cpp 40–130): non-negated class-named label entries of
-        // the RESOLVED node (substitute-chain concepts are class-named only under
-        // the not-yet-ported substitute assignment; the chain is walked above).
+        // extractSubsumers (cpp 40–130): non-negated class-named label entries
+        // are sound known subsumers even when the node is insufficient.
         let mut subs: Vec<usize> = Vec::new();
         let label = ctx
             .process_context()
@@ -2290,11 +3744,21 @@ fn extract_saturation_outcome(
         }
         subs.sort_unstable();
         subs.dedup();
+        known_subsumers[i] = subs.clone();
+        if clashed {
+            sat_verdict[i] = Some(true);
+            continue;
+        }
+        if insufficient || unprocessed || !(b_done && r_done) || b_eqprob || r_eqprob {
+            continue; // unknown — probe needed
+        }
+        sat_verdict[i] = Some(false);
         certain_subsumers[i] = Some(subs);
     }
     SaturationOutcome {
         sat_verdict,
         certain_subsumers,
+        known_subsumers,
     }
 }
 
@@ -2389,6 +3853,68 @@ fn debug_dump_saturation_nodes(ctx: &CalculationAlgorithmContextBase) {
     }
 }
 
+/// Deterministic named hierarchy already present in Konclude's CCSUB/CCEQ
+/// terminology before classification. A named subclass implies every named
+/// top-level conjunct of its definition; closing those edges transitively is
+/// a sound known-subsumer seed for KPSet and requires no tableau probe.
+fn source_named_subsumer_closure(tin: &TInput) -> std::collections::HashSet<(usize, usize)> {
+    let index: HashMap<&str, usize> = tin
+        .concepts
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
+    fn collect<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+        match concept {
+            SourceConcept::Name(name) => out.push(name.as_str()),
+            SourceConcept::And(operands) => {
+                for operand in operands {
+                    collect(operand, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut direct: Vec<Vec<usize>> = vec![Vec::new(); tin.concepts.len()];
+    let mut add = |left: &SourceConcept, right: &SourceConcept| {
+        let SourceConcept::Name(left) = left else {
+            return;
+        };
+        let Some(&sub) = index.get(left.as_str()) else {
+            return;
+        };
+        let mut names = Vec::new();
+        collect(right, &mut names);
+        for name in names {
+            if let Some(&sup) = index.get(name) {
+                if sup != sub {
+                    direct[sub].push(sup);
+                }
+            }
+        }
+    };
+    for axiom in &tin.source_axioms {
+        match axiom.kind {
+            crate::json_io::SourceAxiomKind::SubClass => add(&axiom.left, &axiom.right),
+            crate::json_io::SourceAxiomKind::Equivalent => {
+                add(&axiom.left, &axiom.right);
+                add(&axiom.right, &axiom.left);
+            }
+            crate::json_io::SourceAxiomKind::Disjoint => {}
+        }
+    }
+    let mut closure = std::collections::HashSet::new();
+    for sub in 0..direct.len() {
+        let mut stack = direct[sub].clone();
+        while let Some(sup) = stack.pop() {
+            if closure.insert((sub, sup)) {
+                stack.extend(direct[sup].iter().copied());
+            }
+        }
+    }
+    closure
+}
+
 /// Production classification of a `TInput` over the konclude_ht bridge.
 ///
 /// Per subject: model read-off when the saturation was deterministic
@@ -2420,7 +3946,11 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
     // ∀-restricted successors, establish fails there, and the enlarged labels
     // measurably POISON probes earlier (12653: permanent defer at subject 1
     // vs 14 plain). Re-evaluate the default after the ext-machinery audit.
-    let use_saturation = std::env::var_os("KM_HT_SATURATION").is_some();
+    // Trigger absorption is designed to make the non-branching saturation
+    // residue filter effective, so enabling it also enables this pre-pass. The
+    // legacy explicit flag remains available for absorption-off diagnostics.
+    let use_saturation = std::env::var_os("KM_HT_SATURATION").is_some()
+        || std::env::var_os("KM_TRIGGER_ABSORB").is_some();
     let use_satcache = use_saturation && std::env::var_os("KM_HT_SATCACHE").is_some();
     bridged_classify_opts(tin, use_saturation, use_satcache)
 }
@@ -2468,6 +3998,11 @@ pub fn bridged_classify_opts(
         unsatisfiable: Vec::new(),
         subsumptions: Vec::new(),
     };
+    let subject_set: std::collections::HashSet<usize> = subjects.iter().copied().collect();
+    let mut saturation_known_pairs = source_named_subsumer_closure(tin);
+    saturation_known_pairs.retain(|(sub, sup)| subject_set.contains(sub) && universe.contains(sup));
+    out.subsumptions
+        .extend(saturation_known_pairs.iter().copied());
     // ONE bridged environment for the whole classification (#13): built once,
     // reset to pristine between probes (`reset_probe_env`), instead of an
     // O(TBox) rebuild per subject AND per pairwise probe.
@@ -2485,9 +4020,12 @@ pub fn bridged_classify_opts(
         .unwrap_or(2);
     let mut pending: Vec<usize> = subjects;
     // Saturation-first probe answering (task #23): saturate the bridged
-    // ontology ONCE — on the SAME env the probes will use, so the saturation
-    // nodes + concept→saturation reference linkings stay live for the
-    // saturation-node coupling — then answer whole subjects from certain
+    // ontology ONCE in an independent calculation task and pass only the
+    // extracted flags/subsumers into classification. Only explicit SATCACHE
+    // coupling keeps the saturation nodes in the completion environment.
+    // This mirrors Konclude's task boundary; carrying uncoupled saturation
+    // process state made 541 completion probes search a different graph.
+    // Then answer whole subjects from certain
     // verdicts: UNSAT-certain subjects land in `unsatisfiable`, SAT-certain
     // subjects with a sufficient label get their COMPLETE subsumer set from
     // the saturated label (Konclude's CPrecomputedSaturationSubsumerExtractor
@@ -2497,9 +4035,15 @@ pub fn bridged_classify_opts(
     let mut satcache_active = false;
     if use_saturation {
         let t_sat = std::time::Instant::now();
-        saturation_ran = true;
-        if run_bridged_saturation(&mut ctx, &bridged) {
-            if std::env::var_os("KM_SAT_DEBUG").is_some() {
+        let outcome = if use_satcache {
+            saturation_ran = true;
+            run_bridged_saturation(&mut ctx, &bridged)
+                .then(|| extract_saturation_outcome(&mut ctx, &bridged))
+        } else {
+            bridged_saturate(tin)
+        };
+        if let Some(outcome) = outcome {
+            if use_satcache && std::env::var_os("KM_SAT_DEBUG").is_some() {
                 for (i, c) in bridged.named.iter().enumerate() {
                     eprintln!(
                         "SAT-NAME {} concept={:?} {}",
@@ -2528,7 +4072,13 @@ pub fn bridged_classify_opts(
                     );
                 }
             }
-            let outcome = extract_saturation_outcome(&mut ctx, &bridged);
+            for &s in &pending {
+                for &c in &outcome.known_subsumers[s] {
+                    if c != s && universe.contains(&c) && saturation_known_pairs.insert((s, c)) {
+                        out.subsumptions.push((s, c));
+                    }
+                }
+            }
             let mut answered_unsat = 0usize;
             let mut answered_sat = 0usize;
             pending.retain(|&s| match outcome.sat_verdict[s] {
@@ -2545,12 +4095,7 @@ pub fn bridged_classify_opts(
                     false
                 }
                 Some(false) => {
-                    if let Some(subs) = &outcome.certain_subsumers[s] {
-                        for &c in subs {
-                            if c != s && universe.contains(&c) {
-                                out.subsumptions.push((s, c));
-                            }
-                        }
+                    if outcome.certain_subsumers[s].is_some() {
                         answered_sat += 1;
                         false
                     } else {
@@ -2572,10 +4117,8 @@ pub fn bridged_classify_opts(
                 );
             }
         } else if progress {
-            // Budget overrun — no flag is trustworthy; the pass answers nothing
-            // and the coupling stays off. The saturation arenas are still
-            // carried through resets so the installed reference linkings
-            // (surviving in the ontology arenas) never dangle.
+            // Budget overrun — no flag is trustworthy; the pass answers
+            // nothing and the coupling stays off.
             eprintln!("BRIDGE-SATURATION: budget overrun, pass discarded");
         }
     }
@@ -2669,7 +4212,7 @@ pub fn bridged_classify_opts(
         // filter; a candidate riding one branch choice drops out. If the
         // second drive STOPs or (exotically) clashes, keep the unintersected
         // set — the intersection is purely an optimization.
-        if !authoritative {
+        if !authoritative && !bridged.source_tbox {
             renew(algo, ctx, false);
             algo.conf_or_reverse = true;
             let mut id_rev: i64 = 1_000;
@@ -2708,7 +4251,13 @@ pub fn bridged_classify_opts(
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
                 renew(algo, ctx, true);
                 let mut id_cow: i64 = 1_000;
-                v = bridged_unsat(algo, ctx, &bridged, &mut id_cow, &[(bridged.named[s], false)]);
+                v = bridged_unsat(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_cow,
+                    &[(bridged.named[s], false)],
+                );
             }
             match v {
                 Some(true) => {
@@ -2725,7 +4274,7 @@ pub fn bridged_classify_opts(
         subs.retain(|&c| c == s || universe.contains(&c));
         if authoritative {
             for c in subs {
-                if c != s {
+                if c != s && !saturation_known_pairs.contains(&(s, c)) {
                     out.subsumptions.push((s, c));
                 }
             }
@@ -2738,6 +4287,15 @@ pub fn bridged_classify_opts(
         for c in subs {
             if c == s {
                 continue;
+            }
+            if saturation_known_pairs.contains(&(s, c)) {
+                continue;
+            }
+            if progress {
+                eprintln!(
+                    "BRIDGE-PAIR-START {} v {}",
+                    tin.concepts[s], tin.concepts[c]
+                );
             }
             renew(algo, ctx, false);
             let mut id2: i64 = 1_000;
@@ -2761,8 +4319,23 @@ pub fn bridged_classify_opts(
                 );
             }
             match v {
-                Some(true) => pairs.push((s, c)),
-                Some(false) => {}
+                Some(true) => {
+                    if progress {
+                        eprintln!(
+                            "BRIDGE-PAIR-END {} v {}: true",
+                            tin.concepts[s], tin.concepts[c]
+                        );
+                    }
+                    pairs.push((s, c))
+                }
+                Some(false) => {
+                    if progress {
+                        eprintln!(
+                            "BRIDGE-PAIR-END {} v {}: false",
+                            tin.concepts[s], tin.concepts[c]
+                        );
+                    }
+                }
                 None => {
                     if progress {
                         eprintln!(
@@ -2860,6 +4433,136 @@ mod tests {
     use super::super::completion::strategy::ConceptProcessingPriorityStrategy;
     use super::*;
 
+    fn trigger_test_roles(b: &mut Builder) -> (RoleId, RoleId, HashMap<RoleId, RoleId>) {
+        let role = b.ctx.ontology_arenas_mut().alloc_role(Role::new());
+        let mut inverse_obj = Role::new();
+        inverse_obj.set_inverse_role(role);
+        let inverse = b.ctx.ontology_arenas_mut().alloc_role(inverse_obj);
+        b.ctx
+            .ontology_arenas_mut()
+            .role_mut(role)
+            .set_inverse_role(inverse);
+        let map = HashMap::from([(role, inverse), (inverse, role)]);
+        (role, inverse, map)
+    }
+
+    #[test]
+    fn binary_absorber_combines_triggers_like_konclude() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let left = b.atom(TAG_BASE + 1);
+        let right = b.atom(TAG_BASE + 2);
+        let mut caches = TriggerCaches::default();
+        let combined = combine_absorption_triggers(
+            &mut b,
+            vec![
+                AbsorptionTrigger {
+                    concept: left,
+                    complexity: 1,
+                },
+                AbsorptionTrigger {
+                    concept: right,
+                    complexity: 1,
+                },
+            ],
+            &mut caches,
+        )
+        .expect("binary trigger");
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .concept(combined.concept)
+                .get_operator_code(),
+            op::CCIMPLTRIG
+        );
+        let left_concept = b.ctx.ontology_arenas().concept(left);
+        assert_eq!(left_concept.get_operator_code(), op::CCSUB);
+        let implication = left_concept.get_operand_list()[0].target;
+        let implication_concept = b.ctx.ontology_arenas().concept(implication);
+        assert_eq!(implication_concept.get_operator_code(), op::CCIMPL);
+        assert_eq!(
+            implication_concept.get_operand_list()[0].target,
+            combined.concept
+        );
+        assert_eq!(implication_concept.get_operand_list()[1].target, right);
+        assert!(implication_concept.get_operand_list()[1].negated);
+    }
+
+    #[test]
+    fn existential_trigger_uses_inverse_implall_propagation() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let filler = b.atom(TAG_BASE + 1);
+        let (role, inverse, inverses) = trigger_test_roles(&mut b);
+        let some = b.some(role, (filler, false));
+        let trigger = full_absorption_trigger(
+            &mut b,
+            (some, false),
+            &inverses,
+            &mut TriggerCaches::default(),
+        )
+        .expect("existential trigger");
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .concept(trigger.concept)
+                .get_operator_code(),
+            op::CCIMPLTRIG
+        );
+        let filler_concept = b.ctx.ontology_arenas().concept(filler);
+        assert_eq!(filler_concept.get_operator_code(), op::CCSUB);
+        let propagation = filler_concept.get_operand_list()[0].target;
+        let propagation_concept = b.ctx.ontology_arenas().concept(propagation);
+        assert_eq!(propagation_concept.get_operator_code(), op::CCIMPLALL);
+        assert_eq!(propagation_concept.get_role(), inverse);
+        assert_eq!(
+            propagation_concept.get_operand_list()[0].target,
+            trigger.concept
+        );
+    }
+
+    #[test]
+    fn higher_cardinality_uses_partial_not_full_trigger() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let filler = b.atom(TAG_BASE + 1);
+        let (role, inverse, inverses) = trigger_test_roles(&mut b);
+        let atmost = b.atmost_q(role, 2, (filler, false));
+        let mut caches = TriggerCaches::default();
+        assert!(full_absorption_trigger(&mut b, (atmost, true), &inverses, &mut caches).is_none());
+        let trigger = partial_absorption_trigger(&mut b, (atmost, true), &inverses, &mut caches)
+            .expect("partial cardinality trigger");
+        let filler_concept = b.ctx.ontology_arenas().concept(filler);
+        let propagation = filler_concept.get_operand_list()[0].target;
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .concept(propagation)
+                .get_operator_code(),
+            op::CCIMPLALL
+        );
+        assert_eq!(
+            b.ctx.ontology_arenas().concept(propagation).get_role(),
+            inverse
+        );
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .concept(trigger.concept)
+                .get_operator_code(),
+            op::CCIMPLTRIG
+        );
+    }
+
     struct BridgeEnv {
         tin: crate::orchestrate::cb_to_ht::TInput,
         con_id: std::collections::HashMap<String, usize>,
@@ -2883,6 +4586,8 @@ mod tests {
             None,
             &named,
             &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
             true,
             &fr.rules,
             false,
@@ -3018,19 +4723,37 @@ mod tests {
         let mut id = 0i64;
         // Probe 1: X ⊓ ¬Y — UNSAT (X ⊑ Y through both disjuncts); the DDB
         // analysis may write nogoods into the shared cache here.
-        let cold = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (y, true)]);
+        let cold = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut id,
+            &[(x, false), (y, true)],
+        );
         assert_eq!(cold, Some(true), "X ⊑ Y must hold (cold cache)");
         // Probe 2 (warm): the same seed re-probed after the classify-style
         // reset — the carried cache must reproduce the verdict.
         reset_probe_env(&mut algo, &mut ctx, &bridged, false);
         set_flags(&mut algo);
-        let warm = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (y, true)]);
+        let warm = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut id,
+            &[(x, false), (y, true)],
+        );
         assert_eq!(warm, Some(true), "X ⊑ Y must hold (warm cache)");
         // Probe 3 (warm, SAT control): X ⊓ ¬Z is satisfiable — a nogood
         // learned from the ¬Y run must not fire on this overlapping label.
         reset_probe_env(&mut algo, &mut ctx, &bridged, false);
         set_flags(&mut algo);
-        let sat = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(x, false), (z, true)]);
+        let sat = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut id,
+            &[(x, false), (z, true)],
+        );
         assert_eq!(sat, Some(false), "X ⊑ Z must NOT hold (warm cache)");
         // The handler must still be installed after the resets (the carry).
         assert!(
@@ -3156,7 +4879,10 @@ mod tests {
              SubClassOf(:B :D)\n)"
         );
         let mut env = bridge_ofn(&ofn);
-        assert!(!env.subsumes("A", "D"), "A ⊑ D must NOT hold (C branch open)");
+        assert!(
+            !env.subsumes("A", "D"),
+            "A ⊑ D must NOT hold (C branch open)"
+        );
     }
 
     /// Dump every node's label tags (diagnostic, used on failure only).
@@ -3166,7 +4892,9 @@ mod tests {
         eprintln!("DBG {label}: {n} nodes");
         for i in 0..n {
             let node = super::super::process::NodeId::new(i as Cint64);
-            let ls = ctx.process_context_mut().node_reapply_concept_label_set(node);
+            let ls = ctx
+                .process_context_mut()
+                .node_reapply_concept_label_set(node);
             let mut tags: Vec<_> = ctx
                 .process_context()
                 .label_set(ls)
@@ -3209,7 +4937,9 @@ mod tests {
             }
             let show = |a: &HAtom| -> String {
                 match a {
-                    HAtom::Concept { neg, c, t } => format!("{}C{c}({t})", if *neg { "¬" } else { "" }),
+                    HAtom::Concept { neg, c, t } => {
+                        format!("{}C{c}({t})", if *neg { "¬" } else { "" })
+                    }
                     HAtom::Role { r, s, t } => format!("R{r}({s},{t})"),
                     HAtom::Eq { s, t } => format!("eq({s},{t})"),
                     HAtom::Exist { r, neg, c, t } => {
@@ -3323,7 +5053,10 @@ mod tests {
                         env.tin.concepts.get(*c).map(String::as_str).unwrap_or("?")
                     ),
                     HAtom::Role { r, s, t } => {
-                        format!("{}({s},{t})", env.tin.roles.get(*r).map(String::as_str).unwrap_or("?"))
+                        format!(
+                            "{}({s},{t})",
+                            env.tin.roles.get(*r).map(String::as_str).unwrap_or("?")
+                        )
                     }
                     HAtom::Eq { s, t } => format!("eq({s},{t})"),
                     HAtom::Exist { r, neg, c, t } => format!(
@@ -3354,7 +5087,11 @@ mod tests {
              DEFER (None) is the acceptable degradation, deriving it the aspirational fix"
         );
         let _ = holds;
-        assert_ne!(env.try_subsumes("D", "A"), Some(true), "D ⊑ A must NOT hold");
+        assert_ne!(
+            env.try_subsumes("D", "A"),
+            Some(true),
+            "D ⊑ A must NOT hold"
+        );
     }
 
     #[test]
@@ -3377,7 +5114,10 @@ mod tests {
         if !holds {
             dump_nodes(&mut env, "after A⊑E probe (recognition)");
         }
-        assert!(holds, "A ⊑ E via ∃R.B ⊑ Q recognition over the inverse edge");
+        assert!(
+            holds,
+            "A ⊑ E via ∃R.B ⊑ Q recognition over the inverse edge"
+        );
         assert!(!env.subsumes("E", "A"), "E ⊑ A must NOT hold");
     }
 
@@ -3403,6 +5143,8 @@ mod tests {
             None,
             &named_set,
             &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
             true,
             &fr.rules,
             false,
@@ -3476,9 +5218,8 @@ mod tests {
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
         let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
         // local name after '#' or last '/'.
-        let local = |iri: &str| -> String {
-            iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string()
-        };
+        let local =
+            |iri: &str| -> String { iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string() };
         // gold super-map: sub_local → set(sup_local); `gold_universe` = every
         // concept gold tracks (as sub or sup). Negatives are drawn ONLY from
         // this universe: cb_to_ht mints internal DEFINER concepts (Q_NNNN) that
@@ -3654,9 +5395,8 @@ mod tests {
                     rols.push(i);
                 }
             }
-            let name = |c: usize| -> &str {
-                env.tin.concepts.get(c).map(String::as_str).unwrap_or("?")
-            };
+            let name =
+                |c: usize| -> &str { env.tin.concepts.get(c).map(String::as_str).unwrap_or("?") };
             let show = |a: &crate::orchestrate::cb_to_ht::HAtom| -> String {
                 use crate::orchestrate::cb_to_ht::HAtom;
                 match a {
@@ -3758,8 +5498,10 @@ mod tests {
                 }
             };
             let mentions = |cl: &HtClause, idx: usize| -> bool {
-                cl.body.iter().chain(cl.head.iter()).any(|a| matches!(a,
-                    HAtom::Concept { c, .. } | HAtom::Exist { c, .. } if *c == idx))
+                cl.body.iter().chain(cl.head.iter()).any(|a| {
+                    matches!(a,
+                    HAtom::Concept { c, .. } | HAtom::Exist { c, .. } if *c == idx)
+                })
             };
             // extra names to trace (KM_BRIDGE_DUMP_NAMES="Q_708,Q_266").
             let extra_idx: Vec<usize> = std::env::var("KM_BRIDGE_DUMP_NAMES")
@@ -3797,9 +5539,8 @@ mod tests {
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
         let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
-        let local = |iri: &str| -> String {
-            iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string()
-        };
+        let local =
+            |iri: &str| -> String { iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string() };
         let mut gold_pairs: std::collections::HashSet<(String, String)> =
             std::collections::HashSet::new();
         let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -3822,7 +5563,15 @@ mod tests {
         let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
         let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let tin = crate::orchestrate::cb_to_ht::convert(
-            &fr.clauses, None, &named_set, &fr.cardinalities, true, &fr.rules, false,
+            &fr.clauses,
+            None,
+            &named_set,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
         );
         let n_named = tin.concepts.len();
 
@@ -3890,7 +5639,8 @@ mod tests {
             algo2.singleton_concepts = bridged2.singleton_concepts.clone();
             let mut n2 = 0i64;
             let t_subj = std::time::Instant::now();
-            let verdict = bridged_classify_subject(&mut algo2, &mut ctx2, &bridged2, &mut n2, s, n_named);
+            let verdict =
+                bridged_classify_subject(&mut algo2, &mut ctx2, &bridged2, &mut n2, s, n_named);
             eprintln!(
                 "SUBJ {} {}: {} in {:.1}s (nodes={} backtracks={})",
                 s,
@@ -3912,10 +5662,7 @@ mod tests {
                         }
                         // only named-vs-named, gold-known targets
                         if gold_universe.contains(&tin.concepts[sup]) {
-                            derived.insert((
-                                tin.concepts[s].clone(),
-                                tin.concepts[sup].clone(),
-                            ));
+                            derived.insert((tin.concepts[s].clone(), tin.concepts[sup].clone()));
                         }
                     }
                 }
@@ -3966,10 +5713,7 @@ mod tests {
                             &[(bridged3.named[s], false), (bridged3.named[sup], true)],
                         ) == Some(true)
                         {
-                            derived.insert((
-                                tin.concepts[s].clone(),
-                                tin.concepts[sup].clone(),
-                            ));
+                            derived.insert((tin.concepts[s].clone(), tin.concepts[sup].clone()));
                         }
                         // Surface slow pair probes (the read-offs are ms; a
                         // probe that takes seconds is the scaling story).
@@ -4035,13 +5779,11 @@ mod tests {
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
         let gold: serde_json::Value = serde_json::from_str(&gold_text).expect("gold json");
-        let local = |iri: &str| -> String {
-            iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string()
-        };
+        let local =
+            |iri: &str| -> String { iri.rsplit(['#', '/']).next().unwrap_or(iri).to_string() };
         let mut gold_pairs: std::collections::HashSet<(String, String)> =
             std::collections::HashSet::new();
-        let mut gold_universe: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let mut gold_universe: std::collections::HashSet<String> = std::collections::HashSet::new();
         let mut gold_subs: std::collections::HashSet<String> = std::collections::HashSet::new();
         for pair in gold["subsumptions"].as_array().expect("subsumptions array") {
             let sub = local(pair[0].as_str().unwrap());
@@ -4056,7 +5798,15 @@ mod tests {
         let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
         let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let mut tin = crate::orchestrate::cb_to_ht::convert(
-            &fr.clauses, None, &named_set, &fr.cardinalities, true, &fr.rules, false,
+            &fr.clauses,
+            None,
+            &named_set,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
         );
         // subjects = gold-classified (sub-side) names, optionally capped —
         // expressed through the production `queries` mechanism.
@@ -4077,7 +5827,10 @@ mod tests {
         let res = bridged_classify(&tin);
         let elapsed = t0.elapsed();
         let Some(r) = res else {
-            eprintln!("BRIDGE-CLASSIFY-PROD {path}: DEFERRED after {:.1}s", elapsed.as_secs_f64());
+            eprintln!(
+                "BRIDGE-CLASSIFY-PROD {path}: DEFERRED after {:.1}s",
+                elapsed.as_secs_f64()
+            );
             return;
         };
         let mut derived: std::collections::HashSet<(String, String)> =
@@ -4155,11 +5908,21 @@ mod tests {
                 // X ⊑ ∃r.VA1 ; X ⊑ ∃s.VA2
                 HtClause {
                     body: vec![c(false, 0, 0)],
-                    head: vec![HAtom::Exist { r: 0, neg: false, c: 3, t: 0 }],
+                    head: vec![HAtom::Exist {
+                        r: 0,
+                        neg: false,
+                        c: 3,
+                        t: 0,
+                    }],
                 },
                 HtClause {
                     body: vec![c(false, 0, 0)],
-                    head: vec![HAtom::Exist { r: 1, neg: false, c: 4, t: 0 }],
+                    head: vec![HAtom::Exist {
+                        r: 1,
+                        neg: false,
+                        c: 4,
+                        t: 0,
+                    }],
                 },
                 // VA1 ⊑ V ; VA1 ⊑ A ; VA2 ⊑ V ; VA2 ⊓ A ⊑ ⊥
                 HtClause {
@@ -4181,8 +5944,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        let r = bridged_classify(&tin)
-            .expect("singleton clause must be CONSUMED (no defer)");
+        let r = bridged_classify(&tin).expect("singleton clause must be CONSUMED (no defer)");
         assert!(
             r.unsatisfiable.contains(&0),
             "X must be UNSAT via the value-identity merge (got unsat={:?})",
@@ -4211,6 +5973,8 @@ mod tests {
             None,
             &named,
             &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
             true,
             &fr.rules,
             false,
@@ -4405,7 +6169,11 @@ mod tests {
                 },
                 // A(x) ∧ r(x,y) ∧ B(y) → ⊥  (A ⊑ ∀r.¬B)
                 HtClause {
-                    body: vec![c(false, 0, 0), HAtom::Role { r: 0, s: 0, t: 1 }, c(false, 1, 1)],
+                    body: vec![
+                        c(false, 0, 0),
+                        HAtom::Role { r: 0, s: 0, t: 1 },
+                        c(false, 1, 1),
+                    ],
                     head: vec![],
                 },
             ],
@@ -4717,7 +6485,13 @@ mod tests {
         let (a, d) = (bridged.named[idx("A")], bridged.named[idx("D")]);
         let mut id = 0i64;
         // A ⊓ ¬D is satisfiable (A ⋢ D); the drive expands A's ∃r.B.
-        let verdict = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id, &[(a, false), (d, true)]);
+        let verdict = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut id,
+            &[(a, false), (d, true)],
+        );
         assert_eq!(verdict, Some(false), "A ⊑ D must NOT hold");
         assert!(
             algo.saturation_expansion_concept_count > 0,
@@ -4732,7 +6506,13 @@ mod tests {
         reset_probe_env(&mut algo, &mut ctx, &bridged, true);
         arm(&mut algo);
         let mut id2 = 0i64;
-        let warm = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut id2, &[(a, false), (d, true)]);
+        let warm = bridged_unsat(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut id2,
+            &[(a, false), (d, true)],
+        );
         assert_eq!(warm, Some(false), "verdict stable across the carry");
         assert!(
             algo.saturation_expansion_concept_count > 0
@@ -4815,7 +6595,10 @@ mod tests {
         let sat_only = norm(bridged_classify_opts(&env.tin, true, false).expect("sat-only arm"));
         let coupled = norm(bridged_classify_opts(&env.tin, true, true).expect("coupled arm"));
         assert_eq!(plain, sat_only, "saturation-only must not change verdicts");
-        assert_eq!(plain, coupled, "the saturation-node coupling must not change verdicts");
+        assert_eq!(
+            plain, coupled,
+            "the saturation-node coupling must not change verdicts"
+        );
     }
 
     /// Horn ∃-cycle equality: `B ⊑ ∃r.B` grows an unbounded chain that the
@@ -4847,7 +6630,10 @@ mod tests {
         };
         let plain = norm(bridged_classify_opts(&env.tin, false, false).expect("plain arm"));
         let coupled = norm(bridged_classify_opts(&env.tin, true, true).expect("coupled arm"));
-        assert_eq!(plain, coupled, "absorption must preserve the classification");
+        assert_eq!(
+            plain, coupled,
+            "absorption must preserve the classification"
+        );
         assert!(
             plain.1.len() >= 4,
             "sanity: the taxonomy has X⊑Y, B⊑C, B⊑D, C⊑D (got {:?})",
@@ -4866,13 +6652,7 @@ mod tests {
         // 0=A 1=B 2=C 3=D 4=E; r
         // A ⊑ B, B ⊑ C, D ⊑ B ⊔ C, E ⊑ ∃r.A, E ⊑ ∀r.B (entailed anyway), C ⊓ A ⊑ D? no — keep simple.
         let tin = TInput {
-            concepts: vec![
-                "A".into(),
-                "B".into(),
-                "C".into(),
-                "D".into(),
-                "E".into(),
-            ],
+            concepts: vec!["A".into(), "B".into(), "C".into(), "D".into(), "E".into()],
             roles: vec!["r".into()],
             clauses: vec![
                 HtClause {

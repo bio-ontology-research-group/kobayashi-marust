@@ -70,12 +70,17 @@ fn spawn_tableau(
         return None;
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
+    let (cl, cards, definers, source_axioms): (
+        Vec<JClause>,
+        Vec<crate::json_io::CardMeta>,
+        Vec<crate::json_io::DefinerMeta>,
+        Vec<crate::json_io::SourceAxiomMeta>,
+    ) = {
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
         let buf = std::fs::read(clauses_path).ok()?;
         let v: JInput = serde_json::from_slice(&buf).ok()?;
-        (v.clauses, v.cardinalities)
+        (v.clauses, v.cardinalities, v.definers, v.source_axioms)
     };
     // giants: the engine path owns them
     if cl.len() > cfg.tab_max_clauses {
@@ -85,7 +90,17 @@ fn spawn_tableau(
     if !cl.iter().any(|c| c.head.len() >= 2) {
         return None;
     }
-    let tin = cb_to_ht::convert(&cl, None, named, &cards, false, &[], false);
+    let tin = cb_to_ht::convert(
+        &cl,
+        None,
+        named,
+        &cards,
+        &definers,
+        &source_axioms,
+        false,
+        &[],
+        false,
+    );
     // only race when the TInput faithfully represents the ontology
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return None;
@@ -548,12 +563,17 @@ fn spawn_ht(
     named: &std::collections::HashSet<String>,
 ) -> Option<(Child, super::tmpfile::TempPath, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, cards): (Vec<JClause>, Vec<crate::json_io::CardMeta>) = {
+    let (cl, cards, definers, source_axioms): (
+        Vec<JClause>,
+        Vec<crate::json_io::CardMeta>,
+        Vec<crate::json_io::DefinerMeta>,
+        Vec<crate::json_io::SourceAxiomMeta>,
+    ) = {
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
         let buf = std::fs::read(clauses_path).ok()?;
         let v: JInput = serde_json::from_slice(&buf).ok()?;
-        (v.clauses, v.cardinalities)
+        (v.clauses, v.cardinalities, v.definers, v.source_axioms)
     };
     let _tconv = Instant::now();
     let tin = cb_to_ht::convert(
@@ -561,6 +581,8 @@ fn spawn_ht(
         None,
         named,
         &cards,
+        &definers,
+        &source_axioms,
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &[],
         false,
@@ -666,7 +688,8 @@ fn spawn_ht(
     // read-off / pairwise-verified candidates; declines anything it cannot
     // encode losslessly). Nominal-free faithful TInputs only; the worker's
     // bridge arm re-checks coverage per clause. Opt-in while under validation.
-    let bridge_candidate = std::env::var_os("KM_HT_BRIDGE").is_some()
+    let bridge_candidate = (std::env::var_os("KM_HT_BRIDGE").is_some()
+        || std::env::var_os("KM_TRIGGER_ABSORB").is_some())
         && tin.dropped == 0
         && tin.fenced.is_empty()
         && tin.nominals.is_empty();
@@ -699,11 +722,10 @@ fn spawn_ht(
         cmd.stderr(Stdio::null());
     }
     cmd.env("KM_HT", "1");
-    if bridge_candidate
-        && !ht_routable(&tin)
-        && !qo_candidate
-        && !shoq_candidate
-        && !card_candidate
+    if bridge_candidate || std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
+        cmd.env("KM_HT_BRIDGE", "1");
+    }
+    if bridge_candidate && !ht_routable(&tin) && !qo_candidate && !shoq_candidate && !card_candidate
     {
         // The bridge is the ONLY reason this worker was spawned: if its arm
         // declines, the worker must produce NO answer (the legacy tableau is
@@ -877,7 +899,7 @@ fn spawn_ht(
     Some((
         child,
         out_path,
-        shoq_candidate || qo_candidate || card_candidate,
+        shoq_candidate || qo_candidate || card_candidate || bridge_candidate,
     ))
 }
 
@@ -925,7 +947,12 @@ where
     // monotone-safety on CB-solvable onts). The budget is only the "start accepting
     // HT" threshold: past it, the certified answer is harvested the moment it is
     // ready, so a QO arm that certifies later than the SHOQ default is still taken.
-    let budget = if fast_certify {
+    let budget = if std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
+        // The source-terminology bridge emits only a sound+complete result or
+        // no result. Once it has answered there is no reason to wait out CB's
+        // fallback budget; the CB slot is still checked first each iteration.
+        0.0
+    } else if fast_certify {
         cfg.shoq_budget_s.min(cfg.ht_budget_s)
     } else {
         cfg.ht_budget_s

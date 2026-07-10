@@ -915,10 +915,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if tracking_line.get_branching_level() == 0 {
                 if dump_on_root_cancel && self.ddb_analysis_dumps < 16 {
                     self.ddb_analysis_dumps += 1;
-                    eprintln!(
-                        "DDB-ROOT-CANCEL closure: {}",
-                        closure_parts.join(" ")
-                    );
+                    eprintln!("DDB-ROOT-CANCEL closure: {}", closure_parts.join(" "));
                 }
                 self.cancellation_root_task(calc_alg_context);
             }
@@ -1268,7 +1265,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         while tp_it.is_some() && k < 8 {
                             let (clashes, marked, tag) = {
                                 let t = calc_alg_context.process_context().track_point(tp_it);
-                                (t.get_clashes(), t.is_clashed_or_irelevant_branch(), t.process_tag)
+                                (
+                                    t.get_clashes(),
+                                    t.is_clashed_or_irelevant_branch(),
+                                    t.process_tag,
+                                )
                             };
                             let cs = self.ht_fmt_tracked_closure(clashes, calc_alg_context);
                             eprintln!(

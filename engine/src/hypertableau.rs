@@ -286,11 +286,7 @@ pub fn transitive_close_subs(subs: Vec<(C, C)>) -> Vec<(C, C)> {
         }
     }
     if std::env::var_os("KM_HT_STATS").is_some() {
-        eprintln!(
-            "KM_HT [close-subs] in={} out={}",
-            subs.len(),
-            out.len()
-        );
+        eprintln!("KM_HT [close-subs] in={} out={}", subs.len(), out.len());
     }
     out
 }

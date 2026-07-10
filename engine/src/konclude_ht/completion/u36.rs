@@ -509,13 +509,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 std::backtrace::Backtrace::force_capture()
             );
         }
-        let dependency_track_point = if self.conf_build_dependencies
-            && dependency_track_point.is_none()
-        {
-            calc_alg_context.get_or_create_base_dependency_track_point()
-        } else {
-            dependency_track_point
-        };
+        let dependency_track_point =
+            if self.conf_build_dependencies && dependency_track_point.is_none() {
+                calc_alg_context.get_or_create_base_dependency_track_point()
+            } else {
+                dependency_track_point
+            };
         // KM_BRIDGE_WATCH_TAG=<tag>: print the call path of every POSITIVE
         // addition of that concept tag (provenance for over-derivation hunts).
         if let Ok(w) = std::env::var("KM_BRIDGE_WATCH_TAG") {
@@ -581,7 +580,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .ontology_arenas()
                     .concept(adding_concept)
                     .get_concept_tag();
-                if node_id == wn && !negate && (10..320).contains(&tag) && self.ddb_analysis_dumps < 24
+                if node_id == wn
+                    && !negate
+                    && (10..320).contains(&tag)
+                    && self.ddb_analysis_dumps < 24
                 {
                     self.ddb_analysis_dumps += 1;
                     let bt = std::backtrace::Backtrace::force_capture().to_string();
@@ -874,13 +876,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 std::backtrace::Backtrace::force_capture()
             );
         }
-        let dependency_track_point = if self.conf_build_dependencies
-            && dependency_track_point.is_none()
-        {
-            calc_alg_context.get_or_create_base_dependency_track_point()
-        } else {
-            dependency_track_point
-        };
+        let dependency_track_point =
+            if self.conf_build_dependencies && dependency_track_point.is_none() {
+                calc_alg_context.get_or_create_base_dependency_track_point()
+            } else {
+                dependency_track_point
+            };
         // W8: route the node's concept queue + reapply label set through the
         // context-threaded lazy getters (W3b/W8.1) — the superseded `&mut self` node
         // getters return `Id::NONE` (they cannot run the arena allocation), so the

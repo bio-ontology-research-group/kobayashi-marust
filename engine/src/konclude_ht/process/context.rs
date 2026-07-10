@@ -2692,7 +2692,8 @@ impl ProcessContext {
         self.additional_role_assertion_linkers.push_epoch();
         self.analized_con_exp_datas.push_epoch();
         self.analized_con_exp_linkers.push_epoch();
-        self.backend_neighbour_expansion_controlling_datas.push_epoch();
+        self.backend_neighbour_expansion_controlling_datas
+            .push_epoch();
         self.backend_sync_datas.push_epoch();
         self.backward_prop_links.push_epoch();
         self.backward_prop_reapply_descs.push_epoch();
@@ -2810,7 +2811,8 @@ impl ProcessContext {
         self.sat_concept_extension_maps.push_epoch();
         self.sat_critical_ind_node_con_test_sets.push_epoch();
         self.sat_critical_ind_node_proc_queues.push_epoch();
-        self.sat_disjunct_common_concept_extraction_datas.push_epoch();
+        self.sat_disjunct_common_concept_extraction_datas
+            .push_epoch();
         self.sat_disjunct_extraction_linkers.push_epoch();
         self.sat_indi_node_all_concept_ext_datas.push_epoch();
         self.sat_indi_node_datatype_datas.push_epoch();
@@ -2835,7 +2837,8 @@ impl ProcessContext {
         self.sig_block_cand_hashes.push_epoch();
         self.sig_block_con_exp_datas.push_epoch();
         self.signature_blocking_review_sets.push_epoch();
-        self.successor_individual_atmost_reactivation_datas.push_epoch();
+        self.successor_individual_atmost_reactivation_datas
+            .push_epoch();
         self.succ_role_hashes.push_epoch();
         self.unsat_cache_ret_datas.push_epoch();
         self.var_binding_descs.push_epoch();
@@ -2902,7 +2905,8 @@ impl ProcessContext {
         self.additional_role_assertion_linkers.pop_epoch();
         self.analized_con_exp_datas.pop_epoch();
         self.analized_con_exp_linkers.pop_epoch();
-        self.backend_neighbour_expansion_controlling_datas.pop_epoch();
+        self.backend_neighbour_expansion_controlling_datas
+            .pop_epoch();
         self.backend_sync_datas.pop_epoch();
         self.backward_prop_links.pop_epoch();
         self.backward_prop_reapply_descs.pop_epoch();
@@ -3011,7 +3015,8 @@ impl ProcessContext {
         self.sat_concept_extension_maps.pop_epoch();
         self.sat_critical_ind_node_con_test_sets.pop_epoch();
         self.sat_critical_ind_node_proc_queues.pop_epoch();
-        self.sat_disjunct_common_concept_extraction_datas.pop_epoch();
+        self.sat_disjunct_common_concept_extraction_datas
+            .pop_epoch();
         self.sat_disjunct_extraction_linkers.pop_epoch();
         self.sat_indi_node_all_concept_ext_datas.pop_epoch();
         self.sat_indi_node_datatype_datas.pop_epoch();
@@ -3036,7 +3041,8 @@ impl ProcessContext {
         self.sig_block_cand_hashes.pop_epoch();
         self.sig_block_con_exp_datas.pop_epoch();
         self.signature_blocking_review_sets.pop_epoch();
-        self.successor_individual_atmost_reactivation_datas.pop_epoch();
+        self.successor_individual_atmost_reactivation_datas
+            .pop_epoch();
         self.succ_role_hashes.pop_epoch();
         self.unsat_cache_ret_datas.pop_epoch();
         self.var_binding_descs.pop_epoch();
@@ -3715,7 +3721,10 @@ impl ProcessContext {
             &mut other.sat_nominal_dependent_node_datas,
         );
         swap(&mut self.con_sat_descs, &mut other.con_sat_descs);
-        swap(&mut self.con_sat_proc_linkers, &mut other.con_sat_proc_linkers);
+        swap(
+            &mut self.con_sat_proc_linkers,
+            &mut other.con_sat_proc_linkers,
+        );
         swap(
             &mut self.role_sat_proc_linkers,
             &mut other.role_sat_proc_linkers,

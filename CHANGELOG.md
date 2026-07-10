@@ -9,6 +9,52 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Source-terminology bridge solves 541 and 12653 in production (<1 s, 2026-07-10)
+
+The disjunction-family blocker was not another completion-rule gap. Konclude
+absorbs the normalized ontology concept graph before clausification, while KM's
+bridge reconstructed that graph but still presented every generated definer and
+recognition clause as an independent GCI. On the two target ontologies this was
+the difference between Konclude processing 23/10 residual GCIs and KM processing
+647/501 HT clauses.
+
+The frontend now carries an env-gated normalized source-TBox side channel under
+`KM_TRIGGER_ABSORB`. The bridge ports the relevant
+`CConcreteOntologyUpdateBuilder` and
+`CTriggeredImplicationBinaryAbsorberPreProcess` behavior:
+
+- named-left inclusions become direct `CCSUB` unfoldings;
+- pristine equivalent definitions use `CCEQ`, with fully triggerable
+  definitions converted to `CCSUB` plus a reverse binary implication;
+- property domains/ranges become role links rather than GCIs;
+- only structural-left residuals reach full/partial binary GCI absorption.
+
+The resulting preprocessing counters match Konclude: 541 has equivalence
+absorption 1/2 and 22 absorbed residual GCIs (23 total before range movement);
+12653 has 1/1 and 9 absorbed residual GCIs (10 total). The remaining search
+correctness issue was sibling isolation: PathOfLength4 was falsely UNSAT under
+the old mutable in-process OR stack, but SAT under complete branch-epoch COW,
+matching Konclude's one-calculation-task-per-alternative behavior. COW is now
+the trigger-absorption default. Saturation runs in an independent task unless
+explicit satcache coupling is requested, and classification seeds its known
+subsumers from the deterministic source `CCSUB` closure before verifying only
+the residual candidates. The old reversed-disjunct second-model heuristic is
+not used for source terminology.
+
+`KM_TRIGGER_ABSORB=1` now enables the certified bridge racer and harvests its
+sound+complete answer immediately (or receives no answer on defer). Release
+measurements on `ws`, through `km classify`:
+
+| Ontology | Wall | Peak RSS | Gold comparison |
+|---|---:|---:|---|
+| ore_ont_541 | 0.86 s | 428 MB | 164/164 local-name pairs, 0 missing, 0 spurious |
+| ore_ont_12653 | 0.08 s | 9 MB | 10/10 pairs, 0 missing, 0 spurious |
+
+541 emits 166 full-IRI pairs because it correctly distinguishes two different
+classes both locally named `ProcessQuality`; projection to the ORE gold's local
+names gives the exact 164-pair set. Default frontend JSON remains byte-identical
+with the flag off. Validation: 1433 passed, 0 failed, 7 ignored.
+
 ### Saturation-first probe answering, waves 1-3 (`18c9a46` .. `c116a9c`, 2026-07-09/10)
 
 The confirmed lever for the disjunction/cardinality timeout family (541, 12653,

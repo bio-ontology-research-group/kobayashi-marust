@@ -6,24 +6,24 @@ status; `PORT.md` holds the full wave-by-wave history (W0-W555) and the per-unit
 status table. **License note:** Konclude is LGPL; this is a derivative work —
 LGPL headers + attribution still need to be added (see Next steps §6).
 
-_Last updated 2026-07-10. HEAD `c116a9c` on branch `payg-strategy` (pushed).
-Suite: 1424 tests green on ws. The 2026-07-06 .. 07-10 arc (bridge production
-wiring, COW/DDB trust chain, unsat-cache verdict, saturation-first waves 1-3)
-is summarized in [`CHANGELOG.md`](../../../CHANGELOG.md) under [unreleased]._
+_Last updated 2026-07-10 on branch `payg-strategy`. Suite: 1433 passed,
+0 failed, 7 ignored on ws. The production bridge, COW/DDB trust chain,
+unsat-cache verdict, saturation work, and source-terminology close are
+summarized in [`CHANGELOG.md`](../../../CHANGELOG.md) under [unreleased]._
 
-> **First ORE timeout ontology closed by this port: ore_ont_12653, sound +
-> complete in 1.0 s via the bridge (`d64e78b`; production km times out on it).
+> **Production source-terminology route: ore_ont_541 and ore_ont_12653 are
+> sound + complete through `km classify` in 0.86 s and 0.08 s respectively.
 > Per-ontology solving recipes and the family diagnosis table live in
 > [`docs/SOLVED-ONTOLOGIES.md`](../../../docs/SOLVED-ONTOLOGIES.md).** Bridge
 > milestones: deterministic completion (`5099d52`, 10 port gaps closed);
 > coverage wave = domain/range at link install + inverse-role hierarchy +
 > first-class qualified `≥n/≤n` from `card_defs` (`d64e78b`); read-off
 > soundness gate (`or_branch_open_count` — backtrack-free is NOT
-> deterministic; 86 spurious on 3215 under the old gate). Diagnosed frontier:
-> 541 needs the u29 dependency-directed backjump (chronological search is in
-> a ~2^56 space, nodes flat); 7914 and the giants need blocking/lazy-∀ (46k
-> nodes, drive cap); 3215 needs per-subject databox reuse (speed, not
-> correctness).
+> deterministic; 86 spurious on 3215 under the old gate). The decisive final
+> step was moving absorption before clausification and using complete COW task
+> isolation for OR siblings. Remaining frontier: 7914 and the giants need
+> blocking/lazy-∀ (46k nodes, drive cap); 3215 needs per-subject databox reuse
+> (speed, not correctness).
 
 ## Saturation-first probe answering (tasks #23/#24, 2026-07-09/10)
 

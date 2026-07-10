@@ -70,10 +70,10 @@
 use super::super::model::op::{CCATLEAST, CCATMOST};
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::process::blocking_hash::SignatureBlockingIndividualNodeConceptExpansionData;
+use super::super::process::dependency::DependencyLink;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::reapply_sat::{BlockingAltDataId, SignatureBlockingCandidateHash};
 use super::super::process::stubs::{AnalizedConExpDataId, SigBlockConExpDataId};
-use super::super::process::dependency::DependencyLink;
 use super::super::process::{
     ConDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId, TrackPointId,
 };

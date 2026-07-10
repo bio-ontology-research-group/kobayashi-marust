@@ -91,9 +91,7 @@ use super::super::process::stubs::{
     ConceptSaturationDescriptorId, ConceptSaturationProcessLinkerId,
 };
 use super::super::process::SatNodeId;
-use super::satellites::{
-    IndividualSaturationSuccessorLinkDataLinkerId, SaturationSuccessorDataId,
-};
+use super::satellites::{IndividualSaturationSuccessorLinkDataLinkerId, SaturationSuccessorDataId};
 
 // ---------------------------------------------------------------------------
 // W4-DEFER[api]: pending `CCriticalSaturationConceptTypeQueues::CRITICALSATURATIONCONCEPTQUEUETYPE`
@@ -840,7 +838,10 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .con_sat_desc(con_des)
                 .get_negation();
             // CRole* role = concept->getRole();
-            let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+            let role = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_role();
 
             // if (role->isDataRole() && indiProcSatNode->getIndividualExtensionData(false)) { ... }
             // KONCLUDE-PORT-NOTE[conservative]: the asserted-data-role walk over
@@ -848,9 +849,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             // reported insufficient outright (the C++ returns true exactly when a
             // matching assertion exists; without the walk, assuming "exists" is the
             // sound direction and only defers the subject to the tableau probe).
-            if role.is_some()
-                && calc_alg_context.ontology_arenas().role(role).is_data_role()
-            {
+            if role.is_some() && calc_alg_context.ontology_arenas().role(role).is_data_role() {
                 return true;
             }
 
@@ -1106,7 +1105,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
             if linked_succ_hash.is_some() {
                 let mut min_cardinality: Cint64 = 0;
-                let mut merging_succ_data_linker = IndividualSaturationSuccessorLinkDataLinkerId::NONE;
+                let mut merging_succ_data_linker =
+                    IndividualSaturationSuccessorLinkDataLinkerId::NONE;
 
                 // CLinkedRoleSaturationSuccessorData* succData = succHash->value(role);
                 let succ_data = calc_alg_context

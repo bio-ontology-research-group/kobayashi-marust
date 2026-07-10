@@ -84,6 +84,56 @@ pub struct CardMeta {
     pub filler: String,
 }
 
+/// Structural provenance for a fresh clausifier concept. The trigger absorber
+/// uses this side channel instead of reverse-engineering `Q_*` definitions from
+/// clause shapes. It is emitted only with `KM_TRIGGER_ABSORB` and is ignored by
+/// the certified CB engine.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct DefinerMeta {
+    pub marker: String,
+    pub kind: DefinerKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operands: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub n: Option<i64>,
+}
+
+/// A normalized source-level TBox axiom. Konclude runs binary implication
+/// absorption over this compact concept DAG, before clausification introduces
+/// recognition and definer clauses. Emitted only under `KM_TRIGGER_ABSORB`.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SourceAxiomMeta {
+    pub kind: SourceAxiomKind,
+    pub left: crate::frontend::syntax::Concept,
+    pub right: crate::frontend::syntax::Concept,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceAxiomKind {
+    SubClass,
+    Equivalent,
+    Disjoint,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum DefinerKind {
+    Top,
+    Bottom,
+    Not,
+    NotSelf,
+    And,
+    Or,
+    Exists,
+    Forall,
+    SelfRestriction,
+    AtLeast,
+    AtMost,
+}
+
 /// KM_HT_RULES side-channel (Stage 2 of SWRL DL-safe rule support). A parsed
 /// `DLSafeRule` carried verbatim from the frontend to `cb_to_ht`, where it is
 /// turned into an HT DL-clause (with an O-guard restricting every variable to a
@@ -129,6 +179,10 @@ pub struct JInput {
     pub cardinalities: Vec<CardMeta>,
     #[serde(default)]
     pub rules: Vec<JRule>,
+    #[serde(default)]
+    pub definers: Vec<DefinerMeta>,
+    #[serde(default)]
+    pub source_axioms: Vec<SourceAxiomMeta>,
 }
 
 #[derive(Serialize)]

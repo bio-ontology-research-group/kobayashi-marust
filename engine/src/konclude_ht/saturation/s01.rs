@@ -574,8 +574,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             while t0.elapsed() < budget
                 && self.has_remaining_extension_processing_nodes(calc_alg_context)
             {
-                while t0.elapsed() < budget
-                    && self.has_remaining_processing_nodes(calc_alg_context)
+                while t0.elapsed() < budget && self.has_remaining_processing_nodes(calc_alg_context)
                 {
                     while t0.elapsed() < budget
                         && calc_alg_context
@@ -591,10 +590,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .get_processing_individual();
                         // (separated-saturation + first-processed-node-id tracking,
                         // cpp 338–349: debug/statistics bookkeeping only.)
-                        if self.individual_node_initializing(
-                            &mut indi_proc_sat_node,
-                            calc_alg_context,
-                        ) {
+                        if self
+                            .individual_node_initializing(&mut indi_proc_sat_node, calc_alg_context)
+                        {
                             let mut concept_saturation_process_linker = calc_alg_context
                                 .process_context_mut()
                                 .sat_node_take_concept_saturation_process_linker(
@@ -642,10 +640,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .process_context()
                             .indi_sat_process_node_linker(indi_disj_common_con_ext_process_linker)
                             .get_processing_individual();
-                        if self.individual_node_initializing(
-                            &mut indi_proc_sat_node,
-                            calc_alg_context,
-                        ) {
+                        if self
+                            .individual_node_initializing(&mut indi_proc_sat_node, calc_alg_context)
+                        {
                             self.update_extract_disjunct_common_concept(
                                 &mut indi_proc_sat_node,
                                 calc_alg_context,

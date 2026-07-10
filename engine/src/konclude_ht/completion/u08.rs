@@ -798,13 +798,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // concepts to u, BEFORE the reapply queue fires over the link. Konclude
         // passes allowPreprocessing=false here ("no preprocessing, because of
         // possible not intercepted clashes while merging").
-        self.ht_apply_role_domain_range(role, source, destination, dep_track_point, calc_alg_context);
+        self.ht_apply_role_domain_range(
+            role,
+            source,
+            destination,
+            dep_track_point,
+            calc_alg_context,
+        );
         // applyReapplyQueueConceptsRestricted (cpp 22321/26572): the concepts armed in
         // `source`'s per-role reapply queue (∀ / ≤n restrictions already processed on
         // `source`) must RE-FIRE over this fresh link. Dropping the iterator here made
         // the closure depend on whether the link existed when the rule first ran — the
         // HashMap-order-dependent (in)completeness the bridge probes exposed.
-        self.apply_reapply_queue_concepts_restricted(source, reapply_queue_it, link, calc_alg_context);
+        self.apply_reapply_queue_concepts_restricted(
+            source,
+            reapply_queue_it,
+            link,
+            calc_alg_context,
+        );
         // KONCLUDE-PORT-NOTE[api]: Konclude installs ONE link PER indirect super-role
         // (`createNewIndividualsLinksReapplyed`'s roleLinkerIt loop), so each
         // super-role's reapply queue fires on its own install. The port installs a
@@ -825,8 +836,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // non-inverted super S puts the S-edge as (source, destination), an
             // inverted super as (destination, source).
             if super_role != role {
-                let (u, v) = if inversed { (destination, source) } else { (source, destination) };
-                self.ht_apply_role_domain_range(super_role, u, v, dep_track_point, calc_alg_context);
+                let (u, v) = if inversed {
+                    (destination, source)
+                } else {
+                    (source, destination)
+                };
+                self.ht_apply_role_domain_range(
+                    super_role,
+                    u,
+                    v,
+                    dep_track_point,
+                    calc_alg_context,
+                );
             }
             let (holder, skip) = if inversed {
                 (destination, false)
@@ -859,7 +880,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // hold an armed `∀R⁻.C` that would fire backward over the parent edge —
         // an UNSOUND block that hid clashes order-dependently), and (b) `∀R⁻`
         // fire as a plain forward ∀ over the inverse link.
-        let inv_role = calc_alg_context.ontology_arenas().role(role).get_inverse_role();
+        let inv_role = calc_alg_context
+            .ontology_arenas()
+            .role(role)
+            .get_inverse_role();
         if inv_role.is_some() {
             let mut e = IndividualLinkEdge::new();
             // C++ initIndividualLinkEdge(creator=indiSource, indiDestination,
@@ -1633,13 +1657,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // are keyed by REAL concept tags at insert, so probe by tag and compare
         // polarity explicitly (ls1::has_concept is a W2-DEFER stub — raw-index key
         // + always-false negation — and must not be used here).
-        let (sub, sup) = if pc.label_set(ls1).get_concept_count()
-            <= pc.label_set(ls2).get_concept_count()
-        {
-            (ls1, ls2)
-        } else {
-            (ls2, ls1)
-        };
+        let (sub, sup) =
+            if pc.label_set(ls1).get_concept_count() <= pc.label_set(ls2).get_concept_count() {
+                (ls1, ls2)
+            } else {
+                (ls2, ls1)
+            };
         for (tag, data) in pc.label_set(sub).concept_des_dep_map.iter() {
             let cd = data.concept_descriptor;
             if cd.is_none() {
@@ -1979,7 +2002,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .distinct_hash(dh)
                                     .is_individual_distinct(id2)
                             };
-                            if dist { "DISTINCT".into() } else { "LABELCLASH".into() }
+                            if dist {
+                                "DISTINCT".into()
+                            } else {
+                                "LABELCLASH".into()
+                            }
                         };
                         pair_verdicts.push(format!(
                             "({},{}):{}",
@@ -2090,16 +2117,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 parent_used_branch_node,
                 calc_alg_context,
             );
-            let branch_node: BranchNodeId =
-                calc_alg_context
-                    .process_context_mut()
-                    .alloc_branch_node(BranchTreeNode {
-                        process_tag: 0,
-                        parent_node: parent_branch,
-                        root_node: root_branch,
-                        branched_dep_track_point: Id::NONE,
-                        sat_calc_task: INVALID,
-                    });
+            let branch_node: BranchNodeId = calc_alg_context
+                .process_context_mut()
+                .alloc_branch_node(BranchTreeNode {
+                    process_tag: 0,
+                    parent_node: parent_branch,
+                    root_node: root_branch,
+                    branched_dep_track_point: Id::NONE,
+                    sat_calc_task: INVALID,
+                });
             let node_count_at_push = calc_alg_context.process_context().node_count();
             let (into, from) = pairs[0];
             let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
@@ -2165,13 +2191,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // `process_indi` reached `from` through an earlier relocation
             // its own link must be re-pointed too (idempotent — the
             // helper skips existing links).
-            self.ht_relocate_incoming_links(
-                *process_indi,
-                from,
-                into,
-                add_tp,
-                calc_alg_context,
-            );
+            self.ht_relocate_incoming_links(*process_indi, from, into, add_tp, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
                 return;
             }
@@ -2413,13 +2433,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .alloc_branching_merging_candidate_linker(l)
                     };
                     self.ht_with_atmost_rest(rest_id, calc_alg_context, |_alg, rest, ctx| {
-                        rest.add_merging_candidate_node_linker(
-                            linker,
-                            ctx.process_context_mut(),
-                        );
+                        rest.add_merging_candidate_node_linker(linker, ctx.process_context_mut());
                     });
                     // clique run tracking (cpp 15886–15928).
-                    let dh = calc_alg_context.process_context().node(succ).use_distinct_hash;
+                    let dh = calc_alg_context
+                        .process_context()
+                        .node(succ)
+                        .use_distinct_hash;
                     if dh.is_some() {
                         let distinct_to_all = dis_run.iter().all(|&(prev, _)| {
                             let prev_id = calc_alg_context
@@ -2474,7 +2494,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut seen_tps: Vec<TrackPointId> = Vec::new();
             for (i, &(cand, link)) in max_run.iter().enumerate() {
                 for &(other, _) in &max_run[i + 1..] {
-                    let dh = calc_alg_context.process_context().node(cand).use_distinct_hash;
+                    let dh = calc_alg_context
+                        .process_context()
+                        .node(cand)
+                        .use_distinct_hash;
                     if dh.is_none() {
                         continue;
                     }
@@ -2563,8 +2586,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .process_context_mut()
                     .restriction_spec_mut(rest_id)
                     .set_both_qualify_candidate_node_linker(next);
-                if !self.ht_atmost_candidate_valid(*process_indi, role, cand, link, calc_alg_context)
-                {
+                if !self.ht_atmost_candidate_valid(
+                    *process_indi,
+                    role,
+                    cand,
+                    link,
+                    calc_alg_context,
+                ) {
                     continue;
                 }
                 match self.ht_atmost_classify_successor(cand, concept_linker, calc_alg_context) {
@@ -2630,7 +2658,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // legacy block in `ht_apply_atmost_merge`). ---
                 let qualify_dep: DependencyId = {
                     let mut pi = *process_indi;
-                    self.create_qualify_dependency(&mut pi, con_des, dep_track_point, calc_alg_context)
+                    self.create_qualify_dependency(
+                        &mut pi,
+                        con_des,
+                        dep_track_point,
+                        calc_alg_context,
+                    )
                 };
                 let qlink_tp = calc_alg_context
                     .process_context()
@@ -2764,7 +2797,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
 
             // --- merge bound check over the persistent candidates. ---
-            let cands = self.ht_atmost_valid_candidates(*process_indi, role, rest_id, calc_alg_context);
+            let cands =
+                self.ht_atmost_valid_candidates(*process_indi, role, rest_id, calc_alg_context);
             if (cands.len() as Cint64) <= cardinality {
                 return;
             }
@@ -2819,16 +2853,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 parent_used_branch_node,
                 calc_alg_context,
             );
-            let branch_node: BranchNodeId =
-                calc_alg_context
-                    .process_context_mut()
-                    .alloc_branch_node(BranchTreeNode {
-                        process_tag: 0,
-                        parent_node: parent_branch,
-                        root_node: root_branch,
-                        branched_dep_track_point: Id::NONE,
-                        sat_calc_task: INVALID,
-                    });
+            let branch_node: BranchNodeId = calc_alg_context
+                .process_context_mut()
+                .alloc_branch_node(BranchTreeNode {
+                    process_tag: 0,
+                    parent_node: parent_branch,
+                    root_node: root_branch,
+                    branched_dep_track_point: Id::NONE,
+                    sat_calc_task: INVALID,
+                });
             let node_count_at_push = calc_alg_context.process_context().node_count();
             let (into, from) = pairs[0];
             let first_alt_tp = alt_track_points.first().copied().unwrap_or(Id::NONE);
@@ -2923,11 +2956,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     continue;
                 }
             }
-            let mut desc = super::super::process::reapply_sat::CondensedReapplyConceptDescriptor::new(
-                con_des,
-                dep_track_point,
-                !nl.negated,
-            );
+            let mut desc =
+                super::super::process::reapply_sat::CondensedReapplyConceptDescriptor::new(
+                    con_des,
+                    dep_track_point,
+                    !nl.negated,
+                );
             desc.init_atmost_extended_reapply_descriptor(
                 con_des,
                 dep_track_point,

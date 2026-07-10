@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::clauses::{clause, constraint, fact, var_x, var_y, Atom, DLClause, Term};
 use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role};
+use crate::json_io::DefinerKind;
 
 /// Side-channel hooks (nominal -> individual, role inverses). We only need the
 /// fields that affect the emitted clause set / nominal preprocessing.
@@ -40,6 +41,12 @@ pub struct GroundHooks {
     /// cb_to_ht to install the Konclude `≥n`/`≤n` rules in place of the clausal
     /// `⋁ Eq` pigeonhole.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
+    /// Fresh-concept provenance for triggered GCI absorption. Empty unless
+    /// `KM_TRIGGER_ABSORB` is enabled, preserving the default JSON contract.
+    pub definers: Vec<crate::json_io::DefinerMeta>,
+    /// Normalized source TBox consumed by Konclude-style pre-clausal
+    /// absorption. Empty unless `KM_TRIGGER_ABSORB` is enabled.
+    pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
 }
 
 // ---------------------------------------------------------------------------
@@ -133,9 +140,14 @@ pub struct Clausifier {
     /// byte-identical either way — this only populates the additive `cardinalities`
     /// side-data field, consumed solely by the card-routed HT path.
     card: bool,
+    /// Compile structurally triggerable subclass antecedents directly into
+    /// guarded DL-clause bodies and retain fresh-concept provenance.
+    trigger_absorb: bool,
 }
 
 impl Clausifier {
+    const MAX_TRIGGER_ALTERNATIVES: usize = 64;
+
     pub fn new() -> Self {
         Clausifier {
             counter: 0,
@@ -155,7 +167,197 @@ impl Clausifier {
             def_pos: HashSet::new(),
             def_neg: HashSet::new(),
             card: std::env::var_os("KM_NO_HT_CARD").is_none(),
+            trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
         }
+    }
+
+    fn record_definer(
+        &mut self,
+        marker: &str,
+        kind: DefinerKind,
+        operands: Vec<String>,
+        role: Option<String>,
+        n: Option<i64>,
+    ) {
+        if self.trigger_absorb {
+            self.hooks.definers.push(crate::json_io::DefinerMeta {
+                marker: marker.to_string(),
+                kind,
+                operands,
+                role,
+                n,
+            });
+        }
+    }
+
+    /// Whether `c(x)` has an exact finite positive trigger expansion. Negative
+    /// atoms, universals, and general cardinalities need signed/status-aware
+    /// machinery and deliberately fall back to the existing reification.
+    fn structurally_triggerable(c: &Concept) -> bool {
+        Self::trigger_alternative_count(c).is_some()
+    }
+
+    fn trigger_alternative_count(c: &Concept) -> Option<usize> {
+        match c {
+            Concept::Name(_) | Concept::Top | Concept::Nominal(_) | Concept::HasSelf(_) => Some(1),
+            Concept::Bottom => Some(0),
+            Concept::And(cs) => {
+                let mut count = 1usize;
+                for d in cs {
+                    count = count.checked_mul(Self::trigger_alternative_count(d)?)?;
+                    if count > Self::MAX_TRIGGER_ALTERNATIVES {
+                        return None;
+                    }
+                }
+                Some(count)
+            }
+            Concept::Or(cs) => {
+                let mut count = 0usize;
+                for d in cs {
+                    count = count.checked_add(Self::trigger_alternative_count(d)?)?;
+                    if count > Self::MAX_TRIGGER_ALTERNATIVES {
+                        return None;
+                    }
+                }
+                Some(count)
+            }
+            Concept::Exists(_, f) | Concept::AtLeast(1, _, f) => Self::trigger_alternative_count(f),
+            Concept::AtLeast(0, _, _) => Some(1),
+            Concept::Not(_) | Concept::Forall(..) | Concept::AtLeast(..) | Concept::AtMost(..) => {
+                None
+            }
+        }
+    }
+
+    /// Return a DNF of positive atom bodies exactly equivalent to `c(root)`.
+    /// Each alternative becomes one implication with the same head. Expansion
+    /// is capped to avoid distributing pathological nested unions in the
+    /// frontend; exceeding the cap falls back to ordinary reification.
+    fn structural_trigger_bodies(
+        &mut self,
+        c: &Concept,
+        root: &Term,
+        next_var: &mut usize,
+    ) -> Option<Vec<Vec<Atom>>> {
+        match c {
+            Concept::Name(n) => Some(vec![vec![Atom::Concept(n.clone(), root.clone())]]),
+            Concept::Top => Some(vec![Vec::new()]),
+            Concept::Bottom => Some(Vec::new()),
+            Concept::Nominal(ind) => {
+                let n = Self::nominal_name(ind);
+                self.hooks
+                    .nominal_to_individual
+                    .insert(n.clone(), ind.clone());
+                Some(vec![vec![Atom::Concept(n, root.clone())]])
+            }
+            Concept::And(cs) => {
+                let mut out = vec![Vec::new()];
+                for d in cs {
+                    let alternatives = self.structural_trigger_bodies(d, root, next_var)?;
+                    let mut product = Vec::new();
+                    for left in &out {
+                        for right in &alternatives {
+                            let mut body = left.clone();
+                            body.extend(right.iter().cloned());
+                            product.push(body);
+                            if product.len() > Self::MAX_TRIGGER_ALTERNATIVES {
+                                return None;
+                            }
+                        }
+                    }
+                    out = product;
+                }
+                Some(out)
+            }
+            Concept::Or(cs) => {
+                let mut out = Vec::new();
+                for d in cs {
+                    out.extend(self.structural_trigger_bodies(d, root, next_var)?);
+                    if out.len() > Self::MAX_TRIGGER_ALTERNATIVES {
+                        return None;
+                    }
+                }
+                Some(out)
+            }
+            Concept::Exists(role, filler) | Concept::AtLeast(1, role, filler) => {
+                let role_name = self.resolve_role(role);
+                let succ = Term::Var(format!("__trig{}", *next_var));
+                *next_var += 1;
+                let mut out = self.structural_trigger_bodies(filler, &succ, next_var)?;
+                for body in &mut out {
+                    body.push(Atom::Role(role_name.clone(), root.clone(), succ.clone()));
+                }
+                Some(out)
+            }
+            Concept::AtLeast(0, _, _) => Some(vec![Vec::new()]),
+            Concept::HasSelf(role) => {
+                let role_name = self.resolve_role(role);
+                Some(vec![vec![Atom::Role(
+                    role_name,
+                    root.clone(),
+                    root.clone(),
+                )]])
+            }
+            Concept::Not(_) | Concept::Forall(..) | Concept::AtLeast(..) | Concept::AtMost(..) => {
+                None
+            }
+        }
+    }
+
+    /// Choose an equivalent GCI orientation with a positive, structurally
+    /// triggerable antecedent. Negative top-level RHS disjuncts are absorbed
+    /// into the body first: `A -> not B or C` becomes `A and B -> C`.
+    fn triggered_orientation(sub: &Concept, sup: &Concept) -> Option<(Concept, Concept)> {
+        let mut guards = vec![sub.clone()];
+        let mut residue = Vec::new();
+        let disjuncts: Vec<Concept> = match sup {
+            Concept::Or(cs) => cs.iter().cloned().collect(),
+            other => vec![other.clone()],
+        };
+        for d in disjuncts {
+            if let Concept::Not(inner) = &d {
+                if Self::structurally_triggerable(inner) {
+                    guards.push((**inner).clone());
+                    continue;
+                }
+            }
+            residue.push(d);
+        }
+        let direct_sub = mk_and(guards);
+        if Self::structurally_triggerable(&direct_sub) {
+            return Some((direct_sub, mk_or(residue)));
+        }
+
+        // If the original orientation has no positive trigger, try its exact
+        // contrapositive `not sup -> not sub`.
+        let contra_sub = nnf(&Concept::Not(Box::new(sup.clone())));
+        if Self::structurally_triggerable(&contra_sub) {
+            let contra_sup = nnf(&Concept::Not(Box::new(sub.clone())));
+            return Some((contra_sub, contra_sup));
+        }
+        None
+    }
+
+    fn emit_structural_subclass(&mut self, sub: &Concept, sup: &Concept) -> bool {
+        let mut next_var = 0;
+        let Some(bodies) = self.structural_trigger_bodies(sub, &var_x(), &mut next_var) else {
+            return false;
+        };
+        if matches!(sup, Concept::Top) {
+            return true;
+        }
+        if matches!(sup, Concept::Bottom) {
+            for body in bodies {
+                self.clauses.push(clause(body, []));
+            }
+            return true;
+        }
+        let q_sup = self.q(sup);
+        for body in bodies {
+            self.clauses
+                .push(clause(body, [Atom::Concept(q_sup.clone(), var_x())]));
+        }
+        true
     }
 
     /// Which definitional directions to emit for a reified And/Or/Not concept:
@@ -318,14 +520,23 @@ impl Clausifier {
 
         match c {
             Concept::Top => {
+                self.record_definer(q, DefinerKind::Top, Vec::new(), None, None);
                 self.clauses.push(fact([qx]));
             }
             Concept::Bottom => {
+                self.record_definer(q, DefinerKind::Bottom, Vec::new(), None, None);
                 self.clauses.push(clause([qx], []));
             }
             Concept::Not(inner) => {
                 if let Concept::HasSelf(role) = inner.as_ref() {
                     let role_name = self.resolve_role(role);
+                    self.record_definer(
+                        q,
+                        DefinerKind::NotSelf,
+                        Vec::new(),
+                        Some(role_name.clone()),
+                        None,
+                    );
                     let proxy = self.fresh();
                     // proxy ↔ R(x,x)
                     self.clauses.push(clause(
@@ -356,6 +567,11 @@ impl Clausifier {
                     Concept::Name(n) => Atom::Concept(n.clone(), x.clone()),
                     _ => panic!("nested negation should have been removed by nnf()"),
                 };
+                let operand = match &ax {
+                    Atom::Concept(name, _) => name.clone(),
+                    _ => unreachable!(),
+                };
+                self.record_definer(q, DefinerKind::Not, vec![operand], None, None);
                 // `Q ∧ A → ⊥` (def: Q ⊑ ¬A) and `⊤ → Q ∨ A` (rec: ¬A ⊑ Q). The
                 // recognition clause is the unguarded excluded-middle disjunction
                 // dropped when ¬A never occurs on a subclass LHS.
@@ -367,12 +583,11 @@ impl Clausifier {
                 }
             }
             Concept::And(conjuncts) => {
-                let atoms: Vec<Atom> = conjuncts
-                    .iter()
-                    .map(|d| {
-                        let qn = self.q(d);
-                        Atom::Concept(qn, x.clone())
-                    })
+                let names: Vec<String> = conjuncts.iter().map(|d| self.q(d)).collect();
+                self.record_definer(q, DefinerKind::And, names.clone(), None, None);
+                let atoms: Vec<Atom> = names
+                    .into_iter()
+                    .map(|name| Atom::Concept(name, x.clone()))
                     .collect();
                 // def: Q ⊑ Cᵢ (one per conjunct); rec: ⨅Cᵢ ⊑ Q. Both Horn.
                 if want_def {
@@ -385,12 +600,11 @@ impl Clausifier {
                 }
             }
             Concept::Or(disjuncts) => {
-                let atoms: Vec<Atom> = disjuncts
-                    .iter()
-                    .map(|d| {
-                        let qn = self.q(d);
-                        Atom::Concept(qn, x.clone())
-                    })
+                let names: Vec<String> = disjuncts.iter().map(|d| self.q(d)).collect();
+                self.record_definer(q, DefinerKind::Or, names.clone(), None, None);
+                let atoms: Vec<Atom> = names
+                    .into_iter()
+                    .map(|name| Atom::Concept(name, x.clone()))
                     .collect();
                 // def: Q ⊑ ⨆Cᵢ (the disjunctive head — dropped when the Or never
                 // occurs positively); rec: each Cᵢ ⊑ Q (Horn).
@@ -406,6 +620,13 @@ impl Clausifier {
             Concept::Exists(role, filler) => {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
+                self.record_definer(
+                    q,
+                    DefinerKind::Exists,
+                    vec![filler_name.clone()],
+                    Some(role_name.clone()),
+                    None,
+                );
                 let f = format!("f_{}", q);
                 let fx = Term::Fun(f, Box::new(x.clone()));
                 self.clauses.push(clause(
@@ -427,6 +648,13 @@ impl Clausifier {
             Concept::Forall(role, filler) => {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
+                self.record_definer(
+                    q,
+                    DefinerKind::Forall,
+                    vec![filler_name.clone()],
+                    Some(role_name.clone()),
+                    None,
+                );
                 // Propagation: Q(x) ∧ R(x,y) → D(y)
                 self.clauses.push(clause(
                     [
@@ -439,6 +667,14 @@ impl Clausifier {
                 if self.needs_forall_intro.contains(c) {
                     let nq = self.fresh();
                     let nd = self.fresh();
+                    self.record_definer(&nq, DefinerKind::Not, vec![q.to_string()], None, None);
+                    self.record_definer(
+                        &nd,
+                        DefinerKind::Not,
+                        vec![filler_name.clone()],
+                        None,
+                        None,
+                    );
                     let nqx = Atom::Concept(nq.clone(), x.clone());
                     let fx = Term::Fun(format!("f_{}", nq), Box::new(x.clone()));
                     self.clauses.push(clause([], [qx.clone(), nqx.clone()]));
@@ -460,6 +696,13 @@ impl Clausifier {
             }
             Concept::HasSelf(role) => {
                 let role_name = self.resolve_role(role);
+                self.record_definer(
+                    q,
+                    DefinerKind::SelfRestriction,
+                    Vec::new(),
+                    Some(role_name.clone()),
+                    None,
+                );
                 self.clauses.push(clause(
                     [qx.clone()],
                     [Atom::Role(role_name.clone(), x.clone(), x.clone())],
@@ -475,6 +718,13 @@ impl Clausifier {
             Concept::AtLeast(n, role, filler) => {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
+                self.record_definer(
+                    q,
+                    DefinerKind::AtLeast,
+                    vec![filler_name.clone()],
+                    Some(role_name.clone()),
+                    Some(*n),
+                );
                 if self.card {
                     // Definitional `q ⊑ ≥n role.filler` (Konclude applyATLEASTRule).
                     self.hooks.cardinalities.push(crate::json_io::CardMeta {
@@ -539,6 +789,13 @@ impl Clausifier {
             Concept::AtMost(n, role, filler) => {
                 let role_name = self.resolve_role(role);
                 let filler_name = self.q(filler);
+                self.record_definer(
+                    q,
+                    DefinerKind::AtMost,
+                    vec![filler_name.clone()],
+                    Some(role_name.clone()),
+                    Some(*n),
+                );
                 if self.card {
                     // Definitional `q ⊑ ≤n role.filler` (Konclude applyATMOSTRule).
                     self.hooks.cardinalities.push(crate::json_io::CardMeta {
@@ -570,6 +827,7 @@ impl Clausifier {
                 // so a pre-pass-proven positive-only occurrence skips it.
                 if !self.atmost_pos.contains(c) || self.atmost_neg.contains(c) {
                     let nq = self.fresh();
+                    self.record_definer(&nq, DefinerKind::Not, vec![q.to_string()], None, None);
                     if self.card {
                         // Recognition proxy `NQ ≡ ¬q ≡ ≥(n+1) role.filler`: the
                         // n+1 pairwise-distinct witnesses below are the same
@@ -611,6 +869,13 @@ impl Clausifier {
 
     /// Port of `subclass_clauses`: emit `sub ⊑ sup` (after NNF).
     pub fn subclass_clauses(&mut self, sub: &Concept, sup: &Concept) {
+        if self.trigger_absorb {
+            if let Some((trigger_sub, trigger_sup)) = Self::triggered_orientation(sub, sup) {
+                if self.emit_structural_subclass(&trigger_sub, &trigger_sup) {
+                    return;
+                }
+            }
+        }
         let q_sub = self.q(sub);
         let q_sup = self.q(sup);
         let x = var_x();
@@ -618,6 +883,21 @@ impl Clausifier {
             [Atom::Concept(q_sub, x.clone())],
             [Atom::Concept(q_sup, x)],
         ));
+    }
+
+    fn mark_subclass_polarity(&mut self, sub: &Concept, sup: &Concept) {
+        // A structurally compiled antecedent never calls `q(sub)`, so marking
+        // it negative would emit recognition clauses for an unused definer and
+        // recreate the global disjunction this pass is intended to avoid.
+        if self.trigger_absorb {
+            if let Some((trigger_sub, trigger_sup)) = Self::triggered_orientation(sub, sup) {
+                debug_assert!(Self::structurally_triggerable(&trigger_sub));
+                self.mark_polarity(&trigger_sup, false);
+                return;
+            }
+        }
+        self.mark_polarity(sub, true);
+        self.mark_polarity(sup, false);
     }
 }
 
@@ -780,6 +1060,84 @@ mod tests {
         cf.q(&not_a());
         assert!(excluded_middle(&cf), "negative ¬A must re-emit ⊤→Q∨A");
     }
+
+    #[test]
+    fn trigger_absorb_compiles_and_exists_antecedent() {
+        let mut cf = Clausifier::new();
+        cf.trigger_absorb = true;
+        let sub = mk_and([
+            Concept::Name("A".into()),
+            Concept::Exists(Role::Name("r".into()), Box::new(Concept::Name("B".into()))),
+        ]);
+        cf.mark_subclass_polarity(&sub, &Concept::Name("C".into()));
+        cf.subclass_clauses(&sub, &Concept::Name("C".into()));
+
+        assert_eq!(cf.clauses.len(), 1);
+        let cl = &cf.clauses[0];
+        assert_eq!(cl.head, vec![Atom::Concept("C".into(), var_x())]);
+        assert!(cl.body.contains(&Atom::Concept("A".into(), var_x())));
+        let y = Term::Var("__trig0".into());
+        assert!(cl
+            .body
+            .contains(&Atom::Role("r".into(), var_x(), y.clone())));
+        assert!(cl.body.contains(&Atom::Concept("B".into(), y)));
+        assert!(!cf
+            .clauses
+            .iter()
+            .any(|c| c.body.is_empty() && c.head.len() > 1));
+    }
+
+    #[test]
+    fn trigger_absorb_distributes_union_antecedent() {
+        let mut cf = Clausifier::new();
+        cf.trigger_absorb = true;
+        let sub = mk_or([Concept::Name("A".into()), Concept::Name("B".into())]);
+        cf.subclass_clauses(&sub, &Concept::Name("C".into()));
+        assert_eq!(cf.clauses.len(), 2);
+        assert!(cf.clauses.iter().any(|c| {
+            c.body == vec![Atom::Concept("A".into(), var_x())]
+                && c.head == vec![Atom::Concept("C".into(), var_x())]
+        }));
+        assert!(cf.clauses.iter().any(|c| {
+            c.body == vec![Atom::Concept("B".into(), var_x())]
+                && c.head == vec![Atom::Concept("C".into(), var_x())]
+        }));
+    }
+
+    #[test]
+    fn trigger_absorb_moves_negative_rhs_disjunct_into_body() {
+        let mut cf = Clausifier::new();
+        cf.trigger_absorb = true;
+        let sup = mk_or([
+            Concept::Not(Box::new(Concept::Name("B".into()))),
+            Concept::Name("C".into()),
+        ]);
+        cf.mark_subclass_polarity(&Concept::Name("A".into()), &sup);
+        cf.subclass_clauses(&Concept::Name("A".into()), &sup);
+        assert_eq!(cf.clauses.len(), 1);
+        assert_eq!(
+            cf.clauses[0].body,
+            vec![
+                Atom::Concept("A".into(), var_x()),
+                Atom::Concept("B".into(), var_x())
+            ]
+        );
+        assert_eq!(cf.clauses[0].head, vec![Atom::Concept("C".into(), var_x())]);
+    }
+
+    #[test]
+    fn trigger_absorb_retains_definer_provenance() {
+        let mut cf = Clausifier::new();
+        cf.trigger_absorb = true;
+        let c = Concept::Exists(Role::Name("r".into()), Box::new(Concept::Name("B".into())));
+        let marker = cf.q(&c);
+        assert!(cf.hooks.definers.iter().any(|d| {
+            d.marker == marker
+                && d.kind == DefinerKind::Exists
+                && d.operands == vec!["B".to_string()]
+                && d.role.as_deref() == Some("r")
+        }));
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -798,18 +1156,17 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
             Axiom::SubClassOf(sub, sup) => {
                 let s = nnf(sub);
                 let p = nnf(sup);
-                clausifier.mark_polarity(&s, true);
-                clausifier.mark_polarity(&p, false);
+                clausifier.mark_subclass_polarity(&s, &p);
             }
             Axiom::EquivalentClasses(l, r) => {
-                for side in [nnf(l), nnf(r)] {
-                    clausifier.mark_polarity(&side, true);
-                    clausifier.mark_polarity(&side, false);
-                }
+                let nl = nnf(l);
+                let nr = nnf(r);
+                clausifier.mark_subclass_polarity(&nl, &nr);
+                clausifier.mark_subclass_polarity(&nr, &nl);
             }
             Axiom::DisjointClasses(l, r) => {
                 let conj = mk_and([nnf(l), nnf(r)]);
-                clausifier.mark_polarity(&conj, true);
+                clausifier.mark_subclass_polarity(&conj, &Concept::Bottom);
             }
             _ => {}
         }
@@ -821,16 +1178,48 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
             Axiom::SubClassOf(sub, sup) => {
                 let s = nnf(sub);
                 let p = nnf(sup);
+                if clausifier.trigger_absorb {
+                    clausifier
+                        .hooks
+                        .source_axioms
+                        .push(crate::json_io::SourceAxiomMeta {
+                            kind: crate::json_io::SourceAxiomKind::SubClass,
+                            left: s.clone(),
+                            right: p.clone(),
+                        });
+                }
                 clausifier.subclass_clauses(&s, &p);
             }
             Axiom::EquivalentClasses(l, r) => {
                 let nl = nnf(l);
                 let nr = nnf(r);
+                if clausifier.trigger_absorb {
+                    clausifier
+                        .hooks
+                        .source_axioms
+                        .push(crate::json_io::SourceAxiomMeta {
+                            kind: crate::json_io::SourceAxiomKind::Equivalent,
+                            left: nl.clone(),
+                            right: nr.clone(),
+                        });
+                }
                 clausifier.subclass_clauses(&nl, &nr);
                 clausifier.subclass_clauses(&nr, &nl);
             }
             Axiom::DisjointClasses(l, r) => {
-                let conj = mk_and([nnf(l), nnf(r)]);
+                let nl = nnf(l);
+                let nr = nnf(r);
+                if clausifier.trigger_absorb {
+                    clausifier
+                        .hooks
+                        .source_axioms
+                        .push(crate::json_io::SourceAxiomMeta {
+                            kind: crate::json_io::SourceAxiomKind::Disjoint,
+                            left: nl.clone(),
+                            right: nr.clone(),
+                        });
+                }
+                let conj = mk_and([nl, nr]);
                 clausifier.subclass_clauses(&conj, &Concept::Bottom);
             }
             _ => {}
@@ -916,13 +1305,16 @@ pub fn normalise(ontology: &Ontology) -> (Vec<DLClause>, Vec<DLClause>, GroundHo
                     clausifier
                         .clauses
                         .push(fact([Atom::Concept(qf.clone(), x.clone())]));
-                    clausifier.hooks.cardinalities.push(crate::json_io::CardMeta {
-                        marker: qf.clone(),
-                        min: false,
-                        n: 1,
-                        role: role.clone(),
-                        filler: qf,
-                    });
+                    clausifier
+                        .hooks
+                        .cardinalities
+                        .push(crate::json_io::CardMeta {
+                            marker: qf.clone(),
+                            min: false,
+                            n: 1,
+                            role: role.clone(),
+                            filler: qf,
+                        });
                 }
             }
             Axiom::InverseFunctionalRole(role) => {

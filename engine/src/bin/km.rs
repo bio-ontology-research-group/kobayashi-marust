@@ -81,6 +81,10 @@ fn cb_to_ht_cmd() {
         #[serde(default)]
         cardinalities: Vec<kobayashi_marust::json_io::CardMeta>,
         #[serde(default)]
+        definers: Vec<kobayashi_marust::json_io::DefinerMeta>,
+        #[serde(default)]
+        source_axioms: Vec<kobayashi_marust::json_io::SourceAxiomMeta>,
+        #[serde(default)]
         rules: Vec<kobayashi_marust::json_io::JRule>,
         /// declared class names (frontend meta `named`): a declared class is
         /// always a query even when its local name looks internal (contains
@@ -106,6 +110,8 @@ fn cb_to_ht_cmd() {
         input.rbox.as_deref(),
         &named,
         &input.cardinalities,
+        &input.definers,
+        &input.source_axioms,
         std::env::var_os("KM_NO_HT_CARD").is_none(),
         &input.rules,
         // Default ON; cb_to_ht's `rules_active` makes it inert unless the ont

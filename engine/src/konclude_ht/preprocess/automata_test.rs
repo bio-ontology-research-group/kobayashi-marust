@@ -220,7 +220,11 @@ fn transitive_forall_builds_epsilon_loop() {
 
     assert_eq!(op_code(&arenas, all_rc), op::CCAQCHOOCE);
     let choose_ops = ops_of(&arenas, all_rc);
-    assert_eq!(choose_ops.len(), 2, "CHOOCE carries generator + begin state");
+    assert_eq!(
+        choose_ops.len(),
+        2,
+        "CHOOCE carries generator + begin state"
+    );
     // generator appended first with !existNegation (= true for ∀).
     let (gen, gen_neg) = choose_ops[0];
     let (begin, begin_neg) = choose_ops[1];

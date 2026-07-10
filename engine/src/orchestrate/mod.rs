@@ -277,8 +277,8 @@ fn try_inproc_engine(
         })?;
     match rx.recv_timeout(budget) {
         Ok(Some(out)) => Ok(Some(out)),
-        Ok(None) => Ok(None),  // declined (definer disjunction)
-        Err(_) => Ok(None),    // overran the budget ⇒ fall through (bounded mem)
+        Ok(None) => Ok(None), // declined (definer disjunction)
+        Err(_) => Ok(None),   // overran the budget ⇒ fall through (bounded mem)
     }
 }
 
@@ -622,6 +622,8 @@ fn rules_consistency(
         None,
         &named,
         &input.cardinalities,
+        &input.definers,
+        &input.source_axioms,
         false, // keep the clausal cardinality (Eq-heads) for the default Tableau
         &input.rules,
         true, // ht_rules: seed the ABox + emit rule clauses

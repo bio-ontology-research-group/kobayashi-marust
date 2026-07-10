@@ -224,9 +224,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         let m = format!("clash {}", parts.join(" "));
                         self.ht_search_log(&m);
                     }
-                    if self.conf_dependency_backjumping
-                        && self.unrestored_advance_count == 0
-                    {
+                    if self.conf_dependency_backjumping && self.unrestored_advance_count == 0 {
                         // Dependency-directed backjumping: run the ported
                         // `clashedBacktracking` (u29) — it walks the clash's
                         // dependency closure and marks the responsible
@@ -315,7 +313,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if std::env::var_os("KM_BRIDGE_SEARCH_LOG").is_none() {
             return;
         }
-        let owned = self.or_branch_stack.iter().filter(|bp| bp.own_epoch).count();
+        let owned = self
+            .or_branch_stack
+            .iter()
+            .filter(|bp| bp.own_epoch)
+            .count();
         let epochs = calc_alg_context.databox_epoch_stack.len();
         if owned != epochs {
             eprintln!(
@@ -344,7 +346,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let bp = self.or_branch_stack.pop().expect("caller checked non-empty");
+        let bp = self
+            .or_branch_stack
+            .pop()
+            .expect("caller checked non-empty");
         {
             let kind = match &bp.kind {
                 BranchKind::Disjunction => "or",
@@ -522,8 +527,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // of those choices; the discarded-with-remaining branch point whose
         // choice the (wrong) verdict-deciding closure should have depended on
         // fingers the rule path that under-tracked its premises.
-        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some()
-            && self.ddb_discard_dump_lines < 4000
+        if std::env::var_os("KM_BRIDGE_DUMP_CLASH").is_some() && self.ddb_discard_dump_lines < 4000
         {
             let clash_line = {
                 let pc = calc_alg_context.process_context();
@@ -764,25 +768,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // disjunct. Sound: alternative `i` is only advanced past when the
             // context refuted it. Konclude default: atomic-only
             // (`AtomicSemanticBranching`, no extra rule work).
-            let sem_branch: Vec<NegLink<ConceptId>> = if self.conf_semantic_branching
-                || self.conf_atomic_semantic_branching
-            {
-                bp.disjuncts[..bp.next_alt]
-                    .iter()
-                    .map(|l| NegLink {
-                        target: l.target,
-                        negated: !(l.negated ^ bp.negate),
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let sem_branch: Vec<NegLink<ConceptId>> =
+                if self.conf_semantic_branching || self.conf_atomic_semantic_branching {
+                    bp.disjuncts[..bp.next_alt]
+                        .iter()
+                        .map(|l| NegLink {
+                            target: l.target,
+                            negated: !(l.negated ^ bp.negate),
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
             bp.next_alt += 1;
             (
                 bp.node,
                 link.target,
                 link.negated ^ bp.negate,
-                alt_tp.filter(|tp| tp.is_some()).unwrap_or(bp.dep_track_point),
+                alt_tp
+                    .filter(|tp| tp.is_some())
+                    .unwrap_or(bp.dep_track_point),
                 bp.node_count_at_push,
                 sem_branch,
             )
@@ -834,14 +839,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !topmost_own_epoch && restored {
             let (label_snapshot, queue_snapshot) = {
                 let bp = self.or_branch_stack.last().expect("checked non-empty");
-                (bp.node_label_snapshot.clone(), bp.node_queue_snapshot.clone())
+                (
+                    bp.node_label_snapshot.clone(),
+                    bp.node_queue_snapshot.clone(),
+                )
             };
             let ls_id = calc_alg_context
                 .process_context_mut()
                 .node_reapply_concept_label_set(node);
-            *calc_alg_context
-                .process_context_mut()
-                .label_set_mut(ls_id) = label_snapshot;
+            *calc_alg_context.process_context_mut().label_set_mut(ls_id) = label_snapshot;
             // Restore the coupled processing-queue snapshot (see `OrBranchPoint`):
             // trigger descriptors consumed by the failed alternative re-appear, so
             // reapply registrations wiped by the label restore are re-derived.
@@ -938,8 +944,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let (parent, into, from, alt_tp, dep_track_point, role, concept_linker, negate, cardinality, con_des, rest) = {
-            let bp = self.or_branch_stack.last_mut().expect("caller checked topmost");
+        let (
+            parent,
+            into,
+            from,
+            alt_tp,
+            dep_track_point,
+            role,
+            concept_linker,
+            negate,
+            cardinality,
+            con_des,
+            rest,
+        ) = {
+            let bp = self
+                .or_branch_stack
+                .last_mut()
+                .expect("caller checked topmost");
             let BranchKind::AtMostMerge(m) = &bp.kind else {
                 unreachable!("caller checked kind")
             };
@@ -1037,8 +1058,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         &mut self,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let (succ, alt_tp, dep_track_point, parent, role, concept_linker, negate, cardinality, con_des, rest) = {
-            let bp = self.or_branch_stack.last_mut().expect("caller checked topmost");
+        let (
+            succ,
+            alt_tp,
+            dep_track_point,
+            parent,
+            role,
+            concept_linker,
+            negate,
+            cardinality,
+            con_des,
+            rest,
+        ) = {
+            let bp = self
+                .or_branch_stack
+                .last_mut()
+                .expect("caller checked topmost");
             let BranchKind::AtMostQualify { succ, atmost } = &bp.kind else {
                 unreachable!("caller checked kind")
             };
@@ -1252,10 +1287,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context_mut()
                 .node_concept_processing_queue(m, true);
             for cd in entries {
-                let tp = calc_alg_context.process_context().con_desc(cd).dep_track_point;
+                let tp = calc_alg_context
+                    .process_context()
+                    .con_desc(cd)
+                    .dep_track_point;
                 let mut cpd_val = ConceptProcessDescriptor::new();
                 cpd_val.concept_des = cd;
-                cpd_val.priority = ConceptProcessPriority::new(DETERMINISTIC_PROCESS_PRIORITY as f64);
+                cpd_val.priority =
+                    ConceptProcessPriority::new(DETERMINISTIC_PROCESS_PRIORITY as f64);
                 cpd_val.dep_track_point = tp;
                 let cpd = calc_alg_context
                     .process_context_mut()
@@ -1528,7 +1567,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         concept_descriptor,
                         ..
                     } if concept_descriptor.is_some() => (
-                        ctx.con_desc(concept_descriptor).get_dependency_track_point(),
+                        ctx.con_desc(concept_descriptor)
+                            .get_dependency_track_point(),
                         "concept",
                     ),
                     _ => (cd.dep_track_point, "other"),
@@ -1559,7 +1599,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let tpr = ctx.track_point(t);
                 let dn = tpr.dependency_node();
                 if dn.is_none() {
-                    eprintln!("{:indent$}tp#{} tag={} (BASE)", "", t.index(), tpr.process_tag, indent = d * 2);
+                    eprintln!(
+                        "{:indent$}tp#{} tag={} (BASE)",
+                        "",
+                        t.index(),
+                        tpr.process_tag,
+                        indent = d * 2
+                    );
                     continue;
                 }
                 let node = ctx.dep_node(dn);

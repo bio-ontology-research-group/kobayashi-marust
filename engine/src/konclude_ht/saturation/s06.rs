@@ -514,8 +514,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 updated = true;
                 let mut backward_link_connected = false;
                 // KONCLUDE-PORT-NOTE[identity]: self-inclusive super-role list (see s02).
-                let super_roles =
-                    Self::saturation_indirect_super_roles(role, calc_alg_context);
+                let super_roles = Self::saturation_indirect_super_roles(role, calc_alg_context);
 
                 if last_resolved_indi_node.is_some() {
                     for super_role_it in super_roles.iter().copied() {

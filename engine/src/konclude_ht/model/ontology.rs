@@ -26,8 +26,9 @@ use super::role::Role;
 use super::role_chain::RoleChain;
 use super::substrate::{Arena, Cint64, Id, INVALID};
 use super::{
-    ConceptId, ConceptProcessDataId, ConceptSaturationReferenceLinkingDataId, IndividualId, RoleId,
-    RoleChainId, SaturationConceptReferenceLinkingId, UnsatisfiableCachingTagsId, VariableId,
+    ConceptId, ConceptProcessDataId, ConceptSaturationReferenceLinkingDataId, IndividualId,
+    RoleChainId, RoleId, SaturationConceptReferenceLinkingId, UnsatisfiableCachingTagsId,
+    VariableId,
 };
 use std::collections::{HashMap, HashSet};
 

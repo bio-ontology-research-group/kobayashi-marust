@@ -14,6 +14,37 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
+### ore_ont_541 and ore_ont_12653: source terminology + isolated OR tasks (2026-07-10)
+
+- **Symptom**: both timed out in the production CB portfolio. Earlier bridge
+  variants either thrashed, deferred, or solved only a test harness.
+- **Konclude diagnosis**: instrumentation plus source inspection showed two
+  decisive boundaries. `CConcreteOntologyUpdateBuilder` stores named-left
+  inclusions directly as `CCSUB`/`CCEQ` terminology; the binary absorber sees
+  only 23 residual GCIs on 541 and 10 on 12653. Its OR rule forks independent
+  satisfiability tasks. KM instead fed 647/501 generated HT clauses into the
+  absorber and explored siblings in one mutable context.
+- **Mechanism**:
+  1. Carry normalized source axioms through the frontend under
+     `KM_TRIGGER_ABSORB`, leaving default JSON byte-identical.
+  2. Build native `CCSUB`/`CCEQ`, restrictions, role domains/ranges, and only
+     then run the ported full/partial binary absorber. Counters match Konclude:
+     541 eq 1/2 and GCI 22/23; 12653 eq 1/1 and GCI 9/10.
+  3. Use complete branch-epoch COW for every OR sibling. The load-bearing
+     oracle is PathOfLength4 in 12653: the old shared state falsely exhausted
+     19 backtracks and returned UNSAT; isolated state finds the SAT model.
+  4. Keep saturation and completion in separate calculation tasks. Seed
+     classification with the deterministic named `CCSUB` closure and verify
+     only residual possible subsumers, matching Konclude's KPSet workflow.
+  5. Let `KM_TRIGGER_ABSORB=1` activate the certified bridge route and accept
+     its answer immediately; a bridge defer still falls back without a verdict.
+- **Result on ws, release `km classify`**: 541 = **0.86 s**, 12653 =
+  **0.08 s**. Gold projection is exact: 164/164 and 10/10 respectively, with
+  zero missing and zero spurious pairs. 541 has 166 full-IRI pairs because two
+  distinct classes share the local name `ProcessQuality`.
+- **Validation**: 1433 passed, 0 failed, 7 ignored; default frontend output for
+  both ontologies is byte-identical with the flag off.
+
 ### ore_ont_12653 — path/universe QCR ontology (2026-07-06, `d64e78b`)
 
 - **Symptom**: production km times out (240 s). Family: disjunction +
@@ -46,7 +77,8 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
      discipline.
 - **Result**: missing=0 spurious=0 in 1.0 s (subjects=14). konclude_ht suite
   1208/1208; ore_ont_1016 read-off regression byte-identical.
-- **Status**: bridge is test-only; production wiring pending.
+- **Status**: historical first harness close. Superseded by the 2026-07-10
+  source-terminology production route above.
 
 ### Read-off soundness gate (2026-07-06, follow-up to `d64e78b`)
 
@@ -108,12 +140,13 @@ branch-open-free is.**
 
 ### ore_ont_541 — functional-role variant (2026-07-05)
 
-- **Mechanism**: `KM_HT_CARD_FN` — functional data/object properties become
+- **Historical mechanism**: `KM_HT_CARD_FN` makes functional data/object properties
+  become
   first-class `≤1 R`. Validated 21 s MATCH standalone; the confirming panel
   was still pending as of 2026-07-05, and the ORE-config production route
-  still lists 541 as a timeout. The konclude_ht bridge route on 541 thrashes
-  (see "Diagnosed" below). Treat 541 as HALF-solved: mechanism exists, needs
-  the panel + routing confirmation.
+  still listed 541 as a timeout. This route remains gated because its corpus
+  panel regressed other ontologies. The source-terminology bridge above now
+  solves 541 cleanly in production; this entry is retained as history.
 
 ### ore_ont_5303 — deep-decision ALC+⊔ (2026-06)
 
@@ -158,7 +191,6 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 541 | bridge | read-offs SOLVED by DDB+COW (2026-07-07): the subject that thrashed 1M+ backtracks decides in 16 ms / 435 backtracks under `KM_HT_DDB=1 KM_HT_COW=1` (u29 backjumping + atomic semantic branching + complete-state branch epochs, commits 93e62e4 + d5603a0) | Residual: the pairwise verification probes for NONDET subjects dominate full-classify wall time (fresh env per probe); needs probe-env reuse or the unsat cache. Full classify-vs-gold tally pending. |
 | 3215 | bridge | covered (unsupported=0), per-subject read-off terminates 0.4–6 s deterministic-after-gate; Konclude itself needs 22 s (-w8) | Correctness sample validating; the blocker is O(subjects) fresh saturations — needs databox-COW reuse per subject (Konclude reuses the preprocessed task). |
 | 7914 | bridge | 46k nodes, hits the 5M drive cap, backtracks=0 | Model explosion, not search: blocking effectiveness + lazy-∀ extension (the giants' family). Production route: r-Succ completeness gap needs edge-conditioned forward push + Lean re-cert. |
 | 9663, 9724 | production | central memory blowup (9663 saturation 115 GB) | Deterministic ≤n bounds in `saturate_global` + interning; see `KONCLUDE-SATURATION-CACHE-SPEC.md`. |

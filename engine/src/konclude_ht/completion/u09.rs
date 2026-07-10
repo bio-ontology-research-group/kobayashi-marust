@@ -830,8 +830,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return;
                 }
                 // else: present with the OPPOSITE polarity ⇒ trigger satisfied; advance.
-                if trigger_dep_track_point != dep_track_point && trigger_dep_track_point.is_some()
-                {
+                if trigger_dep_track_point != dep_track_point && trigger_dep_track_point.is_some() {
                     // createCONNECTIONDependency accumulation (cpp 10425–10429):
                     // WITHOUT this a head fired by a BRANCH-added trigger
                     // inherits only the implication concept's own (base) tag —

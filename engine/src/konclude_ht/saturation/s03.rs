@@ -652,10 +652,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context()
                 .sat_node(*process_indi)
                 .get_individual_id();
-            eprintln!(
-                "SAT-CLASH s03-bottom node={:?} indi={}",
-                process_indi, indi
-            );
+            eprintln!("SAT-CLASH s03-bottom node={:?} indi={}", process_indi, indi);
         }
         self.update_direct_adding_individual_status_flags(
             *process_indi,
