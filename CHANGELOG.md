@@ -9,6 +9,137 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Saturation-first probe answering, waves 1-3 (`18c9a46` .. `c116a9c`, 2026-07-09/10)
+
+The confirmed lever for the disjunction/cardinality timeout family (541, 12653,
+...): Konclude decides ~95% of subsumption tests by its approximation
+saturation before any tableau search. The 12 ported saturation units are now
+WIRED in front of the bridge's completion probes, opt-in `KM_HT_SATURATION=1`
+inside the `KM_HT_BRIDGE` arm (`18c9a46`): production config, per-
+(concept,polarity) seeds, budgeted run (`KM_HT_SATURATION_BUDGET_S`, discard
+on overrun), and `CPrecomputedSaturationSubsumerExtractor`-style consumption
+(CLASHED = unsat-certain; completed and not INSUFFICIENT = sat-certain with
+the exact subsumer row; residue unchanged to the probes). Five port bugs were
+fixed on the way in, plus a default-path root-top fix (bridge probe roots were
+created without TOP, silently weakening bottom-rule clash detection).
+
+Wave 1 (`8481c9b` + `76cc6e0`): the precise ATMOST criticality test (collect +
+simple/detailed mergeability + ancestor INSUFFICIENT marking replaces the
+node-poisoning substitute) and a critical-queue misrouting fix. The s03
+file-local CCT_DISJUNCTION/EQCANDIDATE tags were 4/5 but Konclude's enum is
+2/3, so every OR critical was routed into the always-defer VALUE stub queue
+and the precise OR test never ran. Found via per-type SAT-STATS counters.
+After both fixes the family criticals are decided by the real tests and are
+genuinely critical: the criticality-test path is exhausted as a lever.
+
+Wave 2 (`1b57b9d` + `bf282e8`): the saturation-node coupling into the
+completion probes, Konclude's production completion profile (expand created
+successors from saturated labels, caching-blocking from saturation, and the
+generating-existential absorption that terminates tree growth at cached
+nodes). Saturation runs on the probe env; `reset_probe_env` carries the ~43
+saturation arenas across probe resets (`adopt_saturation_state_from`).
+Opt-in `KM_HT_SATCACHE=1` on top of `KM_HT_SATURATION=1`: measured on 12653,
+coupled probes poison-defer at subject 1 vs 14 plain, because without the
+extension-resolving refinement the replayed labels under-approximate
+forall-restricted successors and caching fails to establish exactly where it
+matters. Becomes profitable once `getSaturationResolvedIndividualNodeExtension`
+is ported.
+
+Wave 3 (`c116a9c`): the successor-EXTENSION machinery's wrong clashes (541
+ext-ON: 11-13 satisfiable classes answered UNSAT-certain, nondeterministic)
+ROOT-CAUSED via a 13-axiom ddmin reproducer and fixed. The watch-side
+implication trigger check (`insert_concept_reapplication_return_triggered`)
+faithfully ported the C++ positive-presence-only test, which is safe in
+Konclude because absorption only builds positive-presence triggers, but the
+bridge's clause encoding also emits negative-presence triggers; a label
+carrying +C then satisfied a want-not-C trigger and a contrapositive
+implication chain manufactured a clash on resolved extension nodes. Fix:
+thread the wanted presence polarity (the inverse of the stored linker
+negation, matching the already-polarity-aware insert-side reapply check).
+Validation: reproducer 0/20 wrong (was 8/8); 541 extensions-ON three runs 0
+wrong and 6-9 of 59 family subjects answered SAT-certain, the first sound
+nonzero saturation coverage on the family; suite 1424/1424. `KM_HT_SAT_EXT`
+stays opt-in: the extension fixpoint costs ~40s on 541 (vs 0.4s off) with
+run-to-run coverage variance (HashMap-ordered succ-extension maps vs
+Konclude's sorted CPROCESSMAP). Env-gated diagnostics kept:
+`KM_SAT_CLASH_TRACE` (all CLASHED-set sites, indirect propagation edges,
+implication executions), `KM_SAT_ADD_TRACE=<concept>` (backtrace on watched
+adds), extended `KM_SAT_DEBUG` dumps (subject/name/concept tables).
+
+Also closed: the suspected "plain bridge no longer closes 12653" regression is
+NOT a regression. Bisect (1c931e7 / 18c9a46 / 8481c9b / HEAD) shows the
+permanent poison-defer at every point; the recorded 10-20s plain closes date
+from before `7a01372` restored the complete-or-defer contract (unrestored
+advances poison SAT verdicts by design), and the 17s figures were COW+DDB
+probe-harness measurements. The production baseline (bridge off) never
+regressed.
+
+### Unsat-cache learning: functional, zero reuse on the family (`1fc2618`, `9c03476`, `1c931e7`)
+
+Konclude's nogood store (occurrence unsatisfiable cache) wired live into the
+bridge: handler install, carry across probe resets, read probes at Konclude's
+rule points, write counters. Two bugs made it real: bridged concepts carried
+no TERMINOLOGY so the u22 validity guard rejected every line (fix: terminology
+stamp sweep in bridge_tinput), and the write-slot ring had ONE slot so the
+first write deadlocked the C++ concurrent-reader wait protocol in-process
+(gdb-proven; Konclude sizes workers+2; fix: ring of 3 plus bounded rescan that
+skips the write instead of hanging). Post-fix verdict: overhead ~zero (12653:
+17.2s vs 17.0s in the COW+DDB probe harness) but 0 read hits on 12653/541 —
+the family's nogood lines carry seed and branch-specific atoms and never recur
+as a label subset, so this mechanism cannot prune the family (valid negative;
+Konclude's family speed is saturation + absorption, not its unsat cache).
+`KM_HT_UNSATCACHE` stays opt-in. Also in this arc: Arc-COW extended to the
+remaining map-bearing node satellites (role_succ / distinct / succ_role
+hashes).
+
+### Bridge correctness campaign + production wiring (2026-07-06 .. 07-08)
+
+The bridge went from "solves 12653 in a harness" to a production-wired,
+complete-or-defer arm of `km classify`:
+
+- **Production route + env reuse** (`ca772f1`, `067aaa4`): read-off soundness
+  gate, one bridged env per classification with per-probe resets
+  (byte-identical A/B vs fresh envs), universe filter, per-subject defer.
+- **COW branch epochs** (`d5603a0`, `7549697`, `0c5848f`): complete
+  per-alternative state restore via epoch journal + arena watermarks; 541
+  probes collapse 1M+ chronological backtracks to 435; later localized to
+  per-node Arc-COW label sets + processing queues (O(1) journal save, deep
+  copy on write = Konclude's task-fork shape). Decisive measurement: the 541
+  residual is SEARCH VOLUME, not restore cost.
+- **DDB (dependency-directed backjumping)** made trustworthy: taint-loss root
+  cause (`2a869e8` DetLink back-edges), wrong root-cancels closed by trigger
+  deps (`93e62e4`), and the u29 wrong-UNSAT root-caused to leftover poisoning
+  and gated on `unrestored_advance_count == 0` (`7c521cb`, found by ddmin
+  264 -> 5 axioms).
+- **Soundness fixes**: at-most polarity + nondeterministic merge branching +
+  choose rule (`1497954`), ALL-rule dependency threading (541 spurious
+  unsatisfiability, `a4a3ae6`), phantom card-defs delivered absorption-only
+  (`84e38bf`, closed the whole COW oracle-anomaly family), read-off search
+  bounded by the probe budget (`42a8b74`, `1d188d6`).
+- **Complete-or-defer restored** (`7a01372`): unrestored advances phantomize
+  existential successors, so the poison now defers SAT verdicts instead of
+  trusting them. This is why 12653's plain-bridge close from the `067aaa4` era
+  now defers by design.
+- **At-most resume port** (`371f38f`, `KM_HT_ATMOST_REST`): Konclude's
+  branchingMergingProcRest state machine (incremental link scan via edge
+  watermark, persistent candidate lists, distinct-clique init clash).
+- **Panel verdict** (`6ac4a31`, results/benchmarks/2026-07-08-bridge-panel/):
+  KM_HT_BRIDGE=1 flips exactly one ontology ok->timeout and closes nothing,
+  so the bridge arm stays OFF in production. Baseline 576/584 ok; km beats
+  Konclude on BOTH medians (0.21s/33MB vs 0.25s/135MB), faster AND lighter on
+  356/576.
+
+### Orchestration speed wins: +55 beat-Konclude goal-wins (2026-07-07)
+
+- **In-process CB engine** for small non-EL ontologies (`8847b85`, gated on
+  no-internal-definer-disjunction `b2f58fd`): +25 wins (IBEX 48105343 era
+  snapshots).
+- **Frontend meta/clauses parsed with `from_slice` instead of `from_reader`**
+  (`2b8f224`): serde's reader path was the bottleneck; ore_ont_10073 frontend
+  19s -> 5s; +30 wins.
+- **Blank-node meta filter** (`14af873`): `_:genid` nodes excluded from
+  named/iri_map; WIN 272 -> 284, solved 576 held.
+
 ### konclude_ht bridge solves ore_ont_12653 sound+complete in 1.0 s (`d64e78b`)
 
 ore_ont_12653 (production 240 s timeout, disjunction + qualified-cardinality

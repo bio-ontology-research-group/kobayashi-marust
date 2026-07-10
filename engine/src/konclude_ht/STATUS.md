@@ -6,7 +6,10 @@ status; `PORT.md` holds the full wave-by-wave history (W0-W555) and the per-unit
 status table. **License note:** Konclude is LGPL; this is a derivative work —
 LGPL headers + attribution still need to be added (see Next steps §6).
 
-_Last updated 2026-07-06. HEAD `d64e78b` on branch `payg-strategy` (pushed)._
+_Last updated 2026-07-10. HEAD `c116a9c` on branch `payg-strategy` (pushed).
+Suite: 1424 tests green on ws. The 2026-07-06 .. 07-10 arc (bridge production
+wiring, COW/DDB trust chain, unsat-cache verdict, saturation-first waves 1-3)
+is summarized in [`CHANGELOG.md`](../../../CHANGELOG.md) under [unreleased]._
 
 > **First ORE timeout ontology closed by this port: ore_ont_12653, sound +
 > complete in 1.0 s via the bridge (`d64e78b`; production km times out on it).
@@ -21,6 +24,66 @@ _Last updated 2026-07-06. HEAD `d64e78b` on branch `payg-strategy` (pushed)._
 > a ~2^56 space, nodes flat); 7914 and the giants need blocking/lazy-∀ (46k
 > nodes, drive cap); 3215 needs per-subject databox reuse (speed, not
 > correctness).
+
+## Saturation-first probe answering (tasks #23/#24, 2026-07-09/10)
+
+The active front. Konclude decides ~95% of subsumption tests by approximation
+saturation before any tableau search; the 12 ported saturation units are now
+wired in front of the bridge's completion probes. Flag ladder (all opt-in,
+composable, inside `KM_HT_BRIDGE=1`):
+
+- **`KM_HT_SATURATION=1`** (`18c9a46`): saturation pre-pass + subsumer
+  extraction before the probe loop. CLASHED nodes answer unsat-certain,
+  sufficient completed nodes answer sat-certain with the exact subsumer row,
+  the residue goes to the probes unchanged. Budgeted
+  (`KM_HT_SATURATION_BUDGET_S`, 120 s default, whole pass discarded on
+  overrun). With extensions off this is sound and costs ~0.4 s on the family
+  onts, but answers 0 family subjects (every subject carries genuinely
+  critical `⊔`/`≤` after the wave-1 precise tests).
+- **`KM_HT_SAT_EXT=1`** (wave 3, `c116a9c`): the successor-EXTENSION
+  machinery. NOW SOUND — the historical wrong-clash family (541: 11-13
+  satisfiable classes answered UNSAT-certain) was root-caused via a 13-axiom
+  ddmin reproducer to the watch-side implication trigger check ignoring the
+  wanted presence polarity (C++-faithful positive-presence-only; Konclude's
+  absorption never builds negative-presence triggers, the bridge's clause
+  encoding does). Post-fix: 541 answers 6-9 of 59 family subjects
+  SAT-certain, 0 wrong, the first sound nonzero saturation coverage on the
+  family. Still opt-in: the extension fixpoint costs ~40 s on 541 with
+  run-to-run coverage variance (HashMap-ordered succ-extension maps vs
+  Konclude's sorted CPROCESSMAP), and W6-DEFER extension bodies remain.
+- **`KM_HT_SATCACHE=1`** (wave 2, `1b57b9d`+`bf282e8`): the saturation-node
+  coupling into the completion probes (expand-from-saturation +
+  caching-blocking + generating-∃ absorption; Konclude's production
+  completion profile). Saturation runs on the probe env and the ~43
+  saturation arenas are carried across probe resets
+  (`adopt_saturation_state_from`). Opt-in because without the
+  extension-resolve refinement the replayed labels under-approximate
+  ∀-restricted successors, caching fails to establish where it matters, and
+  coupled probes poison-defer EARLIER (12653: subject 1 vs 14 plain).
+
+Next levers, in order: (1) make the extension fixpoint cheap + deterministic
+(BTreeMap the succ-extension maps, bound re-resolution); (2) port
+`getSaturationResolvedIndividualNodeExtension` +
+`collectReapplyAutomatTransactionsRestrictions` (the resolve refinement) into
+the satcache coupling, then re-evaluate the `KM_HT_SATCACHE` default; (3)
+re-measure family coverage and consider default-on for the saturation
+pre-pass.
+
+Related verdicts from the same arc: the unsat-cache (`KM_HT_UNSATCACHE`,
+`1c931e7`) is functional but has ZERO reuse on the family (nogood lines never
+recur as label subsets) — kept opt-in as a valid negative result; the bridge
+arm itself stays OFF in production (2026-07-08 panel: flips one ontology
+ok→timeout, closes nothing; baseline 576/584 with km winning both medians).
+The "plain bridge no longer closes 12653" suspicion was bisect-closed as
+NOT a regression: complete-or-defer (`7a01372`) intentionally poison-defers
+it; the recorded plain closes predate that contract.
+
+Debug aids (env-gated, cached lookups): `KM_SAT_DEBUG=1` (per-node label/flag
+dump + SAT-SUBJ/SAT-NAME/SAT-CONCEPT tables), `KM_SAT_CLASH_TRACE=1` (every
+CLASHED-set site, indirect clash-propagation edges, implication executions),
+`KM_SAT_ADD_TRACE=<concept idx>` (backtrace on watched concept adds),
+`KM_BRIDGE_PROGRESS=1` (per-pass answered/residue lines). Worker stderr is
+nulled unless `KM_HT_STATS=1` or `KM_HT_TRACE=1`.
 
 ## What it is
 
