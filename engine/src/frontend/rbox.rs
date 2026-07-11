@@ -29,6 +29,30 @@ pub enum RboxRecord {
     Chain(String, String, String),
 }
 
+/// Serialize the typed Rust record into the legacy row format consumed by
+/// `cb_to_ht` and the `km cb-to-ht` worker protocol.
+pub fn to_row(record: &RboxRecord) -> Vec<String> {
+    match record {
+        RboxRecord::Subrole(sub, sup) => vec!["subrole".into(), sub.clone(), sup.clone()],
+        RboxRecord::Domain(role, concept) => {
+            vec!["domain".into(), role.clone(), concept.clone()]
+        }
+        RboxRecord::Range(role, concept) => {
+            vec!["range".into(), role.clone(), concept.clone()]
+        }
+        RboxRecord::Inverse(left, right) => {
+            vec!["inverse".into(), left.clone(), right.clone()]
+        }
+        RboxRecord::Fenced(reason, detail) => {
+            vec!["fenced".into(), reason.clone(), detail.clone()]
+        }
+        RboxRecord::Transitive(role) => vec!["transitive".into(), role.clone()],
+        RboxRecord::Chain(left, right, sup) => {
+            vec!["chain".into(), left.clone(), right.clone(), sup.clone()]
+        }
+    }
+}
+
 /// Port of `_plain_role`: named role -> Some(short); inverse/complex -> None.
 fn plain_role(reg: &mut IriRegistry, node: &Node) -> Option<String> {
     match node {
@@ -87,7 +111,7 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                         Node::List(_, ca) => strip_annotations(ca),
                         _ => Vec::new(),
                     };
-                    if chain_args.len() == 2 && std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
+                    if chain_args.len() == 2 {
                         if let (Some(r1), Some(r2), Some(rs)) = (
                             plain_role(reg, chain_args[0]),
                             plain_role(reg, chain_args[1]),
@@ -188,13 +212,11 @@ pub fn rbox_node(reg: &mut IriRegistry, node: &Node, out: &mut Vec<RboxRecord>) 
                 }
             }
             "TransitiveObjectProperty" => {
-                // KM_KEEP_CHAIN_AXIOMS: emit as side data so cb_to_ht can
-                // populate the TInput `transitive` field.  Not fenced (TBox
-                // normalisation still handles it for the default path).
-                if std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some() {
-                    if let Some(r) = plain_role(reg, args[0]) {
-                        out.push(RboxRecord::Transitive(r));
-                    }
+                // Always retain this as RBox side data. Consumers decide
+                // whether to compile it; dropping it here made that decision
+                // depend on an environment variable during parsing.
+                if let Some(r) = plain_role(reg, args[0]) {
+                    out.push(RboxRecord::Transitive(r));
                 }
             }
             "SymmetricObjectProperty" => {

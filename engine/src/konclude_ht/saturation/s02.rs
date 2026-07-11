@@ -320,6 +320,50 @@ impl SaturationTaskHandleAlgorithm {
                 substituite_individual_node = true;
             }
         }
+        let init_debug = init_concept.is_some()
+            && std::env::var("KM_SAT_INIT_DEBUG_TAG")
+                .ok()
+                .and_then(|value| value.parse::<Cint64>().ok())
+                == Some(
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(init_concept)
+                        .get_concept_tag(),
+                );
+        if init_debug {
+            let special_tag = if special_indi_node.is_some() {
+                let special_item = calc_alg_context
+                    .process_context()
+                    .sat_node(special_indi_node)
+                    .get_saturation_concept_reference_linking();
+                if special_item.is_some() {
+                    let special_concept = calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data(special_item)
+                        .get_saturation_concept();
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(special_concept)
+                        .get_concept_tag()
+                } else {
+                    -1
+                }
+            } else {
+                -1
+            };
+            eprintln!(
+                "SAT-INIT-SELECT node={} init-tag={} special={} special-tag={} copy={} substitute={}",
+                indi_proc_sat_node.raw,
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(init_concept)
+                    .get_concept_tag(),
+                special_indi_node.raw,
+                special_tag,
+                copy_individual_node,
+                substituite_individual_node,
+            );
+        }
 
         let mut add_initialization_concepts = true; // 5511
         let mut initialized = false; // 5512
@@ -1522,6 +1566,53 @@ impl SaturationTaskHandleAlgorithm {
             .process_context()
             .sat_node(copy_from_indi_proc_sat_node)
             .get_concept_saturation_process_linker();
+        let copy_debug = std::env::var("KM_SAT_LINK_DEBUG_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            .is_some_and(|target_tag| {
+                let reference = calc_alg_context
+                    .process_context()
+                    .sat_node(indi_proc_sat_node)
+                    .get_saturation_concept_reference_linking();
+                reference.is_some()
+                    && calc_alg_context
+                        .ontology_arenas()
+                        .concept(
+                            calc_alg_context
+                                .process_context()
+                                .extended_con_ref_linking_data(reference)
+                                .get_saturation_concept(),
+                        )
+                        .get_concept_tag()
+                        == target_tag
+            });
+        if copy_debug {
+            let mut queued = Vec::new();
+            let mut linker = con_sat_pro_linker_it;
+            while linker.is_some() {
+                let descriptor = calc_alg_context
+                    .process_context()
+                    .con_sat_proc_linker(linker)
+                    .get_concept_saturation_descriptor();
+                let concept = calc_alg_context
+                    .process_context()
+                    .con_sat_desc(descriptor)
+                    .get_concept();
+                queued.push(
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                );
+                linker = calc_alg_context
+                    .process_context()
+                    .con_sat_proc_linker(linker)
+                    .get_next();
+            }
+            eprintln!(
+                "SAT-COPY target={indi_proc_sat_node:?} source={copy_from_indi_proc_sat_node:?} queued={queued:?}"
+            );
+        }
         while con_sat_pro_linker_it.is_some() {
             let con_des = calc_alg_context
                 .process_context()

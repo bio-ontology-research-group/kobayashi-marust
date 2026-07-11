@@ -1,0 +1,903 @@
+cb_to_ht [emelim] eliminated 0 complementary pairs
+cb_to_ht [trigger-absorb] definers=29466 moved=0 tautologies=0
+bridge [source-tbox] axioms=155577 eq=0/0 [] direct=155575 role-links=0 absorbed-gci=4295 top-gci=0 unsupported=0
+role-automata begin concepts=168459 next-tag=168468
+BRIDGE-SATURATION: budget overrun, pass discarded
+BRIDGE-CLASSIFY round 0 subject 1/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 65/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 129/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 193/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 257/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 321/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 385/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 449/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 513/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 577/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 641/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 705/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 769/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 833/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 897/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 961/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1025/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1089/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1153/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1217/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1281/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1345/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1409/58364 deferred=0 permanent=0
+BRIDGE-INTERSECT subject 73659 (NBO_0000079): candidates 4 -> 3 [NBO_0000313,NBO_0001845,NBO_0000079]
+BRIDGE-INTERSECT subject 34499 (NBO_0000130): candidates 5 -> 4 [NBO_0000130,NBO_0000313,NBO_0001845,NBO_0000079]
+BRIDGE-INTERSECT subject 34784 (NBO_0000131): candidates 6 -> 5 [NBO_0000130,NBO_0000131,NBO_0000313,NBO_0001845,NBO_0000079]
+BRIDGE-INTERSECT subject 44800 (NBO_0000132): candidates 6 -> 5 [NBO_0000130,NBO_0000313,NBO_0001845,NBO_0000132,NBO_0000079]
+BRIDGE-INTERSECT subject 73658 (NBO_0000047): candidates 5 -> 4 [NBO_0000313,NBO_0001845,NBO_0000047,NBO_0000079]
+BRIDGE-INTERSECT subject 73667 (NBO_0000054): candidates 5 -> 4 [NBO_0000313,NBO_0001845,NBO_0000079,NBO_0000054]
+BRIDGE-INTERSECT subject 74190 (NBO_0000545): candidates 5 -> 4 [NBO_0000313,NBO_0001845,NBO_0000079,NBO_0000545]
+BRIDGE-CLASSIFY round 0 subject 1473/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1537/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1601/58364 deferred=0 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1665/58364 deferred=0 permanent=0
+PROGRESS-SAT iters=1000000 nodes=6278 inserts=976526
+BRIDGE-DEFER subject 73652: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 1729/58364 deferred=1 permanent=0
+BRIDGE-INTERSECT subject 74044 (NBO_0000401): candidates 10 -> 9 [NBO_0000313,NBO_0001845,NBO_0000079,NBO_0000054,NBO_0000338,NBO_0000388,NBO_0000389,NBO_0000390,NBO_0000401]
+BRIDGE-CLASSIFY round 0 subject 1793/58364 deferred=1 permanent=0
+BRIDGE-INTERSECT subject 73676 (NBO_0002436): candidates 6 -> 5 [NBO_0000313,NBO_0000063,NBO_0002436,NBO_0001786,NBO_0002169]
+BRIDGE-PAIR-START NBO_0002436 v NBO_0000063
+BRIDGE-PAIR-END NBO_0002436 v NBO_0000063: false
+BRIDGE-INTERSECT subject 73675 (NBO_0000063): candidates 6 -> 5 [NBO_0000313,NBO_0000063,NBO_0002436,NBO_0001786,NBO_0002169]
+BRIDGE-INTERSECT subject 88025 (NBO_0002511): candidates 7 -> 6 [NBO_0000313,NBO_0000063,NBO_0002436,NBO_0001786,NBO_0002169,NBO_0002511]
+BRIDGE-INTERSECT subject 88030 (NBO_0002743): candidates 7 -> 6 [NBO_0000313,NBO_0000063,NBO_0002436,NBO_0001786,NBO_0002169,NBO_0002743]
+BRIDGE-INTERSECT subject 73761 (NBO_0002794): candidates 8 -> 7 [NBO_0000313,NBO_0000063,NBO_0002436,NBO_0002794,NBO_0001786,NBO_0002169,NBO_0002743]
+BRIDGE-PAIR-START NBO_0000064 v NBO_0000063
+BRIDGE-PAIR-END NBO_0000064 v NBO_0000063: false
+BRIDGE-PAIR-START NBO_0002660 v NBO_0000063
+BRIDGE-PAIR-END NBO_0002660 v NBO_0000063: false
+BRIDGE-PAIR-START NBO_0002702 v NBO_0000063
+BRIDGE-PAIR-END NBO_0002702 v NBO_0000063: false
+BRIDGE-PAIR-START NBO_0001824 v NBO_0000063
+BRIDGE-PAIR-END NBO_0001824 v NBO_0000063: false
+BRIDGE-PAIR-START NBO_0002468 v NBO_0000063
+BRIDGE-PAIR-END NBO_0002468 v NBO_0000063: false
+BRIDGE-CLASSIFY round 0 subject 1857/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1921/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 1985/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2049/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2113/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2177/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2241/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2305/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2369/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2433/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2497/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2561/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2625/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2689/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2753/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2817/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2881/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 2945/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3009/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3073/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3137/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3201/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3265/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3329/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3393/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3457/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3521/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3585/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3649/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3713/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3777/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3841/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3905/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 3969/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4033/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4097/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4161/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4225/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4289/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4353/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4417/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4481/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4545/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4609/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4673/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4737/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4801/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4865/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4929/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 4993/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5057/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5121/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5185/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5249/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5313/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5377/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5441/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5505/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5569/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5633/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5697/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5761/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5825/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5889/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 5953/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6017/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6081/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6145/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6209/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6273/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6337/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6401/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6465/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6529/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6593/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6657/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6721/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6785/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6849/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6913/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 6977/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7041/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7105/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7169/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7233/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7297/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7361/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7425/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7489/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7553/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7617/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7681/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7745/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7809/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7873/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 7937/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8001/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8065/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8129/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8193/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8257/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8321/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8385/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8449/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8513/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8577/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8641/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8705/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8769/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8833/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8897/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 8961/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9025/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9089/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9153/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9217/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9281/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9345/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9409/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9473/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9537/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9601/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9665/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9729/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9793/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9857/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9921/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 9985/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10049/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10113/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10177/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10241/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10305/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10369/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10433/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10497/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10561/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10625/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10689/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10753/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10817/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10881/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 10945/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11009/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11073/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11137/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11201/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11265/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11329/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11393/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11457/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11521/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11585/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11649/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11713/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11777/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11841/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11905/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 11969/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12033/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12097/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12161/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12225/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12289/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12353/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12417/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12481/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12545/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12609/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12673/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12737/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12801/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12865/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12929/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 12993/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13057/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13121/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13185/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13249/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13313/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13377/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13441/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13505/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13569/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13633/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13697/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13761/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13825/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13889/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 13953/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14017/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14081/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14145/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14209/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14273/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14337/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14401/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14465/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14529/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14593/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14657/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14721/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14785/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14849/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14913/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 14977/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15041/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15105/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15169/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15233/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15297/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15361/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15425/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15489/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15553/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15617/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15681/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15745/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15809/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15873/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 15937/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16001/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16065/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16129/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16193/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16257/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16321/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16385/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16449/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16513/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16577/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16641/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16705/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16769/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16833/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16897/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 16961/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17025/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17089/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17153/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17217/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17281/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17345/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17409/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17473/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17537/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17601/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17665/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17729/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17793/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17857/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17921/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 17985/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18049/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18113/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18177/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18241/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18305/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18369/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18433/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18497/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18561/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18625/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18689/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18753/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18817/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18881/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 18945/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19009/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19073/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19137/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19201/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19265/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19329/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19393/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19457/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19521/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19585/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19649/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19713/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19777/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19841/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19905/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 19969/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20033/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20097/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20161/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20225/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20289/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20353/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20417/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20481/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20545/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20609/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20673/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20737/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20801/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20865/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20929/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 20993/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21057/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21121/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21185/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21249/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21313/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21377/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21441/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21505/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21569/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21633/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21697/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21761/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21825/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21889/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 21953/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22017/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22081/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22145/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22209/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22273/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22337/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22401/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22465/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22529/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22593/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22657/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22721/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22785/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22849/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22913/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 22977/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23041/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23105/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23169/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23233/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23297/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23361/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23425/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23489/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23553/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23617/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23681/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23745/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23809/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23873/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 23937/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24001/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24065/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24129/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24193/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24257/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24321/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24385/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24449/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24513/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24577/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24641/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24705/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24769/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24833/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24897/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 24961/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25025/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25089/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25153/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25217/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25281/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25345/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25409/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25473/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25537/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25601/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25665/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25729/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25793/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25857/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25921/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 25985/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26049/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26113/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26177/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26241/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26305/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26369/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26433/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26497/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26561/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26625/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26689/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26753/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26817/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26881/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 26945/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27009/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27073/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27137/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27201/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27265/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27329/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27393/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27457/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27521/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27585/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27649/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27713/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27777/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27841/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27905/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 27969/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28033/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28097/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28161/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28225/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28289/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28353/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28417/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28481/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28545/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28609/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28673/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28737/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28801/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28865/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28929/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 28993/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29057/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29121/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29185/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29249/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29313/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29377/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29441/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29505/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29569/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29633/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29697/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29761/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29825/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29889/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 29953/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30017/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30081/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30145/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30209/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30273/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30337/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30401/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30465/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30529/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30593/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30657/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30721/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30785/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30849/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30913/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 30977/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31041/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31105/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31169/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31233/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31297/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31361/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31425/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31489/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31553/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31617/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31681/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31745/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31809/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31873/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 31937/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32001/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32065/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32129/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32193/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32257/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32321/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32385/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32449/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32513/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32577/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32641/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32705/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32769/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32833/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32897/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 32961/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33025/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33089/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33153/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33217/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33281/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33345/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33409/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33473/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33537/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33601/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33665/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33729/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33793/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33857/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33921/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 33985/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34049/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34113/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34177/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34241/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34305/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34369/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34433/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34497/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34561/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34625/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34689/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34753/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34817/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34881/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 34945/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35009/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35073/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35137/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35201/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35265/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35329/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35393/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35457/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35521/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35585/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35649/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35713/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35777/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35841/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35905/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 35969/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36033/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36097/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36161/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36225/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36289/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36353/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36417/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36481/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36545/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36609/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36673/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36737/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36801/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36865/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36929/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 36993/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37057/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37121/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37185/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37249/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37313/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37377/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37441/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37505/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37569/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37633/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37697/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37761/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37825/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37889/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 37953/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38017/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38081/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38145/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38209/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38273/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38337/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38401/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38465/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38529/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38593/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38657/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38721/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38785/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38849/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38913/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 38977/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39041/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39105/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39169/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39233/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39297/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39361/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39425/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39489/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39553/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39617/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39681/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39745/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39809/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39873/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 39937/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40001/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40065/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40129/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40193/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40257/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40321/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40385/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40449/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40513/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40577/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40641/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40705/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40769/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40833/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40897/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 40961/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41025/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41089/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41153/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41217/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41281/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41345/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41409/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41473/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41537/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41601/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41665/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41729/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41793/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41857/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41921/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 41985/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42049/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42113/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42177/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42241/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42305/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42369/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42433/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42497/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42561/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42625/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42689/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42753/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42817/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42881/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 42945/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43009/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43073/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43137/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43201/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43265/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43329/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43393/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43457/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43521/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43585/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43649/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43713/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43777/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43841/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43905/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 43969/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44033/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44097/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44161/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44225/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44289/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44353/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44417/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44481/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44545/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44609/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44673/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44737/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44801/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44865/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44929/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 44993/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45057/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45121/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45185/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45249/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45313/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45377/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45441/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45505/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45569/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45633/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45697/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45761/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45825/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45889/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 45953/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46017/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46081/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46145/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46209/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46273/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46337/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46401/58364 deferred=1 permanent=0
+BRIDGE-PAIR-START NBO_0000929 v NBO_0000133
+BRIDGE-PAIR-END NBO_0000929 v NBO_0000133: true
+BRIDGE-PAIR-START NBO_0000961 v NBO_0000133
+BRIDGE-PAIR-END NBO_0000961 v NBO_0000133: true
+BRIDGE-PAIR-START NBO_0000541 v NBO_0000133
+BRIDGE-PAIR-END NBO_0000541 v NBO_0000133: true
+BRIDGE-PAIR-START NBO_0000543 v NBO_0000133
+BRIDGE-PAIR-END NBO_0000543 v NBO_0000133: true
+BRIDGE-PAIR-START NBO_0000993 v NBO_0000133
+BRIDGE-PAIR-END NBO_0000993 v NBO_0000133: true
+BRIDGE-PAIR-START NBO_0002519 v NBO_0000133
+BRIDGE-PAIR-END NBO_0002519 v NBO_0000133: true
+BRIDGE-CLASSIFY round 0 subject 46465/58364 deferred=1 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46529/58364 deferred=1 permanent=0
+PROGRESS-SAT iters=1000000 nodes=6285 inserts=976298
+BRIDGE-DEFER subject 74413: READ-OFF stop after 12.8s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 46593/58364 deferred=2 permanent=0
+BRIDGE-CLASSIFY round 0 subject 46657/58364 deferred=2 permanent=0
+PROGRESS-SAT iters=1000000 nodes=6304 inserts=975495
+PROGRESS-SAT iters=2000000 nodes=11724 inserts=1951805
+BRIDGE-DEFER subject 83292: READ-OFF stop after 11.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8655 inserts=959620
+BRIDGE-DEFER subject 41128: READ-OFF stop after 16.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8677 inserts=959545
+BRIDGE-DEFER subject 42353: READ-OFF stop after 19.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8682 inserts=959559
+BRIDGE-DEFER subject 76458: READ-OFF stop after 11.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8674 inserts=959583
+BRIDGE-DEFER subject 36542: READ-OFF stop after 13.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8683 inserts=959540
+BRIDGE-DEFER subject 44631: READ-OFF stop after 11.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10420 inserts=966121
+BRIDGE-DEFER subject 83934: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8934 inserts=962426
+BRIDGE-DEFER subject 83935: READ-OFF stop after 14.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8803 inserts=960172
+BRIDGE-DEFER subject 87306: READ-OFF stop after 11.5s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 46721/58364 deferred=11 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8722 inserts=959653
+PROGRESS-SAT iters=2000000 nodes=17309 inserts=1918965
+BRIDGE-DEFER subject 43382: READ-OFF stop after 26.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8660 inserts=959714
+BRIDGE-DEFER subject 77497: READ-OFF stop after 10.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8768 inserts=960221
+BRIDGE-DEFER subject 81232: READ-OFF stop after 12.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8798 inserts=960163
+BRIDGE-DEFER subject 35879: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8151 inserts=960713
+PROGRESS-SAT iters=2000000 nodes=16070 inserts=1920273
+BRIDGE-DEFER subject 85962: READ-OFF stop after 18.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8151 inserts=960740
+BRIDGE-DEFER subject 85963: READ-OFF stop after 13.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8145 inserts=960716
+BRIDGE-DEFER subject 43794: READ-OFF stop after 12.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8674 inserts=959592
+BRIDGE-DEFER subject 85780: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8711 inserts=959479
+BRIDGE-DEFER subject 85781: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8679 inserts=959543
+BRIDGE-DEFER subject 43654: READ-OFF stop after 11.6s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 46785/58364 deferred=21 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8674 inserts=959583
+BRIDGE-DEFER subject 83546: READ-OFF stop after 13.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8715 inserts=959443
+BRIDGE-DEFER subject 83545: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8679 inserts=959530
+BRIDGE-DEFER subject 42472: READ-OFF stop after 13.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=5749 inserts=976007
+PROGRESS-SAT iters=2000000 nodes=11177 inserts=1952402
+BRIDGE-DEFER subject 76047: READ-OFF stop after 16.5s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 46849/58364 deferred=25 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8175 inserts=961444
+BRIDGE-DEFER subject 42488: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8952 inserts=962554
+BRIDGE-DEFER subject 83937: READ-OFF stop after 11.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10417 inserts=965992
+BRIDGE-DEFER subject 83939: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 46913/58364 deferred=28 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8148 inserts=960911
+BRIDGE-DEFER subject 86063: READ-OFF stop after 12.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8141 inserts=960938
+BRIDGE-DEFER subject 43925: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86948: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44433: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86951: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44435: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86954: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44437: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86957: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44439: READ-OFF stop after 11.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86960: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44441: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86963: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44443: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86966: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44445: READ-OFF stop after 11.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960948
+BRIDGE-DEFER subject 86969: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8149 inserts=960889
+BRIDGE-DEFER subject 44447: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 46977/58364 deferred=46 permanent=0
+PROGRESS-SAT iters=1000000 nodes=6058 inserts=975575
+BRIDGE-DEFER subject 35591: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8756 inserts=959940
+BRIDGE-DEFER subject 82240: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8670 inserts=959899
+BRIDGE-DEFER subject 76474: READ-OFF stop after 16.7s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8829 inserts=959921
+BRIDGE-DEFER subject 40389: READ-OFF stop after 18.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10667 inserts=964574
+BRIDGE-DEFER subject 83417: READ-OFF stop after 11.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10651 inserts=964476
+BRIDGE-DEFER subject 76709: READ-OFF stop after 12.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8183 inserts=960898
+BRIDGE-DEFER subject 79742: READ-OFF stop after 14.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8290 inserts=960978
+BRIDGE-DEFER subject 83648: READ-OFF stop after 11.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8290 inserts=960979
+BRIDGE-DEFER subject 83647: READ-OFF stop after 13.7s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10657 inserts=964531
+BRIDGE-DEFER subject 83661: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10125 inserts=969377
+PROGRESS-SAT iters=2000000 nodes=20346 inserts=1937264
+BRIDGE-DEFER subject 83715: READ-OFF stop after 15.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10393 inserts=966018
+BRIDGE-DEFER subject 83717: READ-OFF stop after 12.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8803 inserts=963276
+BRIDGE-DEFER subject 87907: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=10281 inserts=967347
+BRIDGE-DEFER subject 87908: READ-OFF stop after 11.7s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 47041/58364 deferred=60 permanent=0

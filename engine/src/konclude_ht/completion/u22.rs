@@ -85,6 +85,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::collections::HashMap;
+
 use super::super::model::concept_process::ConceptProcessDataId;
 use super::super::model::op::CCFS_PROPAGATION_TYPE;
 use super::super::model::substrate::{Cint64, Id, INVALID};
@@ -93,6 +95,9 @@ use super::super::process::node::IndividualProcessNode;
 use super::super::process::sat_block::IndividualNodeSaturationBlockingData;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::{ClashDescId, ConDescId, NodeId, SatNodeId};
+use super::super::saturation::satellites::{
+    ConceptNegationPair, SaturationIndividualNodeExtensionResolveDataId,
+};
 use super::super::task::adapters::EFEXTRACTSUBSUMERSROOTNODE;
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
@@ -945,7 +950,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         let _ = indi;
         type SatF = IndividualSaturationProcessNodeStatusFlags;
+        let trace = std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+            && calc_alg_context.process_context().node_count() <= 20;
         if saturation_indi_node.is_none() {
+            if trace {
+                eprintln!(
+                    "SAT-CACHE-ESTABLISH successor={} sat=none established=false",
+                    calc_alg_context
+                        .process_context()
+                        .node(succ_indi)
+                        .individual_node_id(),
+                );
+            }
             return false;
         }
         let (initialized, completed, flags) = {
@@ -1044,10 +1060,47 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
                         );
                 }
+                if trace {
+                    eprintln!(
+                        "SAT-CACHE-ESTABLISH successor={} sat={} flags={:#x} label={} cache-possible={} established=true",
+                        calc_alg_context
+                            .process_context()
+                            .node(succ_indi)
+                            .individual_node_id(),
+                        saturation_indi_node.raw,
+                        flags,
+                        succ_indi_con_count,
+                        *sat_caching_possible,
+                    );
+                }
                 return true;
             }
         }
 
+        if trace {
+            let label = calc_alg_context
+                .process_context()
+                .node(succ_indi)
+                .use_reapply_con_label_set;
+            eprintln!(
+                "SAT-CACHE-ESTABLISH successor={} sat={} flags={:#x} label={} cache-possible={} established=false",
+                calc_alg_context
+                    .process_context()
+                    .node(succ_indi)
+                    .individual_node_id(),
+                saturation_indi_node.raw,
+                flags,
+                if label.is_some() {
+                    calc_alg_context
+                        .process_context()
+                        .label_set(label)
+                        .get_concept_count()
+                } else {
+                    0
+                },
+                *sat_caching_possible,
+            );
+        }
         false
     }
 
@@ -1303,14 +1356,109 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
-        // mConfSuccessorSaturationExpansionRestrictionsResolving refinement
-        // (cpp 21955–22010): refine `existIndiNode` through the successor-extension
-        // resolve hash using the predecessor's deterministic ∀-restrictions.
-        // W4-DEFER[api]: the resolve data only EXISTS when the saturation
-        // successor-EXTENSION machinery ran (KM_HT_SAT_EXT, default OFF — currently
-        // unsound, see configure_production_saturation); with extensions off
-        // Konclude falls through to the unrefined node exactly like this. Port the
-        // interior together with the extension-machinery audit.
+        if self.conf_successor_saturation_expansion_restrictions_resolving
+            && exist_indi_node.is_some()
+        {
+            let successor_extension = calc_alg_context
+                .process_context_mut()
+                .sat_node_ext_successor_extension_data(exist_indi_node, false);
+            if successor_extension.is_some() {
+                let resolve_data = calc_alg_context
+                    .process_context()
+                    .sat_indi_node_succ_ext_data(successor_extension)
+                    .get_extension_resolve_data();
+                if resolve_data.is_some() {
+                    let creation_role = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_role();
+                    let mut super_roles = calc_alg_context
+                        .ontology_arenas()
+                        .role(creation_role)
+                        .get_indirect_super_role_list()
+                        .to_vec();
+                    if !super_roles
+                        .iter()
+                        .any(|link| !link.negated && link.target == creation_role)
+                    {
+                        // Konclude's indirect-super list is reflexive; bridge
+                        // roles store only strict supers.
+                        super_roles.insert(
+                            0,
+                            super::super::model::substrate::NegLink {
+                                target: creation_role,
+                                negated: false,
+                            },
+                        );
+                    }
+                    let saturation_label = calc_alg_context
+                        .process_context()
+                        .sat_node(exist_indi_node)
+                        .reapply_con_sat_label_set;
+                    let mut extension_map: Option<HashMap<Cint64, ConceptNegationPair>> = None;
+                    for super_role in super_roles {
+                        if super_role.negated {
+                            continue;
+                        }
+                        let mut iterator = calc_alg_context
+                            .process_context_mut()
+                            .node_role_reapply_iterator(*indi, super_role.target, false);
+                        while iterator.has_next() {
+                            let reapply = iterator.next(calc_alg_context.process_context(), true);
+                            if reapply.is_none() {
+                                continue;
+                            }
+                            let (reapply_con_des, dependency) = {
+                                let descriptor =
+                                    calc_alg_context.process_context().reapply_con_desc(reapply);
+                                (
+                                    descriptor.get_concept_descriptor(),
+                                    descriptor.get_dependency_track_point(),
+                                )
+                            };
+                            let deterministic = dependency
+                                == calc_alg_context
+                                    .process_context()
+                                    .con_desc(con_des)
+                                    .get_dependency_track_point()
+                                || dependency.is_none()
+                                || calc_alg_context
+                                    .process_context()
+                                    .track_point(dependency)
+                                    .get_branching_tag()
+                                    <= calc_alg_context
+                                        .processing_data_box()
+                                        .maximum_deterministic_branch_tag();
+                            if deterministic && reapply_con_des.is_some() {
+                                let (reapply_concept, reapply_negation) = {
+                                    let descriptor = calc_alg_context
+                                        .process_context()
+                                        .con_desc(reapply_con_des);
+                                    (descriptor.get_concept(), descriptor.is_negated())
+                                };
+                                self.collect_reapply_automat_transactions_restrictions(
+                                    *indi,
+                                    super_role.target,
+                                    reapply_concept,
+                                    reapply_negation,
+                                    &mut extension_map,
+                                    saturation_label.raw,
+                                    calc_alg_context,
+                                );
+                            }
+                        }
+                    }
+                    let resolved = self.get_saturation_resolved_individual_node_extension(
+                        resolve_data,
+                        extension_map.as_ref(),
+                        calc_alg_context,
+                    );
+                    if resolved.is_some() && resolved != exist_indi_node {
+                        exist_indi_node = resolved;
+                    }
+                }
+            }
+        }
         exist_indi_node
     }
 
@@ -1336,16 +1484,47 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///   return lastResolvedIndiNode;
     pub fn get_saturation_resolved_individual_node_extension(
         &mut self,
-        resolve_data: Cint64,
-        con_extension_map: Cint64,
+        mut resolve_data: SaturationIndividualNodeExtensionResolveDataId,
+        con_extension_map: Option<&HashMap<Cint64, ConceptNegationPair>>,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SatNodeId {
-        // W4-DEFER[api]: `CSaturationIndividualNodeExtensionResolveData` + its
-        // non-creating resolved-extension hash and the `CPROCESSINGHASH<cint64,
-        // CConceptNegationPair>` concept-extension map are the W4 saturation subsystem,
-        // carried opaque. Body PORT-PENDING per outline.
-        let _ = (resolve_data, con_extension_map, calc_alg_context);
-        Id::NONE
+        if resolve_data.is_none() {
+            return Id::NONE;
+        }
+        let mut last_resolved = calc_alg_context
+            .process_context()
+            .sat_indi_node_ext_resolve_data(resolve_data)
+            .get_processing_individual_node();
+        if let Some(extension_map) = con_extension_map {
+            let mut extensions: Vec<(Cint64, ConceptNegationPair)> = extension_map
+                .iter()
+                .map(|(&tag, &pair)| (tag, pair))
+                .collect();
+            extensions.sort_unstable_by_key(|(tag, _)| *tag);
+            for (_, extension) in extensions {
+                let resolve_hash = calc_alg_context
+                    .process_context_mut()
+                    .sat_extension_resolve_hash(resolve_data, true);
+                let next = calc_alg_context
+                    .process_context()
+                    .sat_indi_node_ext_resolve_hash(resolve_hash)
+                    .get_non_creating_resolved_individual_node_extension_data(
+                        extension.concept,
+                        extension.negation,
+                    )
+                    .resolve_data;
+                if next.is_some() {
+                    resolve_data = next;
+                    let data = calc_alg_context
+                        .process_context()
+                        .sat_indi_node_ext_resolve_data(resolve_data);
+                    if data.has_processing_individual_node() {
+                        last_resolved = data.get_processing_individual_node();
+                    }
+                }
+            }
+        }
+        last_resolved
     }
 
     // =======================================================================

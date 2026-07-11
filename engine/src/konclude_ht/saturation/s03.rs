@@ -553,24 +553,191 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 process_indi,
                 calc_alg_context,
             );
-            // W4.5-DEFER[api]: the disjunction-node-wiring tail (.cpp 6044–6098) —
-            //   conceptSatItem = processIndi->getSaturationConceptReferenceLinking();
-            //   conceptSatItem->getSaturationConcept()/getSaturationNegation();
-            //   initializeExtractDisjunctCommonConcept(...);
-            //   concept->getConceptData()->getConceptReferenceLinking()
-            //     ->getConceptSaturationReferenceLinkingData(conNegation)
-            //     ->getIndividualProcessNodeForConcept();
-            //   addUninitializedIndividualToProcessingQueue(...);
-            //   copiedIndividualNode->getReapplyConceptSaturationLabelSet(false)
-            //     ->containsConcept(concept, conNegation)  [++mDisjunctionInitializedSkippedCount];
-            //   addCopyDependingIndividualNodeLinker(...);
-            //   replay disjConSet->getConceptSaturationDescriptionLinker() via addConceptToIndividual.
-            //   — needs the `CSaturationConceptDataItem` getSaturationConcept/Negation,
-            //   the `CConceptSaturationReferenceLinkingData` chain, the label-set
-            //   `containsConcept` deep body (W4.5-DEFER) + create-alloc, and
-            //   `initializeExtractDisjunctCommonConcept` (disjunct-common-concept
-            //   extraction, opaque). `mDisjunctionInitializedSkippedCount` is present on
-            //   `self`. Faithful tail lands with those.
+            let concept_sat_item = calc_alg_context
+                .process_context()
+                .sat_node(*process_indi)
+                .get_saturation_concept_reference_linking();
+            if concept_sat_item.is_some()
+                && concept_sat_item.index()
+                    < calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data_count()
+            {
+                let (individual_concept, individual_negation) = {
+                    let item = calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data(concept_sat_item);
+                    (
+                        item.get_saturation_concept(),
+                        item.get_saturation_negation(),
+                    )
+                };
+                if concept == individual_concept && con_negation == individual_negation {
+                    self.initialize_extract_disjunct_common_concept(process_indi, calc_alg_context);
+                } else if individual_concept.is_some() {
+                    let mut disjunction_node =
+                        Self::s07_concept_reference_node(concept, con_negation, calc_alg_context);
+                    if disjunction_node.is_some() {
+                        let separated_mode = calc_alg_context
+                            .process_context()
+                            .sat_node(*process_indi)
+                            .is_separated()
+                            && !calc_alg_context
+                                .process_context()
+                                .sat_node(disjunction_node)
+                                .is_separated();
+                        if !separated_mode {
+                            self.add_uninitialized_individual_to_processing_queue(
+                                &mut disjunction_node,
+                                calc_alg_context,
+                            );
+                        }
+
+                        let mut requires_disjunction_processing = true;
+                        let copied_node = calc_alg_context
+                            .process_context()
+                            .sat_node(*process_indi)
+                            .get_copy_individual_node();
+                        if copied_node.is_some() {
+                            let copied_label = calc_alg_context
+                                .process_context()
+                                .sat_node(copied_node)
+                                .reapply_con_sat_label_set;
+                            if copied_label.is_some()
+                                && Self::sat_label_set_contains_concept_get_negation(
+                                    copied_label,
+                                    concept,
+                                    calc_alg_context,
+                                ) == Some(con_negation)
+                            {
+                                requires_disjunction_processing = false;
+                                self.disjunction_initialized_skipped_count += 1;
+                            }
+                        }
+
+                        if requires_disjunction_processing {
+                            if !separated_mode {
+                                calc_alg_context
+                                    .process_context_mut()
+                                    .sat_node_mut(disjunction_node)
+                                    .add_copy_depending_individual_node_linker(NegLink {
+                                        target: *process_indi,
+                                        negated: false,
+                                    });
+                            }
+                            let disjunction_label = calc_alg_context
+                                .process_context()
+                                .sat_node(disjunction_node)
+                                .reapply_con_sat_label_set;
+                            if disjunction_label.is_some() {
+                                let debug_copy = std::env::var("KM_SAT_COPY_DEBUG_TAG")
+                                    .ok()
+                                    .and_then(|value| value.parse::<Cint64>().ok())
+                                    .is_some_and(|target_tag| {
+                                        calc_alg_context
+                                            .ontology_arenas()
+                                            .concept(individual_concept)
+                                            .get_concept_tag()
+                                            == target_tag
+                                    });
+                                if debug_copy {
+                                    let disjunction_reference = calc_alg_context
+                                        .process_context()
+                                        .sat_node(disjunction_node)
+                                        .get_saturation_concept_reference_linking();
+                                    let disjunction_tag = if disjunction_reference.is_some() {
+                                        let reference_concept = calc_alg_context
+                                            .process_context()
+                                            .extended_con_ref_linking_data(disjunction_reference)
+                                            .get_saturation_concept();
+                                        calc_alg_context
+                                            .ontology_arenas()
+                                            .concept(reference_concept)
+                                            .get_concept_tag()
+                                    } else {
+                                        -1
+                                    };
+                                    eprintln!(
+                                        "SAT-COPY-OR root={} root-tag={} or-tag={} source={} source-tag={} label={}",
+                                        process_indi.raw,
+                                        calc_alg_context
+                                            .ontology_arenas()
+                                            .concept(individual_concept)
+                                            .get_concept_tag(),
+                                        calc_alg_context
+                                            .ontology_arenas()
+                                            .concept(concept)
+                                            .get_concept_tag(),
+                                        disjunction_node.raw,
+                                        disjunction_tag,
+                                        calc_alg_context
+                                            .process_context()
+                                            .reapply_con_sat_label_set(disjunction_label)
+                                            .get_concept_count(),
+                                    );
+                                }
+                                let mut descriptor = calc_alg_context
+                                    .process_context()
+                                    .reapply_con_sat_label_set(disjunction_label)
+                                    .get_concept_saturation_description_linker();
+                                while descriptor.is_some() {
+                                    let (adding_concept, adding_negation, next) = {
+                                        let value = calc_alg_context
+                                            .process_context()
+                                            .con_sat_desc(descriptor);
+                                        (
+                                            value.get_concept(),
+                                            value.get_negation(),
+                                            value.get_next_concept_desciptor(),
+                                        )
+                                    };
+                                    if debug_copy {
+                                        let adding = calc_alg_context
+                                            .ontology_arenas()
+                                            .concept(adding_concept);
+                                        let adding_op = adding.get_operator_code();
+                                        if matches!(adding_op, CCSOME | CCAQSOME) {
+                                            let fillers = adding
+                                                .get_operand_list()
+                                                .iter()
+                                                .map(|operand| {
+                                                    calc_alg_context
+                                                        .ontology_arenas()
+                                                        .concept(operand.target)
+                                                        .get_concept_tag()
+                                                        .to_string()
+                                                })
+                                                .collect::<Vec<_>>()
+                                                .join(",");
+                                            eprintln!(
+                                                "SAT-COPY-SOME concept={} neg={} role={} fillers=[{}]",
+                                                adding.get_concept_tag(),
+                                                adding_negation,
+                                                if adding.get_role().is_some() {
+                                                    calc_alg_context
+                                                        .ontology_arenas()
+                                                        .role(adding.get_role())
+                                                        .get_role_tag()
+                                                } else {
+                                                    -1
+                                                },
+                                                fillers,
+                                            );
+                                        }
+                                    }
+                                    self.add_concept_filtered_to_individual(
+                                        adding_concept,
+                                        adding_negation,
+                                        process_indi,
+                                        calc_alg_context,
+                                    );
+                                    descriptor = next;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 

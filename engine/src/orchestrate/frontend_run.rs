@@ -32,6 +32,8 @@ pub struct Meta {
 struct ClausesFile {
     clauses: Vec<crate::json_io::JClause>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    rbox: Vec<Vec<String>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     definers: Vec<crate::json_io::DefinerMeta>,
@@ -74,6 +76,7 @@ fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, Orchestra
     };
     let out = ClausesFile {
         clauses: result.clauses,
+        rbox: result.rbox,
         cardinalities: result.cardinalities,
         definers: result.definers,
         source_axioms: result.source_axioms,

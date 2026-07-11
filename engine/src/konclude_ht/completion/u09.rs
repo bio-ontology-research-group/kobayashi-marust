@@ -651,6 +651,65 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .concept(concept)
             .get_operand_count();
+        if let Some(watch_tag) = std::env::var("KM_BRIDGE_WATCH_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+        {
+            let operands = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operand_list()
+                .to_vec();
+            if operands.iter().any(|link| {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(link.target)
+                    .get_concept_tag()
+                    == watch_tag
+                    && !(link.negated ^ negate)
+            }) {
+                let label_set = calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .use_reapply_con_label_set;
+                let operand_state: Vec<(Cint64, bool, bool)> = operands
+                    .iter()
+                    .map(|link| {
+                        let operand_negated = link.negated ^ negate;
+                        let tag = calc_alg_context
+                            .ontology_arenas()
+                            .concept(link.target)
+                            .get_concept_tag();
+                        let present = label_set != Id::NONE
+                            && self.label_set_contains_concept_resolved(
+                                label_set,
+                                link.target,
+                                operand_negated,
+                                calc_alg_context,
+                            );
+                        (tag, operand_negated, present)
+                    })
+                    .collect();
+                eprintln!(
+                    "WATCH-OR-OPERAND tag={} node={} parent={} parent-op={} negate={} operands(tag,neg,present)={:?}",
+                    watch_tag,
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .individual_node_id(),
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code(),
+                    negate,
+                    operand_state,
+                );
+            }
+        }
 
         if op_count <= 0 {
             // throw clash

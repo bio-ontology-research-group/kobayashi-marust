@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RequestMessage xmlns="http://www.owllink.org/owllink-xml#">
+  <Set key="Konclude.Calculation.Classification.SaturationSubsumerExtraction">
+    <Literal>false</Literal>
+  </Set>
+</RequestMessage>

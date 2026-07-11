@@ -42,6 +42,7 @@
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::substrate::{Arena, Cint64, Id, NegLink, INVALID};
@@ -1418,16 +1419,32 @@ impl SaturationDisjunctCommonConceptCountHash {
         con_sat_des: &ConceptSaturationDescriptor,
         onto: &OntologyArenas,
     ) -> bool {
-        let concept_tag = con_sat_des.get_concept_tag(onto);
+        self.inc_common_concept_count_for_value_return_max_reached(
+            con_sat_des.get_concept(),
+            con_sat_des.get_negation(),
+            con_sat_des.get_concept_tag(onto),
+        )
+    }
+
+    /// Borrow-split counterpart of the descriptor overload.  Konclude keys
+    /// this hash by concept tag and stores the concept/polarity as its value;
+    /// callers that already decomposed an arena descriptor can pass exactly
+    /// those three fields without retaining a second arena borrow.
+    pub fn inc_common_concept_count_for_value_return_max_reached(
+        &mut self,
+        concept: ConceptId,
+        negation: bool,
+        concept_tag: Cint64,
+    ) -> bool {
         let hash_data = self
             .common_concept_count_hash
             .entry(concept_tag)
             .or_insert_with(SaturationDisjunctCommonConceptCountHashData::new);
         if hash_data.concept.is_none() {
-            hash_data.concept = con_sat_des.get_concept();
-            hash_data.negation = con_sat_des.get_negation();
+            hash_data.concept = concept;
+            hash_data.negation = negation;
         }
-        if hash_data.negation != con_sat_des.get_negation() {
+        if hash_data.negation != negation {
             return false;
         }
         hash_data.concept_count += 1;
@@ -3557,7 +3574,8 @@ pub struct ReapplyConceptSaturationLabelSet {
     /// `mConceptDesDepHash` (`CPROCESSHASH<cint64,CConceptSaturationDescriptorReapplyData>`).
     pub concept_des_dep_hash: HashMap<Cint64, ConceptSaturationDescriptorReapplyData>,
     /// `mAdditionalConceptDesDepHash` (the overflow copy, allocated lazily in C++).
-    pub additional_concept_des_dep_hash: HashMap<Cint64, ConceptSaturationDescriptorReapplyData>,
+    pub additional_concept_des_dep_hash:
+        Arc<HashMap<Cint64, ConceptSaturationDescriptorReapplyData>>,
     /// Whether the additional overflow hash has been allocated (`mAdditional… != nullptr`).
     pub has_additional_concept_des_dep_hash: bool,
     /// `mConceptSatDesLinker` (head of the concept-saturation-descriptor chain).
@@ -3584,7 +3602,7 @@ impl ReapplyConceptSaturationLabelSet {
     pub fn new(process_context: Cint64) -> Self {
         ReapplyConceptSaturationLabelSet {
             concept_des_dep_hash: HashMap::new(),
-            additional_concept_des_dep_hash: HashMap::new(),
+            additional_concept_des_dep_hash: Arc::new(HashMap::new()),
             has_additional_concept_des_dep_hash: false,
             concept_sat_des_linker: ConceptSaturationDescriptorId::NONE,
             last_nominal_indep_con_sat_des: ConceptSaturationDescriptorId::NONE,
@@ -3598,7 +3616,7 @@ impl ReapplyConceptSaturationLabelSet {
     /// Port of `initReapplyConceptSaturationLabelSet` (reset the per-test state).
     pub fn init_reapply_concept_saturation_label_set(&mut self) -> &mut Self {
         self.concept_des_dep_hash.clear();
-        self.additional_concept_des_dep_hash.clear();
+        self.additional_concept_des_dep_hash = Arc::new(HashMap::new());
         self.has_additional_concept_des_dep_hash = false;
         self.concept_sat_des_linker = ConceptSaturationDescriptorId::NONE;
         self.last_nominal_indep_con_sat_des = ConceptSaturationDescriptorId::NONE;

@@ -28,6 +28,8 @@ use iri::IriRegistry;
 /// side data.
 pub struct FrontendResult {
     pub clauses: Vec<crate::json_io::JClause>,
+    /// RBox side data retained for production role-automata construction.
+    pub rbox: Vec<Vec<String>>,
     /// engine-internal short name -> full IRI (port of `full_iri`'s `_short_owner`).
     pub iri_map: std::collections::BTreeMap<String, String>,
     /// internal names backed by a real IRI (port of `is_named_iri`).
@@ -372,8 +374,10 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     named.sort();
     t.lap("declared_seed+iri_map");
 
+    let rbox = rbox.iter().map(rbox::to_row).collect();
     Ok(FrontendResult {
         clauses: jclauses,
+        rbox,
         iri_map,
         named,
         declared,

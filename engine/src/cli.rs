@@ -79,6 +79,8 @@ pub fn maybe_enable_debug() {
 #[derive(serde::Serialize)]
 struct OfnOutput {
     clauses: Vec<JClause>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rbox: Vec<Vec<String>>,
     iri_map: BTreeMap<String, String>,
     named: Vec<String>,
     declared: Vec<String>,
@@ -108,6 +110,8 @@ struct OfnMeta {
 #[derive(serde::Serialize)]
 struct OfnClausesOnly {
     clauses: Vec<JClause>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rbox: Vec<Vec<String>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     cardinalities: Vec<crate::json_io::CardMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -181,6 +185,7 @@ pub fn run_ofn(args: &[String]) {
         }
         let out = OfnClausesOnly {
             clauses: result.clauses,
+            rbox: result.rbox,
             cardinalities: result.cardinalities,
             definers: result.definers,
             source_axioms: result.source_axioms,
@@ -193,6 +198,7 @@ pub fn run_ofn(args: &[String]) {
     } else {
         let out = OfnOutput {
             clauses: result.clauses,
+            rbox: result.rbox,
             iri_map: result.iri_map,
             named: result.named,
             declared: result.declared,

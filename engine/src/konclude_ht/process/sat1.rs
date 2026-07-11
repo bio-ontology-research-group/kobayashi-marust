@@ -1435,6 +1435,10 @@ mod tests {
         let target_after = ctx.reapply_con_sat_label_set(target_label_set);
         assert!(target_after.concept_des_dep_hash.is_empty());
         assert!(target_after.has_additional_concept_des_dep_hash);
+        assert!(std::sync::Arc::ptr_eq(
+            &source_after.additional_concept_des_dep_hash,
+            &target_after.additional_concept_des_dep_hash,
+        ));
         assert_eq!(
             target_after
                 .additional_concept_des_dep_hash

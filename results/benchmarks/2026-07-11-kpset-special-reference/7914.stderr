@@ -1,0 +1,225 @@
+cb_to_ht [emelim] eliminated 0 complementary pairs
+cb_to_ht [trigger-absorb] definers=6395 moved=0 tautologies=4
+bridge [source-tbox] axioms=35395 eq=0/0 [] direct=35299 role-links=0 absorbed-gci=2764 top-gci=0 unsupported=0
+role-automata begin concepts=48827 next-tag=48836
+BRIDGE-SATURATION-PARTIAL: 605.15s, answered 0 unsat + 0 sat of 17680 subjects (17680 residue to probes, known-label-subjects=17643, satcache=false)
+BRIDGE-CLASSIFY round 0 subject 1/17680 deferred=0 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7936 inserts=955927
+PROGRESS-SAT iters=2000000 nodes=15372 inserts=1910475
+BRIDGE-DEFER subject 4854: READ-OFF stop after 16.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7978 inserts=956056
+BRIDGE-DEFER subject 5507: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7798 inserts=965240
+BRIDGE-DEFER subject 7705: READ-OFF stop after 12.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=5827 inserts=985686
+PROGRESS-SAT iters=2000000 nodes=11217 inserts=1967125
+BRIDGE-DEFER subject 12912: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6142 inserts=987919
+PROGRESS-SAT iters=2000000 nodes=11875 inserts=1968299
+BRIDGE-DEFER subject 12914: READ-OFF stop after 10.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6153 inserts=987934
+PROGRESS-SAT iters=2000000 nodes=11884 inserts=1967852
+BRIDGE-DEFER subject 12916: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7483 inserts=969173
+BRIDGE-DEFER subject 7685: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 65/17680 deferred=7 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7918 inserts=966996
+BRIDGE-DEFER subject 12006: READ-OFF stop after 11.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7958 inserts=980303
+PROGRESS-SAT iters=2000000 nodes=15506 inserts=1957968
+BRIDGE-DEFER subject 12746: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7949 inserts=956016
+BRIDGE-DEFER subject 12958: READ-OFF stop after 11.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7661 inserts=970123
+PROGRESS-SAT iters=2000000 nodes=15025 inserts=1939281
+BRIDGE-DEFER subject 13299: READ-OFF stop after 12.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7695 inserts=969248
+BRIDGE-DEFER subject 11485: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7659 inserts=969699
+BRIDGE-DEFER subject 11800: READ-OFF stop after 11.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8000 inserts=980726
+PROGRESS-SAT iters=2000000 nodes=15663 inserts=1957081
+BRIDGE-DEFER subject 7741: READ-OFF stop after 10.0s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 129/17680 deferred=14 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8000 inserts=980727
+PROGRESS-SAT iters=2000000 nodes=15663 inserts=1957081
+BRIDGE-DEFER subject 12603: READ-OFF stop after 10.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8000 inserts=980727
+PROGRESS-SAT iters=2000000 nodes=15663 inserts=1957081
+BRIDGE-DEFER subject 12604: READ-OFF stop after 10.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7893 inserts=966522
+BRIDGE-DEFER subject 12201: READ-OFF stop after 10.7s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7920 inserts=966988
+BRIDGE-DEFER subject 1394: READ-OFF stop after 11.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7691 inserts=969312
+BRIDGE-DEFER subject 1917: READ-OFF stop after 12.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7939 inserts=979525
+PROGRESS-SAT iters=2000000 nodes=15487 inserts=1957915
+BRIDGE-DEFER subject 1982: READ-OFF stop after 11.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7771 inserts=970123
+BRIDGE-DEFER subject 3445: READ-OFF stop after 11.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6508 inserts=985608
+PROGRESS-SAT iters=2000000 nodes=12253 inserts=1967122
+BRIDGE-DEFER subject 10991: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7445 inserts=971956
+PROGRESS-SAT iters=2000000 nodes=14718 inserts=1943620
+BRIDGE-DEFER subject 11162: READ-OFF stop after 12.3s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 193/17680 deferred=23 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8811 inserts=982257
+BRIDGE-DEFER subject 13166: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7924 inserts=979571
+PROGRESS-SAT iters=2000000 nodes=15446 inserts=1957743
+BRIDGE-DEFER subject 13716: READ-OFF stop after 10.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7642 inserts=970111
+BRIDGE-DEFER subject 2449: READ-OFF stop after 10.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7644 inserts=970082
+PROGRESS-SAT iters=2000000 nodes=14994 inserts=1939336
+BRIDGE-DEFER subject 5687: READ-OFF stop after 13.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7644 inserts=970082
+PROGRESS-SAT iters=2000000 nodes=14994 inserts=1939336
+BRIDGE-DEFER subject 5689: READ-OFF stop after 13.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6235 inserts=987230
+PROGRESS-SAT iters=2000000 nodes=12026 inserts=1967813
+BRIDGE-DEFER subject 9440: READ-OFF stop after 10.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6257 inserts=987230
+PROGRESS-SAT iters=2000000 nodes=12059 inserts=1967543
+BRIDGE-DEFER subject 9443: READ-OFF stop after 11.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7122 inserts=951874
+PROGRESS-SAT iters=2000000 nodes=13767 inserts=1902084
+BRIDGE-DEFER subject 10752: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7647 inserts=969273
+BRIDGE-DEFER subject 6496: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=5805 inserts=985953
+PROGRESS-SAT iters=2000000 nodes=11208 inserts=1967216
+BRIDGE-DEFER subject 12437: READ-OFF stop after 10.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6229 inserts=986858
+PROGRESS-SAT iters=2000000 nodes=12025 inserts=1967336
+BRIDGE-DEFER subject 8220: READ-OFF stop after 10.3s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 257/17680 deferred=34 permanent=0
+PROGRESS-SAT iters=1000000 nodes=6229 inserts=986858
+PROGRESS-SAT iters=2000000 nodes=12025 inserts=1967336
+BRIDGE-DEFER subject 8221: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6229 inserts=986858
+PROGRESS-SAT iters=2000000 nodes=12025 inserts=1967336
+BRIDGE-DEFER subject 8222: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6229 inserts=986858
+PROGRESS-SAT iters=2000000 nodes=12025 inserts=1967336
+BRIDGE-DEFER subject 8223: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6229 inserts=986858
+PROGRESS-SAT iters=2000000 nodes=12025 inserts=1967336
+BRIDGE-DEFER subject 8224: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=5773 inserts=985907
+PROGRESS-SAT iters=2000000 nodes=11174 inserts=1967123
+BRIDGE-DEFER subject 9395: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7949 inserts=967425
+BRIDGE-DEFER subject 9478: READ-OFF stop after 10.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=6512 inserts=985649
+PROGRESS-SAT iters=2000000 nodes=12251 inserts=1967203
+BRIDGE-DEFER subject 12222: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7629 inserts=969329
+BRIDGE-DEFER subject 8228: READ-OFF stop after 10.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7635 inserts=967684
+PROGRESS-SAT iters=2000000 nodes=15175 inserts=1935319
+BRIDGE-DEFER subject 35: READ-OFF stop after 26.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7721 inserts=964779
+BRIDGE-DEFER subject 5030: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7728 inserts=964867
+BRIDGE-DEFER subject 6067: READ-OFF stop after 13.2s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 321/17680 deferred=45 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7728 inserts=964868
+BRIDGE-DEFER subject 12350: READ-OFF stop after 17.7s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7738 inserts=964757
+BRIDGE-DEFER subject 6698: READ-OFF stop after 11.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7796 inserts=970571
+PROGRESS-SAT iters=2000000 nodes=15235 inserts=1938805
+BRIDGE-DEFER subject 1573: READ-OFF stop after 17.1s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7815 inserts=970538
+BRIDGE-DEFER subject 3750: READ-OFF stop after 11.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7797 inserts=970970
+BRIDGE-DEFER subject 13595: READ-OFF stop after 10.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7734 inserts=964775
+BRIDGE-DEFER subject 10171: READ-OFF stop after 13.7s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7846 inserts=970657
+BRIDGE-DEFER subject 13606: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7781 inserts=970254
+PROGRESS-SAT iters=2000000 nodes=15213 inserts=1938499
+BRIDGE-DEFER subject 13788: READ-OFF stop after 15.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7781 inserts=970254
+PROGRESS-SAT iters=2000000 nodes=15213 inserts=1938499
+BRIDGE-DEFER subject 13789: READ-OFF stop after 15.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7728 inserts=964781
+BRIDGE-DEFER subject 3796: READ-OFF stop after 13.6s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7807 inserts=964930
+BRIDGE-DEFER subject 890: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7917 inserts=966901
+BRIDGE-DEFER subject 1418: READ-OFF stop after 12.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7807 inserts=964926
+BRIDGE-DEFER subject 13667: READ-OFF stop after 11.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7758 inserts=964857
+BRIDGE-DEFER subject 10173: READ-OFF stop after 14.3s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 385/17680 deferred=59 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7433 inserts=972021
+PROGRESS-SAT iters=2000000 nodes=14706 inserts=1943515
+BRIDGE-DEFER subject 6300: READ-OFF stop after 13.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7641 inserts=967645
+PROGRESS-SAT iters=2000000 nodes=15181 inserts=1935183
+PROGRESS-SAT iters=3000000 nodes=22721 inserts=2902720
+BRIDGE-DEFER subject 7833: READ-OFF stop after 38.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7648 inserts=967674
+BRIDGE-DEFER subject 10218: READ-OFF stop after 11.9s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 449/17680 deferred=62 permanent=0
+PROGRESS-SAT iters=1000000 nodes=8065 inserts=970357
+BRIDGE-DEFER subject 12369: READ-OFF stop after 12.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=8129 inserts=970566
+BRIDGE-DEFER subject 12371: READ-OFF stop after 11.0s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 513/17680 deferred=64 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7404 inserts=961953
+BRIDGE-DEFER subject 11745: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7020 inserts=958966
+BRIDGE-DEFER subject 6560: READ-OFF stop after 11.1s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 577/17680 deferred=66 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7701 inserts=964826
+BRIDGE-DEFER subject 10303: READ-OFF stop after 15.5s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7959 inserts=967074
+BRIDGE-DEFER subject 1392: READ-OFF stop after 11.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7809 inserts=965037
+BRIDGE-DEFER subject 834: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7975 inserts=967018
+BRIDGE-DEFER subject 1758: READ-OFF stop after 10.7s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7978 inserts=967110
+BRIDGE-DEFER subject 4441: READ-OFF stop after 10.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7829 inserts=965188
+BRIDGE-DEFER subject 5959: READ-OFF stop after 16.3s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7657 inserts=969668
+BRIDGE-DEFER subject 11180: READ-OFF stop after 10.4s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7636 inserts=967741
+BRIDGE-DEFER subject 3408: READ-OFF stop after 11.5s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 641/17680 deferred=74 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7931 inserts=969002
+BRIDGE-DEFER subject 7746: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 705/17680 deferred=75 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7649 inserts=969865
+BRIDGE-DEFER subject 598: READ-OFF stop after 10.0s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7637 inserts=967784
+BRIDGE-DEFER subject 6277: READ-OFF stop after 10.5s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 769/17680 deferred=77 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 822: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 867: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7880 inserts=966474
+BRIDGE-DEFER subject 1256: READ-OFF stop after 12.2s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 1469: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 2593: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+BRIDGE-CLASSIFY round 0 subject 833/17680 deferred=82 permanent=0
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 10078: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7885 inserts=966495
+BRIDGE-DEFER subject 11832: READ-OFF stop after 11.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 12007: READ-OFF stop after 10.8s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7923 inserts=966875
+BRIDGE-DEFER subject 12008: READ-OFF stop after 10.9s (signal=Stop { task_completed: false })
+PROGRESS-SAT iters=1000000 nodes=7635 inserts=967718

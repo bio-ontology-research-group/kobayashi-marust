@@ -277,6 +277,50 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(concept)
             .get_operand_list()
             .to_vec();
+        if let Some(watch_tag) = std::env::var("KM_BRIDGE_WATCH_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+        {
+            if op_con_linker_it.iter().any(|link| {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(link.target)
+                    .get_concept_tag()
+                    == watch_tag
+                    && !(link.negated ^ concept_negation)
+            }) {
+                let operands: Vec<(Cint64, bool)> = op_con_linker_it
+                    .iter()
+                    .map(|link| {
+                        (
+                            calc_alg_context
+                                .ontology_arenas()
+                                .concept(link.target)
+                                .get_concept_tag(),
+                            link.negated,
+                        )
+                    })
+                    .collect();
+                eprintln!(
+                    "WATCH-AND-OPERAND tag={} node={} parent={} parent-op={} negate={} operands={:?}",
+                    watch_tag,
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .individual_node_id(),
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code(),
+                    concept_negation,
+                    operands,
+                );
+            }
+        }
 
         self.add_concepts_to_individual(
             &op_con_linker_it,
@@ -423,22 +467,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // generating ∃ is recorded on the absorbed-generating linker instead
             // of creating a successor; the caching-loss reactivation (u21
             // detect_individual_node_saturation_cached) re-fires it.
-            if self.conf_sat_exp_cached_succ_absorp
-                && calc_alg_context
-                    .process_context()
-                    .node(*process_indi)
-                    .has_partial_processing_restriction_flags(
-                        IndividualProcessNode::PRF_SATISFIABLECACHED
-                            | IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED
-                            | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED
-                            | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED,
-                    )
+            let cache_flags = IndividualProcessNode::PRF_SATISFIABLECACHED
+                | IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED
+                | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED
+                | IndividualProcessNode::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED;
+            let has_successor_cache = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .has_partial_processing_restriction_flags(cache_flags);
+            let cache_absorbable = self.conf_sat_exp_cached_succ_absorp
+                && has_successor_cache
                 && self.is_generating_concept_satisfiable_cached_absorpable(
                     process_indi,
                     con_des,
                     calc_alg_context,
-                )
+                );
+            if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+                && calc_alg_context.process_context().node_count() <= 20
             {
+                eprintln!(
+                    "SAT-ABSORB-CHECK parent={} concept-tag={} role-tag={} fillers={:?} flags={:#x} enabled={} cached={} absorbable={}",
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .individual_node_id(),
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                    calc_alg_context.ontology_arenas().role(role).get_role_tag(),
+                    concept_op_linker
+                        .iter()
+                        .map(|operand| (
+                            calc_alg_context
+                                .ontology_arenas()
+                                .concept(operand.target)
+                                .get_concept_tag(),
+                            operand.negated ^ negate,
+                        ))
+                        .collect::<Vec<_>>(),
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .processing_restriction_flags(),
+                    self.conf_sat_exp_cached_succ_absorp,
+                    has_successor_cache,
+                    cache_absorbable,
+                );
+            }
+            if cache_absorbable {
                 // STATINC(SATCACHEDABSORBEDGENERATINGCONCEPTSCOUNT)
                 self.add_satisfiable_cached_absorbed_generating_concept(
                     con_des,
@@ -512,8 +589,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.ht_search_log(&m);
             }
             // W3-DEFER[api]: testUnsatisfiableCacheForSuccessorGeneration / unsat-cache strategy.
-            // succIndi = tryExtendFunctionalSuccessorIndividual(...) — W3-DEFER (functional
-            // reuse + merge subsystem); falls through to a fresh successor.
+            // Konclude first reuses a successor of any functional super-role,
+            // extending its label and role links, and creates a fresh node only
+            // when no such successor exists.
             // succIndi = createSuccessorIndividual(processIndi, conDes, role->getIndirectSuperRoleList(),
             //                                      role, conceptOpLinker, negate, depTrackPoint, saturationNode)
             // KONCLUDE-PORT-NOTE[api]: createSuccessorIndividual / createNewIndividualsLinksReapplyed
@@ -522,109 +600,140 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // succ-role-hash install, `add_concept_to_individual`) faithful to that method's
             // body (cpp 21635–21670): create the node, install the R link-edge, set the
             // ancestor link/depth, add the qualifier concepts.
-            let is_data_role: bool = calc_alg_context.ontology_arenas().role(role).is_data_role();
-            let mut succ_indi: NodeId =
-                self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
-            // tryExpansionFromSaturatedData (createSuccessorIndividual cpp 21640–21645,
-            // BEFORE the links/concepts): replay the saturated filler label onto the
-            // fresh successor, or raise the clash when the filler's saturation node
-            // CLASHED (the ∃ is then unsatisfiable on this node).
-            let mut sat_caching_possible = true;
-            let mut last_sat_cach_possible_con_des: ConDescId = Id::NONE;
-            if self.conf_expand_created_successors_from_saturation {
-                self.try_expansion_from_saturated_data(
-                    process_indi,
-                    succ_indi,
-                    con_des,
-                    dep_track_point,
-                    &mut saturation_node,
-                    &mut sat_caching_possible,
-                    &mut last_sat_cach_possible_con_des,
-                    calc_alg_context,
-                );
-                if calc_alg_context.has_pending_signal() {
-                    return;
-                }
-            }
-            // createNewIndividualsLinksReapplyed → the directed R link-edge + succ-role-hash.
-            let anc_link: EdgeId = self.ht_install_role_successor_edge(
-                *process_indi,
-                succ_indi,
-                role,
-                dep_track_point,
-                calc_alg_context,
-            );
-            // succIndi->setAncestorLink(ancLink); succIndi->setIndividualAncestorDepth(depth+1).
-            let depth: Cint64 = calc_alg_context
-                .process_context()
-                .node(*process_indi)
-                .individual_ancestor_depth();
-            let source_flags: Cint64 = calc_alg_context
-                .process_context()
-                .node(*process_indi)
-                .processing_restriction_flags();
+            let mut role_linker = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .get_indirect_super_role_list()
+                .to_vec();
+            if !role_linker
+                .iter()
+                .any(|link| !link.negated && link.target == role)
             {
-                let n = calc_alg_context.process_context_mut().node_mut(succ_indi);
-                n.set_ancestor_link(anc_link);
-                n.set_individual_ancestor_depth(depth + 1);
-                // Ancestor saturation-blocked inheritance (createSuccessorIndividual
-                // cpp 21657–21665; the SATISFIABLECACHED / SIGNATUREBLOCKING twins
-                // stay W3-DEFER with their subsystems).
-                if source_flags
-                    & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
-                        | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
-                    != 0
-                {
-                    n.add_processing_restriction_flags(
-                        IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
-                    );
-                }
+                role_linker.push(NegLink {
+                    target: role,
+                    negated: false,
+                });
             }
-            // addConcepts(conceptOpLinker, negate, succIndi, ...) — the ∃ qualifier C.
-            for nl in &concept_op_linker {
-                self.add_concept_to_individual(
-                    nl.target,
-                    nl.negated ^ negate,
-                    &mut succ_indi,
-                    dep_track_point,
-                    true,
-                    true,
-                    calc_alg_context,
-                );
-                if calc_alg_context.has_pending_signal() {
-                    return;
-                }
-            }
-            // Edge-triggered ∀ re-application along the freshly created link.
-            // KONCLUDE-PORT-NOTE[api]: Konclude re-fires the predecessor's ∀-restrictions
-            // on a new link through the role reapply-queue + the link-processing-restriction
-            // (applyALLRule with a restLink). That reapply-queue subsystem is W2-DEFER, so
-            // the ∃-rule instead scans the predecessor's concept label set for ∀-restrictions
-            // on `role` and pushes them onto the new successor (behaviourally the same
-            // edge-triggered ∀ propagation; only the trigger source differs).
-            self.ht_reapply_universal_restrictions(
-                *process_indi,
-                &mut succ_indi,
+            let mut succ_indi = self.try_extend_functional_successor_individual(
+                process_indi,
+                con_des,
+                &role_linker,
                 role,
+                &concept_op_linker,
+                negate,
                 dep_track_point,
+                saturation_node,
                 calc_alg_context,
             );
             if calc_alg_context.has_pending_signal() {
                 return;
             }
-            // tryEstablishSaturationCaching (createSuccessorIndividual cpp 21666–21668,
-            // AFTER the successor's label is complete — qualifiers + reapplied ∀s):
-            // when the label is covered by a completed sufficient saturation node,
-            // the successor is saturation-blocked and never processed.
-            if self.conf_caching_blocking_from_saturation {
-                self.try_establish_saturation_caching(
-                    process_indi,
+            if succ_indi.is_none() {
+                let is_data_role: bool =
+                    calc_alg_context.ontology_arenas().role(role).is_data_role();
+                succ_indi =
+                    self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
+                // tryExpansionFromSaturatedData (createSuccessorIndividual cpp 21640–21645,
+                // BEFORE the links/concepts): replay the saturated filler label onto the
+                // fresh successor, or raise the clash when the filler's saturation node
+                // CLASHED (the ∃ is then unsatisfiable on this node).
+                let mut sat_caching_possible = true;
+                let mut last_sat_cach_possible_con_des: ConDescId = Id::NONE;
+                if self.conf_expand_created_successors_from_saturation {
+                    self.try_expansion_from_saturated_data(
+                        process_indi,
+                        succ_indi,
+                        con_des,
+                        dep_track_point,
+                        &mut saturation_node,
+                        &mut sat_caching_possible,
+                        &mut last_sat_cach_possible_con_des,
+                        calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+                // createNewIndividualsLinksReapplyed → the directed R link-edge + succ-role-hash.
+                let anc_link: EdgeId = self.ht_install_role_successor_edge(
+                    *process_indi,
                     succ_indi,
-                    saturation_node,
-                    &mut sat_caching_possible,
-                    &mut last_sat_cach_possible_con_des,
+                    role,
+                    dep_track_point,
                     calc_alg_context,
                 );
+                // succIndi->setAncestorLink(ancLink); succIndi->setIndividualAncestorDepth(depth+1).
+                let depth: Cint64 = calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .individual_ancestor_depth();
+                let source_flags: Cint64 = calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .processing_restriction_flags();
+                {
+                    let n = calc_alg_context.process_context_mut().node_mut(succ_indi);
+                    n.set_ancestor_link(anc_link);
+                    n.set_individual_ancestor_depth(depth + 1);
+                    // Ancestor saturation-blocked inheritance (createSuccessorIndividual
+                    // cpp 21657–21665; the SATISFIABLECACHED / SIGNATUREBLOCKING twins
+                    // stay W3-DEFER with their subsystems).
+                    if source_flags
+                        & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
+                            | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
+                        != 0
+                    {
+                        n.add_processing_restriction_flags(
+                            IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
+                        );
+                    }
+                }
+                // addConcepts(conceptOpLinker, negate, succIndi, ...) — the ∃ qualifier C.
+                for nl in &concept_op_linker {
+                    self.add_concept_to_individual(
+                        nl.target,
+                        nl.negated ^ negate,
+                        &mut succ_indi,
+                        dep_track_point,
+                        true,
+                        true,
+                        calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+                // Edge-triggered ∀ re-application along the freshly created link.
+                // KONCLUDE-PORT-NOTE[api]: Konclude re-fires the predecessor's ∀-restrictions
+                // on a new link through the role reapply-queue + the link-processing-restriction
+                // (applyALLRule with a restLink). That reapply-queue subsystem is W2-DEFER, so
+                // the ∃-rule instead scans the predecessor's concept label set for ∀-restrictions
+                // on `role` and pushes them onto the new successor (behaviourally the same
+                // edge-triggered ∀ propagation; only the trigger source differs).
+                self.ht_reapply_universal_restrictions(
+                    *process_indi,
+                    &mut succ_indi,
+                    role,
+                    dep_track_point,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+                // tryEstablishSaturationCaching (createSuccessorIndividual cpp 21666–21668,
+                // AFTER the successor's label is complete — qualifiers + reapplied ∀s):
+                // when the label is covered by a completed sufficient saturation node,
+                // the successor is saturation-blocked and never processed.
+                if self.conf_caching_blocking_from_saturation {
+                    self.try_establish_saturation_caching(
+                        process_indi,
+                        succ_indi,
+                        saturation_node,
+                        &mut sat_caching_possible,
+                        &mut last_sat_cach_possible_con_des,
+                        calc_alg_context,
+                    );
+                }
             }
             // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
             // flag bookkeeping, then the successor is enqueued so

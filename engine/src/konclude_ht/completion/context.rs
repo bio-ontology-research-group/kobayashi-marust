@@ -226,7 +226,12 @@ impl CalculationAlgorithmContext {
             used_individual_priority_strategy: None,
             used_process_context: ProcessContext::new(),
             ontology_arenas: OntologyArenas::new(),
-            used_processing_data_box: ProcessingDataBox::new(),
+            // The C++ calculation context receives a fully constructed
+            // CProcessingDataBox. `new()` is only the port's zeroed storage
+            // initializer; the constructor seeds, among other counters,
+            // mNextSatResSuccExtIndividualNodeID with -1 so its first use starts
+            // after the populated saturation-node vector.
+            used_processing_data_box: ProcessingDataBox::with_process_context(INVALID),
             used_sat_calc_task: Id::NONE,
             used_task_processor_context: INVALID,
             used_task_priority_strategy: None,
@@ -2030,8 +2035,11 @@ mod context_init_tests {
     #[test]
     fn next_saturation_resolved_successor_extension_id_uses_resolved_ontology_counts() {
         let mut ctx = CalculationAlgorithmContextBase::new();
-        ctx.processing_data_box_mut()
-            .next_sat_res_succ_ext_individual_node_id = -1;
+        assert_eq!(
+            ctx.processing_data_box()
+                .next_sat_res_succ_ext_individual_node_id,
+            -1
+        );
         ctx.processing_data_box_mut()
             .individual_saturation_process_node_vector(true)
             .expect("create=true yields CIndividualSaturationProcessNodeVector")

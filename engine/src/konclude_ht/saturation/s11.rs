@@ -108,6 +108,76 @@ use super::super::process::stubs::{
     ReapplyConceptSaturationLabelSetId, RoleSaturationProcess, SaturationNominalConnectionType,
 };
 use super::super::process::SatNodeId;
+
+fn trace_saturation_status_update(
+    kind: &str,
+    source: SatNodeId,
+    target: SatNodeId,
+    calc_alg_context: &CalculationAlgorithmContextBase,
+    caller: &std::panic::Location<'_>,
+) {
+    let Some(debug_tag) = std::env::var("KM_SAT_STATUS_DEBUG_TAG")
+        .ok()
+        .and_then(|value| value.parse::<Cint64>().ok())
+    else {
+        return;
+    };
+    let reference = calc_alg_context
+        .process_context()
+        .sat_node(target)
+        .get_saturation_concept_reference_linking();
+    if reference.is_none()
+        || reference.index()
+            >= calc_alg_context
+                .process_context()
+                .extended_con_ref_linking_data_count()
+    {
+        return;
+    }
+    let concept = calc_alg_context
+        .process_context()
+        .extended_con_ref_linking_data(reference)
+        .get_saturation_concept();
+    if concept.is_none()
+        || calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag()
+            != debug_tag
+    {
+        return;
+    }
+    let source_reference = calc_alg_context
+        .process_context()
+        .sat_node(source)
+        .get_saturation_concept_reference_linking();
+    let source_tag = (source_reference.is_some()
+        && source_reference.index()
+            < calc_alg_context
+                .process_context()
+                .extended_con_ref_linking_data_count())
+    .then(|| {
+        let source_concept = calc_alg_context
+            .process_context()
+            .extended_con_ref_linking_data(source_reference)
+            .get_saturation_concept();
+        source_concept.is_some().then(|| {
+            calc_alg_context
+                .ontology_arenas()
+                .concept(source_concept)
+                .get_concept_tag()
+        })
+    })
+    .flatten();
+    let source_individual_id = calc_alg_context.process_context().sat_node(source).indi_id;
+    let target_individual_id = calc_alg_context.process_context().sat_node(target).indi_id;
+    eprintln!(
+        "SAT-STATUS kind={kind} source={source:?} source-tag={source_tag:?} source-indi={source_individual_id} target={target:?} target-indi={target_individual_id} tag={debug_tag} caller={}:{}:{}",
+        caller.file(),
+        caller.line(),
+        caller.column(),
+    );
+}
 // W4.5: the saturation-satellite linker structs (for the create*-pool allocations).
 use super::satellites::{
     ConceptSaturationProcessLinker, ImplicationReapplyConceptSaturationDescriptor,
@@ -1544,6 +1614,33 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
             }
         }
+        if std::env::var("KM_SAT_ADD_TRACE_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            == Some(
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag(),
+            )
+        {
+            let indi = calc_alg_context
+                .process_context()
+                .sat_node(*root_process_indi)
+                .get_individual_id();
+            eprintln!(
+                "SAT-ADD-TAG-TRACE concept={:?} tag={} neg={} node={:?} indi={}\n{}",
+                adding_concept,
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag(),
+                negate,
+                root_process_indi,
+                indi,
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
 
         let concept_saturation_descriptor =
             self.create_concept_saturation_descriptor(calc_alg_context);
@@ -1981,6 +2078,44 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .first()
                 .copied()
             {
+                if std::env::var("KM_SAT_ADD_TRACE_TAG")
+                    .ok()
+                    .and_then(|value| value.parse::<Cint64>().ok())
+                    == Some(
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(imp_ex_con_op_linker.target)
+                            .get_concept_tag(),
+                    )
+                {
+                    let operands = calc_alg_context
+                        .ontology_arenas()
+                        .concept(impl_concept)
+                        .get_operand_list()
+                        .iter()
+                        .map(|operand| {
+                            let target = calc_alg_context
+                                .ontology_arenas()
+                                .concept(operand.target);
+                            format!(
+                                "{}{}:{}",
+                                if operand.negated { "-" } else { "+" },
+                                target.get_concept_tag(),
+                                target.get_operator_code(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    eprintln!(
+                        "SAT-IMPL-PROVENANCE impl={:?} tag={} operands=[{}]",
+                        impl_concept,
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(impl_concept)
+                            .get_concept_tag(),
+                        operands,
+                    );
+                }
                 if super::sat_clash_trace_enabled() {
                     let indi = calc_alg_context
                         .process_context()
@@ -2254,6 +2389,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
     /// Port of `updateDirectAddingIndividualStatusFlags` — the `cint64 flags`
     /// entry (cpp 7626–7631).
+    #[track_caller]
     pub fn update_direct_adding_individual_status_flags(
         &mut self,
         indi_node: SatNodeId,
@@ -2272,6 +2408,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
     /// Port of `updateDirectNotDependentAddingIndividualStatusFlags` — the
     /// `cint64 flags` entry (cpp 7633–7638).
+    #[track_caller]
     pub fn update_direct_not_dependent_adding_individual_status_flags(
         &mut self,
         indi_node: SatNodeId,
@@ -2323,17 +2460,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// KONCLUDE-PORT-NOTE[ownership]: see the module-header note — the intrusive
     /// update-linker worklist collapses to a `Vec<SatNodeId>` LIFO stack; the
     /// per-iteration update-linker pool create/release is elided (`[memory-pool]`).
+    #[track_caller]
     pub fn update_direct_adding_individual_status_flags_with_flags(
         &mut self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        let status_debug = adding_flags.get_flags()
+            & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
+            != 0;
         if self.requires_direct_adding_individual_status_flags_update(
             indi_node,
             adding_flags,
             calc_alg_context,
         ) {
+            if status_debug {
+                trace_saturation_status_update(
+                    "direct-origin",
+                    indi_node,
+                    indi_node,
+                    calc_alg_context,
+                    std::panic::Location::caller(),
+                );
+            }
             let mut direct_update_linker: Vec<SatNodeId> = vec![indi_node];
             // directIndiFlags = indiNode->getDirectStatusFlags(); directIndiFlags->addFlags(addingFlags)
             calc_alg_context
@@ -2358,6 +2508,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         adding_flags,
                         calc_alg_context,
                     ) {
+                        if status_debug {
+                            trace_saturation_status_update(
+                                "direct-depending",
+                                update_indi_node,
+                                depending_indi,
+                                calc_alg_context,
+                                std::panic::Location::caller(),
+                            );
+                        }
                         calc_alg_context
                             .process_context_mut()
                             .sat_node_mut(depending_indi)
@@ -2379,17 +2538,30 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
     /// Port of `updateDirectNotDependentAddingIndividualStatusFlags` — the
     /// flags-object form (cpp 7685–7716).
+    #[track_caller]
     pub fn update_direct_not_dependent_adding_individual_status_flags_with_flags(
         &mut self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        let status_debug = adding_flags.get_flags()
+            & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
+            != 0;
         if self.requires_direct_adding_individual_status_flags_update(
             indi_node,
             adding_flags,
             calc_alg_context,
         ) {
+            if status_debug {
+                trace_saturation_status_update(
+                    "direct-independent-origin",
+                    indi_node,
+                    indi_node,
+                    calc_alg_context,
+                    std::panic::Location::caller(),
+                );
+            }
             calc_alg_context
                 .process_context_mut()
                 .sat_node_mut(indi_node)
@@ -2418,6 +2590,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .process_context()
                     .sat_node_role_backward_source_individuals(indi_node);
                 for source_individual in backward_sources {
+                    if status_debug {
+                        trace_saturation_status_update(
+                            "direct-independent-backward-source",
+                            indi_node,
+                            source_individual,
+                            calc_alg_context,
+                            std::panic::Location::caller(),
+                        );
+                    }
                     self.update_indirect_adding_individual_status_flags(
                         source_individual,
                         adding_flags,
@@ -2433,6 +2614,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     .clone();
                 for non_inv_conn_indi_linker_it in non_inv_conn_indi_linker {
                     let source_individual = non_inv_conn_indi_linker_it;
+                    if status_debug {
+                        trace_saturation_status_update(
+                            "direct-independent-non-inverse",
+                            indi_node,
+                            source_individual,
+                            calc_alg_context,
+                            std::panic::Location::caller(),
+                        );
+                    }
                     self.update_indirect_adding_individual_status_flags(
                         source_individual,
                         adding_flags,
@@ -2450,12 +2640,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// non-inverse-connected fan-out arms are ported; the role-backward-propagation
     /// hash arm is `W4-DEFER[api]` (the `CRoleBackwardSaturationPropagationHash`
     /// satellite is unported).
+    #[track_caller]
     pub fn update_indirect_adding_individual_status_flags(
         &mut self,
         indi_node: SatNodeId,
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        let status_debug = adding_flags.get_flags()
+            & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
+            != 0;
         let trace_clash = adding_flags.get_flags()
             & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED
             != 0
@@ -2465,6 +2659,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             adding_flags,
             calc_alg_context,
         ) {
+            if status_debug {
+                trace_saturation_status_update(
+                    "indirect-origin",
+                    indi_node,
+                    indi_node,
+                    calc_alg_context,
+                    std::panic::Location::caller(),
+                );
+            }
             let mut direct_update_linker: Vec<SatNodeId> = vec![indi_node];
             calc_alg_context
                 .process_context_mut()
@@ -2488,6 +2691,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         adding_flags,
                         calc_alg_context,
                     ) {
+                        if status_debug {
+                            trace_saturation_status_update(
+                                "indirect-depending",
+                                update_indi_node,
+                                depending_indi,
+                                calc_alg_context,
+                                std::panic::Location::caller(),
+                            );
+                        }
                         if trace_clash {
                             eprintln!(
                                 "SAT-CLASH-PROP {:?} -> {:?} (depending)",
@@ -2519,6 +2731,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             adding_flags,
                             calc_alg_context,
                         ) {
+                            if status_debug {
+                                trace_saturation_status_update(
+                                    "indirect-backward-source",
+                                    update_indi_node,
+                                    source_individual,
+                                    calc_alg_context,
+                                    std::panic::Location::caller(),
+                                );
+                            }
                             if trace_clash {
                                 eprintln!(
                                     "SAT-CLASH-PROP {:?} -> {:?} (backward-source)",
@@ -2547,6 +2768,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             adding_flags,
                             calc_alg_context,
                         ) {
+                            if status_debug {
+                                trace_saturation_status_update(
+                                    "indirect-non-inverse",
+                                    update_indi_node,
+                                    source_individual,
+                                    calc_alg_context,
+                                    std::panic::Location::caller(),
+                                );
+                            }
                             if trace_clash {
                                 eprintln!(
                                     "SAT-CLASH-PROP {:?} -> {:?} (non-inv-connected)",

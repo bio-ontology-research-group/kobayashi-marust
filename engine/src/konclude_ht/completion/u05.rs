@@ -218,6 +218,47 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .concept(concept)
             .get_operand_list()
             .to_vec();
+        if let Ok(watch) = std::env::var("KM_BRIDGE_WATCH_TAG") {
+            if watch.parse::<Cint64>().ok().is_some_and(|watch_tag| {
+                concept_op_linker_it.iter().any(|operand| {
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(operand.target)
+                        .get_concept_tag()
+                        == watch_tag
+                        && operand.negated == negate
+                })
+            }) {
+                let operands = concept_op_linker_it
+                    .iter()
+                    .map(|operand| {
+                        let target = calc_alg_context
+                            .ontology_arenas()
+                            .concept(operand.target);
+                        format!(
+                            "{}{}:{}",
+                            if operand.negated { "-" } else { "+" },
+                            target.get_concept_tag(),
+                            target.get_operator_code(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                eprintln!(
+                    "WATCH-AUTOMAT-CHOOSE node={} choose={} negate={} operands=[{}]",
+                    calc_alg_context
+                        .process_context()
+                        .node(*process_indi)
+                        .individual_node_id(),
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                    negate,
+                    operands,
+                );
+            }
+        }
         for op_link in &concept_op_linker_it {
             let op_concept: ConceptId = op_link.target; // conceptOpLinkerIt->getData()
             let op_negation: bool = op_link.negated; // conceptOpLinkerIt->isNegated()

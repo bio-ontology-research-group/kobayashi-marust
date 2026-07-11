@@ -31,19 +31,28 @@
 //!     unsupported in v1.
 use std::collections::{BTreeSet, HashMap};
 
+use super::classifier::{
+    OptimizedKPSetClassSubsumptionClassifierThread, RecordingClassificationMessageDataObserver,
+    SynchronousKPSetClassState,
+};
 use super::completion::algorithm::CompletionTaskHandleAlgorithm;
 use super::completion::context::CalculationAlgorithmContextBase;
+use super::completion::stubs::SatisfiableTaskClassificationMessageAnalyser;
 use super::model::concept::Concept;
 use super::model::op;
 use super::model::role::Role;
+use super::model::role_chain::RoleChain;
+use super::model::stubs::NameId;
 use super::model::substrate::{Cint64, Id};
 use super::model::{ConceptId, RoleId};
+use super::preprocess::role_chain_automata::RoleChainAutomataTransformationPreProcess;
 use super::process::descriptor::{
     ConceptDescriptor, ConceptProcessDescriptor, ConceptProcessPriority,
 };
 use super::process::node::IndividualProcessNode;
 use super::process::queues::ConceptProcessingQueue;
-use super::process::{NodeId, TrackPointId};
+use super::process::NodeId;
+use super::task::adapters::{SatisfiableTaskClassificationMessageAdapter, EFEXTRACTALL};
 use crate::json_io::DefinerKind;
 use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
 
@@ -372,6 +381,66 @@ fn role_domain_trigger(
     trigger
 }
 
+/// Role-domain marker fragment of Konclude's `CBranchTriggerPreProcess`.
+/// For every disjunctive concept, qualified universal/cardinality leaves are
+/// indexed by an empty `CCIMPLTRIG` on the restriction role's domain. The
+/// completion-side branching metadata is separate; this terminology marker
+/// is also required by saturation and common-concept extraction.
+fn install_branch_role_domain_triggers(b: &mut Builder, caches: &mut TriggerCaches) -> usize {
+    let concept_count = b.ctx.ontology_arenas().concept_count();
+    let mut roles = BTreeSet::new();
+    for index in 0..concept_count {
+        let concept = ConceptId::new(index as Cint64);
+        let (op_code, operand_count) = {
+            let concept = b.ctx.ontology_arenas().concept(concept);
+            (concept.get_operator_code(), concept.get_operand_count())
+        };
+        if operand_count <= 1 || !matches!(op_code, op::CCAND | op::CCEQ | op::CCOR) {
+            continue;
+        }
+        let mut pending = vec![(concept, op_code != op::CCOR)];
+        while let Some((candidate, negated)) = pending.pop() {
+            let (candidate_code, candidate_role, candidate_operands) = {
+                let candidate = b.ctx.ontology_arenas().concept(candidate);
+                (
+                    candidate.get_operator_code(),
+                    candidate.get_role(),
+                    candidate.get_operand_list().to_vec(),
+                )
+            };
+            if (!negated && candidate_code == op::CCOR)
+                || (negated && matches!(candidate_code, op::CCAND | op::CCEQ))
+            {
+                pending.extend(
+                    candidate_operands
+                        .into_iter()
+                        .map(|operand| (operand.target, operand.negated ^ negated)),
+                );
+                continue;
+            }
+            let role_trigger = (!negated && matches!(candidate_code, op::CCALL | op::CCATMOST))
+                || (negated
+                    && matches!(candidate_code, op::CCSOME | op::CCATLEAST)
+                    && !candidate_operands.is_empty());
+            if role_trigger && candidate_role.is_some() {
+                roles.insert(candidate_role.raw);
+            }
+        }
+    }
+
+    let mut installed = 0;
+    for role in roles.into_iter().map(RoleId::new) {
+        let inverse = b.ctx.ontology_arenas().role(role).get_inverse_role();
+        if inverse.is_none() {
+            continue;
+        }
+        let existed = caches.role_domains.contains_key(&role);
+        role_domain_trigger(b, role, inverse, caches);
+        installed += usize::from(!existed);
+    }
+    installed
+}
+
 /// Faithful fragment of Konclude's `getTriggersForConcept`: atoms are direct
 /// triggers, Boolean structure is recursively compiled, and existential
 /// structure becomes an inverse-role `CCIMPLALL` trigger-propagation chain.
@@ -487,6 +556,74 @@ fn full_absorption_trigger(
         };
     caches.full.insert(literal, result);
     result
+}
+
+/// Collect the top-level conjunctive triggers for one absorbed GCI literal.
+/// Konclude passes all of these to the same final implication and chooses the
+/// most complex one as its unfolding host. It does not first collapse them to
+/// a generated binary-trigger tree.
+fn collect_full_absorption_triggers(
+    b: &mut Builder,
+    literal: (ConceptId, bool),
+    role_inverses: &HashMap<RoleId, RoleId>,
+    caches: &mut TriggerCaches,
+    triggers: &mut Vec<AbsorptionTrigger>,
+) -> bool {
+    let (concept, negated) = literal;
+    let (op_code, operands) = {
+        let concept = b.ctx.ontology_arenas().concept(concept);
+        (
+            concept.get_operator_code(),
+            concept.get_operand_list().to_vec(),
+        )
+    };
+    if (!negated && matches!(op_code, op::CCAND | op::CCEQ)) || (negated && op_code == op::CCOR) {
+        return operands.into_iter().all(|operand| {
+            collect_full_absorption_triggers(
+                b,
+                (operand.target, operand.negated ^ negated),
+                role_inverses,
+                caches,
+                triggers,
+            )
+        });
+    }
+    if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
+        triggers.push(trigger);
+        true
+    } else {
+        false
+    }
+}
+
+/// Port of the attachment performed by
+/// `createImplicationAddedToTrigger`: the strongest trigger unfolds the final
+/// implication, while every other trigger remains a condition of that
+/// implication. With one trigger the implied concept is unfolded directly.
+fn attach_implied_to_strongest_trigger(
+    b: &mut Builder,
+    implied: (ConceptId, bool),
+    mut triggers: Vec<AbsorptionTrigger>,
+) -> bool {
+    triggers.sort_by_key(|trigger| trigger.concept.raw);
+    triggers.dedup_by_key(|trigger| trigger.concept);
+    let Some((host_index, _)) = triggers
+        .iter()
+        .enumerate()
+        .max_by_key(|(_, trigger)| trigger.complexity)
+    else {
+        return false;
+    };
+    let host = triggers.remove(host_index);
+    if triggers.is_empty() {
+        return b.add_unfolding(host.concept, implied.0, implied.1);
+    }
+    let conditions: Vec<_> = triggers
+        .into_iter()
+        .map(|trigger| (trigger.concept, false))
+        .collect();
+    let implication = b.implication(implied, &conditions);
+    b.add_unfolding(host.concept, implication, false)
 }
 
 /// Port of `getPartialTriggersForConcept`. The returned trigger is a necessary
@@ -605,34 +742,32 @@ fn absorb_concept_disjunction(
     let mut full_triggers = Vec::new();
     let mut body_fully_triggerable = true;
     for &literal in body {
-        if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
-            full_triggers.push(trigger);
-        } else {
+        if !collect_full_absorption_triggers(b, literal, role_inverses, caches, &mut full_triggers)
+        {
             body_fully_triggerable = false;
         }
     }
 
     let mut residual_heads = Vec::new();
     for &(concept, negated) in heads {
-        if let Some(trigger) =
-            full_absorption_trigger(b, (concept, !negated), role_inverses, caches)
-        {
-            full_triggers.push(trigger);
-        } else {
+        if !collect_full_absorption_triggers(
+            b,
+            (concept, !negated),
+            role_inverses,
+            caches,
+            &mut full_triggers,
+        ) {
             residual_heads.push((concept, negated));
         }
     }
 
     if body_fully_triggerable && !full_triggers.is_empty() {
-        let Some(trigger) = combine_absorption_triggers(b, full_triggers, caches) else {
-            return false;
-        };
         let implied = if residual_heads.is_empty() {
             (b.bottom(), false)
         } else {
             b.or_of(&residual_heads)
         };
-        return b.add_unfolding(trigger.concept, implied.0, implied.1);
+        return attach_implied_to_strongest_trigger(b, implied, full_triggers);
     }
 
     // Partial absorption is only a gate. Preserve the complete original GCI
@@ -1085,7 +1220,15 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         next_tag: TAG_BASE + tin.concepts.len() as Cint64,
     };
     let named: Vec<ConceptId> = (0..tin.concepts.len())
-        .map(|i| b.atom(TAG_BASE + i as Cint64))
+        .map(|i| {
+            let tag = TAG_BASE + i as Cint64;
+            let concept = b.atom(tag);
+            b.ctx
+                .ontology_arenas_mut()
+                .concept_mut(concept)
+                .add_class_name_linker(NameId::new(tag));
+            concept
+        })
         .collect();
     let roles: Vec<RoleId> = (0..tin.roles.len())
         .map(|i| {
@@ -1096,6 +1239,23 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             b.ctx.ontology_arenas_mut().alloc_role(r)
         })
         .collect();
+    if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+        for (index, name) in tin.roles.iter().enumerate() {
+            eprintln!("BRIDGE-ROLE tag={} name={name}", 100 + index as Cint64);
+        }
+        if let Ok(tags) = std::env::var("KM_BRIDGE_NAME_TAGS") {
+            let tags: BTreeSet<Cint64> = tags
+                .split(',')
+                .filter_map(|tag| tag.parse::<Cint64>().ok())
+                .collect();
+            for (index, name) in tin.concepts.iter().enumerate() {
+                let tag = TAG_BASE + index as Cint64;
+                if tags.contains(&tag) {
+                    eprintln!("BRIDGE-CONCEPT tag={tag} name={name}");
+                }
+            }
+        }
+    }
     // Every bridged role gets a wired inverse (both directions, the
     // `inverse_role_propagation` selftest pattern). Needed by the
     // absorption-shape rewrite below: a y-triggered guarded clause
@@ -1110,6 +1270,32 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 .ontology_arenas_mut()
                 .role_mut(roles[i])
                 .set_inverse_role(id);
+            // CSubroleTransformationPreProcess represents inverse equivalence
+            // as signed super-role links in both directions. Saturation uses
+            // the negative entry to install the successor-to-predecessor
+            // propagation link consumed by ALL/AQALL automata.
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(roles[i])
+                .add_super_role_linker(super::model::substrate::NegLink {
+                    target: id,
+                    negated: true,
+                })
+                .add_equivalent_role_linker(super::model::substrate::NegLink {
+                    target: id,
+                    negated: true,
+                });
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(id)
+                .add_super_role_linker(super::model::substrate::NegLink {
+                    target: roles[i],
+                    negated: true,
+                })
+                .add_equivalent_role_linker(super::model::substrate::NegLink {
+                    target: roles[i],
+                    negated: true,
+                });
             id
         })
         .collect();
@@ -1282,19 +1468,16 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // Structures outside the v1 clause encoder count as unsupported input
     // (card_defs are ENCODED below — first-class ≥n/≤n via the ported
     // CCATLEAST/CCATMOST rules — so they are no longer counted here).
-    unsupported += tin.nominals.len() + tin.chains.len();
-    // Inverse roles are not wired in the v1 bridge (the model supports them;
-    // the TInput role-pair plumbing is a later wave) — an ontology carrying
-    // them is under-constrained when bridged, so surface that.
-    if tin.inverse {
-        unsupported += 1;
-    }
+    unsupported += tin.nominals.len();
 
     // ---- pass 1: role hierarchy `R(x,y) → S(x,y)` --------------------------
-    // Collected first and installed as (transitively closed) indirect-super-
-    // role linkers on the sub-role — the exact structure the ∀/edge rules and
-    // the u08 hierarchy-resolved edge reapply consume (see the
-    // `role_hierarchy_forall` selftest and CSubroleTransformationPreProcess).
+    // Collected first and installed as direct and (transitively closed)
+    // indirect-super-role linkers on the sub-role — the exact structures the
+    // automata preprocessor, ∀/edge rules, and u08 hierarchy-resolved edge
+    // reapply consume (see CSubroleTransformationPreProcess). Konclude seeds
+    // every indirect list with the role itself before adding strict supers;
+    // collectSubRoleChains relies on that reflexive entry to index a chain
+    // under its own super role.
     // The closure runs over BOTH polarities (vertex = 2·role + inverted): a
     // plain `R ⊑ S` also yields `R⁻ ⊑ S⁻` (needed by the mirror inverse-edge
     // installs), and an inverse-hierarchy clause `R(x,y) → S(y,x)` (`R ⊑ S⁻`,
@@ -1361,8 +1544,52 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             sub_super[2 * sub + 1].push(2 * sup);
         }
     }
-    // transitive closure per (role, polarity) vertex (small role counts; DFS)
+    // Direct hierarchy plus reflexive-transitive closure per (role, polarity)
+    // vertex (small role counts; DFS).
     for sub in 0..sub_super.len() {
+        let sub_obj = if sub % 2 == 0 {
+            roles[sub / 2]
+        } else {
+            inv_roles[sub / 2]
+        };
+        for &direct in &sub_super[sub] {
+            let direct_obj = if direct % 2 == 0 {
+                roles[direct / 2]
+            } else {
+                inv_roles[direct / 2]
+            };
+            let inverse_direct_obj = if direct % 2 == 0 {
+                inv_roles[direct / 2]
+            } else {
+                roles[direct / 2]
+            };
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(sub_obj)
+                .add_super_role_linker(super::model::substrate::NegLink {
+                    target: direct_obj,
+                    negated: false,
+                })
+                .add_super_role_linker(super::model::substrate::NegLink {
+                    target: inverse_direct_obj,
+                    negated: true,
+                });
+        }
+        b.ctx
+            .ontology_arenas_mut()
+            .role_mut(sub_obj)
+            .add_indirect_super_role_linker(super::model::substrate::NegLink {
+                target: sub_obj,
+                negated: false,
+            })
+            .add_indirect_super_role_linker(super::model::substrate::NegLink {
+                target: if sub % 2 == 0 {
+                    inv_roles[sub / 2]
+                } else {
+                    roles[sub / 2]
+                },
+                negated: true,
+            });
         let mut seen: BTreeSet<usize> = BTreeSet::new();
         let mut stack: Vec<usize> = sub_super[sub].clone();
         while let Some(s) = stack.pop() {
@@ -1370,16 +1597,16 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 stack.extend(sub_super[s].iter().copied());
             }
         }
-        let sub_obj = if sub % 2 == 0 {
-            roles[sub / 2]
-        } else {
-            inv_roles[sub / 2]
-        };
         for s in seen {
             let sup_obj = if s % 2 == 0 {
                 roles[s / 2]
             } else {
                 inv_roles[s / 2]
+            };
+            let inverse_sup_obj = if s % 2 == 0 {
+                inv_roles[s / 2]
+            } else {
+                roles[s / 2]
             };
             b.ctx
                 .ontology_arenas_mut()
@@ -1387,7 +1614,67 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                 .add_indirect_super_role_linker(super::model::substrate::NegLink {
                     target: sup_obj,
                     negated: false,
+                })
+                .add_indirect_super_role_linker(super::model::substrate::NegLink {
+                    target: inverse_sup_obj,
+                    negated: true,
                 });
+        }
+    }
+
+    // Production RBox: materialize every retained R1 o R2 <= R axiom as the
+    // CRoleChain / super-sharing structure consumed by Konclude's role-
+    // automata preprocessor. Transitivity is the special chain R o R <= R.
+    let mut role_chains: Vec<(usize, usize, usize)> = tin.chains.clone();
+    for &role in &tin.transitive {
+        role_chains.push((role, role, role));
+    }
+    role_chains.sort_unstable();
+    role_chains.dedup();
+    let mut object_chains: Vec<(RoleId, RoleId, RoleId)> = Vec::new();
+    for (left, right, super_role) in role_chains {
+        if left >= roles.len() || right >= roles.len() || super_role >= roles.len() {
+            unsupported += 1;
+            continue;
+        }
+        object_chains.push((roles[left], roles[right], roles[super_role]));
+        // The bridge uses concrete inverse role objects. Materialize the
+        // reversed chain as well as the signed inverse view so saturation's
+        // successor-extension construction has an explicit creation-role
+        // path in both directions.
+        object_chains.push((inv_roles[right], inv_roles[left], inv_roles[super_role]));
+    }
+    object_chains.sort_by_key(|(left, right, sup)| (left.raw, right.raw, sup.raw));
+    object_chains.dedup();
+    for (left, right, super_role) in object_chains {
+        let mut chain = RoleChain::new();
+        chain
+            .append_role_chain_linker(left)
+            .append_role_chain_linker(right);
+        let chain_id = b.ctx.ontology_arenas_mut().alloc_role_chain(chain);
+        b.ctx
+            .ontology_arenas_mut()
+            .role_chain_mut(chain_id)
+            .set_role_chain_tag(chain_id.index() as Cint64);
+        b.ctx
+            .ontology_arenas_mut()
+            .role_mut(super_role)
+            .add_role_chain_super_sharing_linker(chain_id);
+        let complex_roles: Vec<RoleId> = std::iter::once(super_role)
+            .chain(
+                b.ctx
+                    .ontology_arenas()
+                    .role(super_role)
+                    .get_indirect_super_role_list()
+                    .iter()
+                    .map(|link| link.target),
+            )
+            .collect();
+        for role in complex_roles {
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(role)
+                .set_role_complexity(true);
         }
     }
 
@@ -1432,6 +1719,12 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         if let Some(r) = is_functional(cl) {
             functional_roles.insert(r);
         }
+    }
+    for &role in &functional_roles {
+        b.ctx
+            .ontology_arenas_mut()
+            .role_mut(roles[role])
+            .set_functional(true);
     }
 
     // Konclude builds the terminology before clausification: named-left
@@ -1601,6 +1894,10 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                     encode!(
                         &axiom.left,
                         &SourceConcept::Not(Box::new(axiom.right.clone())),
+                    );
+                    encode!(
+                        &axiom.right,
+                        &SourceConcept::Not(Box::new(axiom.left.clone())),
                     );
                 }
             }
@@ -2369,6 +2666,31 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         top_concept.set_operand_count(count + n);
     }
 
+    // Konclude runs this production preprocessor after the RBox and TBox are
+    // built. It rewrites complex-role restrictions to AQCHOOSE/AQAND/AQALL
+    // automata consumed by the ported completion and saturation rules.
+    RoleChainAutomataTransformationPreProcess::new().preprocess(ctx.ontology_arenas_mut());
+
+    // Konclude's branch-trigger extractor runs after the terminology role
+    // transformations. Installing its domain markers earlier would make the
+    // automata pass incorrectly translate the diagnostic trigger concepts.
+    let next_tag = (0..ctx.ontology_arenas().concept_count())
+        .map(|index| {
+            ctx.ontology_arenas()
+                .concept(ConceptId::new(index as Cint64))
+                .get_concept_tag()
+        })
+        .max()
+        .unwrap_or(TAG_BASE)
+        + 1;
+    let branch_role_trigger_count = {
+        let mut builder = Builder { ctx, next_tag };
+        install_branch_role_domain_triggers(&mut builder, &mut trigger_caches)
+    };
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!("bridge [branch-triggers] role-markers={branch_role_trigger_count}");
+    }
+
     // KONCLUDE-PORT-NOTE[terminology]: in Konclude every TBox concept carries
     // its owning CTerminology; several guards key on `getTerminology() !=
     // nullptr` — notably u22's unsat-cache write validation, which REJECTS
@@ -2570,7 +2892,20 @@ pub fn bridged_unsat(
             return Some(true);
         }
     }
-    for &(concept, negated) in seeds {
+    let mut seed_start = 0usize;
+    if algo.conf_expand_created_successors_from_saturation {
+        if let Some(&(concept, negated)) = seeds.first() {
+            if algo.try_initializing_concept_from_saturated_data(
+                &mut root, concept, negated, seed_tp, true, ctx,
+            ) {
+                seed_start = 1;
+                if ctx.has_pending_signal() {
+                    return Some(true);
+                }
+            }
+        }
+    }
+    for &(concept, negated) in &seeds[seed_start..] {
         algo.add_concept_to_individual(concept, negated, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
             if std::env::var_os("KM_BRIDGE_TRACE2").is_some() {
@@ -2977,6 +3312,13 @@ pub fn bridged_unsat(
     if algo.completeness_poisoned {
         return None;
     }
+    if algo.conf_saturation_satisfiabilitiy_expansion_cache_writing {
+        let wrote = algo.cache_satisfiable_individual_nodes(ctx);
+        algo.commit_cache_messages(ctx);
+        if wrote && std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-SAT-EXPANSION-CACHE-WRITE");
+        }
+    }
     Some(false)
 }
 
@@ -3001,14 +3343,14 @@ pub fn bridged_unsat(
 /// extraction) the caller must verify individually via `bridged_unsat`
 /// pairwise probes. A clash means the subject is unsatisfiable — every
 /// concept subsumes it — reported as the full index range, authoritative.
-pub fn bridged_classify_subject(
+fn bridged_classify_subject_with_root(
     algo: &mut CompletionTaskHandleAlgorithm,
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
     next_indi_id: &mut i64,
     subject: usize,
     n_named: usize,
-) -> Option<(Vec<usize>, bool)> {
+) -> Option<(Vec<usize>, bool, NodeId)> {
     ctx.clear_pending_signal();
     algo.or_branch_stack.clear();
     algo.completeness_poisoned = false;
@@ -3055,21 +3397,32 @@ pub fn bridged_classify_subject(
     if top.is_some() && std::env::var_os("KM_HT_NO_ROOT_TOP").is_none() {
         algo.add_concept_to_individual(top, false, &mut root, seed_tp, false, true, ctx);
         if ctx.has_pending_signal() {
-            return Some(((0..n_named).collect(), true));
+            return Some(((0..n_named).collect(), true, root));
         }
     }
-    algo.add_concept_to_individual(
-        bridged.named[subject],
-        false,
-        &mut root,
-        seed_tp,
-        false,
-        true,
-        ctx,
-    );
+    let initialized_from_saturation = algo.conf_expand_created_successors_from_saturation
+        && algo.try_initializing_concept_from_saturated_data(
+            &mut root,
+            bridged.named[subject],
+            false,
+            seed_tp,
+            true,
+            ctx,
+        );
+    if !initialized_from_saturation {
+        algo.add_concept_to_individual(
+            bridged.named[subject],
+            false,
+            &mut root,
+            seed_tp,
+            false,
+            true,
+            ctx,
+        );
+    }
     if ctx.has_pending_signal() {
         // seed alone clashed ⇒ subject unsatisfiable
-        return Some(((0..n_named).collect(), true));
+        return Some(((0..n_named).collect(), true, root));
     }
 
     let backtracks_before = algo.or_backtrack_count;
@@ -3100,7 +3453,7 @@ pub fn bridged_classify_subject(
         if !consistent {
             return match ctx.pending_signal() {
                 super::completion::clash::CalcSignal::Clash(_) => {
-                    Some(((0..n_named).collect(), true))
+                    Some(((0..n_named).collect(), true, root))
                 }
                 _ => None, // STOP: no verdict
             };
@@ -3120,6 +3473,13 @@ pub fn bridged_classify_subject(
     // countermodels. No usable verdict — defer the subject.
     if algo.completeness_poisoned {
         return None;
+    }
+    if algo.conf_saturation_satisfiabilitiy_expansion_cache_writing {
+        let wrote = algo.cache_satisfiable_individual_nodes(ctx);
+        algo.commit_cache_messages(ctx);
+        if wrote && std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+            eprintln!("BRIDGE-SAT-EXPANSION-CACHE-WRITE");
+        }
     }
     // Non-deterministic saturation ⇒ single branch is not authoritative.
     // Opened branch points count even without backtracks: a drive committing
@@ -3156,7 +3516,91 @@ pub fn bridged_classify_subject(
     }
     subsumers.sort_unstable();
     subsumers.dedup();
-    Some((subsumers, authoritative))
+    Some((subsumers, authoritative, root))
+}
+
+pub fn bridged_classify_subject(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    next_indi_id: &mut i64,
+    subject: usize,
+    n_named: usize,
+) -> Option<(Vec<usize>, bool)> {
+    bridged_classify_subject_with_root(algo, ctx, bridged, next_indi_id, subject, n_named)
+        .map(|(subsumers, authoritative, _)| (subsumers, authoritative))
+}
+
+/// Run Konclude's already-ported classification-message analyser over a
+/// completed bridge model and feed the resulting subsumer, possible-subsumer,
+/// and pseudo-model messages into the persistent KPSet item.
+fn analyse_kpset_completion_model(
+    classifier: &mut OptimizedKPSetClassSubsumptionClassifierThread,
+    state: &mut SynchronousKPSetClassState,
+    subject: usize,
+    root: NodeId,
+    ctx: &mut CalculationAlgorithmContextBase,
+) {
+    let analyser = SatisfiableTaskClassificationMessageAnalyser::default();
+    let adapter = SatisfiableTaskClassificationMessageAdapter::new_with_handles(
+        state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[state.item_ids[subject].index()]
+        .get_testing_concept(),
+        0,
+        0,
+        state
+            .ontology_item
+            .get_concept_reference_linking_data_hash()
+            .clone(),
+        EFEXTRACTALL,
+    );
+    let individual_vector = ctx
+        .processing_data_box()
+        .individual_process_node_vector()
+        .clone();
+    let max_branch_tag = ctx.processing_data_box().maximum_deterministic_branch_tag();
+    let mut observer = RecordingClassificationMessageDataObserver::new();
+    let testing_items = state
+        .ontology_item
+        .get_concept_satisfiable_test_item_container();
+    let equivalent_non_candidates = HashMap::new();
+    let analysed = analyser.analyse_satisfiable_task_classification_messages_with_live_other_nodes(
+        &adapter,
+        ctx.process_context(),
+        ctx.ontology_arenas(),
+        root,
+        &individual_vector,
+        max_branch_tag,
+        &equivalent_non_candidates,
+        ctx.ontology_arenas().concepts(),
+        ctx.ontology_arenas().concept_process_datas(),
+        ctx.ontology_arenas()
+            .concept_saturation_reference_linking_datas(),
+        testing_items,
+        ctx.ontology_arenas().roles(),
+        0,
+        Some(&mut observer),
+    );
+    let Some(analysed) = analysed else { return };
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        let message_count: usize = observer
+            .get_told_messages()
+            .iter()
+            .map(|(_, messages, _)| messages.len())
+            .sum();
+        eprintln!(
+            "BRIDGE-KPSET-MESSAGES subject {subject}: visits={} messages={message_count}",
+            analysed.other_node_visit_count,
+        );
+    }
+    for (_, messages, _) in observer.get_told_messages() {
+        classifier.process_classification_message_data_linker(
+            &mut state.ontology_item,
+            messages,
+            ctx.ontology_arenas().concepts(),
+        );
+    }
 }
 
 /// The production classification result: index pairs into `TInput.concepts`.
@@ -3224,6 +3668,25 @@ fn install_bridge_unsat_cache(ctx: &mut CalculationAlgorithmContextBase) {
         UnsatisfiableCacheHandler::new(reader, writer),
         cache_context,
     );
+}
+
+/// Install Konclude's ontology-wide saturation-node associated-expansion
+/// cache. Successful classification jobs extend this cache; later roots and
+/// successors replay its deterministic expansions before tableau search.
+fn install_bridge_saturation_node_expansion_cache(ctx: &mut CalculationAlgorithmContextBase) {
+    use super::cache::context::CacheContext;
+    use super::cache::satnode::{
+        SaturationNodeAssociatedExpansionCache, SaturationNodeAssociatedExpansionCacheWriter,
+    };
+    use super::completion::sat_node_exp_handler::SaturationNodeExpansionCacheHandler;
+    use super::model::substrate::Id;
+
+    let mut cache_context = CacheContext::new();
+    let cache =
+        cache_context.alloc_sat_expansion_cache(SaturationNodeAssociatedExpansionCache::new());
+    let writer = SaturationNodeAssociatedExpansionCacheWriter::new(cache);
+    let handler = SaturationNodeExpansionCacheHandler::new(Id::NONE, writer);
+    ctx.install_used_saturation_node_expansion_cache_handler(handler, cache_context);
 }
 
 fn fresh_bridge_env(
@@ -3300,6 +3763,7 @@ fn reset_probe_env(
     // ON later probes are deliberately order-dependent (they prune using
     // earlier probes' nogoods) while verdicts stay sound+complete.
     let unsat_cache = ctx.base.take_used_unsatisfiable_cache_handler();
+    let sat_node_expansion_cache = ctx.take_used_saturation_node_expansion_cache_handler();
     // KM_HT_SATURATION: the saturation-side arenas DELIBERATELY survive the
     // probe reset when a saturation pass ran on this env — the ontology
     // arenas (kept above) hold concept→saturation reference linkings whose
@@ -3322,17 +3786,32 @@ fn reset_probe_env(
     if let Some(state) = unsat_cache {
         ctx.base.restore_used_unsatisfiable_cache_handler(state);
     }
+    if let Some(state) = sat_node_expansion_cache {
+        ctx.restore_used_saturation_node_expansion_cache_handler(state);
+    }
 }
 
-/// Production search configuration for `bridged_classify`: PLAIN
-/// chronological search — the mode validated gold-clean on the recognition
-/// family (ore_ont_12653: missing=0 spurious=0). DDB stays env-opt-in
-/// (`KM_HT_DDB`, via `configure_default_blocking`): it is SOUND since the
-/// leftover-poisoning guard (7c521cb), but measured ~100× slower on
-/// genuinely-UNSAT probes (the guard degrades node-creating searches to
-/// chronological while still paying full dependency building), so it is a
-/// net loss as a default until per-node COW localization lands.
-fn configure_production_search(_algo: &mut CompletionTaskHandleAlgorithm) {}
+/// Production search configuration for `bridged_classify`. KPSet's message
+/// analyser distinguishes deterministic subsumers and pseudo-model entries by
+/// dependency branch tag, so classifier jobs must build the dependency spine
+/// even when dependency-directed backjumping itself remains opt-in.
+fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
+    algo.conf_build_dependencies = true;
+}
+
+/// Konclude's completion-side coupling to the precomputed saturation graph.
+/// These are the flags used by classification jobs after saturation data has
+/// been installed. In particular, cache reading is required to revalidate a
+/// saturation-cached node after direct modification; without it the retest
+/// path drops successor-creation blocking and expands the cached subtree.
+fn configure_production_completion_saturation_coupling(algo: &mut CompletionTaskHandleAlgorithm) {
+    algo.conf_expand_created_successors_from_saturation = true;
+    algo.conf_caching_blocking_from_saturation = true;
+    algo.conf_successor_saturation_expansion_restrictions_resolving = true;
+    algo.conf_sat_exp_cached_succ_absorp = true;
+    // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor line 237.
+    algo.conf_saturation_expansion_cache_reading = true;
+}
 
 // ---------------------------------------------------------------------------
 // Saturation-first probe answering (task #23).
@@ -3364,21 +3843,17 @@ fn configure_production_saturation(
     algo.conf_directly_critical_to_insufficient = false; // cfg 444 default false
     algo.conf_add_critical_concepts_to_queues = true; // cfg 440 default true
     algo.conf_check_critical_concepts = true; // cfg 440 default true
-                                              // Successor-extension machinery (Konclude: SaturationSuccessorExtension,
-                                              // cfg 448 default true; cpp 232-233): KM_HT_SAT_EXT=1 opt-in, DEFAULT OFF.
-                                              // The historical wrong clashes (541: 11-13 satisfiable classes answered
-                                              // UNSAT-certain) were ROOT-CAUSED to the implication watch-side trigger
-                                              // check ignoring the wanted presence polarity (see
-                                              // reapply_con_sat_label_set_insert_concept_reapplication_return_triggered)
-                                              // and are FIXED — extensions ON is now sound (541: 3 runs 0 wrong, 6-9 of
-                                              // 59 family subjects answered SAT-certain). Still OFF by default because
-                                              // the extension fixpoint is expensive (541 saturation 0.4s -> ~40s) with
-                                              // run-to-run coverage variance (HashMap-ordered succ maps vs Konclude's
-                                              // sorted CPROCESSMAP) and the W6-DEFER extension bodies remain partial.
-    let sat_ext = std::env::var_os("KM_HT_SAT_EXT").is_some();
+
+    // CReasonerConfigurationGroup.cpp 448 installs `true`; the reader's local
+    // fallback `false` applies only when the property is absent from the
+    // configuration group. This is the configuration used by Konclude's
+    // production precomputation.
+    let sat_ext = std::env::var_os("KM_HT_NO_SAT_SUCCESSOR_EXTENSION").is_none();
     algo.conf_concepts_extension_processing = sat_ext;
-    algo.conf_all_concepts_extension_processing = sat_ext;
-    algo.conf_functional_concepts_extension_processing = sat_ext;
+    algo.conf_all_concepts_extension_processing =
+        sat_ext && std::env::var_os("KM_HT_NO_SAT_ALL_EXTENSION").is_none();
+    algo.conf_functional_concepts_extension_processing =
+        sat_ext && std::env::var_os("KM_HT_NO_SAT_FUNCTIONAL_EXTENSION").is_none();
     algo.conf_nominal_processing = true; // cfg 497 (inert: nominal-free fragment)
                                          // ctor defaults (cpp 152–168):
     algo.conf_copy_node_from_top_individual_for_many_concepts = true;
@@ -3475,38 +3950,59 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
 /// through the concept's saturation reference linking, registered in the
 /// databox node vector, and queued for processing.
 ///
-/// KONCLUDE-PORT-NOTE[reduced]: two job-construction refinements are not (yet)
-/// ported, both PURE OPTIMIZATIONS of the special-reference machinery whose
-/// absence the initialization handles by the NONE-mode root path:
-/// the leaf-first ordering + SUBSTITUTE/COPY special-reference assignment
-/// (cpp 2129–2206), and the disjunct-candidate extension items
-/// (`extendDisjunctionsCandidateAlternativesItems`, cpp 1153–1268). Role-range
-/// successor items (cpp 2059–2074) are skipped because bridged roles carry no
-/// domain/range concept lists (domains/ranges arrive as clauses).
+/// The leaf-first ordering, SUBSTITUTE/COPY assignment, and reachable
+/// disjunct-candidate extension items are ported below. Role-range successor
+/// items (cpp 2059–2074) remain unnecessary in this bridge because role
+/// domains/ranges arrive as normalized clauses rather than role range lists.
 fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
     use super::model::concept_process::{
         ConceptProcessData, ConceptSaturationReferenceLinkingData,
-        SaturationConceptReferenceLinking,
+        SaturationConceptReferenceLinking, SaturationConceptReferenceLinkingId,
+        SATURATION_COPY_MODE, SATURATION_SUBSTITUTE_MODE,
     };
-    use super::model::op::{CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCSOME};
+    use super::model::op::{
+        CCALL, CCAND, CCAQAND, CCAQCHOOCE, CCAQSOME, CCATLEAST, CCATMOST, CCATOM, CCEQ, CCIMPLTRIG,
+        CCOR, CCSOME, CCSUB,
+    };
+    use super::process::sat_linker::IndividualSaturationProcessNodeLinkerId;
     use super::process::sat_node::IndividualSaturationProcessNode;
     use super::process::sat_ref::ExtendedConceptReferenceLinkingData;
 
-    // --- collect the seed list (deterministic order, deduped) ---
-    let mut seeds: Vec<(ConceptId, bool)> = Vec::new();
-    let mut seen: std::collections::HashSet<(ConceptId, bool)> = std::collections::HashSet::new();
-    let mut push = |seeds: &mut Vec<(ConceptId, bool)>,
-                    seen: &mut std::collections::HashSet<(ConceptId, bool)>,
-                    c: ConceptId,
-                    neg: bool| {
-        if c.is_some() && seen.insert((c, neg)) {
-            seeds.push((c, neg));
+    #[derive(Clone, Copy)]
+    struct Seed {
+        concept: ConceptId,
+        negated: bool,
+        potentially_exist: bool,
+    }
+
+    // Construction items, C++ 2022-2127. Only existential/cardinality fillers
+    // are potentially-exist items; marking every seed disabled substitution.
+    let mut seeds: Vec<Seed> = Vec::new();
+    let mut seed_index: HashMap<(ConceptId, bool), usize> = HashMap::new();
+    let push = |seeds: &mut Vec<Seed>,
+                seed_index: &mut HashMap<(ConceptId, bool), usize>,
+                concept: ConceptId,
+                negated: bool,
+                potentially_exist: bool| {
+        if concept.is_none() {
+            return;
+        }
+        if let Some(&index) = seed_index.get(&(concept, negated)) {
+            seeds[index].potentially_exist |= potentially_exist;
+        } else {
+            let index = seeds.len();
+            seeds.push(Seed {
+                concept,
+                negated,
+                potentially_exist,
+            });
+            seed_index.insert((concept, negated), index);
         }
     };
     let top = ctx.processing_data_box().ontology_top_concept;
-    push(&mut seeds, &mut seen, top, false);
+    push(&mut seeds, &mut seed_index, top, false, false);
     for &named in &bridged.named {
-        push(&mut seeds, &mut seen, named, false);
+        push(&mut seeds, &mut seed_index, named, false, false);
     }
     let n = ctx.ontology_arenas().concept_count();
     for i in 0..n {
@@ -3522,31 +4018,380 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
                 for op_link in &operands {
                     push(
                         &mut seeds,
-                        &mut seen,
+                        &mut seed_index,
                         op_link.target,
                         op_link.negated ^ negation,
+                        true,
                     );
                 }
                 if operands.is_empty() {
-                    push(&mut seeds, &mut seen, top, false); // filler defaults to ⊤
+                    push(&mut seeds, &mut seed_index, top, false, true);
                 }
             }
             CCATLEAST | CCATMOST => {
                 // ≥/≤: operand polarity as-is (cpp 2049–2054)
                 for op_link in &operands {
-                    push(&mut seeds, &mut seen, op_link.target, op_link.negated);
+                    push(
+                        &mut seeds,
+                        &mut seed_index,
+                        op_link.target,
+                        op_link.negated,
+                        true,
+                    );
                 }
                 if operands.is_empty() {
-                    push(&mut seeds, &mut seen, top, false);
+                    push(&mut seeds, &mut seed_index, top, false, true);
                 }
             }
             _ => {}
         }
     }
+    let base_seed_count = seeds.len();
 
-    // --- build one node per seed (the generator's construction loop) ---
-    let mut next_indi_id: Cint64 = 1; // generator cpp 67: nextIndiID = max(1, …)
-    for (concept, negation) in seeds {
+    // `extendDisjunctionsCandidateAlternativesItems`, C++ 1153-1268. Konclude
+    // does not seed every disjunction in the terminology. It starts from the
+    // named/existential items above and adds only reachable disjunctions and
+    // their effective alternatives. Auxiliary items are invalid special-item
+    // references: substituting through one would conflate an alternative with
+    // the class whose pseudo-model caused it to be saturated.
+    let mut invalid_special = std::collections::HashSet::new();
+    let mut extension_item = 0usize;
+    while extension_item < seeds.len() {
+        let seed = seeds[extension_item];
+        extension_item += 1;
+        let seed_concept = ctx.ontology_arenas().concept(seed.concept);
+        let mut examine = Vec::new();
+        let mut candidate_alternative_extraction = false;
+        if !seed.negated && seed_concept.has_class_name() {
+            candidate_alternative_extraction = seed_concept.get_operator_code() == CCEQ;
+            examine.extend(
+                seed_concept
+                    .get_operand_list()
+                    .iter()
+                    .map(|operand| (operand.target, operand.negated)),
+            );
+        } else {
+            examine.push((seed.concept, seed.negated));
+        }
+
+        let mut cursor = 0usize;
+        while cursor < examine.len() {
+            let (concept, negated) = examine[cursor];
+            cursor += 1;
+            let data = ctx.ontology_arenas().concept(concept);
+            let op_code = data.get_operator_code();
+            let operands = data.get_operand_list().to_vec();
+            let op_count = operands.len();
+
+            if (!negated && (op_code == CCAND || op_code == CCOR && op_count == 1))
+                || (negated && (op_code == CCOR || op_code == CCAND && op_count == 1))
+            {
+                examine.extend(
+                    operands
+                        .iter()
+                        .map(|operand| (operand.target, operand.negated ^ negated)),
+                );
+            } else if op_code == CCAQCHOOCE {
+                for operand in &operands {
+                    if negated == operand.negated {
+                        examine.push((operand.target, operand.negated));
+                    }
+                    if candidate_alternative_extraction && negated != operand.negated {
+                        examine.push((operand.target, !operand.negated));
+                    }
+                }
+            } else if (negated && ((op_code == CCAND || op_code == CCEQ) && op_count > 1))
+                || (!negated && op_code == CCOR)
+            {
+                for operand in &operands {
+                    let operand_negated = operand.negated ^ negated;
+                    let operand_data = ctx.ontology_arenas().concept(operand.target);
+                    let mut checking_concept = operand.target;
+                    let mut checking_negated = operand_negated;
+                    if operand_data.get_operator_code() == CCAQCHOOCE {
+                        let replacements: Vec<ConceptId> = operand_data
+                            .get_operand_list()
+                            .iter()
+                            .filter(|nested| nested.negated == operand_negated)
+                            .map(|nested| nested.target)
+                            .collect();
+                        if replacements.len() == 1 {
+                            checking_concept = replacements[0];
+                            checking_negated = false;
+                        }
+                    }
+                    push(
+                        &mut seeds,
+                        &mut seed_index,
+                        checking_concept,
+                        checking_negated,
+                        false,
+                    );
+                    // CTotallyPrecomputationThread cpp 1225–1227 keeps the
+                    // ordinary special reference for positive named disjuncts.
+                    // Only anonymous or negated checking items are invalidated.
+                    if !ctx
+                        .ontology_arenas()
+                        .concept(checking_concept)
+                        .has_class_name()
+                        || checking_negated
+                    {
+                        invalid_special.insert((checking_concept, checking_negated));
+                    }
+                }
+                push(&mut seeds, &mut seed_index, concept, negated, false);
+                invalid_special.insert((concept, negated));
+            } else if ((!negated && op_code == CCALL)
+                || (negated && matches!(op_code, CCSOME | CCAQSOME)))
+                && candidate_alternative_extraction
+            {
+                push(&mut seeds, &mut seed_index, concept, !negated, false);
+                invalid_special.insert((concept, !negated));
+            }
+        }
+    }
+
+    // analyseConceptSaturationSubsumerExistItems, C++ 1018-1102.
+    let named: std::collections::HashSet<ConceptId> = bridged.named.iter().copied().collect();
+    let mut special_reference: Vec<Option<usize>> = vec![None; seeds.len()];
+    let mut multiple_predecessors = vec![false; seeds.len()];
+    let mut indirect_successors = vec![false; seeds.len()];
+    let mut exist_references: Vec<Vec<usize>> = vec![Vec::new(); seeds.len()];
+    for item in 0..seeds.len() {
+        let mut stack = vec![(seeds[item].concept, seeds[item].negated)];
+        let mut visited = std::collections::HashSet::new();
+        while let Some((concept, negated)) = stack.pop() {
+            if !visited.insert((concept, negated)) {
+                continue;
+            }
+            let con = ctx.ontology_arenas().concept(concept);
+            let op_code = con.get_operator_code();
+            let operands = con.get_operand_list();
+            let deterministic = (!negated
+                && (matches!(op_code, CCAND | CCSUB | CCEQ)
+                    || op_code == CCOR && operands.len() == 1))
+                || (negated
+                    && (op_code == CCOR || matches!(op_code, CCAND | CCEQ) && operands.len() == 1));
+            if !deterministic {
+                continue;
+            }
+            for operand in operands {
+                let operand_concept = operand.target;
+                let operand_negated = operand.negated ^ negated;
+                let operand_data = ctx.ontology_arenas().concept(operand_concept);
+                let operand_code = operand_data.get_operator_code();
+                if !operand_negated
+                    && (matches!(operand_code, CCEQ | CCSUB)
+                        || operand_code == CCATOM && named.contains(&operand_concept))
+                {
+                    if let Some(&reference) = seed_index.get(&(operand_concept, false)) {
+                        indirect_successors[reference] = true;
+                        if special_reference[item].is_none()
+                            && !invalid_special
+                                .contains(&(seeds[item].concept, seeds[item].negated))
+                        {
+                            special_reference[item] = Some(reference);
+                        } else {
+                            multiple_predecessors[item] = true;
+                        }
+                    }
+                } else if (!operand_negated && matches!(operand_code, CCAND | CCAQAND))
+                    || (operand_negated && operand_code == CCOR)
+                {
+                    if operand_data.get_operand_list().len() > 1 {
+                        multiple_predecessors[item] = true;
+                    }
+                    stack.push((operand_concept, operand_negated));
+                } else if (!operand_negated && matches!(operand_code, CCSOME | CCAQSOME))
+                    || (operand_negated && operand_code == CCALL)
+                {
+                    let filler = operand_data
+                        .get_operand_list()
+                        .first()
+                        .map(|link| (link.target, link.negated ^ operand_negated))
+                        .unwrap_or((top, false));
+                    if let Some(&reference) = seed_index.get(&filler) {
+                        exist_references[item].push(reference);
+                    }
+                    multiple_predecessors[item] = true;
+                } else if (!negated && operand_code == CCATLEAST)
+                    || (negated && operand_code == CCATMOST)
+                {
+                    let filler = operand_data
+                        .get_operand_list()
+                        .first()
+                        .map(|link| (link.target, link.negated))
+                        .unwrap_or((top, false));
+                    if let Some(&reference) = seed_index.get(&filler) {
+                        exist_references[item].push(reference);
+                    }
+                    multiple_predecessors[item] = true;
+                } else if operand_code == CCAQCHOOCE {
+                    for nested in operand_data.get_operand_list() {
+                        if operand_negated != nested.negated {
+                            continue;
+                        }
+                        let nested_data = ctx.ontology_arenas().concept(nested.target);
+                        match nested_data.get_operator_code() {
+                            CCAQSOME => {
+                                if let Some(filler) = nested_data.get_operand_list().first() {
+                                    if let Some(&reference) =
+                                        seed_index.get(&(filler.target, filler.negated))
+                                    {
+                                        exist_references[item].push(reference);
+                                    }
+                                }
+                                multiple_predecessors[item] = true;
+                            }
+                            CCAQAND => {
+                                if operand_data.get_operand_list().len() > 1 {
+                                    multiple_predecessors[item] = true;
+                                }
+                                stack.push((nested.target, false));
+                            }
+                            _ => {}
+                        }
+                    }
+                } else {
+                    multiple_predecessors[item] = true;
+                }
+            }
+        }
+        exist_references[item].sort_unstable();
+        exist_references[item].dedup();
+    }
+
+    // C++ propagateSubsumerItemFlag / propagateExistInitializationFlag.
+    for item in 0..seeds.len() {
+        if indirect_successors[item] {
+            let mut next = special_reference[item];
+            while let Some(reference) = next {
+                if indirect_successors[reference] {
+                    break;
+                }
+                indirect_successors[reference] = true;
+                next = special_reference[reference];
+            }
+        }
+        if seeds[item].potentially_exist {
+            let mut next = special_reference[item];
+            while let Some(reference) = next {
+                if seeds[reference].potentially_exist {
+                    break;
+                }
+                seeds[reference].potentially_exist = true;
+                next = special_reference[reference];
+            }
+        }
+    }
+
+    // Diagnostic ablation for comparing Konclude's tag-ordered special-reference
+    // choice with a bridge build whose independently assigned concept tags choose
+    // another deterministic subsumer. Format: `source-tag:reference-tag`.
+    if let Ok(override_spec) = std::env::var("KM_SAT_SPECIAL_REF_OVERRIDE") {
+        for pair in override_spec.split(',') {
+            let Some((source, reference)) = pair.split_once(':') else {
+                continue;
+            };
+            let (Ok(source_tag), Ok(reference_tag)) =
+                (source.parse::<Cint64>(), reference.parse::<Cint64>())
+            else {
+                continue;
+            };
+            let source_item = seeds.iter().position(|seed| {
+                !seed.negated
+                    && ctx
+                        .ontology_arenas()
+                        .concept(seed.concept)
+                        .get_concept_tag()
+                        == source_tag
+            });
+            let reference_item = seeds.iter().position(|seed| {
+                !seed.negated
+                    && ctx
+                        .ontology_arenas()
+                        .concept(seed.concept)
+                        .get_concept_tag()
+                        == reference_tag
+            });
+            if let (Some(source_item), Some(reference_item)) = (source_item, reference_item) {
+                special_reference[source_item] = Some(reference_item);
+                multiple_predecessors[source_item] = true;
+                eprintln!(
+                    "SAT-SPECIAL-REF-OVERRIDE source-tag={} reference-tag={}",
+                    source_tag, reference_tag,
+                );
+            }
+        }
+    }
+
+    // Dependency-first equivalent of orderItemsSaturationTesting.
+    fn order_item(
+        item: usize,
+        special_reference: &[Option<usize>],
+        exist_references: &[Vec<usize>],
+        state: &mut [u8],
+        order: &mut Vec<usize>,
+    ) {
+        if state[item] == 2 {
+            return;
+        }
+        if state[item] == 1 {
+            return;
+        }
+        state[item] = 1;
+        if let Some(reference) = special_reference[item] {
+            order_item(reference, special_reference, exist_references, state, order);
+        }
+        // C++ pushes the list in forward order onto a stack, so the last
+        // existential reference is ordered first.
+        for &reference in exist_references[item].iter().rev() {
+            order_item(reference, special_reference, exist_references, state, order);
+        }
+        state[item] = 2;
+        order.push(item);
+    }
+    let mut order = Vec::with_capacity(seeds.len());
+    let mut order_state = vec![0u8; seeds.len()];
+    // Konclude starts with real non-existential leaves, then existential
+    // leaves, and only then sweeps the remaining components.
+    for item in 0..seeds.len() {
+        if !indirect_successors[item] && !seeds[item].potentially_exist {
+            order_item(
+                item,
+                &special_reference,
+                &exist_references,
+                &mut order_state,
+                &mut order,
+            );
+        }
+    }
+    for item in 0..seeds.len() {
+        if !indirect_successors[item] && seeds[item].potentially_exist {
+            order_item(
+                item,
+                &special_reference,
+                &exist_references,
+                &mut order_state,
+                &mut order,
+            );
+        }
+    }
+    for item in 0..seeds.len() {
+        order_item(
+            item,
+            &special_reference,
+            &exist_references,
+            &mut order_state,
+            &mut order,
+        );
+    }
+
+    // Allocate every ontology item before wiring cross-item references.
+    let mut onto_items = vec![SaturationConceptReferenceLinkingId::NONE; seeds.len()];
+    for (item_index, seed) in seeds.iter().enumerate() {
+        let concept = seed.concept;
+        let negation = seed.negated;
         // Ensure the concept's process data + saturation reference-linking data.
         let con_proc_data = {
             let concept_data = ctx.ontology_arenas().concept(concept).get_concept_data();
@@ -3585,13 +4430,61 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
             let arenas = ctx.ontology_arenas_mut();
             let mut item = SaturationConceptReferenceLinking::new();
             item.init_concept_saturation_testing_item(concept, negation, RoleId::NONE);
-            item.set_potentially_exist_initialization_concept(true);
+            item.set_potentially_exist_initialization_concept(seed.potentially_exist);
             let onto_item = arenas.alloc_saturation_concept_reference_linking(item);
             arenas
                 .concept_saturation_reference_linking_data_mut(ref_linking_data)
                 .set_saturation_reference_linking_data(onto_item, negation);
             onto_item
         };
+        onto_items[item_index] = onto_item;
+    }
+
+    // Reference mode, C++ 2190-2205. Trigger-host concepts conservatively use
+    // COPY, matching the triggerImpHash guard in Konclude.
+    for item in 0..seeds.len() {
+        let Some(reference) = special_reference[item] else {
+            continue;
+        };
+        let contains_trigger = ctx
+            .ontology_arenas()
+            .concept(seeds[item].concept)
+            .get_operand_list()
+            .iter()
+            .any(|operand| {
+                ctx.ontology_arenas()
+                    .concept(operand.target)
+                    .get_operator_code()
+                    == CCIMPLTRIG
+            });
+        let mode = if !seeds[item].potentially_exist
+            && !multiple_predecessors[item]
+            && !contains_trigger
+        {
+            SATURATION_SUBSTITUTE_MODE
+        } else {
+            SATURATION_COPY_MODE
+        };
+        ctx.ontology_arenas_mut()
+            .saturation_concept_reference_linking_mut(onto_items[item])
+            .set_special_item_reference(onto_items[reference])
+            .set_special_item_reference_mode(mode);
+    }
+
+    // Generator construction loop. Build all nodes first, then queue them in
+    // dependency order; databox insertion is head-first, hence reverse insert.
+    let mut next_indi_id: Cint64 = 1;
+    let mut linkers = vec![IndividualSaturationProcessNodeLinkerId::NONE; seeds.len()];
+    // `extendApproximatedSaturationCalculationJobConstruction` prepends each
+    // construct. The task generator therefore allocates nodes in reverse
+    // ordered-item order, giving referenced dependencies larger individual
+    // IDs. Successor-extension processing is keyed by negative individual ID,
+    // so this reversal is required to process dependencies before dependents.
+    for &item_index in order.iter().rev() {
+        let seed = seeds[item_index];
+        let concept = seed.concept;
+        let negation = seed.negated;
+        let onto_item = onto_items[item_index];
         // Process-side item mirror + the node (generator cpp 108–135).
         let ext_item = {
             let mut ext = ExtendedConceptReferenceLinkingData::new();
@@ -3625,8 +4518,40 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
         ctx.process_context_mut()
             .indi_sat_process_node_linker_mut(linker)
             .set_processing_queued(true);
+        linkers[item_index] = linker;
+    }
+    // The generator also prepends each allocated linker to the processing
+    // list. Adding the reverse construction sequence reproduces the final
+    // dependency-first list.
+    for &item_index in order.iter().rev() {
         ctx.processing_data_box_mut()
-            .add_individual_saturation_process_node_linker(linker);
+            .add_individual_saturation_process_node_linker(linkers[item_index]);
+    }
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        let substitute_count = (0..seeds.len())
+            .filter(|&item| {
+                ctx.ontology_arenas()
+                    .saturation_concept_reference_linking(onto_items[item])
+                    .get_special_reference_mode()
+                    == SATURATION_SUBSTITUTE_MODE
+            })
+            .count();
+        let copy_count = (0..seeds.len())
+            .filter(|&item| {
+                ctx.ontology_arenas()
+                    .saturation_concept_reference_linking(onto_items[item])
+                    .get_special_reference_mode()
+                    == SATURATION_COPY_MODE
+            })
+            .count();
+        eprintln!(
+            "BRIDGE-SATURATION-SEEDS: base={} extended={} invalid-special={} substitute={} copy={}",
+            base_seed_count,
+            seeds.len(),
+            invalid_special.len(),
+            substitute_count,
+            copy_count,
+        );
     }
 }
 
@@ -3649,9 +4574,9 @@ pub struct SaturationOutcome {
 /// `CPrecomputedSaturationSubsumerExtractor::getConceptFlags` + `extractSubsumers`
 /// over the saturated bridge env: follow the POSITIVE node (substitute-chain
 /// resolved), read INDIRECT flags of base + resolved node —
-/// CLASHED ⇒ UNSAT-certain; ¬INSUFFICIENT ∧ ¬UNPROCESSED (+ completed, and no
-/// direct EQ-candidate problematic) ⇒ SAT-certain with the label's non-negated
-/// named entries as the exact subsumer set; anything else ⇒ unknown.
+/// CLASHED ⇒ UNSAT-certain; ¬INSUFFICIENT ∧ ¬UNPROCESSED and no problematic
+/// EQ-candidate descriptor ⇒ SAT-certain with the label's non-negated named
+/// entries as the exact subsumer set; anything else ⇒ unknown.
 fn extract_saturation_outcome(
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
@@ -3667,12 +4592,18 @@ fn extract_saturation_outcome(
     let mut sat_verdict: Vec<Option<bool>> = vec![None; n_named];
     let mut certain_subsumers: Vec<Option<Vec<usize>>> = vec![None; n_named];
     let mut known_subsumers: Vec<Vec<usize>> = vec![Vec::new(); n_named];
+    let mut unknown_no_node = 0usize;
+    let mut unknown_insufficient = 0usize;
+    let mut unknown_unprocessed = 0usize;
+    let mut unknown_eq_candidate = 0usize;
+    let trust_insufficient = std::env::var_os("KM_HT_TRUST_INSUFFICIENT").is_some();
     for (i, &named) in bridged.named.iter().enumerate() {
         let base_node =
             super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
                 named, false, ctx,
             );
         if base_node.is_none() {
+            unknown_no_node += 1;
             continue;
         }
         // Substitute-chain resolution (extractor cpp 273–283).
@@ -3689,7 +4620,7 @@ fn extract_saturation_outcome(
         }
         let read = |node: super::process::SatNodeId,
                     ctx: &CalculationAlgorithmContextBase|
-         -> (bool, bool, bool, bool, bool) {
+         -> (bool, bool, bool, bool) {
             let sat_node = ctx.process_context().sat_node(node);
             let ind = sat_node.indirect_status_flags.get_flags();
             let dir = sat_node.direct_status_flags.get_flags();
@@ -3698,11 +4629,10 @@ fn extract_saturation_outcome(
                 ind & F::INDSATFLAGINSUFFICIENT != 0,
                 ind & F::INDSATFLAGUNPROCESSED != 0,
                 dir & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
-                sat_node.is_completed(),
             )
         };
-        let (b_clash, b_insuf, b_unproc, b_eqprob, b_done) = read(base_node, ctx);
-        let (r_clash, r_insuf, r_unproc, r_eqprob, r_done) = read(resolved, ctx);
+        let (b_clash, b_insuf, b_unproc, _b_eqprob) = read(base_node, ctx);
+        let (r_clash, r_insuf, r_unproc, r_eqprob) = read(resolved, ctx);
         if std::env::var_os("KM_SAT_DEBUG").is_some() {
             eprintln!(
                 "SAT-SUBJ {} concept={:?} base={:?} resolved={:?} b_clash={} r_clash={}",
@@ -3715,6 +4645,7 @@ fn extract_saturation_outcome(
         // extractSubsumers (cpp 40–130): non-negated class-named label entries
         // are sound known subsumers even when the node is insufficient.
         let mut subs: Vec<usize> = Vec::new();
+        let mut eq_candidate_present = false;
         let label = ctx
             .process_context()
             .sat_node(resolved)
@@ -3729,6 +4660,8 @@ fn extract_saturation_outcome(
                     let d = ctx.process_context().con_sat_desc(des);
                     (d.get_concept(), d.get_negation())
                 };
+                let op_code = ctx.ontology_arenas().concept(concept).get_operator_code();
+                eq_candidate_present |= op_code == op::CCEQCAND;
                 if !negated {
                     if let Some(&idx) = named_index.get(&concept) {
                         if idx != i {
@@ -3749,11 +4682,20 @@ fn extract_saturation_outcome(
             sat_verdict[i] = Some(true);
             continue;
         }
-        if insufficient || unprocessed || !(b_done && r_done) || b_eqprob || r_eqprob {
+        if insufficient && !trust_insufficient || unprocessed || eq_candidate_present && r_eqprob {
+            unknown_insufficient += usize::from(insufficient && !trust_insufficient);
+            unknown_unprocessed += usize::from(unprocessed);
+            unknown_eq_candidate += usize::from(eq_candidate_present && r_eqprob);
             continue; // unknown — probe needed
         }
         sat_verdict[i] = Some(false);
         certain_subsumers[i] = Some(subs);
+    }
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        eprintln!(
+            "BRIDGE-SATURATION-UNKNOWN: no-node={} insufficient={} unprocessed={} eq-candidate={}",
+            unknown_no_node, unknown_insufficient, unknown_unprocessed, unknown_eq_candidate,
+        );
     }
     SaturationOutcome {
         sat_verdict,
@@ -3794,7 +4736,7 @@ fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     if !sat_algo.run_saturation_on(ctx) {
         return false;
     }
-    if std::env::var_os("KM_SAT_DEBUG").is_some() {
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
         eprintln!(
             "SAT-STATS: insufficient all={} atmost={} or={} eqcand={} value={} nominal={}",
             sat_algo.insufficient_all_count,
@@ -3804,6 +4746,8 @@ fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
             sat_algo.insufficient_value_count,
             sat_algo.insufficient_nominal_count,
         );
+    }
+    if std::env::var_os("KM_SAT_DEBUG").is_some() {
         debug_dump_saturation_nodes(ctx);
     }
     true
@@ -3949,9 +4893,13 @@ pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
     // Trigger absorption is designed to make the non-branching saturation
     // residue filter effective, so enabling it also enables this pre-pass. The
     // legacy explicit flag remains available for absorption-off diagnostics.
-    let use_saturation = std::env::var_os("KM_HT_SATURATION").is_some()
-        || std::env::var_os("KM_TRIGGER_ABSORB").is_some();
-    let use_satcache = use_saturation && std::env::var_os("KM_HT_SATCACHE").is_some();
+    let use_saturation = std::env::var_os("KM_HT_NO_SATURATION").is_none()
+        && (std::env::var_os("KM_HT_SATURATION").is_some()
+            || std::env::var_os("KM_TRIGGER_ABSORB").is_some());
+    let use_satcache = use_saturation
+        && std::env::var_os("KM_HT_NO_SATCACHE").is_none()
+        && (std::env::var_os("KM_HT_SATCACHE").is_some()
+            || std::env::var_os("KM_TRIGGER_ABSORB").is_some());
     bridged_classify_opts(tin, use_saturation, use_satcache)
 }
 
@@ -4019,6 +4967,8 @@ pub fn bridged_classify_opts(
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(2);
     let mut pending: Vec<usize> = subjects;
+    let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+    let mut kpset_state: Option<SynchronousKPSetClassState> = None;
     // Saturation-first probe answering (task #23): saturate the bridged
     // ontology ONCE in an independent calculation task and pass only the
     // extracted flags/subsumers into classification. Only explicit SATCACHE
@@ -4035,10 +4985,15 @@ pub fn bridged_classify_opts(
     let mut satcache_active = false;
     if use_saturation {
         let t_sat = std::time::Instant::now();
+        let mut saturation_complete = true;
         let outcome = if use_satcache {
-            saturation_ran = true;
-            run_bridged_saturation(&mut ctx, &bridged)
-                .then(|| extract_saturation_outcome(&mut ctx, &bridged))
+            saturation_complete = run_bridged_saturation(&mut ctx, &bridged);
+            // An interrupted approximation pass still contains only monotonic
+            // consequences. Extracted positive labels and clash flags are
+            // sound KPSet seeds; the completed-node guard prevents unfinished
+            // nodes from becoming SAT-certain. Do not couple this partial graph
+            // into completion below.
+            Some(extract_saturation_outcome(&mut ctx, &bridged))
         } else {
             bridged_saturate(tin)
         };
@@ -4104,24 +5059,94 @@ pub fn bridged_classify_opts(
                 }
                 None => true,
             });
-            satcache_active = use_satcache;
+            if std::env::var_os("KM_BRIDGE_SAT_RESIDUE").is_some() {
+                for &subject in &pending {
+                    eprintln!(
+                        "BRIDGE-SATURATION-RESIDUE subject={subject} class={}",
+                        tin.concepts.get(subject).map(String::as_str).unwrap_or("?")
+                    );
+                }
+            }
+            // Konclude does not run the insufficient residue in signature
+            // order.  Its KPSet classifier builds the predecessor graph from
+            // every sound saturation label, then schedules root classes
+            // before their descendants.  The bridge executes jobs
+            // synchronously, but consumes the same production KPSet order.
+            let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+                &bridged.named,
+                &outcome.sat_verdict,
+                &outcome.certain_subsumers,
+                &outcome.known_subsumers,
+                &pending,
+                ctx.ontology_arenas().concepts(),
+            );
+            pending = state.ordered_subjects.clone();
+            kpset_state = Some(state);
+            saturation_ran = use_satcache && saturation_complete;
+            satcache_active = use_satcache && saturation_complete;
             if progress {
                 eprintln!(
-                    "BRIDGE-SATURATION: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes, satcache={})",
+                    "BRIDGE-SATURATION{}: {:.2}s, answered {} unsat + {} sat of {} subjects ({} residue to probes, known-label-subjects={}, satcache={})",
+                    if saturation_complete { "" } else { "-PARTIAL" },
                     t_sat.elapsed().as_secs_f64(),
                     answered_unsat,
                     answered_sat,
                     answered_unsat + answered_sat + pending.len(),
                     pending.len(),
+                    outcome
+                        .known_subsumers
+                        .iter()
+                        .filter(|subsumers| !subsumers.is_empty())
+                        .count(),
                     satcache_active,
                 );
             }
-        } else if progress {
-            // Budget overrun — no flag is trustworthy; the pass answers
-            // nothing and the coupling stays off.
-            eprintln!("BRIDGE-SATURATION: budget overrun, pass discarded");
         }
     }
+    if kpset_state.is_none() {
+        let empty_verdict = vec![None; n_named];
+        let empty_certain = vec![None; n_named];
+        let mut known = vec![Vec::new(); n_named];
+        for &(sub, sup) in &saturation_known_pairs {
+            if sub < n_named && sup < n_named {
+                known[sub].push(sup);
+            }
+        }
+        let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &bridged.named,
+            &empty_verdict,
+            &empty_certain,
+            &known,
+            &pending,
+            ctx.ontology_arenas().concepts(),
+        );
+        pending = state.ordered_subjects.clone();
+        kpset_state = Some(state);
+    }
+    if satcache_active {
+        install_bridge_saturation_node_expansion_cache(&mut ctx);
+    }
+    let mut kpset_state = kpset_state.expect("synchronous KPSet state initialized");
+    // Diagnostic only: retain a single post-saturation subject while preserving
+    // construction of the complete KPSet graph and saturation cache above.
+    if let Ok(subject) = std::env::var("KM_BRIDGE_ONLY_SUBJECT") {
+        if let Ok(subject) = subject.parse::<usize>() {
+            pending.retain(|&candidate| candidate == subject);
+        }
+    }
+    let subject_by_item: HashMap<usize, usize> = kpset_state
+        .item_ids
+        .iter()
+        .enumerate()
+        .map(|(subject, item)| (item.index(), subject))
+        .collect();
+    let subject_by_concept: HashMap<ConceptId, usize> = bridged
+        .named
+        .iter()
+        .copied()
+        .enumerate()
+        .map(|(subject, concept)| (concept, subject))
+        .collect();
     // Classify one subject end-to-end (read-off + any needed verification
     // probes) into `out`. `None` ⇔ some probe STOPped — the subject is
     // DEFERRED, `out` untouched for it (pairs are only pushed once every
@@ -4157,19 +5182,15 @@ pub fn bridged_classify_opts(
             configure_production_search(algo);
             // Saturation-node coupling (task #24 wave 2): Konclude's production
             // completion profile — expand created successors from saturation +
-            // caching-blocking from saturation (the associated-expansion cache
-            // WRITING stays off, as in Konclude). Re-armed after every reset
-            // because the reset rebuilds the algorithm. The KM_BRIDGE_FRESH_ENV
+            // caching-blocking from saturation, including cache revalidation
+            // after modification. Successful jobs also extend the shared
+            // associated-expansion cache. Re-armed after every reset because
+            // the reset rebuilds the algorithm. The KM_BRIDGE_FRESH_ENV
             // diagnostic path rebuilds an UNsaturated env, so the coupling
             // stays off there (the lookups would find no reference linkings).
             if satcache_active && !fresh_env {
-                algo.conf_expand_created_successors_from_saturation = true;
-                algo.conf_caching_blocking_from_saturation = true;
-                // C++ default TRUE (cpp 154): a node whose successors are
-                // certified (PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED)
-                // ABSORBS its generating ∃/≥ concepts instead of growing the
-                // tree — this is what makes the caching terminate probes.
-                algo.conf_sat_exp_cached_succ_absorp = true;
+                configure_production_completion_saturation_coupling(algo);
+                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = true;
             }
             // VERDICT TRUST HIERARCHY, escalation leg: re-run an untrusted
             // probe under COW branch epochs — complete per-alternative state
@@ -4181,44 +5202,104 @@ pub fn bridged_classify_opts(
                 algo.conf_inprocess_cow = true;
             }
         };
-        renew(algo, ctx, false);
-        let mut next_indi_id: i64 = 1_000;
-        let mut readoff =
-            bridged_classify_subject(algo, ctx, &bridged, &mut next_indi_id, s, n_named);
-        if readoff.is_none() && algo.completeness_poisoned && cow_confirm {
-            // Plain search untrusted (an unrestored advance phantomized
-            // nodes) — the poison deferred the read-off. Escalate to COW.
-            renew(algo, ctx, true);
-            let mut id_cow: i64 = 1_000;
-            readoff = bridged_classify_subject(algo, ctx, &bridged, &mut id_cow, s, n_named);
-        }
-        if readoff.is_none() && progress {
-            eprintln!(
-                "BRIDGE-DEFER subject {s}: READ-OFF stop after {:.1}s (signal={:?})",
-                t_subj.elapsed().as_secs_f64(),
-                ctx.pending_signal()
+        let derived = {
+            let item = &kpset_state
+                .ontology_item
+                .get_concept_satisfiable_test_item_container()[kpset_state.item_ids[s].index()];
+            if item.is_result_unsatisfiable_derivated() {
+                out.unsatisfiable.push(s);
+                return Some(());
+            }
+            item.is_result_satisfiable_derivated().then(|| {
+                let mut candidates: Vec<usize> = item
+                    .get_subsuming_concept_item_list()
+                    .iter()
+                    .filter_map(|known| subject_by_item.get(&known.index()).copied())
+                    .collect();
+                if let Some(possible) = item.get_possible_subsumption_map_ref() {
+                    candidates.extend(
+                        possible
+                            .concepts()
+                            .into_iter()
+                            .filter_map(|concept| subject_by_concept.get(&concept).copied()),
+                    );
+                }
+                candidates.sort_unstable();
+                candidates.dedup();
+                candidates
+            })
+        };
+        let (mut subs, authoritative, root) = if let Some(subs) = derived {
+            if progress {
+                eprintln!(
+                    "BRIDGE-KPSET-DERIVED subject {s}: {} candidates, no satisfiability job",
+                    subs.len()
+                );
+            }
+            (subs, false, None)
+        } else {
+            renew(algo, ctx, false);
+            let mut next_indi_id: i64 = 1_000;
+            let mut readoff = bridged_classify_subject_with_root(
+                algo,
+                ctx,
+                &bridged,
+                &mut next_indi_id,
+                s,
+                n_named,
             );
+            if readoff.is_none() && algo.completeness_poisoned && cow_confirm {
+                // Plain search untrusted (an unrestored advance phantomized
+                // nodes) — the poison deferred the read-off. Escalate to COW.
+                renew(algo, ctx, true);
+                let mut id_cow: i64 = 1_000;
+                readoff = bridged_classify_subject_with_root(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_cow,
+                    s,
+                    n_named,
+                );
+            }
+            if readoff.is_none() && progress {
+                eprintln!(
+                    "BRIDGE-DEFER subject {s}: READ-OFF stop after {:.1}s (signal={:?}, nodes={}, sat-blocks={}, sat-expanded={})",
+                    t_subj.elapsed().as_secs_f64(),
+                    ctx.pending_signal(),
+                    ctx.process_context().node_count(),
+                    algo.saturation_cache_establish_count,
+                    algo.saturation_expansion_concept_count,
+                );
+            }
+            let (subs, authoritative, root) = readoff?;
+            (subs, authoritative, Some(root))
+        };
+        if let Some(root) = root {
+            if !(authoritative && subs.len() == n_named) {
+                analyse_kpset_completion_model(&mut classifier, &mut kpset_state, s, root, ctx);
+            }
         }
-        let (mut subs, authoritative) = readoff?;
-        // Non-authoritative read-off: the positives are one branch's model —
-        // candidates polluted by that branch's disjunct choices, and each
-        // false candidate costs a full SAT probe to refute (measured on
-        // ore_ont_12653: ~all probe budget burnt refuting recognition-branch
-        // pollution). Konclude's possible-subsumer extraction intersects
-        // MODELS instead: re-drive the subject with REVERSED disjunct order
-        // (`conf_or_reverse` — order-only, sound) and keep only candidates
-        // positive in BOTH models. A true subsumer is positive in EVERY
-        // clash-free saturated graph, so the intersection stays a complete
-        // filter; a candidate riding one branch choice drops out. If the
-        // second drive STOPs or (exotically) clashes, keep the unintersected
-        // set — the intersection is purely an optimization.
-        if !authoritative && !bridged.source_tbox {
+        // Optional diagnostic filter: intersect a second model obtained with
+        // reversed disjunction order. This is sound, but it is not part of
+        // Konclude's KPSet pipeline. Konclude consumes the first model's
+        // possible-subsumption/pseudo-model messages and verifies the remaining
+        // pairs. On the disjunction family a second full read-off usually
+        // removes only one candidate and costs far more than those pair checks.
+        if !authoritative && std::env::var_os("KM_BRIDGE_REVERSE_READOFF").is_some() {
             renew(algo, ctx, false);
             algo.conf_or_reverse = true;
             let mut id_rev: i64 = 1_000;
-            if let Some((subs_rev, _)) =
-                bridged_classify_subject(algo, ctx, &bridged, &mut id_rev, s, n_named)
+            if let Some((subs_rev, _, reverse_root)) =
+                bridged_classify_subject_with_root(algo, ctx, &bridged, &mut id_rev, s, n_named)
             {
+                analyse_kpset_completion_model(
+                    &mut classifier,
+                    &mut kpset_state,
+                    s,
+                    reverse_root,
+                    ctx,
+                );
                 if subs_rev.len() < n_named {
                     let keep: std::collections::HashSet<usize> = subs_rev.into_iter().collect();
                     let before = subs.len();
@@ -4291,6 +5372,46 @@ pub fn bridged_classify_opts(
             if saturation_known_pairs.contains(&(s, c)) {
                 continue;
             }
+            if let Some((confirmed, invalid)) = kpset_state.candidate_state(s, c) {
+                if invalid {
+                    if progress {
+                        eprintln!(
+                            "BRIDGE-KPSET-SKIP {} v {}: propagated-false",
+                            tin.concepts[s], tin.concepts[c]
+                        );
+                    }
+                    continue;
+                }
+                if confirmed {
+                    if progress {
+                        eprintln!(
+                            "BRIDGE-KPSET-SKIP {} v {}: propagated-true",
+                            tin.concepts[s], tin.concepts[c]
+                        );
+                    }
+                    pairs.push((s, c));
+                    continue;
+                }
+            }
+            if kpset_state.pseudo_model_refutes(s, c) {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: pseudo-model-false",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                kpset_state
+                    .ontology_item
+                    .inc_running_possible_subsumption_tests_count(1);
+                classifier.interprete_subsumption_result(
+                    &mut kpset_state.ontology_item,
+                    bridged.named[s],
+                    bridged.named[c],
+                    false,
+                    ctx.ontology_arenas().concepts(),
+                );
+                continue;
+            }
             if progress {
                 eprintln!(
                     "BRIDGE-PAIR-START {} v {}",
@@ -4326,6 +5447,16 @@ pub fn bridged_classify_opts(
                             tin.concepts[s], tin.concepts[c]
                         );
                     }
+                    kpset_state
+                        .ontology_item
+                        .inc_running_possible_subsumption_tests_count(1);
+                    classifier.interprete_subsumption_result(
+                        &mut kpset_state.ontology_item,
+                        bridged.named[s],
+                        bridged.named[c],
+                        true,
+                        ctx.ontology_arenas().concepts(),
+                    );
                     pairs.push((s, c))
                 }
                 Some(false) => {
@@ -4335,6 +5466,16 @@ pub fn bridged_classify_opts(
                             tin.concepts[s], tin.concepts[c]
                         );
                     }
+                    kpset_state
+                        .ontology_item
+                        .inc_running_possible_subsumption_tests_count(1);
+                    classifier.interprete_subsumption_result(
+                        &mut kpset_state.ontology_item,
+                        bridged.named[s],
+                        bridged.named[c],
+                        false,
+                        ctx.ontology_arenas().concepts(),
+                    );
                 }
                 None => {
                     if progress {
@@ -4422,6 +5563,16 @@ pub fn bridged_classify_opts(
         }
         return None;
     }
+    out.unsatisfiable.sort_unstable();
+    out.unsatisfiable.dedup();
+    if !out.unsatisfiable.is_empty() {
+        let unsatisfiable: std::collections::HashSet<usize> =
+            out.unsatisfiable.iter().copied().collect();
+        out.subsumptions
+            .retain(|(subject, _)| !unsatisfiable.contains(subject));
+    }
+    out.subsumptions.sort_unstable();
+    out.subsumptions.dedup();
     Some(out)
 }
 
@@ -4528,6 +5679,69 @@ mod tests {
     }
 
     #[test]
+    fn full_gci_keeps_named_condition_on_final_implication() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let named_condition = b.atom(TAG_BASE + 1);
+        let filler = b.atom(TAG_BASE + 2);
+        let implied = b.atom(TAG_BASE + 3);
+        let (role, _, inverses) = trigger_test_roles(&mut b);
+        let existential = b.some(role, (filler, false));
+        let conjunction = b.and_of(&[(named_condition, false), (existential, false)]);
+        assert!(absorb_concept_disjunction(
+            &mut b,
+            &[conjunction],
+            &[(implied, false)],
+            &inverses,
+            &mut TriggerCaches::default(),
+        ));
+
+        let filler_unfolding = b.ctx.ontology_arenas().concept(filler).get_operand_list()[0].target;
+        let structural_trigger = b
+            .ctx
+            .ontology_arenas()
+            .concept(filler_unfolding)
+            .get_operand_list()[0]
+            .target;
+        let final_implication = b
+            .ctx
+            .ontology_arenas()
+            .concept(structural_trigger)
+            .get_operand_list()[0]
+            .target;
+        let final_concept = b.ctx.ontology_arenas().concept(final_implication);
+        assert_eq!(final_concept.get_operator_code(), op::CCIMPL);
+        assert_eq!(final_concept.get_operand_count(), 2);
+        assert_eq!(final_concept.get_operand_list()[0].target, implied);
+        assert_eq!(final_concept.get_operand_list()[1].target, named_condition);
+        assert!(final_concept.get_operand_list()[1].negated);
+    }
+
+    #[test]
+    fn branch_trigger_preprocess_installs_role_domain_marker() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let filler = b.atom(TAG_BASE + 1);
+        let alternative = b.atom(TAG_BASE + 2);
+        let (role, _, _) = trigger_test_roles(&mut b);
+        let all = b.all(role, (filler, false));
+        b.or_of(&[(all, false), (alternative, false)]);
+
+        let count = install_branch_role_domain_triggers(&mut b, &mut TriggerCaches::default());
+        assert_eq!(count, 1);
+        let marker = b.ctx.ontology_arenas().role(role).domain_linker[0].target;
+        let marker = b.ctx.ontology_arenas().concept(marker);
+        assert_eq!(marker.get_operator_code(), op::CCIMPLTRIG);
+        assert_eq!(marker.get_operand_count(), 0);
+    }
+
+    #[test]
     fn higher_cardinality_uses_partial_not_full_trigger() {
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
@@ -4583,7 +5797,7 @@ mod tests {
         let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let tin = crate::orchestrate::cb_to_ht::convert(
             &fr.clauses,
-            None,
+            Some(&fr.rbox),
             &named,
             &fr.cardinalities,
             &fr.definers,
@@ -4604,6 +5818,133 @@ mod tests {
             ctx: None,
             unsupported: 0,
         }
+    }
+
+    #[test]
+    fn production_rbox_compiles_symmetric_role_as_self_inverse() {
+        let env = bridge_ofn(
+            "Prefix(:=<http://example.org/>)\n\
+             Ontology(\n\
+               Declaration(ObjectProperty(:r))\n\
+               SymmetricObjectProperty(:r)\n\
+             )",
+        );
+        assert!(env.tin.fenced.is_empty());
+        assert!(env.tin.inverse);
+    }
+
+    #[test]
+    fn production_rbox_marks_functional_role_for_successor_extension() {
+        let env = bridge_ofn(
+            "Prefix(:=<http://example.org/>)\n\
+             Ontology(\n\
+               Declaration(ObjectProperty(:r))\n\
+               FunctionalObjectProperty(:r)\n\
+             )",
+        );
+        let (_, ctx, bridged) = fresh_bridge_env(&env.tin);
+        assert!(ctx.ontology_arenas().role(bridged.roles[0]).is_functional());
+    }
+
+    #[test]
+    fn saturation_construction_ports_special_reference_and_exist_flags() {
+        use super::super::model::concept_process::SATURATION_SUBSTITUTE_MODE;
+
+        let env = bridge_ofn(
+            "Prefix(:=<http://example.org/>)\n\
+             Ontology(\n\
+               Declaration(Class(:A)) Declaration(Class(:B))\n\
+               Declaration(Class(:C)) Declaration(Class(:X))\n\
+               Declaration(ObjectProperty(:r))\n\
+               SubClassOf(:A :B)\n\
+               SubClassOf(:X ObjectSomeValuesFrom(:r :C))\n\
+             )",
+        );
+        let (_algo, mut ctx, mut bridged) = fresh_bridge_env(&env.tin);
+        let a = bridged.named[env.con_id["A"]];
+        let b = bridged.named[env.con_id["B"]];
+        let c = bridged.named[env.con_id["C"]];
+        let x = bridged.named[env.con_id["X"]];
+        let r = bridged.roles[0];
+        let next_tag = (0..ctx.ontology_arenas().concept_count())
+            .map(|index| {
+                ctx.ontology_arenas()
+                    .concept(ConceptId::new(index))
+                    .get_concept_tag()
+            })
+            .max()
+            .unwrap_or(TAG_BASE)
+            + 1;
+        let (some, disjunction) = {
+            let mut builder = Builder {
+                ctx: &mut ctx,
+                next_tag,
+            };
+            let some = builder.some(r, (c, false));
+            let disjunction = builder.or_of(&[(a, false), (c, false)]).0;
+            (some, disjunction)
+        };
+        // A is also a positive named disjunct. Konclude keeps A's ordinary
+        // A -> B special reference in this case.
+        bridged.tbox.push(disjunction);
+        ctx.ontology_arenas_mut()
+            .concept_mut(a)
+            .set_operator_code(op::CCSUB)
+            .set_operand_list(vec![super::super::model::NegLink {
+                target: b,
+                negated: false,
+            }])
+            .set_operand_count(1);
+        ctx.ontology_arenas_mut()
+            .concept_mut(x)
+            .set_operator_code(op::CCSUB)
+            .set_operand_list(vec![super::super::model::NegLink {
+                target: some,
+                negated: false,
+            }])
+            .set_operand_count(1);
+        build_saturation_seeds(&mut ctx, &bridged);
+
+        let item_for = |name: &str, ctx: &CalculationAlgorithmContextBase| {
+            let named_index = env.con_id[name];
+            let concept = bridged.named[named_index];
+            let process_data = super::super::model::concept_process::ConceptProcessDataId::new(
+                ctx.ontology_arenas().concept(concept).get_concept_data(),
+            );
+            let reference_data = ctx
+                .ontology_arenas()
+                .concept_process_data(process_data)
+                .get_concept_reference_linking();
+            ctx.ontology_arenas()
+                .concept_saturation_reference_linking_data(reference_data)
+                .get_concept_saturation_reference_linking_data(false)
+        };
+        let a_item = item_for("A", &ctx);
+        let b_item = item_for("B", &ctx);
+        let c_item = item_for("C", &ctx);
+        let a_data = ctx
+            .ontology_arenas()
+            .saturation_concept_reference_linking(a_item);
+        assert_eq!(a_data.get_special_item_reference(), b_item);
+        assert_eq!(
+            a_data.get_special_reference_mode(),
+            SATURATION_SUBSTITUTE_MODE
+        );
+        let a_node = a_data.get_individual_process_node_for_concept();
+        let b_node = ctx
+            .ontology_arenas()
+            .saturation_concept_reference_linking(b_item)
+            .get_individual_process_node_for_concept();
+        assert!(
+            ctx.process_context().sat_node(b_node).get_individual_id()
+                > ctx.process_context().sat_node(a_node).get_individual_id(),
+            "Konclude's reversed construction list gives dependencies higher priority IDs"
+        );
+        assert!(!a_data.is_potentially_exist_initialization_concept());
+        assert!(ctx
+            .ontology_arenas()
+            .saturation_concept_reference_linking(c_item)
+            .is_potentially_exist_initialization_concept());
     }
 
     impl BridgeEnv {
@@ -4673,6 +6014,195 @@ mod tests {
         assert_eq!(env.unsupported, 0, "chain TBox fully bridged");
         assert!(env.subsumes("A", "C"), "A ⊑ C (chained)");
         assert!(!env.subsumes("C", "A"), "C ⊑ A must NOT hold");
+    }
+
+    #[test]
+    fn bridge_materializes_transitive_role_for_automata_preprocessing() {
+        let mut tin = TInput {
+            concepts: vec!["A".to_string()],
+            roles: vec!["r".to_string()],
+            ..TInput::default()
+        };
+        let role_index = 0;
+        tin.transitive.push(role_index);
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut top = Concept::new();
+        top.set_concept_tag(1);
+        top.set_operator_code(op::CCTOP);
+        let top = ctx.ontology_arenas_mut().alloc_concept(top);
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+        let bridged = bridge_tinput(&mut ctx, &tin);
+        assert_eq!(bridged.unsupported, 0);
+        assert_eq!(ctx.ontology_arenas().role_chain_count(), 2);
+        assert!(ctx
+            .ontology_arenas()
+            .role(bridged.roles[role_index])
+            .is_complex_role());
+        let role = ctx.ontology_arenas().role(bridged.roles[role_index]);
+        assert!(role
+            .get_indirect_super_role_list()
+            .iter()
+            .any(|link| link.target == bridged.roles[role_index] && !link.negated));
+        assert_eq!(role.get_role_chain_super_sharing_linker().len(), 1);
+        assert!(ctx
+            .ontology_arenas()
+            .role(role.get_inverse_role())
+            .is_complex_role());
+    }
+
+    #[test]
+    fn production_role_automata_solves_mini7914_unsat() {
+        let mut env = bridge_ofn(include_str!(
+            "../../../tests/completeness-gaps/mini7914_unsat.ofn"
+        ));
+        let hp = env
+            .tin
+            .roles
+            .iter()
+            .position(|role| role.rsplit(['#', '/']).next() == Some("hp"))
+            .expect("hp in mini7914 role signature");
+        assert!(
+            env.tin.transitive.contains(&hp),
+            "the frontend must retain Functional Syntax transitivity"
+        );
+        let x = *env.con_id.get("X").expect("X in mini7914 signature");
+        let completion = bridged_classify_opts(&env.tin, false, false)
+            .expect("mini7914 completion must classify without deferring");
+        assert!(
+            completion.unsatisfiable.contains(&x),
+            "production role automata must make X unsatisfiable in completion"
+        );
+        let result = bridged_classify_opts(&env.tin, true, true)
+            .expect("mini7914 must classify without deferring");
+        assert!(
+            result.unsatisfiable.contains(&x),
+            "common consequences of both disjuncts must make X unsatisfiable"
+        );
+        assert!(
+            result.subsumptions.iter().all(|(subject, _)| *subject != x),
+            "unsatisfiable subjects are represented by #UNSAT, not redundant pairs"
+        );
+    }
+
+    #[test]
+    fn production_inverse_chain_automata_solves_7914_recognition_core() {
+        let mut env = bridge_ofn(include_str!(
+            "../../../tests/completeness-gaps/mini7914_chain_recognition.ofn"
+        ));
+        let r = env
+            .tin
+            .roles
+            .iter()
+            .position(|role| role.rsplit(['#', '/']).next() == Some("r"))
+            .expect("r in recognition-core role signature");
+        assert!(env.tin.transitive.contains(&r));
+        assert_eq!(env.tin.chains.len(), 2);
+        assert!(
+            env.subsumes("X", "Target"),
+            "inverse-trigger recognition must traverse forward and inverse chains"
+        );
+        let x = env.con_id["X"];
+        let target = env.con_id["Target"];
+        let saturation = bridged_saturate(&env.tin).expect("recognition core is bridge-supported");
+        if std::env::var_os("KM_SAT_DEBUG").is_some() {
+            let mut names: Vec<_> = env.con_id.iter().collect();
+            names.sort_unstable_by_key(|(_, index)| **index);
+            eprintln!(
+                "MINI7914-SAT x={} target={} verdict={:?} known={:?} certain={:?} names={:?}",
+                x,
+                target,
+                saturation.sat_verdict[x],
+                saturation.known_subsumers[x],
+                saturation.certain_subsumers[x],
+                names
+            );
+        }
+        assert_eq!(saturation.sat_verdict[x], Some(false));
+        assert!(
+            saturation.known_subsumers[x].contains(&target),
+            "signed inverse-super links must carry AQ recognition back to X"
+        );
+        assert!(
+            saturation.certain_subsumers[x]
+                .as_ref()
+                .is_some_and(|subsumers| subsumers.contains(&target)),
+            "Konclude's extractor trusts the completed, sufficient automata label"
+        );
+    }
+
+    #[test]
+    fn production_read_off_populates_persistent_kpset_messages() {
+        let ofn = format!(
+            "{PREFIX}\\
+             Declaration(Class(:A)) Declaration(Class(:B))\n\\
+             SubClassOf(:A :B)\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+        configure_production_search(&mut algo);
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let n = bridged.named.len();
+        let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &bridged.named,
+            &vec![None; n],
+            &vec![None; n],
+            &vec![Vec::new(); n],
+            &(0..n).collect::<Vec<_>>(),
+            ctx.ontology_arenas().concepts(),
+        );
+        let a = env.con_id["A"];
+        let b = env.con_id["B"];
+        let mut next_id = 1_000;
+        let (_, _, root) =
+            bridged_classify_subject_with_root(&mut algo, &mut ctx, &bridged, &mut next_id, a, n)
+                .expect("deterministic A read-off");
+        analyse_kpset_completion_model(&mut classifier, &mut state, a, root, &mut ctx);
+
+        let a_item = &state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[state.item_ids[a].index()];
+        assert!(a_item.has_subsumer_concept_item(state.item_ids[b]));
+        assert!(a_item.is_class_pseudo_model_initalized());
+    }
+
+    #[test]
+    fn production_read_off_populates_other_node_possible_subsumptions() {
+        let ofn = format!(
+            "{PREFIX}\\
+             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\\
+             Declaration(ObjectProperty(:R))\n\\
+             SubClassOf(:A ObjectSomeValuesFrom(:R :B))\n\\
+             SubClassOf(:B :C)\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+        configure_production_search(&mut algo);
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let n = bridged.named.len();
+        let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &bridged.named,
+            &vec![None; n],
+            &vec![None; n],
+            &vec![Vec::new(); n],
+            &(0..n).collect::<Vec<_>>(),
+            ctx.ontology_arenas().concepts(),
+        );
+        let a = env.con_id["A"];
+        let b = env.con_id["B"];
+        let c = env.con_id["C"];
+        let mut next_id = 1_000;
+        let (_, _, root) =
+            bridged_classify_subject_with_root(&mut algo, &mut ctx, &bridged, &mut next_id, a, n)
+                .expect("deterministic A read-off");
+        analyse_kpset_completion_model(&mut classifier, &mut state, a, root, &mut ctx);
+
+        let b_item = &state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[state.item_ids[b].index()];
+        let possible = b_item
+            .get_possible_subsumption_map_ref()
+            .expect("the live other-node analyser initializes B's possible map");
+        assert!(possible.contains(bridged.named[c]));
     }
 
     /// KM_HT_UNSATCACHE integration: the learned-nogood store survives
@@ -5140,7 +6670,7 @@ mod tests {
         let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let tin = crate::orchestrate::cb_to_ht::convert(
             &fr.clauses,
-            None,
+            Some(&fr.rbox),
             &named_set,
             &fr.cardinalities,
             &fr.definers,
@@ -5364,7 +6894,24 @@ mod tests {
                             }
                         })
                         .collect();
-                    eprintln!("ROLE-SUPERS {rn} (tag {}): {:?}", 100 + i, named_sups);
+                    let complex: Vec<(Cint64, bool)> = std::iter::once(robj)
+                        .chain(
+                            ctxr.ontology_arenas()
+                                .role(robj)
+                                .indirect_super_roles
+                                .iter()
+                                .map(|link| link.target),
+                        )
+                        .map(|role| {
+                            let r = ctxr.ontology_arenas().role(role);
+                            (r.get_role_tag(), r.is_complex_role())
+                        })
+                        .collect();
+                    eprintln!(
+                        "ROLE-SUPERS {rn} (tag {}): {:?} complex={complex:?}",
+                        100 + i,
+                        named_sups
+                    );
                 }
             }
         }
@@ -5469,6 +7016,40 @@ mod tests {
         };
         ctx.processing_data_box_mut().ontology_top_concept = top;
         let bridged = bridge_tinput(&mut ctx, &env.tin);
+        if let Ok(spec) = std::env::var("KM_BRIDGE_DUMP_CONCEPT_TAGS") {
+            let wanted: BTreeSet<Cint64> = spec
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            for i in 0..ctx.ontology_arenas().concept_count() {
+                let concept = ConceptId::new(i);
+                let c = ctx.ontology_arenas().concept(concept);
+                let tag = c.get_concept_tag();
+                if !wanted.contains(&tag) {
+                    continue;
+                }
+                let role = c.get_role();
+                let role_tag = role
+                    .is_some()
+                    .then(|| ctx.ontology_arenas().role(role).get_role_tag());
+                let operands: Vec<String> = c
+                    .get_operand_list()
+                    .iter()
+                    .map(|link| {
+                        format!(
+                            "{}{}",
+                            if link.negated { "not " } else { "" },
+                            ctx.ontology_arenas().concept(link.target).get_concept_tag()
+                        )
+                    })
+                    .collect();
+                eprintln!(
+                    "CONCEPT-TAG tag={tag} op={} role={role_tag:?} operands=[{}]",
+                    c.get_operator_code(),
+                    operands.join(" ")
+                );
+            }
+        }
         let mut next = 0i64;
         let readoff =
             bridged_classify_subject(&mut algo, &mut ctx, &bridged, &mut next, s_idx, n_named);
@@ -5564,7 +7145,7 @@ mod tests {
         let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let tin = crate::orchestrate::cb_to_ht::convert(
             &fr.clauses,
-            None,
+            Some(&fr.rbox),
             &named_set,
             &fr.cardinalities,
             &fr.definers,
@@ -5799,7 +7380,7 @@ mod tests {
         let named_set: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let mut tin = crate::orchestrate::cb_to_ht::convert(
             &fr.clauses,
-            None,
+            Some(&fr.rbox),
             &named_set,
             &fr.cardinalities,
             &fr.definers,
@@ -5970,7 +7551,7 @@ mod tests {
         let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
         let tin = crate::orchestrate::cb_to_ht::convert(
             &fr.clauses,
-            None,
+            Some(&fr.rbox),
             &named,
             &fr.cardinalities,
             &fr.definers,
@@ -6471,10 +8052,13 @@ mod tests {
             "saturation within budget"
         );
         let arm = |algo: &mut CompletionTaskHandleAlgorithm| {
-            algo.conf_expand_created_successors_from_saturation = true;
-            algo.conf_caching_blocking_from_saturation = true;
+            configure_production_completion_saturation_coupling(algo);
         };
         arm(&mut algo);
+        assert!(
+            algo.conf_saturation_expansion_cache_reading,
+            "production coupling must retain cached successors after modification"
+        );
         let idx = |s: &str| -> usize {
             env.tin
                 .concepts
@@ -6518,6 +8102,57 @@ mod tests {
             algo.saturation_expansion_concept_count > 0
                 && algo.saturation_cache_establish_count > 0,
             "the coupling must survive reset_probe_env (saturation arenas carried)"
+        );
+    }
+
+    #[test]
+    fn satcache_successful_root_writes_and_preserves_associated_expansion() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
+             Declaration(ObjectProperty(:r))\n\
+             SubClassOf(:A ObjectSomeValuesFrom(:r :B))\n\
+             SubClassOf(:B :C)\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        install_bridge_saturation_node_expansion_cache(&mut ctx);
+        configure_production_search(&mut algo);
+        algo.conf_expand_created_successors_from_saturation = true;
+        algo.conf_caching_blocking_from_saturation = true;
+        algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = true;
+        let a = env
+            .tin
+            .concepts
+            .iter()
+            .position(|name| name == "A")
+            .expect("A in classification input");
+        // Production probes reserve low IDs for ontology individuals.
+        let mut next_id = 1_000;
+        assert!(bridged_classify_subject(
+            &mut algo,
+            &mut ctx,
+            &bridged,
+            &mut next_id,
+            a,
+            bridged.named.len(),
+        )
+        .is_some());
+        let state = ctx
+            .take_used_saturation_node_expansion_cache_handler()
+            .expect("associated-expansion cache remains installed");
+        assert!(
+            state.cache_context.sat_expansion_cache_entries.len() > 0,
+            "successful root must write an associated-expansion cache entry"
+        );
+        ctx.restore_used_saturation_node_expansion_cache_handler(state);
+
+        reset_probe_env(&mut algo, &mut ctx, &bridged, true);
+        assert!(
+            ctx.take_used_saturation_node_expansion_cache_handler()
+                .is_some(),
+            "classification reset must preserve the ontology-wide cache"
         );
     }
 

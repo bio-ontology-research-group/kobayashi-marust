@@ -627,13 +627,17 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut copy_indi_proc_sat_node = indi_proc_sat_node;
 
         // resolve individual
-        let extension_data: Vec<_> = calc_alg_context
+        // Konclude's process hash has one deterministic hash function for every
+        // map. Rust's `HashMap` randomizes each map independently, which would
+        // send identical extension sets down different resolve-cache paths.
+        let mut extension_data: Vec<_> = calc_alg_context
             .process_context()
             .sat_successor_concept_extension_map(succ_con_ext_map)
             .iter()
-            .map(|(_, data)| *data)
+            .map(|(&tag, data)| (tag, *data))
             .collect();
-        for con_ext_dat in &extension_data {
+        extension_data.sort_unstable_by_key(|(tag, _)| *tag);
+        for (_, con_ext_dat) in &extension_data {
             let concept = con_ext_dat.concept;
             let add_positive = con_ext_dat.positive;
             let add_negative = con_ext_dat.negative;
@@ -674,7 +678,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .sat_node_reapply_concept_saturation_label_set(resolved_node, true);
 
             // add all concepts to individual
-            for con_ext_dat in &extension_data {
+            for (_, con_ext_dat) in &extension_data {
                 let concept = con_ext_dat.concept;
                 let add_positive = con_ext_dat.positive;
                 let add_negative = con_ext_dat.negative;
@@ -745,13 +749,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 Id::NONE,
                 Id::NONE,
             );
-        calc_alg_context
-            .process_context_mut()
-            .sat_node_init_coping_individual_saturation_process_node(
-                resolved_node,
-                *copy_indi_proc_sat_node,
-                false,
-            );
+        // `initializeIndividualNodeByCoping` performs the copy initialization
+        // itself (C++ 2346 -> 2022). Calling the raw node initializer first
+        // duplicates the copy setup and its dependent-link registration.
         self.initialize_individual_node_by_coping(
             resolved_node,
             *copy_indi_proc_sat_node,
@@ -932,14 +932,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> SaturationIndividualNodeExtensionResolveDataId {
         if con_extension_map.is_some() {
-            let extension_pairs: Vec<ConceptNegationPair> = calc_alg_context
+            let mut extension_pairs: Vec<(Cint64, ConceptNegationPair)> = calc_alg_context
                 .process_context()
                 .sat_concept_extension_map(con_extension_map)
                 .iter()
-                .map(|(_, pair)| *pair)
+                .map(|(&tag, pair)| (tag, *pair))
                 .collect();
+            extension_pairs.sort_unstable_by_key(|(tag, _)| *tag);
 
-            for con_ext_dat in &extension_pairs {
+            for (_, con_ext_dat) in &extension_pairs {
                 resolve_data = self.get_resolved_individual_node_extension(
                     resolve_data,
                     con_ext_dat.concept,
@@ -962,7 +963,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
 
                 let mut resolved_node_ref = resolved_node;
-                for con_ext_dat in &extension_pairs {
+                for (_, con_ext_dat) in &extension_pairs {
                     self.add_concept_filtered_to_individual(
                         con_ext_dat.concept,
                         con_ext_dat.negation,
@@ -1658,5 +1659,53 @@ mod tests {
         let label_set = ctx.process_context().reapply_con_sat_label_set(label_set);
         assert!(label_set.contains_concept_or_reaplly_queue(9501));
         assert!(label_set.contains_concept_or_reaplly_queue(9503));
+    }
+
+    #[test]
+    fn s10_successor_extension_resolver_reuses_cache_for_equal_maps() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let base_node = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        ctx.process_context_mut()
+            .sat_node_mut(base_node)
+            .init_individual_saturation_process_node(9600, Id::NONE, Id::NONE);
+        ctx.process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(base_node, true);
+
+        let concepts: Vec<_> = (0..16)
+            .map(|offset| atom(&mut ctx, 9601 + offset * 2))
+            .collect();
+        let first_map = {
+            let mut map = SaturationSuccessorConceptExtensionMap::new();
+            for (offset, &concept) in concepts.iter().enumerate() {
+                assert!(map.add_extension_concept(concept, false, 9601 + offset as i64 * 2));
+            }
+            ctx.process_context_mut()
+                .alloc_sat_successor_concept_extension_map(map)
+        };
+        let second_map = {
+            let mut map = SaturationSuccessorConceptExtensionMap::new();
+            for (offset, &concept) in concepts.iter().enumerate().rev() {
+                assert!(map.add_extension_concept(concept, false, 9601 + offset as i64 * 2));
+            }
+            ctx.process_context_mut()
+                .alloc_sat_successor_concept_extension_map(map)
+        };
+
+        let mut algo = super::super::algorithm::SaturationTaskHandleAlgorithm::new();
+        let first =
+            algo.get_resolved_individual_node_extension_successor(base_node, first_map, &mut ctx);
+        let node_count = ctx.process_context().sat_node_count();
+        let resolve_count = ctx.process_context().sat_indi_node_ext_resolve_data_count();
+        let second =
+            algo.get_resolved_individual_node_extension_successor(base_node, second_map, &mut ctx);
+
+        assert_eq!(second, first);
+        assert_eq!(ctx.process_context().sat_node_count(), node_count);
+        assert_eq!(
+            ctx.process_context().sat_indi_node_ext_resolve_data_count(),
+            resolve_count
+        );
     }
 }

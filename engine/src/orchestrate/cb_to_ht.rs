@@ -363,14 +363,14 @@ fn role_automaton_exist_reachability(
                 },
             ) = (rb[0], rb[1], &c.head[0])
             {
-                let (fr, sr, _mid) = if r1t == r2s {
-                    (*r1, *r2, r1t)
+                let (fr, fs, sr, st) = if r1t == r2s {
+                    (*r1, *r1s, *r2, *r2t)
                 } else if r2t == r1s {
-                    (*r2, *r1, r2t)
+                    (*r2, *r2s, *r1, *r1t)
                 } else {
                     continue;
                 };
-                if *hs == *r1s && *ht_ == *r2t && *r1s != *r2t && !(fr == sr && sr == *hr) {
+                if *hs == fs && *ht_ == st && fs != st && !(fr == sr && sr == *hr) {
                     chains.push((fr, sr, *hr));
                 }
             }
@@ -1226,9 +1226,10 @@ pub fn convert(
     // +33 7-body-3-eq clauses + 13 global disjunctions → QoSat cascade).  The
     // chain info is consumed by the Ht chain-unfolding (ht_chain_unfolding_
     // clauses) and the QoSat fprop chain-unfolding — the faithful Konclude
-    // role-automaton port.  Default OFF (no side data, raw axioms already
-    // filtered by the frontend's is_chain_axiom).
-    let keep_chains = std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some();
+    // role-automaton port. Enabled for the trigger/bridge production route;
+    // otherwise it remains explicitly opt-in.
+    let keep_chains = std::env::var_os("KM_KEEP_CHAIN_AXIOMS").is_some()
+        || std::env::var_os("KM_TRIGGER_ABSORB").is_some();
     let mut detected_chains: Vec<(usize, usize, usize)> = Vec::new();
     let mut detected_transitive: Vec<usize> = Vec::new();
     if keep_chains {
@@ -1262,15 +1263,15 @@ pub fn convert(
                 let (r1n, r1s, r1t) = roles[0];
                 let (r2n, r2s, r2t) = roles[1];
                 // orient: first.target == second.source (middle)
-                let (fr, sr, _mid_ok) = if r1t == r2s {
-                    (r1n, r2n, true)
+                let (fr, fs, sr, st) = if r1t == r2s {
+                    (r1n, r1s, r2n, r2t)
                 } else if r2t == r1s {
-                    (r2n, r1n, true)
+                    (r2n, r2s, r1n, r1t)
                 } else {
-                    ("", "", false)
+                    continue;
                 };
                 // head source = first.source, head target = second.target
-                if hs == r1s && ht == r2t && r1s != r2t {
+                if hs == fs && ht == st && fs != st {
                     let r1id = ids.rid(fr);
                     let r2id = ids.rid(sr);
                     let hrid = ids.rid(hr);
@@ -1429,6 +1430,25 @@ pub fn convert(
                 Some("inverse") => inverse_pairs.push((ax[1].clone(), ax[2].clone())),
                 Some("domain") => domains.push(&ax[1], &ax[2]),
                 Some("range") => ranges.push(&ax[1], &ax[2]),
+                Some("transitive") => {
+                    let role = ids.rid(&ax[1]);
+                    if !detected_transitive.contains(&role) {
+                        detected_transitive.push(role);
+                    }
+                }
+                Some("chain") => {
+                    let chain = (ids.rid(&ax[1]), ids.rid(&ax[2]), ids.rid(&ax[3]));
+                    if !detected_chains.contains(&chain) {
+                        detected_chains.push(chain);
+                    }
+                }
+                Some("fenced") if ax.get(1).map(String::as_str) == Some("symmetric-role") => {
+                    // Konclude represents a symmetric role as its own inverse.
+                    // The frontend's reverse-edge clause already carries the
+                    // same semantics; retain it in the production RBox too so
+                    // the bridge is not rejected merely by this metadata tag.
+                    inverse_pairs.push((ax[2].clone(), ax[2].clone()));
+                }
                 Some("fenced") => fenced.push(Fenced {
                     reason: ax[1].clone(),
                     detail: ax[2].clone(),
@@ -2018,8 +2038,19 @@ pub fn convert(
                     },
                 ) = (rb[0], rb[1], rh[0])
                 {
-                    if r1 == r2 && r2 == hr && r1t == r2s && hs == r1s && ht_ == r2t && r1s != r2t {
-                        transitive_roles.insert(*hr);
+                    let endpoints = if r1t == r2s {
+                        Some((*r1s, *r2t))
+                    } else if r2t == r1s {
+                        Some((*r2s, *r1t))
+                    } else {
+                        None
+                    };
+                    if r1 == r2 && r2 == hr {
+                        if let Some((start, end)) = endpoints {
+                            if *hs == start && *ht_ == end && start != end {
+                                transitive_roles.insert(*hr);
+                            }
+                        }
                     }
                 }
             }

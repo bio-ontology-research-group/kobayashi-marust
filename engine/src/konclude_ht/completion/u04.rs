@@ -71,6 +71,7 @@ type ProcRestrictionHandle = Cint64;
 /// KONCLUDE-PORT-NOTE[pointer-alias]: a `TableauRuleFunction` (pointer-to-member of
 /// an `apply*Rule`) is an opaque rule-slot handle until those methods are ported.
 type TableauRuleFunction = Cint64;
+const TABLEAU_RULE_APPLY_AND: TableauRuleFunction = -2;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::searchReactivateIndividualsProcessedPropagated`.
@@ -339,6 +340,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
+        if std::env::var("KM_BRIDGE_WATCH_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            == Some(
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag(),
+            )
+        {
+            eprintln!(
+                "WATCH-SKIP-TAG {} add to node {} at:\n{}",
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(adding_concept)
+                    .get_concept_tag(),
+                calc_alg_context
+                    .process_context()
+                    .node(process_indi)
+                    .individual_node_id(),
+                std::backtrace::Backtrace::force_capture(),
+            );
+        }
+
         let con_pro_queue = calc_alg_context
             .process_context_mut()
             .node_concept_processing_queue(process_indi, true);
@@ -398,7 +423,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 process_indi,
                 allow_preprocessing,
                 calc_alg_context,
-                INVALID, // W3-DEFER[api]: &CCalculationTableauCompletionTaskHandleAlgorithm::applyANDRule
+                TABLEAU_RULE_APPLY_AND,
             );
             if reapply_it.has_next() {
                 // reapply reapplying concept
@@ -658,9 +683,26 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // PRESENCE is exactly the operator set `tableau_rule_choice` dispatches (the table the
         // algorithm ctor builds, cpp 238-345). `has_tableau_rule` mirrors that set 1:1; the
         // `mConf*` gates only SWAP entries, never null them, so presence is config-invariant.
-        // `skipFunction` is a rule-slot identity the only caller passes as INVALID, so it can
-        // never match a live rule; the second guard is preserved structurally.
-        if !self.has_tableau_rule(op_code, con_neg) || skip_function != INVALID {
+        // Preserve the pointer comparison used by Konclude's
+        // addConceptToIndividualSkipANDProcessing. Other callers pass INVALID,
+        // representing a null skip-function pointer.
+        let dispatches_to_apply_and = if !con_neg {
+            matches!(
+                op_code,
+                op::CCTOP
+                    | op::CCAND
+                    | op::CCSUB
+                    | op::CCEQ
+                    | op::CCIMPLTRIG
+                    | op::CCBRANCHTRIG
+            ) || (!self.conf_specialized_automate_rules
+                && matches!(op_code, op::CCAQAND | op::CCIMPLAQAND | op::CCBRANCHAQAND))
+        } else {
+            op_code == op::CCOR
+        };
+        if !self.has_tableau_rule(op_code, con_neg)
+            || (skip_function == TABLEAU_RULE_APPLY_AND && dispatches_to_apply_and)
+        {
             return;
         }
 

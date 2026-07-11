@@ -619,7 +619,7 @@ fn rules_consistency(
     let named: HashSet<String> = meta.named.iter().cloned().collect();
     let tin = cb_to_ht::convert(
         &input.clauses,
-        None,
+        Some(&input.rbox),
         &named,
         &input.cardinalities,
         &input.definers,

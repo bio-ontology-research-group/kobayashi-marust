@@ -779,6 +779,13 @@ fn processable_or_concept(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
     env.ctx.ontology_arenas_mut().alloc_concept(c)
 }
 
+fn processable_and_concept(env: &mut SelfTestEnv, tag: i64) -> ConceptId {
+    let mut c = Concept::new();
+    c.set_concept_tag(tag);
+    c.set_operator_code(super::super::model::op::CCAND);
+    env.ctx.ontology_arenas_mut().alloc_concept(c)
+}
+
 fn operator_concept_process_descriptor(
     env: &mut SelfTestEnv,
     concept_tag: i64,
@@ -2114,6 +2121,37 @@ fn unit04_add_concept_skip_and_processing_inserts_label_and_queue_descriptor() {
             .concept_proc_queue(queue)
             .get_descriptor_count(),
         1
+    );
+}
+
+#[test]
+fn unit04_add_concept_skip_and_processing_does_not_queue_and_rule() {
+    let mut env = build_env();
+    let root = env.root;
+    let dep = deterministic_track_point(&mut env);
+    let concept = processable_and_concept(&mut env, 2713);
+
+    env.algo.add_concept_to_individual_skip_and_processing(
+        concept,
+        false,
+        root,
+        dep,
+        false,
+        true,
+        false,
+        &mut env.ctx,
+    );
+
+    let queue = env
+        .ctx
+        .process_context_mut()
+        .node_concept_processing_queue(root, false);
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .concept_proc_queue(queue)
+            .get_descriptor_count(),
+        0
     );
 }
 

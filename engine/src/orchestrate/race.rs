@@ -70,8 +70,9 @@ fn spawn_tableau(
         return None;
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, cards, definers, source_axioms): (
+    let (cl, rbox, cards, definers, source_axioms): (
         Vec<JClause>,
+        Vec<Vec<String>>,
         Vec<crate::json_io::CardMeta>,
         Vec<crate::json_io::DefinerMeta>,
         Vec<crate::json_io::SourceAxiomMeta>,
@@ -80,7 +81,13 @@ fn spawn_tableau(
         // multi-MB on large onts and the reader path is markedly slower.
         let buf = std::fs::read(clauses_path).ok()?;
         let v: JInput = serde_json::from_slice(&buf).ok()?;
-        (v.clauses, v.cardinalities, v.definers, v.source_axioms)
+        (
+            v.clauses,
+            v.rbox,
+            v.cardinalities,
+            v.definers,
+            v.source_axioms,
+        )
     };
     // giants: the engine path owns them
     if cl.len() > cfg.tab_max_clauses {
@@ -92,7 +99,7 @@ fn spawn_tableau(
     }
     let tin = cb_to_ht::convert(
         &cl,
-        None,
+        Some(&rbox),
         named,
         &cards,
         &definers,
@@ -499,6 +506,18 @@ fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
     true
 }
 
+/// Fences that belong to the legacy fast tableau rather than the Konclude
+/// completion bridge. The bridge has native inverse-role and cardinality
+/// processing, so their combination is not a coverage loss there.
+fn bridge_fences_supported(tin: &cb_to_ht::TInput) -> bool {
+    tin.fenced.iter().all(|fence| {
+        matches!(
+            fence.reason.as_str(),
+            "inverse+number(SHIQ)" | "inverse-functional"
+        )
+    })
+}
+
 /// Does the clause set contain an inverse/symmetric BRIDGE clause
 /// (`R(a,b) → R'(b,a)`: a single role head whose args are swapped relative to a
 /// body role atom)? This is the structural signal the QO hybrid targets; it is
@@ -563,8 +582,9 @@ fn spawn_ht(
     named: &std::collections::HashSet<String>,
 ) -> Option<(Child, super::tmpfile::TempPath, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, cards, definers, source_axioms): (
+    let (cl, rbox, cards, definers, source_axioms): (
         Vec<JClause>,
+        Vec<Vec<String>>,
         Vec<crate::json_io::CardMeta>,
         Vec<crate::json_io::DefinerMeta>,
         Vec<crate::json_io::SourceAxiomMeta>,
@@ -573,12 +593,18 @@ fn spawn_ht(
         // multi-MB on large onts and the reader path is markedly slower.
         let buf = std::fs::read(clauses_path).ok()?;
         let v: JInput = serde_json::from_slice(&buf).ok()?;
-        (v.clauses, v.cardinalities, v.definers, v.source_axioms)
+        (
+            v.clauses,
+            v.rbox,
+            v.cardinalities,
+            v.definers,
+            v.source_axioms,
+        )
     };
     let _tconv = Instant::now();
     let tin = cb_to_ht::convert(
         &cl,
-        None,
+        Some(&rbox),
         named,
         &cards,
         &definers,
@@ -691,7 +717,7 @@ fn spawn_ht(
     let bridge_candidate = (std::env::var_os("KM_HT_BRIDGE").is_some()
         || std::env::var_os("KM_TRIGGER_ABSORB").is_some())
         && tin.dropped == 0
-        && tin.fenced.is_empty()
+        && bridge_fences_supported(&tin)
         && tin.nominals.is_empty();
     if !ht_routable(&tin)
         && !qo_candidate
@@ -1098,4 +1124,30 @@ where
         }
     });
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn konclude_bridge_accepts_only_legacy_fast_tableau_fences() {
+        let mut tin = cb_to_ht::TInput::default();
+        assert!(bridge_fences_supported(&tin));
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "inverse+number(SHIQ)".into(),
+            detail: "legacy fast-tableau fence".into(),
+        });
+        assert!(bridge_fences_supported(&tin));
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "inverse-functional".into(),
+            detail: "r".into(),
+        });
+        assert!(bridge_fences_supported(&tin));
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "irreflexivity".into(),
+            detail: "r".into(),
+        });
+        assert!(!bridge_fences_supported(&tin));
+    }
 }

@@ -4575,7 +4575,7 @@ impl ProcessContext {
                 let source = self.reapply_con_sat_label_set(source_label_set);
                 if source_has_additional {
                     let mut tmp = if source_additional_len > source_main_len {
-                        source.additional_concept_des_dep_hash.clone()
+                        source.additional_concept_des_dep_hash.as_ref().clone()
                     } else {
                         source.concept_des_dep_hash.clone()
                     };
@@ -4593,9 +4593,12 @@ impl ProcessContext {
                             entry.imp_reapply_con_sat_des = data.imp_reapply_con_sat_des;
                         }
                     }
-                    (tmp, HashMap::new())
+                    (std::sync::Arc::new(tmp), HashMap::new())
                 } else {
-                    (source.concept_des_dep_hash.clone(), HashMap::new())
+                    (
+                        std::sync::Arc::new(source.concept_des_dep_hash.clone()),
+                        HashMap::new(),
+                    )
                 }
             };
             let source = self.reapply_con_sat_label_set_mut(source_label_set);

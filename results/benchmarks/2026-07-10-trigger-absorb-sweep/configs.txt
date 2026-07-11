@@ -1,0 +1,2 @@
+default|
+trigger|KM_TRIGGER_ABSORB=1

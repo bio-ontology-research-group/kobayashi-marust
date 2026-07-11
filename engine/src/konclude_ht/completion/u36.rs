@@ -1189,6 +1189,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .concept(new_concept)
             .get_concept_tag();
+        let watch_insert = std::env::var("KM_BRIDGE_WATCH_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            == Some(new_con_tag)
+            && !new_negated;
+        if watch_insert {
+            eprintln!(
+                "WATCH-INSERT-TAG {} before node={} descriptor={} allow_init={} at:\n{}",
+                new_con_tag,
+                calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .individual_node_id(),
+                concept_descriptor.index(),
+                allow_initalization,
+                std::backtrace::Backtrace::force_capture(),
+            );
+        }
         let mut lifted_label_set = std::mem::replace(
             calc_alg_context
                 .process_context_mut()
@@ -1210,6 +1228,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         *calc_alg_context
             .process_context_mut()
             .label_set_mut(con_label_set) = lifted_label_set;
+        if watch_insert {
+            eprintln!(
+                "WATCH-INSERT-TAG {} after node={} contained={}",
+                new_con_tag,
+                calc_alg_context
+                    .process_context()
+                    .node(*process_indi)
+                    .individual_node_id(),
+                contained,
+            );
+        }
         // The ls1 label set cannot resolve the stored descriptor's dependency
         // track point (`con_des_dep_track_point` is a ctx-less stub returning
         // NONE) — resolve it here, exactly the C++

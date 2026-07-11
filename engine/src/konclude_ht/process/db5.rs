@@ -101,8 +101,12 @@ impl ProcessingDataBox {
     /// Port of `CProcessingDataBox::getIndividualSaturationProcessNodeLinker`.
     pub fn individual_saturation_process_node_linker(
         &self,
-    ) -> &[IndividualSaturationProcessNodeLinkerId] {
-        &self.indi_saturation_process_node_linker
+    ) -> Vec<IndividualSaturationProcessNodeLinkerId> {
+        self.indi_saturation_process_node_linker
+            .iter()
+            .rev()
+            .copied()
+            .collect()
     }
     /// Port of `CProcessingDataBox::takeIndividualSaturationProcessNodeLinker`.
     pub fn take_individual_saturation_process_node_linker(
@@ -111,7 +115,9 @@ impl ProcessingDataBox {
         if self.indi_saturation_process_node_linker.is_empty() {
             IndividualSaturationProcessNodeLinkerId::NONE
         } else {
-            self.indi_saturation_process_node_linker.remove(0)
+            self.indi_saturation_process_node_linker
+                .pop()
+                .expect("non-empty saturation process stack")
         }
     }
     /// Port of `CProcessingDataBox::setIndividualSaturationProcessNodeLinker`.
@@ -130,7 +136,11 @@ impl ProcessingDataBox {
         &mut self,
         v: IndividualSaturationProcessNodeLinkerId,
     ) -> &mut Self {
-        self.indi_saturation_process_node_linker.insert(0, v);
+        // C++ prepends to a singly linked list and removes its head. Store the
+        // head at the Vec tail so both operations remain O(1); the previous
+        // insert(0)/remove(0) representation shifted the full queue for every
+        // resolved successor-extension node.
+        self.indi_saturation_process_node_linker.push(v);
         self
     }
 
@@ -677,7 +687,7 @@ mod tests {
 
         assert_eq!(
             data_box.individual_saturation_process_node_linker(),
-            &[second, first]
+            vec![second, first]
         );
         assert_eq!(
             data_box.take_individual_saturation_process_node_linker(),

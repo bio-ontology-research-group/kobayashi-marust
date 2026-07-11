@@ -88,6 +88,9 @@ use super::super::process::stubs::ConceptProcessingQueueId;
 use super::super::process::{
     ConDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
 };
+use super::super::saturation::satellites::{
+    ConceptNegationPair, ReapplyConceptSaturationLabelSetId,
+};
 use super::context::CalculationAlgorithmContextBase;
 
 /// KONCLUDE-PORT-NOTE[api]: `CProcessingRestrictionSpecification*` is not yet
@@ -113,16 +116,6 @@ type ReapplyConceptSaturationLabelSetHandle = Cint64;
 /// KONCLUDE-PORT-NOTE[api]: `CSortedNegLinker<CRole*>*` — the (inverse-tagged)
 /// role linker chain a link-creation iterates; head handle of the chain.
 type RoleLinkerHandle = Cint64;
-
-/// Port of `CConceptNegationPair` (the `<CConcept*, bool>` pair the automaton
-/// restriction collector accumulates). KONCLUDE-PORT-NOTE[overload]: a small local
-/// struct; the C++ class also lives elsewhere but only its (concept, negation)
-/// payload is used here.
-#[derive(Copy, Clone, Debug)]
-pub struct ConceptNegationPair {
-    pub concept: ConceptId,
-    pub negated: bool,
-}
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     // =======================================================================
@@ -960,9 +953,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     for rea_op_concept in rea_op_concepts {
                         let rea_op_con_negation = rea_op_concept.negated ^ negated;
 
-                        // W3-DEFER[api]: conSet->containsConcept(reaOpConceptIt->getData(), reaOpConNegation)
-                        //   (CReapplyConceptSaturationLabelSet not ported); null conSet => always collect.
-                        let con_set_contains_concept = false;
+                        let con_set_id = ReapplyConceptSaturationLabelSetId::new(con_set);
+                        let con_set_contains_concept = if con_set_id.is_some() {
+                            super::super::saturation::algorithm::SaturationTaskHandleAlgorithm::sat_label_set_contains_concept_get_negation(
+                                con_set_id,
+                                rea_op_concept.target,
+                                calc_alg_context,
+                            ) == Some(rea_op_con_negation)
+                        } else {
+                            false
+                        };
                         if con_set == INVALID || !con_set_contains_concept {
                             // W3-DEFER[api]: STATINC(NODESUCCESSOREXPANSIONSATURATIONRESOLVINGCONCEPTCANDIDATECOUNT,calcAlgContext);
                             // conExtensionMap->insert(reaOp->getConceptTag(), CConceptNegationPair(reaOp, reaOpConNegation));
@@ -972,10 +972,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 .get_concept_tag();
                             con_extension_map.get_or_insert_with(HashMap::new).insert(
                                 con_tag,
-                                ConceptNegationPair {
-                                    concept: rea_op_concept.target,
-                                    negated: rea_op_con_negation,
-                                },
+                                ConceptNegationPair::new(
+                                    rea_op_concept.target,
+                                    rea_op_con_negation,
+                                ),
                             );
                         }
                     }

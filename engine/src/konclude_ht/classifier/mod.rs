@@ -4051,9 +4051,209 @@ impl Default for OptimizedKPSetClassSubsumptionClassifierThread {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SynchronousKPSetClassState {
+    pub ontology_item: OptimizedKPSetClassOntologyClassificationItem,
+    pub item_ids: Vec<OptimizedKPSetClassTestingItemId>,
+    pub ordered_subjects: Vec<usize>,
+}
+
+impl SynchronousKPSetClassState {
+    /// Current propagated state for one candidate in the persistent possible
+    /// subsumption map: `(confirmed, invalid)`.
+    pub fn candidate_state(&self, subsumed: usize, subsumer: usize) -> Option<(bool, bool)> {
+        let subsumed_item = *self.item_ids.get(subsumed)?;
+        let subsumer_item = *self.item_ids.get(subsumer)?;
+        let concepts = self
+            .ontology_item
+            .get_concept_satisfiable_test_item_container();
+        let subsumer_concept = concepts.get(subsumer_item.index())?.get_testing_concept();
+        concepts
+            .get(subsumed_item.index())?
+            .get_possible_subsumption_map_ref()?
+            .get(subsumer_concept)
+            .map(|data| {
+                (
+                    data.is_subsumption_confirmed(),
+                    data.is_subsumption_invalided(),
+                )
+            })
+    }
+
+    /// Synchronous use of Konclude's fast pseudo-model precheck. It can decide
+    /// only non-subsumption; `true` therefore means the expensive pair probe is
+    /// unnecessary.
+    pub fn pseudo_model_refutes(&self, subsumed: usize, subsumer: usize) -> bool {
+        let Some(&subsumed_item) = self.item_ids.get(subsumed) else {
+            return false;
+        };
+        let Some(&subsumer_item) = self.item_ids.get(subsumer) else {
+            return false;
+        };
+        let items = self
+            .ontology_item
+            .get_concept_satisfiable_test_item_container();
+        let Some(subsumed_item) = items.get(subsumed_item.index()) else {
+            return false;
+        };
+        let Some(subsumer_item) = items.get(subsumer_item.index()) else {
+            return false;
+        };
+        let mut is_subsumption = true;
+        OptimizedKPSetClassSubsumptionClassifierThread::fast_pseudo_model_subsumption_class_precheck_test(
+            &self.ontology_item,
+            subsumed_item,
+            subsumer_item,
+            Some(&mut is_subsumption),
+        ) && !is_subsumption
+    }
+}
+
 impl OptimizedKPSetClassSubsumptionClassifierThread {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Persistent state for the synchronous production form of Konclude's
+    /// saturation-to-KPSet initialization.  Keeping the ontology item alive is
+    /// essential: completion-message analysis, pseudo-model prechecks, and
+    /// possible-subsumption pruning all update this same item after the initial
+    /// saturation ordering has been built.
+    pub fn initialize_synchronous_kpset_from_saturation_data(
+        &mut self,
+        named_concepts: &[ConceptId],
+        sat_verdict: &[Option<bool>],
+        certain_subsumers: &[Option<Vec<usize>>],
+        known_subsumers: &[Vec<usize>],
+        subjects: &[usize],
+        concepts: &Arena<Concept>,
+    ) -> SynchronousKPSetClassState {
+        let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
+        let mut item_ids = Vec::with_capacity(named_concepts.len());
+        for &concept in named_concepts {
+            let item_id = ont_item.get_concept_satisfiable_test_item(concept, true, concepts);
+            ont_item
+                .get_concept_reference_linking_data_hash_mut()
+                .insert(concept, item_id.raw);
+            item_ids.push(item_id);
+        }
+
+        for subject in 0..named_concepts.len() {
+            let item_id = item_ids[subject];
+            let mut subsumer_ids = Vec::new();
+            for &subsumer in known_subsumers
+                .get(subject)
+                .map(Vec::as_slice)
+                .unwrap_or(&[])
+            {
+                if subsumer != subject && subsumer < item_ids.len() {
+                    subsumer_ids.push(item_ids[subsumer]);
+                }
+            }
+            subsumer_ids.sort_unstable_by_key(|id| id.index());
+            subsumer_ids.dedup();
+
+            {
+                let item = ont_item
+                    .get_concept_satisfiable_test_item_mut(item_id)
+                    .expect("newly created KPSet item");
+                for &subsumer_id in &subsumer_ids {
+                    item.add_subsuming_concept_item(subsumer_id);
+                }
+                item.set_unprocessed_predecessor_items(subsumer_ids.len() as Cint64);
+                match sat_verdict.get(subject).copied().flatten() {
+                    Some(true) => {
+                        item.set_result_unsatisfiable_derivated(true)
+                            .set_satisfiable_tested(true)
+                            .set_satisfiable_tested_result(false);
+                    }
+                    Some(false) if certain_subsumers.get(subject).is_some_and(Option::is_some) => {
+                        item.set_result_satisfiable_derivated(true)
+                            .set_satisfiable_tested(true)
+                            .set_satisfiable_tested_result(true)
+                            .set_possible_subsumption_map_initialized(true);
+                    }
+                    _ => {}
+                }
+            }
+            for subsumer_id in subsumer_ids {
+                ont_item
+                    .get_concept_satisfiable_test_item_mut(subsumer_id)
+                    .expect("known subsumer KPSet item")
+                    .add_successor_satisfiable_test_item(item_id);
+            }
+        }
+
+        // Konclude's queue is root-first.  Extracted labels can contain an
+        // equivalence cycle; its candidate queue breaks those cycles.  The
+        // synchronous equivalent selects the smallest remaining predecessor
+        // count, then the most informative label, with stable subject order.
+        let requested_subjects: HashSet<usize> = subjects.iter().copied().collect();
+        let mut remaining: HashSet<usize> = (0..named_concepts.len()).collect();
+        let mut ordered_subjects = Vec::with_capacity(requested_subjects.len());
+        while !remaining.is_empty() {
+            let next = remaining
+                .iter()
+                .copied()
+                .min_by_key(|&subject| {
+                    let item = &ont_item.get_concept_satisfiable_test_item_container()
+                        [item_ids[subject].index()];
+                    (
+                        item.get_unprocessed_predecessor_item_count().max(0),
+                        std::cmp::Reverse(item.get_subsuming_concept_item_count()),
+                        subject,
+                    )
+                })
+                .expect("non-empty KPSet remainder");
+            remaining.remove(&next);
+            if requested_subjects.contains(&next) {
+                ordered_subjects.push(next);
+            }
+            let successors = ont_item.get_concept_satisfiable_test_item_container()
+                [item_ids[next].index()]
+            .get_successor_item_list()
+            .to_vec();
+            for successor in successors {
+                ont_item
+                    .get_concept_satisfiable_test_item_mut(successor)
+                    .expect("KPSet successor")
+                    .dec_unprocessed_predecessor_items(1);
+            }
+        }
+
+        SynchronousKPSetClassState {
+            ontology_item: ont_item,
+            item_ids,
+            ordered_subjects,
+        }
+    }
+
+    /// Synchronous production port of the ordering part of Konclude's
+    /// `createObviousSubsumptionSatisfiableTestingOrderFromSaturationData`.
+    ///
+    /// The bridge executes calculation jobs synchronously, so it does not use
+    /// Konclude's classifier thread/event loop.  It does, however, need the
+    /// same KPSet predecessor graph and root-first work order.  Saturation
+    /// labels are sound even for insufficient nodes and therefore seed known
+    /// subsumers; sufficient nodes and clashes are marked as derived results.
+    pub fn create_obvious_subsumption_satisfiable_testing_order_from_saturation_data(
+        &mut self,
+        named_concepts: &[ConceptId],
+        sat_verdict: &[Option<bool>],
+        certain_subsumers: &[Option<Vec<usize>>],
+        known_subsumers: &[Vec<usize>],
+        subjects: &[usize],
+        concepts: &Arena<Concept>,
+    ) -> Vec<usize> {
+        self.initialize_synchronous_kpset_from_saturation_data(
+            named_concepts,
+            sat_verdict,
+            certain_subsumers,
+            known_subsumers,
+            subjects,
+            concepts,
+        )
+        .ordered_subjects
     }
 
     pub fn get_processed_pseudo_model_message_count(&self) -> Cint64 {
@@ -6455,6 +6655,31 @@ mod tests {
     use super::super::model::op::CCEQCAND;
     use super::super::task::adapters::IndividualDependenceTrackingCollector;
     use super::*;
+
+    #[test]
+    fn kpset_saturation_order_is_root_first() {
+        let mut concepts = Arena::new();
+        let named: Vec<ConceptId> = (0..3)
+            .map(|tag| {
+                let mut concept = Concept::new();
+                concept.set_concept_tag(tag);
+                concept.set_operator_code(super::super::model::op::CCATOM);
+                concepts.push(concept)
+            })
+            .collect();
+        let known = vec![vec![], vec![0], vec![1, 0]];
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let order = classifier
+            .create_obvious_subsumption_satisfiable_testing_order_from_saturation_data(
+                &named,
+                &[None, None, None],
+                &[None, None, None],
+                &known,
+                &[2, 1, 0],
+                &concepts,
+            );
+        assert_eq!(order, vec![0, 1, 2]);
+    }
 
     #[test]
     fn subclass_satisfiable_testing_item_carries_marker_facet() {

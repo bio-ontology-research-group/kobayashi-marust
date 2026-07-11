@@ -1321,6 +1321,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// `queueFunctionalProcessing` is set, enqueues the destination node for
     /// successor-extension processing and registers a role process-linker for its
     /// FUNCTIONAL-concepts extension data. Returns whether the link was installed.
+    #[track_caller]
     pub fn install_backward_propagation_link(
         &mut self,
         source_indi_proc_sat_node: SatNodeId,
@@ -1334,6 +1335,62 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let mut link_installed = false;
         if dest_indi_proc_sat_node.is_none() || link.is_none() {
             return false;
+        }
+
+        let link_debug = std::env::var("KM_SAT_LINK_DEBUG_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            .is_some_and(|target_tag| {
+                let reference = calc_alg_context
+                    .process_context()
+                    .sat_node(source_indi_proc_sat_node)
+                    .get_saturation_concept_reference_linking();
+                reference.is_some()
+                    && reference.index()
+                        < calc_alg_context
+                            .process_context()
+                            .extended_con_ref_linking_data_count()
+                    && {
+                        let concept = calc_alg_context
+                            .process_context()
+                            .extended_con_ref_linking_data(reference)
+                            .get_saturation_concept();
+                        concept.is_some()
+                            && calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_concept_tag()
+                                == target_tag
+                    }
+            });
+        if link_debug {
+            let dest_reference = calc_alg_context
+                .process_context()
+                .sat_node(dest_indi_proc_sat_node)
+                .get_saturation_concept_reference_linking();
+            let dest_tag = (dest_reference.is_some()
+                && dest_reference.index()
+                    < calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data_count())
+            .then(|| {
+                let concept = calc_alg_context
+                    .process_context()
+                    .extended_con_ref_linking_data(dest_reference)
+                    .get_saturation_concept();
+                concept.is_some().then(|| {
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag()
+                })
+            })
+            .flatten();
+            let caller = std::panic::Location::caller();
+            eprintln!(
+                "SAT-LINK phase=attempt source={source_indi_proc_sat_node:?} dest={dest_indi_proc_sat_node:?} dest-tag={dest_tag:?} role={role:?} caller={}:{}:{}",
+                caller.file(), caller.line(), caller.column(),
+            );
         }
 
         let resolved_indi_back_prop_hash = calc_alg_context
@@ -1371,6 +1428,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
         if install_link {
             link_installed = true;
+            if link_debug {
+                eprintln!(
+                    "SAT-LINK phase=installed source={source_indi_proc_sat_node:?} dest={dest_indi_proc_sat_node:?} role={role:?}"
+                );
+            }
             calc_alg_context
                 .process_context_mut()
                 .backward_sat_prop_link_mut(link)

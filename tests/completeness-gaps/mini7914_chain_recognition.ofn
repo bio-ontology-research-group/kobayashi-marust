@@ -1,0 +1,24 @@
+Prefix(:=<http://km.test/>)
+Ontology(
+InverseObjectProperties(:r :ri)
+TransitiveObjectProperty(:r)
+
+SubClassOf(:B ObjectSomeValuesFrom(:r :C))
+EquivalentClasses(:D ObjectIntersectionOf(:Local ObjectSomeValuesFrom(:p :E)))
+EquivalentClasses(:SourceKind ObjectIntersectionOf(:Cell ObjectSomeValuesFrom(:r :Early)))
+EquivalentClasses(:Target ObjectIntersectionOf(:Cell ObjectSomeValuesFrom(:r :Late)))
+SubClassOf(:PartKind ObjectSomeValuesFrom(:p :Late))
+
+EquivalentClasses(:X ObjectIntersectionOf(:Tissue ObjectSomeValuesFrom(:ri :Ancestor)))
+SubClassOf(:X :SourceKind)
+SubClassOf(:X :PartKind)
+SubClassOf(:X ObjectSomeValuesFrom(:p :B))
+
+EquivalentClasses(:Recursive ObjectIntersectionOf(:Local ObjectSomeValuesFrom(:ri :Cell)))
+SubClassOf(:Recursive :Tissue)
+SubClassOf(:C ObjectSomeValuesFrom(:p :Mid))
+SubClassOf(:Mid ObjectSomeValuesFrom(:p :D))
+
+SubObjectPropertyOf(ObjectPropertyChain(:p :r) :r)
+SubObjectPropertyOf(ObjectPropertyChain(:r :p) :r)
+)

@@ -86,12 +86,17 @@ use super::super::model::{ConceptId, NegLink, RoleId};
 use super::super::process::sat_node::{
     IndividualSaturationProcessNode, IndividualSaturationProcessNodeStatusFlags,
 };
-use super::super::process::sat_queue::CriticalSaturationConceptQueueType;
+use super::super::process::sat_queue::{
+    CriticalIndividualNodeConceptTestSetId, CriticalSaturationConceptQueueType,
+};
 use super::super::process::stubs::{
     ConceptSaturationDescriptorId, ConceptSaturationProcessLinkerId,
 };
 use super::super::process::SatNodeId;
-use super::satellites::{IndividualSaturationSuccessorLinkDataLinkerId, SaturationSuccessorDataId};
+use super::satellites::{
+    IndividualSaturationSuccessorLinkDataLinkerId, SaturationDisjunctExtractionLinker,
+    SaturationModificationProcessUpdateType, SaturationSuccessorDataId,
+};
 
 // ---------------------------------------------------------------------------
 // W4-DEFER[api]: pending `CCriticalSaturationConceptTypeQueues::CRITICALSATURATIONCONCEPTQUEUETYPE`
@@ -104,6 +109,47 @@ const CCT_DISJUNCTION: Cint64 = 2;
 const CCT_EQCANDIDATE: Cint64 = 3;
 const CCT_VALUE: Cint64 = 4;
 const CCT_NOMINAL: Cint64 = 5;
+
+fn sat_common_debug_matches(
+    concept: ConceptId,
+    calc_alg_context: &CalculationAlgorithmContextBase,
+) -> bool {
+    let tag = calc_alg_context
+        .ontology_arenas()
+        .concept(concept)
+        .get_concept_tag();
+    if std::env::var("KM_SAT_COMMON_DEBUG_TAG")
+        .ok()
+        .and_then(|value| value.parse::<Cint64>().ok())
+        == Some(tag)
+    {
+        return true;
+    }
+    let operand_tags: std::collections::BTreeSet<Cint64> = calc_alg_context
+        .ontology_arenas()
+        .concept(concept)
+        .get_operand_list()
+        .iter()
+        .map(|operand| {
+            calc_alg_context
+                .ontology_arenas()
+                .concept(operand.target)
+                .get_concept_tag()
+        })
+        .collect();
+    let requested: std::collections::BTreeSet<Cint64> =
+        std::env::var("KM_SAT_COMMON_DEBUG_OPERANDS")
+            .ok()
+            .into_iter()
+            .flat_map(|value| {
+                value
+                    .split(',')
+                    .filter_map(|part| part.trim().parse::<Cint64>().ok())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+    !requested.is_empty() && requested == operand_tags
+}
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
     // =======================================================================
@@ -227,65 +273,69 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::addCriticalORConceptTestedForDependentNodes`
     /// (cpp 2933–2981).
     ///
-    /// KONCLUDE-PORT-NOTE[ownership]: `CConceptSaturationDescriptor* conDes` →
-    /// `ConceptSaturationDescriptorId`; the `CCriticalIndividualNodeConceptTestSet*`
-    /// tested-pair set is an opaque `Cint64` until the satellite is ported.
     pub fn add_critical_or_concept_tested_for_dependent_nodes(
         &mut self,
         con_des: ConceptSaturationDescriptorId,
         concept_type: Cint64,
         indi_proc_sat_node: &mut SatNodeId,
-        critical_indi_node_con_test_set: Cint64,
+        critical_indi_node_con_test_set: CriticalIndividualNodeConceptTestSetId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // cint64 updatedNodes = 0;  cint64 currentUpdateLinkerCount = 1;
-        // CIndividualSaturationProcessNodeStatusUpdateLinker* directUpdateLinker =
-        //     createIndividualSaturationUpdateLinker(calcAlgContext);
-        // directUpdateLinker->initUpdateNodeLinker(indiProcSatNode);
-        //
-        // W4-DEFER[api]: a work-list closure over the unported
-        //   CIndividualSaturationProcessNodeStatusUpdateLinker pool + the per-node
-        //   CXNegLinker<CIndividualSaturationProcessNode*> copy-depending chain, gated by
-        //   the CIndividualSaturationProcessNodeStatusFlags INDSATFLAGINSUFFICIENT mask and
-        //   the CCriticalIndividualNodeConceptTestSet tested-pair set. Faithful transcription:
-        //
-        //   while (directUpdateLinker) {
-        //       nextUpdateLinker = directUpdateLinker; directUpdateLinker = directUpdateLinker->getNext();
-        //       updateIndiNode = nextUpdateLinker->getData(); nextUpdateLinker->clearNext();
-        //       releaseIndividualSaturationUpdateLinker(nextUpdateLinker, calcAlgContext);
-        //       --currentUpdateLinkerCount; ++updatedNodes;
-        //       for (depIndiIt : updateIndiNode->getCopyDependingIndividualNodeLinker()) {
-        //           if (depIndiIt->isNegated()) {
-        //               dependingIndiNode = depIndiIt->getData();
-        //               statusFlag = dependingIndiNode->getDirectStatusFlags();
-        //               bool continueDepending = false;
-        //               if (!statusFlag->hasFlags(INDSATFLAGINSUFFICIENT, false)) {
-        //                   if (!criticalIndiNodeConTestSet->isConceptTestedForIndividual(conDes, dependingIndiNode)) {
-        //                       criticalIndiNodeConTestSet->insertConceptTestedForIndividual(conDes, dependingIndiNode);
-        //                       STATINC(SATURATIONCRITICALTESTCOUNT, calcAlgContext);
-        //                       if (isCriticalORConceptDescriptorInsufficient(conDes, dependingIndiNode, calcAlgContext)) {
-        //                           updateDirectNotDependentAddingIndividualStatusFlags(dependingIndiNode, INDSATFLAGINSUFFICIENT, calcAlgContext);
-        //                           setInsufficientNodeOccured(calcAlgContext);
-        //                           continueDepending = true;
-        //                       }
-        //                   }
-        //               } else { continueDepending = true; }
-        //               if (continueDepending) {
-        //                   nextUpdateLinker = createIndividualSaturationUpdateLinker(calcAlgContext);
-        //                   nextUpdateLinker->initUpdateNodeLinker(dependingIndiNode);
-        //                   directUpdateLinker = nextUpdateLinker->append(directUpdateLinker);
-        //                   ++currentUpdateLinkerCount;
-        //               }
-        //           }
-        //       }
-        //   }
-        //
-        // Resolvable leaves: `self.create_individual_saturation_update_linker` /
-        // `self.release_individual_saturation_update_linker` (group M pools),
-        // `self.is_critical_or_concept_descriptor_insufficient` (below),
-        // `self.update_direct_not_dependent_adding_individual_status_flags` /
-        // `self.set_insufficient_node_occured`; they fire once the update-linker pool +
-        // copy-depending chain yield concrete nodes and the tested-pair set is ported.
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let mut update_nodes = vec![*indi_proc_sat_node];
+        while let Some(update_node) = update_nodes.pop() {
+            let depending_nodes: Vec<SatNodeId> = calc_alg_context
+                .process_context()
+                .sat_node(update_node)
+                .get_copy_depending_individual_node_linker()
+                .iter()
+                .filter(|link| link.negated)
+                .map(|link| link.target)
+                .collect();
+            for mut depending_node in depending_nodes {
+                let already_insufficient = calc_alg_context
+                    .process_context()
+                    .sat_node(depending_node)
+                    .direct_status_flags
+                    .has_flags_code(
+                        IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                        false,
+                    );
+                let mut continue_depending = already_insufficient;
+                if !already_insufficient {
+                    let already_tested = calc_alg_context
+                        .process_context()
+                        .sat_critical_ind_node_con_test_set(critical_indi_node_con_test_set)
+                        .is_concept_tested_for_individual(concept, depending_node);
+                    if !already_tested {
+                        calc_alg_context
+                            .process_context_mut()
+                            .sat_critical_ind_node_con_test_set_mut(critical_indi_node_con_test_set)
+                            .insert_concept_tested_for_individual(concept, depending_node);
+                        if self.is_critical_or_concept_descriptor_insufficient(
+                            con_des,
+                            &mut depending_node,
+                            calc_alg_context,
+                        ) {
+                            self.update_direct_not_dependent_adding_individual_status_flags(
+                                depending_node,
+                                IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                                calc_alg_context,
+                            );
+                            self.set_insufficient_node_occured(calc_alg_context);
+                            continue_depending = true;
+                        }
+                    }
+                }
+                if continue_depending {
+                    update_nodes.push(depending_node);
+                }
+            }
+        }
+        let _ = concept_type;
     }
 
     /// Port of `CCalculationTableauApproximationSaturationTaskHandleAlgorithm::addCriticalConceptForDependentNodes`
@@ -640,19 +690,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     indi_proc_sat_node,
                     calc_alg_context,
                 ) {
-                    // KONCLUDE-PORT-NOTE[conservative]: the C++ pairs updateDirectNot-
-                    // DependentAdding(INSUFFICIENT) with addCriticalORConceptTestedFor-
-                    // DependentNodes (mark + tested-pair insert on every copy-depending
-                    // node). That fan-out is deferred; the dependent-walking update below
-                    // marks the same depending set (transitively) INSUFFICIENT — a
-                    // conservative superset that only skips the tested-pair dedup.
                     self.insufficient_or_count += 1;
-                    self.update_direct_adding_individual_status_flags(
+                    self.update_direct_not_dependent_adding_individual_status_flags(
                         *indi_proc_sat_node,
                         IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
                         calc_alg_context,
                     );
                     self.set_insufficient_node_occured(calc_alg_context);
+                    self.add_critical_or_concept_tested_for_dependent_nodes(
+                        critical_con_des,
+                        CCT_DISJUNCTION,
+                        indi_proc_sat_node,
+                        critical_indi_node_con_test_set,
+                        calc_alg_context,
+                    );
                 }
             }
             self.release_concept_saturation_process_linker(critical_con_proc_des, calc_alg_context);
@@ -961,6 +1012,26 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .sat_node(*indi_proc_sat_node)
             .reapply_con_sat_label_set;
+        let debug_target = std::env::var("KM_SAT_OR_DEBUG_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            .is_some_and(|target_tag| {
+                let reference = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node)
+                    .get_saturation_concept_reference_linking();
+                reference.is_some()
+                    && calc_alg_context
+                        .ontology_arenas()
+                        .concept(
+                            calc_alg_context
+                                .process_context()
+                                .extended_con_ref_linking_data(reference)
+                                .get_saturation_concept(),
+                        )
+                        .get_concept_tag()
+                        == target_tag
+            });
         if con_set.is_some() {
             let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
                 .ontology_arenas()
@@ -985,10 +1056,36 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     op_checking_concept,
                     calc_alg_context,
                 ) == Some(checking_negation);
+                if debug_target {
+                    eprintln!(
+                        "SAT-OR-CHECK node={} or-tag={} or-neg={} operand-tag={} operand-neg={} checking-tag={} checking-neg={} contained={}",
+                        indi_proc_sat_node.raw,
+                        calc_alg_context.ontology_arenas().concept(concept).get_concept_tag(),
+                        concept_negation,
+                        calc_alg_context.ontology_arenas().concept(op_concept).get_concept_tag(),
+                        op_concept_negation,
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(op_checking_concept)
+                            .get_concept_tag(),
+                        checking_negation,
+                        contained,
+                    );
+                }
                 if contained {
                     return false;
                 }
             }
+        }
+        if debug_target {
+            eprintln!(
+                "SAT-OR-CHECK-INSUFFICIENT node={} or-tag={}",
+                indi_proc_sat_node.raw,
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag(),
+            );
         }
         true
     }
@@ -1410,32 +1507,238 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // bool disjunctionNegation = conceptSatItem->getSaturationNegation();
         // CSortedNegLinker<CConcept*>* disjunctConceptLinker = disjunctionConcept->getOperandList();
         // CSaturationDisjunctCommonConceptExtractionData* extractionData = indiProcSatNode->getDisjunctCommonConceptExtractionData(false);
+        let (node_concept, node_concept_tag) = {
+            let item = calc_alg_context
+                .process_context()
+                .sat_node(*indi_proc_sat_node)
+                .get_saturation_concept_reference_linking();
+            if item.is_some()
+                && item.index()
+                    < calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data_count()
+            {
+                let concept = calc_alg_context
+                    .process_context()
+                    .extended_con_ref_linking_data(item)
+                    .get_saturation_concept();
+                (
+                    Some(concept),
+                    Some(
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag(),
+                    ),
+                )
+            } else {
+                (None, None)
+            }
+        };
+        let debug = node_concept
+            .map(|concept| sat_common_debug_matches(concept, calc_alg_context))
+            .unwrap_or(false);
         let extraction_data = calc_alg_context
             .process_context_mut()
             .sat_node_ext_disjunct_common_concept_extraction_data(*indi_proc_sat_node, false);
         if extraction_data.is_some() {
-            // W4-DEFER[api]: walks the unported CSaturationDisjunctCommonConceptExtractionData
-            //   (its CSaturationDisjunctCommonConceptCountHash + CSaturationDisjunctExtractionLinker
-            //   chain) and, per disjunct node, the newly-added CConceptSaturationDescriptor span,
-            //   incrementing the common-count; on reaching the max it adds the common concept to the
-            //   disjunction node's label via the live sibling `addConceptFilteredToIndividual`
-            //   (group K). Faithful body:
-            //
-            //   disjunctionConSet = indiProcSatNode->getReapplyConceptSaturationLabelSet(true);
-            //   commonConceptCountHash = extractionData->getSaturationDisjunctCommonConceptCountHash();
-            //   for (satDisjExtLinkerIt : extractionData->getDisjunctIndividualNodeExtractionLinker()) {
-            //       disjConIndiNode = satDisjExtLinkerIt->getDisjunctIndividualSaturationProcessNode();
-            //       lastExaminedDisjConSatDes = satDisjExtLinkerIt->getLastExaminedConceptSaturationDescriptor();
-            //       disjConConSet = disjConIndiNode->getReapplyConceptSaturationLabelSet(false);
-            //       if (disjConConSet) {
-            //           newLast = disjConConSet->getConceptSaturationDescriptionLinker();
-            //           satDisjExtLinkerIt->setLastExaminedConceptSaturationDescriptor(newLast);
-            //           for (disjConSatDesIt = newLast; disjConSatDesIt != lastExaminedDisjConSatDes; disjConSatDesIt = disjConSatDesIt->getNext())
-            //               if (commonConceptCountHash->incCommonConceptCountReturnMaxReached(disjConSatDesIt))
-            //                   addConceptFilteredToIndividual(disjConSatDesIt->getConcept(), disjConSatDesIt->isNegated(),
-            //                       indiProcSatNode, disjunctionConSet, true, calcAlgContext);
-            //       }
-            //   }
+            let mut scanned = 0usize;
+            let mut added = 0usize;
+            let mut common_ops: std::collections::BTreeMap<Cint64, usize> =
+                std::collections::BTreeMap::new();
+            let mut extraction_linker = calc_alg_context
+                .process_context()
+                .sat_disjunct_common_concept_extraction_data(extraction_data)
+                .get_disjunct_individual_node_extraction_linker();
+            while extraction_linker.is_some() {
+                let (disjunct_node, last_examined, next_linker) = {
+                    let linker = calc_alg_context
+                        .process_context()
+                        .sat_disjunct_extraction_linker(extraction_linker);
+                    (
+                        linker.get_disjunct_individual_saturation_process_node(),
+                        linker.get_last_examined_concept_saturation_descriptor(),
+                        linker.get_next(),
+                    )
+                };
+                let label_set = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_reapply_concept_saturation_label_set(disjunct_node, false);
+                if label_set.is_some() {
+                    let mut node_scanned = 0usize;
+                    let mut node_ops: std::collections::BTreeMap<Cint64, usize> =
+                        std::collections::BTreeMap::new();
+                    let new_last = calc_alg_context
+                        .process_context()
+                        .reapply_con_sat_label_set(label_set)
+                        .get_concept_saturation_description_linker();
+                    calc_alg_context
+                        .process_context_mut()
+                        .sat_disjunct_extraction_linker_mut(extraction_linker)
+                        .set_last_examined_concept_saturation_descriptor(new_last);
+                    let mut descriptor = new_last;
+                    while descriptor.is_some() && descriptor != last_examined {
+                        scanned += 1;
+                        node_scanned += 1;
+                        let (concept, negation, next) = {
+                            let value = calc_alg_context.process_context().con_sat_desc(descriptor);
+                            (
+                                value.get_concept(),
+                                value.get_negation(),
+                                value.get_next_concept_desciptor(),
+                            )
+                        };
+                        let concept_tag = calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag();
+                        if debug
+                            && calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_operator_code()
+                                == super::super::model::op::CCIMPL
+                        {
+                            let operands = calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_operand_list()
+                                .iter()
+                                .map(|operand| {
+                                    let target =
+                                        calc_alg_context.ontology_arenas().concept(operand.target);
+                                    format!(
+                                        "{}{}:{}",
+                                        if operand.negated { "-" } else { "+" },
+                                        target.get_concept_tag(),
+                                        target.get_operator_code(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(",");
+                            eprintln!(
+                                "SAT-COMMON-IMPL node={} concept={} neg={} operands=[{}]",
+                                disjunct_node.raw, concept_tag, negation, operands,
+                            );
+                        }
+                        *node_ops
+                            .entry(
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(concept)
+                                    .get_operator_code(),
+                            )
+                            .or_default() += 1;
+                        let common = {
+                            calc_alg_context
+                                .process_context_mut()
+                                .sat_disjunct_common_concept_extraction_data_mut(extraction_data)
+                                .get_saturation_disjunct_common_concept_count_hash_mut()
+                                .inc_common_concept_count_for_value_return_max_reached(
+                                    concept,
+                                    negation,
+                                    concept_tag,
+                                )
+                        };
+                        if common {
+                            added += 1;
+                            let common_op = calc_alg_context
+                                .ontology_arenas()
+                                .concept(concept)
+                                .get_operator_code();
+                            *common_ops.entry(common_op).or_default() += 1;
+                            if debug
+                                && matches!(
+                                    common_op,
+                                    super::super::model::op::CCATOM
+                                        | super::super::model::op::CCSUB
+                                        | super::super::model::op::CCSOME
+                                        | super::super::model::op::CCAQSOME
+                                        | super::super::model::op::CCIMPLTRIG
+                                        | super::super::model::op::CCSELF
+                                )
+                            {
+                                let common_concept =
+                                    calc_alg_context.ontology_arenas().concept(concept);
+                                let operands = common_concept
+                                    .get_operand_list()
+                                    .iter()
+                                    .map(|operand| {
+                                        let target = calc_alg_context
+                                            .ontology_arenas()
+                                            .concept(operand.target);
+                                        format!(
+                                            "{}{}:{}",
+                                            if operand.negated { "-" } else { "+" },
+                                            target.get_concept_tag(),
+                                            target.get_operator_code(),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(",");
+                                eprintln!(
+                                    "SAT-COMMON-DETAIL op={} concept={} neg={} role={} operands=[{}]",
+                                    common_op,
+                                    concept_tag,
+                                    negation,
+                                    if common_concept.get_role().is_some() {
+                                        calc_alg_context
+                                            .ontology_arenas()
+                                            .role(common_concept.get_role())
+                                            .get_role_tag()
+                                    } else {
+                                        -1
+                                    },
+                                    operands,
+                                );
+                            }
+                            self.add_concept_filtered_to_individual(
+                                concept,
+                                negation,
+                                indi_proc_sat_node,
+                                calc_alg_context,
+                            );
+                        }
+                        descriptor = next;
+                    }
+                    if debug {
+                        eprintln!(
+                            "SAT-COMMON-DISJUNCT node={} flags={:#x} scanned={} ops={:?}",
+                            disjunct_node.raw,
+                            calc_alg_context
+                                .process_context()
+                                .sat_node(disjunct_node)
+                                .indirect_status_flags
+                                .get_flags(),
+                            node_scanned,
+                            node_ops,
+                        );
+                    }
+                }
+                extraction_linker = next_linker;
+            }
+            if debug {
+                let label = calc_alg_context
+                    .process_context()
+                    .sat_node(*indi_proc_sat_node)
+                    .reapply_con_sat_label_set;
+                eprintln!(
+                    "SAT-COMMON-UPDATE node={} tag={} scanned={} added={} label={} common-ops={:?}",
+                    indi_proc_sat_node.raw,
+                    node_concept_tag.unwrap_or(-1),
+                    scanned,
+                    added,
+                    if label.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .reapply_con_sat_label_set(label)
+                            .get_concept_count()
+                    } else {
+                        0
+                    },
+                    common_ops,
+                );
+            }
         }
     }
 
@@ -1451,40 +1754,136 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
     ) {
         // CMemoryAllocationManager* taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         // CSaturationDisjunctCommonConceptExtractionData* extractionData = indiProcSatNode->getDisjunctCommonConceptExtractionData(true);
-        let _extraction_data = calc_alg_context
+        let extraction_data = calc_alg_context
             .process_context_mut()
             .sat_node_ext_disjunct_common_concept_extraction_data(*indi_proc_sat_node, true);
-        // W4-DEFER[api]: resolves the node's disjunction concept (CSaturationConceptDataItem
-        //   ->getSaturationConcept()/getSaturationNegation()) and, per disjunct operand, the
-        //   per-disjunct saturation node via the concept-reference linking (getConceptSaturationReferenceLinkingData
-        //   ->getIndividualProcessNodeForConcept), then wires the extraction satellites.
-        //   The `CConcept`/`CSaturationConceptDataItem`/reference-linking derefs and the
-        //   CSaturationDisjunctExtractionLinker allocation is ported, and the
-        //   CSaturationModifiedProcessUpdateLinker pool is live. The remaining
-        //   unresolved concept/reference-linking derefs keep this body deferred.
-        //   Faithful body (per disjunct):
-        //
-        //   for (disjunctConceptLinkerIt : disjunctionConcept->getOperandList()) { ++disjCount;
-        //       disjunctConcept = disjunctConceptLinkerIt->getData();
-        //       disjunctNegation = disjunctConceptLinkerIt->isNegated() ^ disjunctionNegation;
-        //       checkingNegation = disjunctNegation;
-        //       disjunctHandling = getDisjunctCheckingConcept(disjunctConcept, disjunctNegation, &checkingNegation, calcAlgContext);
-        //       disConIndiNode = ((CConceptSaturationReferenceLinkingData*)disjunctHandling->getConceptData()->getConceptReferenceLinking())
-        //           ->getConceptSaturationReferenceLinkingData(checkingNegation)->getIndividualProcessNodeForConcept();
-        //       addUninitializedIndividualToProcessingQueue(disConIndiNode, calcAlgContext);
-        //       disNodeExtLinker = CObjectAllocator<CSaturationDisjunctExtractionLinker>::allocateAndConstruct(taskMemMan);
-        //       disNodeExtLinker->initSaturationDisjunctExtractionLinker(disConIndiNode, nullptr);
-        //       extractionData->addDisjunctIndividualNodeExtractionLinker(disNodeExtLinker);
-        //       modProcUpdLinker = createModifiedProcessUpdateLinker(calcAlgContext);
-        //       modProcUpdLinker->initProcessUpdateLinker(indiProcSatNode, UPDATEPDISJUNCTCOMMONCONCEPTSEXTRACTION);
-        //       disConIndiNode->getReapplyConceptSaturationLabelSet(true)->addModifiedUpdateLinker(modProcUpdLinker);
-        //   }
-        //   extractionData->getSaturationDisjunctCommonConceptCountHash()->setDisjunctCount(disjCount);
-        //
-        //   Live leaves: `self.get_disjunct_checking_concept` (s03), `self.add_uninitialized_individual_to_processing_queue`
-        //   (s01), `self.create_modified_process_update_linker` (group M).
-        //
-        // updateExtractDisjunctCommonConcept(indiProcSatNode, calcAlgContext);  — live, unconditional first pass:
+        if extraction_data.is_none() {
+            return;
+        }
+        // Initialization is a one-shot rule in Konclude.  Preserve that
+        // property if a node is scheduled twice by an incremental caller.
+        if calc_alg_context
+            .process_context()
+            .sat_disjunct_common_concept_extraction_data(extraction_data)
+            .get_disjunct_individual_node_extraction_linker()
+            .is_some()
+        {
+            self.update_extract_disjunct_common_concept(indi_proc_sat_node, calc_alg_context);
+            return;
+        }
+        let concept_item = calc_alg_context
+            .process_context()
+            .sat_node(*indi_proc_sat_node)
+            .get_saturation_concept_reference_linking();
+        if concept_item.is_none()
+            || concept_item.index()
+                >= calc_alg_context
+                    .process_context()
+                    .extended_con_ref_linking_data_count()
+        {
+            return;
+        }
+        let (disjunction_concept, disjunction_negation) = {
+            let item = calc_alg_context
+                .process_context()
+                .extended_con_ref_linking_data(concept_item);
+            (
+                item.get_saturation_concept(),
+                item.get_saturation_negation(),
+            )
+        };
+        let operands = calc_alg_context
+            .ontology_arenas()
+            .concept(disjunction_concept)
+            .get_operand_list()
+            .to_vec();
+        let mut disjunct_count = 0;
+        let debug = sat_common_debug_matches(disjunction_concept, calc_alg_context);
+        for operand in operands {
+            disjunct_count += 1;
+            let disjunct_negation = operand.negated ^ disjunction_negation;
+            let mut checking_negation = disjunct_negation;
+            let checking_concept = self.get_disjunct_checking_concept(
+                operand.target,
+                disjunct_negation,
+                Some(&mut checking_negation),
+                calc_alg_context,
+            );
+            let mut disjunct_node = Self::s07_concept_reference_node(
+                checking_concept,
+                checking_negation,
+                calc_alg_context,
+            );
+            if debug {
+                eprintln!(
+                    "SAT-COMMON-OPERAND root={} operand-tag={} operand-neg={} checking-tag={} checking-neg={} node={}",
+                    indi_proc_sat_node.raw,
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(operand.target)
+                        .get_concept_tag(),
+                    disjunct_negation,
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(checking_concept)
+                        .get_concept_tag(),
+                    checking_negation,
+                    disjunct_node.raw,
+                );
+            }
+            if disjunct_node.is_none() {
+                continue;
+            }
+            self.add_uninitialized_individual_to_processing_queue(
+                &mut disjunct_node,
+                calc_alg_context,
+            );
+            let mut extraction_linker = SaturationDisjunctExtractionLinker::new();
+            extraction_linker.init_saturation_disjunct_extraction_linker(
+                disjunct_node,
+                ConceptSaturationDescriptorId::NONE,
+            );
+            let extraction_linker = calc_alg_context
+                .process_context_mut()
+                .alloc_sat_disjunct_extraction_linker(extraction_linker);
+            calc_alg_context
+                .process_context_mut()
+                .sat_disjunct_common_concept_extraction_data_add_linker(
+                    extraction_data,
+                    extraction_linker,
+                );
+
+            let update_linker = self.create_modified_process_update_linker(calc_alg_context);
+            calc_alg_context
+                .process_context_mut()
+                .sat_modified_process_update_linker_mut(update_linker)
+                .init_process_update_linker(
+                    *indi_proc_sat_node,
+                    SaturationModificationProcessUpdateType::UpdateDisjunctCommonConceptExtraction,
+                );
+            let label_set = calc_alg_context
+                .process_context_mut()
+                .sat_node_reapply_concept_saturation_label_set(disjunct_node, true);
+            calc_alg_context
+                .process_context_mut()
+                .reapply_con_sat_label_set_add_modified_update_linker(label_set, update_linker);
+        }
+        calc_alg_context
+            .process_context_mut()
+            .sat_disjunct_common_concept_extraction_data_mut(extraction_data)
+            .get_saturation_disjunct_common_concept_count_hash_mut()
+            .set_disjunct_count(disjunct_count);
+        if debug {
+            eprintln!(
+                "SAT-COMMON-INIT root={} tag={} disjuncts={}",
+                indi_proc_sat_node.raw,
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(disjunction_concept)
+                    .get_concept_tag(),
+                disjunct_count,
+            );
+        }
         self.update_extract_disjunct_common_concept(indi_proc_sat_node, calc_alg_context);
     }
 
@@ -1527,10 +1926,85 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
 
 #[cfg(test)]
 mod tests {
+    use super::super::super::model::concept::Concept;
     use super::super::super::model::substrate::NegLink;
     use super::super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::algorithm::SaturationTaskHandleAlgorithm;
+    use super::super::satellites::ConceptSaturationDescriptor;
     use super::*;
+
+    #[test]
+    fn s09_disjunct_common_extraction_adds_only_common_label() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let make_concept = |ctx: &mut CalculationAlgorithmContextBase, tag| {
+            let mut concept = Concept::new();
+            concept.set_concept_tag(tag);
+            concept.set_operator_code(super::super::super::model::op::CCATOM);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let common = make_concept(&mut ctx, 10);
+        let left_only = make_concept(&mut ctx, 11);
+        let right_only = make_concept(&mut ctx, 12);
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(0));
+        let mut left = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(1));
+        let mut right = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(2));
+        algo.add_concept_filtered_to_individual(common, false, &mut left, &mut ctx);
+        algo.add_concept_filtered_to_individual(left_only, false, &mut left, &mut ctx);
+        algo.add_concept_filtered_to_individual(common, false, &mut right, &mut ctx);
+        algo.add_concept_filtered_to_individual(right_only, false, &mut right, &mut ctx);
+
+        let extraction = ctx
+            .process_context_mut()
+            .sat_node_ext_disjunct_common_concept_extraction_data(root, true);
+        for node in [left, right] {
+            let mut linker = SaturationDisjunctExtractionLinker::new();
+            linker.init_saturation_disjunct_extraction_linker(
+                node,
+                ConceptSaturationDescriptorId::NONE,
+            );
+            let linker = ctx
+                .process_context_mut()
+                .alloc_sat_disjunct_extraction_linker(linker);
+            ctx.process_context_mut()
+                .sat_disjunct_common_concept_extraction_data_add_linker(extraction, linker);
+        }
+        ctx.process_context_mut()
+            .sat_disjunct_common_concept_extraction_data_mut(extraction)
+            .get_saturation_disjunct_common_concept_count_hash_mut()
+            .set_disjunct_count(2);
+
+        let mut root_ref = root;
+        algo.update_extract_disjunct_common_concept(&mut root_ref, &mut ctx);
+        let root_label = ctx
+            .process_context()
+            .sat_node(root)
+            .reapply_con_sat_label_set;
+        assert_eq!(
+            SaturationTaskHandleAlgorithm::sat_label_set_contains_concept_get_negation(
+                root_label, common, &ctx
+            ),
+            Some(false)
+        );
+        assert_eq!(
+            SaturationTaskHandleAlgorithm::sat_label_set_contains_concept_get_negation(
+                root_label, left_only, &ctx
+            ),
+            None
+        );
+        assert_eq!(
+            SaturationTaskHandleAlgorithm::sat_label_set_contains_concept_get_negation(
+                root_label, right_only, &ctx
+            ),
+            None
+        );
+    }
 
     fn queued_descriptor(
         ctx: &mut CalculationAlgorithmContextBase,
@@ -1688,6 +2162,92 @@ mod tests {
         assert!(ctx
             .saturation_critical_individual_node_processing_queue(false)
             .is_none());
+    }
+
+    #[test]
+    fn s09_critical_or_fanout_retests_only_negated_copy_dependents() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let make_atom = |ctx: &mut CalculationAlgorithmContextBase, tag| {
+            let mut concept = Concept::new();
+            concept.set_concept_tag(tag);
+            concept.set_operator_code(super::super::super::model::op::CCATOM);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let left = make_atom(&mut ctx, 721);
+        let right = make_atom(&mut ctx, 723);
+        let mut disjunction = Concept::new();
+        disjunction.set_concept_tag(725);
+        disjunction.set_operator_code(super::super::super::model::op::CCOR);
+        disjunction
+            .add_operand_linker(left, false)
+            .add_operand_linker(right, false);
+        let disjunction = ctx.ontology_arenas_mut().alloc_concept(disjunction);
+        let mut descriptor = ConceptSaturationDescriptor::new();
+        descriptor.init_concept_saturation_descriptor(disjunction, false);
+        let descriptor = ctx.process_context_mut().alloc_con_sat_desc(descriptor);
+
+        let mut source = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(727));
+        let mut satisfied = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(729));
+        let missing = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(731));
+        let ignored = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::new(733));
+        algo.add_concept_filtered_to_individual(left, false, &mut satisfied, &mut ctx);
+        ctx.process_context_mut()
+            .sat_node_mut(source)
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: satisfied,
+                negated: true,
+            })
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: missing,
+                negated: true,
+            })
+            .add_copy_depending_individual_node_linker(NegLink {
+                target: ignored,
+                negated: false,
+            });
+        let tested = ctx.saturation_critical_individual_node_concept_test_set(true);
+
+        algo.add_critical_or_concept_tested_for_dependent_nodes(
+            descriptor,
+            CCT_DISJUNCTION,
+            &mut source,
+            tested,
+            &mut ctx,
+        );
+
+        let is_insufficient = |ctx: &CalculationAlgorithmContextBase, node| {
+            ctx.process_context()
+                .sat_node(node)
+                .direct_status_flags
+                .has_flags_code(
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    false,
+                )
+        };
+        assert!(!is_insufficient(&ctx, satisfied));
+        assert!(is_insufficient(&ctx, missing));
+        assert!(!is_insufficient(&ctx, ignored));
+        assert!(ctx
+            .process_context()
+            .sat_critical_ind_node_con_test_set(tested)
+            .is_concept_tested_for_individual(disjunction, satisfied));
+        assert!(ctx
+            .process_context()
+            .sat_critical_ind_node_con_test_set(tested)
+            .is_concept_tested_for_individual(disjunction, missing));
+        assert!(!ctx
+            .process_context()
+            .sat_critical_ind_node_con_test_set(tested)
+            .is_concept_tested_for_individual(disjunction, ignored));
     }
 
     #[test]

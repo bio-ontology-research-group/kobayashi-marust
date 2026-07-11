@@ -60,6 +60,7 @@ use super::super::completion::stubs::{
     CalculationConfigurationExtension, SatisfiableCalculationTask,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::ConceptId;
 use super::super::process::SatNodeId;
 use super::stubs::{
     SatisfiableTaskSaturationOccurrenceStatisticsCollector,
@@ -565,6 +566,32 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .unwrap_or(120),
         );
         let t0 = std::time::Instant::now();
+        let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
+        let report_timeout = |stage: &str, this: &Self, ctx: &CalculationAlgorithmContextBase| {
+            if progress {
+                eprintln!(
+                    "BRIDGE-SATURATION-TIMEOUT: stage={} nodes={} rules={} and={} or={} some={} all={} atleast={} atmost={} substituted={} copied={} all-ext-init={} added={{all:{},some:{},impl:{},trigger:{},sub:{},else:{}}}",
+                    stage,
+                    ctx.process_context().sat_node_count(),
+                    this.applied_total_rule_count,
+                    this.applied_and_rule_count,
+                    this.applied_or_rule_count,
+                    this.applied_some_rule_count,
+                    this.applied_all_rule_count,
+                    this.applied_atleast_rule_count,
+                    this.applied_atmost_rule_count,
+                    this.substituited_indi_node_count,
+                    this.copied_indi_node_count,
+                    this.all_succ_ext_initialized_count,
+                    this.added_all_concepts,
+                    this.added_some_concepts,
+                    this.added_impl_concepts,
+                    this.added_trigg_concepts,
+                    this.added_sub_concepts,
+                    this.added_else_concepts,
+                );
+            }
+        };
 
         self.continue_nominal_delayed_individual_node_processing(calc_alg_context); // 326
 
@@ -599,6 +626,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     indi_proc_sat_node,
                                 );
                             while concept_saturation_process_linker.is_some() {
+                                // Konclude's task scheduler can interrupt between
+                                // rule applications.  This synchronous driver
+                                // must make the same check inside a large node's
+                                // concept queue; checking only between nodes lets
+                                // one item overrun the whole saturation budget.
+                                if t0.elapsed() >= budget {
+                                    report_timeout("concept-queue", self, calc_alg_context);
+                                    return false;
+                                }
                                 self.apply_tableau_saturation_rule(
                                     &mut indi_proc_sat_node,
                                     concept_saturation_process_linker,
@@ -682,6 +718,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         // SAT-certain in the outcome extraction. Skip completion and report the
         // abort; the caller must discard the whole saturation pass.
         if self.has_remaining_merging_critical_extension_processing_nodes(calc_alg_context) {
+            report_timeout("outer-queue", self, calc_alg_context);
             return false; // budget overrun — results unusable
         }
 
@@ -860,6 +897,135 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .process_context_mut()
                         .sat_node_mut(indi_process_node)
                         .set_completed(true); // 780
+                    let final_debug = std::env::var("KM_SAT_FINAL_DEBUG_TAG")
+                        .ok()
+                        .and_then(|value| value.parse::<Cint64>().ok());
+                    let reference = calc_alg_context
+                        .process_context()
+                        .sat_node(indi_process_node)
+                        .get_saturation_concept_reference_linking();
+                    let reference_concept = if reference.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .extended_con_ref_linking_data(reference)
+                            .get_saturation_concept()
+                    } else {
+                        ConceptId::NONE
+                    };
+                    if reference_concept.is_some()
+                        && final_debug
+                            == Some(
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(reference_concept)
+                                    .get_concept_tag(),
+                            )
+                    {
+                        let label = calc_alg_context
+                            .process_context()
+                            .sat_node(indi_process_node)
+                            .reapply_con_sat_label_set;
+                        eprintln!(
+                            "SAT-FINAL node={} tag={} label={} flags={:#x}",
+                            indi_process_node.raw,
+                            calc_alg_context
+                                .ontology_arenas()
+                                .concept(reference_concept)
+                                .get_concept_tag(),
+                            if label.is_some() {
+                                calc_alg_context
+                                    .process_context()
+                                    .reapply_con_sat_label_set(label)
+                                    .get_concept_count()
+                            } else {
+                                0
+                            },
+                            calc_alg_context
+                                .process_context()
+                                .sat_node(indi_process_node)
+                                .indirect_status_flags
+                                .get_flags(),
+                        );
+                        if label.is_some() {
+                            let mut descriptor = calc_alg_context
+                                .process_context()
+                                .reapply_con_sat_label_set(label)
+                                .get_concept_saturation_description_linker();
+                            while descriptor.is_some() {
+                                let (concept, negated, next) = {
+                                    let value = calc_alg_context
+                                        .process_context()
+                                        .con_sat_desc(descriptor);
+                                    (
+                                        value.get_concept(),
+                                        value.get_negation(),
+                                        value.get_next_concept_desciptor(),
+                                    )
+                                };
+                                let concept_ref =
+                                    calc_alg_context.ontology_arenas().concept(concept);
+                                if !negated
+                                    && matches!(
+                                        concept_ref.get_operator_code(),
+                                        super::super::model::op::CCSOME
+                                            | super::super::model::op::CCAQSOME
+                                    )
+                                {
+                                    let fillers = concept_ref
+                                        .get_operand_list()
+                                        .iter()
+                                        .map(|operand| {
+                                            calc_alg_context
+                                                .ontology_arenas()
+                                                .concept(operand.target)
+                                                .get_concept_tag()
+                                                .to_string()
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(",");
+                                    eprintln!(
+                                        "SAT-FINAL-SOME concept={} role={} fillers=[{}]",
+                                        concept_ref.get_concept_tag(),
+                                        if concept_ref.get_role().is_some() {
+                                            calc_alg_context
+                                                .ontology_arenas()
+                                                .role(concept_ref.get_role())
+                                                .get_role_tag()
+                                        } else {
+                                            -1
+                                        },
+                                        fillers,
+                                    );
+                                } else if concept_ref.get_operator_code()
+                                    == super::super::model::op::CCAQCHOOCE
+                                {
+                                    let operands = concept_ref
+                                        .get_operand_list()
+                                        .iter()
+                                        .map(|operand| {
+                                            let target = calc_alg_context
+                                                .ontology_arenas()
+                                                .concept(operand.target);
+                                            format!(
+                                                "{}{}:{}",
+                                                if operand.negated { "-" } else { "+" },
+                                                target.get_concept_tag(),
+                                                target.get_operator_code(),
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(",");
+                                    eprintln!(
+                                        "SAT-FINAL-CHOOSE concept={} neg={} operands=[{}]",
+                                        concept_ref.get_concept_tag(),
+                                        negated,
+                                        operands,
+                                    );
+                                }
+                                descriptor = next;
+                            }
+                        }
+                    }
                 }
             }
         }

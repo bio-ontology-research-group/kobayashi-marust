@@ -176,6 +176,8 @@ pub struct JRule {
 pub struct JInput {
     pub clauses: Vec<JClause>,
     #[serde(default)]
+    pub rbox: Vec<Vec<String>>,
+    #[serde(default)]
     pub cardinalities: Vec<CardMeta>,
     #[serde(default)]
     pub rules: Vec<JRule>,

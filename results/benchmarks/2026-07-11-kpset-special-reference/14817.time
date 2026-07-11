@@ -1,0 +1,24 @@
+Command exited with non-zero status 124
+	Command being timed: "timeout 1680 env KM_TRIGGER_ABSORB=1 KM_KEEP_CHAIN_AXIOMS=1 KM_HT_STATS=1 KM_BRIDGE_PROGRESS=1 KM_BRIDGE_PROBE_BUDGET_S=10 KM_BRIDGE_RETRY_ROUNDS=1 KM_HT_SATURATION_BUDGET_S=600 KM_HT_MEM_GB=58 KM_PAR_MEM_GB=58 /ibex/scratch/hohndor/km/kpset_disj_ext_auto_20260710/km classify /ibex/scratch/hohndor/km/corpus/ore_ont_14817.owl"
+	User time (seconds): 1724.29
+	System time (seconds): 3.99
+	Percent of CPU this job got: 102%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 28:00.02
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1396192
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 996656
+	Voluntary context switches: 158434
+	Involuntary context switches: 19323
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 314720
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 124

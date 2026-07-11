@@ -537,10 +537,23 @@ impl RoleChainAutomataTransformationPreProcess {
         c.inc_operand_count(1);
     }
 
-    /// Attach the arenas' next concept tag before any pass (`preprocess` reads
-    /// `tbox->getNextConceptID()`; here the arena length is the next tag).
+    /// Attach the arenas' next concept tag before any pass. Konclude reads
+    /// `tbox->getNextConceptID()`, which is one past the largest allocated
+    /// concept tag, not the number of arena entries. The two differ for the
+    /// bridge's reserved TOP/named tag ranges.
     pub fn begin(&mut self, arenas: &OntologyArenas) {
-        self.next_concept_tag = arenas.concept_count();
+        self.next_concept_tag = (0..arenas.concept_count())
+            .map(|i| arenas.concept(ConceptId::new(i)).get_concept_tag())
+            .max()
+            .unwrap_or(-1)
+            + 1;
+        if std::env::var_os("KM_HT_STATS").is_some() {
+            eprintln!(
+                "role-automata begin concepts={} next-tag={}",
+                arenas.concept_count(),
+                self.next_concept_tag
+            );
+        }
     }
 
     // ---------------------------------------------------------------------
@@ -1743,7 +1756,11 @@ impl RoleChainAutomataTransformationPreProcess {
     /// Port of `continuePreprocessing` (incremental re-entry after new
     /// concepts were added).
     pub fn continue_preprocessing(&mut self, arenas: &mut OntologyArenas) {
-        self.next_concept_tag = arenas.concept_count();
+        self.next_concept_tag = (0..arenas.concept_count())
+            .map(|i| arenas.concept(ConceptId::new(i)).get_concept_tag())
+            .max()
+            .unwrap_or(-1)
+            + 1;
         self.transform_value_restrictions(arenas);
         self.transform_forall_propagations(arenas);
     }

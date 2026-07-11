@@ -73,6 +73,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use super::super::cache::value::CacheValueIdentifier;
 use super::super::model::substrate::{Cint64, Id, INVALID};
 use super::super::model::ConceptId;
 use super::super::process::representative::{
@@ -80,11 +81,71 @@ use super::super::process::representative::{
     RepresentativeVariableBindingPathSetDataId, RepresentativeVariableBindingPathSetJoiningHash,
     RepresentativeVariableBindingPathSetJoiningKeyMap,
 };
+use super::super::process::sat_block::IndividualNodeSaturationBlockingData;
+use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::{BackendSyncDataId, DataAssertionLinkerId};
 use super::super::process::{ConDescId, DependencyId, NodeId, SatNodeId, TrackPointId};
 use super::context::CalculationAlgorithmContextBase;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    fn cached_deterministic_expansion_concepts(
+        saturation_node: SatNodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Option<(bool, Vec<(ConceptId, bool)>)> {
+        if saturation_node.is_none() {
+            return None;
+        }
+        let cache_entry = calc_alg_context
+            .process_context()
+            .sat_node(saturation_node)
+            .get_cache_expansion_data();
+        if cache_entry.is_none() {
+            return None;
+        }
+        let mut state = calc_alg_context.take_used_saturation_node_expansion_cache_handler()?;
+        let entry = Id::new(cache_entry.raw);
+        let deterministic = state
+            .cache_context
+            .sat_expansion_cache_entry(entry)
+            .get_deterministic_concept_expansion();
+        let result = if deterministic.is_some() {
+            let expansion = state
+                .cache_context
+                .associated_concept_expansion(deterministic);
+            let requires_nondeterministic = expansion.requires_non_deterministic_expansion();
+            let linkers = expansion.get_concept_expansion_linker().to_vec();
+            let concepts: Vec<(ConceptId, bool)> = linkers
+                .into_iter()
+                .filter_map(|linker| {
+                    let value = state
+                        .cache_context
+                        .associated_concept_linker(linker)
+                        .get_cache_value();
+                    let identifier = value.get_cache_value_identifier();
+                    let negated =
+                        identifier == CacheValueIdentifier::CacheValTagAndNegatedConcept as Cint64;
+                    (identifier == CacheValueIdentifier::CacheValTagAndConcept as Cint64 || negated)
+                        .then_some((ConceptId::new(value.get_identification()), negated))
+                })
+                .collect();
+            Some((requires_nondeterministic, concepts))
+        } else {
+            None
+        };
+        if std::env::var_os("KM_BRIDGE_CACHE_DEBUG").is_some() {
+            if let Some((requires_nondeterministic, concepts)) = &result {
+                eprintln!(
+                    "BRIDGE-SAT-EXPANSION-CACHE-REPLAY node={} concepts={} requires-nondeterministic={}",
+                    saturation_node.raw,
+                    concepts.len(),
+                    requires_nondeterministic,
+                );
+            }
+        }
+        calc_alg_context.restore_used_saturation_node_expansion_cache_handler(state);
+        result
+    }
+
     // =======================================================================
     // Value-space (datatype) trigger helpers (cpp 9172–9254).
     // =======================================================================
@@ -474,6 +535,398 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         false
     }
 
+    /// Typed, live form of `tryInitalizingFromSaturatedData` for the common
+    /// single initial-concept job used by classification. Konclude's original
+    /// API receives an intrusive concept linker; the bridge already owns the
+    /// one `(concept, negation)` pair, so threading it directly preserves the
+    /// algorithm without manufacturing a second linker representation.
+    pub fn try_initializing_concept_from_saturated_data(
+        &mut self,
+        indi: &mut NodeId,
+        concept: ConceptId,
+        concept_negation: bool,
+        dep_track_point: TrackPointId,
+        allow_preprocess: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let concept_data = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_data();
+        if concept_data == INVALID {
+            return false;
+        }
+        let con_ref_linking = calc_alg_context
+            .ontology_arenas()
+            .concept_process_data(Id::new(concept_data))
+            .get_concept_reference_linking();
+        if con_ref_linking.is_none() {
+            return false;
+        }
+        let sat_ref_linking = calc_alg_context
+            .ontology_arenas()
+            .concept_saturation_reference_linking_data(con_ref_linking)
+            .get_concept_saturation_reference_linking_data(concept_negation);
+        if sat_ref_linking.is_none() {
+            return false;
+        }
+        let base_sat_node = calc_alg_context
+            .ontology_arenas()
+            .saturation_concept_reference_linking(sat_ref_linking)
+            .get_individual_process_node_for_concept();
+        if base_sat_node.is_none()
+            || !calc_alg_context
+                .process_context()
+                .sat_node(base_sat_node)
+                .is_initialized()
+        {
+            return false;
+        }
+
+        let mut resolved_sat_node = base_sat_node;
+        while calc_alg_context
+            .process_context()
+            .sat_node(resolved_sat_node)
+            .has_substitute_individual_node()
+        {
+            resolved_sat_node = calc_alg_context
+                .process_context()
+                .sat_node(resolved_sat_node)
+                .get_substitute_individual_node();
+        }
+        let (sat_label, resolved_flags, base_flags) = {
+            let resolved = calc_alg_context
+                .process_context()
+                .sat_node(resolved_sat_node);
+            (
+                resolved.reapply_con_sat_label_set,
+                resolved.indirect_status_flags.get_flags(),
+                calc_alg_context
+                    .process_context()
+                    .sat_node(base_sat_node)
+                    .indirect_status_flags
+                    .get_flags(),
+            )
+        };
+        if sat_label.is_none() {
+            return false;
+        }
+        if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+            eprintln!(
+                "SAT-ROOT-INIT concept-tag={} root={} base-sat={} resolved-sat={} flags={:#x} sat-label={}",
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag(),
+                calc_alg_context
+                    .process_context()
+                    .node(*indi)
+                    .individual_node_id(),
+                base_sat_node.raw,
+                resolved_sat_node.raw,
+                resolved_flags,
+                calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(sat_label)
+                    .get_concept_count(),
+            );
+            let mut debug_descriptor = calc_alg_context
+                .process_context()
+                .reapply_con_sat_label_set(sat_label)
+                .get_concept_saturation_description_linker();
+            while debug_descriptor.is_some() {
+                let (debug_concept, debug_negated, next) = {
+                    let descriptor = calc_alg_context
+                        .process_context()
+                        .con_sat_desc(debug_descriptor);
+                    (
+                        descriptor.get_concept(),
+                        descriptor.get_negation(),
+                        descriptor.get_next_concept_desciptor(),
+                    )
+                };
+                let concept_ref = calc_alg_context
+                    .ontology_arenas()
+                    .concept(debug_concept);
+                if concept_ref.get_operator_code()
+                    == super::super::model::op::CCAQCHOOCE
+                {
+                    let operands = concept_ref
+                        .get_operand_list()
+                        .iter()
+                        .map(|operand| {
+                            let target = calc_alg_context
+                                .ontology_arenas()
+                                .concept(operand.target);
+                            format!(
+                                "{}{}:{}",
+                                if operand.negated { "-" } else { "+" },
+                                target.get_concept_tag(),
+                                target.get_operator_code(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    eprintln!(
+                        "SAT-ROOT-CHOOSE concept={} neg={} operands=[{}]",
+                        concept_ref.get_concept_tag(),
+                        debug_negated,
+                        operands,
+                    );
+                }
+                debug_descriptor = next;
+            }
+        }
+
+        let replay_dependency = if dep_track_point.is_some() {
+            dep_track_point
+        } else {
+            calc_alg_context.get_or_create_base_dependency_track_point()
+        };
+        if resolved_flags & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED != 0
+            || base_flags & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGCLASHED != 0
+        {
+            self.add_concept_to_individual_skip_and_processing(
+                concept,
+                concept_negation,
+                *indi,
+                replay_dependency,
+                false,
+                false,
+                true,
+                calc_alg_context,
+            );
+            if !calc_alg_context.has_pending_signal() {
+                let label = calc_alg_context
+                    .process_context_mut()
+                    .node_reapply_concept_label_set(*indi);
+                let tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag();
+                let mut con_des = ConDescId::NONE;
+                let mut con_dep = TrackPointId::NONE;
+                calc_alg_context
+                    .process_context()
+                    .label_set(label)
+                    .get_concept_descriptor_and_reapply_queue_by_tag(
+                        tag,
+                        &mut con_des,
+                        &mut con_dep,
+                    );
+                let clash = self.create_clashed_concept_descriptor(
+                    Id::NONE,
+                    indi,
+                    con_des,
+                    con_dep,
+                    calc_alg_context,
+                );
+                calc_alg_context.raise_clash(clash);
+            }
+            return true;
+        }
+
+        if resolved_flags & IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION
+            != 0
+        {
+            self.propagate_individual_node_nominal_connection_to_ancestors(*indi, calc_alg_context);
+            if self.conf_exact_nominal_dependency_tracking {
+                let sat_nominals = calc_alg_context
+                    .process_context_mut()
+                    .sat_node_successor_connected_nominal_set_existing(resolved_sat_node);
+                if sat_nominals.is_some() {
+                    let nominal_ids = calc_alg_context
+                        .process_context()
+                        .nominal_conn_set(sat_nominals)
+                        .iter_snapshot();
+                    let target = calc_alg_context
+                        .process_context_mut()
+                        .node_successor_nominal_connection_set(*indi);
+                    for nominal_id in nominal_ids {
+                        calc_alg_context
+                            .process_context_mut()
+                            .nominal_conn_set_mut(target)
+                            .add_successor_connected_nominal(-nominal_id);
+                    }
+                }
+            }
+        }
+
+        // The C++ source uses `if (satIndiNode = baseSatIndiNode)`: the
+        // assignment deliberately selects the base node for validation and
+        // inserts the leading concept without unfolding it a second time.
+        self.add_concept_to_individual_skip_and_processing(
+            concept,
+            concept_negation,
+            *indi,
+            replay_dependency,
+            allow_preprocess,
+            false,
+            true,
+            calc_alg_context,
+        );
+        if calc_alg_context.has_pending_signal() {
+            return true;
+        }
+        let label = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(*indi);
+        let tag = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_concept_tag();
+        let mut con_des = ConDescId::NONE;
+        let mut con_dep = TrackPointId::NONE;
+        calc_alg_context
+            .process_context()
+            .label_set(label)
+            .get_concept_descriptor_and_reapply_queue_by_tag(tag, &mut con_des, &mut con_dep);
+        let mut expand_dep = TrackPointId::NONE;
+        self.create_and_dependency(&mut expand_dep, indi, con_des, con_dep, calc_alg_context);
+        if expand_dep.is_none() {
+            expand_dep = replay_dependency;
+        }
+
+        let mut sat_caching_possible = true;
+        let mut last_sat_cache_possible = ConDescId::NONE;
+        let mut sat_des = calc_alg_context
+            .process_context()
+            .reapply_con_sat_label_set(sat_label)
+            .get_concept_saturation_description_linker();
+        while sat_des.is_some() {
+            let (sat_concept, sat_negation, next) = {
+                let descriptor = calc_alg_context.process_context().con_sat_desc(sat_des);
+                (
+                    descriptor.get_concept(),
+                    descriptor.get_negation(),
+                    descriptor.get_next_concept_desciptor(),
+                )
+            };
+            self.saturation_expansion_concept_count += 1;
+            if sat_concept != concept || sat_negation != concept_negation {
+                self.add_concept_to_individual_skip_and_processing(
+                    sat_concept,
+                    sat_negation,
+                    *indi,
+                    expand_dep,
+                    allow_preprocess,
+                    false,
+                    true,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return true;
+                }
+                let mut validation_node = base_sat_node;
+                self.validate_saturation_caching_possible(
+                    *indi,
+                    &mut validation_node,
+                    Some(&mut sat_caching_possible),
+                    Some(&mut last_sat_cache_possible),
+                    sat_concept,
+                    sat_negation,
+                    calc_alg_context,
+                );
+            }
+            sat_des = next;
+        }
+
+        if let Some((requires_nondeterministic, expansion)) =
+            Self::cached_deterministic_expansion_concepts(base_sat_node, calc_alg_context)
+        {
+            if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+                for (expansion_concept, expansion_negated) in &expansion {
+                    let concept_ref = calc_alg_context
+                        .ontology_arenas()
+                        .concept(*expansion_concept);
+                    if concept_ref.get_operator_code()
+                        == super::super::model::op::CCAQCHOOCE
+                    {
+                        let operands = concept_ref
+                            .get_operand_list()
+                            .iter()
+                            .map(|operand| {
+                                let target = calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(operand.target);
+                                format!(
+                                    "{}{}:{}",
+                                    if operand.negated { "-" } else { "+" },
+                                    target.get_concept_tag(),
+                                    target.get_operator_code(),
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(",");
+                        eprintln!(
+                            "SAT-ROOT-CACHED-CHOOSE concept={} neg={} operands=[{}] nondeterministic={}",
+                            concept_ref.get_concept_tag(),
+                            expansion_negated,
+                            operands,
+                            requires_nondeterministic,
+                        );
+                    }
+                }
+            }
+            if self.conf_saturation_incomplete_expansion_from_cache || !requires_nondeterministic {
+                for (expansion_concept, expansion_negated) in expansion {
+                    self.add_concept_to_individual_skip_and_processing(
+                        expansion_concept,
+                        expansion_negated,
+                        *indi,
+                        expand_dep,
+                        allow_preprocess,
+                        false,
+                        true,
+                        calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return true;
+                    }
+                }
+            }
+        }
+        let concept_count = {
+            let label = calc_alg_context
+                .process_context()
+                .node(*indi)
+                .use_reapply_con_label_set;
+            if label.is_some() {
+                calc_alg_context
+                    .process_context()
+                    .label_set(label)
+                    .get_concept_count()
+            } else {
+                0
+            }
+        };
+        let mut sat_blocking = IndividualNodeSaturationBlockingData::new();
+        sat_blocking.init_saturation_blocking_data(
+            concept_count,
+            last_sat_cache_possible,
+            base_sat_node,
+        );
+        let sat_blocking = calc_alg_context
+            .process_context_mut()
+            .alloc_indi_sat_block_data(sat_blocking);
+        calc_alg_context
+            .process_context_mut()
+            .node_mut(*indi)
+            .set_individual_saturation_blocking_data(sat_blocking);
+        if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some() {
+            eprintln!(
+                "SAT-ROOT-READY root={} label={} last-confirmed={}",
+                calc_alg_context
+                    .process_context()
+                    .node(*indi)
+                    .individual_node_id(),
+                concept_count,
+                last_sat_cache_possible.raw,
+            );
+        }
+        true
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::tryExpansionFromSaturatedData`.
     /// cpp 22081–22140.
     ///
@@ -521,18 +974,44 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if saturation_indi_node.is_none() {
             return false;
         }
-        let (initialized, sat_con_set, flags) = {
+        let (initialized, completed, sat_con_set, flags, cache_entry) = {
             let sat_node = calc_alg_context
                 .process_context()
                 .sat_node(*saturation_indi_node);
             (
                 sat_node.is_initialized(),
+                sat_node.is_completed(),
                 sat_node.reapply_con_sat_label_set,
                 sat_node.indirect_status_flags.get_flags(),
+                sat_node.get_cache_expansion_data(),
             )
         };
         if !initialized || sat_con_set.is_none() {
             return false;
+        }
+        let trace = std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+            && calc_alg_context.process_context().node_count() <= 20;
+        if trace {
+            eprintln!(
+                "SAT-SUCCESSOR-EXPAND parent={} successor={} sat={} initialized={} completed={} flags={:#x} sat-label={} cache-entry={}",
+                calc_alg_context
+                    .process_context()
+                    .node(*indi)
+                    .individual_node_id(),
+                calc_alg_context
+                    .process_context()
+                    .node(created_succ_indi)
+                    .individual_node_id(),
+                saturation_indi_node.raw,
+                initialized,
+                completed,
+                flags,
+                calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(sat_con_set)
+                    .get_concept_count(),
+                cache_entry.raw,
+            );
         }
         let nominal_connection_flag = flags & SatF::INDSATFLAGNOMINALCONNECTION != 0;
         if flags & SatF::INDSATFLAGCLASHED != 0 {
@@ -590,6 +1069,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .reapply_con_sat_label_set(sat_con_set)
                 .get_concept_saturation_description_linker();
+            // Konclude always has a task dependency track point here. The
+            // bridge can run with dependency construction disabled, in which
+            // case a TBox-derived generating descriptor carries NONE. Replay
+            // is still deterministic; attach it to the task's independent
+            // base dependency instead of creating invalid descriptors.
+            let replay_dependency = if dep_track_point.is_some() {
+                dep_track_point
+            } else {
+                calc_alg_context.get_or_create_base_dependency_track_point()
+            };
             while con_sat_des_it.is_some() {
                 let (sat_concept, sat_concept_negation, next) = {
                     let d = calc_alg_context
@@ -606,7 +1095,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     sat_concept,
                     sat_concept_negation,
                     created_succ_indi,
-                    dep_track_point,
+                    replay_dependency,
                     true,
                     false,
                     true,
@@ -629,13 +1118,55 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 con_sat_des_it = next;
             }
 
-            // W6-DEFER[api]: the cached deterministic expansion replay
-            // (`getUsedSaturationNodeExpansionCacheHandler()->getCachedDeterministicExpansion`)
-            // is the saturation-node ASSOCIATED-expansion cache — Konclude's
-            // production completion profile runs with its writing OFF
-            // (mConfSaturationSatisfiabilitiyExpansionCacheWriting = false), no
-            // handler is installed in the bridge, and the block is a no-op there.
-            // Lands with the cache/satnode.rs wiring if ever enabled.
+            if let Some((requires_nondeterministic, expansion)) =
+                Self::cached_deterministic_expansion_concepts(
+                    *saturation_indi_node,
+                    calc_alg_context,
+                )
+            {
+                if self.conf_saturation_incomplete_expansion_from_cache
+                    || !requires_nondeterministic
+                {
+                    for (expansion_concept, expansion_negated) in expansion {
+                        self.add_concept_to_individual_skip_and_processing(
+                            expansion_concept,
+                            expansion_negated,
+                            created_succ_indi,
+                            replay_dependency,
+                            true,
+                            false,
+                            true,
+                            calc_alg_context,
+                        );
+                        if calc_alg_context.has_pending_signal() {
+                            return false;
+                        }
+                    }
+                }
+            }
+            if trace {
+                let label = calc_alg_context
+                    .process_context()
+                    .node(created_succ_indi)
+                    .use_reapply_con_label_set;
+                eprintln!(
+                    "SAT-SUCCESSOR-EXPANDED successor={} label={} cache-possible={} last-confirmed={}",
+                    calc_alg_context
+                        .process_context()
+                        .node(created_succ_indi)
+                        .individual_node_id(),
+                    if label.is_some() {
+                        calc_alg_context
+                            .process_context()
+                            .label_set(label)
+                            .get_concept_count()
+                    } else {
+                        0
+                    },
+                    *sat_caching_possible,
+                    last_sat_cach_possible_con_des.raw,
+                );
+            }
             return true;
         }
         false
