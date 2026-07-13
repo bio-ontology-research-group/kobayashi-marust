@@ -1,0 +1,64 @@
+{
+  "date": "2026-07-13",
+  "ontology": "ore_ont_3215.owl",
+  "binary_sha256": "87ee76f1713e498fa7367832b00090663d0f8d3e02e7d296e275d7d1323c37c4",
+  "max_required_glibc": "2.29",
+  "ws_release_tests": {
+    "passed": 1468,
+    "failed": 0,
+    "ignored": 7
+  },
+  "direct_ws": {
+    "pairs": 3923171,
+    "gold_pairs": 3923171,
+    "extra": 0,
+    "missing": 0,
+    "wall_s_with_progress": 202.79,
+    "peak_kb": 5388716
+  },
+  "production_smoke": {
+    "job": 48790271,
+    "ambient_threads": 16,
+    "status": "ok",
+    "verdict": "match",
+    "extra": 0,
+    "missing": 0,
+    "wall_s": 129,
+    "peak_kb": 5351252
+  },
+  "full_sweep": {
+    "job": 48790295,
+    "attempted": 592,
+    "status": {
+      "ok": 574,
+      "timeout": 18
+    },
+    "verdict": {
+      "match": 508,
+      "incomplete": 51,
+      "unsound": 4,
+      "both": 2,
+      "incons": 6,
+      "nogold": 3,
+      "timeout": 18
+    },
+    "gold_match_regressions": 0,
+    "gold_match_recoveries": 9,
+    "aggregate_sha256": "455832ed73cd87d8cd995462172dda65345e614ce07b2b5821dfba4471fd1498",
+    "ore_ont_3215": {
+      "status": "ok",
+      "verdict": "match",
+      "extra": 0,
+      "missing": 0,
+      "wall_s": 120,
+      "peak_kb": 5357524
+    }
+  },
+  "controlled_ab": {
+    "job": 48790909,
+    "completed_pairs": 9,
+    "gold_match_improvements": 8,
+    "gold_match_regressions": 0,
+    "summary_sha256": "29447a0554894297a686c7a71f4819182a66f7139f0db143ff10525f2d178743"
+  }
+}

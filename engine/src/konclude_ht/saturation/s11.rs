@@ -116,10 +116,7 @@ fn trace_saturation_status_update(
     calc_alg_context: &CalculationAlgorithmContextBase,
     caller: &std::panic::Location<'_>,
 ) {
-    let Some(debug_tag) = std::env::var("KM_SAT_STATUS_DEBUG_TAG")
-        .ok()
-        .and_then(|value| value.parse::<Cint64>().ok())
-    else {
+    let Some(debug_tag) = super::sat_status_debug_tag() else {
         return;
     };
     let reference = calc_alg_context
@@ -748,6 +745,58 @@ mod tests {
                 .get_clashed_concept_saturation_descriptor_linker(),
             negative_descriptor
         );
+    }
+
+    #[test]
+    fn s11_force_insert_skips_duplicate_descriptor_but_not_opposite_clash() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        algo.conf_force_all_concept_insertion = true;
+        let mut ctx = CalculationAlgorithmContextBase::new();
+
+        let concept = {
+            let mut concept = Concept::new();
+            concept.set_operator_code(CCATOM).set_concept_tag(251);
+            ctx.ontology_arenas_mut().alloc_concept(concept)
+        };
+        let root = ctx
+            .process_context_mut()
+            .alloc_sat_node(IndividualSaturationProcessNode::default());
+        let label_set = ctx
+            .process_context_mut()
+            .sat_node_reapply_concept_saturation_label_set(root, true);
+        let positive_descriptor = {
+            let mut descriptor = ConceptSaturationDescriptor::new();
+            descriptor.init_concept_saturation_descriptor(concept, false);
+            ctx.process_context_mut().alloc_con_sat_desc(descriptor)
+        };
+        let concept_tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+        ctx.process_context_mut()
+            .reapply_con_sat_label_set_mut(label_set)
+            .concept_des_dep_hash
+            .insert(
+                concept_tag,
+                ConceptSaturationDescriptorReapplyData {
+                    con_sat_des: positive_descriptor,
+                    imp_reapply_con_sat_des: ImplicationReapplyConceptSaturationDescriptorId::NONE,
+                },
+            );
+
+        let before = ctx.process_context().con_sat_desc_count();
+        let mut root_ref = root;
+        algo.add_concept_to_individual(concept, false, &mut root_ref, label_set, true, &mut ctx);
+        assert_eq!(
+            ctx.process_context().con_sat_desc_count(),
+            before,
+            "an exact duplicate must not consume another arena descriptor"
+        );
+
+        algo.add_concept_to_individual(concept, true, &mut root_ref, label_set, true, &mut ctx);
+        assert_eq!(ctx.process_context().con_sat_desc_count(), before + 1);
+        assert!(ctx
+            .process_context()
+            .sat_node(root)
+            .direct_status_flags
+            .has_clashed_flag());
     }
 
     #[test]
@@ -1597,6 +1646,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // STATINC(CONCEPTSADDEDINDINODELABELSETCOUNT) + g_ksat_concAdds — debug stats, elided.
+        if self.diagnostic_counters_enabled {
+            self.diagnostic_concept_add_attempt_count += 1;
+        }
 
         if let Some(watch) = super::sat_add_trace_watch() {
             if watch == adding_concept.index() {
@@ -1614,9 +1666,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
             }
         }
-        if std::env::var("KM_SAT_ADD_TRACE_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
+        if super::sat_add_trace_tag()
             == Some(
                 calc_alg_context
                     .ontology_arenas()
@@ -1659,6 +1709,24 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             );
         }
 
+        // The production non-EL profile forces every concept through the
+        // label set. Avoid constructing an arena descriptor when the exact
+        // signed concept is already present. Konclude's corresponding
+        // duplicate branch leaves a TODO to release this unused descriptor;
+        // checking first is the Rust pool equivalent and removes no rule or
+        // callback because `newInsertion == false` has no side effects. An
+        // opposite-polarity entry deliberately falls through so the ordinary
+        // clash path still records its descriptor.
+        if self.conf_force_all_concept_insertion
+            && Self::sat_label_set_contains_concept_get_negation(
+                label_set,
+                adding_concept,
+                calc_alg_context,
+            ) == Some(negate)
+        {
+            return;
+        }
+
         let concept_saturation_descriptor =
             self.create_concept_saturation_descriptor(calc_alg_context);
         calc_alg_context
@@ -1674,6 +1742,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         );
         if !contained {
             // STATINC(CONCEPTSADDEDINDINODEPROCESSINGQUEUECOUNT) + g_ksat_* — debug stats, elided.
+            if self.diagnostic_counters_enabled {
+                self.diagnostic_concept_add_new_count += 1;
+                let label_count = calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(label_set)
+                    .get_concept_count();
+                self.diagnostic_max_label_count = self.diagnostic_max_label_count.max(label_count);
+            }
             let concept_saturation_process_linker_payload =
                 self.create_concept_saturation_process_linker(calc_alg_context);
             let concept_saturation_process_linker = ConceptSaturationProcessLinkerId::new(
@@ -1979,7 +2055,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         "SAT-CLASH s11-insert node={:?} indi={} concept={:?} tag={} neg={}",
                         root_process_indi, indi, concept, con_tag, con_neg
                     );
-                    if std::env::var_os("KM_SAT_CLASH_BT").is_some() {
+                    if super::sat_clash_backtrace_enabled() {
                         eprintln!("{}", std::backtrace::Backtrace::force_capture());
                     }
                 }
@@ -2095,9 +2171,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .first()
                 .copied()
             {
-                if std::env::var("KM_SAT_ADD_TRACE_TAG")
-                    .ok()
-                    .and_then(|value| value.parse::<Cint64>().ok())
+                if super::sat_add_trace_tag()
                     == Some(
                         calc_alg_context
                             .ontology_arenas()
@@ -2111,9 +2185,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .get_operand_list()
                         .iter()
                         .map(|operand| {
-                            let target = calc_alg_context
-                                .ontology_arenas()
-                                .concept(operand.target);
+                            let target = calc_alg_context.ontology_arenas().concept(operand.target);
                             format!(
                                 "{}{}:{}",
                                 if operand.negated { "-" } else { "+" },

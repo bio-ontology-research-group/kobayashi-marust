@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
 
 use super::completion::context::CalculationAlgorithmContext;
 use super::model::concept::Concept;
@@ -4064,6 +4064,9 @@ impl SynchronousKPSetClassState {
     pub fn candidate_state(&self, subsumed: usize, subsumer: usize) -> Option<(bool, bool)> {
         let subsumed_item = *self.item_ids.get(subsumed)?;
         let subsumer_item = *self.item_ids.get(subsumer)?;
+        if subsumed_item.is_none() || subsumer_item.is_none() {
+            return None;
+        }
         let concepts = self
             .ontology_item
             .get_concept_satisfiable_test_item_container();
@@ -4090,6 +4093,9 @@ impl SynchronousKPSetClassState {
         let Some(&subsumer_item) = self.item_ids.get(subsumer) else {
             return false;
         };
+        if subsumed_item.is_none() || subsumer_item.is_none() {
+            return false;
+        }
         let items = self
             .ontology_item
             .get_concept_satisfiable_test_item_container();
@@ -4129,16 +4135,56 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
         concepts: &Arena<Concept>,
     ) -> SynchronousKPSetClassState {
         let mut ont_item = OptimizedKPSetClassOntologyClassificationItem::new();
-        let mut item_ids = Vec::with_capacity(named_concepts.len());
-        for &concept in named_concepts {
+        // Konclude constructs classifier items only for
+        // `TBox::getActiveClassConceptSet`, not for every concept-vector
+        // entry. The bridge marks exactly those TInput atoms with a class-name
+        // linker; Q_/definer atoms remain anonymous structural concepts.
+        let active_subjects: Vec<usize> = named_concepts
+            .iter()
+            .enumerate()
+            .filter_map(|(subject, &concept)| {
+                concepts.get(concept).has_class_name().then_some(subject)
+            })
+            .collect();
+        let mut item_ids = vec![OptimizedKPSetClassTestingItemId::NONE; named_concepts.len()];
+        let mut subject_by_item = Vec::with_capacity(active_subjects.len());
+        for &subject in &active_subjects {
+            let concept = named_concepts[subject];
             let item_id = ont_item.get_concept_satisfiable_test_item(concept, true, concepts);
             ont_item
                 .get_concept_reference_linking_data_hash_mut()
                 .insert(concept, item_id.raw);
-            item_ids.push(item_id);
+            item_ids[subject] = item_id;
+            debug_assert_eq!(item_id.index(), subject_by_item.len());
+            subject_by_item.push(subject);
         }
 
-        for subject in 0..named_concepts.len() {
+        // Konclude always creates a classifier item for owl:Thing and uses it
+        // as the root of the possible-subsumption propagation graph.  The
+        // bridge's named-concept vector deliberately excludes owl:Thing, so
+        // materialize the same sentinel explicitly from the terminology.
+        // It has a complete empty possible map and is propagation-connected
+        // before the post-satisfiability KPSet phase starts.
+        if let Some(top_concept) = (0..concepts.len())
+            .map(|index| ConceptId::new(index as Cint64))
+            .find(|&concept| concepts.get(concept).get_operator_code() == CCTOP)
+        {
+            let top_item = ont_item.get_concept_satisfiable_test_item(top_concept, true, concepts);
+            ont_item.init_top_bottom_satisfiable_testing_items(
+                top_item,
+                OptimizedKPSetClassTestingItemId::NONE,
+            );
+            ont_item
+                .get_concept_satisfiable_test_item_mut(top_item)
+                .expect("owl:Thing KPSet item")
+                .set_satisfiable_tested(true)
+                .set_satisfiable_tested_result(true)
+                .set_result_satisfiable_derivated(true)
+                .set_possible_subsumption_map_initialized(true)
+                .set_propagation_connected(true);
+        }
+
+        for &subject in &active_subjects {
             let item_id = item_ids[subject];
             let mut subsumer_ids = Vec::new();
             for &subsumer in known_subsumers
@@ -4146,7 +4192,8 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
                 .map(Vec::as_slice)
                 .unwrap_or(&[])
             {
-                if subsumer != subject && subsumer < item_ids.len() {
+                if subsumer != subject && subsumer < item_ids.len() && item_ids[subsumer].is_some()
+                {
                     subsumer_ids.push(item_ids[subsumer]);
                 }
             }
@@ -4188,24 +4235,40 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
         // equivalence cycle; its candidate queue breaks those cycles.  The
         // synchronous equivalent selects the smallest remaining predecessor
         // count, then the most informative label, with stable subject order.
-        let requested_subjects: HashSet<usize> = subjects.iter().copied().collect();
-        let mut remaining: HashSet<usize> = (0..named_concepts.len()).collect();
+        let requested_subjects: HashSet<usize> = subjects
+            .iter()
+            .copied()
+            .filter(|&subject| subject < item_ids.len() && item_ids[subject].is_some())
+            .collect();
+        let mut remaining = vec![false; named_concepts.len()];
+        let mut candidates = BinaryHeap::new();
+        for &subject in &active_subjects {
+            remaining[subject] = true;
+            let item =
+                &ont_item.get_concept_satisfiable_test_item_container()[item_ids[subject].index()];
+            candidates.push(std::cmp::Reverse((
+                item.get_unprocessed_predecessor_item_count().max(0),
+                std::cmp::Reverse(item.get_subsuming_concept_item_count()),
+                subject,
+            )));
+        }
         let mut ordered_subjects = Vec::with_capacity(requested_subjects.len());
-        while !remaining.is_empty() {
-            let next = remaining
-                .iter()
-                .copied()
-                .min_by_key(|&subject| {
-                    let item = &ont_item.get_concept_satisfiable_test_item_container()
-                        [item_ids[subject].index()];
-                    (
-                        item.get_unprocessed_predecessor_item_count().max(0),
-                        std::cmp::Reverse(item.get_subsuming_concept_item_count()),
-                        subject,
-                    )
-                })
-                .expect("non-empty KPSet remainder");
-            remaining.remove(&next);
+        while let Some(std::cmp::Reverse((predecessors, subsumer_count, next))) = candidates.pop() {
+            if !remaining[next] {
+                continue;
+            }
+            let current_key = {
+                let item =
+                    &ont_item.get_concept_satisfiable_test_item_container()[item_ids[next].index()];
+                (
+                    item.get_unprocessed_predecessor_item_count().max(0),
+                    std::cmp::Reverse(item.get_subsuming_concept_item_count()),
+                )
+            };
+            if (predecessors, subsumer_count) != current_key {
+                continue;
+            }
+            remaining[next] = false;
             if requested_subjects.contains(&next) {
                 ordered_subjects.push(next);
             }
@@ -4214,10 +4277,19 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             .get_successor_item_list()
             .to_vec();
             for successor in successors {
-                ont_item
+                let successor_subject = subject_by_item[successor.index()];
+                if !remaining[successor_subject] {
+                    continue;
+                }
+                let item = ont_item
                     .get_concept_satisfiable_test_item_mut(successor)
-                    .expect("KPSet successor")
-                    .dec_unprocessed_predecessor_items(1);
+                    .expect("KPSet successor");
+                item.dec_unprocessed_predecessor_items(1);
+                candidates.push(std::cmp::Reverse((
+                    item.get_unprocessed_predecessor_item_count().max(0),
+                    std::cmp::Reverse(item.get_subsuming_concept_item_count()),
+                    successor_subject,
+                )));
             }
         }
 
@@ -4225,6 +4297,197 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             ontology_item: ont_item,
             item_ids,
             ordered_subjects,
+        }
+    }
+
+    /// Synchronous port of the phase barrier in Konclude's
+    /// `createNextSubsumtionTest` (C++ lines 866-1059): this must run only
+    /// after *all* satisfiability jobs and their classification messages have
+    /// completed, and before the first possible-subsumption calculation.
+    ///
+    /// The first pass builds the sparse up/down propagation graph from the
+    /// known subsumer sets.  The second pass compares every child's completed
+    /// possible map with its parents' maps and invalidates candidates that are
+    /// absent below.  Running pair tests before this barrier, as the original
+    /// synchronous bridge did, defeats Konclude's principal KPSet pruning
+    /// step and changes an all-message classification into thousands of
+    /// redundant tableau jobs.
+    pub fn finish_synchronous_satisfiable_phase(
+        &mut self,
+        state: &mut SynchronousKPSetClassState,
+        concepts: &Arena<Concept>,
+    ) {
+        let top_item = state.ontology_item.get_top_concept_satisfiable_test_item();
+        if top_item.is_some() {
+            state
+                .ontology_item
+                .get_concept_satisfiable_test_item_mut(top_item)
+                .expect("owl:Thing KPSet item")
+                .set_propagation_connected(true);
+        }
+
+        // Konclude sorts the satisfiable class list by increasing number of
+        // known subsumers before connecting it.  This makes roots connected
+        // first and lets descendants reuse the most specific connected
+        // predecessor.
+        let mut class_items: Vec<OptimizedKPSetClassTestingItemId> = state
+            .item_ids
+            .iter()
+            .copied()
+            .filter(|item| item.is_some())
+            .filter(|item| {
+                !state
+                    .ontology_item
+                    .get_concept_satisfiable_test_item_container()[item.index()]
+                .is_result_unsatisfiable_derivated()
+            })
+            .collect();
+        class_items.sort_unstable_by_key(|item| {
+            (
+                state
+                    .ontology_item
+                    .get_concept_satisfiable_test_item_container()[item.index()]
+                .get_subsuming_concept_item_count(),
+                item.index(),
+            )
+        });
+
+        for &item_id in &class_items {
+            let subsumers = state
+                .ontology_item
+                .get_concept_satisfiable_test_item_container()[item_id.index()]
+            .get_subsuming_concept_item_list()
+            .to_vec();
+            let max_subsumer = subsumers.iter().copied().max_by_key(|subsumer| {
+                state
+                    .ontology_item
+                    .get_concept_satisfiable_test_item_container()[subsumer.index()]
+                .get_subsuming_concept_item_count()
+            });
+
+            let mut parents = Vec::new();
+            if item_id != top_item {
+                if let Some(parent) =
+                    max_subsumer.or_else(|| top_item.is_some().then_some(top_item))
+                {
+                    parents.push(parent);
+                }
+            }
+            for subsumer in subsumers.iter().copied() {
+                let already_covered = parents.iter().copied().any(|parent| {
+                    parent == subsumer
+                        || state
+                            .ontology_item
+                            .get_concept_satisfiable_test_item_container()[parent.index()]
+                        .has_subsumer_concept_item(subsumer)
+                });
+                if !already_covered {
+                    parents.push(subsumer);
+                }
+            }
+
+            let mut connected = parents.iter().copied().any(|parent| {
+                state
+                    .ontology_item
+                    .get_concept_satisfiable_test_item_container()[parent.index()]
+                .is_propagation_connected()
+            });
+            if !connected {
+                if let Some(parent) = subsumers.iter().copied().find(|parent| {
+                    state
+                        .ontology_item
+                        .get_concept_satisfiable_test_item_container()[parent.index()]
+                    .is_propagation_connected()
+                }) {
+                    if !parents.contains(&parent) {
+                        parents.push(parent);
+                    }
+                    connected = true;
+                }
+            }
+            if !connected && item_id != top_item && top_item.is_some() {
+                if !parents.contains(&top_item) {
+                    parents.push(top_item);
+                }
+                connected = true;
+            }
+
+            for parent in parents {
+                state
+                    .ontology_item
+                    .get_concept_satisfiable_test_item_mut(item_id)
+                    .expect("KPSet propagation child")
+                    .add_up_propagation_item(parent);
+                state
+                    .ontology_item
+                    .get_concept_satisfiable_test_item_mut(parent)
+                    .expect("KPSet propagation parent")
+                    .add_down_propagation_item(item_id);
+            }
+            state
+                .ontology_item
+                .get_concept_satisfiable_test_item_mut(item_id)
+                .expect("KPSet propagation item")
+                .set_propagation_connected(connected || item_id == top_item);
+        }
+
+        // Konclude's second pass is parent-directed.  A complete empty map on
+        // a child proves that every still-unknown parent candidate not already
+        // known for the child is impossible.  With two non-empty maps, only
+        // candidates present in both survive.  `prune_possible_subsumptions`
+        // performs the source implementation's recursive bookkeeping.
+        for &item_id in &class_items {
+            let parents = Self::propagation_parents(&state.ontology_item, item_id);
+            let item_has_map = state
+                .ontology_item
+                .get_concept_satisfiable_test_item_container()[item_id.index()]
+            .has_class_possible_subsumption_map();
+            let item_initialized = state
+                .ontology_item
+                .get_concept_satisfiable_test_item_container()[item_id.index()]
+            .is_possible_subsumption_map_initialized();
+            let item_possible: HashSet<ConceptId> = if item_has_map {
+                Self::sorted_possible_subsumption_concepts(&state.ontology_item, item_id, concepts)
+                    .into_iter()
+                    .collect()
+            } else {
+                HashSet::new()
+            };
+
+            if !item_has_map && !item_initialized {
+                continue;
+            }
+            for parent_id in parents {
+                let parent_possible = Self::sorted_possible_subsumption_concepts(
+                    &state.ontology_item,
+                    parent_id,
+                    concepts,
+                );
+                for candidate in parent_possible {
+                    if item_has_map && item_possible.contains(&candidate) {
+                        continue;
+                    }
+                    let Some(candidate_item) = Self::possible_subsumption_class_item(
+                        &state.ontology_item,
+                        parent_id,
+                        candidate,
+                    ) else {
+                        continue;
+                    };
+                    let item = &state
+                        .ontology_item
+                        .get_concept_satisfiable_test_item_container()[item_id.index()];
+                    if !item.has_subsumer_concept_item(candidate_item) && item_id != candidate_item
+                    {
+                        let _ = Self::invalidate_and_prune_possible_subsumption(
+                            &mut state.ontology_item,
+                            parent_id,
+                            candidate,
+                            concepts,
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -6664,6 +6927,7 @@ mod tests {
                 let mut concept = Concept::new();
                 concept.set_concept_tag(tag);
                 concept.set_operator_code(super::super::model::op::CCATOM);
+                concept.add_class_name_linker(super::super::model::stubs::NameId::new(tag));
                 concepts.push(concept)
             })
             .collect();
@@ -6679,6 +6943,71 @@ mod tests {
                 &concepts,
             );
         assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn kpset_satisfiable_phase_barrier_prunes_parent_candidate_absent_from_child() {
+        let mut concepts = Arena::new();
+        let mut top = Concept::new();
+        top.set_concept_tag(1)
+            .set_operator_code(super::super::model::op::CCTOP);
+        concepts.push(top);
+        let named: Vec<ConceptId> = (0..3)
+            .map(|offset| {
+                let mut concept = Concept::new();
+                concept
+                    .set_concept_tag(10 + offset)
+                    .set_operator_code(super::super::model::op::CCATOM)
+                    .add_class_name_linker(super::super::model::stubs::NameId::new(10 + offset));
+                concepts.push(concept)
+            })
+            .collect();
+
+        // child(1) has parent(0) as a known subsumer and a complete empty
+        // possible map. parent(0)'s completed model still carries candidate
+        // (2). Konclude's all-satisfiability-jobs barrier connects child to
+        // parent and then invalidates that candidate before pair scheduling.
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &named,
+            &[None, Some(false), Some(false)],
+            &[None, Some(vec![0]), Some(vec![])],
+            &[vec![], vec![0], vec![]],
+            &[0],
+            &concepts,
+        );
+        let parent_item = state.item_ids[0];
+        let child_item = state.item_ids[1];
+        let candidate_item = state.item_ids[2];
+        {
+            let parent = state
+                .ontology_item
+                .get_concept_satisfiable_test_item_mut(parent_item)
+                .expect("parent item");
+            parent
+                .get_possible_subsumption_map(true)
+                .expect("parent possible map")
+                .insert(
+                    named[2],
+                    OptimizedKPSetClassPossibleSubsumptionData::new(candidate_item),
+                );
+            parent.set_possible_subsumption_map_initialized(true);
+        }
+
+        classifier.finish_synchronous_satisfiable_phase(&mut state, &concepts);
+
+        let child = &state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[child_item.index()];
+        assert!(child.get_up_propagation_item_set().contains(&parent_item));
+        let candidate = state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[parent_item.index()]
+        .get_possible_subsumption_map_ref()
+        .and_then(|map| map.get(named[2]))
+        .expect("parent candidate");
+        assert!(candidate.is_subsumption_invalided());
+        assert!(candidate.is_subsumption_updated());
     }
 
     #[test]

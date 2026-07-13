@@ -170,6 +170,18 @@ pub struct SaturationTaskHandleAlgorithm {
     pub insufficient_eqcand_count: Cint64,
     pub insufficient_value_count: Cint64,
     pub insufficient_nominal_count: Cint64,
+
+    // --- opt-in KM/Konclude saturation comparison counters ---
+    // These mirror the temporary `KSATDBG` counters used in the reference
+    // Konclude build.  Keeping the gate on the algorithm object avoids an
+    // environment lookup (and all counter writes) in the production hot path.
+    pub diagnostic_counters_enabled: bool,
+    pub diagnostic_concept_add_attempt_count: Cint64,
+    pub diagnostic_concept_add_new_count: Cint64,
+    pub diagnostic_all_rule_count: Cint64,
+    pub diagnostic_all_back_prop_count: Cint64,
+    pub diagnostic_successor_create_count: Cint64,
+    pub diagnostic_max_label_count: Cint64,
 }
 
 impl SaturationTaskHandleAlgorithm {
@@ -278,6 +290,14 @@ impl SaturationTaskHandleAlgorithm {
             insufficient_eqcand_count: 0,
             insufficient_value_count: 0,
             insufficient_nominal_count: 0,
+
+            diagnostic_counters_enabled: std::env::var_os("KM_SAT_COUNTERS").is_some(),
+            diagnostic_concept_add_attempt_count: 0,
+            diagnostic_concept_add_new_count: 0,
+            diagnostic_all_rule_count: 0,
+            diagnostic_all_back_prop_count: 0,
+            diagnostic_successor_create_count: 0,
+            diagnostic_max_label_count: 0,
         }
     }
 

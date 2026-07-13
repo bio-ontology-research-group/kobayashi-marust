@@ -14,6 +14,43 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
+### ore_ont_3215: Konclude's global KPSet phase barrier (2026-07-13)
+
+- **Symptom**: the source-terminology bridge covered every axiom and eventually
+  derived the correct positive taxonomy, but production classification still
+  timed out over 54,974 active classes and 3,923,171 gold pairs.
+- **First Konclude divergence**: KM attached 18,323 reverse implications to the
+  common condition `C047449`, producing an approximately 18,000-concept label;
+  Konclude's corresponding label had 3 concepts. The bridge now ports
+  Konclude's active-class filtering, trigger over-use penalty, pair reuse,
+  decreasing trigger order, left-deep binary chain, rounded-average OR
+  complexity, and source-TBox/definer separation.
+- **Decisive classifier diagnosis**: instrumented Konclude processed 54,974
+  items, derived 36,651 satisfiability results directly, ran 18,323 completion
+  satisfiability jobs, and ran zero pairwise subsumption tests. KM interleaved
+  each model with pair tests and never executed the global phase in
+  `createNextSubsumtionTest` that connects the propagation graph and compares
+  all completed child/parent possible maps.
+- **Fix**: run all 18,323 prepare models first, then cross one synchronous KPSet
+  barrier, build the `owl:Thing`-rooted propagation graph, prune absent parent
+  candidates, and only then verify survivors. The barrier propagates 202,002
+  false candidates and leaves zero pair jobs. Supporting integer hashing,
+  duplicate-descriptor precheck, and LIFO free-list changes preserve the same
+  saturation fixpoint while making it finish.
+- **Production scheduling**: the serial bridge finished in 137 seconds with one
+  CB competitor but timed out when the speculative CB fallback occupied 15
+  cores. For faithful bridges with at least 50,000 active classes, the race now
+  limits only that fallback to one thread. Smaller bridge races are unchanged.
+- **Result**: final production smoke job 48790271 matches Konclude in 129
+  seconds at 5,351,252 KB. Full-sweep job 48790295 matches again in 120 seconds
+  at 5,357,524 KB. Both have 3,923,171 / 3,923,171 pairs, zero extra, zero
+  missing, and identical consistency/unsatisfiable-class results.
+- **Validation**: 1,468 release tests pass, 7 are ignored, and none fail. The
+  592-ontology sweep has 508 exact matches and zero gold-match regressions,
+  improving from 499. The complete C++ comparison and evidence are in
+  `SOLVE-3215.md` and
+  `../results/benchmarks/2026-07-13-3215-closure/`.
+
 ### ore_ont_5303: equivalent non-candidate classification hand-off (2026-07-13)
 
 - **Regression symptom**: the first feature-enabled IBEX sweep completed 5303
@@ -270,8 +307,8 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 3215 | bridge | covered (unsupported=0), per-subject read-off terminates 0.4–6 s deterministic-after-gate; Konclude itself needs 22 s (-w8) | Correctness sample validating; the blocker is O(subjects) fresh saturations — needs databox-COW reuse per subject (Konclude reuses the preprocessed task). |
-| 9663, 9724 | production | central memory blowup (9663 saturation 115 GB) | Deterministic ≤n bounds in `saturate_global` + interning; see `KONCLUDE-SATURATION-CACHE-SPEC.md`. |
+| 9663 | bridge | terminates in 26 s but remains incomplete by 39,108 pairs | Compare the residual saturation/KPSet maps with Konclude; termination is no longer the blocker. |
+| 9724 | bridge | terminates in 184 s but remains incomplete by 3,140 pairs | Compare role/cardinality propagation and the residual KPSet maps with Konclude. |
 | 14817 | production | 71 missing = transitive `part_of` propagation | Role-automaton ∀-propagation is ported and live in konclude_ht tests (`6a7a67e`) but not production-wired: needs OntologyArenas-from-clauses + consistency classify. |
 | 10621 | — | contested gold | Konclude-vs-HermiT disagreement; resolve gold first. |
 

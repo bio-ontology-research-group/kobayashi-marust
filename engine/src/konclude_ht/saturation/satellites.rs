@@ -42,6 +42,7 @@
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasherDefault, Hasher};
 use std::sync::Arc;
 
 use super::super::model::ontology::OntologyArenas;
@@ -53,6 +54,59 @@ use super::super::process::sat_linker::{
 };
 use super::super::process::sat_queue::CriticalSaturationConceptTypeQueuesId;
 use super::super::process::SatNodeId;
+
+// ---------------------------------------------------------------------------
+// Konclude-style hashing for the integer-keyed saturation label hot path
+// ---------------------------------------------------------------------------
+//
+// Konclude's `CReapplyConceptSaturationLabelSet` stores concept tags in a
+// `CPROCESSHASH<cint64, ...>`. Qt hashes those integer keys directly; it does
+// not run a keyed, cryptographic string hash for every lookup. Rust's default
+// `HashMap` does, and ore_ont_3215 performs roughly 187 million label insertion
+// attempts. Use the same cheap-integer-hash design here. The Fx-style final
+// multiply supplies the high hash bits that hashbrown's SIMD control bytes
+// require; the input remains exactly the `cint64` concept tag used by Konclude.
+
+#[derive(Default)]
+pub struct SaturationConceptTagHasher {
+    hash: u64,
+}
+
+const SATURATION_CONCEPT_HASH_SEED: u64 = 0x51_7c_c1_b7_27_22_0a_95;
+
+impl SaturationConceptTagHasher {
+    #[inline]
+    fn add(&mut self, value: u64) {
+        self.hash = (self.hash.rotate_left(5) ^ value).wrapping_mul(SATURATION_CONCEPT_HASH_SEED);
+    }
+}
+
+impl Hasher for SaturationConceptTagHasher {
+    #[inline]
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.add(u64::from(byte));
+        }
+    }
+
+    #[inline]
+    fn write_i64(&mut self, value: i64) {
+        self.add(value as u64);
+    }
+
+    #[inline]
+    fn write_u64(&mut self, value: u64) {
+        self.add(value);
+    }
+
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+}
+
+pub type SaturationConceptTagMap<V> =
+    HashMap<Cint64, V, BuildHasherDefault<SaturationConceptTagHasher>>;
 
 // ===========================================================================
 // Id aliases (the `CXxx*` → `Id<Xxx>` arena handles). The `process::stubs`
@@ -3572,10 +3626,10 @@ impl ReapplyConceptSaturationLabelSetIterator {
 #[derive(Clone)]
 pub struct ReapplyConceptSaturationLabelSet {
     /// `mConceptDesDepHash` (`CPROCESSHASH<cint64,CConceptSaturationDescriptorReapplyData>`).
-    pub concept_des_dep_hash: HashMap<Cint64, ConceptSaturationDescriptorReapplyData>,
+    pub concept_des_dep_hash: SaturationConceptTagMap<ConceptSaturationDescriptorReapplyData>,
     /// `mAdditionalConceptDesDepHash` (the overflow copy, allocated lazily in C++).
     pub additional_concept_des_dep_hash:
-        Arc<HashMap<Cint64, ConceptSaturationDescriptorReapplyData>>,
+        Arc<SaturationConceptTagMap<ConceptSaturationDescriptorReapplyData>>,
     /// Whether the additional overflow hash has been allocated (`mAdditional… != nullptr`).
     pub has_additional_concept_des_dep_hash: bool,
     /// `mConceptSatDesLinker` (head of the concept-saturation-descriptor chain).
@@ -3601,8 +3655,8 @@ impl ReapplyConceptSaturationLabelSet {
     /// Port of the `CReapplyConceptSaturationLabelSet(CProcessContext*)` ctor.
     pub fn new(process_context: Cint64) -> Self {
         ReapplyConceptSaturationLabelSet {
-            concept_des_dep_hash: HashMap::new(),
-            additional_concept_des_dep_hash: Arc::new(HashMap::new()),
+            concept_des_dep_hash: SaturationConceptTagMap::default(),
+            additional_concept_des_dep_hash: Arc::new(SaturationConceptTagMap::default()),
             has_additional_concept_des_dep_hash: false,
             concept_sat_des_linker: ConceptSaturationDescriptorId::NONE,
             last_nominal_indep_con_sat_des: ConceptSaturationDescriptorId::NONE,
@@ -3616,7 +3670,7 @@ impl ReapplyConceptSaturationLabelSet {
     /// Port of `initReapplyConceptSaturationLabelSet` (reset the per-test state).
     pub fn init_reapply_concept_saturation_label_set(&mut self) -> &mut Self {
         self.concept_des_dep_hash.clear();
-        self.additional_concept_des_dep_hash = Arc::new(HashMap::new());
+        self.additional_concept_des_dep_hash = Arc::new(SaturationConceptTagMap::default());
         self.has_additional_concept_des_dep_hash = false;
         self.concept_sat_des_linker = ConceptSaturationDescriptorId::NONE;
         self.last_nominal_indep_con_sat_des = ConceptSaturationDescriptorId::NONE;

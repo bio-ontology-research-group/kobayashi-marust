@@ -1,0 +1,221 @@
+{
+  "attempted": 592,
+  "baseline_count": 592,
+  "baseline_directory": "/ibex/scratch/hohndor/km/plan15_7914_closure/final_res",
+  "binary_sha256": [
+    "87ee76f1713e498fa7367832b00090663d0f8d3e02e7d296e275d7d1323c37c4"
+  ],
+  "candidate_directory": "/ibex/scratch/hohndor/km/3215_closure_20260713/res",
+  "gold_match_recoveries": [
+    "ore_ont_11315.owl",
+    "ore_ont_12414.owl",
+    "ore_ont_3215.owl",
+    "ore_ont_4054.owl",
+    "ore_ont_4755.owl",
+    "ore_ont_7127.owl",
+    "ore_ont_7581.owl",
+    "ore_ont_8068.owl",
+    "ore_ont_8864.owl"
+  ],
+  "gold_match_regressions": [],
+  "missing_candidate": [],
+  "missing_candidate_count": 0,
+  "result_change_count": 13,
+  "result_changes_vs_plan15": {
+    "ore_ont_11315.owl": {
+      "baseline": [
+        "ok",
+        "unsound",
+        1658,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_11745.owl": {
+      "baseline": [
+        "ok",
+        "both",
+        25170,
+        3685
+      ],
+      "candidate": [
+        "ok",
+        "both",
+        15350,
+        1213
+      ]
+    },
+    "ore_ont_12414.owl": {
+      "baseline": [
+        "ok",
+        "unsound",
+        24,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_3215.owl": {
+      "baseline": [
+        "timeout",
+        "timeout",
+        0,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_4054.owl": {
+      "baseline": [
+        "ok",
+        "unsound",
+        1266,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_4669.owl": {
+      "baseline": [
+        "timeout",
+        "timeout",
+        0,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "nogold",
+        0,
+        0
+      ]
+    },
+    "ore_ont_4755.owl": {
+      "baseline": [
+        "ok",
+        "unsound",
+        1,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_7127.owl": {
+      "baseline": [
+        "ok",
+        "unsound",
+        18,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_7581.owl": {
+      "baseline": [
+        "timeout",
+        "timeout",
+        0,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_8068.owl": {
+      "baseline": [
+        "ok",
+        "unsound",
+        1,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_8864.owl": {
+      "baseline": [
+        "ok",
+        "incomplete",
+        0,
+        21
+      ],
+      "candidate": [
+        "ok",
+        "match",
+        0,
+        0
+      ]
+    },
+    "ore_ont_9663.owl": {
+      "baseline": [
+        "timeout",
+        "timeout",
+        0,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "incomplete",
+        0,
+        39108
+      ]
+    },
+    "ore_ont_9724.owl": {
+      "baseline": [
+        "timeout",
+        "timeout",
+        0,
+        0
+      ],
+      "candidate": [
+        "ok",
+        "incomplete",
+        0,
+        3140
+      ]
+    }
+  },
+  "status": {
+    "ok": 574,
+    "timeout": 18
+  },
+  "verdict": {
+    "both": 2,
+    "incomplete": 51,
+    "incons": 6,
+    "match": 508,
+    "nogold": 3,
+    "timeout": 18,
+    "unsound": 4
+  }
+}

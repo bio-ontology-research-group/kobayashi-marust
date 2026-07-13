@@ -29,7 +29,7 @@
 //!   - everything else (multiple role atoms, head role atoms / role
 //!     hierarchy, `Eq`, body `Exist`, nominals, card_defs, chains) counts as
 //!     unsupported in v1.
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 
 use super::classifier::{
     OptimizedKPSetClassSubsumptionClassifierThread, RecordingClassificationMessageDataObserver,
@@ -297,7 +297,7 @@ impl<'a> Builder<'a> {
 #[derive(Clone, Copy, Debug)]
 struct AbsorptionTrigger {
     concept: ConceptId,
-    complexity: usize,
+    complexity: Cint64,
 }
 
 #[derive(Default)]
@@ -308,18 +308,93 @@ struct TriggerCaches {
     role_domains: HashMap<RoleId, AbsorptionTrigger>,
 }
 
-/// Port of `getImplicationTriggeredConceptForTriggers`: combine triggers into
-/// a reusable binary implication chain, ordered by complexity.
+/// Port of `getUpdatedTriggerComplexities` plus
+/// `getImplicationTriggeredConceptForTriggers`: punish over-used trigger hosts,
+/// reuse existing trigger pairs, then build Konclude's left-deep binary chain
+/// in decreasing (complexity, concept-address) order.
 fn combine_absorption_triggers(
     b: &mut Builder,
     mut triggers: Vec<AbsorptionTrigger>,
     caches: &mut TriggerCaches,
 ) -> Option<AbsorptionTrigger> {
-    triggers.sort_by_key(|t| (t.complexity, t.concept.raw));
-    triggers.dedup_by_key(|t| t.concept);
-    while triggers.len() > 1 {
-        let left = triggers.remove(0);
-        let right = triggers.remove(0);
+    // CTriggeredImplicationBinaryAbsorberPreProcess.cpp 3336-3346.
+    for trigger in &mut triggers {
+        let operand_count = b
+            .ctx
+            .ontology_arenas()
+            .concept(trigger.concept)
+            .get_operand_count();
+        if operand_count > 20 {
+            trigger.complexity -= operand_count / 20;
+        }
+    }
+
+    triggers.sort_by_key(|trigger| trigger.concept.raw);
+    triggers.dedup_by_key(|trigger| trigger.concept);
+
+    // Port `findAndReplaceImplicationFromTriggers`: greedily collapse pairs
+    // already present in mConceptImplicationImpliedHash before sorting.
+    let mut pending = triggers;
+    let mut collapsed = Vec::new();
+    while !pending.is_empty() {
+        let mut trigger = pending.remove(0);
+        let mut check_collapsed = false;
+        loop {
+            let pending_match = pending.iter().position(|other| {
+                let key = if trigger.concept.raw <= other.concept.raw {
+                    (trigger.concept, other.concept)
+                } else {
+                    (other.concept, trigger.concept)
+                };
+                caches.pairs.contains_key(&key)
+            });
+            if let Some(index) = pending_match {
+                let other = pending.remove(index);
+                let key = if trigger.concept.raw <= other.concept.raw {
+                    (trigger.concept, other.concept)
+                } else {
+                    (other.concept, trigger.concept)
+                };
+                trigger = caches.pairs[&key];
+                check_collapsed = true;
+                continue;
+            }
+            if check_collapsed {
+                let collapsed_match = collapsed.iter().position(|other: &AbsorptionTrigger| {
+                    let key = if trigger.concept.raw <= other.concept.raw {
+                        (trigger.concept, other.concept)
+                    } else {
+                        (other.concept, trigger.concept)
+                    };
+                    caches.pairs.contains_key(&key)
+                });
+                if let Some(index) = collapsed_match {
+                    let other = collapsed.remove(index);
+                    let key = if trigger.concept.raw <= other.concept.raw {
+                        (trigger.concept, other.concept)
+                    } else {
+                        (other.concept, trigger.concept)
+                    };
+                    trigger = caches.pairs[&key];
+                    continue;
+                }
+            }
+            break;
+        }
+        collapsed.push(trigger);
+    }
+
+    // CConceptTriggerLinker::operator<= sorts decreasing complexity, then
+    // decreasing pointer. Arena ids are the port's stable pointer surrogate.
+    collapsed.sort_by(|left, right| {
+        right
+            .complexity
+            .cmp(&left.complexity)
+            .then_with(|| right.concept.raw.cmp(&left.concept.raw))
+    });
+    let mut trigger_it = collapsed.into_iter();
+    let mut left = trigger_it.next()?;
+    for right in trigger_it {
         let key = if left.concept.raw <= right.concept.raw {
             (left.concept, right.concept)
         } else {
@@ -340,14 +415,9 @@ fn combine_absorption_triggers(
             caches.pairs.insert(key, combined);
             combined
         };
-        let pos = triggers
-            .binary_search_by_key(&(combined.complexity, combined.concept.raw), |t| {
-                (t.complexity, t.concept.raw)
-            })
-            .unwrap_or_else(|p| p);
-        triggers.insert(pos, combined);
+        left = combined;
     }
-    triggers.into_iter().next()
+    Some(left)
 }
 
 fn role_domain_trigger(
@@ -486,8 +556,7 @@ fn full_absorption_trigger(
         } else if (!negated && op_code == op::CCOR)
             || (negated && matches!(op_code, op::CCAND | op::CCEQ))
         {
-            let implied = b.implication_trigger();
-            let mut complexity = usize::MAX;
+            let mut alternatives = Vec::new();
             for operand in operands {
                 let trigger = full_absorption_trigger(
                     b,
@@ -495,15 +564,26 @@ fn full_absorption_trigger(
                     role_inverses,
                     caches,
                 )?;
-                if !b.add_unfolding(trigger.concept, implied, false) {
-                    return None;
-                }
-                complexity = complexity.min(trigger.complexity);
+                alternatives.push(trigger);
             }
-            Some(AbsorptionTrigger {
-                concept: implied,
-                complexity: complexity.max(1),
-            })
+            if alternatives.len() <= 1 {
+                alternatives.into_iter().next()
+            } else {
+                let implied = b.implication_trigger();
+                let complexity_sum: Cint64 =
+                    alternatives.iter().map(|trigger| trigger.complexity).sum();
+                let trigger_count = alternatives.len() as Cint64;
+                for trigger in alternatives {
+                    if !b.add_unfolding(trigger.concept, implied, false) {
+                        return None;
+                    }
+                }
+                // Exact C++ `(triggerComplexity + 1) / triggerCount`.
+                Some(AbsorptionTrigger {
+                    concept: implied,
+                    complexity: (complexity_sum + 1) / trigger_count,
+                })
+            }
         } else if (!negated && op_code == op::CCSOME)
             || (negated && op_code == op::CCALL)
             || (!negated && op_code == op::CCATLEAST && parameter == 1)
@@ -597,34 +677,20 @@ fn collect_full_absorption_triggers(
     }
 }
 
-/// Port of the attachment performed by
-/// `createImplicationAddedToTrigger`: the strongest trigger unfolds the final
-/// implication, while every other trigger remains a condition of that
-/// implication. With one trigger the implied concept is unfolded directly.
-fn attach_implied_to_strongest_trigger(
+/// Port of the null-`firstImplicationConcept` path used by
+/// `createGCIAbsorbedTriggeredImplication`: combine every condition into the
+/// reusable binary trigger chain, then unfold the conclusion from its final
+/// trigger concept.
+fn attach_implied_to_combined_trigger(
     b: &mut Builder,
     implied: (ConceptId, bool),
-    mut triggers: Vec<AbsorptionTrigger>,
+    triggers: Vec<AbsorptionTrigger>,
+    caches: &mut TriggerCaches,
 ) -> bool {
-    triggers.sort_by_key(|trigger| trigger.concept.raw);
-    triggers.dedup_by_key(|trigger| trigger.concept);
-    let Some((host_index, _)) = triggers
-        .iter()
-        .enumerate()
-        .max_by_key(|(_, trigger)| trigger.complexity)
-    else {
+    let Some(trigger) = combine_absorption_triggers(b, triggers, caches) else {
         return false;
     };
-    let host = triggers.remove(host_index);
-    if triggers.is_empty() {
-        return b.add_unfolding(host.concept, implied.0, implied.1);
-    }
-    let conditions: Vec<_> = triggers
-        .into_iter()
-        .map(|trigger| (trigger.concept, false))
-        .collect();
-    let implication = b.implication(implied, &conditions);
-    b.add_unfolding(host.concept, implication, false)
+    b.add_unfolding(trigger.concept, implied.0, implied.1)
 }
 
 /// Port of `getPartialTriggersForConcept`. The returned trigger is a necessary
@@ -676,18 +742,24 @@ fn partial_absorption_trigger(
                 caches,
             )?);
         }
-        let implied = b.implication_trigger();
-        let mut complexity = usize::MAX;
-        for trigger in alternatives {
-            if !b.add_unfolding(trigger.concept, implied, false) {
-                return None;
+        if alternatives.len() <= 1 {
+            alternatives.into_iter().next()
+        } else {
+            let implied = b.implication_trigger();
+            // Exact partial-trigger code initializes the minimum at zero.
+            let complexity = alternatives
+                .iter()
+                .fold(0, |minimum, trigger| minimum.min(trigger.complexity));
+            for trigger in alternatives {
+                if !b.add_unfolding(trigger.concept, implied, false) {
+                    return None;
+                }
             }
-            complexity = complexity.min(trigger.complexity);
+            Some(AbsorptionTrigger {
+                concept: implied,
+                complexity,
+            })
         }
-        Some(AbsorptionTrigger {
-            concept: implied,
-            complexity: complexity.max(1),
-        })
     } else if (!negated && matches!(op_code, op::CCSOME | op::CCSELF | op::CCATLEAST))
         || (negated && matches!(op_code, op::CCALL | op::CCATMOST))
     {
@@ -768,7 +840,7 @@ fn absorb_concept_disjunction(
         } else {
             b.or_of(&residual_heads)
         };
-        return attach_implied_to_strongest_trigger(b, implied, full_triggers);
+        return attach_implied_to_combined_trigger(b, implied, full_triggers, caches);
     }
 
     // Partial absorption is only a gate. Preserve the complete original GCI
@@ -1210,33 +1282,148 @@ fn absorb_role_tree_clause(
     b.add_unfolding(trigger.concept, implied.0, implied.1)
 }
 
-/// Recursive core of Konclude
-/// `CCommonDisjunctConceptExtractionPreProcess::getDisjunctConcepts`.
+/// Dense equivalent of Konclude's `QSet<TConNegPair>` for one ontology.
+/// Concept ids are arena-dense, so generation stamps implement the same
+/// signed-concept set without hashing every pointer pair. `entries` keeps the
+/// iterable members; root clearing is O(1), and branch rollback clears only
+/// entries inserted since its saved mark.
+struct DenseSignedConceptSet {
+    marks: Vec<u32>,
+    generation: u32,
+    entries: Vec<(ConceptId, bool)>,
+}
+
+impl DenseSignedConceptSet {
+    fn new(concept_count: usize) -> Self {
+        Self {
+            marks: vec![0; concept_count.saturating_mul(2)],
+            generation: 1,
+            entries: Vec::new(),
+        }
+    }
+
+    #[inline]
+    fn key(entry: (ConceptId, bool)) -> usize {
+        entry.0.index() * 2 + usize::from(entry.1)
+    }
+
+    #[inline]
+    fn insert(&mut self, entry: (ConceptId, bool)) -> bool {
+        let key = Self::key(entry);
+        if self.marks[key] == self.generation {
+            return false;
+        }
+        self.marks[key] = self.generation;
+        self.entries.push(entry);
+        true
+    }
+
+    #[inline]
+    fn contains(&self, entry: (ConceptId, bool)) -> bool {
+        self.marks[Self::key(entry)] == self.generation
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.generation = self.generation.wrapping_add(1);
+        if self.generation == 0 {
+            self.marks.fill(0);
+            self.generation = 1;
+        }
+    }
+
+    fn rollback(&mut self, mark: usize) {
+        while self.entries.len() > mark {
+            let entry = self.entries.pop().expect("branch mark within set");
+            self.marks[Self::key(entry)] = 0;
+        }
+    }
+
+    fn extend(&mut self, entries: &[(ConceptId, bool)]) {
+        for &entry in entries {
+            self.insert(entry);
+        }
+    }
+
+    fn retain_members_of(&mut self, other: &Self) {
+        let mut write = 0usize;
+        for read in 0..self.entries.len() {
+            let entry = self.entries[read];
+            if other.contains(entry) {
+                self.entries[write] = entry;
+                write += 1;
+            } else {
+                self.marks[Self::key(entry)] = 0;
+            }
+        }
+        self.entries.truncate(write);
+    }
+}
+
+/// Two branch sets per nested disjunction. Konclude's local QSets reuse their
+/// allocations through Qt's containers; this pool gives the Rust port the
+/// same lifetime shape without allocating arena-sized marker vectors for each
+/// of the 73k disjunction visits in ore_ont_3215.
+#[derive(Default)]
+struct CommonDisjunctScratch {
+    levels: Vec<Option<(DenseSignedConceptSet, DenseSignedConceptSet)>>,
+}
+
+impl CommonDisjunctScratch {
+    fn take(
+        &mut self,
+        depth: usize,
+        concept_count: usize,
+    ) -> (DenseSignedConceptSet, DenseSignedConceptSet) {
+        while self.levels.len() <= depth {
+            self.levels.push(None);
+        }
+        self.levels[depth].take().unwrap_or_else(|| {
+            (
+                DenseSignedConceptSet::new(concept_count),
+                DenseSignedConceptSet::new(concept_count),
+            )
+        })
+    }
+
+    fn put(&mut self, depth: usize, sets: (DenseSignedConceptSet, DenseSignedConceptSet)) {
+        debug_assert!(self.levels[depth].is_none());
+        self.levels[depth] = Some(sets);
+    }
+}
+
 fn collect_common_disjunct_concepts(
     arenas: &super::model::ontology::OntologyArenas,
     concept: ConceptId,
     negated: bool,
-    collect: &mut HashSet<(ConceptId, bool)>,
-    considered: &mut HashSet<(ConceptId, bool)>,
-    cache: &mut HashMap<(ConceptId, bool), HashSet<(ConceptId, bool)>>,
+    collect: &mut DenseSignedConceptSet,
+    considered: &mut DenseSignedConceptSet,
+    cache: &mut HashMap<(ConceptId, bool), Vec<(ConceptId, bool)>>,
+    scratch: &mut CommonDisjunctScratch,
+    disjunction_depth: usize,
 ) {
-    if !considered.insert((concept, negated)) {
+    let entry = (concept, negated);
+    if !considered.insert(entry) {
         return;
     }
-    collect.insert((concept, negated));
-    let (op_code, operands) = {
+    collect.insert(entry);
+    let (op_code, operand_count) = {
         let c = arenas.concept(concept);
-        (c.get_operator_code(), c.get_operand_list().to_vec())
+        (c.get_operator_code(), c.get_operand_count() as usize)
     };
 
     let unfolds = (!negated
         && (matches!(op_code, op::CCSUB | op::CCEQ | op::CCAND)
-            || (op_code == op::CCOR && operands.len() == 1)))
+            || (op_code == op::CCOR && operand_count == 1)))
         || (negated
             && (op_code == op::CCOR
-                || (operands.len() == 1 && matches!(op_code, op::CCAND | op::CCEQ))));
+                || (operand_count == 1 && matches!(op_code, op::CCAND | op::CCEQ))));
     if unfolds {
-        for operand in operands {
+        for operand_index in 0..operand_count {
+            // Konclude advances one intrusive operand linker at a time. Copy
+            // one small arena link, rather than cloning the whole operand Vec
+            // on every recursive visit.
+            let operand = arenas.concept(concept).get_operand_list()[operand_index];
             collect_common_disjunct_concepts(
                 arenas,
                 operand.target,
@@ -1244,6 +1431,8 @@ fn collect_common_disjunct_concepts(
                 collect,
                 considered,
                 cache,
+                scratch,
+                disjunction_depth,
             );
         }
         return;
@@ -1256,42 +1445,62 @@ fn collect_common_disjunct_concepts(
     }
 
     let key = (concept, negated);
-    let common = if let Some(cached) = cache.get(&key) {
-        cached.clone()
-    } else {
-        let mut iter = operands.into_iter();
-        let mut intersection = HashSet::new();
-        if let Some(first) = iter.next() {
-            let mut first_considered = considered.clone();
+    if let Some(cached) = cache.get(&key) {
+        // Konclude stores a pointer to the cached QSet and inserts its members
+        // directly into the caller's set (cpp 147-185). Cloning the whole set
+        // here retained gigabytes on disjunction-heavy terminologies such as
+        // ore_ont_3215 and defeated the cache's purpose.
+        collect.extend(cached);
+        return;
+    }
+
+    let concept_count = arenas.concept_count() as usize;
+    let (mut intersection, mut next) = scratch.take(disjunction_depth, concept_count);
+    intersection.clear();
+    next.clear();
+    if operand_count > 0 {
+        // QSet copies in Konclude are implicitly shared. Reproduce their
+        // branch-local semantics without deep-cloning the complete visited
+        // set: record additions, then roll them back after each disjunct.
+        let first = arenas.concept(concept).get_operand_list()[0];
+        let mark = considered.entries.len();
+        collect_common_disjunct_concepts(
+            arenas,
+            first.target,
+            first.negated ^ negated,
+            &mut intersection,
+            considered,
+            cache,
+            scratch,
+            disjunction_depth + 1,
+        );
+        considered.rollback(mark);
+        for operand_index in 1..operand_count {
+            if intersection.entries.is_empty() {
+                break;
+            }
+            next.clear();
+            let operand = arenas.concept(concept).get_operand_list()[operand_index];
+            let mark = considered.entries.len();
             collect_common_disjunct_concepts(
                 arenas,
-                first.target,
-                first.negated ^ negated,
-                &mut intersection,
-                &mut first_considered,
+                operand.target,
+                operand.negated ^ negated,
+                &mut next,
+                considered,
                 cache,
+                scratch,
+                disjunction_depth + 1,
             );
-            for operand in iter {
-                if intersection.is_empty() {
-                    break;
-                }
-                let mut next = HashSet::new();
-                let mut next_considered = considered.clone();
-                collect_common_disjunct_concepts(
-                    arenas,
-                    operand.target,
-                    operand.negated ^ negated,
-                    &mut next,
-                    &mut next_considered,
-                    cache,
-                );
-                intersection.retain(|item| next.contains(item));
-            }
+            considered.rollback(mark);
+            intersection.retain_members_of(&next);
         }
-        cache.insert(key, intersection.clone());
-        intersection
-    };
-    collect.extend(common);
+    }
+    collect.extend(&intersection.entries);
+    // Konclude owns a separate cached QSet pointer. Cache its iterable
+    // members; membership tests stay in the dense scratch sets above.
+    cache.insert(key, intersection.entries.clone());
+    scratch.put(disjunction_depth, (intersection, next));
 }
 
 /// Port of Konclude `CCommonDisjunctConceptExtractionPreProcess` over the
@@ -1299,8 +1508,11 @@ fn collect_common_disjunct_concepts(
 /// by `initializeORProcessing`, rather than recomputing common concepts in the
 /// completion hot loop.
 fn extract_common_disjunct_replacements(ctx: &mut CalculationAlgorithmContextBase) -> usize {
-    let concept_count = ctx.ontology_arenas().concept_count();
+    let concept_count = ctx.ontology_arenas().concept_count() as usize;
     let mut cache = HashMap::new();
+    let mut considered = DenseSignedConceptSet::new(concept_count);
+    let mut common = DenseSignedConceptSet::new(concept_count);
+    let mut scratch = CommonDisjunctScratch::default();
     let mut extracted = Vec::new();
     for index in 0..concept_count {
         let concept = ConceptId::new(index as Cint64);
@@ -1312,8 +1524,8 @@ fn extract_common_disjunct_replacements(ctx: &mut CalculationAlgorithmContextBas
             continue;
         }
         let negated = matches!(op_code, op::CCAND | op::CCEQ);
-        let mut considered = HashSet::new();
-        let mut common = HashSet::new();
+        considered.clear();
+        common.clear();
         collect_common_disjunct_concepts(
             ctx.ontology_arenas(),
             concept,
@@ -1321,10 +1533,19 @@ fn extract_common_disjunct_replacements(ctx: &mut CalculationAlgorithmContextBas
             &mut common,
             &mut considered,
             &mut cache,
+            &mut scratch,
+            0,
         );
-        common.remove(&(concept, negated));
-        if !common.is_empty() {
-            let mut common: Vec<_> = common.into_iter().collect();
+        if common.entries.len() > 1 {
+            let mut common: Vec<_> = common
+                .entries
+                .iter()
+                .copied()
+                .filter(|&entry| entry != (concept, negated))
+                .collect();
+            if common.is_empty() {
+                continue;
+            }
             common.sort_by_key(|(concept, negated)| {
                 (
                     ctx.ontology_arenas().concept(*concept).get_concept_tag(),
@@ -1392,6 +1613,38 @@ fn bridge_tinput_with_trigger_absorption(
     tin: &TInput,
     trigger_absorb: bool,
 ) -> Bridged {
+    let source_mode = trigger_absorb
+        && !tin.source_axioms.is_empty()
+        && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    // Konclude distinguishes every concept in the terminology vector from
+    // the active OWL classes it classifies. Frontend Q_/definer concepts are
+    // anonymous structural concepts in Konclude; assigning class-name linkers
+    // to all TInput atoms made both saturation and KPSet treat 113,187 such
+    // markers as classes on ore_ont_3215. `queries` is the frontend's active
+    // named-class set; an empty list retains the legacy all-active test input.
+    let mut active_class = vec![tin.queries.is_empty(); tin.concepts.len()];
+    for &query in &tin.queries {
+        if let Some(active) = active_class.get_mut(query) {
+            *active = true;
+        }
+    }
+    let bridge_phase_trace = std::env::var_os("KM_BRIDGE_PHASES").is_some();
+    let bridge_started = std::time::Instant::now();
+    let mut bridge_phase_started = bridge_started;
+    macro_rules! bridge_phase {
+        ($name:expr) => {
+            if bridge_phase_trace {
+                let now = std::time::Instant::now();
+                eprintln!(
+                    "BRIDGE-PHASE {} delta={:.3}s total={:.3}s",
+                    $name,
+                    now.duration_since(bridge_phase_started).as_secs_f64(),
+                    now.duration_since(bridge_started).as_secs_f64(),
+                );
+                bridge_phase_started = now;
+            }
+        };
+    }
     let mut b = Builder {
         ctx,
         next_tag: TAG_BASE + tin.concepts.len() as Cint64,
@@ -1400,13 +1653,16 @@ fn bridge_tinput_with_trigger_absorption(
         .map(|i| {
             let tag = TAG_BASE + i as Cint64;
             let concept = b.atom(tag);
-            b.ctx
-                .ontology_arenas_mut()
-                .concept_mut(concept)
-                .add_class_name_linker(NameId::new(tag));
+            if active_class[i] {
+                b.ctx
+                    .ontology_arenas_mut()
+                    .concept_mut(concept)
+                    .add_class_name_linker(NameId::new(tag));
+            }
             concept
         })
         .collect();
+    bridge_phase!("named-and-roles");
     let roles: Vec<RoleId> = (0..tin.roles.len())
         .map(|i| {
             // distinct role tags (tag 1 is the TOP-role sentinel; see the
@@ -1482,13 +1738,20 @@ fn bridge_tinput_with_trigger_absorption(
         .zip(inv_roles.iter().copied())
         .chain(inv_roles.iter().copied().zip(roles.iter().copied()))
         .collect();
+    bridge_phase!("inverse-roles");
+    // In source-TBox mode Konclude builds the terminology from the normalized
+    // class expressions before clausification. The frontend `definers` are a
+    // second, clausifier-generated representation of those same expressions;
+    // materializing both duplicates the concept DAG and makes every downstream
+    // preprocessor visit the duplicate. Keep them only for the legacy clause
+    // bridge, where they are the sole structural representation.
     // Resolve internal frontend markers to native signed concepts before
     // building implications. Query concepts remain the atomic `named` vector;
     // only clause literals use `resolved`. Provenance is emitted in dependency
     // order (operand definers before their parent), so one forward pass is
     // sufficient.
     let mut resolved: Vec<(ConceptId, bool)> = named.iter().copied().map(|c| (c, false)).collect();
-    if trigger_absorb {
+    if trigger_absorb && !source_mode {
         let concept_index: HashMap<&str, usize> = tin
             .concepts
             .iter()
@@ -1566,6 +1829,7 @@ fn bridge_tinput_with_trigger_absorption(
             }
         }
     }
+    bridge_phase!("definers");
 
     let mut tbox: Vec<ConceptId> = Vec::new();
     // Absorption bookkeeping (attached after the encode loop): an implication
@@ -1796,6 +2060,7 @@ fn bridge_tinput_with_trigger_absorption(
                 });
         }
     }
+    bridge_phase!("role-hierarchy");
 
     // Production RBox: materialize every retained R1 o R2 <= R axiom as the
     // CRoleChain / super-sharing structure consumed by Konclude's role-
@@ -1852,6 +2117,7 @@ fn bridge_tinput_with_trigger_absorption(
                 .set_role_complexity(true);
         }
     }
+    bridge_phase!("role-chains");
 
     // ---- pass 2: functional roles `R(0,1) ∧ R(0,2) → eq(1,2)` --------------
     // The clausal form of `⊤ ⊑ ≤1 R.⊤` (a functional property / global at-most
@@ -1901,6 +2167,7 @@ fn bridge_tinput_with_trigger_absorption(
             .role_mut(roles[role])
             .set_functional(true);
     }
+    bridge_phase!("functional-scan");
 
     // Konclude builds the terminology before clausification: named-left
     // inclusions become CCSUB operands and only residual structural-left GCIs
@@ -1908,9 +2175,6 @@ fn bridge_tinput_with_trigger_absorption(
     // source side channel when present, then ignore the frontend's derived
     // concept clauses below (role hierarchy/functionality clauses remain the
     // authoritative RBox representation).
-    let source_mode = trigger_absorb
-        && !tin.source_axioms.is_empty()
-        && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
     if source_mode {
         let concept_index: HashMap<&str, usize> = tin
             .concepts
@@ -1959,6 +2223,7 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }
         }
+        bridge_phase!("source-prescan");
         macro_rules! encode {
             ($left:expr, $right:expr $(,)?) => {{
                 let left = $left;
@@ -1988,7 +2253,7 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }};
         }
-        for axiom in &tin.source_axioms {
+        for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     encode!(&axiom.left, &axiom.right);
@@ -2090,7 +2355,20 @@ fn bridge_tinput_with_trigger_absorption(
                     );
                 }
             }
+            if bridge_phase_trace && axiom_index > 0 && axiom_index % 4096 == 0 {
+                let now = std::time::Instant::now();
+                eprintln!(
+                    "BRIDGE-PHASE source-progress axioms={}/{} delta={:.3}s total={:.3}s concepts={}",
+                    axiom_index,
+                    tin.source_axioms.len(),
+                    now.duration_since(bridge_phase_started).as_secs_f64(),
+                    now.duration_since(bridge_started).as_secs_f64(),
+                    b.ctx.ontology_arenas().concept_count(),
+                );
+                bridge_phase_started = now;
+            }
         }
+        bridge_phase!("source-build");
         unsupported += source_unsupported;
         if std::env::var_os("KM_HT_STATS").is_some() {
             eprintln!(
@@ -2763,6 +3041,7 @@ fn bridge_tinput_with_trigger_absorption(
         unsupported += 1;
         dump(cl, "multi-role-body");
     }
+    bridge_phase!("clause-scan");
 
     // ---- functional roles → `≤1 R` on TOP (every node) ---------------------
     // Emitted while the Builder still holds the arena borrow. Each functional
@@ -2836,6 +3115,7 @@ fn bridge_tinput_with_trigger_absorption(
         c.add_operand_linker(imp, false);
         c.inc_operand_count(1);
     }
+    bridge_phase!("attachments");
 
     // Trigger-less implications go to the ontology TOP concept (Konclude's
     // universal-constraint attachment): `CCTOP` dispatches to the AND rule,
@@ -2860,6 +3140,7 @@ fn bridge_tinput_with_trigger_absorption(
     // Konclude's negative trigger-propagation substrate as well; it remains
     // disabled until that producer-to-trigger slice is complete.
     let common_disjunct_replacement_count = extract_common_disjunct_replacements(b.ctx);
+    bridge_phase!("common-disjuncts");
     if std::env::var_os("KM_HT_STATS").is_some() {
         eprintln!(
             "bridge [or-replacements] implications=0 common={common_disjunct_replacement_count}"
@@ -2870,6 +3151,7 @@ fn bridge_tinput_with_trigger_absorption(
     // built. It rewrites complex-role restrictions to AQCHOOSE/AQAND/AQALL
     // automata consumed by the ported completion and saturation rules.
     RoleChainAutomataTransformationPreProcess::new().preprocess(ctx.ontology_arenas_mut());
+    bridge_phase!("role-automata");
 
     // Konclude's branch-trigger extractor runs after the terminology role
     // transformations. Installing its domain markers earlier would make the
@@ -2887,6 +3169,7 @@ fn bridge_tinput_with_trigger_absorption(
         let mut builder = Builder { ctx, next_tag };
         install_branch_role_domain_triggers(&mut builder, &mut trigger_caches)
     };
+    bridge_phase!("branch-triggers");
     if std::env::var_os("KM_HT_STATS").is_some() {
         eprintln!("bridge [branch-triggers] role-markers={branch_role_trigger_count}");
     }
@@ -2910,6 +3193,7 @@ fn bridge_tinput_with_trigger_absorption(
                 .set_terminology(1);
         }
     }
+    bridge_phase!("terminology-stamp");
 
     let _ = functional_count;
     Bridged {
@@ -4218,7 +4502,13 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     let top = ctx.processing_data_box().ontology_top_concept;
     push(&mut seeds, &mut seed_index, top, false, false);
     for &named in &bridged.named {
-        push(&mut seeds, &mut seed_index, named, false, false);
+        // `createSaturationConstructionJob` seeds class-named concepts, not
+        // every concept-vector entry. Q_/definer atoms deliberately have no
+        // class-name linker in the bridge, just like Konclude's anonymous
+        // structural concepts.
+        if ctx.ontology_arenas().concept(named).has_class_name() {
+            push(&mut seeds, &mut seed_index, named, false, false);
+        }
     }
     let n = ctx.ontology_arenas().concept_count();
     for i in 0..n {
@@ -5358,7 +5648,7 @@ pub fn bridged_classify_opts(
         .item_ids
         .iter()
         .enumerate()
-        .map(|(subject, item)| (item.index(), subject))
+        .filter_map(|(subject, item)| item.is_some().then_some((item.index(), subject)))
         .collect();
     let subject_by_concept: HashMap<ConceptId, usize> = bridged
         .named
@@ -5381,11 +5671,24 @@ pub fn bridged_classify_opts(
     // journal cost — ore_ont_12653 subjects blew their 900 s validation
     // window). Becomes the default once per-node COW localization lands.
     let cow_confirm = std::env::var_os("KM_BRIDGE_COW_CONFIRM").is_some();
+    let mut synchronous_satisfiable_phase_finished = false;
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
                             ctx: &mut CalculationAlgorithmContextBase,
-                            out: &mut BridgedClassification|
+                            out: &mut BridgedClassification,
+                            prepare_only: bool|
      -> Option<()> {
+        // Konclude does not begin possible-subsumption calculations until
+        // every satisfiability job has returned.  The first verification call
+        // is the synchronous barrier: build the KPSet propagation graph and
+        // prune the completed maps before looking at a single pair.
+        if !prepare_only && !synchronous_satisfiable_phase_finished {
+            classifier.finish_synchronous_satisfiable_phase(
+                &mut kpset_state,
+                ctx.ontology_arenas().concepts(),
+            );
+            synchronous_satisfiable_phase_finished = true;
+        }
         let t_subj = std::time::Instant::now();
         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
                          ctx: &mut CalculationAlgorithmContextBase,
@@ -5612,6 +5915,13 @@ pub fn bridged_classify_opts(
             }
             return Some(());
         }
+        if prepare_only {
+            // The completion-model analyser above has delivered Konclude's
+            // deterministic-subsumer, possible-subsumer, and pseudo-model
+            // messages into the persistent KPSet item.  Pair verification is
+            // intentionally deferred until every subject reaches this point.
+            return Some(());
+        }
         // Non-deterministic subject: verify each candidate pairwise. Collect
         // locally and commit only when EVERY probe answered, so a deferred
         // subject leaves no partial pairs behind for the retry round.
@@ -5748,12 +6058,10 @@ pub fn bridged_classify_opts(
         // subject is satisfiable; nothing to check).
         Some(())
     };
-    // Subjects whose defer is DETERMINISTIC (completeness poison — an
-    // unrestored advance phantomized nodes): retrying with a bigger budget
-    // re-runs the identical search to the identical poison, so they must
-    // skip the retry rounds (measured: retrying them tripled the wall to a
-    // 900 s validation timeout on ore_ont_12653). Any permanent defer means
-    // the whole classification defers — stop the rounds early.
+    // Phase 1: run every satisfiability-model job and deliver all of its
+    // classification messages.  This is Konclude's satisfiability phase; no
+    // possible-subsumption pair may be scheduled before its all-jobs barrier.
+    let verification_subjects = pending.clone();
     let mut permanent_defer = 0usize;
     for round in 0..=retry_rounds {
         algo.probe_budget = Some(std::time::Duration::from_secs(
@@ -5762,7 +6070,7 @@ pub fn bridged_classify_opts(
         let total = pending.len();
         let mut deferred: Vec<usize> = Vec::new();
         for (k, &s) in pending.iter().enumerate() {
-            if classify_one(s, &mut algo, &mut ctx, &mut out).is_none() {
+            if classify_one(s, &mut algo, &mut ctx, &mut out, true).is_none() {
                 if algo.completeness_poisoned {
                     permanent_defer += 1;
                 } else {
@@ -5771,7 +6079,7 @@ pub fn bridged_classify_opts(
             }
             if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
                 eprintln!(
-                    "BRIDGE-CLASSIFY round {round} subject {}/{total} deferred={} permanent={}",
+                    "BRIDGE-PREPARE round {round} subject {}/{total} deferred={} permanent={}",
                     k + 1,
                     deferred.len(),
                     permanent_defer
@@ -5782,6 +6090,54 @@ pub fn bridged_classify_opts(
                 // (complete-or-defer contract) — finishing the remaining
                 // subjects is pure waste, and in the race the bridge worker
                 // shares the node with the CB engine.
+                break;
+            }
+        }
+        pending = deferred;
+        if pending.is_empty() || permanent_defer > 0 {
+            break;
+        }
+    }
+    if !pending.is_empty() || permanent_defer > 0 {
+        if progress {
+            eprintln!(
+                "BRIDGE-PREPARE defer: {} budget + {} permanent subjects without a model",
+                pending.len(),
+                permanent_defer
+            );
+        }
+        return None;
+    }
+
+    // Phase 2: the first call crosses the all-models barrier inside
+    // `classify_one`, ports Konclude's global KPSet graph/map pruning, and
+    // then verifies only candidates that remain unknown.  Successful model
+    // jobs marked their items derived, so they are not rerun here.
+    pending = verification_subjects;
+    permanent_defer = 0;
+    for round in 0..=retry_rounds {
+        algo.probe_budget = Some(std::time::Duration::from_secs(
+            base_budget.saturating_mul(4u64.saturating_pow(round)),
+        ));
+        let total = pending.len();
+        let mut deferred: Vec<usize> = Vec::new();
+        for (k, &s) in pending.iter().enumerate() {
+            if classify_one(s, &mut algo, &mut ctx, &mut out, false).is_none() {
+                if algo.completeness_poisoned {
+                    permanent_defer += 1;
+                } else {
+                    deferred.push(s);
+                }
+            }
+            if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
+                eprintln!(
+                    "BRIDGE-VERIFY round {round} subject {}/{total} deferred={} permanent={}",
+                    k + 1,
+                    deferred.len(),
+                    permanent_defer
+                );
+            }
+            if permanent_defer > 0 {
                 break;
             }
         }
@@ -5880,16 +6236,18 @@ mod tests {
                 .get_operator_code(),
             op::CCIMPLTRIG
         );
-        let left_concept = b.ctx.ontology_arenas().concept(left);
-        assert_eq!(left_concept.get_operator_code(), op::CCSUB);
-        let implication = left_concept.get_operand_list()[0].target;
+        // Equal-complexity triggers follow CConceptTriggerLinker's decreasing
+        // pointer order; the later arena id is the implication host.
+        let right_concept = b.ctx.ontology_arenas().concept(right);
+        assert_eq!(right_concept.get_operator_code(), op::CCSUB);
+        let implication = right_concept.get_operand_list()[0].target;
         let implication_concept = b.ctx.ontology_arenas().concept(implication);
         assert_eq!(implication_concept.get_operator_code(), op::CCIMPL);
         assert_eq!(
             implication_concept.get_operand_list()[0].target,
             combined.concept
         );
-        assert_eq!(implication_concept.get_operand_list()[1].target, right);
+        assert_eq!(implication_concept.get_operand_list()[1].target, left);
         assert!(implication_concept.get_operand_list()[1].negated);
     }
 
@@ -5957,18 +6315,80 @@ mod tests {
             .concept(filler_unfolding)
             .get_operand_list()[0]
             .target;
-        let final_implication = b
+        let binary_implication = b
             .ctx
             .ontology_arenas()
             .concept(structural_trigger)
             .get_operand_list()[0]
             .target;
-        let final_concept = b.ctx.ontology_arenas().concept(final_implication);
-        assert_eq!(final_concept.get_operator_code(), op::CCIMPL);
-        assert_eq!(final_concept.get_operand_count(), 2);
-        assert_eq!(final_concept.get_operand_list()[0].target, implied);
-        assert_eq!(final_concept.get_operand_list()[1].target, named_condition);
-        assert!(final_concept.get_operand_list()[1].negated);
+        let binary = b.ctx.ontology_arenas().concept(binary_implication);
+        assert_eq!(binary.get_operator_code(), op::CCIMPL);
+        assert_eq!(binary.get_operand_count(), 2);
+        let combined_trigger = binary.get_operand_list()[0].target;
+        assert_eq!(binary.get_operand_list()[1].target, named_condition);
+        assert!(binary.get_operand_list()[1].negated);
+        let combined = b.ctx.ontology_arenas().concept(combined_trigger);
+        assert_eq!(combined.get_operator_code(), op::CCIMPLTRIG);
+        assert_eq!(combined.get_operand_list()[0].target, implied);
+        assert_eq!(
+            b.ctx
+                .ontology_arenas()
+                .concept(named_condition)
+                .get_operand_count(),
+            0,
+            "the weaker named condition must not host the implication"
+        );
+    }
+
+    #[test]
+    fn full_or_trigger_uses_konclude_rounded_average_complexity() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let atom = b.atom(TAG_BASE + 1);
+        let filler = b.atom(TAG_BASE + 2);
+        let (role, _, inverses) = trigger_test_roles(&mut b);
+        let exists = b.some(role, (filler, false));
+        let disjunction = b.or_of(&[(atom, false), (exists, false)]);
+        let trigger = full_absorption_trigger(
+            &mut b,
+            disjunction,
+            &inverses,
+            &mut TriggerCaches::default(),
+        )
+        .expect("fully absorbable disjunction");
+        assert_eq!(trigger.complexity, 2, "Konclude computes (1 + 2 + 1) / 2");
+    }
+
+    #[test]
+    fn ore_3215_common_condition_does_not_host_reverse_definitions() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let common = b.atom(TAG_BASE + 1);
+        let alternative = b.atom(TAG_BASE + 2);
+        let filler = b.atom(TAG_BASE + 3);
+        let implied = b.atom(TAG_BASE + 4);
+        let (role, _, inverses) = trigger_test_roles(&mut b);
+        let exists = b.some(role, (filler, false));
+        let disjunction = b.or_of(&[(alternative, false), (exists, false)]);
+        let definition = b.and_of(&[(common, false), disjunction]);
+        assert!(absorb_concept_disjunction(
+            &mut b,
+            &[definition],
+            &[(implied, false)],
+            &inverses,
+            &mut TriggerCaches::default(),
+        ));
+        assert_eq!(
+            b.ctx.ontology_arenas().concept(common).get_operand_count(),
+            0,
+            "the stronger rounded-average OR trigger must host the binary chain"
+        );
     }
 
     #[test]
@@ -6060,6 +6480,50 @@ mod tests {
             .common_disjunct_concepts
             .iter()
             .any(|link| link.target == common && !link.negated));
+    }
+
+    #[test]
+    fn common_disjunct_preprocess_reuses_nested_disjunction_cache_exactly() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let common = b.atom(TAG_BASE + 1);
+        let left_only = b.atom(TAG_BASE + 2);
+        let right_only = b.atom(TAG_BASE + 3);
+        let outer_only = b.atom(TAG_BASE + 4);
+        let left = b.and_of(&[(common, false), (left_only, false)]);
+        let right = b.and_of(&[(common, false), (right_only, false)]);
+        let shared = b.or_of(&[left, right]);
+        let outer_right = b.and_of(&[(common, false), (outer_only, false)]);
+        let outer = b.or_of(&[shared, outer_right]).0;
+        let shared = shared.0;
+        drop(b);
+
+        assert!(extract_common_disjunct_replacements(&mut ctx) >= 2);
+        for disjunction in [shared, outer] {
+            let process_data = Id::new(
+                ctx.ontology_arenas()
+                    .concept(disjunction)
+                    .get_concept_data(),
+            );
+            let replacement = ctx
+                .ontology_arenas()
+                .concept_process_data(process_data)
+                .get_replacement_data();
+            assert!(replacement.is_some());
+            let common_links = &ctx
+                .ontology_arenas()
+                .replacement_data(replacement)
+                .common_disjunct_concepts;
+            assert!(
+                common_links
+                    .iter()
+                    .any(|link| link.target == common && !link.negated),
+                "shared and cached outer disjunction both retain the common concept"
+            );
+        }
     }
 
     struct BridgeEnv {
@@ -6380,6 +6844,51 @@ mod tests {
             .ontology_arenas()
             .role(role.get_inverse_role())
             .is_complex_role());
+    }
+
+    #[test]
+    fn structural_markers_are_not_classification_or_saturation_items() {
+        let tin = TInput {
+            concepts: vec!["A".to_string(), "Q_1".to_string()],
+            queries: vec![0],
+            ..TInput::default()
+        };
+        let (_algo, mut ctx, bridged) = fresh_bridge_env(&tin);
+        assert!(ctx
+            .ontology_arenas()
+            .concept(bridged.named[0])
+            .has_class_name());
+        assert!(!ctx
+            .ontology_arenas()
+            .concept(bridged.named[1])
+            .has_class_name());
+
+        build_saturation_seeds(&mut ctx, &bridged);
+        assert!(super::super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
+            bridged.named[0],
+            false,
+            &mut ctx,
+        )
+        .is_some());
+        assert!(super::super::saturation::algorithm::SaturationTaskHandleAlgorithm::s07_concept_reference_node(
+            bridged.named[1],
+            false,
+            &mut ctx,
+        )
+        .is_none());
+
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &bridged.named,
+            &[None, None],
+            &[None, None],
+            &[Vec::new(), Vec::new()],
+            &[0],
+            ctx.ontology_arenas().concepts(),
+        );
+        assert!(state.item_ids[0].is_some());
+        assert!(state.item_ids[1].is_none());
+        assert_eq!(state.ordered_subjects, vec![0]);
     }
 
     #[test]

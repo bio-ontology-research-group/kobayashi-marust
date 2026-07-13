@@ -9,6 +9,74 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Konclude KPSet phase barrier closes ore_ont_3215 (2026-07-13)
+
+`ore_ont_3215` now completes through production `km classify` and matches
+Konclude exactly: 3,923,171 pairs on both sides, zero extra, zero missing, no
+unsatisfiable-class difference, and the same consistency result. Final IBEX
+smoke job 48790271 finished in 129 seconds at 5,351,252 KB. Its independent
+task in full-sweep job 48790295 matched again in 120 seconds at 5,357,524 KB.
+
+The first exact KM/Konclude divergence was terminology shape. KM treated every
+frontend definer as an active class and attached 18,323 implications to common
+condition `C047449`; its saturation label grew to approximately 18,000 concepts,
+while Konclude's matching label had 3. The bridge now follows Konclude's active
+class set and source terminology representation, including the exact binary
+trigger absorber mechanics: over-use complexity penalty, cached trigger-pair
+reuse, decreasing complexity/address order, reusable left-deep implication
+chains, and rounded-average disjunctive trigger complexity. Common-disjunct
+extraction now uses reusable dense signed-concept sets instead of cloning large
+visited sets.
+
+After that repair, saturation finished in about 31 seconds and already held the
+positive taxonomy, but KM still timed out on redundant classification work.
+Instrumented Konclude gave the decisive counts: 54,974 class items, 36,651
+directly derived satisfiability results, 18,323 completion satisfiability jobs,
+18,323 callbacks, and zero calculated pairwise subsumption tests. Source
+inspection localized the difference to the all-satisfiability-jobs barrier in
+`COptimizedKPSetClassSubsumptionClassifierThread::createNextSubsumtionTest`.
+Konclude waits for every model callback, builds an `owl:Thing`-rooted sparse
+propagation graph, compares all completed child/parent possible maps, and only
+then allows pair scheduling. KM had ported the local message handlers but
+interleaved each subject model with pair tests while the propagation graph was
+still empty.
+
+The synchronous classifier now has the same two phases. Prepare runs every
+residue model and delivers its deterministic, possible-subsumer, and
+pseudo-model messages. A single global barrier then builds the propagation
+graph and recursively invalidates parent candidates absent from completed child
+maps. Verify examines only candidates that remain unknown. On 3215 this
+propagates 202,002 false candidates and schedules zero pair jobs.
+
+Supporting hot-path changes retain the same saturation fixpoint: integer-keyed
+label hashing, a pre-allocation exact-duplicate descriptor check that preserves
+the opposite-polarity clash path, an O(1) LIFO process-linker free list, and
+cached diagnostic gates. The production race also now limits the speculative
+CB fallback to one thread only for faithful synchronous bridges with at least
+50,000 active classes. A controlled IBEX run showed the reason: the exact bridge
+finished in 137 seconds with one CB competitor but exceeded 240 seconds when
+the fallback occupied 15 cores. Smaller bridge races and all winner/fallback
+semantics remain unchanged.
+
+Release validation is 1,468 passed, 0 failed, 7 ignored. The final 592-ontology
+IBEX sweep reports 574 ok / 18 timeout and 508 exact matches, compared with 569
+/ 23 and 499 exact matches in the preceding feature sweep. No gold-matching
+ontology regressed. In addition to 3215, 11315, 12414, 4054, 4755, 7127, 7581,
+8068, and 8864 become exact matches. The detailed causal record and
+machine-readable aggregate are in `docs/SOLVE-3215.md` and
+`results/benchmarks/2026-07-13-3215-closure/`.
+
+Controlled IBEX job 48790909 reran the nine changed correctness cases with the
+preceding and final binaries under identical flags. All nine binary pairs
+completed, with eight exact-match improvements, one reduced disagreement, and
+zero exact-match regressions. This confirms the correctness changes separately
+from full-sweep node timing.
+
+These changes do not alter the CB calculus or its derived clause set, so they
+do not require Lean re-certification. They change faithful terminology
+construction, completion-classifier bookkeeping, fixpoint-preserving storage,
+and race scheduling outside the Lean-certified core.
+
 ### Konclude equivalent-non-candidate hand-off closes the 5303 regression (2026-07-13)
 
 The first 592-ontology IBEX sweep of the 7914 feature stack exposed one real

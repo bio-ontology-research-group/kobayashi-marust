@@ -1337,32 +1337,29 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             return false;
         }
 
-        let link_debug = std::env::var("KM_SAT_LINK_DEBUG_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-            .is_some_and(|target_tag| {
-                let reference = calc_alg_context
-                    .process_context()
-                    .sat_node(source_indi_proc_sat_node)
-                    .get_saturation_concept_reference_linking();
-                reference.is_some()
-                    && reference.index()
-                        < calc_alg_context
-                            .process_context()
-                            .extended_con_ref_linking_data_count()
-                    && {
-                        let concept = calc_alg_context
-                            .process_context()
-                            .extended_con_ref_linking_data(reference)
-                            .get_saturation_concept();
-                        concept.is_some()
-                            && calc_alg_context
-                                .ontology_arenas()
-                                .concept(concept)
-                                .get_concept_tag()
-                                == target_tag
-                    }
-            });
+        let link_debug = super::sat_link_debug_tag().is_some_and(|target_tag| {
+            let reference = calc_alg_context
+                .process_context()
+                .sat_node(source_indi_proc_sat_node)
+                .get_saturation_concept_reference_linking();
+            reference.is_some()
+                && reference.index()
+                    < calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data_count()
+                && {
+                    let concept = calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data(reference)
+                        .get_saturation_concept();
+                    concept.is_some()
+                        && calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag()
+                            == target_tag
+                }
+        });
         if link_debug {
             let dest_reference = calc_alg_context
                 .process_context()

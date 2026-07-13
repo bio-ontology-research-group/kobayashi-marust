@@ -580,7 +580,7 @@ fn spawn_ht(
     cfg: &Config,
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
-) -> Option<(Child, super::tmpfile::TempPath, bool)> {
+) -> Option<(Child, super::tmpfile::TempPath, bool, Option<usize>)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms): (
         Vec<JClause>,
@@ -926,6 +926,7 @@ fn spawn_ht(
         child,
         out_path,
         shoq_candidate || qo_candidate || card_candidate || bridge_candidate,
+        bridge_candidate.then_some(tin.queries.len()),
     ))
 }
 
@@ -938,6 +939,30 @@ fn ht_reserved_threads(cfg: &Config) -> Option<usize> {
         Some(n) if n > 1 => Some(n - 1),
         Some(n) => Some(n), // n <= 1: unchanged (1 stays 1)
         None => Some(avail_cpus().saturating_sub(1).max(1)),
+    }
+}
+
+/// The Konclude completion bridge currently executes its KPSet satisfiability
+/// jobs synchronously. On very large class sets, letting the speculative CB arm
+/// occupy every remaining core starves that serial, certified arm on memory
+/// bandwidth. `ore_ont_3215` is the measured boundary case: 54,974 active
+/// classes finish in 137 s with one CB competitor thread but exceed 240 s with
+/// fifteen, while producing the same gold-exact result.
+///
+/// Keep the ordinary CB reservation below this structural threshold. Above it,
+/// give the speculative CB fallback one thread until the bridge either answers
+/// or defers. This changes only concurrent scheduling; both reasoners and the
+/// fallback/winner rules remain unchanged.
+const LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT: usize = 50_000;
+
+fn limit_large_synchronous_bridge_competitor(
+    reserved: Option<usize>,
+    bridge_class_count: Option<usize>,
+) -> Option<usize> {
+    if bridge_class_count.is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT) {
+        Some(1)
+    } else {
+        reserved
     }
 }
 
@@ -961,11 +986,22 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out, fast_certify) = match spawn_ht(cfg, clauses_path, named) {
-        Some(x) => x,
-        None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
-    };
-    let reserved = ht_reserved_threads(cfg);
+    let (mut ht, ht_out, fast_certify, bridge_class_count) =
+        match spawn_ht(cfg, clauses_path, named) {
+            Some(x) => x,
+            None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
+        };
+    let reserved =
+        limit_large_synchronous_bridge_competitor(ht_reserved_threads(cfg), bridge_class_count);
+    if std::env::var_os("KM_TIMING").is_some()
+        && bridge_class_count.is_some_and(|count| count >= LARGE_SYNCHRONOUS_BRIDGE_CLASS_COUNT)
+    {
+        eprintln!(
+            "KM_TIMING race: large synchronous bridge classes={} cb_threads={}",
+            bridge_class_count.unwrap_or_default(),
+            reserved.unwrap_or(1),
+        );
+    }
     // Fast certify-or-defer arms (SHOQ fast-Ht, QO hybrid): sound+complete on their
     // fragment and decide quickly (SHOQ <1-3s, QO certify ~tens of s), so take the
     // answer after a SHORT budget instead of waiting out the doomed CB for the full
@@ -1149,5 +1185,21 @@ mod tests {
             detail: "r".into(),
         });
         assert!(!bridge_fences_supported(&tin));
+    }
+
+    #[test]
+    fn large_synchronous_bridge_limits_speculative_cb_to_one_thread() {
+        assert_eq!(
+            limit_large_synchronous_bridge_competitor(Some(15), Some(54_974)),
+            Some(1)
+        );
+        assert_eq!(
+            limit_large_synchronous_bridge_competitor(Some(15), Some(49_999)),
+            Some(15)
+        );
+        assert_eq!(
+            limit_large_synchronous_bridge_competitor(Some(15), None),
+            Some(15)
+        );
     }
 }

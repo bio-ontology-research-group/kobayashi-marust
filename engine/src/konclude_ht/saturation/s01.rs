@@ -569,6 +569,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
         let report_timeout = |stage: &str, this: &Self, ctx: &CalculationAlgorithmContextBase| {
             if progress {
+                let pc = ctx.process_context();
+                let (main_label_entries, additional_label_entries) =
+                    pc.reapply_con_sat_label_entry_counts();
                 eprintln!(
                     "BRIDGE-SATURATION-TIMEOUT: stage={} nodes={} rules={} and={} or={} some={} all={} atleast={} atmost={} substituted={} copied={} all-ext-init={} added={{all:{},some:{},impl:{},trigger:{},sub:{},else:{}}}",
                     stage,
@@ -590,6 +593,155 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     this.added_sub_concepts,
                     this.added_else_concepts,
                 );
+                if this.diagnostic_counters_enabled {
+                    eprintln!(
+                        "BRIDGE-SATURATION-COUNTERS: concept-adds={} concept-new={} all-rule={} all-back-prop={} successor-create={} max-label={}",
+                        this.diagnostic_concept_add_attempt_count,
+                        this.diagnostic_concept_add_new_count,
+                        this.diagnostic_all_rule_count,
+                        this.diagnostic_all_back_prop_count,
+                        this.diagnostic_successor_create_count,
+                        this.diagnostic_max_label_count,
+                    );
+                    eprintln!(
+                        "BRIDGE-SATURATION-ARENAS: sat-nodes={} concept-descriptors={} concept-process-linkers={} label-sets={} label-main-entries={} label-additional-logical-entries={} backward-links={} backward-reapply={} backward-hashes={} implication-reapply={}",
+                        pc.sat_node_count(),
+                        pc.con_sat_desc_count(),
+                        pc.con_sat_proc_linker_count(),
+                        pc.reapply_con_sat_label_set_count(),
+                        main_label_entries,
+                        additional_label_entries,
+                        pc.backward_sat_prop_link_count(),
+                        pc.backward_sat_prop_reapply_desc_count(),
+                        pc.role_backward_sat_prop_hash_count(),
+                        pc.imp_reapply_con_sat_desc_count(),
+                    );
+                    let mut largest_labels = Vec::new();
+                    for raw in 0..pc.sat_node_count() {
+                        let node_id = SatNodeId::new(raw as Cint64);
+                        let node = pc.sat_node(node_id);
+                        let label_id = node.reapply_con_sat_label_set;
+                        if label_id.is_none() {
+                            continue;
+                        }
+                        let label = pc.reapply_con_sat_label_set(label_id);
+                        largest_labels.push((
+                            label.get_concept_count(),
+                            node_id,
+                            node.get_individual_id(),
+                            label.concept_des_dep_hash.len(),
+                            if label.has_additional_concept_des_dep_hash {
+                                label.additional_concept_des_dep_hash.len()
+                            } else {
+                                0
+                            },
+                            node.copy_indi_node,
+                            node.get_saturation_concept_reference_linking(),
+                        ));
+                    }
+                    largest_labels.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+                    for (rank, entry) in largest_labels.iter().take(12).enumerate() {
+                        let (count, node, individual, main, additional, copy, reference) = *entry;
+                        let (root_concept, root_tag, root_op) = if reference.is_some() {
+                            let concept = pc
+                                .extended_con_ref_linking_data(reference)
+                                .get_saturation_concept();
+                            let root = ctx.ontology_arenas().concept(concept);
+                            (
+                                concept.raw,
+                                root.get_concept_tag(),
+                                root.get_operator_code(),
+                            )
+                        } else {
+                            (INVALID, INVALID, INVALID)
+                        };
+                        eprintln!(
+                            "BRIDGE-SATURATION-LARGEST-LABEL: rank={} node={} individual={} concepts={} main={} additional={} copy-node={} root-concept={} root-tag={} root-op={}",
+                            rank + 1,
+                            node.raw,
+                            individual,
+                            count,
+                            main,
+                            additional,
+                            copy.raw,
+                            root_concept,
+                            root_tag,
+                            root_op,
+                        );
+                    }
+                    if let Some(target_tag) = std::env::var("KM_SAT_COUNTER_LABEL_TAG")
+                        .ok()
+                        .and_then(|value| value.parse::<Cint64>().ok())
+                    {
+                        for raw in 0..pc.sat_node_count() {
+                            let node_id = SatNodeId::new(raw as Cint64);
+                            let node = pc.sat_node(node_id);
+                            let reference = node.get_saturation_concept_reference_linking();
+                            if reference.is_none() {
+                                continue;
+                            }
+                            let root_concept = pc
+                                .extended_con_ref_linking_data(reference)
+                                .get_saturation_concept();
+                            if ctx
+                                .ontology_arenas()
+                                .concept(root_concept)
+                                .get_concept_tag()
+                                != target_tag
+                            {
+                                continue;
+                            }
+                            let root = ctx.ontology_arenas().concept(root_concept);
+                            let mut root_operand_ops = std::collections::BTreeMap::new();
+                            for operand in root.get_operand_list() {
+                                let op = ctx
+                                    .ontology_arenas()
+                                    .concept(operand.target)
+                                    .get_operator_code();
+                                *root_operand_ops
+                                    .entry((op, operand.negated))
+                                    .or_insert(0usize) += 1;
+                            }
+                            let label_id = node.reapply_con_sat_label_set;
+                            let mut label_ops = std::collections::BTreeMap::new();
+                            let mut sample = Vec::new();
+                            let mut descriptor = if label_id.is_some() {
+                                pc.reapply_con_sat_label_set(label_id)
+                                    .get_concept_saturation_description_linker()
+                            } else {
+                                super::satellites::ConceptSaturationDescriptorId::NONE
+                            };
+                            let mut walked = 0usize;
+                            while descriptor.is_some() && walked <= pc.con_sat_desc_count() {
+                                let data = pc.con_sat_desc(descriptor);
+                                let concept = ctx.ontology_arenas().concept(data.get_concept());
+                                *label_ops
+                                    .entry((concept.get_operator_code(), data.get_negation()))
+                                    .or_insert(0usize) += 1;
+                                if sample.len() < 32 {
+                                    sample.push((
+                                        concept.get_concept_tag(),
+                                        concept.get_operator_code(),
+                                        data.get_negation(),
+                                    ));
+                                }
+                                descriptor = data.get_next_concept_desciptor();
+                                walked += 1;
+                            }
+                            eprintln!(
+                                "BRIDGE-SATURATION-TARGET-LABEL: node={} individual={} root-tag={} root-operands={} root-operand-ops={:?} label-concepts={} label-ops={:?} head-sample={:?}",
+                                node_id.raw,
+                                node.get_individual_id(),
+                                target_tag,
+                                root.get_operand_count(),
+                                root_operand_ops,
+                                walked,
+                                label_ops,
+                                sample,
+                            );
+                        }
+                    }
+                }
             }
         };
 
@@ -897,9 +1049,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         .process_context_mut()
                         .sat_node_mut(indi_process_node)
                         .set_completed(true); // 780
-                    let final_debug = std::env::var("KM_SAT_FINAL_DEBUG_TAG")
-                        .ok()
-                        .and_then(|value| value.parse::<Cint64>().ok());
+                    let final_debug = super::sat_final_debug_tag();
                     let reference = calc_alg_context
                         .process_context()
                         .sat_node(indi_process_node)
@@ -953,9 +1103,8 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .get_concept_saturation_description_linker();
                             while descriptor.is_some() {
                                 let (concept, negated, next) = {
-                                    let value = calc_alg_context
-                                        .process_context()
-                                        .con_sat_desc(descriptor);
+                                    let value =
+                                        calc_alg_context.process_context().con_sat_desc(descriptor);
                                     (
                                         value.get_concept(),
                                         value.get_negation(),

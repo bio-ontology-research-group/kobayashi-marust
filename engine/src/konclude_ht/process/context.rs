@@ -3667,6 +3667,51 @@ impl ProcessContext {
         self.con_sat_descs.len()
     }
 
+    /// Diagnostic arena sizes for exact KM/Konclude saturation comparisons.
+    #[inline]
+    pub fn con_sat_proc_linker_count(&self) -> usize {
+        self.con_sat_proc_linkers.len()
+    }
+
+    #[inline]
+    pub fn backward_sat_prop_link_count(&self) -> usize {
+        self.backward_sat_prop_links.len()
+    }
+
+    #[inline]
+    pub fn backward_sat_prop_reapply_desc_count(&self) -> usize {
+        self.backward_sat_prop_reapply_descs.len()
+    }
+
+    #[inline]
+    pub fn role_backward_sat_prop_hash_count(&self) -> usize {
+        self.role_backward_sat_prop_hashes.len()
+    }
+
+    #[inline]
+    pub fn imp_reapply_con_sat_desc_count(&self) -> usize {
+        self.imp_reapply_con_sat_descs.len()
+    }
+
+    /// Logical main/additional label entries.  Additional hashes can be shared,
+    /// so the second value is intentionally a logical count rather than a byte
+    /// estimate; it exposes copy-shape divergence without walking heap internals.
+    pub fn reapply_con_sat_label_entry_counts(&self) -> (usize, usize) {
+        self.reapply_con_sat_label_sets
+            .iter()
+            .fold((0, 0), |(main, additional), label| {
+                (
+                    main + label.concept_des_dep_hash.len(),
+                    additional
+                        + if label.has_additional_concept_des_dep_hash {
+                            label.additional_concept_des_dep_hash.len()
+                        } else {
+                            0
+                        },
+                )
+            })
+    }
+
     /// Move the SATURATION-side arena state out of `other` into `self` (swap).
     ///
     /// KONCLUDE-PORT-NOTE[api]: in Konclude the approximation-saturation task
@@ -4593,11 +4638,11 @@ impl ProcessContext {
                             entry.imp_reapply_con_sat_des = data.imp_reapply_con_sat_des;
                         }
                     }
-                    (std::sync::Arc::new(tmp), HashMap::new())
+                    (std::sync::Arc::new(tmp), Default::default())
                 } else {
                     (
                         std::sync::Arc::new(source.concept_des_dep_hash.clone()),
-                        HashMap::new(),
+                        Default::default(),
                     )
                 }
             };

@@ -209,11 +209,7 @@ impl ProcessingDataBox {
     pub fn take_remaining_concept_saturation_process_linker(
         &mut self,
     ) -> Id<ConceptSaturationProcess> {
-        if self.rem_con_sat_process_linker.is_empty() {
-            Id::NONE
-        } else {
-            self.rem_con_sat_process_linker.remove(0)
-        }
+        self.rem_con_sat_process_linker.pop().unwrap_or(Id::NONE)
     }
     /// Port of `CProcessingDataBox::setRemainingConceptSaturationProcessLinker`.
     pub fn set_remaining_concept_saturation_process_linker(
@@ -231,7 +227,11 @@ impl ProcessingDataBox {
         &mut self,
         v: Id<ConceptSaturationProcess>,
     ) -> &mut Self {
-        self.rem_con_sat_process_linker.insert(0, v);
+        // Konclude stores this as an intrusive free-list: release prepends and
+        // acquire removes the head, both O(1). Keep that head at the Vec tail
+        // so `push`/`pop` preserve the exact LIFO order without shifting the
+        // growing pool on every critical-concept descriptor release.
+        self.rem_con_sat_process_linker.push(v);
         self
     }
 
@@ -720,6 +720,28 @@ mod tests {
             IndividualSaturationProcessNodeLinkerId::NONE,
         );
         assert!(!data_box.has_individual_disjunct_common_concept_extract_process_linker());
+    }
+
+    #[test]
+    fn db5_concept_saturation_process_free_list_is_lifo() {
+        let mut data_box = ProcessingDataBox::default();
+        let first = Id::<ConceptSaturationProcess>::new(41);
+        let second = Id::<ConceptSaturationProcess>::new(42);
+
+        data_box.add_remaining_concept_saturation_process_linker(first);
+        data_box.add_remaining_concept_saturation_process_linker(second);
+
+        assert_eq!(
+            data_box.take_remaining_concept_saturation_process_linker(),
+            second
+        );
+        assert_eq!(
+            data_box.take_remaining_concept_saturation_process_linker(),
+            first
+        );
+        assert!(data_box
+            .take_remaining_concept_saturation_process_linker()
+            .is_none());
     }
 
     #[test]

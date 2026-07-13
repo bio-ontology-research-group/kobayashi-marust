@@ -321,9 +321,7 @@ impl SaturationTaskHandleAlgorithm {
             }
         }
         let init_debug = init_concept.is_some()
-            && std::env::var("KM_SAT_INIT_DEBUG_TAG")
-                .ok()
-                .and_then(|value| value.parse::<Cint64>().ok())
+            && super::sat_init_debug_tag()
                 == Some(
                     calc_alg_context
                         .ontology_arenas()
@@ -1140,6 +1138,9 @@ impl SaturationTaskHandleAlgorithm {
         cardinality: Cint64,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        if self.diagnostic_counters_enabled {
+            self.diagnostic_successor_create_count += 1;
+        }
         let con_des = calc_alg_context
             .process_context()
             .con_sat_proc_linker(con_pro_linker)
@@ -1506,10 +1507,7 @@ impl SaturationTaskHandleAlgorithm {
                 copy_from_indi_proc_sat_node,
                 try_flat_label_copy,
             ); // 2024
-        if let Some(watched_tag) = std::env::var("KM_SAT_ADD_TRACE_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-        {
+        if let Some(watched_tag) = super::sat_add_trace_tag() {
             let source_label = calc_alg_context
                 .process_context()
                 .sat_node(copy_from_indi_proc_sat_node)
@@ -1538,10 +1536,7 @@ impl SaturationTaskHandleAlgorithm {
                             .process_context()
                             .extended_con_ref_linking_data(reference)
                             .get_saturation_concept();
-                        context
-                            .ontology_arenas()
-                            .concept(concept)
-                            .get_concept_tag()
+                        context.ontology_arenas().concept(concept).get_concept_tag()
                     } else {
                         -1
                     }
@@ -1614,26 +1609,23 @@ impl SaturationTaskHandleAlgorithm {
             .process_context()
             .sat_node(copy_from_indi_proc_sat_node)
             .get_concept_saturation_process_linker();
-        let copy_debug = std::env::var("KM_SAT_LINK_DEBUG_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-            .is_some_and(|target_tag| {
-                let reference = calc_alg_context
-                    .process_context()
-                    .sat_node(indi_proc_sat_node)
-                    .get_saturation_concept_reference_linking();
-                reference.is_some()
-                    && calc_alg_context
-                        .ontology_arenas()
-                        .concept(
-                            calc_alg_context
-                                .process_context()
-                                .extended_con_ref_linking_data(reference)
-                                .get_saturation_concept(),
-                        )
-                        .get_concept_tag()
-                        == target_tag
-            });
+        let copy_debug = super::sat_link_debug_tag().is_some_and(|target_tag| {
+            let reference = calc_alg_context
+                .process_context()
+                .sat_node(indi_proc_sat_node)
+                .get_saturation_concept_reference_linking();
+            reference.is_some()
+                && calc_alg_context
+                    .ontology_arenas()
+                    .concept(
+                        calc_alg_context
+                            .process_context()
+                            .extended_con_ref_linking_data(reference)
+                            .get_saturation_concept(),
+                    )
+                    .get_concept_tag()
+                    == target_tag
+        });
         if copy_debug {
             let mut queued = Vec::new();
             let mut linker = con_sat_pro_linker_it;

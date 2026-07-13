@@ -39,6 +39,53 @@ pub(crate) fn sat_add_trace_watch() -> Option<usize> {
     })
 }
 
+// These diagnostics sit in rule-application and label-insertion hot paths.
+// Read each immutable CLI environment setting once: ore_ont_3215 performs
+// roughly 187 million insertion attempts, so even a disabled `getenv` per
+// attempt dominates the actual Konclude rule work.
+macro_rules! cached_sat_debug_tag {
+    ($function:ident, $variable:literal) => {
+        pub(crate) fn $function() -> Option<i64> {
+            static TAG: std::sync::OnceLock<Option<i64>> = std::sync::OnceLock::new();
+            *TAG.get_or_init(|| {
+                std::env::var_os($variable)
+                    .and_then(|value| value.to_string_lossy().parse::<i64>().ok())
+            })
+        }
+    };
+}
+
+cached_sat_debug_tag!(sat_add_trace_tag, "KM_SAT_ADD_TRACE_TAG");
+cached_sat_debug_tag!(sat_copy_debug_tag, "KM_SAT_COPY_DEBUG_TAG");
+cached_sat_debug_tag!(sat_final_debug_tag, "KM_SAT_FINAL_DEBUG_TAG");
+cached_sat_debug_tag!(sat_init_debug_tag, "KM_SAT_INIT_DEBUG_TAG");
+cached_sat_debug_tag!(sat_link_debug_tag, "KM_SAT_LINK_DEBUG_TAG");
+cached_sat_debug_tag!(sat_or_debug_tag, "KM_SAT_OR_DEBUG_TAG");
+cached_sat_debug_tag!(sat_status_debug_tag, "KM_SAT_STATUS_DEBUG_TAG");
+cached_sat_debug_tag!(sat_common_debug_tag, "KM_SAT_COMMON_DEBUG_TAG");
+
+pub(crate) fn sat_common_debug_operands() -> &'static std::collections::BTreeSet<i64> {
+    static OPERANDS: std::sync::OnceLock<std::collections::BTreeSet<i64>> =
+        std::sync::OnceLock::new();
+    OPERANDS.get_or_init(|| {
+        std::env::var_os("KM_SAT_COMMON_DEBUG_OPERANDS")
+            .into_iter()
+            .flat_map(|value| {
+                value
+                    .to_string_lossy()
+                    .split(',')
+                    .filter_map(|part| part.trim().parse::<i64>().ok())
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    })
+}
+
+pub(crate) fn sat_clash_backtrace_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("KM_SAT_CLASH_BT").is_some())
+}
+
 // W4 method-batch units SAT u01..u12 (the ~195 apply*Rule / driver / node-init /
 // ATMOST-merging / critical-concept / extension-propagation / cache-handoff
 // method bodies — see manifest/03-saturation-calc.md). Reconciled in W4-reconcile.

@@ -315,6 +315,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         // STATINC(ALLRULEAPPLICATIONCOUNT) — profiling stat, elided.
+        if self.diagnostic_counters_enabled {
+            self.diagnostic_all_rule_count += 1;
+        }
         let con_des = calc_alg_context
             .process_context()
             .con_sat_proc_linker(con_sat_pro_linker)
@@ -384,6 +387,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     let op_concept = op_link.target; // getData()
                     let op_con_negation = op_link.negated ^ con_negation; // isNegated()^conNegation
                                                                           // STATINC(ALLROLERESTRICTIONCOUNT) — elided.
+                    if self.diagnostic_counters_enabled {
+                        self.diagnostic_all_back_prop_count += 1;
+                    }
                     self.add_concept_filtered_to_individual_update_copy(
                         op_concept,
                         op_con_negation,

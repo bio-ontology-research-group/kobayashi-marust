@@ -114,15 +114,16 @@ fn sat_common_debug_matches(
     concept: ConceptId,
     calc_alg_context: &CalculationAlgorithmContextBase,
 ) -> bool {
+    let requested = super::sat_common_debug_operands();
+    let debug_tag = super::sat_common_debug_tag();
+    if debug_tag.is_none() && requested.is_empty() {
+        return false;
+    }
     let tag = calc_alg_context
         .ontology_arenas()
         .concept(concept)
         .get_concept_tag();
-    if std::env::var("KM_SAT_COMMON_DEBUG_TAG")
-        .ok()
-        .and_then(|value| value.parse::<Cint64>().ok())
-        == Some(tag)
-    {
+    if debug_tag == Some(tag) {
         return true;
     }
     let operand_tags: std::collections::BTreeSet<Cint64> = calc_alg_context
@@ -137,18 +138,7 @@ fn sat_common_debug_matches(
                 .get_concept_tag()
         })
         .collect();
-    let requested: std::collections::BTreeSet<Cint64> =
-        std::env::var("KM_SAT_COMMON_DEBUG_OPERANDS")
-            .ok()
-            .into_iter()
-            .flat_map(|value| {
-                value
-                    .split(',')
-                    .filter_map(|part| part.trim().parse::<Cint64>().ok())
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-    !requested.is_empty() && requested == operand_tags
+    !requested.is_empty() && requested == &operand_tags
 }
 
 impl super::algorithm::SaturationTaskHandleAlgorithm {
@@ -1012,26 +1002,23 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .sat_node(*indi_proc_sat_node)
             .reapply_con_sat_label_set;
-        let debug_target = std::env::var("KM_SAT_OR_DEBUG_TAG")
-            .ok()
-            .and_then(|value| value.parse::<Cint64>().ok())
-            .is_some_and(|target_tag| {
-                let reference = calc_alg_context
-                    .process_context()
-                    .sat_node(*indi_proc_sat_node)
-                    .get_saturation_concept_reference_linking();
-                reference.is_some()
-                    && calc_alg_context
-                        .ontology_arenas()
-                        .concept(
-                            calc_alg_context
-                                .process_context()
-                                .extended_con_ref_linking_data(reference)
-                                .get_saturation_concept(),
-                        )
-                        .get_concept_tag()
-                        == target_tag
-            });
+        let debug_target = super::sat_or_debug_tag().is_some_and(|target_tag| {
+            let reference = calc_alg_context
+                .process_context()
+                .sat_node(*indi_proc_sat_node)
+                .get_saturation_concept_reference_linking();
+            reference.is_some()
+                && calc_alg_context
+                    .ontology_arenas()
+                    .concept(
+                        calc_alg_context
+                            .process_context()
+                            .extended_con_ref_linking_data(reference)
+                            .get_saturation_concept(),
+                    )
+                    .get_concept_tag()
+                    == target_tag
+        });
         if con_set.is_some() {
             let op_linker: Vec<NegLink<ConceptId>> = calc_alg_context
                 .ontology_arenas()
