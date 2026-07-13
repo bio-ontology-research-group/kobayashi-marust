@@ -499,19 +499,81 @@ impl SaturationNodeExpansionCacheHandler {
             .get_dependency_track_point();
 
         let mut last_possibly_nondeterministic_con_des = ConDescId::NONE;
+        let cache_trace_tags = std::env::var("KM_SAT_CACHE_TRACE_TAG")
+            .ok()
+            .map(|spec| {
+                spec.split(',')
+                    .filter_map(|tag| tag.parse::<Cint64>().ok())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         let mut con_des_it = con_des;
         while con_des_it.is_some() && con_des_it != last_con_des {
             let dep_track_point = process_context
                 .con_desc(con_des_it)
                 .get_dependency_track_point();
-            if cache_data.only_all_nondeterministic
-                || !Self::is_deterministically_depending_on_saturation_concept(
+            let deterministically_depending = !cache_data.only_all_nondeterministic
+                && Self::is_deterministically_depending_on_saturation_concept(
                     individual_process_node,
                     dep_track_point,
                     sat_con_dep_track_point,
                     calc_alg_context,
-                )
-            {
+                );
+            let possibly_nondeterministic =
+                cache_data.only_all_nondeterministic || !deterministically_depending;
+            let descriptor = process_context.con_desc(con_des_it);
+            let descriptor_tag = calc_alg_context
+                .ontology_arenas()
+                .concept(descriptor.get_concept())
+                .get_concept_tag();
+            if cache_trace_tags.contains(&descriptor_tag) {
+                let dep_node = if dep_track_point.is_some() {
+                    process_context.track_point(dep_track_point).dependency_node()
+                } else {
+                    Id::NONE
+                };
+                let dep_branch = if dep_track_point.is_some() {
+                    process_context
+                        .track_point(dep_track_point)
+                        .get_branching_tag()
+                } else {
+                    -1
+                };
+                let sat_branch = if sat_con_dep_track_point.is_some() {
+                    process_context
+                        .track_point(sat_con_dep_track_point)
+                        .get_branching_tag()
+                } else {
+                    -1
+                };
+                let (dep_kind, dep_indi) = if dep_node.is_some() {
+                    let dependency = process_context.dep_node(dep_node);
+                    (dependency.kind() as Cint64, dependency.individual_node().raw)
+                } else {
+                    (-1, -1)
+                };
+                eprintln!(
+                    "SAT-CACHE-CLASSIFY concept-tag={} node={} sat-node={} sat-tag={} dep={} dep-kind={} dep-indi={} dep-branch={} sat-branch={} anc-depth={} only-all-nondet={} deterministic={} possibly-nondet={}",
+                    descriptor_tag,
+                    process_context
+                        .node(individual_process_node)
+                        .individual_node_id(),
+                    sat_indi_node.raw,
+                    sat_con_tag,
+                    dep_track_point.raw,
+                    dep_kind,
+                    dep_indi,
+                    dep_branch,
+                    sat_branch,
+                    process_context
+                        .node(individual_process_node)
+                        .individual_ancestor_depth(),
+                    cache_data.only_all_nondeterministic,
+                    deterministically_depending,
+                    possibly_nondeterministic,
+                );
+            }
+            if possibly_nondeterministic {
                 last_possibly_nondeterministic_con_des = con_des_it;
             }
             con_des_it = process_context

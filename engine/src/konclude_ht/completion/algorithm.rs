@@ -957,7 +957,11 @@ impl CompletionTaskHandleAlgorithm {
             conf_optimized_sub_set_blocking: false,
             conf_equal_set_blocking: false,
             conf_pairwise_equal_set_blocking: false,
-            conf_specialized_automate_rules: false,
+            // Konclude constructor cpp 146: specialized automaton dispatch is
+            // enabled before any per-task configuration is read.  The bridge
+            // probe driver bypasses `readCalculationConfig`, so this constructor
+            // value is load-bearing for AQAND/IMPLAQAND/BRANCHAQAND soundness.
+            conf_specialized_automate_rules: true,
             conf_semantic_branching: false,
             conf_atomic_semantic_branching: false,
             conf_branch_triggering: false,

@@ -408,9 +408,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 dep.base_mut().dep_track_point = prev_dep_track_point;
                 proc_ctx.update_dependency_branching_tag(dep_node);
             }
-            let _continue_track_point = calc_alg_context
-                .process_context_mut()
-                .materialize_continue_dependency_track_point(dep_node);
+            // Unlike the other deterministic factory methods, Konclude's
+            // createCONNECTIONDependency has no continuation out-parameter.
+            // The caller appends the returned node as a `CDependency`; arena
+            // callers materialize that one continuation when constructing the
+            // corresponding `DependencyLink`.
             let _ = process_indi;
         }
         dep_node

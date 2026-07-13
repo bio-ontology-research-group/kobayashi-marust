@@ -3278,7 +3278,9 @@ mod tests {
             .get_representative_variable_binding_path_map();
         assert_eq!(rep_map.count(), 1);
         let (path_prop_id, map_data) = rep_map.map.iter().next().unwrap();
-        assert_eq!(*path_prop_id, 0);
+        // First path property id from getNextVariableBindingPathID; mNextVariableID
+        // inits to 1 (CProcessingDataBox .cpp:143), so the first path id is 1.
+        assert_eq!(*path_prop_id, 1);
         assert_eq!(
             map_data.get_resolve_representative_variable_binding_path_set_data(),
             rep_data

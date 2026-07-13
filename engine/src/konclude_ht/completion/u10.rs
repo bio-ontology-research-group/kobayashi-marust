@@ -122,18 +122,52 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // W15-rbox: RBox-resolved ∀-propagation targets (role hierarchy + inverse).
     // =======================================================================
 
-    /// Collect the nodes an `∀role.C` restriction on `source` must reach, resolving
-    /// the RBox on lookup. Used by `apply_all_rule` (u09) in place of the exact-match
-    /// `ht_role_successor_links` (u08).
+    /// Match one physical `edge_role` against the requested role in the given
+    /// direction.  Konclude's `createNewIndividualsLinksReapplyed` walks the
+    /// edge role's signed indirect-super-role linker: non-negated entries are
+    /// installed source-to-destination, negated entries destination-to-source
+    /// (cpp 22413–22461).  The sign is therefore semantic, not metadata.
+    pub(crate) fn ht_signed_role_matches(
+        &self,
+        edge_role: RoleId,
+        requested_role: RoleId,
+        inverse_direction: bool,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        if edge_role.is_none() || requested_role.is_none() {
+            return false;
+        }
+        if !inverse_direction && edge_role == requested_role {
+            return true;
+        }
+        let ontology = calc_alg_context.ontology_arenas();
+        if ontology
+            .role(edge_role)
+            .get_indirect_super_role_list()
+            .iter()
+            .any(|link| link.target == requested_role && link.negated == inverse_direction)
+        {
+            return true;
+        }
+        // Hand-built fixtures can wire only `inverse_role`, without running
+        // CSubroleTransformationPreProcess to materialize the signed linker.
+        inverse_direction && ontology.role(edge_role).get_inverse_role() == requested_role
+    }
+
+    /// Collect the role links and nodes an `∀role.C` restriction on `source`
+    /// must reach, resolving the RBox on lookup.  Keeping the physical link is
+    /// required by Konclude's `applyALLRule` and `applyAutomatTransactions`:
+    /// their dependency node combines the restriction's dependency with
+    /// `link->getDependencyTrackPoint()`.
     ///
     /// Two RBox dimensions are resolved:
     ///  - **role hierarchy** `R ⊑ S`: a forward edge `source --E--> succ` makes `succ`
     ///    an `S`-successor when `E == S` or `S` is an indirect super-role of `E`
-    ///    (`role(E).has_indirect_super_role(S)`). So `∀S.C` reaches every R-successor
-    ///    with `R ⊑ S`. (Konclude registers a distinct edge per indirect super-role on
-    ///    install via `createNewIndividualsLinksReapplyed` walking
-    ///    `role->getIndirectSuperRoleList()`; the port keeps one forward edge and
-    ///    resolves super-roles here instead.)
+    ///    through a NON-NEGATED `S` entry in `role(E).indirect_super_roles`. So
+    ///    `∀S.C` reaches every R-successor with `R ⊑ S`. (Konclude registers a
+    ///    distinct edge per indirect super-role on install via
+    ///    `createNewIndividualsLinksReapplyed`; the port keeps one forward edge and
+    ///    resolves the signed entries here instead.)
     ///  - **inverse roles** `∀R⁻.C`: the predecessor reached through `source`'s ancestor
     ///    link. The ancestor edge is `pred --E--> source`, so `pred` is an `E⁻`-successor
     ///    of `source`; it matches when `role == E⁻` (or `role` is a super-role of `E⁻`).
@@ -141,15 +175,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///    indirect-super-role list — `installIndividualNodeRoleLink(dst, src, …)`; the
     ///    port reaches the single predecessor via the ancestor link, faithful for the
     ///    blockable-successor regime exercised here.)
-    pub fn ht_all_rule_targets(
+    pub fn ht_all_rule_target_links(
         &self,
         source: NodeId,
         role: RoleId,
         calc_alg_context: &CalculationAlgorithmContextBase,
-    ) -> Vec<NodeId> {
-        let mut out: Vec<NodeId> = Vec::new();
+    ) -> Vec<(EdgeId, NodeId)> {
+        let mut out: Vec<(EdgeId, NodeId)> = Vec::new();
         let pc = calc_alg_context.process_context();
-        let onto = calc_alg_context.ontology_arenas();
 
         // (1) forward successors, hierarchy-resolved.
         let mut it = pc.node_successor_iterator(source);
@@ -160,15 +193,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 continue;
             }
             let edge_role: RoleId = pc.edge(link).get_link_role();
-            let role_matches = edge_role == role
-                || (edge_role.is_some() && onto.role(edge_role).has_indirect_super_role(role));
+            let role_matches =
+                self.ht_signed_role_matches(edge_role, role, false, calc_alg_context);
             if role_matches {
                 let succ = calc_alg_context
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(succ_id);
-                if succ.is_some() && !out.contains(&succ) {
-                    out.push(succ);
+                if succ.is_some() && !out.iter().any(|&(_, node)| node == succ) {
+                    out.push((link, succ));
                 }
             }
         }
@@ -180,11 +213,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let edge_role: RoleId = e.get_link_role();
             let pred: NodeId = e.get_source_individual();
             if edge_role.is_some() && pred.is_some() {
-                let inv: RoleId = onto.role(edge_role).get_inverse_role();
                 let inv_matches =
-                    inv == role || (inv.is_some() && onto.role(inv).has_indirect_super_role(role));
-                if inv_matches && !out.contains(&pred) {
-                    out.push(pred);
+                    self.ht_signed_role_matches(edge_role, role, true, calc_alg_context);
+                if inv_matches && !out.iter().any(|&(_, node)| node == pred) {
+                    out.push((anc_link, pred));
                 }
             }
         }
@@ -208,7 +240,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(pred_id);
-                if pred.is_none() || out.contains(&pred) {
+                if pred.is_none() || out.iter().any(|&(_, node)| node == pred) {
                     continue;
                 }
                 let pn = pc.node(pred);
@@ -227,17 +259,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     if edge_role.is_none() {
                         continue;
                     }
-                    let inv: RoleId = onto.role(edge_role).get_inverse_role();
-                    let inv_matches = inv == role
-                        || (inv.is_some() && onto.role(inv).has_indirect_super_role(role));
+                    let inv_matches =
+                        self.ht_signed_role_matches(edge_role, role, true, calc_alg_context);
                     if inv_matches {
-                        out.push(pred);
+                        out.push((link, pred));
                         break;
                     }
                 }
             }
         }
         out
+    }
+
+    /// Node-only compatibility view of [`Self::ht_all_rule_target_links`].
+    pub fn ht_all_rule_targets(
+        &self,
+        source: NodeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<NodeId> {
+        self.ht_all_rule_target_links(source, role, calc_alg_context)
+            .into_iter()
+            .map(|(_, node)| node)
+            .collect()
     }
 
     // =======================================================================

@@ -1506,6 +1506,54 @@ impl SaturationTaskHandleAlgorithm {
                 copy_from_indi_proc_sat_node,
                 try_flat_label_copy,
             ); // 2024
+        if let Some(watched_tag) = std::env::var("KM_SAT_ADD_TRACE_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+        {
+            let source_label = calc_alg_context
+                .process_context()
+                .sat_node(copy_from_indi_proc_sat_node)
+                .reapply_con_sat_label_set;
+            let mut descriptor = super::satellites::ConceptSaturationDescriptorId::NONE;
+            let mut reapply =
+                super::satellites::ImplicationReapplyConceptSaturationDescriptorId::NONE;
+            let source_contains = source_label.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .reapply_con_sat_label_set(source_label)
+                    .get_concept_descriptor_and_reapply_queue_by_tag(
+                        watched_tag,
+                        &mut descriptor,
+                        &mut reapply,
+                    )
+                && descriptor.is_some();
+            if source_contains {
+                let node_tag = |node: SatNodeId, context: &CalculationAlgorithmContextBase| {
+                    let reference = context
+                        .process_context()
+                        .sat_node(node)
+                        .get_saturation_concept_reference_linking();
+                    if reference.is_some() {
+                        let concept = context
+                            .process_context()
+                            .extended_con_ref_linking_data(reference)
+                            .get_saturation_concept();
+                        context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag()
+                    } else {
+                        -1
+                    }
+                };
+                eprintln!(
+                    "SAT-COPY-TAG-TRACE watched-tag={} source-tag={} target-tag={}",
+                    watched_tag,
+                    node_tag(copy_from_indi_proc_sat_node, calc_alg_context),
+                    node_tag(indi_proc_sat_node, calc_alg_context),
+                );
+            }
+        }
         calc_alg_context
             .process_context_mut()
             .sat_node_mut(indi_proc_sat_node)

@@ -9969,6 +9969,95 @@ fn saturation_node_expansion_handler_try_splits_nondeterministic_prefix() {
     assert_eq!(nondet_write.get_expansion_concept_linker().len(), 2);
     assert_eq!(nondet_write.get_concept_set_signature(), 404);
     assert_eq!(nondet_write.get_total_concept_count(), 3);
+
+    assert!(handler.commit_cache_messages(&mut env.ctx, &mut cache_context));
+    let entry = Id::new(
+        env.ctx
+            .process_context()
+            .sat_node(sat_node)
+            .get_cache_expansion_data()
+            .raw,
+    );
+    let entry = cache_context.sat_expansion_cache_entry(entry);
+    assert_eq!(
+        entry.get_nondeterministic_concept_expansion_linker().len(),
+        1,
+        "Konclude's default allowance must preserve the nondeterministic prefix"
+    );
+    let deterministic = entry.get_deterministic_concept_expansion();
+    assert!(deterministic.is_some());
+    assert!(
+        !cache_context
+            .associated_concept_expansion(deterministic)
+            .requires_non_deterministic_expansion(),
+        "Konclude stores the branch-independent suffix as a complete deterministic expansion"
+    );
+}
+
+#[test]
+fn completion_label_insertion_prepends_descriptor_chain() {
+    let mut env = build_env();
+    let root = env.root;
+    let first = marker_concept(&mut env, 4043);
+    let second = marker_concept(&mut env, 4044);
+    let dependency = env.ctx.get_or_create_base_dependency_track_point();
+    let previous = {
+        let label = env.ctx.process_context_mut().node_reapply_concept_label_set(root);
+        env.ctx
+            .process_context()
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker()
+    };
+
+    let mut root_ref = root;
+    env.algo.add_concept_to_individual(
+        first,
+        false,
+        &mut root_ref,
+        dependency,
+        false,
+        true,
+        &mut env.ctx,
+    );
+    let first_descriptor = {
+        let label = env.ctx.process_context().node(root).use_reapply_con_label_set;
+        env.ctx
+            .process_context()
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker()
+    };
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .con_desc(first_descriptor)
+            .get_next_concept_descriptor(),
+        previous
+    );
+
+    env.algo.add_concept_to_individual(
+        second,
+        false,
+        &mut root_ref,
+        dependency,
+        false,
+        true,
+        &mut env.ctx,
+    );
+    let second_descriptor = {
+        let label = env.ctx.process_context().node(root).use_reapply_con_label_set;
+        env.ctx
+            .process_context()
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker()
+    };
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .con_desc(second_descriptor)
+            .get_next_concept_descriptor(),
+        first_descriptor,
+        "Konclude's adding-sorted descriptor linker must remain contiguous"
+    );
 }
 
 fn make_associated_concept_linker(
@@ -10210,9 +10299,13 @@ fn saturation_node_expansion_cache_installs_nondeterministic_expansion_write_dat
         .alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
     let (mut cache_context, handler) = build_saturation_node_expansion_cache_handler();
     let cache = handler.sat_cache_writer.cache;
-    cache_context
-        .sat_expansion_cache_mut(cache)
-        .conf_allowed_non_det_expansion_count = 1;
+    assert_eq!(
+        cache_context
+            .sat_expansion_cache(cache)
+            .conf_allowed_non_det_expansion_count,
+        1,
+        "Konclude's cache constructor permits one nondeterministic expansion"
+    );
     let linker = make_associated_concept_linker(&mut cache_context, test_cache_value(31));
     let mut write_data = SaturationNodeAssociatedExpansionCacheExpansionWriteData::new();
     write_data
@@ -22460,6 +22553,131 @@ fn disjunction_branch_explored() {
     );
 }
 
+/// Konclude's planned OR executor does not fork when every operand except one
+/// is excluded by an opposite-polarity label.  It deterministically installs
+/// the sole survivor through the ORONLYOPTION path.
+#[test]
+fn disjunction_all_but_one_excluded_is_deterministic() {
+    use super::super::model::op;
+
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+    let con_a = {
+        let mut c = Concept::new();
+        c.set_concept_tag(101);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_b = {
+        let mut c = Concept::new();
+        c.set_concept_tag(102);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let con_or = {
+        let mut c = Concept::new();
+        c.set_concept_tag(201);
+        c.set_operator_code(op::CCOR);
+        c.add_operand_linker(con_a, false);
+        c.add_operand_linker(con_b, false);
+        c.set_operand_count(2);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let mut root = env.root;
+    let excluded_source_descriptor = {
+        let mut descriptor = ConceptDescriptor::new();
+        descriptor.concept = con_a;
+        descriptor.negated = true;
+        env.ctx.process_context_mut().alloc_con_desc(descriptor)
+    };
+    let excluded_track_point = real_dependency_track_point(
+        &mut env,
+        root,
+        excluded_source_descriptor,
+        DepKind::Or,
+        7,
+        7,
+    );
+    env.algo.add_concept_to_individual(
+        con_a,
+        true,
+        &mut root,
+        excluded_track_point,
+        false,
+        true,
+        &mut env.ctx,
+    );
+
+    let con_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_desc(ConceptDescriptor::new());
+    env.ctx.process_context_mut().con_desc_mut(con_des).concept = con_or;
+    let mut cpd_value = ConceptProcessDescriptor::new();
+    cpd_value.concept_des = con_des;
+    // Below the deterministic threshold: exercise planning directly without
+    // the initial delayed-considering requeue.
+    cpd_value.priority = ConceptProcessPriority::new(3.0);
+    let mut cpd = env.ctx.process_context_mut().alloc_con_proc_desc(cpd_value);
+    let mut restriction = RestrictionSpecId::NONE;
+    assert!(!env
+        .algo
+        .plan_or_processing(root, cpd, false, &mut restriction, &mut env.ctx,));
+    assert!(restriction.is_some());
+    {
+        let process_context = env.ctx.process_context();
+        let clash = process_context
+            .restriction_spec(restriction)
+            .or_clashed_concept_descriptors;
+        assert!(clash.is_some());
+        assert_eq!(
+            process_context
+                .clash_desc(clash)
+                .get_dependency_track_point(),
+            excluded_track_point,
+            "OR planning must retain the dependency of the eliminated operand",
+        );
+    }
+    let open_before = env.algo.or_branch_open_count;
+    env.algo
+        .execute_or_branching(&mut root, &mut cpd, false, restriction.raw, &mut env.ctx);
+    assert_eq!(env.algo.or_branch_open_count, open_before);
+    let label_set = env
+        .ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(root);
+    let mut descriptor = ConDescId::NONE;
+    let mut track_point = TrackPointId::NONE;
+    let process_context = env.ctx.process_context();
+    assert!(process_context
+        .label_set(label_set)
+        .get_concept_descriptor_by_tag_in_context(
+            process_context,
+            102,
+            &mut descriptor,
+            &mut track_point,
+        ));
+    assert!(track_point.is_some());
+    assert_eq!(
+        process_context.track_point(track_point).get_branching_tag(),
+        7,
+        "the only option must retain the branch dependency that excluded A",
+    );
+
+    let oronly_dependency = process_context.track_point(track_point).dependency_node();
+    let oronly = process_context.dep_node(oronly_dependency);
+    assert_eq!(oronly.kind(), DepKind::OrOnlyOption);
+    let connection_link = oronly.base().additional_after;
+    assert!(connection_link.is_some());
+    let connection_track_point = process_context.dep_link(connection_link).dep_track_point;
+    let connection_dependency = process_context
+        .track_point(connection_track_point)
+        .dependency_node();
+    let connection = process_context.dep_node(connection_dependency);
+    assert_eq!(connection.kind(), DepKind::Connection);
+    assert_eq!(connection.base().dep_track_point, excluded_track_point);
+}
+
 /// DISJUNCTION BACKTRACKING (the ⊔-rule + chronological backjump): a root in the
 /// context `(A ⊔ B) ⊓ ¬A ⊓ ¬B` — the label set already holds ¬A and ¬B and the
 /// concept queue holds the disjunction `A ⊔ B`. The drive explores the first
@@ -22964,6 +23182,379 @@ fn all_propagates_to_successor() {
     assert!(
         label_set_has_tag(&mut env, succ, 152),
         "the ∀-restriction must propagate C (tag 152) onto the R-successor"
+    );
+}
+
+/// Konclude's `applyALLRule` builds a `CALLDependencyNode` from both the
+/// universal restriction and the particular role edge traversed.  A concept
+/// propagated over a branch-created edge must therefore retain that edge's
+/// branching tag; otherwise model analysis can mistake a branch-local label
+/// for a deterministic subsumer.
+#[test]
+fn all_propagation_preserves_role_edge_branch_dependency() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(170);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let all_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(270);
+        c.set_operator_code(op::CCIMPLALL);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let con_des = {
+        let mut descriptor = ConceptDescriptor::new();
+        descriptor.concept = all_rc;
+        env.ctx.process_context_mut().alloc_con_desc(descriptor)
+    };
+    let root = env.root;
+    let edge_tp =
+        real_dependency_track_point(&mut env, root, con_des, DepKind::IndependentBase, 700, 7);
+    let child = env.algo.create_new_individual(edge_tp, false, &mut env.ctx);
+    env.algo
+        .ht_install_role_successor_edge(root, child, role_r, edge_tp, &mut env.ctx);
+
+    let mut process_descriptor = ConceptProcessDescriptor::new();
+    process_descriptor.concept_des = con_des;
+    process_descriptor.dep_track_point = TrackPointId::NONE;
+    let mut con_pro_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_proc_desc(process_descriptor);
+    let mut root = root;
+    env.algo
+        .apply_all_rule(&mut root, &mut con_pro_des, false, &mut env.ctx);
+
+    let label_set = env
+        .ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(child);
+    let mut propagated_descriptor = ConDescId::NONE;
+    let mut propagated_tp = TrackPointId::NONE;
+    let process_context = env.ctx.process_context();
+    assert!(process_context
+        .label_set(label_set)
+        .get_concept_descriptor_by_tag_in_context(
+            process_context,
+            170,
+            &mut propagated_descriptor,
+            &mut propagated_tp,
+        ));
+    assert!(propagated_tp.is_some());
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .track_point(propagated_tp)
+            .get_branching_tag(),
+        7,
+        "ALL propagation must inherit the traversed role edge's branch dependency",
+    );
+}
+
+/// The role-automaton analogue of
+/// `all_propagation_preserves_role_edge_branch_dependency`.  Konclude's
+/// `applyAutomatTransactions` uses a CAUTOMATTRANSACTION dependency with the
+/// same two parents, so AQALL propagation must retain the traversed edge too.
+#[test]
+fn aqall_propagation_preserves_role_edge_branch_dependency() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    env.algo.conf_build_dependencies = true;
+
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let con_c = {
+        let mut c = Concept::new();
+        c.set_concept_tag(171);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let aqall_rc = {
+        let mut c = Concept::new();
+        c.set_concept_tag(271);
+        c.set_operator_code(op::CCAQALL);
+        c.set_role(role_r);
+        c.add_operand_linker(con_c, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let con_des = {
+        let mut descriptor = ConceptDescriptor::new();
+        descriptor.concept = aqall_rc;
+        env.ctx.process_context_mut().alloc_con_desc(descriptor)
+    };
+    let root = env.root;
+    let edge_tp =
+        real_dependency_track_point(&mut env, root, con_des, DepKind::IndependentBase, 900, 9);
+    let child = env.algo.create_new_individual(edge_tp, false, &mut env.ctx);
+    env.algo
+        .ht_install_role_successor_edge(root, child, role_r, edge_tp, &mut env.ctx);
+
+    let mut process_descriptor = ConceptProcessDescriptor::new();
+    process_descriptor.concept_des = con_des;
+    process_descriptor.dep_track_point = TrackPointId::NONE;
+    let mut con_pro_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_proc_desc(process_descriptor);
+    let mut root = root;
+    env.algo
+        .apply_automat_transactions(&mut root, &mut con_pro_des, aqall_rc, false, &mut env.ctx);
+
+    let label_set = env
+        .ctx
+        .process_context_mut()
+        .node_reapply_concept_label_set(child);
+    let mut propagated_descriptor = ConDescId::NONE;
+    let mut propagated_tp = TrackPointId::NONE;
+    let process_context = env.ctx.process_context();
+    assert!(process_context
+        .label_set(label_set)
+        .get_concept_descriptor_by_tag_in_context(
+            process_context,
+            171,
+            &mut propagated_descriptor,
+            &mut propagated_tp,
+        ));
+    assert!(propagated_tp.is_some());
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .track_point(propagated_tp)
+            .get_branching_tag(),
+        9,
+        "AQALL propagation must inherit the traversed role edge's branch dependency",
+    );
+}
+
+/// Konclude interprets the negation bit on an indirect-super-role linker as
+/// edge direction: non-negated entries are installed forward and negated
+/// entries backward.  A physical R edge must therefore satisfy R⁻ only at its
+/// destination, never at its source.
+#[test]
+fn all_target_lookup_respects_signed_role_direction() {
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = {
+        let mut role = Role::new();
+        role.set_role_tag(100);
+        env.ctx.ontology_arenas_mut().alloc_role(role)
+    };
+    let role_inverse = {
+        let mut role = Role::new();
+        role.set_role_tag(101);
+        role.set_inverse_role(role_r);
+        env.ctx.ontology_arenas_mut().alloc_role(role)
+    };
+    env.ctx
+        .ontology_arenas_mut()
+        .role_mut(role_r)
+        .set_inverse_role(role_inverse)
+        .add_indirect_super_role_linker(NegLink {
+            target: role_r,
+            negated: false,
+        })
+        .add_indirect_super_role_linker(NegLink {
+            target: role_inverse,
+            negated: true,
+        });
+    env.ctx
+        .ontology_arenas_mut()
+        .role_mut(role_inverse)
+        .add_indirect_super_role_linker(NegLink {
+            target: role_inverse,
+            negated: false,
+        })
+        .add_indirect_super_role_linker(NegLink {
+            target: role_r,
+            negated: true,
+        });
+
+    let root = env.root;
+    let child = env
+        .algo
+        .create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
+    let edge = env.algo.ht_install_role_successor_edge(
+        root,
+        child,
+        role_r,
+        TrackPointId::NONE,
+        &mut env.ctx,
+    );
+    env.ctx
+        .process_context_mut()
+        .node_mut(child)
+        .set_ancestor_link(edge);
+
+    assert_eq!(
+        env.algo.ht_all_rule_target_links(root, role_r, &env.ctx),
+        vec![(edge, child)],
+    );
+    assert!(
+        env.algo
+            .ht_all_rule_target_links(root, role_inverse, &env.ctx)
+            .is_empty(),
+        "a forward R edge must not also be treated as a forward inverse(R) edge",
+    );
+    let inverse_targets = env
+        .algo
+        .ht_all_rule_target_links(child, role_inverse, &env.ctx);
+    assert_eq!(inverse_targets.len(), 1);
+    assert_eq!(inverse_targets[0].1, root);
+    assert_eq!(
+        env.ctx
+            .process_context()
+            .edge(inverse_targets[0].0)
+            .get_link_role(),
+        role_inverse,
+        "Konclude's materialized inverse link must expose inverse(R) in the reverse direction",
+    );
+}
+
+/// The fresh-edge stand-in for Konclude's restricted reapply queue uses the
+/// same signed role semantics as the ordinary ALL iterator.
+#[test]
+fn fresh_edge_reapply_does_not_fire_inverse_all_forward() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let role_r = {
+        let mut role = Role::new();
+        role.set_role_tag(110);
+        env.ctx.ontology_arenas_mut().alloc_role(role)
+    };
+    let role_inverse = {
+        let mut role = Role::new();
+        role.set_role_tag(111);
+        role.set_inverse_role(role_r);
+        env.ctx.ontology_arenas_mut().alloc_role(role)
+    };
+    env.ctx
+        .ontology_arenas_mut()
+        .role_mut(role_r)
+        .set_inverse_role(role_inverse)
+        .add_indirect_super_role_linker(NegLink {
+            target: role_r,
+            negated: false,
+        })
+        .add_indirect_super_role_linker(NegLink {
+            target: role_inverse,
+            negated: true,
+        });
+
+    let filler = {
+        let mut concept = Concept::new();
+        concept.set_concept_tag(173);
+        concept.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(concept)
+    };
+    let inverse_all = {
+        let mut concept = Concept::new();
+        concept.set_concept_tag(273);
+        concept.set_operator_code(op::CCALL);
+        concept.set_role(role_inverse);
+        concept.add_operand_linker(filler, false);
+        concept.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(concept)
+    };
+    let mut root = env.root;
+    env.algo.add_concept_to_individual(
+        inverse_all,
+        false,
+        &mut root,
+        TrackPointId::NONE,
+        false,
+        true,
+        &mut env.ctx,
+    );
+    let mut child = env
+        .algo
+        .create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
+    env.algo.ht_reapply_universal_restrictions(
+        root,
+        &mut child,
+        role_r,
+        TrackPointId::NONE,
+        &mut env.ctx,
+    );
+    assert!(
+        !label_set_has_tag(&mut env, child, 173),
+        "a new forward R edge must not re-fire a universal over inverse(R)",
+    );
+}
+
+/// Konclude enables specialized automaton rules in the completion algorithm's
+/// constructor.  An AQAND state must therefore interpret an AQALL operand as a
+/// role transition, not insert the transition concept into the current node as
+/// ordinary conjunction processing would do.
+#[test]
+fn completion_defaults_to_specialized_automaton_dispatch() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    assert!(env.algo.conf_specialized_automate_rules);
+
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    let target = {
+        let mut c = Concept::new();
+        c.set_concept_tag(172);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let transition = {
+        let mut c = Concept::new();
+        c.set_concept_tag(272);
+        c.set_operator_code(op::CCIMPLAQALL);
+        c.set_role(role_r);
+        c.add_operand_linker(target, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let state = {
+        let mut c = Concept::new();
+        c.set_concept_tag(372);
+        c.set_operator_code(op::CCIMPLAQAND);
+        c.add_operand_linker(transition, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let con_des = {
+        let mut descriptor = ConceptDescriptor::new();
+        descriptor.concept = state;
+        env.ctx.process_context_mut().alloc_con_desc(descriptor)
+    };
+    let mut process_descriptor = ConceptProcessDescriptor::new();
+    process_descriptor.concept_des = con_des;
+    let con_pro_des = env
+        .ctx
+        .process_context_mut()
+        .alloc_con_proc_desc(process_descriptor);
+    let root = env.root;
+    env.algo
+        .tableau_rule_choice(root, con_pro_des, &mut env.ctx);
+
+    assert!(
+        !label_set_has_tag(&mut env, root, 272),
+        "specialized AQAND processing must not flatten an AQALL transition into the current label",
     );
 }
 

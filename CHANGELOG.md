@@ -9,6 +9,92 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Konclude equivalent-non-candidate hand-off closes the 5303 regression (2026-07-13)
+
+The first 592-ontology IBEX sweep of the 7914 feature stack exposed one real
+same-configuration regression: `ore_ont_5303` lost exactly
+`CarbonHydrogenSubstructure ⊑ Hydrocarbon`. A controlled old-binary versus
+candidate-binary run reproduced `match → incomplete(1)`. The entailment follows
+from the named molecular-group hierarchy, the carbon and hydrogen component
+existentials, `hasComponentPart ⊑ hasProperPart`, and the `Hydrocarbon`
+equivalent definition.
+
+The completion model was not incomplete. A direct pair test returned true, but
+the nondeterministic root read-off did not contain `Hydrocarbon`. Konclude does
+not restrict possible subsumers to that root label. Its binary absorber keeps
+non-absorbed equivalent definitions available through the TBox
+`mEquivConNonCandidateSet`; its satisfiability analyser filters that live set and
+emits `CClassificationInitializePossibleClassSubsumptionMessageData`; the KPSet
+classifier installs and schedules the surviving pairs.
+
+KM had already ported each downstream data structure and message handler, but
+the production bridge broke both hand-offs. It retained the three source
+definitions (`eq=0/3`, including `Hydrocarbon`) as `CCEQ` without registering
+them, then invoked the older analyser wrapper with an empty local map. The
+targeted port now:
+
+1. takes Konclude's non-candidate branch for a source `CCEQ` that cannot be
+   fully absorbed (the optional partial-equivalence candidate optimization is
+   not materialized by this bridge);
+2. calls the live-ontology equivalent-non-candidate analyser wrapper; and
+3. refreshes the synchronous subject candidate list from the delivered KPSet
+   possible map before pair verification.
+
+The real 5303 production trace now shows subject 7 receiving the initialization
+message, scheduling `CarbonHydrogenSubstructure v Hydrocarbon`, and confirming
+the pair true. `production_has=true` while the deliberately weaker raw read-off
+remains false, which isolates the repair to Konclude's classification pipeline.
+The environment-independent regression
+`source_absorber_registers_unabsorbed_equivalent_non_candidate` covers the
+source-preprocessing invariant. This is classification bookkeeping, not a
+change to the CB calculus, so no Lean re-certification is required.
+
+Final IBEX job 48737778 attempted all 592 ontologies: 569 ok, 23 timeout, with
+499 exact Konclude matches. Relative to the immediately preceding
+feature-enabled sweep, 5303 is the only signature change and improves from one
+missing pair to exact. The 18-ontology same-flags panel reports zero
+old-versus-final changes. A one-run 9663 timing difference did not reproduce:
+the pre-fix feature binary and final binary both timed out at a 300-second
+diagnostic cap with nearly identical memory.
+
+### ore_ont_7914 closed by exact Konclude descriptor-chain port (2026-07-13)
+
+`ore_ont_7914` now completes and matches Konclude exactly. The full run checks
+all 93 completion residues, returns 141,517 subsumptions against the same
+141,517 in gold, and has 0 extra, 0 missing, no unsatisfiable-class difference,
+and no consistency mismatch. Slurm job 7936 finished in 2:30.56 at 18,882,684
+KB. Targeted jobs 7934 and 7935 separately close the two prior false-positive
+families. Final release validation on `ws`: 1,460 passed, 0 failed, 7 ignored.
+
+The OR planning, OR-only dependency, and satisfiable-cache ports first changed
+7914 from timeout to a terminating but unsound result with 29 extra
+subsumptions. Cache tracing then found a precise contradiction: KM classified
+branch-derived CCAND concept 45405 as nondeterministic, but replayed it from the
+associated expansion cache as deterministic. Instrumented Konclude stored only
+the corresponding branch-tag-1 descriptors as nondeterministic.
+
+The final cause was a missing line in the Rust port of
+`CReapplyConceptLabelSet::insertConceptGetClash`. Konclude prepends every new
+descriptor with
+`mConceptDesLinker = conceptDescriptor->append(mConceptDesLinker)`; KM replaced
+the label head without linking the new descriptor to the old head. The severed
+newest-first chain made the faithfully ported cache partition fallback wrap to
+the head and duplicate a nondeterministic descriptor into the deterministic
+suffix. `completion/u36.rs` now sets the new descriptor's `next` field to the
+previous head before insertion. This is the exact C++ invariant, with no
+ontology or concept conditional. The associated-cache allowance also now
+matches Konclude's constructor default of one nondeterministic expansion.
+
+Permanent tests cover production descriptor insertion, nondeterministic cache
+prefix/suffix splitting, OR-only dependencies, and branch-open model read-off.
+The full causal record, traces, source references, and job table are in
+`docs/SOLVE-7914-9663-9724.md` and
+`results/benchmarks/2026-07-13-7914-closure/`. Final IBEX job 48737778 ran a
+Bullseye-linked binary over all 592 ORE pool ontologies at 240 seconds and 20
+GB each. The final binary matched 7914 in its 78-second smoke task and in the
+full sweep. No gold-matching ontology regressed in the corpus run, and the
+same-flags controlled panel found no old-versus-final change.
+
 ### Source-terminology bridge solves 541 and 12653 in production (<1 s, 2026-07-10)
 
 The disjunction-family blocker was not another completion-rule gap. Konclude

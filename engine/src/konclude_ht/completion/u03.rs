@@ -47,10 +47,12 @@ use super::super::model::ConceptId;
 use super::super::process::dependency::BranchTreeNode;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::{
-    BranchNodeId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId, RestrictionSpecId,
-    TrackPointId,
+    BranchNodeId, ClashDescId, ConDescId, ConProcDescId, DependencyId, EdgeId, NodeId,
+    RestrictionSpecId, TrackPointId,
 };
-use super::algorithm::{BranchKind, IndiNodeQueueType, OrBranchPoint};
+use super::algorithm::{
+    BranchKind, IndiNodeQueueType, OrBranchPoint, DETERMINISTIC_PROCESS_PRIORITY,
+};
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableCalculationTask;
 
@@ -668,7 +670,148 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         self.current_rec_proc_depth -= 1;
     }
 
-    /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::initializeORProcessing`.
+    /// Port of Konclude `initializeORProcessing` (completion cpp
+    /// 16448-16482).  Replacement concepts are consumed here once their typed
+    /// preprocessing arena is available; the priority gate and delayed queue
+    /// are fully live now and deliberately precede operand planning.
+    pub fn initialize_or_processing(
+        &mut self,
+        process_indi: NodeId,
+        con_pro_des: ConProcDescId,
+        _negate: bool,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let (con_des, dep_track_point, process_priority) = {
+            let cpd = calc_alg_context.process_context().con_proc_desc(con_pro_des);
+            (
+                cpd.get_concept_descriptor(),
+                cpd.get_dependency_track_point(),
+                cpd.get_process_priority().get_priority(),
+            )
+        };
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+        let default_priority = self
+            .priority_for_concept(con_des, process_indi, calc_alg_context)
+            .get_priority();
+
+        if process_priority >= DETERMINISTIC_PROCESS_PRIORITY as f64
+            && process_priority >= default_priority
+        {
+            let replacement = {
+                let concept_data = calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_data();
+                if concept_data == INVALID {
+                    None
+                } else {
+                    let replacement_id = calc_alg_context
+                        .ontology_arenas()
+                        .concept_process_data(Id::new(concept_data))
+                        .get_replacement_data();
+                    replacement_id.is_some().then(|| {
+                        let data = calc_alg_context
+                            .ontology_arenas()
+                            .replacement_data(replacement_id);
+                        (
+                            data.implication_replacement_concept,
+                            data.common_disjunct_concepts.clone(),
+                        )
+                    })
+                }
+            };
+            if let Some((implication, common)) = replacement {
+                if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                    let tags: Vec<_> = common
+                        .iter()
+                        .map(|link| {
+                            (
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(link.target)
+                                    .get_concept_tag(),
+                                link.negated,
+                            )
+                        })
+                        .collect();
+                    eprintln!(
+                        "OR-REPLACEMENT concept={} implication={} common={tags:?}",
+                        calc_alg_context
+                            .ontology_arenas()
+                            .concept(concept)
+                            .get_concept_tag(),
+                        implication.raw,
+                    );
+                }
+                let mut node = process_indi;
+                if !common.is_empty() {
+                    self.add_concepts_to_individual(
+                        &common,
+                        false,
+                        &mut node,
+                        dep_track_point,
+                        true,
+                        false,
+                        None,
+                        calc_alg_context,
+                    );
+                }
+                if implication.is_some() {
+                    self.add_concept_to_individual(
+                        implication,
+                        false,
+                        &mut node,
+                        dep_track_point,
+                        true,
+                        false,
+                        calc_alg_context,
+                    );
+                    return true;
+                }
+            }
+
+            let priority_offset = calc_alg_context
+                .base
+                .used_concept_priority_strategy()
+                .expect("concept priority strategy")
+                .get_priority_offset_for_disjunction_delayed_considering(
+                    con_des,
+                    process_indi,
+                );
+            let queue = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(process_indi, true);
+            self.add_concept_restricted_to_processing_queue_offset(
+                con_des,
+                dep_track_point,
+                queue,
+                process_indi,
+                true,
+                INVALID,
+                priority_offset,
+                calc_alg_context,
+            );
+            if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                eprintln!(
+                    "OR-DELAY-CONSIDER concept={} priority={} offset={}",
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                    process_priority,
+                    priority_offset,
+                );
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Execute the port's in-process equivalent of Konclude's dependent OR
+    /// task list for a set of operands already selected by `planORProcessing`.
     ///
     /// PORT-PENDING: reads the concept descriptor / concept-process-data / replacement
     /// data, queries the concept-priority strategy, and routes to the addConcept* /
@@ -690,15 +833,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///     return true
     /// return false
     /// ```
-    pub fn initialize_or_processing(
+    pub(super) fn start_or_branching_in_process(
         &mut self,
         process_indi: NodeId,
         con_pro_des: ConProcDescId,
         negate: bool,
-        // KONCLUDE-PORT-NOTE[api]: C++ `CBranchingORProcessingRestrictionSpecification**`
-        // out-param; the OR-restriction-spec type is not yet ported, so the
-        // double-pointer becomes an opaque out-handle. `Id::NONE` == nullptr.
-        planned_branching_process_restriction: RestrictionSpecId,
+        mut operands: Vec<NegLink<ConceptId>>,
+        branch_clashes: ClashDescId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // KONCLUDE-PORT-NOTE[branching]: the faithful `initializeORProcessing` (cpp
@@ -718,8 +859,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // `addConceptRestrictedToProcessingQueue`) stay deferred and are inert here
         // (`disjunctionDefaultPriority` would route them to the queue); the documented
         // gap is the per-alternative task fork + dependency-directed backjump.
-        let _ = planned_branching_process_restriction;
-
         // conDes = conProDes->getConceptDescriptor(); concept = conDes->getConcept();
         // depTrackPoint = conProDes->getDependencyTrackPoint();
         let con_des: ConDescId = calc_alg_context
@@ -738,11 +877,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // concept->getOperandList() — the disjunction's operands (lives in the
         // ctx-owned concept arena; collected to an owned Vec before the &mut calls,
         // exactly as `apply_and_rule`/`execute_or_branching` do).
-        let mut operands: Vec<NegLink<ConceptId>> = calc_alg_context
-            .ontology_arenas()
-            .concept(concept)
-            .get_operand_list()
-            .to_vec();
         if operands.len() < 2 {
             // 0/1-operand disjunctions are handled upstream in `apply_or_rule`
             // (clash / AND-rule); nothing to branch — let `plan_or_processing` fall
@@ -756,85 +890,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.conf_or_reverse {
             operands.reverse();
         }
-
-        // --- Lazy triggered-OR (KM_HT_NO_LAZY_OR opt-out). ---------------------
-        // The absorption stand-in for TOP-attached recognition disjunctions
-        // `⊤ ⊑ Q ∨ ≤n R.C` (the ≥k-recognition / definer shapes that otherwise
-        // branch on EVERY node — the disjunction-search cost centre, measured on
-        // ore_ont_12653/541): if some effectively-POSITIVE ATMOST operand's bound
-        // currently HOLDS under the PESSIMISTIC successor count (successors not
-        // decided AGAINST the qualifier — undecided ones count), the disjunction
-        // is satisfied by the present graph, so DEFER instead of branching:
-        // register this OR on the at-most's role reapply queue and return. Sound
-        // (deferring asserts nothing). Complete: the pessimistic count can only
-        // grow through NEW `role`-links (an undecided successor deciding the
-        // qualifier positively was already counted; deciding negatively shrinks
-        // it), and every new link re-fires this OR via the role reapply — the
-        // Konclude equivalent is the branching-trigger machinery installed by
-        // absorption (`CConceptRoleBranchingTrigger`).
-        if std::env::var_os("KM_HT_NO_LAZY_OR").is_none() {
-            for l in &operands {
-                if l.negated ^ negate {
-                    continue;
-                }
-                let oc = l.target;
-                if calc_alg_context
-                    .ontology_arenas()
-                    .concept(oc)
-                    .get_operator_code()
-                    != op::CCATMOST
-                {
-                    continue;
-                }
-                let bound: Cint64 = calc_alg_context
-                    .ontology_arenas()
-                    .concept(oc)
-                    .get_parameter();
-                let am_role = calc_alg_context.ontology_arenas().concept(oc).get_role();
-                let am_ops: Vec<NegLink<ConceptId>> = calc_alg_context
-                    .ontology_arenas()
-                    .concept(oc)
-                    .get_operand_list()
-                    .to_vec();
-                let cnt = self.ht_role_successor_count_possibly_qualified(
-                    process_indi,
-                    am_role,
-                    &am_ops,
-                    calc_alg_context,
-                );
-                if cnt <= bound {
-                    let is_concept_reapplied: bool = calc_alg_context
-                        .process_context()
-                        .con_proc_desc(con_pro_des)
-                        .is_concept_reapplied();
-                    if !is_concept_reapplied {
-                        self.add_concept_to_reapply_queue_role(
-                            con_des,
-                            am_role,
-                            process_indi,
-                            true,
-                            dep_track_point,
-                            calc_alg_context,
-                        );
-                    }
-                    return true;
-                }
-            }
-        }
-
-        // KONCLUDE-PORT-NOTE[lazy-cover]: a "lazy covering-OR" over atomic
-        // operands (defer while the label decides none of them) was tried here
-        // and is UNSOUND-for-completeness: case-split entailments (`A ⊑ B ⊔ C`
-        // with both branches closing ⇒ `A ⊑ D`) require branching on UNDECIDED
-        // disjuncts, and the OR-concept level cannot distinguish definer
-        // excluded-middle coverings from genuine case splits (suite:
-        // disjunction_all_branches_unsat / subsumption_via_disjunction /
-        // disjunction_branch_explored fail under it). The at-most defer above
-        // is different in kind: the deferred disjunct's satisfaction is
-        // structurally CHECKED (pessimistic count ≤ bound) and re-checked on
-        // every link event — nothing is left undecided that the verdict
-        // depends on. Reducing the EM-pair branching needs the real absorption
-        // complementarity analysis (EMELIM-style proof), not a defer.
 
         // --- createBranchingTreeNode / createORDependency (the ported records). ---
         // The parent / root branch nodes chain chronologically (the topmost open
@@ -863,6 +918,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context_mut()
                 .alloc_or_dependency_node()
         };
+        // `executeORBranching`: `orDependencyNode->addBranchClashes(...)`.
+        // These are the opposite-polarity facts that eliminated operands
+        // before the true multi-way branch was opened.
+        if self.conf_build_dependencies {
+            self.ht_add_branch_clashes(
+                or_dependency_node,
+                branch_clashes,
+                calc_alg_context,
+            );
+        }
 
         // DDB: mint ONE non-deterministic track point PER ALTERNATIVE, upfront
         // (Konclude's `executeORBranching` per-forked-task
@@ -1001,8 +1066,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// level + 1 on its OWN branch node). Upfront minting is a soundness
     /// requirement: the u29 propagation reads "all sibling track points clashed"
     /// as "the whole decision is refuted"; lazily-minted siblings would fire it
-    /// early. Shared by the OR rule and the at-most merge branching. Empty when
-    /// DDB is off or the decision has no dependency node.
+    /// early. Shared by the OR rule and the at-most merge branching. Konclude
+    /// creates these non-deterministic track points whenever dependency building
+    /// is enabled; dependency-directed backjumping only changes how a later clash
+    /// consumes them. Empty only when dependency building is off or the decision
+    /// has no dependency node.
     pub(super) fn ht_mint_alternative_track_points(
         &mut self,
         dependency_node: DependencyId,
@@ -1010,7 +1078,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         parent_used_branch_node: BranchNodeId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> Vec<TrackPointId> {
-        if !self.conf_dependency_backjumping || dependency_node.is_none() {
+        if !self.conf_build_dependencies || dependency_node.is_none() {
             return Vec::new();
         }
         let (parent_level, parent_root) = if parent_used_branch_node.is_some() {
@@ -1095,41 +1163,190 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         process_indi: NodeId,
         con_pro_des: ConProcDescId,
         negate: bool,
-        // KONCLUDE-PORT-NOTE[api]: see `initialize_or_processing` — opaque out-handle
-        // for the not-yet-ported `CBranchingORProcessingRestrictionSpecification**`.
-        planned_branching_process_restriction: RestrictionSpecId,
+        planned_branching_process_restriction: &mut RestrictionSpecId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // conDes/concept/depTrackPoint/procRest reads (cpp 16493-16499) collapse into
-        // the `initialize_or_processing` head; reproduced there.
-        //
-        // if (initializeORProcessing(processIndi, conProDes, negate, plannedBranchingProcessRestriction, ctx))
-        //     return true;
-        // (cpp 16500-16501.) In the faithful C++ this catches the priority-delay /
-        // replacement fast paths; in this port it ALSO performs the in-process branch
-        // (see `initialize_or_processing`'s KONCLUDE-PORT-NOTE), so a real disjunction
-        // returns true here and `apply_or_rule` (u09) never reaches the deferred
-        // task-fork `execute_or_branching`.
-        if self.initialize_or_processing(
-            process_indi,
-            con_pro_des,
-            negate,
-            planned_branching_process_restriction,
-            calc_alg_context,
-        ) {
+        let (con_des, dep_track_point, proc_rest) = {
+            let cpd = calc_alg_context.process_context().con_proc_desc(con_pro_des);
+            (
+                cpd.get_concept_descriptor(),
+                cpd.get_dependency_track_point(),
+                cpd.get_processing_restriction_specification(),
+            )
+        };
+        let concept = calc_alg_context
+            .process_context()
+            .con_desc(con_des)
+            .get_concept();
+
+        if self.initialize_or_processing(process_indi, con_pro_des, negate, calc_alg_context) {
             return true;
         }
 
-        // PORT-PENDING: the remainder of `planORProcessing` (cpp 16503-16664) — the
-        // operand/label-set scan that records the first/second-not-contained operands,
-        // builds a `CBranchingORProcessingRestrictionSpecification`, and installs the
-        // concept-role branch trigger / disjunction-delay queue. It runs only when
-        // `initialize_or_processing` declines (a <2-operand disjunction, handled
-        // upstream in `apply_or_rule`), so returning false here defers to that path
-        // without dropping logic. The restriction-spec allocator + branch-trigger
-        // search/install + addConceptRestricted/clash-descriptor units land with the
-        // faithful task-fork wave.
-        false
+        // A delayed OR with no remaining concept-role trigger executes from
+        // the stored restriction specification.  This is Konclude's
+        // `procRest` re-entry arm (cpp 16680-16696).
+        if proc_rest.is_some()
+            && calc_alg_context
+                .process_context()
+                .restriction_spec(proc_rest)
+                .is_branching_or
+        {
+            *planned_branching_process_restriction = proc_rest;
+            return false;
+        }
+
+        let label_set = calc_alg_context
+            .process_context()
+            .node(process_indi)
+            .use_reapply_con_label_set;
+        let operands = calc_alg_context
+            .ontology_arenas()
+            .concept(concept)
+            .get_operand_list()
+            .to_vec();
+        let mut survivors = Vec::new();
+        let mut contained_operand = None;
+        let mut clashes = Id::NONE;
+
+        for operand in operands {
+            let effective_negation = operand.negated ^ negate;
+            let mut checking_concept = operand.target;
+            let mut checking_negation = effective_negation;
+            let mut contained_negation = false;
+            let mut contains = label_set.is_some()
+                && self.label_set_contains_concept_get_negated_resolved(
+                    label_set,
+                    checking_concept,
+                    Some(&mut contained_negation),
+                    calc_alg_context,
+                );
+            if !contains
+                && self.get_additional_disjunct_checking_concept(
+                    operand.target,
+                    effective_negation,
+                    Some(&mut checking_concept),
+                    Some(&mut checking_negation),
+                    calc_alg_context,
+                )
+            {
+                contains = label_set.is_some()
+                    && self.label_set_contains_concept_get_negated_resolved(
+                        label_set,
+                        checking_concept,
+                        Some(&mut contained_negation),
+                        calc_alg_context,
+                    );
+            }
+
+            if contains {
+                if contained_negation == checking_negation {
+                    contained_operand = Some(operand);
+                    break;
+                }
+
+                // Preserve the opposite-polarity descriptor as a dependency
+                // for ORONLYOPTION/clash construction.
+                let tag = calc_alg_context
+                    .ontology_arenas()
+                    .concept(checking_concept)
+                    .get_concept_tag();
+                let mut contained_des = Id::NONE;
+                let mut contained_tp = Id::NONE;
+                let contained_with_dependency = {
+                    let process_context = calc_alg_context.process_context();
+                    process_context
+                        .label_set(label_set)
+                        .get_concept_descriptor_by_tag_in_context(
+                            process_context,
+                            tag,
+                            &mut contained_des,
+                            &mut contained_tp,
+                        )
+                };
+                if contained_with_dependency && contained_des.is_some() {
+                    let mut node = process_indi;
+                    clashes = self.create_clashed_concept_descriptor(
+                        clashes,
+                        &mut node,
+                        contained_des,
+                        contained_tp,
+                        calc_alg_context,
+                    );
+                }
+            } else if !self.has_saturated_clashed_flag_for_concept(
+                checking_concept,
+                checking_negation,
+                calc_alg_context,
+            ) {
+                survivors.push(operand);
+            }
+        }
+
+        let mut rest =
+            super::super::process::satellites::BranchingMergingProcessingRestrictionSpecification::new(
+                INVALID,
+            );
+        rest.init_branching_or_processing_restriction(None);
+        rest.or_contained_operand = contained_operand;
+        rest.or_operands = survivors;
+        rest.or_clashed_concept_descriptors = clashes;
+        let rest_id = calc_alg_context
+            .process_context_mut()
+            .alloc_restriction_spec(rest);
+
+        if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+            let rest = calc_alg_context.process_context().restriction_spec(rest_id);
+            eprintln!(
+                "OR-PLAN concept={} contained={} survivors={} clashes={}",
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(concept)
+                    .get_concept_tag(),
+                rest.or_contained_operand.is_some(),
+                rest.or_operands.len(),
+                rest.or_clashed_concept_descriptors.raw,
+            );
+        }
+
+        if contained_operand.is_some()
+            || calc_alg_context
+                .process_context()
+                .restriction_spec(rest_id)
+                .or_operands
+                .len()
+                < 2
+        {
+            *planned_branching_process_restriction = rest_id;
+            return false;
+        }
+
+        // No typed CConceptRoleBranchingTrigger is attached yet.  This is the
+        // exact no-trigger arm: park the planned OR with the delayed-processing
+        // offset, then execute it when it is dequeued again.
+        let priority_offset = calc_alg_context
+            .base
+            .used_concept_priority_strategy()
+            .expect("concept priority strategy")
+            .get_priority_offset_for_disjunction_delayed_processing(con_des, process_indi);
+        calc_alg_context
+            .process_context_mut()
+            .restriction_spec_mut(rest_id)
+            .set_priority_offset(priority_offset);
+        let queue = calc_alg_context
+            .process_context_mut()
+            .node_concept_processing_queue(process_indi, true);
+        self.add_concept_restricted_to_processing_queue_offset(
+            con_des,
+            dep_track_point,
+            queue,
+            process_indi,
+            true,
+            rest_id.raw,
+            priority_offset,
+            calc_alg_context,
+        );
+        true
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::prepareBranchedTaskProcessing`.

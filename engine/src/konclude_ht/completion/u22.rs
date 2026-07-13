@@ -1224,6 +1224,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             && con_sat_des.is_some()
                             && pc.con_sat_desc(con_sat_des).get_negation() == negated;
                         if !present {
+                            if std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+                                && pc.node_count() <= 20
+                            {
+                                eprintln!(
+                                    "SAT-CACHE-VALIDATE-MISS successor={} sat={} concept-tag={} negated={}",
+                                    pc.node(indi).individual_node_id(),
+                                    saturation_indi_node.raw,
+                                    con_tag,
+                                    negated,
+                                );
+                            }
                             sat_caching_still_possible = false;
                         }
                         con_des_it = next;
@@ -1359,14 +1370,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if self.conf_successor_saturation_expansion_restrictions_resolving
             && exist_indi_node.is_some()
         {
+            let trace = std::env::var_os("KM_SAT_ABSORB_DEBUG").is_some()
+                && calc_alg_context.process_context().node_count() <= 20;
             let successor_extension = calc_alg_context
                 .process_context_mut()
                 .sat_node_ext_successor_extension_data(exist_indi_node, false);
+            if trace {
+                eprintln!(
+                    "SAT-CACHE-RESOLVE base={} successor-extension={}",
+                    exist_indi_node.raw, successor_extension.raw,
+                );
+            }
             if successor_extension.is_some() {
                 let resolve_data = calc_alg_context
                     .process_context()
                     .sat_indi_node_succ_ext_data(successor_extension)
                     .get_extension_resolve_data();
+                if trace {
+                    eprintln!("SAT-CACHE-RESOLVE base={} resolve-data={}", exist_indi_node.raw, resolve_data.raw);
+                }
                 if resolve_data.is_some() {
                     let creation_role = calc_alg_context
                         .ontology_arenas()
@@ -1396,6 +1418,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         .sat_node(exist_indi_node)
                         .reapply_con_sat_label_set;
                     let mut extension_map: Option<HashMap<Cint64, ConceptNegationPair>> = None;
+                    let mut reapply_count = 0usize;
                     for super_role in super_roles {
                         if super_role.negated {
                             continue;
@@ -1408,6 +1431,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             if reapply.is_none() {
                                 continue;
                             }
+                            reapply_count += 1;
                             let (reapply_con_des, dependency) = {
                                 let descriptor =
                                     calc_alg_context.process_context().reapply_con_desc(reapply);
@@ -1453,6 +1477,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         extension_map.as_ref(),
                         calc_alg_context,
                     );
+                    if trace {
+                        let mut extensions: Vec<_> = extension_map
+                            .as_ref()
+                            .map(|map| {
+                                map.iter()
+                                    .map(|(&tag, pair)| (tag, pair.negation))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        extensions.sort_unstable();
+                        eprintln!(
+                            "SAT-CACHE-RESOLVE base={} reapply={} extensions={extensions:?} resolved={}",
+                            exist_indi_node.raw, reapply_count, resolved.raw,
+                        );
+                    }
                     if resolved.is_some() && resolved != exist_indi_node {
                         exist_indi_node = resolved;
                     }

@@ -1291,7 +1291,10 @@ impl Default for SaturationNodeAssociatedExpansionCache {
             sat_cache_base: SaturationCache::default(),
             entry_linker: Vec::new(),
             saturation_node_cache_update: Id::NONE,
-            conf_allowed_non_det_expansion_count: 0,
+            // CSaturationNodeAssociatedExpansionCache.cpp ctor lines 36-40:
+            // Konclude permits one nondeterministic expansion per saturation
+            // node unless the configuration overrides that count.
+            conf_allowed_non_det_expansion_count: 1,
             reader_linker: Vec::new(),
             reader_sync_mutex: INVALID,
             cache_stat: INVALID,

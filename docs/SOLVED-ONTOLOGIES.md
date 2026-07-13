@@ -14,6 +14,85 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
+### ore_ont_5303: equivalent non-candidate classification hand-off (2026-07-13)
+
+- **Regression symptom**: the first feature-enabled IBEX sweep completed 5303
+  but missed only `CarbonHydrogenSubstructure ⊑ Hydrocarbon`. Controlled A/B
+  with identical flags showed the previous binary matched gold and the 7914
+  candidate was incomplete by one pair.
+- **Localization**: the direct completion probe proved the pair, while the
+  nondeterministic root-model read-off omitted `Hydrocarbon`. Disabling the
+  associated cache, all saturation caching, or saturation itself did not
+  change the miss. The completion rules and cache were therefore not the
+  cause; the missing step was post-satisfiability candidate initialization.
+- **Konclude mechanism**: `Hydrocarbon` is one of three source equivalent
+  definitions that remain `CCEQ` (`eq=0/3`) because their positive universal
+  restrictions prevent full trigger absorption. Konclude records such
+  definitions in `CTBox::mEquivConNonCandidateSet` when it does not use the
+  optional partial-candidate optimization. Its classification analyser filters
+  the live set, emits an initialize-possible-subsumption message, and the KPSet
+  classifier schedules every surviving pair.
+- **Root cause**: KM retained the `CCEQ` definitions but never populated the
+  ontology set. It then called the old analyser wrapper with an empty
+  `HashMap`, despite already having ports for the live ontology set, the
+  filtering test, the message payload, and the KPSet receiver.
+- **Fix**: take Konclude's exact equivalent-non-candidate branch for retained
+  source definitions, call the live-set analyser, deliver its messages, and
+  refresh the synchronous candidate list from the resulting KPSet map before
+  verification. No ontology or class-name special case was added.
+- **Result**: the production trace now schedules
+  `CarbonHydrogenSubstructure v Hydrocarbon` and proves it true. The raw
+  nondeterministic read-off remains false, confirming that the repair acts at
+  the intended classification boundary. Final IBEX job 48737778 matches 5303
+  exactly and raises the feature-enabled corpus total from 498 to 499 gold
+  matches. The 18-ontology same-flags panel has zero old-versus-final changes.
+
+### ore_ont_7914: descriptor-chain-safe associated expansion cache (2026-07-13)
+
+- **Symptom**: KM originally timed out after completion-side OR fan-out. After
+  the OR planning and satisfiable-cache ports made it terminate, KM produced
+  141,546 subsumptions against Konclude's 141,517. The 29 extras were 24
+  members of the `UBERON_0003657` family and 5 members of the
+  `UBERON_0010961` family.
+- **Konclude diagnosis**: disabling KM's associated saturation expansion cache
+  removed the first false family but made the second time out, so the cache was
+  necessary but partitioned incorrectly. KM classified branch-derived CCAND
+  concept 45405 as nondeterministic, then replayed the same concept as a
+  deterministic associated expansion. Instrumented Konclude cached only its
+  two branch-tag-1 CCSUB descriptors as nondeterministic and wrote no
+  deterministic suffix.
+- **Root cause**: Konclude's
+  `CReapplyConceptLabelSet::insertConceptGetClash` prepends with
+  `mConceptDesLinker = conceptDescriptor->append(mConceptDesLinker)`. KM moved
+  the label head but never set the new descriptor's `next` pointer. The broken
+  newest-first chain made `CSaturationNodeExpansionCacheHandler` wrap from a
+  null nondeterministic boundary back to the label head and duplicate the
+  branch-derived descriptor into the deterministic suffix.
+- **Mechanism**:
+  1. Port Konclude's OR delay/replacement/planning pipeline, restriction
+     specification, single-survivor `CORONLYOPTIONDependencyNode`, and exact
+     branch dependencies.
+  2. Port satisfiable-cached OR/existential parking, reapplication, saturation
+     cache establishment, and extension resolution.
+  3. Restore the load-bearing insertion invariant by setting every successfully
+     inserted descriptor's `next` to the previous label head before insertion.
+     No cache exception or ontology-specific rule is used.
+  4. Align the associated-cache constructor default with Konclude by allowing
+     one nondeterministic expansion rather than zero. This is an exact adjacent
+     port, but the descriptor link is the change that removes the 7914 extras.
+- **Result**: full Slurm job 7936 completed all 93 residue subjects in round 0,
+  with no deferred subjects, in 2:30.56 at 18,882,684 KB. KM and Konclude both
+  produced 141,517 subsumptions; comparison found 0 extra, 0 missing, no
+  unsatisfiable-class difference, and no consistency mismatch. Targeted jobs
+  7934 and 7935 independently closed both residual families.
+- **Validation**: final release suite 1,460 passed, 0 failed, 7 ignored. Permanent
+  regressions cover the production descriptor chain, nondeterministic-prefix
+  cache split, OR-only dependency, and nondeterministic model read-off. The
+  full causal trace and source references are in
+  `SOLVE-7914-9663-9724.md`. Final 592-ontology IBEX job 48737778 matched 7914
+  exactly; the same-flags 18-ontology panel found no old-versus-final
+  regression.
+
 ### ore_ont_541 and ore_ont_12653: source terminology + isolated OR tasks (2026-07-10)
 
 - **Symptom**: both timed out in the production CB portfolio. Earlier bridge
@@ -192,7 +271,6 @@ branch-open-free is.**
 | Ont | Route | Signature | The path |
 |---|---|---|---|
 | 3215 | bridge | covered (unsupported=0), per-subject read-off terminates 0.4–6 s deterministic-after-gate; Konclude itself needs 22 s (-w8) | Correctness sample validating; the blocker is O(subjects) fresh saturations — needs databox-COW reuse per subject (Konclude reuses the preprocessed task). |
-| 7914 | bridge | 46k nodes, hits the 5M drive cap, backtracks=0 | Model explosion, not search: blocking effectiveness + lazy-∀ extension (the giants' family). Production route: r-Succ completeness gap needs edge-conditioned forward push + Lean re-cert. |
 | 9663, 9724 | production | central memory blowup (9663 saturation 115 GB) | Deterministic ≤n bounds in `saturate_global` + interning; see `KONCLUDE-SATURATION-CACHE-SPEC.md`. |
 | 14817 | production | 71 missing = transitive `part_of` propagation | Role-automaton ∀-propagation is ported and live in konclude_ht tests (`6a7a67e`) but not production-wired: needs OntologyArenas-from-clauses + consistency classify. |
 | 10621 | — | contested gold | Konclude-vs-HermiT disagreement; resolve gold first. |

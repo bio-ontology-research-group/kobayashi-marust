@@ -25,7 +25,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 use super::node_resolution::ProcessTagger;
 use super::reapply_sat::ReapplyConceptDescriptorId;
@@ -679,6 +679,22 @@ pub struct BranchingMergingProcessingRestrictionSpecification {
     /// impossible; callers still clamp defensively and re-scan from 0 if it
     /// ever exceeds the arena length.
     pub scan_edge_watermark: Cint64,
+
+    // --- CBranchingORProcessingRestrictionSpecification -----------------
+    // The C++ process arena stores several subclasses behind a
+    // CProcessingRestrictionSpecification pointer.  The Rust port currently
+    // has one arena record, so the OR subclass is represented by a tagged
+    // payload in that record.  `or_operands` is the stable equivalent of the
+    // C++ first/second operand linkers plus the tail reachable from the second
+    // linker; executeORBranching rechecks every entry against the current
+    // label before choosing a deterministic option or opening a branch.
+    pub is_branching_or: bool,
+    pub or_contained_operand: Option<NegLink<ConceptId>>,
+    pub or_operands: Vec<NegLink<ConceptId>>,
+    pub or_clashed_concept_descriptors: ClashDescId,
+    /// Opaque until CConceptRoleBranchingTrigger itself is ported.  NONE is
+    /// the normal no-trigger path and matches Konclude's delayed re-entry.
+    pub or_concept_role_branching_trigger: Cint64,
 }
 
 impl Default for BranchingMergingProcessingRestrictionSpecification {
@@ -714,6 +730,11 @@ impl Default for BranchingMergingProcessingRestrictionSpecification {
             link_restriction: Id::NONE,
             is_branching_merging: false,
             scan_edge_watermark: 0,
+            is_branching_or: false,
+            or_contained_operand: None,
+            or_operands: Vec::new(),
+            or_clashed_concept_descriptors: Id::NONE,
+            or_concept_role_branching_trigger: INVALID,
         }
     }
 }
@@ -730,6 +751,28 @@ impl BranchingMergingProcessingRestrictionSpecification {
     /// Port of `CProcessingRestrictionSpecification::initProcessingRestriction`.
     pub fn init_processing_restriction(&mut self, prev_rest: Option<&Self>) -> &mut Self {
         self.priority_offset = prev_rest.map_or(0.0, |prev| prev.priority_offset);
+        self
+    }
+
+    /// Port of `initBranchingORProcessingRestriction` for the payload carried
+    /// by this arena's processing-restriction record.
+    pub fn init_branching_or_processing_restriction(
+        &mut self,
+        prev_rest: Option<&Self>,
+    ) -> &mut Self {
+        self.init_processing_restriction(prev_rest);
+        self.is_branching_or = true;
+        if let Some(prev) = prev_rest {
+            self.or_contained_operand = prev.or_contained_operand;
+            self.or_operands = prev.or_operands.clone();
+            self.or_clashed_concept_descriptors = prev.or_clashed_concept_descriptors;
+            self.or_concept_role_branching_trigger = prev.or_concept_role_branching_trigger;
+        } else {
+            self.or_contained_operand = None;
+            self.or_operands.clear();
+            self.or_clashed_concept_descriptors = Id::NONE;
+            self.or_concept_role_branching_trigger = INVALID;
+        }
         self
     }
     /// Port of `getNextProcessingRestrictionSpecification`.

@@ -1,0 +1,65 @@
+{
+  "date": "2026-07-13",
+  "binary_sha256": "8f31f40548b76815f91ec48b417d8a026a454401aaa9e173ec5d1df3d838eb17",
+  "max_required_glibc": "2.29",
+  "ws_release_tests": {
+    "passed": 1460,
+    "failed": 0,
+    "ignored": 7
+  },
+  "smoke_job": 48737774,
+  "smoke": {
+    "ore_ont_5303.owl": {
+      "verdict": "match",
+      "extra": 0,
+      "missing": 0
+    },
+    "ore_ont_7914.owl": {
+      "verdict": "match",
+      "extra": 0,
+      "missing": 0,
+      "wall_s": 78,
+      "peak_kb": 15379188
+    }
+  },
+  "full_sweep_job": 48737778,
+  "aggregate_sha256": "349bca0cb550ea7251713832a0241857edbb2e729c89a984f9adc9ac66d0eca4",
+  "full_sweep": {
+    "attempted": 592,
+    "status": {
+      "ok": 569,
+      "timeout": 23
+    },
+    "verdict": {
+      "match": 499,
+      "incomplete": 50,
+      "unsound": 10,
+      "both": 2,
+      "incons": 6,
+      "nogold": 2,
+      "timeout": 23
+    }
+  },
+  "controlled_jobs": [48737880, 48738400],
+  "controlled_ab": {
+    "completed_pairs": 18,
+    "result_changes": 0,
+    "regressions": 0,
+    "improvements": 0
+  },
+  "change_vs_pre_fix_feature_sweep": {
+    "ore_ont_5303.owl": "incomplete(1) -> match",
+    "signature_regressions": 0
+  },
+  "ore_ont_9663_timing_control": {
+    "timeout_s": 300,
+    "pre_fix_feature": {
+      "status": "timeout",
+      "peak_kb": 17312252
+    },
+    "final": {
+      "status": "timeout",
+      "peak_kb": 17321180
+    }
+  }
+}

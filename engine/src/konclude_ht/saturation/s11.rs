@@ -1628,8 +1628,24 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .process_context()
                 .sat_node(*root_process_indi)
                 .get_individual_id();
+            let reference = calc_alg_context
+                .process_context()
+                .sat_node(*root_process_indi)
+                .get_saturation_concept_reference_linking();
+            let root_tag = if reference.is_some() {
+                let root_concept = calc_alg_context
+                    .process_context()
+                    .extended_con_ref_linking_data(reference)
+                    .get_saturation_concept();
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(root_concept)
+                    .get_concept_tag()
+            } else {
+                -1
+            };
             eprintln!(
-                "SAT-ADD-TAG-TRACE concept={:?} tag={} neg={} node={:?} indi={}\n{}",
+                "SAT-ADD-TAG-TRACE concept={:?} tag={} neg={} node={:?} indi={} root-tag={}\n{}",
                 adding_concept,
                 calc_alg_context
                     .ontology_arenas()
@@ -1638,6 +1654,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 negate,
                 root_process_indi,
                 indi,
+                root_tag,
                 std::backtrace::Backtrace::force_capture()
             );
         }

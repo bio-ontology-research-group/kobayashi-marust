@@ -232,9 +232,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 let operands = concept_op_linker_it
                     .iter()
                     .map(|operand| {
-                        let target = calc_alg_context
-                            .ontology_arenas()
-                            .concept(operand.target);
+                        let target = calc_alg_context.ontology_arenas().concept(operand.target);
                         format!(
                             "{}{}:{}",
                             if operand.negated { "-" } else { "+" },
@@ -412,21 +410,96 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // `processIndi->getReapplyRoleSuccessorHash(false)
             //     ->getRoleSuccessorLinkIterator(role)` — edges registered under
             // every indirect super role on install. The port resolves the role
-            // hierarchy + the inverse direction at lookup via `ht_all_rule_targets`
-            // (u10), exactly as `apply_all_rule` (u09) does.
-            let role_targets = self.ht_all_rule_targets(*process_indi, role, calc_alg_context);
-            for succ_indi in role_targets {
+            // hierarchy + the inverse direction at lookup via
+            // `ht_all_rule_target_links` (u10), exactly as `apply_all_rule`
+            // (u09) does.  The physical link is retained because Konclude's
+            // CAUTOMATTRANSACTIONDependencyNode has it as its second parent.
+            let role_targets = self.ht_all_rule_target_links(*process_indi, role, calc_alg_context);
+            for (link, succ_indi) in role_targets {
                 self.applied_all_rule_count += 1;
                 // W3-DEFER[macro]: STATINC(AUTOMATETRANSACTIONCOUNT, calcAlgContext)
                 // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation — false (no
                 // answerer binding-propagation adapter in this fragment).
                 let mut next_dep_track_point: TrackPointId = Id::NONE;
                 let mut all_dep_node_created = false;
+                let link_dep_track_point = calc_alg_context
+                    .process_context()
+                    .edge(link)
+                    .get_dependency_track_point();
                 let mut loc_succ_indi: NodeId =
                     self.get_localized_individual(succ_indi, false, calc_alg_context);
                 for op_link in &op_concepts {
                     let op_concept: ConceptId = op_link.target;
                     let op_con_neg: bool = op_link.negated ^ negated;
+                    if std::env::var("KM_BRIDGE_WATCH_TAG")
+                        .ok()
+                        .and_then(|value| value.parse::<Cint64>().ok())
+                        == Some(
+                            calc_alg_context
+                                .ontology_arenas()
+                                .concept(op_concept)
+                                .get_concept_tag(),
+                        )
+                    {
+                        let (source_id, destination_id, edge_source_id, edge_destination_id) = {
+                            let process_context = calc_alg_context.process_context();
+                            let edge = process_context.edge(link);
+                            (
+                                process_context.node(*process_indi).individual_node_id(),
+                                process_context.node(succ_indi).individual_node_id(),
+                                process_context
+                                    .node(edge.get_source_individual())
+                                    .individual_node_id(),
+                                process_context
+                                    .node(edge.get_destination_individual())
+                                    .individual_node_id(),
+                            )
+                        };
+                        let watch_node = std::env::var("KM_BRIDGE_WATCH_NODE")
+                            .ok()
+                            .and_then(|value| value.parse::<Cint64>().ok());
+                        if watch_node.is_none()
+                            || watch_node == Some(source_id)
+                            || watch_node == Some(destination_id)
+                        {
+                            let (base_tag, base_op, state_tag, state_op, role_tag, edge_role_tag) = {
+                                let process_context = calc_alg_context.process_context();
+                                let ontology = calc_alg_context.ontology_arenas();
+                                let base_concept =
+                                    process_context.con_desc(base_con_des).get_concept();
+                                let edge_role = process_context.edge(link).get_link_role();
+                                (
+                                    ontology.concept(base_concept).get_concept_tag(),
+                                    ontology.concept(base_concept).get_operator_code(),
+                                    ontology.concept(concept).get_concept_tag(),
+                                    ontology.concept(concept).get_operator_code(),
+                                    ontology.role(role).get_role_tag(),
+                                    ontology.role(edge_role).get_role_tag(),
+                                )
+                            };
+                            eprintln!(
+                                "WATCH-AUTOMAT-TRANSACTION source={} destination={} base={}:{} state={}:{} state-negated={} role={} edge={} edge-role={} edge-source={} edge-destination={} target={} target-negated={} reapplied={}",
+                                source_id,
+                                destination_id,
+                                base_tag,
+                                base_op,
+                                state_tag,
+                                state_op,
+                                negated,
+                                role_tag,
+                                link.index(),
+                                edge_role_tag,
+                                edge_source_id,
+                                edge_destination_id,
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(op_concept)
+                                    .get_concept_tag(),
+                                op_con_neg,
+                                reapplied,
+                            );
+                        }
+                    }
                     // conLabelSet->containsConcept(opConcept, opConNeg) — tag-RESOLVED
                     // (ls1::has_concept is a W2-DEFER stub: raw-index key + always-false
                     // negation; a raw/tag collision here would SKIP a required add).
@@ -444,17 +517,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     if !has_concept {
                         if !all_dep_node_created {
                             all_dep_node_created = true;
-                            // KONCLUDE-PORT-NOTE[api]: the link's own dependency track
-                            // point (`link->getDependencyTrackPoint()`) is not threaded
-                            // through `ht_all_rule_targets`; the descriptor's track
-                            // point stands in (the same deferral `apply_all_rule`
-                            // documents for createALLDependency).
+                            // Konclude cpp 9764–9767: combine the automaton-state
+                            // descriptor with this exact traversed role edge.
                             let _all_dep_node = self.create_automat_transaction_dependency(
                                 &mut next_dep_track_point,
                                 process_indi,
                                 base_con_des,
                                 dep_track_point,
-                                dep_track_point,
+                                link_dep_track_point,
                                 calc_alg_context,
                             );
                         }

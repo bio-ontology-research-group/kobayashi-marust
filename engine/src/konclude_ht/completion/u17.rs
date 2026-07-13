@@ -134,10 +134,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         };
         if std::env::var_os("KM_BRIDGE_CACHE_DEBUG").is_some() {
             if let Some((requires_nondeterministic, concepts)) = &result {
+                let concepts = concepts
+                    .iter()
+                    .map(|(concept, negated)| {
+                        let concept = calc_alg_context.ontology_arenas().concept(*concept);
+                        format!(
+                            "{}{}:{}",
+                            if *negated { "-" } else { "+" },
+                            concept.get_concept_tag(),
+                            concept.get_operator_code(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
                 eprintln!(
-                    "BRIDGE-SAT-EXPANSION-CACHE-REPLAY node={} concepts={} requires-nondeterministic={}",
+                    "BRIDGE-SAT-EXPANSION-CACHE-REPLAY node={} concepts=[{}] requires-nondeterministic={}",
                     saturation_node.raw,
-                    concepts.len(),
+                    concepts,
                     requires_nondeterministic,
                 );
             }
@@ -793,6 +806,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .reapply_con_sat_label_set(sat_label)
             .get_concept_saturation_description_linker();
+        let sat_label_debug = std::env::var("KM_SAT_LABEL_DEBUG_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+            == Some(tag);
         while sat_des.is_some() {
             let (sat_concept, sat_negation, next) = {
                 let descriptor = calc_alg_context.process_context().con_sat_desc(sat_des);
@@ -802,6 +819,43 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     descriptor.get_next_concept_desciptor(),
                 )
             };
+            if sat_label_debug {
+                let concept_ref = calc_alg_context.ontology_arenas().concept(sat_concept);
+                let operands = concept_ref
+                    .get_operand_list()
+                    .iter()
+                    .map(|operand| {
+                        let target = calc_alg_context
+                            .ontology_arenas()
+                            .concept(operand.target);
+                        format!(
+                            "{}{}:{}",
+                            if operand.negated { "-" } else { "+" },
+                            target.get_concept_tag(),
+                            target.get_operator_code(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let role_tag = if concept_ref.get_role().is_some() {
+                    calc_alg_context
+                        .ontology_arenas()
+                        .role(concept_ref.get_role())
+                        .get_role_tag()
+                } else {
+                    -1
+                };
+                eprintln!(
+                    "SAT-LABEL-FULL root-tag={} concept-tag={} op={} neg={} role-tag={} parameter={} operands=[{}]",
+                    tag,
+                    concept_ref.get_concept_tag(),
+                    concept_ref.get_operator_code(),
+                    sat_negation,
+                    role_tag,
+                    concept_ref.get_parameter(),
+                    operands,
+                );
+            }
             self.saturation_expansion_concept_count += 1;
             if sat_concept != concept || sat_negation != concept_negation {
                 self.add_concept_to_individual_skip_and_processing(

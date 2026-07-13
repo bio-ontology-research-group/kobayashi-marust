@@ -609,10 +609,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .iter()
                 .any(|link| !link.negated && link.target == role)
             {
-                role_linker.push(NegLink {
-                    target: role,
-                    negated: false,
-                });
+                // Konclude's indirect-super-role list starts with the role
+                // itself.  The bridge stores strict super roles, so restore
+                // the reflexive head before passing the list to the faithful
+                // successor creator.
+                role_linker.insert(
+                    0,
+                    NegLink {
+                        target: role,
+                        negated: false,
+                    },
+                );
             }
             let mut succ_indi = self.try_extend_functional_successor_individual(
                 process_indi,
@@ -629,110 +636,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 return;
             }
             if succ_indi.is_none() {
-                let is_data_role: bool =
-                    calc_alg_context.ontology_arenas().role(role).is_data_role();
-                succ_indi =
-                    self.create_new_individual(dep_track_point, is_data_role, calc_alg_context);
-                // tryExpansionFromSaturatedData (createSuccessorIndividual cpp 21640–21645,
-                // BEFORE the links/concepts): replay the saturated filler label onto the
-                // fresh successor, or raise the clash when the filler's saturation node
-                // CLASHED (the ∃ is then unsatisfiable on this node).
-                let mut sat_caching_possible = true;
-                let mut last_sat_cach_possible_con_des: ConDescId = Id::NONE;
-                if self.conf_expand_created_successors_from_saturation {
-                    self.try_expansion_from_saturated_data(
-                        process_indi,
-                        succ_indi,
-                        con_des,
-                        dep_track_point,
-                        &mut saturation_node,
-                        &mut sat_caching_possible,
-                        &mut last_sat_cach_possible_con_des,
-                        calc_alg_context,
-                    );
-                    if calc_alg_context.has_pending_signal() {
-                        return;
-                    }
-                }
-                // createNewIndividualsLinksReapplyed → the directed R link-edge + succ-role-hash.
-                let anc_link: EdgeId = self.ht_install_role_successor_edge(
-                    *process_indi,
-                    succ_indi,
+                // The complete port of createSuccessorIndividual (completion
+                // cpp 21635–21670) is now live in u35.  Use it directly: it
+                // creates the SOME dependency, expands from saturation before
+                // link creation, installs and reapplies every signed indirect
+                // super-role link, adds the qualifier, and only then attempts
+                // saturation-cache establishment.  The former inline path also
+                // ran `ht_reapply_universal_restrictions`, an obsolete label-scan
+                // fallback that derived concepts outside the extension-resolve
+                // set and therefore defeated Konclude's saturation cache.
+                succ_indi = self.create_successor_individual(
+                    process_indi,
+                    con_des,
+                    &role_linker,
                     role,
+                    &concept_op_linker,
+                    negate,
                     dep_track_point,
-                    calc_alg_context,
-                );
-                // succIndi->setAncestorLink(ancLink); succIndi->setIndividualAncestorDepth(depth+1).
-                let depth: Cint64 = calc_alg_context
-                    .process_context()
-                    .node(*process_indi)
-                    .individual_ancestor_depth();
-                let source_flags: Cint64 = calc_alg_context
-                    .process_context()
-                    .node(*process_indi)
-                    .processing_restriction_flags();
-                {
-                    let n = calc_alg_context.process_context_mut().node_mut(succ_indi);
-                    n.set_ancestor_link(anc_link);
-                    n.set_individual_ancestor_depth(depth + 1);
-                    // Ancestor saturation-blocked inheritance (createSuccessorIndividual
-                    // cpp 21657–21665; the SATISFIABLECACHED / SIGNATUREBLOCKING twins
-                    // stay W3-DEFER with their subsystems).
-                    if source_flags
-                        & (IndividualProcessNode::PRF_SATURATIONBLOCKINGCACHED
-                            | IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED)
-                        != 0
-                    {
-                        n.add_processing_restriction_flags(
-                            IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED,
-                        );
-                    }
-                }
-                // addConcepts(conceptOpLinker, negate, succIndi, ...) — the ∃ qualifier C.
-                for nl in &concept_op_linker {
-                    self.add_concept_to_individual(
-                        nl.target,
-                        nl.negated ^ negate,
-                        &mut succ_indi,
-                        dep_track_point,
-                        true,
-                        true,
-                        calc_alg_context,
-                    );
-                    if calc_alg_context.has_pending_signal() {
-                        return;
-                    }
-                }
-                // Edge-triggered ∀ re-application along the freshly created link.
-                // KONCLUDE-PORT-NOTE[api]: Konclude re-fires the predecessor's ∀-restrictions
-                // on a new link through the role reapply-queue + the link-processing-restriction
-                // (applyALLRule with a restLink). That reapply-queue subsystem is W2-DEFER, so
-                // the ∃-rule instead scans the predecessor's concept label set for ∀-restrictions
-                // on `role` and pushes them onto the new successor (behaviourally the same
-                // edge-triggered ∀ propagation; only the trigger source differs).
-                self.ht_reapply_universal_restrictions(
-                    *process_indi,
-                    &mut succ_indi,
-                    role,
-                    dep_track_point,
+                    saturation_node,
                     calc_alg_context,
                 );
                 if calc_alg_context.has_pending_signal() {
                     return;
-                }
-                // tryEstablishSaturationCaching (createSuccessorIndividual cpp 21666–21668,
-                // AFTER the successor's label is complete — qualifiers + reapplied ∀s):
-                // when the label is covered by a completed sufficient saturation node,
-                // the successor is saturation-blocked and never processed.
-                if self.conf_caching_blocking_from_saturation {
-                    self.try_establish_saturation_caching(
-                        process_indi,
-                        succ_indi,
-                        saturation_node,
-                        &mut sat_caching_possible,
-                        &mut last_sat_cach_possible_con_des,
-                        calc_alg_context,
-                    );
                 }
             }
             // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
@@ -1097,9 +1022,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// `source`'s concept label set for `CCALL` concepts on `role` and adds their
     /// operands, which is exactly the set of `∀role.C` consequences a new R-edge must
     /// receive. Two extensions keep the stand-in faithful to the reapply queue:
-    ///  - the role match is HIERARCHY-resolved (`edge role == r` or the edge role has
-    ///    `r` as an indirect super role) — Konclude registers a new edge under every
-    ///    indirect super role, so a `∀S.C` re-fires on a fresh `R ⊑ S` edge;
+    ///  - the role match is SIGNED and hierarchy-resolved (`edge role == r` or the
+    ///    edge role has a non-negated `r` indirect-super entry) — Konclude installs
+    ///    non-negated entries forward and negated entries backward, so a `∀S.C`
+    ///    re-fires on a fresh `R ⊑ S` edge but `∀R⁻.C` does not;
     ///  - the role-automaton family re-fires too: `CCAQALL`-family transition concepts
     ///    in the label (the non-specialized `apply_and_rule` route puts them there),
     ///    and `CCAQAND`-family STATE concepts, whose transitions never enter the label
@@ -1139,7 +1065,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // or r is one of its indirect super roles (self is in the list per the
             // Konclude convention; the == check covers hand-built fixtures too).
             let role_matches = |r: RoleId| -> bool {
-                r == role || (role.is_some() && onto.role(role).has_indirect_super_role(r))
+                self.ht_signed_role_matches(role, r, false, calc_alg_context)
             };
             let mut it = pc
                 .label_set(ls)

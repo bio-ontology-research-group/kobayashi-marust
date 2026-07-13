@@ -29,7 +29,7 @@
 //!   - everything else (multiple role atoms, head role atoms / role
 //!     hierarchy, `Eq`, body `Exist`, nominals, card_defs, chains) counts as
 //!     unsupported in v1.
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use super::classifier::{
     OptimizedKPSetClassSubsumptionClassifierThread, RecordingClassificationMessageDataObserver,
@@ -39,11 +39,12 @@ use super::completion::algorithm::CompletionTaskHandleAlgorithm;
 use super::completion::context::CalculationAlgorithmContextBase;
 use super::completion::stubs::SatisfiableTaskClassificationMessageAnalyser;
 use super::model::concept::Concept;
+use super::model::concept_process::{ConceptProcessData, ReplacementData};
 use super::model::op;
 use super::model::role::Role;
 use super::model::role_chain::RoleChain;
 use super::model::stubs::NameId;
-use super::model::substrate::{Cint64, Id};
+use super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::model::{ConceptId, RoleId};
 use super::preprocess::role_chain_automata::RoleChainAutomataTransformationPreProcess;
 use super::process::descriptor::{
@@ -1209,12 +1210,188 @@ fn absorb_role_tree_clause(
     b.add_unfolding(trigger.concept, implied.0, implied.1)
 }
 
+/// Recursive core of Konclude
+/// `CCommonDisjunctConceptExtractionPreProcess::getDisjunctConcepts`.
+fn collect_common_disjunct_concepts(
+    arenas: &super::model::ontology::OntologyArenas,
+    concept: ConceptId,
+    negated: bool,
+    collect: &mut HashSet<(ConceptId, bool)>,
+    considered: &mut HashSet<(ConceptId, bool)>,
+    cache: &mut HashMap<(ConceptId, bool), HashSet<(ConceptId, bool)>>,
+) {
+    if !considered.insert((concept, negated)) {
+        return;
+    }
+    collect.insert((concept, negated));
+    let (op_code, operands) = {
+        let c = arenas.concept(concept);
+        (c.get_operator_code(), c.get_operand_list().to_vec())
+    };
+
+    let unfolds = (!negated
+        && (matches!(op_code, op::CCSUB | op::CCEQ | op::CCAND)
+            || (op_code == op::CCOR && operands.len() == 1)))
+        || (negated
+            && (op_code == op::CCOR
+                || (operands.len() == 1 && matches!(op_code, op::CCAND | op::CCEQ))));
+    if unfolds {
+        for operand in operands {
+            collect_common_disjunct_concepts(
+                arenas,
+                operand.target,
+                operand.negated ^ negated,
+                collect,
+                considered,
+                cache,
+            );
+        }
+        return;
+    }
+
+    let is_disjunction =
+        (!negated && op_code == op::CCOR) || (negated && matches!(op_code, op::CCAND | op::CCEQ));
+    if !is_disjunction {
+        return;
+    }
+
+    let key = (concept, negated);
+    let common = if let Some(cached) = cache.get(&key) {
+        cached.clone()
+    } else {
+        let mut iter = operands.into_iter();
+        let mut intersection = HashSet::new();
+        if let Some(first) = iter.next() {
+            let mut first_considered = considered.clone();
+            collect_common_disjunct_concepts(
+                arenas,
+                first.target,
+                first.negated ^ negated,
+                &mut intersection,
+                &mut first_considered,
+                cache,
+            );
+            for operand in iter {
+                if intersection.is_empty() {
+                    break;
+                }
+                let mut next = HashSet::new();
+                let mut next_considered = considered.clone();
+                collect_common_disjunct_concepts(
+                    arenas,
+                    operand.target,
+                    operand.negated ^ negated,
+                    &mut next,
+                    &mut next_considered,
+                    cache,
+                );
+                intersection.retain(|item| next.contains(item));
+            }
+        }
+        cache.insert(key, intersection.clone());
+        intersection
+    };
+    collect.extend(common);
+}
+
+/// Port of Konclude `CCommonDisjunctConceptExtractionPreProcess` over the
+/// completed bridge terminology.  It materialises the producer data consumed
+/// by `initializeORProcessing`, rather than recomputing common concepts in the
+/// completion hot loop.
+fn extract_common_disjunct_replacements(ctx: &mut CalculationAlgorithmContextBase) -> usize {
+    let concept_count = ctx.ontology_arenas().concept_count();
+    let mut cache = HashMap::new();
+    let mut extracted = Vec::new();
+    for index in 0..concept_count {
+        let concept = ConceptId::new(index as Cint64);
+        let (op_code, operand_count) = {
+            let c = ctx.ontology_arenas().concept(concept);
+            (c.get_operator_code(), c.get_operand_count())
+        };
+        if operand_count < 1 || !matches!(op_code, op::CCAND | op::CCEQ | op::CCOR) {
+            continue;
+        }
+        let negated = matches!(op_code, op::CCAND | op::CCEQ);
+        let mut considered = HashSet::new();
+        let mut common = HashSet::new();
+        collect_common_disjunct_concepts(
+            ctx.ontology_arenas(),
+            concept,
+            negated,
+            &mut common,
+            &mut considered,
+            &mut cache,
+        );
+        common.remove(&(concept, negated));
+        if !common.is_empty() {
+            let mut common: Vec<_> = common.into_iter().collect();
+            common.sort_by_key(|(concept, negated)| {
+                (
+                    ctx.ontology_arenas().concept(*concept).get_concept_tag(),
+                    *negated,
+                )
+            });
+            extracted.push((concept, common));
+        }
+    }
+
+    for (concept, common) in &extracted {
+        let concept_data = ctx.ontology_arenas().concept(*concept).get_concept_data();
+        let process_data = if concept_data == INVALID {
+            let id = ctx
+                .ontology_arenas_mut()
+                .alloc_concept_process_data(ConceptProcessData::new());
+            ctx.ontology_arenas_mut()
+                .concept_mut(*concept)
+                .set_concept_data(id.raw);
+            id
+        } else {
+            Id::new(concept_data)
+        };
+        let previous = ctx
+            .ontology_arenas()
+            .concept_process_data(process_data)
+            .get_replacement_data();
+        let replacement = if previous.is_some() {
+            previous
+        } else {
+            let id = ctx
+                .ontology_arenas_mut()
+                .alloc_replacement_data(ReplacementData::new());
+            ctx.ontology_arenas_mut()
+                .concept_process_data_mut(process_data)
+                .set_replacement_data(id);
+            id
+        };
+        ctx.ontology_arenas_mut()
+            .replacement_data_mut(replacement)
+            .common_disjunct_concepts = common
+            .iter()
+            .map(|(concept, negated)| NegLink {
+                target: *concept,
+                negated: *negated,
+            })
+            .collect();
+    }
+    extracted.len()
+}
+
 /// Build the bridged terminology for `tin` into `ctx`'s ontology arenas.
 ///
 /// The context must be freshly constructed (the bridge owns tag allocation
 /// from [`TAG_BASE`]; the TOP sentinel at tag 1 is seeded by the caller
 /// exactly as `classify_test::new_env` does).
 pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) -> Bridged {
+    bridge_tinput_with_trigger_absorption(ctx, tin, std::env::var_os("KM_TRIGGER_ABSORB").is_some())
+}
+
+/// Environment-independent terminology builder used by focused absorber
+/// tests. Production continues to select the same option in [`bridge_tinput`].
+fn bridge_tinput_with_trigger_absorption(
+    ctx: &mut CalculationAlgorithmContextBase,
+    tin: &TInput,
+    trigger_absorb: bool,
+) -> Bridged {
     let mut b = Builder {
         ctx,
         next_tag: TAG_BASE + tin.concepts.len() as Cint64,
@@ -1305,8 +1482,6 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
         .zip(inv_roles.iter().copied())
         .chain(inv_roles.iter().copied().zip(roles.iter().copied()))
         .collect();
-    let trigger_absorb = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
-
     // Resolve internal frontend markers to native signed concepts before
     // building implications. Query concepts remain the atomic `named` vector;
     // only clause literals use `resolved`. Provenance is emitted in dependency
@@ -1880,7 +2055,21 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
                                 false
                             }
                         } else {
-                            b.add_equivalent_definition(host, built.0, built.1)
+                            let defined = b.add_equivalent_definition(host, built.0, built.1);
+                            if defined {
+                                // Exact non-candidate branch of
+                                // `CTriggeredImplicationBinaryAbsorberPreProcess`
+                                // (cpp 203-215). Konclude either builds the
+                                // optional partial-equivalence candidate or
+                                // inserts the still-CCEQ host into
+                                // `mEquivConNonCandidateSet`. The bridge does
+                                // not materialise that optional optimization,
+                                // so it takes Konclude's non-candidate branch.
+                                b.ctx
+                                    .ontology_arenas_mut()
+                                    .insert_equivalent_concept_non_candidate(host);
+                            }
+                            defined
                         }
                     });
                     if defined {
@@ -2631,7 +2820,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // trivially satisfied at unfold time and the remaining triggers ride the
     // condensed reapply queue (install-to-trigger).
     for &(host, imp) in &absorbed_pairs {
-        let op_code = ctx.ontology_arenas().concept(host).get_operator_code();
+        let op_code = b.ctx.ontology_arenas().concept(host).get_operator_code();
         if !matches!(op_code, op::CCATOM | op::CCSUB | op::CCIMPLTRIG) {
             // Never mutate a restriction's operand list into an unfolding list.
             // This guard is the bridge equivalent of Konclude's
@@ -2640,7 +2829,7 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
             top_gcis.push(imp);
             continue;
         }
-        let c = ctx.ontology_arenas_mut().concept_mut(host);
+        let c = b.ctx.ontology_arenas_mut().concept_mut(host);
         if op_code == op::CCATOM {
             c.set_operator_code(op::CCSUB);
         }
@@ -2655,15 +2844,26 @@ pub fn bridge_tinput(ctx: &mut CalculationAlgorithmContextBase, tin: &TInput) ->
     // list on the ROOT each pass (root nodes are not created through
     // `create_new_individual`, so they never receive TOP; the re-drive also
     // remains the cross-drive safety net).
-    let top = ctx.processing_data_box().ontology_top_concept();
+    let top = b.ctx.processing_data_box().ontology_top_concept();
     if top.is_some() {
         let n = top_gcis.len() as i64;
-        let top_concept = ctx.ontology_arenas_mut().concept_mut(top);
+        let top_concept = b.ctx.ontology_arenas_mut().concept_mut(top);
         for &g in &top_gcis {
             top_concept.add_operand_linker(g, false);
         }
         let count = top_concept.get_operand_count();
         top_concept.set_operand_count(count + n);
+    }
+
+    // Konclude's common-disjunct extraction feeds CReplacementData read by
+    // initializeORProcessing.  The implication-replacement producer requires
+    // Konclude's negative trigger-propagation substrate as well; it remains
+    // disabled until that producer-to-trigger slice is complete.
+    let common_disjunct_replacement_count = extract_common_disjunct_replacements(b.ctx);
+    if std::env::var_os("KM_HT_STATS").is_some() {
+        eprintln!(
+            "bridge [or-replacements] implications=0 common={common_disjunct_replacement_count}"
+        );
     }
 
     // Konclude runs this production preprocessor after the RBox and TBox are
@@ -3564,21 +3764,26 @@ fn analyse_kpset_completion_model(
     let testing_items = state
         .ontology_item
         .get_concept_satisfiable_test_item_container();
-    let equivalent_non_candidates = HashMap::new();
-    let analysed = analyser.analyse_satisfiable_task_classification_messages_with_live_other_nodes(
+    // `mEquivConNonCandidateSet` belongs to the live TBox in Konclude. Split
+    // the two disjoint context fields so the analyser can update completion
+    // bookkeeping while reading that ontology-owned set.
+    let base = &mut ctx.base;
+    let process_context = &mut base.used_process_context;
+    let ontology = &base.ontology_arenas;
+    let analysed = analyser.analyse_satisfiable_task_classification_messages_with_live_other_nodes_and_live_equivalent_non_candidates(
         &adapter,
-        ctx.process_context(),
-        ctx.ontology_arenas(),
+        process_context,
+        ontology,
         root,
         &individual_vector,
         max_branch_tag,
-        &equivalent_non_candidates,
-        ctx.ontology_arenas().concepts(),
-        ctx.ontology_arenas().concept_process_datas(),
-        ctx.ontology_arenas()
-            .concept_saturation_reference_linking_datas(),
+        ontology.concepts(),
+        ontology.concept_process_datas(),
+        ontology.concept_saturation_reference_linking_datas(),
+        ontology.saturation_concept_reference_linkings(),
         testing_items,
-        ctx.ontology_arenas().roles(),
+        ontology.roles(),
+        false,
         0,
         Some(&mut observer),
     );
@@ -3598,7 +3803,7 @@ fn analyse_kpset_completion_model(
         classifier.process_classification_message_data_linker(
             &mut state.ontology_item,
             messages,
-            ctx.ontology_arenas().concepts(),
+            ontology.concepts(),
         );
     }
 }
@@ -3807,7 +4012,18 @@ fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
 fn configure_production_completion_saturation_coupling(algo: &mut CompletionTaskHandleAlgorithm) {
     algo.conf_expand_created_successors_from_saturation = true;
     algo.conf_caching_blocking_from_saturation = true;
-    algo.conf_successor_saturation_expansion_restrictions_resolving = true;
+    // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor lines
+    // 226-229 deliberately leave this OFF: the dependency for a resolved
+    // successor must include the resolved universal restrictions, which that
+    // path does not yet construct.  Do not enable the otherwise ported u22
+    // resolver in production completion until Konclude does.
+    algo.conf_successor_saturation_expansion_restrictions_resolving = false;
+    // CCalculationTableauCompletionTaskHandleAlgorithm ctor lines 188-190.
+    // These three absorption switches are independent of cache establishment:
+    // they park rules while the corresponding cache flag remains valid and the
+    // u10/u21 reapply paths restore them if that flag is later abolished.
+    algo.conf_sat_exp_cached_disj_absorp = true;
+    algo.conf_sat_exp_cached_merg_absorp = true;
     algo.conf_sat_exp_cached_succ_absorp = true;
     // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor line 237.
     algo.conf_saturation_expansion_cache_reading = true;
@@ -5123,7 +5339,11 @@ pub fn bridged_classify_opts(
         pending = state.ordered_subjects.clone();
         kpset_state = Some(state);
     }
-    if satcache_active {
+    // Diagnostic split: retain Konclude's saturation-label replay/blocking but
+    // suppress only the associated-expansion cache shared across completion
+    // probes.  This distinguishes a bad raw saturation label from a bad
+    // completion-cache write without disabling the whole saturation coupling.
+    if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() {
         install_bridge_saturation_node_expansion_cache(&mut ctx);
     }
     let mut kpset_state = kpset_state.expect("synchronous KPSet state initialized");
@@ -5279,6 +5499,37 @@ pub fn bridged_classify_opts(
             if !(authoritative && subs.len() == n_named) {
                 analyse_kpset_completion_model(&mut classifier, &mut kpset_state, s, root, ctx);
             }
+        }
+        if !authoritative {
+            // Konclude does not restrict possible-subsumption tests to the
+            // named concepts visible in the completion model's root label.
+            // The satisfiability job emits
+            // CClassificationInitializePossibleClassSubsumptionMessageData;
+            // COptimizedKPSetClassSubsumptionClassifierThread.cpp
+            // 1835-1904 installs that message's candidates in the possible
+            // map, and lines 868-895 schedule every remaining entry after the
+            // satisfiability phase. `analyse_kpset_completion_model` above is
+            // the synchronous message delivery. Refresh `subs` from the map
+            // after delivery so this synchronous driver executes the same
+            // transition instead of testing only the pre-message read-off.
+            let item = &kpset_state
+                .ontology_item
+                .get_concept_satisfiable_test_item_container()[kpset_state.item_ids[s].index()];
+            subs.extend(
+                item.get_subsuming_concept_item_list()
+                    .iter()
+                    .filter_map(|known| subject_by_item.get(&known.index()).copied()),
+            );
+            if let Some(possible) = item.get_possible_subsumption_map_ref() {
+                subs.extend(
+                    possible
+                        .concepts()
+                        .into_iter()
+                        .filter_map(|concept| subject_by_concept.get(&concept).copied()),
+                );
+            }
+            subs.sort_unstable();
+            subs.dedup();
         }
         // Optional diagnostic filter: intersect a second model obtained with
         // reversed disjunction order. This is sound, but it is not part of
@@ -5777,6 +6028,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn common_disjunct_preprocess_materializes_replacement_data() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let common = b.atom(TAG_BASE + 1);
+        let left_only = b.atom(TAG_BASE + 2);
+        let right_only = b.atom(TAG_BASE + 3);
+        let left = b.and_of(&[(common, false), (left_only, false)]);
+        let right = b.and_of(&[(common, false), (right_only, false)]);
+        let disjunction = b.or_of(&[left, right]).0;
+        drop(b);
+
+        assert!(extract_common_disjunct_replacements(&mut ctx) >= 1);
+        let process_data = Id::new(
+            ctx.ontology_arenas()
+                .concept(disjunction)
+                .get_concept_data(),
+        );
+        let replacement = ctx
+            .ontology_arenas()
+            .concept_process_data(process_data)
+            .get_replacement_data();
+        assert!(replacement.is_some());
+        assert!(ctx
+            .ontology_arenas()
+            .replacement_data(replacement)
+            .common_disjunct_concepts
+            .iter()
+            .any(|link| link.target == common && !link.negated));
+    }
+
     struct BridgeEnv {
         tin: crate::orchestrate::cb_to_ht::TInput,
         con_id: std::collections::HashMap<String, usize>,
@@ -6017,6 +6302,53 @@ mod tests {
     }
 
     #[test]
+    fn source_absorber_registers_unabsorbed_equivalent_non_candidate() {
+        let ofn = format!(
+            "{PREFIX}\
+             Declaration(Class(:H)) Declaration(Class(:M)) Declaration(Class(:C))\n\
+             Declaration(ObjectProperty(:r))\n\
+             EquivalentClasses(:H ObjectIntersectionOf(\
+                 :M ObjectAllValuesFrom(:r :C)))\n)"
+        );
+        let mut env = bridge_ofn(&ofn);
+        // `ofn_to_clauses` emits this side channel only when the production
+        // environment enables trigger absorption. Supply the normalized axiom
+        // directly so this unit test is independent of process-global env vars.
+        env.tin.source_axioms = vec![crate::json_io::SourceAxiomMeta {
+            kind: crate::json_io::SourceAxiomKind::Equivalent,
+            left: SourceConcept::Name("H".into()),
+            right: SourceConcept::And(std::collections::BTreeSet::from([
+                SourceConcept::Name("M".into()),
+                SourceConcept::Forall(
+                    SourceRole::Name("r".into()),
+                    Box::new(SourceConcept::Name("C".into())),
+                ),
+            ])),
+        }];
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut top = Concept::new();
+        top.set_concept_tag(1);
+        top.set_operator_code(op::CCTOP);
+        let top = ctx.ontology_arenas_mut().alloc_concept(top);
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+
+        let bridged = bridge_tinput_with_trigger_absorption(&mut ctx, &env.tin, true);
+        let host = bridged.named[*env.con_id.get("H").expect("H in TInput")];
+        assert_eq!(
+            ctx.ontology_arenas().concept(host).get_operator_code(),
+            op::CCEQ,
+            "the positive universal prevents full equivalence absorption"
+        );
+        assert!(
+            ctx.ontology_arenas()
+                .get_equivalent_concept_non_candidate_set()
+                .expect("absorber creates Konclude's TBox set")
+                .contains(&host),
+            "the retained CCEQ host remains a classification possible-subsumer"
+        );
+    }
+
+    #[test]
     fn bridge_materializes_transitive_role_for_automata_preprocessing() {
         let mut tin = TInput {
             concepts: vec!["A".to_string()],
@@ -6163,6 +6495,60 @@ mod tests {
             .get_concept_satisfiable_test_item_container()[state.item_ids[a].index()];
         assert!(a_item.has_subsumer_concept_item(state.item_ids[b]));
         assert!(a_item.is_class_pseudo_model_initalized());
+    }
+
+    #[test]
+    fn production_read_off_keeps_open_or_disjuncts_nondeterministic() {
+        let ofn = format!(
+            "{PREFIX}\\
+             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\\
+             SubClassOf(:A ObjectUnionOf(:B :C))\n)"
+        );
+        let env = bridge_ofn(&ofn);
+        let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
+        configure_production_search(&mut algo);
+        assert!(algo.conf_build_dependencies);
+        assert!(
+            !algo.conf_dependency_backjumping,
+            "the production classifier builds dependencies independently of DDB"
+        );
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let n = bridged.named.len();
+        let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &bridged.named,
+            &vec![None; n],
+            &vec![None; n],
+            &vec![Vec::new(); n],
+            &(0..n).collect::<Vec<_>>(),
+            ctx.ontology_arenas().concepts(),
+        );
+        let (a, b, c) = (env.con_id["A"], env.con_id["B"], env.con_id["C"]);
+        let mut next_id = 1_000;
+        let (_, authoritative, root) =
+            bridged_classify_subject_with_root(&mut algo, &mut ctx, &bridged, &mut next_id, a, n)
+                .expect("A has an open disjunctive model");
+        assert!(
+            !authoritative,
+            "an opened OR branch is not a canonical model"
+        );
+        analyse_kpset_completion_model(&mut classifier, &mut state, a, root, &mut ctx);
+
+        let a_item = &state
+            .ontology_item
+            .get_concept_satisfiable_test_item_container()[state.item_ids[a].index()];
+        assert!(
+            !a_item.has_subsumer_concept_item(state.item_ids[b])
+                && !a_item.has_subsumer_concept_item(state.item_ids[c]),
+            "a selected OR alternative must not be reported as a deterministic subsumer"
+        );
+        for candidate in [b, c] {
+            assert!(
+                !state
+                    .candidate_state(a, candidate)
+                    .is_some_and(|(confirmed, _)| confirmed),
+                "an untested OR alternative must remain unconfirmed"
+            );
+        }
     }
 
     #[test]
@@ -7005,6 +7391,9 @@ mod tests {
         let sup_idx = *env.con_id.get(sup).expect("sup in TInput");
         let mut algo = CompletionTaskHandleAlgorithm::new();
         configure_default_blocking(&mut algo);
+        if std::env::var_os("KM_HT_BUILD_DEPENDENCIES").is_some() {
+            algo.conf_build_dependencies = true;
+        }
         let mut ctx = CalculationAlgorithmContextBase::new();
         ctx.base.used_concept_priority_strategy =
             Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
@@ -7062,6 +7451,15 @@ mod tests {
              readoff_nondet={}",
             !readoff.as_ref().map(|(_, auth)| *auth).unwrap_or(false),
         );
+        if std::env::var_os("KM_BRIDGE_PROD_PAIR").is_some() {
+            let production = bridged_classify(&env.tin).expect("production classification");
+            let production_has = production.subsumptions.contains(&(s_idx, sup_idx));
+            eprintln!("BRIDGE-PRODUCTION-PAIR {sub} ⊑ {sup}: production_has={production_has}");
+            assert!(
+                production_has,
+                "Konclude's post-satisfiability possible-subsumption map must be tested"
+            );
+        }
         // dump every clause referencing sub or sup (to scope the propagation
         // the completion is missing).
         if std::env::var("KM_BRIDGE_DUMP_CLAUSES").is_ok() {
@@ -8055,6 +8453,10 @@ mod tests {
             configure_production_completion_saturation_coupling(algo);
         };
         arm(&mut algo);
+        assert!(
+            !algo.conf_successor_saturation_expansion_restrictions_resolving,
+            "production completion must match Konclude's disabled restriction resolver"
+        );
         assert!(
             algo.conf_saturation_expansion_cache_reading,
             "production coupling must retain cached successors after modification"

@@ -131,6 +131,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.get_successor_individual(&mut pi, rest_link, calc_alg_context)
             };
             if succ_indi.is_some() {
+                let link_dep_track_point = calc_alg_context
+                    .process_context()
+                    .edge(rest_link)
+                    .get_dependency_track_point();
+                let mut next_dep_track_point = TrackPointId::NONE;
+                let mut all_dep_node_created = false;
                 let mut loc_succ_indi =
                     self.get_localized_individual(succ_indi, false, calc_alg_context);
                 for con_op_linker_it in concept_op_linker.iter() {
@@ -148,11 +154,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         );
                     if !has_concept {
+                        if !all_dep_node_created {
+                            all_dep_node_created = true;
+                            self.create_all_dependency(
+                                &mut next_dep_track_point,
+                                process_indi,
+                                con_des,
+                                dep_track_point,
+                                link_dep_track_point,
+                                calc_alg_context,
+                            );
+                        }
                         self.add_concept_to_individual(
                             op_concept,
                             op_con_neg,
                             &mut loc_succ_indi,
-                            dep_track_point,
+                            next_dep_track_point,
                             true,
                             true,
                             calc_alg_context,
@@ -181,11 +198,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         );
                     if !has_all_self {
+                        if !all_dep_node_created {
+                            all_dep_node_created = true;
+                            self.create_all_dependency(
+                                &mut next_dep_track_point,
+                                process_indi,
+                                con_des,
+                                dep_track_point,
+                                link_dep_track_point,
+                                calc_alg_context,
+                            );
+                        }
                         self.add_concept_to_individual(
                             concept,
                             negate,
                             &mut loc_succ_indi,
-                            dep_track_point,
+                            next_dep_track_point,
                             true,
                             true,
                             calc_alg_context,
@@ -205,7 +233,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // role-successor iterators are bypassed here; the context-threaded
         // `ht_role_successor_links` (u08) resolves the successor-role hash for real.
         //
-        // W15-rbox: the targets are now RBox-resolved by `ht_all_rule_targets` (u10):
+        // W15-rbox: targets and their physical links are RBox-resolved by
+        // `ht_all_rule_target_links` (u10):
         //  - role HIERARCHY (`R ⊑ S`): an R-successor is also an S-successor, so a
         //    `∀S.C` reaches it (Konclude registers an edge per indirect super-role on
         //    install; the port resolves super-roles on lookup);
@@ -222,10 +251,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .role(role)
             .is_transitive();
-        let role_targets = self.ht_all_rule_targets(*process_indi, role, calc_alg_context);
-        for succ_indi in role_targets {
+        let role_targets = self.ht_all_rule_target_links(*process_indi, role, calc_alg_context);
+        for (link, succ_indi) in role_targets {
             // W3-DEFER[api]: isRestrictedTopObjectPropertyPropagation — treated as false
             // (no restricted top-object-property propagation in this fragment).
+            let link_dep_track_point = calc_alg_context
+                .process_context()
+                .edge(link)
+                .get_dependency_track_point();
+            let mut next_dep_track_point = TrackPointId::NONE;
+            let mut all_dep_node_created = false;
             let mut loc_succ_indi: NodeId =
                 self.get_localized_individual(succ_indi, false, calc_alg_context);
             for con_op_linker_it in concept_op_linker.iter() {
@@ -246,13 +281,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         calc_alg_context,
                     );
                 if !has_concept {
-                    // W3-DEFER[api]: createALLDependency — the descriptor's dependency
-                    // track point is threaded directly (∀ adds no non-deterministic split).
+                    // Konclude cpp 16423–16425: one CALLDependencyNode per traversed
+                    // link, shared by every missing operand on that successor.  Its
+                    // two parents are the ∀ descriptor and the physical role edge.
+                    if !all_dep_node_created {
+                        all_dep_node_created = true;
+                        self.create_all_dependency(
+                            &mut next_dep_track_point,
+                            process_indi,
+                            con_des,
+                            dep_track_point,
+                            link_dep_track_point,
+                            calc_alg_context,
+                        );
+                    }
                     self.add_concept_to_individual(
                         op_concept,
                         op_con_neg,
                         &mut loc_succ_indi,
-                        dep_track_point,
+                        next_dep_track_point,
                         true,
                         true,
                         calc_alg_context,
@@ -277,11 +324,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         calc_alg_context,
                     );
                 if !has_all_self {
+                    if !all_dep_node_created {
+                        all_dep_node_created = true;
+                        self.create_all_dependency(
+                            &mut next_dep_track_point,
+                            process_indi,
+                            con_des,
+                            dep_track_point,
+                            link_dep_track_point,
+                            calc_alg_context,
+                        );
+                    }
                     self.add_concept_to_individual(
                         concept,
                         negate,
                         &mut loc_succ_indi,
-                        dep_track_point,
+                        next_dep_track_point,
                         true,
                         true,
                         calc_alg_context,
@@ -331,6 +389,233 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         self.applied_or_rule_count += 1;
         // W3-DEFER[macro]: STATINC(OREXECUTIONCOUNT, calc_alg_context)
+
+        // Live Rust representation of Konclude's planned restriction.  Keep
+        // the transcription below as a source map, but all production calls
+        // now enter with this typed payload and return from this block.
+        if planned_branching_process_restriction != INVALID {
+            let rest_id = RestrictionSpecId::new(planned_branching_process_restriction);
+            let (already_contained, planned_operands, mut clash_con_des_linker) = {
+                let rest = calc_alg_context.process_context().restriction_spec(rest_id);
+                (
+                    rest.or_contained_operand.is_some(),
+                    rest.or_operands.clone(),
+                    rest.or_clashed_concept_descriptors,
+                )
+            };
+            if already_contained {
+                return;
+            }
+
+            let label_set = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .use_reapply_con_label_set;
+            let mut remaining: Vec<super::super::model::substrate::NegLink<ConceptId>> = Vec::new();
+            for operand in planned_operands {
+                let effective_negation = operand.negated ^ negate;
+                let mut checking_concept = operand.target;
+                let mut checking_negation = effective_negation;
+                let mut contained_negation = false;
+                let mut contains = label_set.is_some()
+                    && self.label_set_contains_concept_get_negated_resolved(
+                        label_set,
+                        checking_concept,
+                        Some(&mut contained_negation),
+                        calc_alg_context,
+                    );
+                if !contains
+                    && self.get_additional_disjunct_checking_concept(
+                        operand.target,
+                        effective_negation,
+                        Some(&mut checking_concept),
+                        Some(&mut checking_negation),
+                        calc_alg_context,
+                    )
+                {
+                    contains = label_set.is_some()
+                        && self.label_set_contains_concept_get_negated_resolved(
+                            label_set,
+                            checking_concept,
+                            Some(&mut contained_negation),
+                            calc_alg_context,
+                        );
+                }
+                if contains {
+                    if contained_negation == checking_negation {
+                        return;
+                    }
+
+                    // Konclude extends `clashConDesLinker` with the exact
+                    // opposite-polarity descriptor that ruled this operand
+                    // out.  Its dependency is load-bearing: the subsequent
+                    // ORONLYOPTION node must depend on every eliminated
+                    // choice, including a branch-local one.
+                    let tag = calc_alg_context
+                        .ontology_arenas()
+                        .concept(checking_concept)
+                        .get_concept_tag();
+                    let mut contained_con_des = ConDescId::NONE;
+                    let mut contained_con_dep_track_point = TrackPointId::NONE;
+                    let contained_with_dependency = {
+                        let process_context = calc_alg_context.process_context();
+                        process_context
+                            .label_set(label_set)
+                            .get_concept_descriptor_by_tag_in_context(
+                                process_context,
+                                tag,
+                                &mut contained_con_des,
+                                &mut contained_con_dep_track_point,
+                            )
+                    };
+                    if contained_with_dependency && contained_con_des.is_some() {
+                        clash_con_des_linker = self.create_clashed_concept_descriptor(
+                            clash_con_des_linker,
+                            process_indi,
+                            contained_con_des,
+                            contained_con_dep_track_point,
+                            calc_alg_context,
+                        );
+                    }
+                    continue;
+                }
+                if self.has_saturated_clashed_flag_for_concept(
+                    checking_concept,
+                    checking_negation,
+                    calc_alg_context,
+                ) {
+                    continue;
+                }
+
+                if let Some(previous) = remaining
+                    .iter()
+                    .find(|previous| previous.target == operand.target)
+                {
+                    if previous.negated == operand.negated {
+                        continue;
+                    }
+                    // A v not-A makes the remaining disjunction tautological.
+                    return;
+                }
+                remaining.push(operand);
+            }
+
+            let (con_des, dep_track_point) = {
+                let cpd = calc_alg_context
+                    .process_context()
+                    .con_proc_desc(*con_pro_des);
+                (
+                    cpd.get_concept_descriptor(),
+                    cpd.get_dependency_track_point(),
+                )
+            };
+            match remaining.len() {
+                0 => {
+                    if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                        eprintln!("OR-EXEC clash survivors=0");
+                    }
+                    let clash = self.create_clashed_concept_descriptor(
+                        clash_con_des_linker,
+                        process_indi,
+                        con_des,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                    calc_alg_context.raise_clash(clash);
+                }
+                1 => {
+                    let only = remaining[0];
+                    if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                        eprintln!(
+                            "OR-EXEC single tag={} negated={}",
+                            calc_alg_context
+                                .ontology_arenas()
+                                .concept(only.target)
+                                .get_concept_tag(),
+                            only.negated ^ negate,
+                        );
+                    }
+
+                    // Exact port of Konclude cpp 16929-16941:
+                    //   for every clashed (eliminated) operand, create a
+                    //   CONNECTION dependency and append its continuation to
+                    //   the additional-dependency chain of ORONLYOPTION.
+                    let mut dependencies: DepLinkId = Id::NONE;
+                    let mut clash_con_des_linker_it = clash_con_des_linker;
+                    while clash_con_des_linker_it.is_some() {
+                        let (clashed_con_des, clashed_dep_track_point, next) = {
+                            let clash = calc_alg_context
+                                .process_context()
+                                .clash_desc(clash_con_des_linker_it);
+                            (
+                                clash.get_concept_descriptor(),
+                                clash.get_dependency_track_point(),
+                                clash.get_next(),
+                            )
+                        };
+                        let connection_dependency = self.create_connection_dependency(
+                            process_indi,
+                            clashed_con_des,
+                            clashed_dep_track_point,
+                            calc_alg_context,
+                        );
+                        if connection_dependency.is_some() {
+                            let connection_track_point = calc_alg_context
+                                .process_context_mut()
+                                .materialize_continue_dependency_track_point(
+                                    connection_dependency,
+                                );
+                            dependencies = calc_alg_context.process_context_mut().alloc_dep_link(
+                                super::super::process::dependency::DependencyLink {
+                                    dep_track_point: connection_track_point,
+                                    next: dependencies,
+                                },
+                            );
+                        }
+                        clash_con_des_linker_it = next;
+                    }
+
+                    let mut new_dependency_track_point = TrackPointId::NONE;
+                    self.create_oronly_option_dependency(
+                        &mut new_dependency_track_point,
+                        process_indi,
+                        con_des,
+                        dep_track_point,
+                        dependencies,
+                        calc_alg_context,
+                    );
+                    self.add_concept_to_individual(
+                        only.target,
+                        only.negated ^ negate,
+                        process_indi,
+                        new_dependency_track_point,
+                        true,
+                        false,
+                        calc_alg_context,
+                    );
+                    if !calc_alg_context.has_pending_signal() {
+                        self.test_individual_node_unsatisfiable_cached(
+                            *process_indi,
+                            calc_alg_context,
+                        );
+                    }
+                }
+                _ => {
+                    if std::env::var_os("KM_HT_OR_TRACE").is_some() {
+                        eprintln!("OR-EXEC branch survivors={}", remaining.len());
+                    }
+                    self.start_or_branching_in_process(
+                        *process_indi,
+                        *con_pro_des,
+                        negate,
+                        remaining,
+                        clash_con_des_linker,
+                        calc_alg_context,
+                    );
+                }
+            }
+            return;
+        }
 
         // --- arena-resolved read heads (cpp 16744–16746) ---
         let con_des: ConDescId = calc_alg_context
@@ -739,7 +1024,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 *process_indi,
                 *con_pro_des,
                 negate,
-                planned_branching_process_restriction,
+                &mut planned_branching_process_restriction,
                 calc_alg_context,
             );
             if !plan_or_processing {
@@ -750,19 +1035,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         IndividualProcessNode::PRF_SATISFIABLECACHED
                             | IndividualProcessNode::PRF_COMPLETIONGRAPHCACHED,
                     );
-                let _ = planned_branching_process_restriction;
                 if self.conf_sat_exp_cached_disj_absorp && has_sat_or_completion_cached {
-                    // W3-DEFER[macro]: STATINC(SATCACHEDABSORBEDDISJUNCTIONCONCEPTSCOUNT, calc_alg_context)
-                    // W3-DEFER[api]: addSatisfiableCachedAbsorbedDisjunctionConcept(conDes, processIndi, plannedBranchingProcessRestriction, depTrackPoint, calcAlgContext) — sat-exp cache subsystem unported
+                    // STATINC(SATCACHEDABSORBEDDISJUNCTIONCONCEPTSCOUNT). The
+                    // descriptor is replayed by u10 if u21 later abolishes the
+                    // satisfiable/completion-graph cache flag.
+                    self.add_satisfiable_cached_absorbed_disjunction_concept(
+                        con_des,
+                        *process_indi,
+                        planned_branching_process_restriction,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
                 } else {
-                    // delaying failed, execute OR rule. The built restriction spec
-                    // (RestrictionSpecId) is not yet threaded into execute_or_branching's
-                    // opaque `Cint64` cursor (its body pivots on the unported spec) → INVALID.
+                    // Delaying failed, execute the planned OR rule.
                     self.execute_or_branching(
                         process_indi,
                         con_pro_des,
                         negate,
-                        INVALID,
+                        planned_branching_process_restriction.raw,
                         calc_alg_context,
                     );
                 }
@@ -997,6 +1287,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     -1
                 };
                 if w.parse::<Cint64>() == Ok(head_tag) && !imp_con_neg {
+                    let source_tag = calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag();
+                    let branch_tag = |track_point: TrackPointId| {
+                        track_point.is_some().then(|| {
+                            calc_alg_context
+                                .process_context()
+                                .track_point(track_point)
+                                .get_branching_tag()
+                        })
+                    };
+                    let trigger_dependencies: Vec<String> = satisfied_trigger_deps
+                        .iter()
+                        .map(|&(descriptor, track_point)| {
+                            let trigger = calc_alg_context
+                                .process_context()
+                                .con_desc(descriptor)
+                                .get_concept();
+                            format!(
+                                "{}:{:?}:{:?}",
+                                calc_alg_context
+                                    .ontology_arenas()
+                                    .concept(trigger)
+                                    .get_concept_tag(),
+                                track_point,
+                                branch_tag(track_point),
+                            )
+                        })
+                        .collect();
                     let ops: Vec<String> = op_linker
                         .iter()
                         .map(|l| {
@@ -1011,7 +1331,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         })
                         .collect();
                     eprintln!(
-                        "WATCH-IMPL fire head={head_tag} node={} ops=[{}]",
+                        "WATCH-IMPL fire source={source_tag} source-dependency={:?} source-branch={:?} head={head_tag} result-dependency={:?} result-branch={:?} trigger-dependencies=[{}] node={} ops=[{}]",
+                        dep_track_point,
+                        branch_tag(dep_track_point),
+                        next_dep_track_point,
+                        branch_tag(next_dep_track_point),
+                        trigger_dependencies.join(" "),
                         calc_alg_context
                             .process_context()
                             .node(*process_indi)

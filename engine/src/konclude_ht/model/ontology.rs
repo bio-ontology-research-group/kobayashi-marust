@@ -18,8 +18,8 @@
 
 use super::concept::Concept;
 use super::concept_process::{
-    ConceptProcessData, ConceptSaturationReferenceLinkingData, SaturationConceptReferenceLinking,
-    UnsatisfiableCachingTags,
+    ConceptProcessData, ConceptSaturationReferenceLinkingData, ReplacementData,
+    SaturationConceptReferenceLinking, UnsatisfiableCachingTags,
 };
 use super::individual::{Individual, Variable};
 use super::role::Role;
@@ -27,8 +27,8 @@ use super::role_chain::RoleChain;
 use super::substrate::{Arena, Cint64, Id, INVALID};
 use super::{
     ConceptId, ConceptProcessDataId, ConceptSaturationReferenceLinkingDataId, IndividualId,
-    RoleChainId, RoleId, SaturationConceptReferenceLinkingId, UnsatisfiableCachingTagsId,
-    VariableId,
+    ReplacementDataId, RoleChainId, RoleId, SaturationConceptReferenceLinkingId,
+    UnsatisfiableCachingTagsId, VariableId,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -63,6 +63,8 @@ pub struct OntologyArenas {
     concepts: Arena<Concept>,
     /// `CConceptProcessData` pool.
     concept_process_datas: Arena<ConceptProcessData>,
+    /// `CReplacementData` pool.
+    replacement_datas: Arena<ReplacementData>,
     /// `CUnsatisfiableCachingTags` pool.
     unsatisfiable_caching_tags: Arena<UnsatisfiableCachingTags>,
     /// `CConceptSaturationReferenceLinkingData` pool.
@@ -275,6 +277,7 @@ impl OntologyArenas {
         OntologyArenas {
             concepts: Arena::new(),
             concept_process_datas: Arena::new(),
+            replacement_datas: Arena::new(),
             unsatisfiable_caching_tags: Arena::new(),
             concept_saturation_reference_linking_datas: Arena::new(),
             saturation_concept_reference_linkings: Arena::new(),
@@ -316,6 +319,14 @@ impl OntologyArenas {
     pub fn concept_process_datas(&self) -> &Arena<ConceptProcessData> {
         &self.concept_process_datas
     }
+    onto_accessors!(
+        replacement_datas,
+        ReplacementData,
+        ReplacementDataId,
+        replacement_data,
+        replacement_data_mut,
+        alloc_replacement_data
+    );
     onto_accessors!(
         unsatisfiable_caching_tags,
         UnsatisfiableCachingTags,

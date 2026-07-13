@@ -1195,18 +1195,44 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             == Some(new_con_tag)
             && !new_negated;
         if watch_insert {
+            let dependency_track_point = calc_alg_context
+                .process_context()
+                .con_desc(concept_descriptor)
+                .get_dependency_track_point();
+            let dependency_branching_tag = dependency_track_point
+                .is_some()
+                .then(|| {
+                    calc_alg_context
+                        .process_context()
+                        .track_point(dependency_track_point)
+                        .get_branching_tag()
+                });
             eprintln!(
-                "WATCH-INSERT-TAG {} before node={} descriptor={} allow_init={} at:\n{}",
+                "WATCH-INSERT-TAG {} before node={} descriptor={} dependency={:?} branch={:?} allow_init={} at:\n{}",
                 new_con_tag,
                 calc_alg_context
                     .process_context()
                     .node(*process_indi)
                     .individual_node_id(),
                 concept_descriptor.index(),
+                dependency_track_point,
+                dependency_branching_tag,
                 allow_initalization,
                 std::backtrace::Backtrace::force_capture(),
             );
         }
+        // CReapplyConceptLabelSet::insertConceptGetClash prepends with
+        // `mConceptDesLinker = conceptDescriptor->append(mConceptDesLinker)`.
+        // Preserve that intrusive chain before lifting the label set out of
+        // the process arena for the resolved tag/polarity lookup below.
+        let previous_concept_descriptor = calc_alg_context
+            .process_context()
+            .label_set(con_label_set)
+            .get_adding_sorted_concept_description_linker();
+        calc_alg_context
+            .process_context_mut()
+            .con_desc_mut(concept_descriptor)
+            .set_next(previous_concept_descriptor);
         let mut lifted_label_set = std::mem::replace(
             calc_alg_context
                 .process_context_mut()

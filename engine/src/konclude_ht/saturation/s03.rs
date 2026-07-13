@@ -297,6 +297,45 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .concept(concept)
             .get_operand_list()
             .to_vec();
+        if let Some(watched_tag) = std::env::var("KM_SAT_ADD_TRACE_TAG")
+            .ok()
+            .and_then(|value| value.parse::<Cint64>().ok())
+        {
+            if concept_op_linker.iter().any(|operand| {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(operand.target)
+                    .get_concept_tag()
+                    == watched_tag
+            }) {
+                let reference = calc_alg_context
+                    .process_context()
+                    .sat_node(*process_indi)
+                    .get_saturation_concept_reference_linking();
+                let root_tag = if reference.is_some() {
+                    let root_concept = calc_alg_context
+                        .process_context()
+                        .extended_con_ref_linking_data(reference)
+                        .get_saturation_concept();
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(root_concept)
+                        .get_concept_tag()
+                } else {
+                    -1
+                };
+                eprintln!(
+                    "SAT-AND-TAG-TRACE root-tag={} parent-tag={} parent-neg={} watched-tag={}",
+                    root_tag,
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_concept_tag(),
+                    con_negation,
+                    watched_tag,
+                );
+            }
+        }
         self.add_concepts_filtered_to_individual(
             &concept_op_linker,
             con_negation,

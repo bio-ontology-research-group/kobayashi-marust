@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use super::substrate::{Cint64, Id, INVALID};
+use super::substrate::{Cint64, Id, NegLink, INVALID};
 use super::{ConceptId, RoleId};
 use crate::konclude_ht::process::SatNodeId;
 
@@ -19,6 +19,41 @@ pub type UnsatisfiableCachingTagsId = Id<UnsatisfiableCachingTags>;
 pub type ConceptSaturationReferenceLinkingDataId = Id<ConceptSaturationReferenceLinkingData>;
 /// `CSaturationConceptReferenceLinking*` → `SaturationConceptReferenceLinkingId`.
 pub type SaturationConceptReferenceLinkingId = Id<SaturationConceptReferenceLinking>;
+/// `CReplacementData*` → `ReplacementDataId`.
+pub type ReplacementDataId = Id<ReplacementData>;
+
+/// Port of Konclude `CReplacementData`.
+#[derive(Clone, Debug)]
+pub struct ReplacementData {
+    pub implication_replacement_concept: ConceptId,
+    pub common_disjunct_concepts: Vec<NegLink<ConceptId>>,
+}
+
+impl Default for ReplacementData {
+    fn default() -> Self {
+        Self {
+            implication_replacement_concept: Id::NONE,
+            common_disjunct_concepts: Vec::new(),
+        }
+    }
+}
+
+impl ReplacementData {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn init_replacement_data(&mut self, previous: Option<&Self>) -> &mut Self {
+        if let Some(previous) = previous {
+            self.implication_replacement_concept = previous.implication_replacement_concept;
+            self.common_disjunct_concepts = previous.common_disjunct_concepts.clone();
+        } else {
+            self.implication_replacement_concept = Id::NONE;
+            self.common_disjunct_concepts.clear();
+        }
+        self
+    }
+}
 
 /// Port of `CCachingTags`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -250,7 +285,7 @@ pub struct ConceptProcessData {
     /// `CConceptProcessData::mConceptRoleBranchTrigger`.
     pub concept_role_branch_trigger: Cint64,
     /// `CConceptProcessData::mReplacementData`.
-    pub replacement_data: Cint64,
+    pub replacement_data: ReplacementDataId,
     /// `CConceptProcessData::mUnsatCachingTags[2]`.
     pub unsat_caching_tags: [Cint64; 2],
     /// `CConceptProcessData::mRefLinking`.
@@ -271,7 +306,7 @@ impl Default for ConceptProcessData {
     fn default() -> Self {
         ConceptProcessData {
             concept_role_branch_trigger: INVALID,
-            replacement_data: INVALID,
+            replacement_data: Id::NONE,
             unsat_caching_tags: [INVALID, INVALID],
             concept_reference_linking: ConceptSaturationReferenceLinkingDataId::NONE,
             invalidated_reference_linking: false,
@@ -293,9 +328,20 @@ impl ConceptProcessData {
     pub fn init_concept_process_extension_data(
         &mut self,
         concept_role_branch_trigger: Cint64,
-        replacement_data: Cint64,
+        replacement_data: ReplacementDataId,
     ) -> &mut Self {
         self.concept_role_branch_trigger = concept_role_branch_trigger;
+        self.replacement_data = replacement_data;
+        self
+    }
+
+    /// Port of `getReplacementData`.
+    pub fn get_replacement_data(&self) -> ReplacementDataId {
+        self.replacement_data
+    }
+
+    /// Port of `setReplacementData`.
+    pub fn set_replacement_data(&mut self, replacement_data: ReplacementDataId) -> &mut Self {
         self.replacement_data = replacement_data;
         self
     }

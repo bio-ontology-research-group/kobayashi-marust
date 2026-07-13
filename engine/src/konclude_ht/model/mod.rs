@@ -23,6 +23,8 @@ pub use substrate::{Arena, Cint64, Id, NegLink, Trail, INVALID};
 pub type ConceptId = Id<concept::Concept>;
 /// `CConceptProcessData*` → `ConceptProcessDataId`.
 pub type ConceptProcessDataId = Id<concept_process::ConceptProcessData>;
+/// `CReplacementData*` → `ReplacementDataId`.
+pub type ReplacementDataId = Id<concept_process::ReplacementData>;
 /// `CUnsatisfiableCachingTags*` → `UnsatisfiableCachingTagsId`.
 pub type UnsatisfiableCachingTagsId = Id<concept_process::UnsatisfiableCachingTags>;
 /// `CConceptSaturationReferenceLinkingData*` → `ConceptSaturationReferenceLinkingDataId`.
