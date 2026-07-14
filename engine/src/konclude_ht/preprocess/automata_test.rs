@@ -478,6 +478,56 @@ fn range_on_chain_super_role_creates_domain_propagation() {
     );
 }
 
+/// A domain concept on a chain super role `T` (with `R ∘ S ⊑ T`) creates
+/// the chain-LAST range propagation: a `CCALL`-shaped `∀inv(T).Dom`
+/// transition concept installed in S's RANGE list. Traversing that inverse
+/// automaton propagates the domain constraint back to the start of an R/S
+/// path, exactly as Konclude's `createDomainRangePropagations` does.
+#[test]
+fn domain_on_chain_super_role_creates_range_propagation() {
+    let mut arenas = OntologyArenas::new();
+    seed_arenas(&mut arenas);
+    let r = mk_role(&mut arenas);
+    let s = mk_role(&mut arenas);
+    let t = mk_role(&mut arenas);
+    add_chain(&mut arenas, &[r, s], t);
+    let dom = atom(&mut arenas);
+    arenas.role_mut(t).add_domain_concept_linker(NegLink {
+        target: dom,
+        negated: false,
+    });
+
+    let pre = run_preprocess(&mut arenas);
+    assert!(pre.stat_created_domain_propagation_count >= 1);
+
+    let range_list: Vec<(ConceptId, bool)> = arenas
+        .role(s)
+        .get_range_concept_list()
+        .iter()
+        .map(|l| (l.target, l.negated))
+        .collect();
+    let prop = range_list
+        .iter()
+        .find(|&&(dc, neg)| !neg && op_code(&arenas, dc) == op::CCAQCHOOCE)
+        .map(|&(dc, _)| dc)
+        .expect(
+            "the propagation concept (automaton-converted ∀inv(T).Dom) must be in S's range list",
+        );
+    let begin = ops_of(&arenas, prop)[1].0;
+    let prop_inv_t = the_operand_with_code(&arenas, begin, op::CCAQALL);
+    let inv_t = arenas.concept(prop_inv_t).get_role();
+    assert_eq!(
+        pre.get_inverse_role(&arenas, t, true),
+        Some(inv_t),
+        "the automaton transition role must be Konclude's synthesized inverse(T)"
+    );
+    let end = the_operand_with_code(&arenas, prop_inv_t, op::CCAQAND);
+    assert!(
+        ops_of(&arenas, end).contains(&(dom, false)),
+        "the automaton's end state must carry the propagated domain concept Dom"
+    );
+}
+
 /// The PURE-transitivity case must create NO propagation: for `R ∘ R ⊑ R` the
 /// chain's last/first element IS `R`, whose range/domain already carries the
 /// concept — Konclude's `hasPropagatedConcept` dedup guard skips it.

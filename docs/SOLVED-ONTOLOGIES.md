@@ -14,6 +14,43 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
+### ore_ont_9663: native RBox links + role-specific saturation successors (2026-07-14)
+
+- **Symptom**: production KM terminated soundly but returned 685,932 of
+  Konclude's 725,040 non-self pairs, leaving 39,108 missing. Of these, 39,087
+  were 13,029 subjects each missing the same BFO domain class and its two
+  superclasses.
+- **Konclude diagnosis**: Konclude stores property domains/ranges directly on
+  `CRole`. When a restriction role has ranges, its precomputation constructs a
+  separate saturation item keyed by `(role, filler, polarity)`, wires it into
+  the restriction's existential-successor reference, and initializes the node
+  with that role. KM had neither the source RBox links nor these role-specific
+  items. Reusing the ordinary filler node lost domain consequences reached only
+  after `BFO_0000050 ∘ RO_0002202 ⊑ RO_0002202`.
+- **Mechanism**:
+  1. Preserve exact source RBox provenance as `TInput::role_domains` and
+     `TInput::role_ranges`, then install only those pairs on the native role and
+     its inverse. Clause shape is deliberately not used as provenance.
+  2. Port `hasRoleRanges` over signed indirect super roles.
+  3. Intern `(role, concept, polarity)` successor items, use them in dependency
+     ordering, wire each restriction's existential-specific reference, and
+     initialize both ontology/process items with the role.
+  4. Port the intermediate substitute-chain subsumer extraction exactly. It is
+     retained and tested, although its isolated candidate did not alter 9663.
+- **Result**: full production job 48795569 returned all 725,040 pairs with zero
+  extra and zero missing in 1:56.81 at 3,369,420 KB. Promoted gate job
+  48797088 task 0 matched again in 52.75 seconds at 3,189,032 KB. Its 422
+  completion residue subjects closely match Konclude's 423 insufficient
+  saturation nodes, and all 422 finish without defer.
+- **Validation**: the release suite passes 1,474 tests with 0 failed and 7
+  ignored. Permanent tests cover RBox provenance, rejection of a same-shaped
+  non-RBox guarded rule, direct domain application, inverse range-automaton
+  construction, and the complex role-chain-domain witness. Full 592-ontology
+  IBEX job 48797094 raises exact matches from 508 to 511 and regresses no
+  previously exact ontology. The detailed trace and source correspondence are
+  in `SOLVE-7914-9663-9724.md`; reproducible artifacts are in
+  `../results/benchmarks/2026-07-14-9663-closure/`.
+
 ### ore_ont_3215: Konclude's global KPSet phase barrier (2026-07-13)
 
 - **Symptom**: the source-terminology bridge covered every axiom and eventually
@@ -307,7 +344,6 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 9663 | bridge | terminates in 26 s but remains incomplete by 39,108 pairs | Compare the residual saturation/KPSet maps with Konclude; termination is no longer the blocker. |
 | 9724 | bridge | terminates in 184 s but remains incomplete by 3,140 pairs | Compare role/cardinality propagation and the residual KPSet maps with Konclude. |
 | 14817 | production | 71 missing = transitive `part_of` propagation | Role-automaton ∀-propagation is ported and live in konclude_ht tests (`6a7a67e`) but not production-wired: needs OntologyArenas-from-clauses + consistency classify. |
 | 10621 | — | contested gold | Konclude-vs-HermiT disagreement; resolve gold first. |

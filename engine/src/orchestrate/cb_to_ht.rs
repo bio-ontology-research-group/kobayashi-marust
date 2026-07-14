@@ -245,6 +245,16 @@ pub struct TInput {
     /// Transitive roles (KM_KEEP_CHAIN_AXIOMS), from the raw `R∘R⊑R` axioms.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub transitive: Vec<usize>,
+    /// Source RBox object-property domains `(role, concept)`. The DL-clause
+    /// copies alone cannot distinguish these axioms from clausifier-generated
+    /// guarded class rules. The Konclude bridge uses this provenance to fill
+    /// `CRole::domainLinker` exactly.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub role_domains: Vec<(usize, usize)>,
+    /// Source RBox object-property ranges `(role, concept)`, paired with
+    /// [`TInput::role_domains`] for exact native `CRole` construction.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub role_ranges: Vec<(usize, usize)>,
     /// Fresh-concept structural definitions retained by the frontend. The
     /// bridge resolves these markers to native signed SOME/ALL/AND/OR concepts
     /// when triggered absorption is enabled.
@@ -1939,6 +1949,8 @@ pub fn convert(
             head: vec![HAtom::Role { r: ra, s: 1, t: 0 }],
         });
     }
+    let mut role_domains = Vec::new();
+    let mut role_ranges = Vec::new();
     {
         let dom_keys: Vec<(String, Vec<String>)> = domains
             .iter()
@@ -1948,6 +1960,7 @@ pub fn convert(
             let rr = ids.rid(&r);
             for d in ds {
                 let dc = ids.cid(&d);
+                role_domains.push((rr, dc));
                 ht.push(HtClause {
                     body: vec![HAtom::Role { r: rr, s: 0, t: 1 }],
                     head: vec![HAtom::Concept {
@@ -1964,6 +1977,7 @@ pub fn convert(
             let rr = ids.rid(&r);
             for cc in cs {
                 let c1 = ids.cid(&cc);
+                role_ranges.push((rr, c1));
                 ht.push(HtClause {
                     body: vec![HAtom::Role { r: rr, s: 0, t: 1 }],
                     head: vec![HAtom::Concept {
@@ -2210,6 +2224,8 @@ pub fn convert(
         card_defs,
         chains: detected_chains,
         transitive: detected_transitive,
+        role_domains,
+        role_ranges,
         definers: definers.to_vec(),
         source_axioms: source_axioms.to_vec(),
     }
@@ -2442,6 +2458,22 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
 #[cfg(test)]
 mod trigger_absorb_tests {
     use super::*;
+
+    #[test]
+    fn convert_preserves_rbox_domain_range_provenance() {
+        let rbox = vec![
+            vec!["domain".into(), "r".into(), "D".into()],
+            vec!["range".into(), "r".into(), "E".into()],
+        ];
+        let named = std::collections::HashSet::from(["D".to_string(), "E".to_string()]);
+        let tin = convert(&[], Some(&rbox), &named, &[], &[], &[], false, &[], false);
+        let role = tin.roles.iter().position(|name| name == "r").unwrap();
+        let domain = tin.concepts.iter().position(|name| name == "D").unwrap();
+        let range = tin.concepts.iter().position(|name| name == "E").unwrap();
+
+        assert_eq!(tin.role_domains, vec![(role, domain)]);
+        assert_eq!(tin.role_ranges, vec![(role, range)]);
+    }
 
     #[test]
     fn signed_literals_move_to_trigger_orientation() {

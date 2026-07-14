@@ -1,0 +1,62 @@
+{
+  "date": "2026-07-14",
+  "ontology": "ore_ont_9663.owl",
+  "status": "closed",
+  "final_binary_sha256": "dbc35ea3f19c5de9ef447ce274edeb69aeacd91867f3e4d51eaf879b6533e825",
+  "release_tests": {
+    "passed": 1474,
+    "failed": 0,
+    "ignored": 7
+  },
+  "baseline": {
+    "job": 48792370,
+    "pairs": 685932,
+    "extra": 0,
+    "missing": 39108
+  },
+  "first_exact_candidate": {
+    "job": 48795569,
+    "wall_seconds": 116.81,
+    "peak_kb": 3369420,
+    "pairs": 725040,
+    "extra": 0,
+    "missing": 0
+  },
+  "promoted_exact_candidate": {
+    "job": "48797088_0",
+    "wall_seconds": 52.75,
+    "peak_kb": 3189032,
+    "pairs": 725040,
+    "extra": 0,
+    "missing": 0,
+    "saturation_residue": 422
+  },
+  "full_sweep": {
+    "job": 48797094,
+    "ontology_task": 346,
+    "ontology_wall_seconds": 47,
+    "ontology_peak_kb": 3147948,
+    "rows": 592,
+    "completed": 574,
+    "timeout": 18,
+    "match": 511,
+    "incomplete": 48,
+    "unsound": 5,
+    "both": 1,
+    "inconsistent": 6,
+    "no_gold": 3,
+    "previous_exact_regressions": 0,
+    "new_exact": [
+      "ore_ont_8730.owl",
+      "ore_ont_11978.owl",
+      "ore_ont_9663.owl"
+    ]
+  },
+  "open_9724_movement": {
+    "before_missing": 3140,
+    "after_missing": 3325,
+    "before_extra": 0,
+    "after_extra": 0,
+    "cause": "fixed-budget partial saturation after exact role-specific successor items"
+  }
+}

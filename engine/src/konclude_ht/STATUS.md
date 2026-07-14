@@ -6,13 +6,16 @@ status; `PORT.md` holds the full wave-by-wave history (W0-W555) and the per-unit
 status table. **License note:** Konclude is LGPL; this is a derivative work —
 LGPL headers + attribution still need to be added (see Next steps §6).
 
-_Last updated 2026-07-10 on branch `payg-strategy`. Suite: 1433 passed,
+_Last updated 2026-07-14 on branch `payg-strategy`. Suite: 1,474 passed,
 0 failed, 7 ignored on ws. The production bridge, COW/DDB trust chain,
-unsat-cache verdict, saturation work, and source-terminology close are
-summarized in [`CHANGELOG.md`](../../../CHANGELOG.md) under [unreleased]._
+saturation work, source terminology, KPSet barrier, and role-specific
+successor ports are summarized in [`CHANGELOG.md`](../../../CHANGELOG.md)
+under [unreleased]._
 
-> **Production source-terminology route: ore_ont_541 and ore_ont_12653 are
-> sound + complete through `km classify` in 0.86 s and 0.08 s respectively.
+> **Production `konclude_ht` route: ore_ont_541, 12653, 7914, 3215, and 9663
+> are sound + complete through `km classify`. The latest closure, 9663,
+> returns all 725,040 Konclude pairs with zero extra and zero missing in an
+> independently promoted IBEX run.
 > Per-ontology solving recipes and the family diagnosis table live in
 > [`docs/SOLVED-ONTOLOGIES.md`](../../../docs/SOLVED-ONTOLOGIES.md).** Bridge
 > milestones: deterministic completion (`5099d52`, 10 port gaps closed);
@@ -20,10 +23,10 @@ summarized in [`CHANGELOG.md`](../../../CHANGELOG.md) under [unreleased]._
 > first-class qualified `≥n/≤n` from `card_defs` (`d64e78b`); read-off
 > soundness gate (`or_branch_open_count` — backtrack-free is NOT
 > deterministic; 86 spurious on 3215 under the old gate). The decisive final
-> step was moving absorption before clausification and using complete COW task
-> isolation for OR siblings. Remaining frontier: 7914 and the giants need
-> blocking/lazy-∀ (46k nodes, drive cap); 3215 needs per-subject databox reuse
-> (speed, not correctness).
+> step for 9663 was carrying explicit source RBox provenance and porting
+> Konclude's role-specific `(role, filler, polarity)` saturation successor
+> items. The current focused frontier is 9724's saturation/cardinality
+> throughput; 14817 remains on the giant-ontology track.
 
 ## Saturation-first probe answering (tasks #23/#24, 2026-07-09/10)
 

@@ -1909,6 +1909,56 @@ fn bridge_tinput_with_trigger_absorption(
     // CCATLEAST/CCATMOST rules — so they are no longer counted here).
     unsupported += tin.nominals.len();
 
+    // Konclude keeps source ObjectPropertyDomain/ObjectPropertyRange axioms
+    // directly on CRole. In source-TBox mode use the converter's explicit
+    // RBox provenance: a guarded clause shape is not sufficient, because the
+    // clausifier emits the same shape for ordinary class-expression rules.
+    // (ORE 9724 has no source domains/ranges but thousands of such rules.)
+    if source_mode {
+        for &(role, concept) in &tin.role_domains {
+            let (Some(&role), Some(&concept)) = (roles.get(role), named.get(concept)) else {
+                unsupported += 1;
+                continue;
+            };
+            let inverse = role_inverses[&role];
+            let link = super::model::substrate::NegLink {
+                target: concept,
+                negated: false,
+            };
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(role)
+                .domain_linker
+                .push(link);
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(inverse)
+                .range_linker
+                .push(link);
+        }
+        for &(role, concept) in &tin.role_ranges {
+            let (Some(&role), Some(&concept)) = (roles.get(role), named.get(concept)) else {
+                unsupported += 1;
+                continue;
+            };
+            let inverse = role_inverses[&role];
+            let link = super::model::substrate::NegLink {
+                target: concept,
+                negated: false,
+            };
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(role)
+                .range_linker
+                .push(link);
+            b.ctx
+                .ontology_arenas_mut()
+                .role_mut(inverse)
+                .domain_linker
+                .push(link);
+        }
+    }
+
     // ---- pass 1: role hierarchy `R(x,y) → S(x,y)` --------------------------
     // Collected first and installed as direct and (transitively closed)
     // indirect-super-role linkers on the sub-role — the exact structures the
@@ -2395,6 +2445,10 @@ fn bridge_tinput_with_trigger_absorption(
         if is_functional(cl).is_some() {
             continue;
         }
+        // Source class axioms and RBox domain/range axioms have already been
+        // installed from their provenance-bearing side channels. Suppress all
+        // concept-bearing clausifier copies; their clause shapes cannot tell
+        // those two sources apart.
         if source_mode
             && cl
                 .body
@@ -4445,15 +4499,14 @@ fn extract_propagation_into_creation_direction(ctx: &mut CalculationAlgorithmCon
 /// (Reasoner/Consistiser cpp 2022–2230) +
 /// `CSatisfiableCalculationTaskFromCalculationJobGenerator::createApproximatedSaturationCalculationTask`
 /// (Reasoner/Generator cpp 40–163): one saturation seed per (concept, polarity)
-/// item — ⊤ positive, every named class positive, and every ∃/∀/≥/≤ filler
-/// under its rule polarity — each getting a pre-built saturation node wired
-/// through the concept's saturation reference linking, registered in the
-/// databox node vector, and queued for processing.
+/// item, plus Konclude's separate (role, concept, polarity) successor item
+/// whenever the role has ranges. Each item gets a pre-built saturation node,
+/// is registered in the databox node vector, and is queued for processing.
 ///
 /// The leaf-first ordering, SUBSTITUTE/COPY assignment, and reachable
-/// disjunct-candidate extension items are ported below. Role-range successor
-/// items (cpp 2059–2074) remain unnecessary in this bridge because role
-/// domains/ranges arrive as normalized clauses rather than role range lists.
+/// disjunct-candidate extension items are ported below. The role-range items
+/// are essential after the bridge installs native CRole domain/range linkers:
+/// their nodes initialize with `initRole`, exactly as Konclude requires.
 fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
     use super::model::concept_process::{
         ConceptProcessData, ConceptSaturationReferenceLinkingData,
@@ -4472,6 +4525,7 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     struct Seed {
         concept: ConceptId,
         negated: bool,
+        role_ranges: RoleId,
         potentially_exist: bool,
     }
 
@@ -4479,26 +4533,81 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     // are potentially-exist items; marking every seed disabled substitution.
     let mut seeds: Vec<Seed> = Vec::new();
     let mut seed_index: HashMap<(ConceptId, bool), usize> = HashMap::new();
+    let mut role_seed_index: HashMap<(RoleId, ConceptId, bool), usize> = HashMap::new();
     let push = |seeds: &mut Vec<Seed>,
                 seed_index: &mut HashMap<(ConceptId, bool), usize>,
                 concept: ConceptId,
                 negated: bool,
-                potentially_exist: bool| {
+                potentially_exist: bool|
+     -> usize {
         if concept.is_none() {
-            return;
+            return usize::MAX;
         }
         if let Some(&index) = seed_index.get(&(concept, negated)) {
             seeds[index].potentially_exist |= potentially_exist;
+            index
         } else {
             let index = seeds.len();
             seeds.push(Seed {
                 concept,
                 negated,
+                role_ranges: RoleId::NONE,
                 potentially_exist,
             });
             seed_index.insert((concept, negated), index);
+            index
         }
     };
+    let push_role = |seeds: &mut Vec<Seed>,
+                     role_seed_index: &mut HashMap<(RoleId, ConceptId, bool), usize>,
+                     role: RoleId,
+                     concept: ConceptId,
+                     negated: bool,
+                     potentially_exist: bool|
+     -> usize {
+        if concept.is_none() || role.is_none() {
+            return usize::MAX;
+        }
+        if let Some(&index) = role_seed_index.get(&(role, concept, negated)) {
+            seeds[index].potentially_exist |= potentially_exist;
+            index
+        } else {
+            let index = seeds.len();
+            seeds.push(Seed {
+                concept,
+                negated,
+                role_ranges: role,
+                potentially_exist,
+            });
+            role_seed_index.insert((role, concept, negated), index);
+            index
+        }
+    };
+
+    // Exact `hasRoleRanges`: inspect the range side of every signed indirect
+    // super role. The local helper restores Konclude's reflexive role entry
+    // for saturation without changing the completion arena's role lists.
+    let roles_with_ranges: std::collections::HashSet<RoleId> = (0..ctx
+        .ontology_arenas()
+        .role_count())
+        .map(RoleId::new)
+        .filter(|&role| {
+            super::saturation::algorithm::SaturationTaskHandleAlgorithm::saturation_indirect_super_roles(
+                role,
+                ctx,
+            )
+            .iter()
+            .any(|super_link| {
+                !ctx.ontology_arenas()
+                    .role(super_link.target)
+                    .get_domain_range_concept_list(!super_link.negated)
+                    .is_empty()
+            })
+        })
+        .collect();
+    // Restriction concept -> its role-specific successor item. Konclude wires
+    // this through mExistentialSuccessorSatConRefLinking (cpp 2071-2074).
+    let mut existential_successor_seed: Vec<(ConceptId, usize)> = Vec::new();
     let top = ctx.processing_data_box().ontology_top_concept;
     push(&mut seeds, &mut seed_index, top, false, false);
     for &named in &bridged.named {
@@ -4513,40 +4622,54 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     let n = ctx.ontology_arenas().concept_count();
     for i in 0..n {
         let cid = ConceptId::new(i);
-        let (op_code, operands) = {
+        let (op_code, role, operands) = {
             let c = ctx.ontology_arenas().concept(cid);
-            (c.get_operator_code(), c.get_operand_list().to_vec())
+            (
+                c.get_operator_code(),
+                c.get_role(),
+                c.get_operand_list().to_vec(),
+            )
         };
         match op_code {
             CCSOME | CCAQSOME | CCALL => {
                 // negation = (opCode == CCALL); operand negation = isNegated ^ negation
                 let negation = op_code == CCALL;
-                for op_link in &operands {
-                    push(
+                let (filler, filler_negated) = operands
+                    .first()
+                    .map(|op_link| (op_link.target, op_link.negated ^ negation))
+                    .unwrap_or((top, negation));
+                if roles_with_ranges.contains(&role) {
+                    let item = push_role(
                         &mut seeds,
-                        &mut seed_index,
-                        op_link.target,
-                        op_link.negated ^ negation,
+                        &mut role_seed_index,
+                        role,
+                        filler,
+                        filler_negated,
                         true,
                     );
-                }
-                if operands.is_empty() {
-                    push(&mut seeds, &mut seed_index, top, false, true);
+                    existential_successor_seed.push((cid, item));
+                } else {
+                    push(&mut seeds, &mut seed_index, filler, filler_negated, true);
                 }
             }
             CCATLEAST | CCATMOST => {
                 // ≥/≤: operand polarity as-is (cpp 2049–2054)
-                for op_link in &operands {
-                    push(
+                let (filler, filler_negated) = operands
+                    .first()
+                    .map(|op_link| (op_link.target, op_link.negated))
+                    .unwrap_or((top, false));
+                if roles_with_ranges.contains(&role) {
+                    let item = push_role(
                         &mut seeds,
-                        &mut seed_index,
-                        op_link.target,
-                        op_link.negated,
+                        &mut role_seed_index,
+                        role,
+                        filler,
+                        filler_negated,
                         true,
                     );
-                }
-                if operands.is_empty() {
-                    push(&mut seeds, &mut seed_index, top, false, true);
+                    existential_successor_seed.push((cid, item));
+                } else {
+                    push(&mut seeds, &mut seed_index, filler, filler_negated, true);
                 }
             }
             _ => {}
@@ -4711,24 +4834,36 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
                 } else if (!operand_negated && matches!(operand_code, CCSOME | CCAQSOME))
                     || (operand_negated && operand_code == CCALL)
                 {
+                    let role = operand_data.get_role();
                     let filler = operand_data
                         .get_operand_list()
                         .first()
                         .map(|link| (link.target, link.negated ^ operand_negated))
                         .unwrap_or((top, false));
-                    if let Some(&reference) = seed_index.get(&filler) {
+                    let reference = if roles_with_ranges.contains(&role) {
+                        role_seed_index.get(&(role, filler.0, filler.1))
+                    } else {
+                        seed_index.get(&filler)
+                    };
+                    if let Some(&reference) = reference {
                         exist_references[item].push(reference);
                     }
                     multiple_predecessors[item] = true;
                 } else if (!negated && operand_code == CCATLEAST)
                     || (negated && operand_code == CCATMOST)
                 {
+                    let role = operand_data.get_role();
                     let filler = operand_data
                         .get_operand_list()
                         .first()
                         .map(|link| (link.target, link.negated))
                         .unwrap_or((top, false));
-                    if let Some(&reference) = seed_index.get(&filler) {
+                    let reference = if roles_with_ranges.contains(&role) {
+                        role_seed_index.get(&(role, filler.0, filler.1))
+                    } else {
+                        seed_index.get(&filler)
+                    };
+                    if let Some(&reference) = reference {
                         exist_references[item].push(reference);
                     }
                     multiple_predecessors[item] = true;
@@ -4741,9 +4876,13 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
                         match nested_data.get_operator_code() {
                             CCAQSOME => {
                                 if let Some(filler) = nested_data.get_operand_list().first() {
-                                    if let Some(&reference) =
+                                    let role = nested_data.get_role();
+                                    let reference = if roles_with_ranges.contains(&role) {
+                                        role_seed_index.get(&(role, filler.target, filler.negated))
+                                    } else {
                                         seed_index.get(&(filler.target, filler.negated))
-                                    {
+                                    };
+                                    if let Some(&reference) = reference {
                                         exist_references[item].push(reference);
                                     }
                                 }
@@ -4898,6 +5037,23 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
     for (item_index, seed) in seeds.iter().enumerate() {
         let concept = seed.concept;
         let negation = seed.negated;
+        if seed.role_ranges.is_some() {
+            // `getSaturationRoleSuccessorConceptDataItem` stores this item in
+            // the role/concept/negation hash only. It must not occupy the
+            // filler's ordinary positive/negative reference slot.
+            let onto_item = {
+                let arenas = ctx.ontology_arenas_mut();
+                let mut item = SaturationConceptReferenceLinking::new();
+                item.init_concept_saturation_testing_item(concept, negation, seed.role_ranges);
+                item.set_potentially_exist_initialization_concept(seed.potentially_exist);
+                if arenas.role(seed.role_ranges).is_data_role() {
+                    item.set_data_range_concept(true);
+                }
+                arenas.alloc_saturation_concept_reference_linking(item)
+            };
+            onto_items[item_index] = onto_item;
+            continue;
+        }
         // Ensure the concept's process data + saturation reference-linking data.
         let con_proc_data = {
             let concept_data = ctx.ontology_arenas().concept(concept).get_concept_data();
@@ -4929,6 +5085,7 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
             .concept_saturation_reference_linking_data(ref_linking_data)
             .get_concept_saturation_reference_linking_data(negation);
         if existing.is_some() {
+            onto_items[item_index] = existing;
             continue;
         }
         // Ontology-side item (CSaturationConceptDataItem).
@@ -4944,6 +5101,53 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
             onto_item
         };
         onto_items[item_index] = onto_item;
+    }
+
+    // Wire each restriction to the role-specific item before any saturation
+    // node is constructed. This is the exact reference read first by
+    // `createSuccessorForConcept`; ordinary filler lookup remains its fallback.
+    for (restriction, item_index) in existential_successor_seed {
+        if item_index == usize::MAX || onto_items[item_index].is_none() {
+            continue;
+        }
+        let con_proc_data = {
+            let concept_data = ctx
+                .ontology_arenas()
+                .concept(restriction)
+                .get_concept_data();
+            if concept_data == super::model::substrate::INVALID {
+                let arenas = ctx.ontology_arenas_mut();
+                let fresh = arenas.alloc_concept_process_data(ConceptProcessData::new());
+                arenas.concept_mut(restriction).set_concept_data(fresh.raw);
+                fresh
+            } else {
+                super::model::concept_process::ConceptProcessDataId::new(concept_data)
+            }
+        };
+        let mut ref_linking_data = ctx
+            .ontology_arenas()
+            .concept_process_data(con_proc_data)
+            .get_concept_reference_linking();
+        if ref_linking_data.is_none() {
+            let arenas = ctx.ontology_arenas_mut();
+            ref_linking_data = arenas.alloc_concept_saturation_reference_linking_data(
+                ConceptSaturationReferenceLinkingData::new(),
+            );
+            arenas
+                .concept_process_data_mut(con_proc_data)
+                .set_concept_reference_linking(ref_linking_data);
+        }
+        let current = ctx
+            .ontology_arenas()
+            .concept_saturation_reference_linking_data(ref_linking_data)
+            .get_existential_successor_concept_saturation_reference_linking_data();
+        if current.is_none() {
+            ctx.ontology_arenas_mut()
+                .concept_saturation_reference_linking_data_mut(ref_linking_data)
+                .set_existential_successor_concept_saturation_reference_linking_data(
+                    onto_items[item_index],
+                );
+        }
     }
 
     // Reference mode, C++ 2190-2205. Trigger-host concepts conservatively use
@@ -4994,7 +5198,7 @@ fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &B
         // Process-side item mirror + the node (generator cpp 108–135).
         let ext_item = {
             let mut ext = ExtendedConceptReferenceLinkingData::new();
-            ext.init_concept_saturation_testing_item(concept, negation, RoleId::NONE);
+            ext.init_concept_saturation_testing_item(concept, negation, seed.role_ranges);
             ext.set_concept_reference_linking(onto_item.raw);
             ctx.process_context_mut()
                 .alloc_extended_con_ref_linking_data(ext)
@@ -5077,6 +5281,55 @@ pub struct SaturationOutcome {
     pub known_subsumers: Vec<Vec<usize>>,
 }
 
+/// Resolve Konclude's saturation substitute chain and report the named
+/// concepts carried by its intermediate nodes.
+///
+/// This is the first loop in
+/// `CPrecomputedSaturationSubsumerExtractor::extractSubsumers`: the base node
+/// is excluded, every non-terminal substitute node contributes its positive
+/// class concept when it is not a role-range test or the queried concept, and
+/// the terminal node is returned for the ordinary label extraction below.
+fn resolve_saturation_substitute_chain(
+    ctx: &CalculationAlgorithmContextBase,
+    base_node: super::process::SatNodeId,
+    queried_concept: ConceptId,
+    named_index: &std::collections::HashMap<ConceptId, usize>,
+    subsumers: &mut Vec<usize>,
+) -> super::process::SatNodeId {
+    let mut resolved = base_node;
+    while ctx
+        .process_context()
+        .sat_node(resolved)
+        .has_substitute_individual_node()
+    {
+        if resolved != base_node {
+            let reference = ctx
+                .process_context()
+                .sat_node(resolved)
+                .get_saturation_concept_reference_linking();
+            if reference.is_some() {
+                let item = ctx
+                    .process_context()
+                    .extended_con_ref_linking_data(reference);
+                let concept = item.get_saturation_concept();
+                if !item.get_saturation_negation()
+                    && item.get_saturation_role_ranges().is_none()
+                    && concept != queried_concept
+                {
+                    if let Some(&index) = named_index.get(&concept) {
+                        subsumers.push(index);
+                    }
+                }
+            }
+        }
+        resolved = ctx
+            .process_context()
+            .sat_node(resolved)
+            .get_substitute_individual_node();
+    }
+    resolved
+}
+
 /// `CPrecomputedSaturationSubsumerExtractor::getConceptFlags` + `extractSubsumers`
 /// over the saturated bridge env: follow the POSITIVE node (substitute-chain
 /// resolved), read INDIRECT flags of base + resolved node —
@@ -5112,18 +5365,11 @@ fn extract_saturation_outcome(
             unknown_no_node += 1;
             continue;
         }
-        // Substitute-chain resolution (extractor cpp 273–283).
-        let mut resolved = base_node;
-        while ctx
-            .process_context()
-            .sat_node(resolved)
-            .has_substitute_individual_node()
-        {
-            resolved = ctx
-                .process_context()
-                .sat_node(resolved)
-                .get_substitute_individual_node();
-        }
+        // `extractSubsumers` reports positive named concepts attached to
+        // intermediate substitute nodes before reading the terminal label.
+        let mut subs: Vec<usize> = Vec::new();
+        let resolved =
+            resolve_saturation_substitute_chain(ctx, base_node, named, &named_index, &mut subs);
         let read = |node: super::process::SatNodeId,
                     ctx: &CalculationAlgorithmContextBase|
          -> (bool, bool, bool, bool) {
@@ -5150,7 +5396,6 @@ fn extract_saturation_outcome(
         let unprocessed = b_unproc || r_unproc;
         // extractSubsumers (cpp 40–130): non-negated class-named label entries
         // are sound known subsumers even when the node is insufficient.
-        let mut subs: Vec<usize> = Vec::new();
         let mut eq_candidate_present = false;
         let label = ctx
             .process_context()
@@ -6189,6 +6434,8 @@ pub fn bridged_classify_opts(
 #[cfg(test)]
 mod tests {
     use super::super::completion::strategy::ConceptProcessingPriorityStrategy;
+    use super::super::process::sat_node::IndividualSaturationProcessNode;
+    use super::super::process::sat_ref::ExtendedConceptReferenceLinkingData;
     use super::*;
 
     fn trigger_test_roles(b: &mut Builder) -> (RoleId, RoleId, HashMap<RoleId, RoleId>) {
@@ -6202,6 +6449,73 @@ mod tests {
             .set_inverse_role(inverse);
         let map = HashMap::from([(role, inverse), (inverse, role)]);
         (role, inverse, map)
+    }
+
+    #[test]
+    fn saturation_extractor_reports_only_valid_intermediate_substitute_concepts() {
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let mut b = Builder {
+            ctx: &mut ctx,
+            next_tag: TAG_BASE,
+        };
+        let queried = b.atom(TAG_BASE + 1);
+        let reported = b.atom(TAG_BASE + 2);
+        let negated = b.atom(TAG_BASE + 3);
+        let role_range = b.atom(TAG_BASE + 4);
+        let range_role = b.ctx.ontology_arenas_mut().alloc_role(Role::new());
+        drop(b);
+
+        let make_node = |ctx: &mut CalculationAlgorithmContextBase,
+                         individual_id: Cint64,
+                         concept: ConceptId,
+                         negation: bool,
+                         role: RoleId| {
+            let mut item = ExtendedConceptReferenceLinkingData::new();
+            item.init_concept_saturation_testing_item(concept, negation, role);
+            let item = ctx
+                .process_context_mut()
+                .alloc_extended_con_ref_linking_data(item);
+            let node = ctx
+                .process_context_mut()
+                .alloc_sat_node(IndividualSaturationProcessNode::new(INVALID));
+            ctx.process_context_mut()
+                .sat_node_mut(node)
+                .init_individual_saturation_process_node(individual_id, item, Id::NONE);
+            node
+        };
+
+        // Konclude excludes the base node and the queried concept even when it
+        // appears again on an intermediate substitute node.
+        let base = make_node(&mut ctx, 1, reported, false, RoleId::NONE);
+        let queried_again = make_node(&mut ctx, 2, queried, false, RoleId::NONE);
+        let positive = make_node(&mut ctx, 3, reported, false, RoleId::NONE);
+        let negative = make_node(&mut ctx, 4, negated, true, RoleId::NONE);
+        let ranged = make_node(&mut ctx, 5, role_range, false, range_role);
+        let terminal = make_node(&mut ctx, 6, role_range, false, RoleId::NONE);
+        for (from, to) in [
+            (base, queried_again),
+            (queried_again, positive),
+            (positive, negative),
+            (negative, ranged),
+            (ranged, terminal),
+        ] {
+            ctx.process_context_mut()
+                .sat_node_mut(from)
+                .set_substitute_individual_node(to);
+        }
+
+        let named_index = HashMap::from([
+            (queried, 0usize),
+            (reported, 1usize),
+            (negated, 2usize),
+            (role_range, 3usize),
+        ]);
+        let mut subsumers = Vec::new();
+        let resolved =
+            resolve_saturation_substitute_chain(&ctx, base, queried, &named_index, &mut subsumers);
+
+        assert_eq!(resolved, terminal);
+        assert_eq!(subsumers, vec![1]);
     }
 
     #[test]
@@ -6809,6 +7123,175 @@ mod tests {
                 .expect("absorber creates Konclude's TBox set")
                 .contains(&host),
             "the retained CCEQ host remains a classification possible-subsumer"
+        );
+    }
+
+    #[test]
+    fn source_tbox_retains_rbox_domain_for_existential_saturation() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |cc: usize, t: usize| HAtom::Concept {
+            neg: false,
+            c: cc,
+            t,
+        };
+        let tin = TInput {
+            concepts: vec!["A".into(), "D".into(), "T".into(), "X".into()],
+            roles: vec!["r".into()],
+            clauses: vec![
+                // Clausified copy of the source axiom. Source mode suppresses
+                // this because the native source concept below replaces it.
+                HtClause {
+                    body: vec![c(0, 0)],
+                    head: vec![HAtom::Exist {
+                        r: 0,
+                        neg: false,
+                        c: 2,
+                        t: 0,
+                    }],
+                },
+                // Simple ObjectPropertyDomain(r D), emitted outside the source
+                // class-axiom side channel and retained as a CRole linker.
+                HtClause {
+                    body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![c(1, 0)],
+                },
+                // The same guarded shape can be generated from an ordinary
+                // class axiom. It is not a native role domain without RBox
+                // provenance and must stay suppressed in source mode.
+                HtClause {
+                    body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![c(3, 0)],
+                },
+            ],
+            role_domains: vec![(0, 1)],
+            source_axioms: vec![crate::json_io::SourceAxiomMeta {
+                kind: crate::json_io::SourceAxiomKind::SubClass,
+                left: SourceConcept::Name("A".into()),
+                right: SourceConcept::Exists(
+                    SourceRole::Name("r".into()),
+                    Box::new(SourceConcept::Name("T".into())),
+                ),
+            }],
+            ..Default::default()
+        };
+
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        ctx.base.used_concept_priority_strategy =
+            Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+        let mut top = Concept::new();
+        top.set_concept_tag(1);
+        top.set_operator_code(op::CCTOP);
+        let top = ctx.ontology_arenas_mut().alloc_concept(top);
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+
+        let bridged = bridge_tinput_with_trigger_absorption(&mut ctx, &tin, true);
+        assert!(bridged.source_tbox);
+        assert_eq!(bridged.unsupported, 0);
+        assert!(
+            ctx.ontology_arenas()
+                .role(bridged.roles[0])
+                .get_domain_concept_list()
+                .iter()
+                .any(|link| link.target == bridged.named[1] && !link.negated),
+            "source mode must install D on r's native domain linker"
+        );
+        assert!(
+            !ctx.ontology_arenas()
+                .role(bridged.roles[0])
+                .get_domain_concept_list()
+                .iter()
+                .any(|link| link.target == bridged.named[3]),
+            "guarded clause shape alone must not manufacture a native domain"
+        );
+
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let out = extract_saturation_outcome(&mut ctx, &bridged);
+        assert_eq!(out.sat_verdict[0], Some(false));
+        assert!(
+            out.certain_subsumers[0]
+                .as_ref()
+                .is_some_and(|subsumers| subsumers.contains(&1)),
+            "A ⊆ ∃r.T and Domain(r,D) must saturate A ⊆ D"
+        );
+        assert!(
+            !out.known_subsumers[0].contains(&3),
+            "the non-RBox guarded clause must not saturate A ⊆ X"
+        );
+    }
+
+    #[test]
+    fn source_tbox_propagates_complex_role_domain_back_through_chain() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |cc: usize, t: usize| HAtom::Concept {
+            neg: false,
+            c: cc,
+            t,
+        };
+        let exists = |body: usize, role: usize, filler: usize| HtClause {
+            body: vec![c(body, 0)],
+            head: vec![HAtom::Exist {
+                r: role,
+                neg: false,
+                c: filler,
+                t: 0,
+            }],
+        };
+        let tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into(), "D".into()],
+            roles: vec!["r".into(), "s".into(), "t".into()],
+            clauses: vec![
+                // Clausified copies are suppressed in source mode.
+                exists(0, 0, 1),
+                exists(1, 1, 2),
+                // ObjectPropertyDomain(t D) remains a native CRole linker.
+                HtClause {
+                    body: vec![HAtom::Role { r: 2, s: 0, t: 1 }],
+                    head: vec![c(3, 0)],
+                },
+            ],
+            chains: vec![(0, 1, 2)],
+            role_domains: vec![(2, 3)],
+            source_axioms: vec![
+                crate::json_io::SourceAxiomMeta {
+                    kind: crate::json_io::SourceAxiomKind::SubClass,
+                    left: SourceConcept::Name("A".into()),
+                    right: SourceConcept::Exists(
+                        SourceRole::Name("r".into()),
+                        Box::new(SourceConcept::Name("B".into())),
+                    ),
+                },
+                crate::json_io::SourceAxiomMeta {
+                    kind: crate::json_io::SourceAxiomKind::SubClass,
+                    left: SourceConcept::Name("B".into()),
+                    right: SourceConcept::Exists(
+                        SourceRole::Name("s".into()),
+                        Box::new(SourceConcept::Name("C".into())),
+                    ),
+                },
+            ],
+            ..Default::default()
+        };
+
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        ctx.base.used_concept_priority_strategy =
+            Some(ConceptProcessingPriorityStrategy::new_concrete_operator());
+        let mut top = Concept::new();
+        top.set_concept_tag(1);
+        top.set_operator_code(op::CCTOP);
+        let top = ctx.ontology_arenas_mut().alloc_concept(top);
+        ctx.processing_data_box_mut().ontology_top_concept = top;
+
+        let bridged = bridge_tinput_with_trigger_absorption(&mut ctx, &tin, true);
+        assert!(bridged.source_tbox);
+        assert_eq!(bridged.unsupported, 0);
+        assert!(run_bridged_saturation(&mut ctx, &bridged));
+        let out = extract_saturation_outcome(&mut ctx, &bridged);
+        assert_eq!(out.sat_verdict[0], Some(false));
+        assert!(
+            out.certain_subsumers[0]
+                .as_ref()
+                .is_some_and(|subsumers| subsumers.contains(&3)),
+            "A ⊑ ∃r.B, B ⊑ ∃s.C, r∘s ⊑ t, Domain(t,D) must saturate A ⊑ D"
         );
     }
 
@@ -8538,6 +9021,53 @@ mod tests {
         probe_subs.sort_unstable();
         assert_eq!(probe_subs, vec![(0, 1), (0, 2), (1, 2)]);
         assert!(r.unsatisfiable.is_empty());
+    }
+
+    #[test]
+    fn saturation_existential_applies_role_domain_before_certifying() {
+        use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
+        let c = |cc: usize, t: usize| HAtom::Concept {
+            neg: false,
+            c: cc,
+            t,
+        };
+        // A ⊆ ∃r.T and Domain(r, D) entail A ⊆ D. This is the
+        // dominant ore_ont_9663 shape: a saturation row is complete only if
+        // the domain consequence is present, otherwise it must remain unknown
+        // for the completion probe.
+        let tin = TInput {
+            concepts: vec!["A".into(), "D".into(), "T".into()],
+            roles: vec!["r".into()],
+            clauses: vec![
+                HtClause {
+                    body: vec![c(0, 0)],
+                    head: vec![HAtom::Exist {
+                        r: 0,
+                        neg: false,
+                        c: 2,
+                        t: 0,
+                    }],
+                },
+                HtClause {
+                    body: vec![HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![c(1, 0)],
+                },
+            ],
+            ..Default::default()
+        };
+
+        let oracle = bridged_classify_opts(&tin, false, false).expect("completion oracle");
+        assert!(oracle.subsumptions.contains(&(0, 1)));
+
+        let out = bridged_saturate(&tin).expect("in fragment");
+        if out.sat_verdict[0] == Some(false) {
+            assert!(
+                out.certain_subsumers[0]
+                    .as_ref()
+                    .is_some_and(|subsumers| subsumers.contains(&1)),
+                "a SAT-certain A row must include the role-domain subsumer D"
+            );
+        }
     }
 
     #[test]
