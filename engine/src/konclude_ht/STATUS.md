@@ -6,16 +6,17 @@ status; `PORT.md` holds the full wave-by-wave history (W0-W555) and the per-unit
 status table. **License note:** Konclude is LGPL; this is a derivative work —
 LGPL headers + attribution still need to be added (see Next steps §6).
 
-_Last updated 2026-07-14 on branch `payg-strategy`. Suite: 1,474 passed,
+_Last updated 2026-07-14 on branch `payg-strategy`. Suite: 1,475 passed,
 0 failed, 7 ignored on ws. The production bridge, COW/DDB trust chain,
 saturation work, source terminology, KPSet barrier, and role-specific
-successor ports are summarized in [`CHANGELOG.md`](../../../CHANGELOG.md)
+successor/free-list ports are summarized in [`CHANGELOG.md`](../../../CHANGELOG.md)
 under [unreleased]._
 
-> **Production `konclude_ht` route: ore_ont_541, 12653, 7914, 3215, and 9663
-> are sound + complete through `km classify`. The latest closure, 9663,
-> returns all 725,040 Konclude pairs with zero extra and zero missing in an
-> independently promoted IBEX run.
+> **Production `konclude_ht` route: ore_ont_541, 12653, 7914, 3215, 9663, and
+> 9724 are sound + complete through `km classify`. The latest closure, 9724,
+> returns all 457,090 Konclude pairs with zero extra and zero missing in an
+> independent IBEX production run. The final 592-ontology sweep has 514 exact
+> matches and no prior exact-match regression.
 > Per-ontology solving recipes and the family diagnosis table live in
 > [`docs/SOLVED-ONTOLOGIES.md`](../../../docs/SOLVED-ONTOLOGIES.md).** Bridge
 > milestones: deterministic completion (`5099d52`, 10 port gaps closed);
@@ -25,8 +26,10 @@ under [unreleased]._
 > deterministic; 86 spurious on 3215 under the old gate). The decisive final
 > step for 9663 was carrying explicit source RBox provenance and porting
 > Konclude's role-specific `(role, filler, polarity)` saturation successor
-> items. The current focused frontier is 9724's saturation/cardinality
-> throughput; 14817 remains on the giant-ontology track.
+> items. The decisive 9724 step was restoring Konclude's O(1) intrusive-LIFO
+> behavior for collapsed saturation allocation free lists; the old Vec-front
+> representation spent the hot successor path shifting the list through
+> `memcpy`. The focused giant-ontology frontier is now 14817.
 
 ## Saturation-first probe answering (tasks #23/#24, 2026-07-09/10)
 

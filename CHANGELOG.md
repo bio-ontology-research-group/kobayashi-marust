@@ -9,6 +9,66 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Konclude intrusive free-list representation closes ore_ont_9724 (2026-07-14)
+
+`ore_ont_9724` now completes through production `km classify` and matches
+Konclude exactly: 457,090 canonical non-self subsumptions on both sides, zero
+extra, zero missing, and the same consistency and unsatisfiable-class results.
+The final Rust 1.85 Bullseye binary has SHA-256
+`8071a4d0d7b35476f8c4d65a749e8fef71279e23dedd1ade4aba405f327078f9`.
+IBEX production job 48798145 finished in 24.72 seconds at 8,091,788 KB. Its
+independent task in full-sweep job 48799766 matched again in 23 seconds at
+8,092,216 KB.
+
+The preceding result was sound but partial, with 3,325 missing pairs at the
+fixed saturation budget. A 1,200-second exact-input run recovered only one
+pair and reached 24,555,236 KB. It never reached completion-side ATMOST
+merging, which disproved the plan-start cardinality hypothesis. Instrumented
+Konclude with one worker finished in 10.46 seconds, constructed 33,422
+saturation items against KM's 33,678 seeds, and performed 6,853,425
+concept-add attempts. The close input shape plus single-worker completion
+localized the gap to KM's saturation implementation cost.
+
+An initial exact alignment replaced owned implication-trigger suffixes with
+non-owning operand cursors, eliminated persistent allocation for Konclude's
+stack-local initial descriptor, used pointer-like integer hashing for role ids,
+consolidated backward-role bucket mutation, and changed temporary propagation
+chains to constant-time LIFO stacks. That candidate reduced peak memory but
+still ended with the same 3,325 missing pairs.
+
+Four live worker samples at 30, 90, 160, and 220 seconds then showed the same
+stack: `memcpy` under `release_role_saturation_process_linker`, called from
+`process_successor_functional_concepts_extensions`. Konclude's
+`CProcessingDataBox.cpp:1849-1869` maintains
+`mRemRoleSatProcessLinker` as an intrusive free list. Release prepends a linker
+to the head, and acquire removes that head, both in constant time and LIFO
+order. KM's collapsed `Vec` stored the head at index zero and implemented the
+same logical order with `insert(0)` and `remove(0)`, shifting the entire growing
+list on every operation.
+
+Collapsed allocation free lists now store their logical head at the Vec tail.
+Konclude's prepend/head-pop operations become Rust `push`/`pop`, preserving the
+exact reuse order in O(1). Diagnostic getters reverse the internal vector to
+retain the C++ head-to-tail view. The same representation is used for adjacent
+concept, status-update, and individual-node `mRemaining*` free lists with the
+same Konclude constructor pattern. Ordinary live traversed chains keep their
+existing layout. The exact normalized input changes from 3,325 missing after
+240 seconds to a complete match in 32.15 seconds.
+
+Release validation is 1,475 passed, 0 failed, and 7 ignored. IBEX array job
+48799766 attempted all 592 ORE ontologies at 240 seconds and 20 GB each. It
+reports 574 completed, 18 timeout, and 514 exact Konclude matches, up from 511.
+No prior exact ontology regressed and no disagreement count increased. Exactly
+three results changed, all from incomplete to exact: 1016 recovers 2,510
+missing pairs, 11623 recovers 3,423, and 9724 recovers 3,325.
+
+The full causal record and reproduction artifacts are in
+`docs/SOLVE-7914-9663-9724.md` and
+`results/benchmarks/2026-07-14-9724-closure/`. These are fixpoint-preserving
+storage, cursor, hashing, and lookup changes inside the Konclude-compatible
+hypertableau port. They do not alter the CB calculus or require Lean
+re-certification.
+
 ### Native RBox links and role-specific saturation successors close ore_ont_9663 (2026-07-14)
 
 `ore_ont_9663` now completes through production `km classify` and matches

@@ -4350,6 +4350,69 @@ impl ProcessContext {
         self.sat_node(node).role_back_prop_hash
     }
 
+    /// The mutation core of Konclude's
+    /// `CRoleBackwardSaturationPropagationHash::addBackwardPropagationLink`.
+    ///
+    /// Konclude obtains one mutable `mRoleBackPropDataHash[role]` bucket, tests
+    /// the current head, prepends the link, and reads the reapply linker from
+    /// that same bucket. Keeping this operation on `ProcessContext` lets Rust
+    /// borrow the link and hash arenas as disjoint fields and perform the same
+    /// update with one role-map lookup.
+    pub fn role_backward_saturation_propagation_hash_install_link(
+        &mut self,
+        hash: RoleBackwardSaturationPropagationHashId,
+        role: RoleId,
+        link: BackwardSaturationPropagationLinkId,
+    ) -> (bool, BackwardSaturationPropagationReapplyDescriptorId) {
+        let link_source = self
+            .backward_sat_prop_links
+            .get(link)
+            .get_source_individual();
+        let (backward_links, role_hashes) = (
+            &mut self.backward_sat_prop_links,
+            &mut self.role_backward_sat_prop_hashes,
+        );
+        let data = role_hashes
+            .get_mut_journaled(hash)
+            .role_back_prop_data_hash
+            .entry(role)
+            .or_insert_with(RoleBackwardSaturationPropagationHashData::new);
+        let old_head = data.link_linker;
+        let install_link = old_head.is_none()
+            || backward_links.get(old_head).get_source_individual() != link_source;
+        if install_link {
+            backward_links.get_mut_journaled(link).set_next(old_head);
+            data.link_linker = link;
+        }
+        (install_link, data.reapply_linker)
+    }
+
+    /// Port of the predecessor-merging flag tail of
+    /// `installBackwardPropagationLink`. This deliberately runs after pending
+    /// backward concepts have been reapplied, matching the C++ operation order.
+    pub fn role_backward_saturation_propagation_hash_queue_predecessor_merging(
+        &mut self,
+        hash: RoleBackwardSaturationPropagationHashId,
+        role: RoleId,
+        queue_functional_processing: bool,
+    ) -> bool {
+        let data = self
+            .role_backward_sat_prop_hashes
+            .get_mut_journaled(hash)
+            .role_back_prop_data_hash
+            .entry(role)
+            .or_insert_with(RoleBackwardSaturationPropagationHashData::new);
+        if data.role_predecessor_merging_queuing_required
+            && queue_functional_processing
+            && !data.role_predecessor_merging_processing_queued
+        {
+            data.role_predecessor_merging_processing_queued = true;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Port helper for `CRoleBackwardSaturationPropagationHash::addBackwardPropagationLink`.
     pub fn sat_node_add_backward_propagation_link(
         &mut self,

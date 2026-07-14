@@ -1,0 +1,67 @@
+diff --git a/Source/Reasoner/Consistiser/CTotallyPrecomputationThread.cpp b/Source/Reasoner/Consistiser/CTotallyPrecomputationThread.cpp
+index 1b051b0..e3c9b43 100644
+--- a/Source/Reasoner/Consistiser/CTotallyPrecomputationThread.cpp
++++ b/Source/Reasoner/Consistiser/CTotallyPrecomputationThread.cpp
+@@ -21 +21,4 @@
+-#include "CTotallyPrecomputationThread.h"
++#include "CTotallyPrecomputationThread.h"
++
++#include <cstdio>
++#include <cstdlib>
+@@ -2193,14 +2196,42 @@ namespace Konclude {
+-				QListIterator<CSaturationConceptDataItem*> reverseOrderedIt(*orderedItemList);
+-				reverseOrderedIt.toBack();
+-				CBOXHASH<CConcept*,CConcept*>* triggerImpHash = totallyPreCompItem->getOntology()->getTBox()->getTriggerImplicationHash(false);
+-				while (reverseOrderedIt.hasPrevious()) {
+-					CSaturationConceptDataItem* conTestItem = reverseOrderedIt.previous();
+-					CSaturationConceptDataItem* referencedTestItem = conTestItem->getSpecialItemReference();
+-					if (referencedTestItem) {
+-						if (!conTestItem->isPotentiallyExistInitializationConcept() && !conTestItem->hasMultipleDirectPredecessorsItems() && (!triggerImpHash || !triggerImpHash->contains(conTestItem->getSaturationConcept()))) {
+-							conTestItem->setSpecialItemReferenceMode(CSaturationConceptDataItem::SATURATIONSUBSTITUTEMODE);
+-						} else {
+-							conTestItem->setSpecialItemReferenceMode(CSaturationConceptDataItem::SATURATIONCOPYMODE);
+-						}
+-					}
+-				}
++				QListIterator<CSaturationConceptDataItem*> reverseOrderedIt(*orderedItemList);
++				reverseOrderedIt.toBack();
++				CBOXHASH<CConcept*,CConcept*>* triggerImpHash = totallyPreCompItem->getOntology()->getTBox()->getTriggerImplicationHash(false);
++				cint64 kmSeedSpecialCount = 0;
++				cint64 kmSeedSubstituteCount = 0;
++				cint64 kmSeedCopyCount = 0;
++				cint64 kmSeedPotentialExistCount = 0;
++				cint64 kmSeedMultiplePredecessorCount = 0;
++				cint64 kmSeedTriggerCount = 0;
++				while (reverseOrderedIt.hasPrevious()) {
++					CSaturationConceptDataItem* conTestItem = reverseOrderedIt.previous();
++					if (conTestItem->isPotentiallyExistInitializationConcept()) {
++						++kmSeedPotentialExistCount;
++					}
++					if (conTestItem->hasMultipleDirectPredecessorsItems()) {
++						++kmSeedMultiplePredecessorCount;
++					}
++					if (triggerImpHash && triggerImpHash->contains(conTestItem->getSaturationConcept())) {
++						++kmSeedTriggerCount;
++					}
++					CSaturationConceptDataItem* referencedTestItem = conTestItem->getSpecialItemReference();
++					if (referencedTestItem) {
++						++kmSeedSpecialCount;
++						if (!conTestItem->isPotentiallyExistInitializationConcept() && !conTestItem->hasMultipleDirectPredecessorsItems() && (!triggerImpHash || !triggerImpHash->contains(conTestItem->getSaturationConcept()))) {
++							conTestItem->setSpecialItemReferenceMode(CSaturationConceptDataItem::SATURATIONSUBSTITUTEMODE);
++							++kmSeedSubstituteCount;
++						} else {
++							conTestItem->setSpecialItemReferenceMode(CSaturationConceptDataItem::SATURATIONCOPYMODE);
++							++kmSeedCopyCount;
++						}
++					}
++				}
++				if (getenv("KSEEDDBG")) {
++					fprintf(stderr, "KSEEDDBG concepts=%lld exists=%lld classes=%lld all-items=%lld ordered=%lld leaf=%lld leaf-exist=%lld special=%lld substitute=%lld copy=%lld potential-exist=%lld multiple-predecessor=%lld trigger=%lld\n",
++						(long long)conCount, (long long)statExistsConceptCount, (long long)statClassCount,
++						(long long)allConItemList.size(), (long long)orderedItemList->size(),
++						(long long)leafConList.size(), (long long)leafExistConList.size(),
++						(long long)kmSeedSpecialCount, (long long)kmSeedSubstituteCount,
++						(long long)kmSeedCopyCount, (long long)kmSeedPotentialExistCount,
++						(long long)kmSeedMultiplePredecessorCount, (long long)kmSeedTriggerCount);
++					fflush(stderr);
++				}

@@ -31,15 +31,15 @@
 //! state is available.
 //!
 //! KONCLUDE-PORT-NOTE[ownership→resolved]: ALIGNED to the canonical linker
-//! convention (CLinker.cpp, confirmed by DB-6, recorded in `PORT.md`): the chain
-//! head is at the **FRONT** of the `Vec`, so `add* == insert(0, …)` (front-splice,
-//! newest at head, matching `append`/prepend), `take* == remove(0)` (pop head,
-//! advance), `set* == replace`. This file originally modelled the head at the
-//! Vec's back (`push`/`pop`); the take ORDER (LIFO) is identical either way, but
-//! `getX` now returns the chain head→tail, matching db4/db6 and the C++
-//! traversal. `setX(v)` still installs a single-element chain (or empty for
-//! `Id::NONE`), since the collapsed model has no linker identity to splice a
-//! multi-element chain from one id.
+//! convention (CLinker.cpp, confirmed by DB-6, recorded in `PORT.md`). Ordinary
+//! chains that expose live traversal keep their head at the Vec front. The
+//! `mRemaining*` chains are allocation free lists: production only prepends and
+//! takes their head. Those store the head at the Vec tail, making Konclude's
+//! constant-time intrusive `append`/head-pop into constant-time `push`/`pop`.
+//! Diagnostic getters reverse the internal Vec and still return head→tail.
+//! Both representations preserve the exact LIFO order. `setX(v)` installs a
+//! single-element chain (or empty for `Id::NONE`), since the collapsed model
+//! has no linker identity to splice a multi-element chain from one id.
 //!
 //! KONCLUDE-PORT-NOTE[api]: the status-update chain is C++
 //! `CIndividualSaturationProcessNodeStatusUpdateLinker*`; per `databox.rs` its
@@ -241,20 +241,16 @@ impl ProcessingDataBox {
     // ======================================================================
 
     /// Port of `CProcessingDataBox::getRemainingIndividualSaturationUpdateLinker`.
-    pub fn remaining_individual_saturation_update_linker(&self) -> &[SatNodeId] {
-        &self.rem_sat_update_linker
+    pub fn remaining_individual_saturation_update_linker(&self) -> Vec<SatNodeId> {
+        self.rem_sat_update_linker.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeRemainingIndividualSaturationUpdateLinker`.
     pub fn take_remaining_individual_saturation_update_linker(&mut self) -> SatNodeId {
-        if self.rem_sat_update_linker.is_empty() {
-            SatNodeId::NONE
-        } else {
-            self.rem_sat_update_linker.remove(0)
-        }
+        self.rem_sat_update_linker.pop().unwrap_or(SatNodeId::NONE)
     }
     /// Port of `CProcessingDataBox::addRemainingIndividualSaturationUpdateLinker`.
     pub fn add_remaining_individual_saturation_update_linker(&mut self, v: SatNodeId) -> &mut Self {
-        self.rem_sat_update_linker.insert(0, v);
+        self.rem_sat_update_linker.push(v);
         self
     }
     /// Port of `CProcessingDataBox::setRemainingIndividualSaturationUpdateLinker`.
@@ -271,16 +267,12 @@ impl ProcessingDataBox {
     // ======================================================================
 
     /// Port of `CProcessingDataBox::getRemainingConceptDescriptor`.
-    pub fn remaining_concept_descriptor(&self) -> &[ConDescId] {
-        &self.rem_con_des
+    pub fn remaining_concept_descriptor(&self) -> Vec<ConDescId> {
+        self.rem_con_des.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeRemainingConceptDescriptor`.
     pub fn take_remaining_concept_descriptor(&mut self) -> ConDescId {
-        if self.rem_con_des.is_empty() {
-            ConDescId::NONE
-        } else {
-            self.rem_con_des.remove(0)
-        }
+        self.rem_con_des.pop().unwrap_or(ConDescId::NONE)
     }
     /// Port of `CProcessingDataBox::setRemainingConceptDescriptor`.
     pub fn set_remaining_concept_descriptor(&mut self, v: ConDescId) -> &mut Self {
@@ -292,7 +284,7 @@ impl ProcessingDataBox {
     }
     /// Port of `CProcessingDataBox::addRemainingConceptDescriptor`.
     pub fn add_remaining_concept_descriptor(&mut self, v: ConDescId) -> &mut Self {
-        self.rem_con_des.insert(0, v);
+        self.rem_con_des.push(v);
         self
     }
 
@@ -301,18 +293,14 @@ impl ProcessingDataBox {
     // ======================================================================
 
     /// Port of `CProcessingDataBox::getRemainingConceptSaturationDescriptor`.
-    pub fn remaining_concept_saturation_descriptor(&self) -> &[Id<ConceptSaturationDescriptor>] {
-        &self.rem_con_sat_des
+    pub fn remaining_concept_saturation_descriptor(&self) -> Vec<Id<ConceptSaturationDescriptor>> {
+        self.rem_con_sat_des.iter().rev().copied().collect()
     }
     /// Port of `CProcessingDataBox::takeRemainingConceptSaturationDescriptor`.
     pub fn take_remaining_concept_saturation_descriptor(
         &mut self,
     ) -> Id<ConceptSaturationDescriptor> {
-        if self.rem_con_sat_des.is_empty() {
-            Id::NONE
-        } else {
-            self.rem_con_sat_des.remove(0)
-        }
+        self.rem_con_sat_des.pop().unwrap_or(Id::NONE)
     }
     /// Port of `CProcessingDataBox::setRemainingConceptSaturationDescriptor`.
     pub fn set_remaining_concept_saturation_descriptor(
@@ -330,7 +318,7 @@ impl ProcessingDataBox {
         &mut self,
         v: Id<ConceptSaturationDescriptor>,
     ) -> &mut Self {
-        self.rem_con_sat_des.insert(0, v);
+        self.rem_con_sat_des.push(v);
         self
     }
 
@@ -339,16 +327,16 @@ impl ProcessingDataBox {
     // ======================================================================
 
     /// Port of `CProcessingDataBox::getRemainingRoleSaturationProcessLinker`.
-    pub fn remaining_role_saturation_process_linker(&self) -> &[Id<RoleSaturationProcess>] {
-        &self.rem_role_sat_process_linker
+    pub fn remaining_role_saturation_process_linker(&self) -> Vec<Id<RoleSaturationProcess>> {
+        self.rem_role_sat_process_linker
+            .iter()
+            .rev()
+            .copied()
+            .collect()
     }
     /// Port of `CProcessingDataBox::takeRemainingRoleSaturationProcessLinker`.
     pub fn take_remaining_role_saturation_process_linker(&mut self) -> Id<RoleSaturationProcess> {
-        if self.rem_role_sat_process_linker.is_empty() {
-            Id::NONE
-        } else {
-            self.rem_role_sat_process_linker.remove(0)
-        }
+        self.rem_role_sat_process_linker.pop().unwrap_or(Id::NONE)
     }
     /// Port of `CProcessingDataBox::setRemainingRoleSaturationProcessLinker`.
     pub fn set_remaining_role_saturation_process_linker(
@@ -366,7 +354,7 @@ impl ProcessingDataBox {
         &mut self,
         v: Id<RoleSaturationProcess>,
     ) -> &mut Self {
-        self.rem_role_sat_process_linker.insert(0, v);
+        self.rem_role_sat_process_linker.push(v);
         self
     }
 

@@ -1,0 +1,82 @@
+{
+  "date": "2026-07-14",
+  "ontology": "ore_ont_9724.owl",
+  "status": "closed",
+  "final_binary_sha256": "8071a4d0d7b35476f8c4d65a749e8fef71279e23dedd1ade4aba405f327078f9",
+  "normalized_input_sha256": "d5e2d6d332b41924717023e7e19ad8bdcf18f700cd27cd648e3616e88e695b5d",
+  "release_tests": {
+    "passed": 1475,
+    "failed": 0,
+    "ignored": 7
+  },
+  "konclude_one_worker": {
+    "job": 48797888,
+    "wall_seconds": 10.46,
+    "peak_kb": 2794412,
+    "seeds": 33422,
+    "concept_adds": 6853425,
+    "concept_new": 3077345
+  },
+  "baseline": {
+    "job": 48797840,
+    "wall_seconds": 225.78,
+    "peak_kb": 1159276,
+    "extra": 0,
+    "missing": 3325
+  },
+  "long_baseline": {
+    "job": 48797757,
+    "wall_seconds": 1205.75,
+    "peak_kb": 24555236,
+    "extra": 0,
+    "missing": 3324
+  },
+  "first_alignment_candidate": {
+    "job": 48798030,
+    "binary_sha256": "353aba975f89e39467f3838cb2611e15c07e8acd475529ea87634553775826a0",
+    "wall_seconds": 241.71,
+    "peak_kb": 979592,
+    "extra": 0,
+    "missing": 3325
+  },
+  "exact_normalized_input": {
+    "job": 48798075,
+    "wall_seconds": 32.15,
+    "saturation_seconds": 29.76,
+    "peak_kb": 8096324,
+    "extra": 0,
+    "missing": 0
+  },
+  "production_closure": {
+    "job": 48798145,
+    "wall_seconds": 24.72,
+    "saturation_seconds": 20.39,
+    "peak_kb": 8091788,
+    "km_pairs": 457090,
+    "gold_pairs": 457090,
+    "extra": 0,
+    "missing": 0
+  },
+  "root_cause": "Collapsed intrusive remaining-role-linker free list used Vec front insertion/removal, shifting the growing list through memcpy on every release/acquire; tail-backed push/pop preserves Konclude's exact LIFO order in constant time.",
+  "full_sweep": {
+    "job": 48799766,
+    "ontology_task": 350,
+    "ontology_wall_seconds": 23,
+    "ontology_peak_kb": 8092216,
+    "rows": 592,
+    "completed": 574,
+    "timeout": 18,
+    "match": 514,
+    "incomplete": 45,
+    "unsound": 5,
+    "both": 1,
+    "inconsistent": 6,
+    "no_gold": 3,
+    "previous_exact_regressions": 0,
+    "new_exact": [
+      "ore_ont_1016.owl",
+      "ore_ont_11623.owl",
+      "ore_ont_9724.owl"
+    ]
+  }
+}

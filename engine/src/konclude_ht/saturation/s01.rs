@@ -595,12 +595,16 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 );
                 if this.diagnostic_counters_enabled {
                     eprintln!(
-                        "BRIDGE-SATURATION-COUNTERS: concept-adds={} concept-new={} all-rule={} all-back-prop={} successor-create={} max-label={}",
+                        "BRIDGE-SATURATION-COUNTERS: concept-adds={} concept-new={} all-rule={} all-back-prop={} successor-create={} direct-status={} indirect-status={} successor-nominal={} max-cardinality={} max-label={}",
                         this.diagnostic_concept_add_attempt_count,
                         this.diagnostic_concept_add_new_count,
                         this.diagnostic_all_rule_count,
                         this.diagnostic_all_back_prop_count,
                         this.diagnostic_successor_create_count,
+                        this.direct_updated_status_indi_node_count,
+                        this.indirect_updated_status_indi_node_count,
+                        this.successor_connected_nominal_updated_count,
+                        this.maximum_cardinality_candidates_updated_count,
                         this.diagnostic_max_label_count,
                     );
                     eprintln!(

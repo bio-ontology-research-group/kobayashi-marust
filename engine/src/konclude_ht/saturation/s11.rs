@@ -67,10 +67,12 @@
 //! `initUpdateNodeLinker`/`append`/`getNext`/`getData`/`clearNext` + pool
 //! create/release) collapses — exactly as `process/db5.rs` already collapsed the
 //! databox `mRemSatUpdateLinker` chain to `Vec<SatNodeId>` — to a `Vec<SatNodeId>`
-//! stack (the linker carries only the node it updates). `append` (prepend, LIFO)
-//! → `insert(0, …)`, head-pop → `remove(0)`. The per-iteration pool create/release
-//! of update-linkers is elided under this collapse (`[memory-pool]`); the
-//! propagation logic itself is ported faithfully.
+//! stack (the linker carries only the node it updates). The Vec stores the C++
+//! intrusive-list head at its tail: `append` (prepend, LIFO) → `push`, head-pop
+//! → `pop`. Iterating each fan-out in C++ order and pushing each discovered node
+//! preserves the exact C++ processing order while keeping both operations O(1).
+//! The per-iteration pool create/release of update-linkers is elided under this
+//! collapse (`[memory-pool]`); the propagation logic itself is ported faithfully.
 //!
 //! Deferrals (no logic dropped; recorded inline + in doc):
 //!   * `// W4-DEFER[api]` — the unported saturation satellites this group bottoms
@@ -98,7 +100,7 @@ use super::super::model::op::{
     CCBRANCHAQAND, CCBRANCHTRIG, CCIMPL, CCIMPLALL, CCIMPLAQALL, CCIMPLAQAND, CCIMPLTRIG, CCOR,
     CCSOME, CCSUB,
 };
-use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::substrate::{Cint64, Id};
 use super::super::model::{ConceptId, NegLink};
 use super::super::process::nominal_conn::SuccessorConnectedNominalSetId;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
@@ -285,6 +287,7 @@ impl IndividualSaturationProcessNodeStatusFlags {
 mod tests {
     use super::super::super::model::concept::Concept;
     use super::super::super::model::op::CCATOM;
+    use super::super::super::model::substrate::INVALID;
     use super::super::super::model::RoleId;
     use super::super::super::process::sat_node::IndividualSaturationProcessNode;
     use super::super::super::saturation::satellites::{
@@ -413,6 +416,35 @@ mod tests {
     }
 
     #[test]
+    fn role_process_linker_free_list_preserves_intrusive_lifo_order() {
+        let mut algo = SaturationTaskHandleAlgorithm::new();
+        let mut ctx = CalculationAlgorithmContextBase::new();
+        let first = ctx
+            .process_context_mut()
+            .alloc_role_sat_proc_linker(RoleSaturationProcessLinker::new());
+        let second = ctx
+            .process_context_mut()
+            .alloc_role_sat_proc_linker(RoleSaturationProcessLinker::new());
+
+        algo.release_role_saturation_process_linker(Id::new(first.raw), &mut ctx);
+        algo.release_role_saturation_process_linker(Id::new(second.raw), &mut ctx);
+
+        assert_eq!(
+            ctx.processing_data_box()
+                .remaining_role_saturation_process_linker(),
+            vec![Id::new(second.raw), Id::new(first.raw)],
+        );
+        assert_eq!(
+            algo.create_role_saturation_process_linker(&mut ctx),
+            Id::new(second.raw),
+        );
+        assert_eq!(
+            algo.create_role_saturation_process_linker(&mut ctx),
+            Id::new(first.raw),
+        );
+    }
+
+    #[test]
     fn s11_implication_reapply_insert_triggered_prepends_chain_once_per_tag() {
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -507,11 +539,6 @@ mod tests {
             concept.set_operator_code(CCATOM).set_concept_tag(221);
             ctx.ontology_arenas_mut().alloc_concept(concept)
         };
-        let first_trigger = {
-            let mut concept = Concept::new();
-            concept.set_operator_code(CCATOM).set_concept_tag(223);
-            ctx.ontology_arenas_mut().alloc_concept(concept)
-        };
         let second_trigger = {
             let mut concept = Concept::new();
             concept.set_operator_code(CCATOM).set_concept_tag(225);
@@ -523,7 +550,7 @@ mod tests {
                 .set_operator_code(CCATOM)
                 .set_concept_tag(227)
                 .add_operand_linker(conclusion, false)
-                .add_operand_linker(second_trigger, false)
+                .add_operand_linker(second_trigger, true)
                 .set_operand_count(2);
             ctx.ontology_arenas_mut().alloc_concept(concept)
         };
@@ -555,23 +582,8 @@ mod tests {
             );
 
         let initial_reapply = {
-            // Trigger linkers store the inverted body polarity (`¬sub`
-            // convention): a POSITIVE-presence trigger is a NEGATED linker.
-            let triggers = [
-                NegLink {
-                    target: first_trigger,
-                    negated: true,
-                },
-                NegLink {
-                    target: second_trigger,
-                    negated: true,
-                },
-            ];
             let mut descriptor = ImplicationReapplyConceptSaturationDescriptor::new();
-            descriptor.init_implication_reaplly_concept_saturation_descriptor(
-                implication,
-                Some(&triggers),
-            );
+            descriptor.init_implication_reaplly_concept_saturation_descriptor(implication, Some(0));
             ctx.process_context_mut()
                 .alloc_imp_reapply_con_sat_desc(descriptor)
         };
@@ -595,12 +607,16 @@ mod tests {
             .unwrap()
             .imp_reapply_con_sat_des;
         assert!(queued.is_some());
+        let cursor = ctx
+            .process_context()
+            .imp_reapply_con_sat_desc(queued)
+            .get_next_trigger_index();
+        assert_eq!(cursor, Some(1));
         assert_eq!(
-            ctx.process_context()
-                .imp_reapply_con_sat_desc(queued)
-                .get_next_trigger_concept()
-                .unwrap()[0]
-                .target,
+            ctx.ontology_arenas()
+                .concept(implication)
+                .get_operand_list()[cursor.unwrap()]
+            .target,
             second_trigger
         );
         assert_eq!(ctx.process_context().con_sat_desc_count(), before_count + 1);
@@ -627,7 +643,8 @@ mod tests {
                 .set_operator_code(CCATOM)
                 .set_concept_tag(235)
                 .add_operand_linker(conclusion, false)
-                .set_operand_count(1);
+                .add_operand_linker(trigger, true)
+                .set_operand_count(2);
             ctx.ontology_arenas_mut().alloc_concept(concept)
         };
 
@@ -639,15 +656,8 @@ mod tests {
             .sat_node_reapply_concept_saturation_label_set(root, true);
         let trigger_tag = ctx.ontology_arenas().concept(trigger).get_concept_tag();
         let queued_reapply = {
-            let triggers = [NegLink {
-                target: trigger,
-                negated: true,
-            }];
             let mut descriptor = ImplicationReapplyConceptSaturationDescriptor::new();
-            descriptor.init_implication_reaplly_concept_saturation_descriptor(
-                implication,
-                Some(&triggers),
-            );
+            descriptor.init_implication_reaplly_concept_saturation_descriptor(implication, Some(1));
             ctx.process_context_mut()
                 .alloc_imp_reapply_con_sat_desc(descriptor)
         };
@@ -1927,17 +1937,24 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 if new_insertion {
                     let mut reapply_it = reapply_imp_reapply_con_sat_des;
                     while reapply_it.is_some() {
-                        let (next_reapply, trigger) = {
+                        let (next_reapply, implication_concept, trigger_index) = {
                             let descriptor = calc_alg_context
                                 .process_context()
                                 .imp_reapply_con_sat_desc(reapply_it);
                             (
                                 descriptor.get_next(),
-                                descriptor
-                                    .get_next_trigger_concept()
-                                    .and_then(|linker| linker.first().copied()),
+                                descriptor.get_implication_concept(),
+                                descriptor.get_next_trigger_index(),
                             )
                         };
+                        let trigger = trigger_index.and_then(|index| {
+                            calc_alg_context
+                                .ontology_arenas()
+                                .concept(implication_concept)
+                                .get_operand_list()
+                                .get(index)
+                                .copied()
+                        });
                         if let Some(trigger_con_linker) = trigger {
                             if trigger_con_linker.target == concept
                                 && trigger_con_linker.negated != con_neg
@@ -1954,24 +1971,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     }
 
                     if impl_trigger_generation {
-                        let trigger_suffix = calc_alg_context
-                            .ontology_arenas()
-                            .concept(concept)
-                            .get_operand_list()
-                            .to_vec();
-                        let new_reapply = self
-                            .create_implication_reapply_concept_saturation_descriptor(
-                                calc_alg_context,
-                            );
-                        calc_alg_context
-                            .process_context_mut()
-                            .imp_reapply_con_sat_desc_mut(new_reapply)
-                            .init_implication_reaplly_concept_saturation_descriptor(
-                                concept,
-                                Some(&trigger_suffix),
-                            );
-                        self.update_implication_reapply_concept_saturation_descriptor(
-                            new_reapply,
+                        self.update_implication_reapply_cursor(
+                            concept,
+                            0,
                             root_process_indi,
                             label_set,
                             calc_alg_context,
@@ -1999,24 +2001,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                     .get_operator_code()
                                     == CCIMPL
                                 {
-                                    let trigger_suffix = calc_alg_context
-                                        .ontology_arenas()
-                                        .concept(op_concept)
-                                        .get_operand_list()
-                                        .to_vec();
-                                    let new_reapply = self
-                                        .create_implication_reapply_concept_saturation_descriptor(
-                                            calc_alg_context,
-                                        );
-                                    calc_alg_context
-                                        .process_context_mut()
-                                        .imp_reapply_con_sat_desc_mut(new_reapply)
-                                        .init_implication_reaplly_concept_saturation_descriptor(
-                                            op_concept,
-                                            Some(&trigger_suffix),
-                                        );
-                                    self.update_implication_reapply_concept_saturation_descriptor(
-                                        new_reapply,
+                                    self.update_implication_reapply_cursor(
+                                        op_concept,
+                                        0,
                                         root_process_indi,
                                         label_set,
                                         calc_alg_context,
@@ -2145,96 +2132,124 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         // STATINC(IMPLICATIONTRIGGERINGCOUNT) / IMPLICATIONEXECUTINGCOUNT — debug stats, elided.
-        let (impl_concept, curr_trigger_concepts) = {
+        let (impl_concept, curr_trigger_index) = {
             let descriptor = calc_alg_context
                 .process_context()
                 .imp_reapply_con_sat_desc(reapply_imp_reapply_con_sat_des);
             (
                 descriptor.get_implication_concept(),
-                descriptor
-                    .get_next_trigger_concept()
-                    .map(|trigger| trigger.to_vec())
-                    .unwrap_or_default(),
+                descriptor.get_next_trigger_index(),
             )
         };
-        if curr_trigger_concepts.is_empty() {
+        let Some(curr_trigger_index) = curr_trigger_index else {
             return true;
-        }
+        };
 
-        let next_trigger_concepts = &curr_trigger_concepts[1..];
-        if next_trigger_concepts.is_empty() {
-            // execute implication
-            if let Some(imp_ex_con_op_linker) = calc_alg_context
+        self.update_implication_reapply_cursor(
+            impl_concept,
+            curr_trigger_index,
+            root_process_indi,
+            label_set,
+            calc_alg_context,
+        )
+    }
+
+    /// Rust equivalent of Konclude's stack-local temporary reapply descriptor.
+    /// The C++ object contains only `(implConcept, operandLinker*)`; pass those
+    /// two values directly so an initial implication application does not
+    /// allocate a persistent arena descriptor.
+    pub(super) fn update_implication_reapply_cursor(
+        &mut self,
+        impl_concept: ConceptId,
+        curr_trigger_index: usize,
+        root_process_indi: &mut SatNodeId,
+        label_set: ReapplyConceptSaturationLabelSetId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let (next_trigger, implication_conclusion) = {
+            let operands = calc_alg_context
                 .ontology_arenas()
                 .concept(impl_concept)
-                .get_operand_list()
-                .first()
-                .copied()
+                .get_operand_list();
+            if curr_trigger_index >= operands.len() {
+                return true;
+            }
+            let next_trigger_index = curr_trigger_index + 1;
+            if next_trigger_index >= operands.len() {
+                (None, operands.first().copied())
+            } else {
+                (
+                    Some((next_trigger_index, operands[next_trigger_index])),
+                    None,
+                )
+            }
+        };
+
+        if let Some(imp_ex_con_op_linker) = implication_conclusion {
+            // execute implication
+            if super::sat_add_trace_tag()
+                == Some(
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(imp_ex_con_op_linker.target)
+                        .get_concept_tag(),
+                )
             {
-                if super::sat_add_trace_tag()
-                    == Some(
-                        calc_alg_context
-                            .ontology_arenas()
-                            .concept(imp_ex_con_op_linker.target)
-                            .get_concept_tag(),
-                    )
-                {
-                    let operands = calc_alg_context
+                let operands = calc_alg_context
+                    .ontology_arenas()
+                    .concept(impl_concept)
+                    .get_operand_list()
+                    .iter()
+                    .map(|operand| {
+                        let target = calc_alg_context.ontology_arenas().concept(operand.target);
+                        format!(
+                            "{}{}:{}",
+                            if operand.negated { "-" } else { "+" },
+                            target.get_concept_tag(),
+                            target.get_operator_code(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",");
+                eprintln!(
+                    "SAT-IMPL-PROVENANCE impl={:?} tag={} operands=[{}]",
+                    impl_concept,
+                    calc_alg_context
                         .ontology_arenas()
                         .concept(impl_concept)
-                        .get_operand_list()
-                        .iter()
-                        .map(|operand| {
-                            let target = calc_alg_context.ontology_arenas().concept(operand.target);
-                            format!(
-                                "{}{}:{}",
-                                if operand.negated { "-" } else { "+" },
-                                target.get_concept_tag(),
-                                target.get_operator_code(),
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    eprintln!(
-                        "SAT-IMPL-PROVENANCE impl={:?} tag={} operands=[{}]",
-                        impl_concept,
-                        calc_alg_context
-                            .ontology_arenas()
-                            .concept(impl_concept)
-                            .get_concept_tag(),
-                        operands,
-                    );
-                }
-                if super::sat_clash_trace_enabled() {
-                    let indi = calc_alg_context
-                        .process_context()
-                        .sat_node(*root_process_indi)
-                        .get_individual_id();
-                    eprintln!(
-                        "SAT-IMPL-EXEC node={:?} indi={} impl={:?} adds concept={:?} neg={}",
-                        root_process_indi,
-                        indi,
-                        impl_concept,
-                        imp_ex_con_op_linker.target,
-                        imp_ex_con_op_linker.negated
-                    );
-                }
-                self.add_concept_filtered_to_individual_label_set(
-                    imp_ex_con_op_linker.target,
-                    imp_ex_con_op_linker.negated,
-                    root_process_indi,
-                    label_set,
-                    false,
-                    calc_alg_context,
+                        .get_concept_tag(),
+                    operands,
                 );
             }
-        } else {
-            let next_trigger = next_trigger_concepts[0].target;
+            if super::sat_clash_trace_enabled() {
+                let indi = calc_alg_context
+                    .process_context()
+                    .sat_node(*root_process_indi)
+                    .get_individual_id();
+                eprintln!(
+                    "SAT-IMPL-EXEC node={:?} indi={} impl={:?} adds concept={:?} neg={}",
+                    root_process_indi,
+                    indi,
+                    impl_concept,
+                    imp_ex_con_op_linker.target,
+                    imp_ex_con_op_linker.negated
+                );
+            }
+            self.add_concept_filtered_to_individual_label_set(
+                imp_ex_con_op_linker.target,
+                imp_ex_con_op_linker.negated,
+                root_process_indi,
+                label_set,
+                false,
+                calc_alg_context,
+            );
+        } else if let Some((next_trigger_index, next_trigger_linker)) = next_trigger {
+            let next_trigger = next_trigger_linker.target;
             // Wanted presence polarity of the watched trigger: the linker
             // stores the inverted body polarity (`¬sub` convention), so a
             // negated linker waits for POSITIVE presence and vice versa —
             // matching the insert-side reapply check (`negated != con_neg`).
-            let next_trigger_wanted_negation = !next_trigger_concepts[0].negated;
+            let next_trigger_wanted_negation = !next_trigger_linker.negated;
             let new_reapply_imp_reapply_con_sat_des =
                 self.create_implication_reapply_concept_saturation_descriptor(calc_alg_context);
             calc_alg_context
@@ -2242,7 +2257,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .imp_reapply_con_sat_desc_mut(new_reapply_imp_reapply_con_sat_des)
                 .init_implication_reaplly_concept_saturation_descriptor(
                     impl_concept,
-                    Some(next_trigger_concepts),
+                    Some(next_trigger_index),
                 );
 
             let next_trigger_tag = calc_alg_context
@@ -2260,8 +2275,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     Some(&mut con_sat_des),
                 );
             if triggered {
-                self.update_implication_reapply_concept_saturation_descriptor(
-                    new_reapply_imp_reapply_con_sat_des,
+                self.update_implication_reapply_cursor(
+                    impl_concept,
+                    next_trigger_index,
                     root_process_indi,
                     label_set,
                     calc_alg_context,
@@ -2583,7 +2599,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             self.direct_updated_status_indi_node_count += 1;
 
             while !direct_update_linker.is_empty() {
-                let update_indi_node = direct_update_linker.remove(0);
+                let update_indi_node = direct_update_linker
+                    .pop()
+                    .expect("non-empty direct-status update stack");
                 // for depending copy individuals (getCopyDependingIndividualNodeLinker):
                 let depending_indi_linker: Vec<NegLink<SatNodeId>> = calc_alg_context
                     .process_context()
@@ -2612,7 +2630,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .direct_status_flags
                             .add_flags(adding_flags);
                         self.direct_updated_status_indi_node_count += 1;
-                        direct_update_linker.insert(0, depending_indi);
+                        direct_update_linker.push(depending_indi);
                     }
                 }
 
@@ -2766,7 +2784,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             self.indirect_updated_status_indi_node_count += 1;
 
             while !direct_update_linker.is_empty() {
-                let update_indi_node = direct_update_linker.remove(0);
+                let update_indi_node = direct_update_linker
+                    .pop()
+                    .expect("non-empty indirect-status update stack");
 
                 let depending_indi_linker: Vec<NegLink<SatNodeId>> = calc_alg_context
                     .process_context()
@@ -2801,7 +2821,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .indirect_status_flags
                             .add_flags(adding_flags);
                         self.indirect_updated_status_indi_node_count += 1;
-                        direct_update_linker.insert(0, depending_indi);
+                        direct_update_linker.push(depending_indi);
                     }
                 }
 
@@ -2841,7 +2861,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .indirect_status_flags
                                 .add_flags(adding_flags);
                             self.indirect_updated_status_indi_node_count += 1;
-                            direct_update_linker.insert(0, source_individual);
+                            direct_update_linker.push(source_individual);
                         }
                     }
 
@@ -2878,7 +2898,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .indirect_status_flags
                                 .add_flags(adding_flags);
                             self.indirect_updated_status_indi_node_count += 1;
-                            direct_update_linker.insert(0, source_individual);
+                            direct_update_linker.push(source_individual);
                         }
                     }
                 }
@@ -2966,7 +2986,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
 
             while !direct_update_linker.is_empty() {
-                let update_indi_node = direct_update_linker.remove(0);
+                let update_indi_node = direct_update_linker
+                    .pop()
+                    .expect("non-empty successor-nominal update stack");
 
                 let depending_indi_linker: Vec<NegLink<SatNodeId>> = calc_alg_context
                     .process_context()
@@ -2989,7 +3011,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                         {
                             self.successor_connected_nominal_updated_count += 1;
                         }
-                        direct_update_linker.insert(0, depending_indi);
+                        direct_update_linker.push(depending_indi);
                     }
                 }
 
@@ -3016,7 +3038,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             {
                                 self.successor_connected_nominal_updated_count += 1;
                             }
-                            direct_update_linker.insert(0, source_individual);
+                            direct_update_linker.push(source_individual);
                         }
                     }
 
@@ -3041,7 +3063,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             {
                                 self.successor_connected_nominal_updated_count += 1;
                             }
-                            direct_update_linker.insert(0, source_individual);
+                            direct_update_linker.push(source_individual);
                         }
                     }
                 }
@@ -3096,7 +3118,9 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .add_max_atmost_cardinality_candidate(atmost_candidate);
 
             while !direct_update_linker.is_empty() {
-                let update_indi_node = direct_update_linker.remove(0);
+                let update_indi_node = direct_update_linker
+                    .pop()
+                    .expect("non-empty cardinality update stack");
                 self.maximum_cardinality_candidates_updated_count += 1;
 
                 let depending_indi_linker: Vec<NegLink<SatNodeId>> = calc_alg_context
@@ -3121,7 +3145,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .sat_node_mut(depending_indi)
                             .add_max_atmost_cardinality_candidate(atmost_candidate);
                         self.maximum_cardinality_candidates_updated_count += 1;
-                        direct_update_linker.insert(0, depending_indi);
+                        direct_update_linker.push(depending_indi);
                     }
                 }
 
@@ -3150,7 +3174,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .sat_node_mut(source_individual)
                                 .add_max_atmost_cardinality_candidate(atmost_candidate);
                             self.maximum_cardinality_candidates_updated_count += 1;
-                            direct_update_linker.insert(0, source_individual);
+                            direct_update_linker.push(source_individual);
                         }
                     }
 
@@ -3176,7 +3200,7 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .sat_node_mut(source_individual)
                                 .add_max_atmost_cardinality_candidate(atmost_candidate);
                             self.maximum_cardinality_candidates_updated_count += 1;
-                            direct_update_linker.insert(0, source_individual);
+                            direct_update_linker.push(source_individual);
                         }
                     }
                 }

@@ -108,6 +108,13 @@ impl Hasher for SaturationConceptTagHasher {
 pub type SaturationConceptTagMap<V> =
     HashMap<Cint64, V, BuildHasherDefault<SaturationConceptTagHasher>>;
 
+/// Konclude stores role pointers in `CPROCESSHASH<CRole*, ...>`. Qt hashes a
+/// pointer as an integer; use the same cheap-integer path for the Rust arena id
+/// instead of SipHash. `Id<T>::hash` feeds its single `i64` payload to this
+/// hasher, so key equality and all map semantics remain unchanged.
+pub type SaturationRoleIdMap<V> =
+    HashMap<RoleId, V, BuildHasherDefault<SaturationConceptTagHasher>>;
+
 // ===========================================================================
 // Id aliases (the `CXxx*` → `Id<Xxx>` arena handles). The `process::stubs`
 // SD-4 ids that were zero-size markers re-alias to these (see process/stubs.rs).
@@ -581,7 +588,7 @@ pub struct RoleBackwardSaturationPropagationHash {
     /// `CProcessContext* mContext`.
     pub context: Cint64,
     /// `CPROCESSHASH<CRole*, CRoleBackwardSaturationPropagationHashData>`.
-    pub role_back_prop_data_hash: HashMap<RoleId, RoleBackwardSaturationPropagationHashData>,
+    pub role_back_prop_data_hash: SaturationRoleIdMap<RoleBackwardSaturationPropagationHashData>,
     /// `bool mSelfConnected`.
     pub self_connected: bool,
 }
@@ -590,7 +597,7 @@ impl Default for RoleBackwardSaturationPropagationHash {
     fn default() -> Self {
         Self {
             context: INVALID,
-            role_back_prop_data_hash: HashMap::new(),
+            role_back_prop_data_hash: SaturationRoleIdMap::default(),
             self_connected: false,
         }
     }
@@ -626,14 +633,14 @@ impl RoleBackwardSaturationPropagationHash {
     /// Port of `getRoleBackwardPropagationDataHash`.
     pub fn get_role_backward_propagation_data_hash(
         &self,
-    ) -> &HashMap<RoleId, RoleBackwardSaturationPropagationHashData> {
+    ) -> &SaturationRoleIdMap<RoleBackwardSaturationPropagationHashData> {
         &self.role_back_prop_data_hash
     }
 
     /// Mutable counterpart of `getRoleBackwardPropagationDataHash`.
     pub fn get_role_backward_propagation_data_hash_mut(
         &mut self,
-    ) -> &mut HashMap<RoleId, RoleBackwardSaturationPropagationHashData> {
+    ) -> &mut SaturationRoleIdMap<RoleBackwardSaturationPropagationHashData> {
         &mut self.role_back_prop_data_hash
     }
 }
@@ -3333,15 +3340,17 @@ impl SaturationIndividualNodeDatatypeData {
 /// Port of `CImplicationReapplyConceptSaturationDescriptor`.
 ///
 /// `CLinkerBase<CConcept*,Self>` stores the implication concept as its data and
-/// the intrusive self-chain next pointer. `mNextTriggerConcept` points into the
-/// remaining `CSortedNegLinker<CConcept*>` trigger suffix; the Rust port owns the
-/// suffix as a head-to-tail vector.
-#[derive(Clone)]
+/// the intrusive self-chain next pointer. `mNextTriggerConcept` is a pointer
+/// into that concept's immutable operand linker. The Rust representation keeps
+/// the same non-owning cursor as an operand index, avoiding a copied `Vec` for
+/// every reapply descriptor.
+#[derive(Clone, Copy)]
 pub struct ImplicationReapplyConceptSaturationDescriptor {
     /// `CLinkerBase` data (`getData()`): the implication concept.
     pub implication_concept: ConceptId,
-    /// `mNextTriggerConcept`.
-    pub next_trigger_concept: Option<Vec<NegLink<ConceptId>>>,
+    /// `mNextTriggerConcept`, encoded as an index into
+    /// `implication_concept.getOperandList()`; `None` is the C++ null pointer.
+    pub next_trigger_index: Option<usize>,
     /// `CLinkerBase` intrusive next link.
     pub next: ImplicationReapplyConceptSaturationDescriptorId,
 }
@@ -3350,7 +3359,7 @@ impl Default for ImplicationReapplyConceptSaturationDescriptor {
     fn default() -> Self {
         ImplicationReapplyConceptSaturationDescriptor {
             implication_concept: ConceptId::NONE,
-            next_trigger_concept: None,
+            next_trigger_index: None,
             next: ImplicationReapplyConceptSaturationDescriptorId::NONE,
         }
     }
@@ -3366,10 +3375,10 @@ impl ImplicationReapplyConceptSaturationDescriptor {
     pub fn init_implication_reaplly_concept_saturation_descriptor(
         &mut self,
         impl_concept: ConceptId,
-        next_trigger_concept: Option<&[NegLink<ConceptId>]>,
+        next_trigger_index: Option<usize>,
     ) -> &mut Self {
         self.implication_concept = impl_concept;
-        self.next_trigger_concept = next_trigger_concept.map(|linker| linker.to_vec());
+        self.next_trigger_index = next_trigger_index;
         self
     }
 
@@ -3378,9 +3387,10 @@ impl ImplicationReapplyConceptSaturationDescriptor {
         self.implication_concept
     }
 
-    /// Port of `getNextTriggerConcept`.
-    pub fn get_next_trigger_concept(&self) -> Option<&[NegLink<ConceptId>]> {
-        self.next_trigger_concept.as_deref()
+    /// Port of `getNextTriggerConcept`, represented as an immutable operand
+    /// cursor rather than a Rust reference with an arena lifetime.
+    pub fn get_next_trigger_index(&self) -> Option<usize> {
+        self.next_trigger_index
     }
 
     /// Port of `getNext`.

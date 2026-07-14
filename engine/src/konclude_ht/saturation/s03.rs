@@ -62,8 +62,7 @@ use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::stubs::ConceptSaturationProcessLinkerId;
 use super::super::process::SatNodeId;
 use super::satellites::{
-    ConceptSaturationDescriptorId, ImplicationReapplyConceptSaturationDescriptor,
-    ImplicationReapplyConceptSaturationDescriptorId,
+    ConceptSaturationDescriptorId, ImplicationReapplyConceptSaturationDescriptorId,
 };
 
 // `CCriticalConceptType` enum tags used by `addCriticalConceptDescriptor`.
@@ -390,24 +389,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             .process_context()
             .con_sat_desc(con_des)
             .get_concept();
-        let next_trigger_concept: Vec<NegLink<ConceptId>> = calc_alg_context
-            .ontology_arenas()
-            .concept(impl_concept)
-            .get_operand_list()
-            .to_vec();
-        let mut tmp_reapply = ImplicationReapplyConceptSaturationDescriptor::new();
-        tmp_reapply.init_implication_reaplly_concept_saturation_descriptor(
-            impl_concept,
-            Some(&next_trigger_concept),
-        );
-        let tmp_reapply = calc_alg_context
-            .process_context_mut()
-            .alloc_imp_reapply_con_sat_desc(tmp_reapply);
         let label_set = calc_alg_context
             .process_context_mut()
             .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
-        self.update_implication_reapply_concept_saturation_descriptor(
-            tmp_reapply,
+        self.update_implication_reapply_cursor(
+            impl_concept,
+            0,
             process_indi,
             label_set,
             calc_alg_context,

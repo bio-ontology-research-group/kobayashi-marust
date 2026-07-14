@@ -24,14 +24,12 @@
 //!   `has/setBackendCacheUpdateIndividualsInitialized`.
 //!
 //! KONCLUDE-PORT-NOTE[ownership]: Konclude's intrusive `CXLinker`/`C*Linker`
-//! chains become owned `Vec`s (the global substrate decision). `append(head)`
-//! splices the appending chain in front of the old head and returns it as the
-//! new head, so the chain head is the most-recently-added element. To keep the
-//! C++ iteration order (`get*` walks head → tail), the port stores the head at
-//! the FRONT of the `Vec`: `add*` = `insert(0, …)` / front-splice, `take*` =
-//! `remove(0)`, `set*` = replace. The take ORDER (LIFO) is identical to the C++.
-//! This overrides the tentative "add == push" simplification noted in
-//! `databox.rs`; only the in-memory layout differs, behaviour is preserved.
+//! chains become owned `Vec`s (the global substrate decision). Live traversed
+//! chains keep the C++ head→tail order at the Vec front. Allocation free lists
+//! such as `mRemainingIndividualSaturationNodeLinker` only prepend and take the
+//! head; they store that head at the Vec tail so both operations are O(1)
+//! `push`/`pop`. Their diagnostic getter reverses the Vec to retain the C++
+//! head→tail view. The take order remains exactly LIFO.
 
 #![allow(dead_code)]
 
@@ -101,8 +99,12 @@ impl ProcessingDataBox {
     // ----------------------------------------------------------------------
 
     /// Port of `CProcessingDataBox::getRemainingIndividualSaturationNodeLinker`.
-    pub fn remaining_individual_saturation_node_linker(&self) -> &[SatNodeId] {
-        &self.rem_sat_indi_node_linker
+    pub fn remaining_individual_saturation_node_linker(&self) -> Vec<SatNodeId> {
+        self.rem_sat_indi_node_linker
+            .iter()
+            .rev()
+            .copied()
+            .collect()
     }
 
     /// Port of `CProcessingDataBox::takeRemainingIndividualSaturationNodeLinker`.
@@ -110,11 +112,9 @@ impl ProcessingDataBox {
     /// Returns the chain head (front element) and advances the chain, or
     /// `SatNodeId::NONE` when the chain is empty (the C++ `nullptr`).
     pub fn take_remaining_individual_saturation_node_linker(&mut self) -> SatNodeId {
-        if self.rem_sat_indi_node_linker.is_empty() {
-            SatNodeId::NONE
-        } else {
-            self.rem_sat_indi_node_linker.remove(0)
-        }
+        self.rem_sat_indi_node_linker
+            .pop()
+            .unwrap_or(SatNodeId::NONE)
     }
 
     /// Port of `CProcessingDataBox::addRemainingIndividualSaturationNodeLinker`.
@@ -122,8 +122,7 @@ impl ProcessingDataBox {
         &mut self,
         indi_process_node_linker: SatNodeId,
     ) -> &mut Self {
-        self.rem_sat_indi_node_linker
-            .insert(0, indi_process_node_linker);
+        self.rem_sat_indi_node_linker.push(indi_process_node_linker);
         self
     }
 

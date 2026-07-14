@@ -14,6 +14,47 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
+### ore_ont_9724: constant-time intrusive free-list representation (2026-07-14)
+
+- **Symptom**: KM returned a sound partial taxonomy with 3,325 missing pairs
+  after the production saturation budget. A 1,200-second exact-input run
+  recovered only one pair and grew beyond 24 GB. The worker never reached the
+  planned completion-side ATMOST merge path; it remained in the saturation
+  outer queue.
+- **Konclude diagnosis**: instrumented Konclude completed with one worker in
+  10.46 seconds and built 33,422 saturation items, close to KM's 33,678 seeds.
+  Four live KM samples at 30, 90, 160, and 220 seconds all stopped in
+  `memcpy -> release_role_saturation_process_linker ->
+  process_successor_functional_concepts_extensions`. Konclude releases and
+  reacquires these objects through the intrusive
+  `mRemRoleSatProcessLinker` head in O(1). KM's collapsed `Vec` represented
+  the head at index zero, so every `insert(0)`/`remove(0)` shifted the growing
+  free list.
+- **Mechanism**:
+  1. Store collapsed allocation-free-list heads at the Vec tail, translating
+     Konclude's prepend/head-pop to constant-time `push`/`pop` while preserving
+     its exact LIFO order. Reverse diagnostic getters to retain the C++
+     head-to-tail view. Apply the same invariant to adjacent `mRemaining*`
+     allocator lists with the same constructor pattern.
+  2. Represent implication reapply state as a non-owning operand cursor rather
+     than a cloned suffix, including Konclude's stack-local initial application.
+  3. Use pointer-like integer hashing for role arena ids, consolidate backward
+     role-bucket mutation, and keep temporary status worklists as O(1) LIFO
+     stacks. These faithful supporting ports reduced overhead but did not close
+     9724 until the measured role-linker free list was fixed.
+- **Result**: production IBEX job 48798145 finished `km classify` in 24.72
+  seconds at 8,091,788 KB and emitted all 457,090 canonical pairs, with zero
+  extra and zero missing. Exact-normalized-input job 48798075 independently
+  matched in 32.15 seconds.
+- **Validation**: 1,475 release tests pass, 7 are ignored, and none fail. Full
+  592-ontology IBEX job 48799766 raises exact matches from 511 to 514, with
+  unchanged timeout and disagreement counts and no prior exact-match
+  regression. The same general fix also changes 1016 from 2,510 missing to
+  exact and 11623 from 3,423 missing to exact. Detailed traces, C++ source
+  correspondence, and reproduction artifacts are in
+  `SOLVE-7914-9663-9724.md` and
+  `../results/benchmarks/2026-07-14-9724-closure/`.
+
 ### ore_ont_9663: native RBox links + role-specific saturation successors (2026-07-14)
 
 - **Symptom**: production KM terminated soundly but returned 685,932 of
@@ -344,7 +385,6 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 9724 | bridge | terminates in 184 s but remains incomplete by 3,140 pairs | Compare role/cardinality propagation and the residual KPSet maps with Konclude. |
 | 14817 | production | 71 missing = transitive `part_of` propagation | Role-automaton ∀-propagation is ported and live in konclude_ht tests (`6a7a67e`) but not production-wired: needs OntologyArenas-from-clauses + consistency classify. |
 | 10621 | — | contested gold | Konclude-vs-HermiT disagreement; resolve gold first. |
 

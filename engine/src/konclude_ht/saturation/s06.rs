@@ -1332,7 +1332,6 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         queue_functional_processing: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let mut link_installed = false;
         if dest_indi_proc_sat_node.is_none() || link.is_none() {
             return false;
         }
@@ -1397,51 +1396,20 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             return false;
         }
 
-        let link_source = calc_alg_context
-            .process_context()
-            .backward_sat_prop_link(link)
-            .get_source_individual();
-        let (old_head, reapply_linker, install_link) = {
-            let back_prop_hash = calc_alg_context
-                .process_context()
-                .role_backward_sat_prop_hash(resolved_indi_back_prop_hash);
-            let data = back_prop_hash
-                .get_role_backward_propagation_data_hash()
-                .get(&role);
-            let old_head = data
-                .map(|data| data.link_linker)
-                .unwrap_or(BackwardSaturationPropagationLinkId::NONE);
-            let reapply_linker = data.map(|data| data.reapply_linker).unwrap_or(
-                super::satellites::BackwardSaturationPropagationReapplyDescriptorId::NONE,
+        let (link_installed, reapply_linker) = calc_alg_context
+            .process_context_mut()
+            .role_backward_saturation_propagation_hash_install_link(
+                resolved_indi_back_prop_hash,
+                role,
+                link,
             );
-            let install_link = old_head.is_none()
-                || calc_alg_context
-                    .process_context()
-                    .backward_sat_prop_link(old_head)
-                    .get_source_individual()
-                    != link_source;
-            (old_head, reapply_linker, install_link)
-        };
 
-        if install_link {
-            link_installed = true;
+        if link_installed {
             if link_debug {
                 eprintln!(
                     "SAT-LINK phase=installed source={source_indi_proc_sat_node:?} dest={dest_indi_proc_sat_node:?} role={role:?}"
                 );
             }
-            calc_alg_context
-                .process_context_mut()
-                .backward_sat_prop_link_mut(link)
-                .set_next(old_head);
-            calc_alg_context
-                .process_context_mut()
-                .role_backward_sat_prop_hash_mut(resolved_indi_back_prop_hash)
-                .get_role_backward_propagation_data_hash_mut()
-                .entry(role)
-                .or_default()
-                .link_linker = link;
-
             if reapply_linker.is_some() && apply_back_prop_des {
                 self.apply_backward_propagation_concepts(
                     source_indi_proc_sat_node,
@@ -1451,29 +1419,15 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             }
         }
 
-        let queue_predecessor_merging = {
-            let data = calc_alg_context
-                .process_context()
-                .role_backward_sat_prop_hash(resolved_indi_back_prop_hash)
-                .get_role_backward_propagation_data_hash()
-                .get(&role);
-            data.map(|data| {
-                data.role_predecessor_merging_queuing_required
-                    && queue_functional_processing
-                    && !data.role_predecessor_merging_processing_queued
-            })
-            .unwrap_or(false)
-        };
+        let queue_predecessor_merging = calc_alg_context
+            .process_context_mut()
+            .role_backward_saturation_propagation_hash_queue_predecessor_merging(
+                resolved_indi_back_prop_hash,
+                role,
+                queue_functional_processing,
+            );
 
         if queue_predecessor_merging {
-            calc_alg_context
-                .process_context_mut()
-                .role_backward_sat_prop_hash_mut(resolved_indi_back_prop_hash)
-                .get_role_backward_propagation_data_hash_mut()
-                .entry(role)
-                .or_default()
-                .role_predecessor_merging_processing_queued = true;
-
             let mut dest_node = dest_indi_proc_sat_node;
             self.add_successor_extension_to_processing_queue(&mut dest_node, calc_alg_context);
 

@@ -1,0 +1,6 @@
+baseline 592 Counter({'match': 511, 'incomplete': 48, 'timeout': 18, 'incons': 6, 'unsound': 5, 'nogold': 3, 'both': 1})
+candidate 592 Counter({'match': 514, 'incomplete': 45, 'timeout': 18, 'incons': 6, 'unsound': 5, 'nogold': 3, 'both': 1})
+common 592 changed 3
+ore_ont_1016.owl before= ('ok', 'incomplete', 0, 2510) after= ('ok', 'match', 0, 0)
+ore_ont_11623.owl before= ('ok', 'incomplete', 0, 3423) after= ('ok', 'match', 0, 0)
+ore_ont_9724.owl before= ('ok', 'incomplete', 0, 3325) after= ('ok', 'match', 0, 0)
