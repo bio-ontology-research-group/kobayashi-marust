@@ -116,7 +116,7 @@ use super::computed_cons_handler::ComputedConsequencesCacheHandler;
 use super::context::CalculationAlgorithmContextBase;
 use super::sat_node_exp_handler::SaturationNodeExpansionCacheHandler;
 use super::strategy::{ConceptProcessingPriorityStrategy, TaskProcessingPriorityStrategy};
-use super::stubs::SatisfiableCalculationTask;
+use super::stubs::{SatisfiableCalculationTask, SatisfiableExpanderCacheHandler};
 use super::u30::{TrackedClashedDependencyLine, TrackedClashedDescriptorHasher};
 use super::unsat_handler::UnsatisfiableCacheHandler;
 
@@ -987,6 +987,41 @@ fn attach_saturation_unsat_reference(
         .concept_mut(concept)
         .set_concept_data(con_proc_data.raw);
     sat_node
+}
+
+/// Install one concept in a referenced saturation node's completed label. This
+/// is the minimal test analogue of Konclude's saturation precomputation output.
+fn add_saturation_label_concept(
+    env: &mut SelfTestEnv,
+    sat_node: SatNodeId,
+    concept: ConceptId,
+    negated: bool,
+) {
+    use super::super::saturation::satellites::ConceptSaturationDescriptor;
+
+    let label_set = env
+        .ctx
+        .process_context_mut()
+        .sat_node_reapply_concept_saturation_label_set(sat_node, true);
+    let mut descriptor = ConceptSaturationDescriptor::new();
+    descriptor.init_concept_saturation_descriptor(concept, negated);
+    let descriptor = env.ctx.process_context_mut().alloc_con_sat_desc(descriptor);
+    let concept_tag = env.ctx.ontology_arenas().concept(concept).get_concept_tag();
+    assert!(!env
+        .ctx
+        .process_context_mut()
+        .reapply_con_sat_label_set_insert_concept_return_clashed(
+            label_set,
+            descriptor,
+            concept_tag,
+            None,
+            None,
+        ));
+    env.ctx
+        .process_context_mut()
+        .sat_node_mut(sat_node)
+        .set_initialized(true)
+        .set_completed(true);
 }
 
 #[test]
@@ -2704,9 +2739,27 @@ fn unit04_processing_concepts_current_node_no_current_queueing_skips_queue_inser
         .is_none());
 }
 
+fn install_cacheable_test_label(env: &mut SelfTestEnv, node: NodeId, tag: i64) {
+    let concept = atom_concept_with_tag(env, tag);
+    let descriptor = concept_descriptor_with_dependency(env, concept, false, TrackPointId::NONE);
+    let track_point =
+        real_dependency_track_point(env, node, descriptor, DepKind::IndependentBase, tag, 0);
+    env.ctx
+        .process_context_mut()
+        .con_desc_mut(descriptor)
+        .set_dependency_track_point(track_point);
+    let label = label_set_from_descriptors(env, &[descriptor]);
+    env.ctx
+        .process_context_mut()
+        .node_mut(node)
+        .set_reapply_concept_label_set(label);
+}
+
 #[test]
 fn unit21_test_all_successors_processed_accepts_empty_successor_tree() {
     let mut env = build_env();
+    env.ctx
+        .install_used_satisfiable_expander_cache_handler(SatisfiableExpanderCacheHandler::new());
     let root = test_node_at_depth(&mut env, 70, 1);
     let child = test_node_at_depth(&mut env, 71, 2);
     let grandchild = test_node_at_depth(&mut env, 72, 3);
@@ -2715,6 +2768,9 @@ fn unit21_test_all_successors_processed_accepts_empty_successor_tree() {
     register_test_node(&mut env, grandchild);
     install_test_successor_link(&mut env, root, child, 270);
     install_test_successor_link(&mut env, child, grandchild, 271);
+    install_cacheable_test_label(&mut env, root, 2270);
+    install_cacheable_test_label(&mut env, child, 2271);
+    install_cacheable_test_label(&mut env, grandchild, 2272);
 
     let mut processed = HashSet::new();
     assert!(env
@@ -2777,7 +2833,10 @@ fn unit21_write_unsat_branch_satisfiable_cache_accepts_processed_tree() {
     register_test_node(&mut env, root);
     register_test_node(&mut env, child);
     install_test_successor_link(&mut env, root, child, 273);
-    env.ctx.base.used_sat_exp_cache_handler = Id::new(1);
+    install_cacheable_test_label(&mut env, root, 2273);
+    install_cacheable_test_label(&mut env, child, 2274);
+    env.ctx
+        .install_used_satisfiable_expander_cache_handler(SatisfiableExpanderCacheHandler::new());
     env.algo.conf_unsat_branch_satisfiable_caching = true;
     env.algo.conf_sat_exp_cache_writing = true;
 
@@ -2812,7 +2871,8 @@ fn unit21_write_unsat_branch_satisfiable_cache_rejects_pending_queue_tree() {
         env.ctx.process_context_mut(),
     );
 
-    env.ctx.base.used_sat_exp_cache_handler = Id::new(1);
+    env.ctx
+        .install_used_satisfiable_expander_cache_handler(SatisfiableExpanderCacheHandler::new());
     env.algo.conf_unsat_branch_satisfiable_caching = true;
     env.algo.conf_sat_exp_cache_writing = true;
 
@@ -8527,6 +8587,35 @@ fn concept_set_signature_matches_konclude_formula() {
 }
 
 #[test]
+fn context_label_insert_uses_konclude_concept_pointer_signature() {
+    let mut env = build_env();
+    let mut concept = Concept::new();
+    concept.set_concept_tag(873);
+    let concept = env.ctx.ontology_arenas_mut().alloc_concept(concept);
+    let concept_identity = env.ctx.ontology_arenas().concept(concept) as *const _ as usize as i64;
+
+    let mut descriptor = ConceptDescriptor::new();
+    descriptor.concept = concept;
+    let descriptor = env.ctx.process_context_mut().alloc_con_desc(descriptor);
+    let mut label_set = ReapplyConceptLabelSet::new(INVALID);
+
+    assert!(!label_set.insert_concept_get_clash_in_context(
+        env.ctx.process_context(),
+        env.ctx.ontology_arenas(),
+        descriptor,
+        TrackPointId::NONE,
+        None,
+        None,
+        None,
+    ));
+
+    // With one positive concept Konclude's value1 and value2 cancel under XOR,
+    // leaving exactly the CConcept pointer contribution in value3.
+    assert_eq!(label_set.get_concept_signature_value(), concept_identity);
+    assert_ne!(concept_identity, concept.raw);
+}
+
+#[test]
 fn label_set_resolved_insert_updates_signature_once() {
     let mut env = build_env();
     let mut concept = Concept::new();
@@ -8544,6 +8633,7 @@ fn label_set_resolved_insert_updates_signature_once() {
         concept,
         873,
         false,
+        concept.raw,
         &|_| false,
         None,
         None,
@@ -8557,6 +8647,7 @@ fn label_set_resolved_insert_updates_signature_once() {
         concept,
         873,
         false,
+        concept.raw,
         &|_| false,
         None,
         None,
@@ -10002,7 +10093,10 @@ fn completion_label_insertion_prepends_descriptor_chain() {
     let second = marker_concept(&mut env, 4044);
     let dependency = env.ctx.get_or_create_base_dependency_track_point();
     let previous = {
-        let label = env.ctx.process_context_mut().node_reapply_concept_label_set(root);
+        let label = env
+            .ctx
+            .process_context_mut()
+            .node_reapply_concept_label_set(root);
         env.ctx
             .process_context()
             .label_set(label)
@@ -10020,7 +10114,11 @@ fn completion_label_insertion_prepends_descriptor_chain() {
         &mut env.ctx,
     );
     let first_descriptor = {
-        let label = env.ctx.process_context().node(root).use_reapply_con_label_set;
+        let label = env
+            .ctx
+            .process_context()
+            .node(root)
+            .use_reapply_con_label_set;
         env.ctx
             .process_context()
             .label_set(label)
@@ -10044,7 +10142,11 @@ fn completion_label_insertion_prepends_descriptor_chain() {
         &mut env.ctx,
     );
     let second_descriptor = {
-        let label = env.ctx.process_context().node(root).use_reapply_con_label_set;
+        let label = env
+            .ctx
+            .process_context()
+            .node(root)
+            .use_reapply_con_label_set;
         env.ctx
             .process_context()
             .label_set(label)
@@ -18476,6 +18578,7 @@ fn pbind_implication_existing_binding_refreshes_fresh_bindings() {
             binding_trigger,
             binding_tag,
             false,
+            binding_trigger.raw,
             &|d| pc.con_desc(d).is_negated(),
             None,
             None,
@@ -19113,6 +19216,7 @@ fn pbind_variable_existing_binding_allocates_missing_special_propagation_binding
             binding_trigger,
             binding_tag,
             false,
+            binding_trigger.raw,
             &desc_negated,
             None,
             None,
@@ -20492,6 +20596,7 @@ fn propagation_binding_successor_dispatcher_refreshes_existing_operand_binding()
             binding_operand,
             operand_tag,
             false,
+            binding_operand.raw,
             &desc_negated,
             None,
             None,
@@ -23943,6 +24048,70 @@ fn at_least_creates_n_successors() {
             .ht_individuals_mergeable(succs[0], succs[1], &env.ctx),
         "the two ≥n successors must be pairwise distinct (a distinct-edge links them)"
     );
+}
+
+/// Konclude's `applyATLEASTRule` delegates to the same saturation-aware
+/// `createDistinctSuccessorIndividuals` path as other generating rules. A
+/// concept present only in the filler's precomputed saturation label must
+/// therefore be replayed onto every cardinality-created successor before those
+/// successors are queued. ORE 14817 depends on this for its first three pairs.
+#[test]
+fn at_least_replays_saturation_label_to_every_created_successor() {
+    use super::super::model::op;
+    use super::super::model::role::Role;
+    use super::super::model::substrate::NegLink;
+
+    let mut env = build_env();
+    env.algo.conf_expand_created_successors_from_saturation = true;
+    let role_r = env.ctx.ontology_arenas_mut().alloc_role(Role::new());
+    env.ctx
+        .ontology_arenas_mut()
+        .role_mut(role_r)
+        .add_indirect_super_role_linker(NegLink {
+            target: role_r,
+            negated: false,
+        });
+    let qualifier = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1160);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let saturation_only = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1161);
+        c.set_operator_code(op::CCATOM);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+    let atleast_2 = {
+        let mut c = Concept::new();
+        c.set_concept_tag(1260);
+        c.set_operator_code(op::CCATLEAST);
+        c.set_role(role_r);
+        c.set_parameter(2);
+        c.add_operand_linker(qualifier, false);
+        c.set_operand_count(1);
+        env.ctx.ontology_arenas_mut().alloc_concept(c)
+    };
+
+    let saturation_node = attach_saturation_unsat_reference(&mut env, qualifier, false, false);
+    add_saturation_label_concept(&mut env, saturation_node, saturation_only, false);
+
+    let root = env.root;
+    seed_concept_on_queue(&mut env, root, atleast_2);
+    seed_root_immediate(&mut env, root);
+    assert!(env.algo.run_completion_on(&mut env.ctx));
+
+    let successors = role_successors(&env, root, role_r);
+    assert_eq!(successors.len(), 2);
+    for successor in successors {
+        assert!(label_set_has_tag(&mut env, successor, 1160));
+        assert!(
+            label_set_has_tag(&mut env, successor, 1161),
+            "every ≥ successor must receive the filler's saturation closure"
+        );
+    }
+    assert_eq!(env.algo.saturation_expansion_concept_count, 2);
 }
 
 /// `≥2 R.C ⊓ ≤1 R.⊤` over the drive loop. ≥2 forces two DISTINCT R-successors;

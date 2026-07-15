@@ -3579,15 +3579,72 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
             self.applied_atleast_rule_count += 1; // ++mAppliedATLEASTRuleCount
-            self.ht_create_distinct_successors(
-                *process_indi,
+
+            // Konclude cpp 16237–16252 does not use the reduced W14 helper here.
+            // It creates the ATLEAST dependency and calls the full
+            // `createDistinctSuccessorIndividuals`, whose per-successor loop replays
+            // the creation saturation node before installing the role links and
+            // qualifier.  Skipping that replay left every cardinality-created
+            // successor to rediscover a large deterministic closure by branching
+            // (ORE 14817: the first three successor pairs, nodes 1001–1006).
+            let mut next_dep_track_point = TrackPointId::NONE;
+            self.create_atleast_dependency(
+                &mut next_dep_track_point,
+                process_indi,
+                con_des,
+                dep_track_point,
+                calc_alg_context,
+            );
+            let mut role_linker = calc_alg_context
+                .ontology_arenas()
+                .role(role)
+                .get_indirect_super_role_list()
+                .to_vec();
+            if !role_linker
+                .iter()
+                .any(|link| !link.negated && link.target == role)
+            {
+                // Konclude's preprocessed indirect-super-role list is
+                // reflexive. Keep the faithful successor routine usable for
+                // hand-built roles and bridge inputs that only retain strict
+                // super roles, just as the SOME path does above.
+                role_linker.insert(
+                    0,
+                    NegLink {
+                        target: role,
+                        negated: false,
+                    },
+                );
+            }
+            let mut created_successors = Vec::new();
+            self.create_distinct_successor_individuals(
+                process_indi,
+                con_des,
+                &mut created_successors,
+                &role_linker,
                 role,
                 &concept_op_linker,
-                negate,
-                dep_track_point,
+                false,
+                next_dep_track_point,
                 cardinality,
                 calc_alg_context,
             );
+            if calc_alg_context.has_pending_signal() {
+                return;
+            }
+            let source_is_low_nominal = {
+                let source = calc_alg_context.process_context().node(*process_indi);
+                source.is_nominal_individual_node() && source.individual_nominal_level() <= 0
+            };
+            for successor in created_successors {
+                if source_is_low_nominal {
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(successor)
+                        .set_extended_queue_processing(true);
+                }
+                self.add_individual_to_processing_queue(successor, calc_alg_context);
+            }
         }
     }
 

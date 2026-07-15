@@ -1189,6 +1189,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .ontology_arenas()
             .concept(new_concept)
             .get_concept_tag();
+        let new_concept_identity =
+            calc_alg_context.ontology_arenas().concept(new_concept) as *const _ as usize as Cint64;
         let watch_insert = std::env::var("KM_BRIDGE_WATCH_TAG")
             .ok()
             .and_then(|value| value.parse::<Cint64>().ok())
@@ -1199,14 +1201,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .process_context()
                 .con_desc(concept_descriptor)
                 .get_dependency_track_point();
-            let dependency_branching_tag = dependency_track_point
-                .is_some()
-                .then(|| {
-                    calc_alg_context
-                        .process_context()
-                        .track_point(dependency_track_point)
-                        .get_branching_tag()
-                });
+            let dependency_branching_tag = dependency_track_point.is_some().then(|| {
+                calc_alg_context
+                    .process_context()
+                    .track_point(dependency_track_point)
+                    .get_branching_tag()
+            });
             eprintln!(
                 "WATCH-INSERT-TAG {} before node={} descriptor={} dependency={:?} branch={:?} allow_init={} at:\n{}",
                 new_con_tag,
@@ -1246,6 +1246,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 new_concept,
                 new_con_tag,
                 new_negated,
+                new_concept_identity,
                 &|d| pc.con_desc(d).is_negated(),
                 Some(&mut clashed_concept_descriptor),
                 Some(&mut clashed_dependency_track_point),

@@ -33,6 +33,9 @@ pub type BackendNeighbourExpansionControllingDataId =
     super::backend_control::BackendNeighbourExpansionControllingDataId;
 pub use super::blocking_hash::ReusingReviewData;
 pub type ReusingReviewDataId = super::blocking_hash::ReusingReviewDataId;
+pub use super::sat_exp_store::IndividualNodeSatisfiableExpandingCacheStoringData;
+pub type SatCacheStoringDataId =
+    super::sat_exp_store::IndividualNodeSatisfiableExpandingCacheStoringDataId;
 pub use super::referred_tracking::ReferredIndividualTrackingVector;
 pub type ReferredIndividualTrackingVectorId =
     super::referred_tracking::ReferredIndividualTrackingVectorId;
@@ -124,7 +127,8 @@ stub_id! {
     // `process::representative`; its id re-aliases below.
     IndividualNodeModelData => IndividualNodeModelDataId,
     IndividualNodeSatisfiableCacheRetrievalData => SatCacheRetDataId,
-    IndividualNodeSatisfiableCacheStoringData => SatCacheStoringDataId,
+    // W14817 reconcile: IndividualNodeSatisfiableExpandingCacheStoringData
+    // relocated to `process::sat_exp_store`; its id re-aliases above.
     // W319 reconcile: IndividualNodeBackendCacheSynchronisationData relocated to
     // `process::backend_sync`; its id re-aliases below.
     ReapplyConceptDescriptor => ReapplyConDescId,

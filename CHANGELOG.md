@@ -9,6 +9,60 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Saturation-aware cardinality successors close ore_ont_14817 (2026-07-15)
+
+`ore_ont_14817` now completes through production `km classify` and matches
+Konclude exactly: 1,184,692 subsumptions on both sides, zero extra, zero
+missing, no unsatisfiable-class difference, and the same consistency result.
+The final Rust 1.85 Bullseye binary has SHA-256
+`c7c3eefe49ac95a7feaa7c1b70ada2ae65b820097cbe0456b0ab4be82c61ba07`.
+IBEX production-sweep job 48853569 task 518 finished in 56 seconds at
+3,365,116 KB. An independently traced full run matched in 195.16 seconds at
+4,234,340 KB.
+
+The fixed 9724 binary saturated 48,642 of 58,364 active subjects but timed out
+on the 9,722-subject completion residue. Exact ports of Konclude's live
+satisfiable-expander cache, 80-rule task boundary, cache commits, retired-pool
+release, pointer-like label signatures, and KPSet touched-candidate ordering
+made the tail measurable. They did not close it. Subject 85031,
+`UBERON_0014672`, still produced 72,670 disjunction replacements in 51 seconds
+and deferred.
+
+A trusted Konclude trace, built by relinking the native IBEX objects and
+recompiling only the instrumented completion object, handled that subject in
+125 ms. Konclude saturation-expanded its first six root successors as three
+cardinality-created pairs. KM created the corresponding successors 1001
+through 1006 without saturation expansion and began its nine expansion events
+at successor 1007. Queue and label tracing independently showed that the
+subsequent repeated work was real restored-branch exploration, not duplicate
+insertion or accidental requeueing.
+
+The source divergence was exact. Konclude's `applyATLEASTRule` creates an
+`ATLEAST` dependency and calls the full `createDistinctSuccessorIndividuals`
+path. Production Rust instead called the reduced
+`ht_create_distinct_successors` helper, bypassing saturation replay and cache
+establishment for every `≥ n R.C` successor. Rust already contained the full
+constructor in `completion/u35.rs`; `completion/u08.rs::apply_atleast_rule` now
+uses it with the complete signed indirect-super-role list, dependency, pending
+clash propagation, low-level nominal handling, and final successor queueing.
+
+The repaired subject expands the missing six successors and records only 300
+disjunction replacements over its complete 14.66-second run. A permanent
+production-path test constructs `≥2 R.C`, gives `C` a completed saturation
+label containing an additional `D`, and proves that both distinct successors
+receive explicit `C` and saturation-only `D`. The release suite passes 1,480
+tests with 0 failed and 7 ignored.
+
+Full 592-ontology IBEX job 48853569 used the same final binary for every task.
+It reports 575 completed, 17 timeout, and 515 exact Konclude matches, compared
+with 574, 18, and 514 in the 9724 baseline. The only changed ontology is
+14817, from timeout to exact. No previously exact ontology or disagreement
+count regressed. The complete C++ correspondence and reproduction record are
+in `docs/SOLVE-14817.md` and
+`results/benchmarks/2026-07-14-14817-closure/`. These changes affect the
+Konclude-compatible completion implementation and cache lifecycle, not the CB
+calculus or its fixpoint, so they do not require Lean re-certification.
+
 ### Konclude intrusive free-list representation closes ore_ont_9724 (2026-07-14)
 
 `ore_ont_9724` now completes through production `km classify` and matches

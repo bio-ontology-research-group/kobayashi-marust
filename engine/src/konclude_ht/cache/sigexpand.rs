@@ -2206,7 +2206,15 @@ impl SignatureSatisfiableExpanderCache {
                         .sig_expander_slot_item_mut(last_slot_linker)
                         .set_next(next_slot_linker);
                 }
-                // W6-DEFER[memory-pool]: memMan->releaseTemporaryMemoryPools(tmpSlotLinker->getMemoryPools());
+                // Konclude releases the complete slot memory pool here.  Arena
+                // ids are stable in the Rust substrate, so retain the now
+                // unreachable record but drop every heap allocation owned by
+                // that pool.  Merely unlinking the slot retains one full clone
+                // of the ontology-wide signature hash per cache commit.
+                let released_slot = cache_context.sig_expander_slot_item_mut(tmp_slot_linker);
+                released_slot.set_signature_item_hash(HashMap::new());
+                released_slot.set_hasher_item_hash(Vec::new());
+                released_slot.set_next(SigExpanderSlotItemId::NONE);
             } else {
                 last_slot_linker = slot_linker_it;
             }
@@ -2886,6 +2894,12 @@ mod tests {
         let mut ctx = CacheContext::new();
         let tail = alloc_slot_with_readers(&mut ctx, 0);
         let head = alloc_slot_with_readers(&mut ctx, 0);
+        ctx.sig_expander_slot_item_mut(head)
+            .sig_item_hash
+            .insert(41, SigExpanderRedirectionItemId::new(7));
+        ctx.sig_expander_slot_item_mut(tail)
+            .sig_item_hash
+            .insert(43, SigExpanderRedirectionItemId::new(9));
         ctx.sig_expander_slot_item_mut(head).set_next(tail);
         let mut cache = SignatureSatisfiableExpanderCache::new();
         cache.slot_linker = head;
@@ -2893,6 +2907,16 @@ mod tests {
         cache.clean_unused_slots(&mut ctx);
 
         assert_eq!(cache.slot_linker, SigExpanderSlotItemId::NONE);
+        assert!(ctx
+            .sig_expander_slot_item(head)
+            .get_signature_item_hash()
+            .is_empty());
+        assert!(ctx
+            .sig_expander_slot_item(tail)
+            .get_signature_item_hash()
+            .is_empty());
+        assert!(ctx.sig_expander_slot_item(head).get_next().is_none());
+        assert!(ctx.sig_expander_slot_item(tail).get_next().is_none());
     }
 
     #[test]

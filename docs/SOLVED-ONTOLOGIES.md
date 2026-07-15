@@ -14,6 +14,45 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
+### ore_ont_14817: saturation-aware cardinality successors (2026-07-15)
+
+- **Symptom**: production KM saturated 48,642 of 58,364 active subjects but
+  timed out on the 9,722-subject completion residue. Exact cache-lifecycle and
+  task-slicing ports reduced its cost without closing it. Isolated subject
+  85031 (`UBERON_0014672`) still deferred after 51 seconds and 72,670
+  disjunction replacement events.
+- **Konclude diagnosis**: a trusted native-object Konclude trace handled the
+  same target in 125 ms. It saturation-expanded the first six root successors
+  as three cardinality-created pairs. KM created corresponding successors 1001
+  through 1006 without expansion and began its nine expansion events at 1007.
+  Queue and label tracing ruled out duplicate insertion and accidental
+  requeueing; the explosion was real branch search below those under-expanded
+  nodes.
+- **Root cause**: Konclude's `applyATLEASTRule` creates an `ATLEAST` dependency
+  and delegates to `createDistinctSuccessorIndividuals`, which allocates and
+  distinguishes all successors, replays the relevant saturation successor,
+  installs signed indirect-super-role links, adds qualifiers, and establishes
+  saturation caching. Production Rust bypassed its existing full port and
+  called the reduced `ht_create_distinct_successors`, which omitted saturation
+  replay and cache establishment.
+- **Fix**: route production `apply_atleast_rule` through the full constructor
+  with Konclude's dependency, role list, pending-clash propagation, low-level
+  nominal handling, and queue order. Retain the supporting exact ports for the
+  ontology-wide satisfiable-expander cache, per-node cache state, pointer-like
+  label signatures, 80-rule scheduler boundary, cache-pool release, and KPSet
+  touched-candidate order.
+- **Result**: the isolated subject finishes in 14.66 seconds and now expands
+  successors 1001 through 1006. Production-sweep job 48853569 task 518 solves
+  the full ontology in 56 seconds at 3,365,116 KB, returning all 1,184,692
+  subsumptions with zero extra and zero missing.
+- **Validation**: a focused production-path regression proves that every
+  `≥2 R.C` successor receives saturation-only consequences. The release suite
+  passes 1,480 tests, with 7 ignored and none failed. Full 592-ontology IBEX
+  job 48853569 improves from 574 to 575 completed and from 514 to 515 exact
+  matches. Only 14817 changes, and no previously exact ontology regresses.
+  Full traces and reproduction artifacts are in `SOLVE-14817.md` and
+  `../results/benchmarks/2026-07-14-14817-closure/`.
+
 ### ore_ont_9724: constant-time intrusive free-list representation (2026-07-14)
 
 - **Symptom**: KM returned a sound partial taxonomy with 3,325 missing pairs

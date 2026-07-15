@@ -7,7 +7,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::{BTreeMap, BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use super::completion::context::CalculationAlgorithmContext;
 use super::model::concept::Concept;
@@ -4231,44 +4231,86 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
             }
         }
 
-        // Konclude's queue is root-first.  Extracted labels can contain an
-        // equivalence cycle; its candidate queue breaks those cycles.  The
-        // synchronous equivalent selects the smallest remaining predecessor
-        // count, then the most informative label, with stable subject order.
+        // Exact queue discipline from
+        // COptimizedKPSetClassSubsumptionClassifierThread::createNextSubsumtionTest:
+        // consume the FIFO root/successor list first; only when it is empty,
+        // select the smallest predecessor count from at most 100 entries of
+        // the next-candidate set; only then break a cycle from the remaining
+        // set. The previous global heap was not equivalent: it admitted every
+        // remaining class immediately and promoted large-label hard classes
+        // before Konclude had warmed its completion caches.
         let requested_subjects: HashSet<usize> = subjects
             .iter()
             .copied()
             .filter(|&subject| subject < item_ids.len() && item_ids[subject].is_some())
             .collect();
         let mut remaining = vec![false; named_concepts.len()];
-        let mut candidates = BinaryHeap::new();
+        let mut remaining_count = active_subjects.len();
+        let mut next_items = VecDeque::new();
+        let mut queued_next = vec![false; named_concepts.len()];
+        let mut next_candidates: Vec<usize> = Vec::new();
+        // QSet iteration is deliberately unspecified in Konclude. Keep the
+        // same set semantics with a dense vector plus O(1) swap-removal. This
+        // makes the synchronous port deterministic without turning candidate
+        // selection into a global priority queue again.
+        let mut candidate_position = vec![usize::MAX; named_concepts.len()];
         for &subject in &active_subjects {
             remaining[subject] = true;
             let item =
                 &ont_item.get_concept_satisfiable_test_item_container()[item_ids[subject].index()];
-            candidates.push(std::cmp::Reverse((
-                item.get_unprocessed_predecessor_item_count().max(0),
-                std::cmp::Reverse(item.get_subsuming_concept_item_count()),
-                subject,
-            )));
+            if item.has_only_processed_predecessor_items() {
+                next_items.push_back(subject);
+                queued_next[subject] = true;
+            }
         }
         let mut ordered_subjects = Vec::with_capacity(requested_subjects.len());
-        while let Some(std::cmp::Reverse((predecessors, subsumer_count, next))) = candidates.pop() {
-            if !remaining[next] {
-                continue;
+        while remaining_count > 0 {
+            let mut next = None;
+            while let Some(subject) = next_items.pop_front() {
+                queued_next[subject] = false;
+                if remaining[subject] {
+                    next = Some(subject);
+                    break;
+                }
             }
-            let current_key = {
-                let item =
-                    &ont_item.get_concept_satisfiable_test_item_container()[item_ids[next].index()];
-                (
-                    item.get_unprocessed_predecessor_item_count().max(0),
-                    std::cmp::Reverse(item.get_subsuming_concept_item_count()),
-                )
-            };
-            if (predecessors, subsumer_count) != current_key {
-                continue;
+            if next.is_none() {
+                let mut selected_position = None;
+                let mut min_unprocessed = 0;
+                for (position, &subject) in next_candidates.iter().take(100).enumerate() {
+                    let unprocessed = ont_item.get_concept_satisfiable_test_item_container()
+                        [item_ids[subject].index()]
+                    .get_unprocessed_predecessor_item_count();
+                    if selected_position.is_none() || unprocessed < min_unprocessed {
+                        selected_position = Some(position);
+                        min_unprocessed = unprocessed;
+                    }
+                }
+                if let Some(position) = selected_position {
+                    let subject = next_candidates.swap_remove(position);
+                    candidate_position[subject] = usize::MAX;
+                    if position < next_candidates.len() {
+                        candidate_position[next_candidates[position]] = position;
+                    }
+                    next = Some(subject);
+                }
             }
+            if next.is_none() {
+                next = active_subjects
+                    .iter()
+                    .copied()
+                    .find(|subject| remaining[*subject]);
+            }
+            let Some(next) = next else { break };
             remaining[next] = false;
+            remaining_count -= 1;
+            let candidate_index = candidate_position[next];
+            if candidate_index != usize::MAX {
+                next_candidates.swap_remove(candidate_index);
+                candidate_position[next] = usize::MAX;
+                if candidate_index < next_candidates.len() {
+                    candidate_position[next_candidates[candidate_index]] = candidate_index;
+                }
+            }
             if requested_subjects.contains(&next) {
                 ordered_subjects.push(next);
             }
@@ -4285,11 +4327,23 @@ impl OptimizedKPSetClassSubsumptionClassifierThread {
                     .get_concept_satisfiable_test_item_mut(successor)
                     .expect("KPSet successor");
                 item.dec_unprocessed_predecessor_items(1);
-                candidates.push(std::cmp::Reverse((
-                    item.get_unprocessed_predecessor_item_count().max(0),
-                    std::cmp::Reverse(item.get_subsuming_concept_item_count()),
-                    successor_subject,
-                )));
+                if item.has_only_processed_predecessor_items() {
+                    if !queued_next[successor_subject] {
+                        next_items.push_back(successor_subject);
+                        queued_next[successor_subject] = true;
+                    }
+                    let candidate_index = candidate_position[successor_subject];
+                    if candidate_index != usize::MAX {
+                        next_candidates.swap_remove(candidate_index);
+                        candidate_position[successor_subject] = usize::MAX;
+                        if candidate_index < next_candidates.len() {
+                            candidate_position[next_candidates[candidate_index]] = candidate_index;
+                        }
+                    }
+                } else if candidate_position[successor_subject] == usize::MAX {
+                    candidate_position[successor_subject] = next_candidates.len();
+                    next_candidates.push(successor_subject);
+                }
             }
         }
 
@@ -6940,6 +6994,36 @@ mod tests {
                 &[None, None, None],
                 &known,
                 &[2, 1, 0],
+                &concepts,
+            );
+        assert_eq!(order, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn kpset_saturation_order_uses_touched_candidate_before_arbitrary_remaining() {
+        let mut concepts = Arena::new();
+        let named: Vec<ConceptId> = (0..3)
+            .map(|tag| {
+                let mut concept = Concept::new();
+                concept.set_concept_tag(tag);
+                concept.set_operator_code(super::super::model::op::CCATOM);
+                concept.add_class_name_linker(super::super::model::stubs::NameId::new(tag));
+                concepts.push(concept)
+            })
+            .collect();
+        // There is no root. Konclude first breaks the cycle at 0. That touches
+        // candidate 1 but leaves one of its predecessors unprocessed, so the
+        // next-candidate set must schedule 1 before arbitrary remaining item 2.
+        // A global predecessor heap instead produced 0,2,1 here.
+        let known = vec![vec![2], vec![0, 2], vec![1]];
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let order = classifier
+            .create_obvious_subsumption_satisfiable_testing_order_from_saturation_data(
+                &named,
+                &[None, None, None],
+                &[None, None, None],
+                &known,
+                &[0, 1, 2],
                 &concepts,
             );
         assert_eq!(order, vec![0, 1, 2]);

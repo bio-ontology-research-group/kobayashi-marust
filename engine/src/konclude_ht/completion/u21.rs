@@ -73,17 +73,20 @@ use std::collections::HashSet;
 
 use super::super::cache::context::CacheContext;
 use super::super::cache::satnode::DependentNominalSetId;
+use super::super::cache::sigexpand::{ExpanderBranchedLinkerId, SigExpanderCacheEntryId};
+use super::super::cache::value::CacheValueIdentifier;
 use super::super::model::op::{CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCSOME};
 use super::super::model::op::{
     CCFS_ALL_TYPE, CCFS_AQALL_TYPE, CCFS_AQAND_AQALL_TYPE, CCFS_AQAND_TYPE,
 };
 use super::super::model::substrate::{Cint64, Id, INVALID};
-use super::super::model::RoleId;
+use super::super::model::{ConceptId, RoleId};
+use super::super::process::dependency::DependencyLink;
 use super::super::process::node::IndividualProcessNode as Node;
 use super::super::process::reapply_sat::ReapplyConceptDescriptor;
 use super::super::process::stubs::NominalConnectionSetId;
 use super::super::process::{
-    ClashDescId, ConDescId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+    ClashDescId, ConDescId, DepLinkId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
 };
 use super::context::CalculationAlgorithmContextBase;
 use super::stubs::SatisfiableExpanderCacheHandler;
@@ -600,7 +603,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) {
         // CSatisfiableExpanderCacheHandler* satExpHandler = calcAlgContext->getUsedSatisfiableExpanderCacheHandler();
         if calc_alg_context.base.used_sat_exp_cache_handler.is_some() {
-            // W6-DEFER[api]: satExpHandler->commitCacheMessages(calcAlgContext);
+            if let Some(mut handler_state) =
+                calc_alg_context.take_used_satisfiable_expander_cache_handler()
+            {
+                handler_state.handler.commit_cache_messages();
+                calc_alg_context.restore_used_satisfiable_expander_cache_handler(handler_state);
+            }
         }
         // CSaturationNodeExpansionCacheHandler* satNodeExpHandler = calcAlgContext->getUsedSaturationNodeExpansionCacheHandler();
         if calc_alg_context
@@ -880,9 +888,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             && self.satisfiable_cache_write_in_completion_graph_range(indi_node, calc_alg_context)
         {
             let localized_indi = self.get_localized_individual(indi_node, false, calc_alg_context);
-            let _ = localized_indi;
-            // Deferred with the satisfiable-expander handler API:
-            // satExpHandler->cacheIndividualNodeSatisfiable(localizedIndi, ctx).
+            if let Some(mut handler_state) =
+                calc_alg_context.take_used_satisfiable_expander_cache_handler()
+            {
+                let (process_context, ontology) = calc_alg_context.process_context_and_ontology();
+                node_cached |= handler_state.handler.cache_individual_node_satisfiable(
+                    process_context,
+                    ontology,
+                    localized_indi,
+                );
+                calc_alg_context.restore_used_satisfiable_expander_cache_handler(handler_state);
+            }
         }
 
         if self.conf_saturation_satisfiabilitiy_expansion_cache_writing
@@ -1051,10 +1067,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let localized_indi = self.get_localized_individual(current_indi, false, calc_alg_context);
-        let _ = localized_indi;
-        // Deferred with the satisfiable-expander handler API:
-        // satExpHandler->cacheIndividualNodeSatisfiable(localizedIndi, ctx).
-        true
+        if let Some(mut handler_state) =
+            calc_alg_context.take_used_satisfiable_expander_cache_handler()
+        {
+            let (process_context, ontology) = calc_alg_context.process_context_and_ontology();
+            let cached = handler_state.handler.cache_individual_node_satisfiable(
+                process_context,
+                ontology,
+                localized_indi,
+            );
+            calc_alg_context.restore_used_satisfiable_expander_cache_handler(handler_state);
+            return cached;
+        }
+        false
     }
 
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::writeSatisfiableCachedIndividualNodesOfUnsatisfiableBranch`.
@@ -1442,41 +1467,84 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if self.conf_sat_exp_cache_retrieval
                 && calc_alg_context.base.used_sat_exp_cache_handler.is_some()
             {
-                // STATINC(SATEXPCACHERETRIEVALCOUNT, …);  // W3-DEFER[api]
-                // W6-DEFER[api]: if (satExpHandler->isIndividualNodeExpandCached(individualNode, &satisfiableCached, &entry, ctx)) {
-                //   STATINC(SATEXPCACHERETRIEVALSUCCESSCOUNT, …);
-                //   if (mConfSatExpCacheConceptExpansion) {
-                //     expandCachedConcepts(individualNode, entry, ctx);
-                //     if (mConfSatExpCacheSatisfiableBlocking && satisfiableCached
-                //         && !individualNode->hasPartialProcessingRestrictionFlags(PRFINVALIDBLOCKINGORCACHING)) {
-                //       STATINC(SATEXPCACHERETRIEVALFOUNDSATISFIABLECOUNT, …);
-                //       satCompatible = false;
-                //       if (entry->isSatisfiableWithoutBranchedConcepts()) {
-                //         satCompatible = true;
-                //       } else {
-                //         satBranchLinker = entry->getExpanderBranchedLinker();
-                //         if (!satBranchLinker) { satCompatible = true; }
-                //         else {
-                //           ancestorIndiNode = getAncestorIndividual(individualNode, ctx);
-                //           for (satBranchLinkerIt = satBranchLinker; satBranchLinkerIt && !satCompatible;
-                //                satBranchLinkerIt = satBranchLinkerIt->getNext()) {
-                //             if (isSatisfiableCachedCompatible(individualNode, satBranchLinkerIt, ancestorIndiNode, ctx)) {
-                //               satCompatible = true;
-                //             }
-                //           }
-                //         }
-                //       }
-                //       if (satCompatible) {
-                //         STATINC(SATEXPCACHERETRIEVALCOMPATIBLESATCOUNT, …);
-                //         newSatCached = true;
-                //         if (!prevSatCached) {
-                //           individualNode->addProcessingRestrictionFlags(PRFSATISFIABLECACHED);
-                //           propagateIndirectSuccessorSatisfiableCached(individualNode, ctx);
-                //         }
-                //       }
-                //     }
-                //   }
-                // }
+                let mut satisfiable_cached = false;
+                let mut entry = SigExpanderCacheEntryId::NONE;
+                if let Some(mut handler_state) =
+                    calc_alg_context.take_used_satisfiable_expander_cache_handler()
+                {
+                    let cache_hit = handler_state.handler.is_individual_node_expand_cached(
+                        calc_alg_context.process_context(),
+                        individual_node,
+                        Some(&mut satisfiable_cached),
+                        Some(&mut entry),
+                    );
+                    if cache_hit && self.conf_sat_exp_cache_concept_expansion {
+                        self.expand_cached_concepts(
+                            individual_node,
+                            entry,
+                            &handler_state.handler.cache_context,
+                            calc_alg_context,
+                        );
+                        if self.conf_sat_exp_cache_satisfiable_blocking
+                            && satisfiable_cached
+                            && !calc_alg_context
+                                .process_context()
+                                .node(individual_node)
+                                .has_partial_processing_restriction_flags(
+                                    Node::PRF_INVALIDBLOCKINGORCACHING,
+                                )
+                        {
+                            let (without_branched, mut branch_linker) = {
+                                let entry_ref = handler_state
+                                    .handler
+                                    .cache_context
+                                    .sig_expander_cache_entry(entry);
+                                (
+                                    entry_ref.is_satisfiable_without_branched_concepts(),
+                                    entry_ref.get_expander_branched_linker(),
+                                )
+                            };
+                            let mut sat_compatible = without_branched || branch_linker.is_none();
+                            if !sat_compatible {
+                                let mut current_node = individual_node;
+                                let ancestor_node = self
+                                    .get_ancestor_individual(&mut current_node, calc_alg_context);
+                                while branch_linker.is_some() && !sat_compatible {
+                                    handler_state.handler.stat_satisfiable_compatibility_tests += 1;
+                                    sat_compatible = self.is_satisfiable_cached_compatible(
+                                        individual_node,
+                                        branch_linker,
+                                        ancestor_node,
+                                        &handler_state.handler.cache_context,
+                                        calc_alg_context,
+                                    );
+                                    branch_linker = handler_state
+                                        .handler
+                                        .cache_context
+                                        .expander_branched_linker(branch_linker)
+                                        .get_next();
+                                }
+                            }
+                            if sat_compatible {
+                                handler_state.handler.stat_compatible_satisfiable_hits += 1;
+                            } else {
+                                handler_state.handler.stat_incompatible_satisfiable_hits += 1;
+                            }
+                            new_sat_cached = sat_compatible;
+                        }
+                    }
+                    calc_alg_context.restore_used_satisfiable_expander_cache_handler(handler_state);
+                }
+                if new_sat_cached && !prev_sat_cached {
+                    calc_alg_context
+                        .process_context_mut()
+                        .node_mut(individual_node)
+                        .add_processing_restriction_flags(Node::PRF_SATISFIABLECACHED);
+                    self.propagate_indirect_successor_satisfiable_cached(
+                        individual_node,
+                        calc_alg_context,
+                    );
+                }
             }
             if self.conf_sat_exp_cache_writing && !new_sat_cached {
                 if !calc_alg_context
@@ -1487,7 +1555,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             | Node::PRF_ANCESTORSIGNATUREBLOCKINGCACHED,
                     )
                 {
-                    // W6-DEFER[api]: satExpHandler->cacheIndividualNodeExpansion(individualNode, ctx);
+                    if let Some(mut handler_state) =
+                        calc_alg_context.take_used_satisfiable_expander_cache_handler()
+                    {
+                        let (process_context, ontology) =
+                            calc_alg_context.process_context_and_ontology();
+                        handler_state.handler.cache_individual_node_expansion(
+                            process_context,
+                            ontology,
+                            individual_node,
+                        );
+                        calc_alg_context
+                            .restore_used_satisfiable_expander_cache_handler(handler_state);
+                    }
                 }
             }
         }
@@ -1649,7 +1729,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .concept(concept)
                     .get_operand_list()
                     .to_vec();
-                if !self.contains_individual_node_concepts_for_label_set(
+                if !self.contains_individual_node_concepts_label_negated(
                     anc_con_set,
                     &op_con_linker,
                     false,
@@ -1731,26 +1811,143 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     pub fn is_satisfiable_cached_compatible(
         &mut self,
         individual_node: NodeId,
-        sat_branch_linker: Cint64, // CExpanderBranchedLinker*
+        sat_branch_linker: ExpanderBranchedLinkerId,
         ancestor_indi_node: NodeId,
+        cache_context: &CacheContext,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        // referenced so the faithful operator codes above stay anchored to op.rs.
-        let _ = (
-            CCFS_ALL_TYPE,
-            CCFS_AQAND_AQALL_TYPE,
-            CCSOME,
-            CCATMOST,
-            CCATLEAST,
-            CCALL,
-            CCAQSOME,
-        );
-        let _ = (
-            individual_node,
-            sat_branch_linker,
-            ancestor_indi_node,
-            calc_alg_context,
-        );
+        if ancestor_indi_node.is_none() || sat_branch_linker.is_none() {
+            return true;
+        }
+        let ancestor_id = calc_alg_context
+            .process_context()
+            .node(ancestor_indi_node)
+            .individual_node_id();
+        if !calc_alg_context
+            .process_context()
+            .node_successor_role_iterator(individual_node, ancestor_id)
+            .has_next()
+        {
+            return true;
+        }
+        let ancestor_label = calc_alg_context
+            .process_context()
+            .node(ancestor_indi_node)
+            .use_reapply_con_label_set;
+        if ancestor_label.is_none() {
+            return false;
+        }
+        let cache_values = cache_context
+            .expander_branched_linker(sat_branch_linker)
+            .get_cache_value_list()
+            .clone();
+
+        for cache_value in cache_values {
+            let concept_id = ConceptId::new(cache_value.get_identification());
+            let concept_negated = cache_value.get_cache_value_identifier()
+                == CacheValueIdentifier::CacheValTagAndNegatedConcept as Cint64;
+            let concept = calc_alg_context.ontology_arenas().concept(concept_id);
+            let role = concept.get_role();
+            let operator_code = concept.get_operator_code();
+            let concept_operator = concept.get_concept_operator();
+            let operands = concept.get_operand_list().to_vec();
+
+            if (!concept_negated && concept_operator.has_partial_operator_code_flag(CCFS_ALL_TYPE))
+                || (concept_negated && operator_code == CCSOME)
+            {
+                let operand_negated = operator_code == CCSOME;
+                if role.is_some()
+                    && calc_alg_context
+                        .process_context_mut()
+                        .node_has_role_successor_to_individual_id(
+                            individual_node,
+                            role,
+                            ancestor_id,
+                            true,
+                        )
+                    && !self.contains_individual_node_concepts_label_negated(
+                        ancestor_label,
+                        &operands,
+                        operand_negated,
+                        calc_alg_context,
+                    )
+                {
+                    return false;
+                }
+            } else if (!concept_negated && operator_code == CCATMOST)
+                || (concept_negated && operator_code == CCATLEAST)
+            {
+                if role.is_some()
+                    && calc_alg_context
+                        .process_context_mut()
+                        .node_has_role_successor_to_individual_id(
+                            individual_node,
+                            role,
+                            ancestor_id,
+                            true,
+                        )
+                {
+                    if operands.is_empty()
+                        || !self.contains_individual_node_concepts_label_negated(
+                            ancestor_label,
+                            &operands,
+                            true,
+                            calc_alg_context,
+                        )
+                    {
+                        return false;
+                    }
+                }
+            } else if (!concept_negated
+                && (operator_code == CCSOME
+                    || operator_code == CCATLEAST
+                    || operator_code == CCAQSOME))
+                || (concept_negated && (operator_code == CCALL || operator_code == CCATMOST))
+            {
+                if role.is_some() {
+                    let mut min_super_role = RoleId::NONE;
+                    let mut min_super_role_count = 0usize;
+                    for super_role in calc_alg_context
+                        .ontology_arenas()
+                        .role(role)
+                        .get_indirect_super_role_list()
+                    {
+                        let super_role_count = calc_alg_context
+                            .ontology_arenas()
+                            .role(super_role.target)
+                            .get_indirect_super_role_list()
+                            .len();
+                        if min_super_role.is_none() || super_role_count < min_super_role_count {
+                            min_super_role = super_role.target;
+                            min_super_role_count = super_role_count;
+                        }
+                    }
+                    if min_super_role.is_some()
+                        && calc_alg_context
+                            .process_context_mut()
+                            .node_has_role_successor_to_individual_id(
+                                individual_node,
+                                min_super_role,
+                                ancestor_id,
+                                true,
+                            )
+                    {
+                        return false;
+                    }
+                }
+            } else if !concept_negated
+                && concept_operator.has_partial_operator_code_flag(CCFS_AQAND_AQALL_TYPE)
+                && !self.is_satisfiable_cached_automat_concept_compatible(
+                    individual_node,
+                    concept_id,
+                    concept_negated,
+                    ancestor_indi_node,
+                    calc_alg_context,
+                )
+            {
+                return false;
+            }
+        }
         true
     }
 
@@ -1793,11 +1990,146 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ///   }
     pub fn expand_cached_concepts(
         &mut self,
-        individual_node: NodeId,
-        entry: Cint64, // CSignatureSatisfiableExpanderCacheEntry*
+        mut individual_node: NodeId,
+        entry: SigExpanderCacheEntryId,
+        cache_context: &CacheContext,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        let _ = (individual_node, entry, calc_alg_context);
+        if entry.is_none() {
+            return;
+        }
+
+        let con_set = calc_alg_context
+            .process_context_mut()
+            .node_reapply_concept_label_set(individual_node);
+        let con_set_count = calc_alg_context
+            .process_context()
+            .label_set(con_set)
+            .get_concept_count();
+        let mut exp_linker = cache_context
+            .sig_expander_cache_entry(entry)
+            .get_expander_cache_value_linker();
+
+        // The entry chain begins with the exact current label prefix. Konclude
+        // advances by the label size and replays only the cached suffix.
+        for _ in 0..con_set_count {
+            if exp_linker.is_none() {
+                return;
+            }
+            exp_linker = cache_context
+                .expander_cache_value_linker(exp_linker)
+                .get_next();
+        }
+
+        while exp_linker.is_some() {
+            let linker = cache_context.expander_cache_value_linker(exp_linker);
+            let cache_value = linker.get_cache_value();
+            let dependency_linkers = linker.get_expander_dependency_list().clone();
+            let next_linker = linker.get_next();
+            let concept = ConceptId::new(cache_value.get_identification());
+            let concept_negated = cache_value.get_cache_value_identifier()
+                == CacheValueIdentifier::CacheValTagAndNegatedConcept as Cint64;
+
+            let already_present = calc_alg_context
+                .process_context()
+                .label_set(con_set)
+                .has_concept_get_negated_in_context(
+                    calc_alg_context.process_context(),
+                    calc_alg_context.ontology_arenas(),
+                    concept,
+                    None,
+                );
+            if !already_present {
+                let mut dependencies: DepLinkId = Id::NONE;
+                let mut first_dep_track_point: TrackPointId = Id::NONE;
+                let mut dependencies_present = true;
+
+                for dep_linker in dependency_linkers {
+                    if dep_linker.is_none() {
+                        dependencies_present = false;
+                        break;
+                    }
+                    let dep_tag = cache_context
+                        .expander_cache_value_linker(dep_linker)
+                        .get_cache_value()
+                        .get_tag();
+                    let mut dep_con_des = ConDescId::NONE;
+                    let mut dep_track_point = TrackPointId::NONE;
+                    let found = calc_alg_context
+                        .process_context()
+                        .label_set(con_set)
+                        .get_concept_descriptor_by_tag_in_context(
+                            calc_alg_context.process_context(),
+                            dep_tag,
+                            &mut dep_con_des,
+                            &mut dep_track_point,
+                        );
+                    debug_assert!(
+                        found && dep_track_point.is_some(),
+                        "expandCachedConcepts: missing dependency"
+                    );
+                    if !found || dep_track_point.is_none() {
+                        dependencies_present = false;
+                        break;
+                    }
+
+                    let conn_dep_node = self.create_connection_dependency(
+                        &mut individual_node,
+                        dep_con_des,
+                        dep_track_point,
+                        calc_alg_context,
+                    );
+                    if conn_dep_node.is_none() {
+                        dependencies_present = false;
+                        break;
+                    }
+                    let conn_dep_track_point = calc_alg_context
+                        .process_context_mut()
+                        .materialize_continue_dependency_track_point(conn_dep_node);
+                    if first_dep_track_point.is_none() {
+                        first_dep_track_point = conn_dep_track_point;
+                    } else {
+                        let dep_link = calc_alg_context
+                            .process_context_mut()
+                            .alloc_dep_link(DependencyLink::new());
+                        {
+                            let process_context = calc_alg_context.process_context_mut();
+                            process_context
+                                .dep_link_mut(dep_link)
+                                .init_dependency(conn_dep_track_point);
+                            process_context.dep_link_mut(dep_link).next = dependencies;
+                        }
+                        dependencies = dep_link;
+                    }
+                }
+
+                debug_assert!(
+                    !dependencies_present || first_dep_track_point.is_some(),
+                    "expandCachedConcepts: missing dependency"
+                );
+                if dependencies_present && first_dep_track_point.is_some() {
+                    let mut expanded_dep_track_point = TrackPointId::NONE;
+                    self.create_expanded_dependency(
+                        &mut expanded_dep_track_point,
+                        &mut individual_node,
+                        first_dep_track_point,
+                        dependencies,
+                        calc_alg_context,
+                    );
+                    self.add_concept_to_individual_skip_and_processing(
+                        concept,
+                        concept_negated,
+                        individual_node,
+                        expanded_dep_track_point,
+                        true,
+                        false,
+                        true,
+                        calc_alg_context,
+                    );
+                }
+            }
+            exp_linker = next_linker;
+        }
     }
 
     // =======================================================================

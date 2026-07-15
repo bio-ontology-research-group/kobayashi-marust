@@ -58,6 +58,7 @@ pub mod role_backward_prop; // CRoleBackwardPropagationHash + CBackwardPropagati
 pub mod rs1; // RS-1: CReapplyRoleSuccessorHash method bodies (over `satellites`)
 pub mod sat1; // SAT-1: CIndividualSaturationProcessNode method bodies
 pub mod sat_block; // W136: CIndividualNodeSaturationBlockingData
+pub mod sat_exp_store; // CIndividualNodeSatisfiableExpandingCacheStoringData
 pub mod sat_linker; // CIndividualSaturationProcessNodeLinker
 pub mod sat_node; // SD-4: CIndividualSaturationProcessNode
 pub mod sat_node_vector; // CIndividualSaturationProcessNodeVector

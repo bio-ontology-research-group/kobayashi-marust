@@ -1687,7 +1687,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         succ_indi
     }
 
-    /// Port of `createDistinctSuccessorIndividuals`. cpp 22143–22186.
+    /// Port of `createDistinctSuccessorIndividuals`. cpp 22322–22364.
     ///
     /// Creates `succ_card_count` fresh successors into `indi_list`, makes them
     /// pairwise distinct, then for each: optional saturated-data expansion, the

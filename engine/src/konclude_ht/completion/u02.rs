@@ -161,7 +161,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return false;
                 }
             }
-            self.run_saturation_loop(calc_alg_context);
+            let task_slice_paused = self.run_saturation_loop(calc_alg_context);
+            // Konclude publishes both completion-cache handlers whenever
+            // `handleTask` returns, including a scheduler pause and a clashing
+            // branch. The bridge drives the task without the CTask scheduler,
+            // so `run_saturation_loop` exposes the same 80-rule task boundary
+            // and we commit before either resuming or handling the branch
+            // result.
+            self.commit_cache_messages(calc_alg_context);
+            if task_slice_paused {
+                continue;
+            }
             drives += 1;
             if progress && drives % 4096 == 0 {
                 eprintln!(
@@ -1317,10 +1327,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// loop can re-enter it after a disjunction backtrack. Drives until the
     /// completion graph is saturated OR a rule raises a pending clash/stop signal
     /// (which it leaves set for the caller to inspect); it does not itself decide
-    /// the verdict.
-    fn run_saturation_loop(&mut self, calc_alg_context: &mut CalculationAlgorithmContextBase) {
+    /// the verdict. Returns `true` only when the synchronous bridge has reached
+    /// Konclude's 80-rule scheduler verification boundary and requeued the current
+    /// individual for the next task slice.
+    fn run_saturation_loop(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
         if calc_alg_context.has_pending_signal() {
-            return;
+            return false;
         }
         // KONCLUDE-PORT-NOTE[W16-successor-drain]: hard iteration cap — a safety net so a
         // regression that generates successors without a terminating guard (blocking is a
@@ -1330,6 +1345,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         const MAX_DRIVE_ITERATIONS: u64 = 5_000_000;
         let progress = std::env::var_os("KM_BRIDGE_PROGRESS").is_some();
         let mut drive_iters: u64 = 0;
+        // CCalculationTableauCompletionTaskHandleAlgorithm.cpp 1117-1118.
+        // The C++ task scheduler tests for a yield after this many applied
+        // rules. KPSet classification keeps several tests in flight, so these
+        // yields are also the cache-publication boundary. The bridge has no
+        // CTask owner and therefore resumes the requeued node synchronously.
+        self.process_rule_to_task_processing_verification_count = 80;
+        self.remain_process_rule_to_task_processing_verification =
+            self.process_rule_to_task_processing_verification_count;
+        let cache_task_slicing = calc_alg_context
+            .base
+            .used_sat_exp_cache_handler_state
+            .is_some()
+            || calc_alg_context
+                .base
+                .used_sat_node_exp_cache_handler_state
+                .is_some();
         macro_rules! drive_progress {
             () => {
                 if progress && drive_iters % 1_000_000 == 0 {
@@ -1343,7 +1374,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         let mut indi_proc_node: NodeId = self.take_next_process_individual(calc_alg_context);
         if calc_alg_context.has_pending_signal() {
-            return;
+            return false;
         }
         while indi_proc_node.is_some() {
             // The currently processed individual — rule firings during this
@@ -1360,30 +1391,30 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if let Some(deadline) = self.drive_deadline {
                     if std::time::Instant::now() >= deadline {
                         calc_alg_context.raise_stop(false);
-                        return;
+                        return false;
                     }
                 }
             }
             if drive_iters > MAX_DRIVE_ITERATIONS {
                 calc_alg_context.raise_stop(false);
-                return;
+                return false;
             }
             let initialized = self.individual_node_initializing(indi_proc_node, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
-                return;
+                return false;
             }
             if initialized {
                 let mut continue_processing_individual =
                     self.continue_individual_processing(indi_proc_node, calc_alg_context);
                 if calc_alg_context.has_pending_signal() {
-                    return;
+                    return false;
                 }
                 while continue_processing_individual {
                     drive_iters += 1;
                     drive_progress!();
                     if drive_iters > MAX_DRIVE_ITERATIONS {
                         calc_alg_context.raise_stop(false);
-                        return;
+                        return false;
                     }
                     // CConceptProcessingQueue* conProcQueue = indiProcNode->getConceptProcessingQueue(true);
                     let con_proc_queue: ConceptProcessingQueueId = calc_alg_context
@@ -1407,14 +1438,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     // The clash/stop a rule may raise unwinds HERE (the C++ throw from
                     // inside tableauRuleProcessing), before the reinsert/continue branch.
                     if calc_alg_context.has_pending_signal() {
-                        return;
+                        return false;
                     }
 
                     if continue_processing_individual {
                         continue_processing_individual =
                             self.continue_individual_processing(indi_proc_node, calc_alg_context);
                         if calc_alg_context.has_pending_signal() {
-                            return;
+                            return false;
                         }
                     } else {
                         self.add_concept_to_processing_queue_reinsert(
@@ -1424,20 +1455,40 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context,
                         );
                         if calc_alg_context.has_pending_signal() {
-                            return;
+                            return false;
                         }
+                    }
+
+                    self.remain_process_rule_to_task_processing_verification -= 1;
+                    if cache_task_slicing
+                        && self.remain_process_rule_to_task_processing_verification <= 0
+                    {
+                        self.remain_process_rule_to_task_processing_verification =
+                            self.process_rule_to_task_processing_verification_count;
+                        // Exact state transition from the C++ scheduler-pause
+                        // branch (cpp 1245-1250): clear the current node and put
+                        // it back on the processing queue before `handleTask`
+                        // returns and publishes its pending cache messages.
+                        calc_alg_context
+                            .base
+                            .set_current_individual_node(NodeId::NONE);
+                        self.add_individual_to_processing_queue(indi_proc_node, calc_alg_context);
+                        if calc_alg_context.has_pending_signal() {
+                            return false;
+                        }
+                        return true;
                     }
                 }
 
                 self.individual_node_conclusion(indi_proc_node, calc_alg_context);
                 if calc_alg_context.has_pending_signal() {
-                    return;
+                    return false;
                 }
             }
 
             indi_proc_node = self.take_next_process_individual(calc_alg_context);
             if calc_alg_context.has_pending_signal() {
-                return;
+                return false;
             }
             // KM-BRIDGE singleton-concept merge: at candidate fixpoint (no next
             // individual) run the deterministic value-identity merges; a merge
@@ -1452,16 +1503,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context.base.current_indi_node = Id::NONE;
                 let merged = self.ht_apply_singleton_merges(calc_alg_context);
                 if calc_alg_context.has_pending_signal() {
-                    return;
+                    return false;
                 }
                 if merged {
                     indi_proc_node = self.take_next_process_individual(calc_alg_context);
                     if calc_alg_context.has_pending_signal() {
-                        return;
+                        return false;
                     }
                 }
             }
         }
+        false
     }
 
     /// KM_BRIDGE_DUMP_CLASH: print the FINAL (verdict-deciding) clash's

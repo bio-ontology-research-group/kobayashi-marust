@@ -355,8 +355,12 @@ impl ReapplyConceptLabelSet {
         let concept = Self::con_des_concept_in_context(ctx, concept_descriptor);
         let con_tag = Self::con_des_tag_in_context(ctx, onto, concept_descriptor);
         let negated = Self::con_des_negated_in_context(ctx, concept_descriptor);
-        self.concept_signature
-            .add_concept_signature(concept, con_tag, negated);
+        let concept_identity = onto.concept(concept) as *const _ as usize as Cint64;
+        self.concept_signature.add_concept_signature_with_identity(
+            con_tag,
+            negated,
+            concept_identity,
+        );
     }
 
     // =======================================================================
@@ -978,6 +982,7 @@ impl ReapplyConceptLabelSet {
         concept: ConceptId,
         con_tag: Cint64,
         negated: bool,
+        concept_identity: Cint64,
         desc_negated: &dyn Fn(ConDescId) -> bool,
         clashed_con_des: Option<&mut ConDescId>,
         clashed_dep_track_point: Option<&mut TrackPointId>,
@@ -1025,8 +1030,11 @@ impl ReapplyConceptLabelSet {
             true
         } else {
             self.concept_count += 1;
-            self.concept_signature
-                .add_concept_signature(concept, con_tag, negated);
+            self.concept_signature.add_concept_signature_with_identity(
+                con_tag,
+                negated,
+                concept_identity,
+            );
             // W2-DEFER[api]: mConceptFlags.addConceptFlags / mConceptStructure.addedConcept.
             self.concept_des_linker = concept_descriptor;
             false

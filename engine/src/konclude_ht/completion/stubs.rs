@@ -24,9 +24,12 @@ use super::super::cache::occstats::{
     OccurrenceStatisticsCacheWriter, OccurrenceStatisticsConceptData, OccurrenceStatisticsRoleData,
 };
 use super::super::cache::sigexpand::{
-    SigExpanderCacheEntryId, SigExpanderCacheReaderId, SignatureSatisfiableExpanderCacheReader,
+    SigExpanderCacheEntryId, SigExpanderCacheReaderId, SigExpanderEntryWriteDataId,
+    SignatureSatisfiableExpanderCache, SignatureSatisfiableExpanderCacheEntryWriteData,
+    SignatureSatisfiableExpanderCacheReader, SignatureSatisfiableExpanderCacheValueList,
+    SignatureSatisfiableExpanderDepHash,
 };
-use super::super::cache::value::CacheValueIdentifier;
+use super::super::cache::value::{CacheValue, CacheValueIdentifier};
 use super::super::classifier::{
     deliver_classification_message_data_to_observer,
     is_more_classification_information_required_for_concept,
@@ -47,8 +50,9 @@ use super::super::model::concept_process::{
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::op::{
     CCALL, CCAND, CCAQALL, CCAQAND, CCAQCHOOCE, CCAQSOME, CCATLEAST, CCATMOST, CCATOM, CCBRANCHALL,
-    CCBRANCHAQALL, CCBRANCHAQAND, CCEQ, CCEQCAND, CCFS_ALL_AQALL_TYPE, CCFS_TRIG_TYPE, CCIMPLALL,
-    CCIMPLAQALL, CCIMPLAQAND, CCIMPLTRIG, CCOR, CCSOME, CCSUB,
+    CCBRANCHAQALL, CCBRANCHAQAND, CCEQ, CCEQCAND, CCFS_ALL_AQALL_TYPE, CCFS_AQALL_TYPE,
+    CCFS_AQAND_TYPE, CCFS_TRIG_TYPE, CCIMPLALL, CCIMPLAQALL, CCIMPLAQAND, CCIMPLTRIG, CCOR, CCSOME,
+    CCSUB,
 };
 use super::super::model::role::Role;
 use super::super::model::substrate::{Arena, Cint64, Id, INVALID};
@@ -57,6 +61,7 @@ use super::super::process::context::ProcessContext;
 use super::super::process::dependency::DepKind;
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::node_resolution::IndividualProcessNodeVector;
+use super::super::process::sat_exp_store::IndividualNodeSatisfiableExpandingCacheStoringData;
 use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags;
 use super::super::process::{ConDescId, EdgeId, LabelSetId, NodeId, SatNodeId, TrackPointId};
 use super::super::task::adapters::{
@@ -364,14 +369,33 @@ stub! {
     IncrementalCompletionGraphCompatibleExpansionHandler,
 }
 
-/// Minimal live port of `CSatisfiableExpanderCacheHandler`.
+/// Live owner of Konclude's ontology-wide satisfiable-expander cache.
 ///
-/// This first slice ports the read-side cache-hit predicate. The remaining
-/// writer/dependency collection methods stay deferred in Unit 21 until their
-/// call sites are reconciled.
+/// The C++ handler owns one reader, one writer, and a pending write-data chain;
+/// the cache itself lives in the reasoner manager.  The bridge is
+/// single-threaded, so the Rust port folds those objects into one movable state
+/// while retaining the same reader-slot and batched-commit boundaries.
 pub struct SatisfiableExpanderCacheHandler {
     pub cache_context: CacheContext,
+    pub cache: SignatureSatisfiableExpanderCache,
     pub sat_cache_reader: SigExpanderCacheReaderId,
+    pub write_data: SigExpanderEntryWriteDataId,
+    write_data_tail: SigExpanderEntryWriteDataId,
+    pub stat_retrieval_requests: u64,
+    pub stat_signature_hits: u64,
+    pub stat_compatible_hits: u64,
+    pub stat_satisfiable_hits: u64,
+    /// C++ `SATEXPCACHERETRIEVALCOMPATIBILITYTESTCOUNT`.
+    pub stat_satisfiable_compatibility_tests: u64,
+    /// C++ `SATEXPCACHERETRIEVALCOMPATIBLESATCOUNT`.
+    pub stat_compatible_satisfiable_hits: u64,
+    /// C++ `SATEXPCACHERETRIEVALINCOMPATIBLESATCOUNT`.
+    pub stat_incompatible_satisfiable_hits: u64,
+    pub stat_expansion_write_requests: u64,
+    pub stat_satisfiable_write_requests: u64,
+    pub stat_expansion_writes: u64,
+    pub stat_satisfiable_writes: u64,
+    pub stat_commit_batches: u64,
 }
 
 impl Default for SatisfiableExpanderCacheHandler {
@@ -383,11 +407,26 @@ impl Default for SatisfiableExpanderCacheHandler {
 impl SatisfiableExpanderCacheHandler {
     pub fn new() -> Self {
         let mut cache_context = CacheContext::new();
-        let sat_cache_reader = cache_context
-            .alloc_sig_expander_cache_reader(SignatureSatisfiableExpanderCacheReader::new());
+        let mut cache = SignatureSatisfiableExpanderCache::new();
+        let sat_cache_reader = cache.create_cache_reader(&mut cache_context);
         Self {
             cache_context,
+            cache,
             sat_cache_reader,
+            write_data: SigExpanderEntryWriteDataId::NONE,
+            write_data_tail: SigExpanderEntryWriteDataId::NONE,
+            stat_retrieval_requests: 0,
+            stat_signature_hits: 0,
+            stat_compatible_hits: 0,
+            stat_satisfiable_hits: 0,
+            stat_satisfiable_compatibility_tests: 0,
+            stat_compatible_satisfiable_hits: 0,
+            stat_incompatible_satisfiable_hits: 0,
+            stat_expansion_write_requests: 0,
+            stat_satisfiable_write_requests: 0,
+            stat_expansion_writes: 0,
+            stat_satisfiable_writes: 0,
+            stat_commit_batches: 0,
         }
     }
 
@@ -397,8 +436,1141 @@ impl SatisfiableExpanderCacheHandler {
     ) -> Self {
         Self {
             cache_context,
+            cache: SignatureSatisfiableExpanderCache::new(),
             sat_cache_reader,
+            write_data: SigExpanderEntryWriteDataId::NONE,
+            write_data_tail: SigExpanderEntryWriteDataId::NONE,
+            stat_retrieval_requests: 0,
+            stat_signature_hits: 0,
+            stat_compatible_hits: 0,
+            stat_satisfiable_hits: 0,
+            stat_satisfiable_compatibility_tests: 0,
+            stat_compatible_satisfiable_hits: 0,
+            stat_incompatible_satisfiable_hits: 0,
+            stat_expansion_write_requests: 0,
+            stat_satisfiable_write_requests: 0,
+            stat_expansion_writes: 0,
+            stat_satisfiable_writes: 0,
+            stat_commit_batches: 0,
         }
+    }
+
+    fn append_write_data(&mut self, write_data: SigExpanderEntryWriteDataId) {
+        if write_data.is_none() {
+            return;
+        }
+        let mut tail = write_data;
+        while self
+            .cache_context
+            .sig_expander_entry_write_data(tail)
+            .has_next()
+        {
+            tail = self
+                .cache_context
+                .sig_expander_entry_write_data(tail)
+                .get_next();
+        }
+        if self.write_data.is_none() {
+            self.write_data = write_data;
+        } else {
+            self.cache_context
+                .sig_expander_entry_write_data_mut(self.write_data_tail)
+                .set_next(write_data);
+        }
+        self.write_data_tail = tail;
+    }
+
+    /// Port of `CSatisfiableExpanderCacheHandler::commitCacheMessages`.
+    pub fn commit_cache_messages(&mut self) -> bool {
+        if self.write_data.is_none() {
+            return false;
+        }
+        let write_data = self.write_data;
+        self.write_data = SigExpanderEntryWriteDataId::NONE;
+        self.write_data_tail = SigExpanderEntryWriteDataId::NONE;
+        self.cache
+            .write_cached_data(write_data, 0, &mut self.cache_context);
+        // `CWriteCachedDataEvent` transfers a task-owned memory-pool chain to
+        // the cache thread; Konclude releases that chain after processing the
+        // event.  The cache has copied every accepted value/dependency into
+        // persistent entry/linker arenas by this point.  Rewind the three
+        // write-message arenas so rejected and consumed messages do not remain
+        // ontology-wide for the rest of classification.
+        self.cache_context
+            .sig_expander_entry_write_datas
+            .truncate_to(0);
+        self.cache_context
+            .sig_expander_cache_value_lists
+            .truncate_to(0);
+        self.cache_context.sig_expander_dep_hashes.truncate_to(0);
+        self.stat_commit_batches += 1;
+        true
+    }
+
+    fn descriptor_cache_values(
+        &self,
+        process_context: &ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+    ) -> Vec<CacheValue> {
+        let label = process_context
+            .node(individual_node)
+            .use_reapply_con_label_set;
+        if label.is_none() {
+            return Vec::new();
+        }
+        let mut descriptors = Vec::new();
+        let mut descriptor = process_context
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker();
+        while descriptor.is_some() {
+            descriptors.push(descriptor);
+            descriptor = process_context
+                .con_desc(descriptor)
+                .get_next_concept_descriptor();
+        }
+        // `mAddingSortedConceptDescriptionLinker` is newest first. Konclude
+        // prepends while walking it, hence the cache's deterministic linker is
+        // oldest first.
+        descriptors
+            .into_iter()
+            .rev()
+            .map(|descriptor| {
+                let descriptor = process_context.con_desc(descriptor);
+                let concept = descriptor.get_concept();
+                let identifier = if descriptor.is_negated() {
+                    CacheValueIdentifier::CacheValTagAndNegatedConcept
+                } else {
+                    CacheValueIdentifier::CacheValTagAndConcept
+                };
+                CacheValue::new_value(
+                    ontology.concept(concept).get_concept_tag(),
+                    concept.raw,
+                    identifier,
+                )
+            })
+            .collect()
+    }
+
+    fn cardinality_critical_values(
+        &self,
+        process_context: &ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+    ) -> Vec<CacheValue> {
+        let label = process_context
+            .node(individual_node)
+            .use_reapply_con_label_set;
+        if label.is_none() {
+            return Vec::new();
+        }
+        let mut descriptors = Vec::new();
+        let mut descriptor = process_context
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker();
+        while descriptor.is_some() {
+            descriptors.push(descriptor);
+            descriptor = process_context
+                .con_desc(descriptor)
+                .get_next_concept_descriptor();
+        }
+        descriptors
+            .into_iter()
+            .rev()
+            .filter_map(|descriptor| {
+                let descriptor = process_context.con_desc(descriptor);
+                let concept_id = descriptor.get_concept();
+                let concept = ontology.concept(concept_id);
+                let negated = descriptor.is_negated();
+                let operator = concept.get_operator_code();
+                if !((!negated && operator == CCATMOST) || (negated && operator == CCATLEAST)) {
+                    return None;
+                }
+                let cardinality = concept.get_parameter() - Cint64::from(negated);
+                if cardinality <= 1
+                    || process_context
+                        .node_role_successor_count(individual_node, concept.get_role())
+                        < cardinality
+                {
+                    return None;
+                }
+                Some(CacheValue::new_value(
+                    concept.get_concept_tag(),
+                    concept_id.raw,
+                    if negated {
+                        CacheValueIdentifier::CacheValTagAndNegatedConcept
+                    } else {
+                        CacheValueIdentifier::CacheValTagAndConcept
+                    },
+                ))
+            })
+            .collect()
+    }
+
+    /// Direct port of `isCardinalityRestrictionCriticalForSatisfiable`.
+    fn is_cardinality_restriction_critical_for_satisfiable(
+        process_context: &ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+        descriptor: ConDescId,
+    ) -> bool {
+        let descriptor = process_context.con_desc(descriptor);
+        let concept = ontology.concept(descriptor.get_concept());
+        let negated = descriptor.is_negated();
+        let operator = concept.get_operator_code();
+        if ((!negated && operator == CCATMOST) || (negated && operator == CCATLEAST))
+            && concept.get_role().is_some()
+        {
+            let cardinality = concept.get_parameter() - Cint64::from(negated);
+            if cardinality > 1
+                && process_context.node_role_successor_count(individual_node, concept.get_role())
+                    >= cardinality
+            {
+                // `hasInverseSubRole` in this Konclude revision returns true.
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Direct port of `isAutomatConceptRelevantForSatisfiableBranch`.
+    fn is_automat_concept_relevant_for_satisfiable_branch(
+        ontology: &OntologyArenas,
+        concept: ConceptId,
+        _negated: bool,
+    ) -> bool {
+        let concept_ref = ontology.concept(concept);
+        let operator = concept_ref.get_concept_operator();
+        if operator.has_partial_operator_code_flag(CCFS_AQALL_TYPE) {
+            let role = concept_ref.get_role();
+            if role.is_some() {
+                return ontology
+                    .role(role)
+                    .get_indirect_super_role_list()
+                    .iter()
+                    .any(|super_role| super_role.negated);
+            }
+        } else if operator.has_partial_operator_code_flag(CCFS_AQAND_TYPE) {
+            return concept_ref.get_operand_list().iter().any(|operand| {
+                Self::is_automat_concept_relevant_for_satisfiable_branch(
+                    ontology,
+                    operand.target,
+                    operand.negated,
+                )
+            });
+        }
+        false
+    }
+
+    /// Direct port of `isConceptRelevantForSatisfiableBranch`.
+    fn is_concept_relevant_for_satisfiable_branch(
+        process_context: &mut ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+        descriptor: ConDescId,
+    ) -> bool {
+        let descriptor_ref = process_context.con_desc(descriptor);
+        let concept_id = descriptor_ref.get_concept();
+        let negated = descriptor_ref.is_negated();
+        let concept = ontology.concept(concept_id);
+        let operator_code = concept.get_operator_code();
+        let concept_operator = concept.get_concept_operator();
+        let role = concept.get_role();
+
+        if ((!negated && concept_operator.has_partial_operator_code_flag(CCFS_ALL_AQALL_TYPE))
+            || (negated && operator_code == CCSOME))
+            && role.is_some()
+        {
+            // `hasInverseSubRole` returns true in the reference revision.
+            return true;
+        }
+
+        if ((!negated && operator_code == CCATMOST) || (negated && operator_code == CCATLEAST))
+            && role.is_some()
+        {
+            let cardinality = concept.get_parameter() - Cint64::from(negated);
+            return process_context.node_role_successor_count(individual_node, role) >= cardinality;
+        }
+
+        if ((!negated
+            && (operator_code == CCSOME
+                || operator_code == CCAQSOME
+                || operator_code == CCATLEAST))
+            || (negated && (operator_code == CCALL || operator_code == CCATMOST)))
+            && role.is_some()
+        {
+            let super_roles = ontology.role(role).get_indirect_super_role_list().to_vec();
+            for super_role in super_roles {
+                if super_role.negated {
+                    continue;
+                }
+                let mut reapply_iterator = process_context.node_role_reapply_iterator(
+                    individual_node,
+                    super_role.target,
+                    false,
+                );
+                while reapply_iterator.has_next() {
+                    let reapply = reapply_iterator.next(process_context, true);
+                    if reapply.is_none() {
+                        continue;
+                    }
+                    let reapply_descriptor = process_context
+                        .reapply_con_desc(reapply)
+                        .get_concept_descriptor();
+                    if reapply_descriptor.is_none() {
+                        continue;
+                    }
+                    let reapply_descriptor_ref = process_context.con_desc(reapply_descriptor);
+                    let reapply_concept = ontology.concept(reapply_descriptor_ref.get_concept());
+                    let reapply_negated = reapply_descriptor_ref.is_negated();
+                    let reapply_operator = reapply_concept.get_operator_code();
+                    if (reapply_negated && reapply_operator == CCATLEAST)
+                        || (!reapply_negated && reapply_operator == CCATMOST)
+                    {
+                        let cardinality =
+                            reapply_concept.get_parameter() - Cint64::from(reapply_negated);
+                        if process_context.node_role_successor_count(individual_node, role)
+                            >= cardinality
+                        {
+                            // `hasInverseSubRole(reapplyRole)` returns true.
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        !negated
+            && concept_operator.has_partial_operator_code_flag(CCFS_AQAND_TYPE)
+            && Self::is_automat_concept_relevant_for_satisfiable_branch(
+                ontology, concept_id, negated,
+            )
+    }
+
+    fn alloc_value_list(
+        &mut self,
+        values: &[CacheValue],
+    ) -> super::super::cache::sigexpand::SigExpanderCacheValueListId {
+        let mut list = SignatureSatisfiableExpanderCacheValueList::new();
+        for value in values {
+            list.append(*value);
+        }
+        self.cache_context.alloc_sig_expander_cache_value_list(list)
+    }
+
+    fn cache_value_for_descriptor(
+        process_context: &ProcessContext,
+        ontology: &OntologyArenas,
+        descriptor: ConDescId,
+    ) -> CacheValue {
+        let descriptor = process_context.con_desc(descriptor);
+        let concept = descriptor.get_concept();
+        CacheValue::new_value(
+            ontology.concept(concept).get_concept_tag(),
+            concept.raw,
+            if descriptor.is_negated() {
+                CacheValueIdentifier::CacheValTagAndNegatedConcept
+            } else {
+                CacheValueIdentifier::CacheValTagAndConcept
+            },
+        )
+    }
+
+    fn cache_entry_for_signature(&mut self, signature: Cint64) -> SigExpanderCacheEntryId {
+        let mut reader = std::mem::take(
+            self.cache_context
+                .sig_expander_cache_reader_mut(self.sat_cache_reader),
+        );
+        let entry = reader.get_cache_entry_by_signature(signature, &mut self.cache_context);
+        *self
+            .cache_context
+            .sig_expander_cache_reader_mut(self.sat_cache_reader) = reader;
+        entry
+    }
+
+    fn localize_storing_data(
+        process_context: &mut ProcessContext,
+        individual_node: NodeId,
+    ) -> super::super::process::sat_exp_store::IndividualNodeSatisfiableExpandingCacheStoringDataId
+    {
+        let local = process_context
+            .node(individual_node)
+            .individual_satisfiable_cache_storing_data(true);
+        if local.is_some() {
+            return local;
+        }
+        let previous = process_context
+            .node(individual_node)
+            .individual_satisfiable_cache_storing_data(false);
+        let data = if previous.is_some() {
+            process_context.sat_exp_storing_data(previous).clone()
+        } else {
+            IndividualNodeSatisfiableExpandingCacheStoringData::new()
+        };
+        let local = process_context.alloc_sat_exp_storing_data(data);
+        process_context
+            .node_mut(individual_node)
+            .set_individual_satisfiable_cache_storing_data(local);
+        local
+    }
+
+    /// Port of `hasDependencyToAncestor`.
+    fn has_dependency_to_ancestor(
+        process_context: &ProcessContext,
+        individual_node: NodeId,
+        mut dep_track_point: TrackPointId,
+        branched: &mut bool,
+    ) -> bool {
+        if dep_track_point.is_none() {
+            return true;
+        }
+        let ancestor_depth = process_context
+            .node(individual_node)
+            .individual_ancestor_depth();
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            if !seen.insert(dep_track_point) {
+                return true;
+            }
+            let track_point = process_context.track_point(dep_track_point);
+            if ancestor_depth <= 0 {
+                return process_context
+                    .dep_node(track_point.dependency_node())
+                    .is_independent_base_dependency_type();
+            }
+            let dependency_node = process_context.dep_node(track_point.dependency_node());
+            let dependency_to_ancestor = if dependency_node.has_appropriate_individual_node() {
+                process_context
+                    .node(dependency_node.individual_node())
+                    .individual_ancestor_depth()
+                    < ancestor_depth
+            } else {
+                false
+            };
+            if dependency_to_ancestor {
+                return true;
+            }
+            if dependency_node.kind() == DepKind::MergedConcept
+                && !dependency_node.has_appropriate_individual_node()
+            {
+                dep_track_point = dependency_node.previous_dependency_track_point();
+                if dep_track_point.is_none() {
+                    return true;
+                }
+                continue;
+            }
+            if !dependency_node.is_deterministic() {
+                *branched = true;
+            }
+            return false;
+        }
+    }
+
+    /// Fast path of Konclude's `simpleDependencyTracking`.
+    fn simple_dependency_tracking(
+        process_context: &ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+        concept_tag: Cint64,
+        dep_track_point: TrackPointId,
+        dep_hash: &mut SignatureSatisfiableExpanderDepHash,
+        not_branch_concepts: Option<&std::collections::HashSet<Cint64>>,
+        branched: &mut bool,
+    ) -> bool {
+        if dep_track_point.is_none() {
+            return false;
+        }
+        let track_point = process_context.track_point(dep_track_point);
+        let dependency_node = process_context.dep_node(track_point.dependency_node());
+        if !dependency_node.is_deterministic() {
+            *branched = true;
+            return true;
+        }
+        if dependency_node.is_independent_base_dependency_type() {
+            return true;
+        }
+        if dependency_node.has_additional_dependencies() {
+            return false;
+        }
+        if dependency_node.has_appropriate_individual_node()
+            && process_context
+                .node(dependency_node.individual_node())
+                .individual_ancestor_depth()
+                != process_context
+                    .node(individual_node)
+                    .individual_ancestor_depth()
+        {
+            return false;
+        }
+        let dependency_descriptor = dependency_node.concept_descriptor();
+        if dependency_descriptor.is_none() {
+            return false;
+        }
+        let dependency_tag = process_context
+            .con_desc(dependency_descriptor)
+            .get_concept_tag(ontology);
+        if not_branch_concepts.is_some_and(|concepts| !concepts.contains(&dependency_tag)) {
+            *branched = true;
+            return true;
+        }
+        dep_hash.insert(concept_tag, dependency_tag);
+        true
+    }
+
+    /// Port of `complexDependencyTracking`.
+    fn complex_dependency_tracking(
+        process_context: &ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+        concept_tag: Cint64,
+        initial_track_point: TrackPointId,
+        dep_hash: &mut SignatureSatisfiableExpanderDepHash,
+        not_branch_concepts: Option<&std::collections::HashSet<Cint64>>,
+        branched: &mut bool,
+    ) -> bool {
+        if initial_track_point.is_none() {
+            return false;
+        }
+        let base_depth = process_context
+            .node(individual_node)
+            .individual_ancestor_depth();
+        let initial = (base_depth, initial_track_point);
+        let mut dependencies = std::collections::HashSet::from([initial]);
+        let mut pending = std::collections::VecDeque::from([initial]);
+        while let Some((ancestor_depth, track_point_id)) = pending.pop_front() {
+            if track_point_id.is_none() {
+                return false;
+            }
+            let track_point = process_context.track_point(track_point_id);
+            let dependency_node = process_context.dep_node(track_point.dependency_node());
+            if !dependency_node.is_deterministic() {
+                *branched = true;
+                return true;
+            }
+
+            let mut new_ancestor_depth = ancestor_depth;
+            if dependency_node.has_appropriate_individual_node() {
+                new_ancestor_depth = process_context
+                    .node(dependency_node.individual_node())
+                    .individual_ancestor_depth();
+            }
+            let mut continue_loading = true;
+            if new_ancestor_depth == base_depth {
+                let descriptor = dependency_node.concept_descriptor();
+                if descriptor.is_some() {
+                    let dependency_tag = process_context
+                        .con_desc(descriptor)
+                        .get_concept_tag(ontology);
+                    if not_branch_concepts
+                        .is_some_and(|concepts| !concepts.contains(&dependency_tag))
+                    {
+                        *branched = true;
+                        return true;
+                    }
+                    continue_loading = false;
+                    if dependency_tag != concept_tag {
+                        dep_hash.insert(concept_tag, dependency_tag);
+                    }
+                }
+            }
+            if new_ancestor_depth < base_depth {
+                return false;
+            }
+            if continue_loading {
+                let previous = dependency_node.previous_dependency_track_point();
+                if previous.is_none() {
+                    return false;
+                }
+                let previous_node = process_context
+                    .dep_node(process_context.track_point(previous).dependency_node());
+                let next_depth = if previous_node.has_appropriate_individual_node() {
+                    process_context
+                        .node(previous_node.individual_node())
+                        .individual_ancestor_depth()
+                } else {
+                    new_ancestor_depth
+                };
+                if dependencies.insert((next_depth, previous)) {
+                    pending.push_back((next_depth, previous));
+                }
+            }
+
+            let mut additional = dependency_node.additional_after_dependencies();
+            while additional.is_some() {
+                let link = process_context.dep_link(additional);
+                let previous = link.previous_dependency_track_point();
+                if previous.is_none() {
+                    return false;
+                }
+                // Konclude deliberately keys additional dependencies with the
+                // incoming ancestor depth, not the appropriate-node depth.
+                if dependencies.insert((ancestor_depth, previous)) {
+                    pending.push_back((ancestor_depth, previous));
+                }
+                additional = link.next_additional_dependency();
+            }
+        }
+        true
+    }
+
+    fn queue_expansion_write(
+        &mut self,
+        previous_signature: Cint64,
+        new_signature: Cint64,
+        values: &[CacheValue],
+        dependency_hash: SignatureSatisfiableExpanderDepHash,
+    ) {
+        let values = self.alloc_value_list(values);
+        let dependency_hash = self
+            .cache_context
+            .alloc_sig_expander_dep_hash(dependency_hash);
+        let mut write = SignatureSatisfiableExpanderCacheEntryWriteData::new();
+        write.init_expand_write_data(previous_signature, new_signature, values, dependency_hash);
+        let write = self
+            .cache_context
+            .alloc_sig_expander_entry_write_data(write);
+        self.append_write_data(write);
+        self.stat_expansion_writes += 1;
+    }
+
+    /// Port of the seven-argument `cacheIndividualNodeExpansion` overload.
+    fn cache_individual_node_expansion_between(
+        &mut self,
+        process_context: &mut ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+        storing_data: super::super::process::sat_exp_store::IndividualNodeSatisfiableExpandingCacheStoringDataId,
+        last_added_descriptor: ConDescId,
+        last_cached_descriptor: ConDescId,
+        new_signature: Cint64,
+        previous_signature: Cint64,
+    ) -> bool {
+        let mut descriptor = last_added_descriptor;
+        let mut values_newest_first = Vec::new();
+        let mut dependency_hash = SignatureSatisfiableExpanderDepHash::new();
+        let mut directly_branched = false;
+        let mut caching_error = false;
+
+        if last_cached_descriptor.is_some() {
+            while descriptor != last_cached_descriptor && !directly_branched && !caching_error {
+                if descriptor.is_none() {
+                    caching_error = true;
+                    break;
+                }
+                let dependency_track_point = process_context
+                    .con_desc(descriptor)
+                    .get_dependency_track_point();
+                let concept_tag = process_context
+                    .con_desc(descriptor)
+                    .get_concept_tag(ontology);
+                if !Self::simple_dependency_tracking(
+                    process_context,
+                    ontology,
+                    individual_node,
+                    concept_tag,
+                    dependency_track_point,
+                    &mut dependency_hash,
+                    None,
+                    &mut directly_branched,
+                ) && !Self::complex_dependency_tracking(
+                    process_context,
+                    ontology,
+                    individual_node,
+                    concept_tag,
+                    dependency_track_point,
+                    &mut dependency_hash,
+                    None,
+                    &mut directly_branched,
+                ) {
+                    caching_error = true;
+                }
+                values_newest_first.push(Self::cache_value_for_descriptor(
+                    process_context,
+                    ontology,
+                    descriptor,
+                ));
+                descriptor = process_context
+                    .con_desc(descriptor)
+                    .get_next_concept_descriptor();
+            }
+        }
+
+        if directly_branched || caching_error {
+            let data = process_context.sat_exp_storing_data_mut(storing_data);
+            if directly_branched {
+                data.set_individual_node_or_successor_branched_concept(true);
+            }
+            if caching_error {
+                data.set_caching_error(true);
+            }
+            return false;
+        }
+
+        while descriptor.is_some() {
+            values_newest_first.push(Self::cache_value_for_descriptor(
+                process_context,
+                ontology,
+                descriptor,
+            ));
+            descriptor = process_context
+                .con_desc(descriptor)
+                .get_next_concept_descriptor();
+        }
+        values_newest_first.reverse();
+        self.queue_expansion_write(
+            previous_signature,
+            new_signature,
+            &values_newest_first,
+            dependency_hash,
+        );
+        process_context
+            .sat_exp_storing_data_mut(storing_data)
+            .set_previous_cached(true)
+            .set_last_cached_signature(new_signature)
+            .set_last_cached_concept_descriptor(last_added_descriptor);
+        true
+    }
+
+    /// Port of `CSatisfiableExpanderCacheHandler::cacheIndividualNodeExpansion`.
+    pub fn cache_individual_node_expansion(
+        &mut self,
+        process_context: &mut ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+    ) -> bool {
+        self.stat_expansion_write_requests += 1;
+        let label = process_context
+            .node(individual_node)
+            .use_reapply_con_label_set;
+        if label.is_none() {
+            return false;
+        }
+        let signature = process_context
+            .label_set(label)
+            .get_concept_signature_value();
+        let previous_data = process_context
+            .node(individual_node)
+            .individual_satisfiable_cache_storing_data(false);
+        if previous_data.is_some() {
+            let data = process_context.sat_exp_storing_data(previous_data);
+            if data.has_caching_error()
+                || data.has_individual_node_or_successor_branched_concept()
+                || data.last_cached_signature() == signature
+            {
+                return false;
+            }
+        }
+        let storing_data = Self::localize_storing_data(process_context, individual_node);
+        let last_added_descriptor = process_context
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker();
+        let (previous_cached, last_cached_descriptor, previous_signature) = {
+            let data = process_context.sat_exp_storing_data(storing_data);
+            (
+                data.has_previous_cached(),
+                data.last_cached_concept_descriptor(),
+                data.last_cached_signature(),
+            )
+        };
+        if !previous_cached && last_cached_descriptor.is_none() {
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_last_cached_concept_descriptor(last_added_descriptor)
+                .set_last_cached_signature(signature);
+            return true;
+        }
+
+        let cached_entry = self.cache_entry_for_signature(signature);
+        if cached_entry.is_some() {
+            let concept_count = process_context.label_set(label).get_concept_count();
+            if self
+                .cache_context
+                .sig_expander_cache_entry(cached_entry)
+                .get_expander_cache_value_count()
+                < concept_count
+            {
+                return false;
+            }
+            if !self.compare_individual_node_compatibility(
+                process_context,
+                individual_node,
+                cached_entry,
+            ) {
+                process_context
+                    .sat_exp_storing_data_mut(storing_data)
+                    .set_caching_error(true);
+                return false;
+            }
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_last_cached_concept_descriptor(last_added_descriptor)
+                .set_previous_cached(true)
+                .set_last_cached_signature(signature);
+            return true;
+        }
+
+        let mut directly_branched = false;
+        let mut dependency_to_ancestor = false;
+        let mut descriptor = last_added_descriptor;
+        while descriptor != last_cached_descriptor {
+            if descriptor.is_none() {
+                process_context
+                    .sat_exp_storing_data_mut(storing_data)
+                    .set_caching_error(true);
+                return false;
+            }
+            let dependency_track_point = process_context
+                .con_desc(descriptor)
+                .get_dependency_track_point();
+            dependency_to_ancestor |= Self::has_dependency_to_ancestor(
+                process_context,
+                individual_node,
+                dependency_track_point,
+                &mut directly_branched,
+            );
+            descriptor = process_context
+                .con_desc(descriptor)
+                .get_next_concept_descriptor();
+        }
+        if dependency_to_ancestor {
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_previous_cached(false)
+                .set_previous_satisfiable_cached(false)
+                .set_last_cached_signature(signature)
+                .set_last_cached_concept_descriptor(last_added_descriptor);
+            return true;
+        }
+        if directly_branched {
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_individual_node_or_successor_branched_concept(true);
+            return false;
+        }
+
+        if !previous_cached && last_cached_descriptor.is_some() && previous_signature != 0 {
+            self.cache_individual_node_expansion_between(
+                process_context,
+                ontology,
+                individual_node,
+                storing_data,
+                last_cached_descriptor,
+                ConDescId::NONE,
+                previous_signature,
+                0,
+            );
+        }
+        let can_continue = {
+            let data = process_context.sat_exp_storing_data(storing_data);
+            !data.has_caching_error() && !data.has_individual_node_or_successor_branched_concept()
+        };
+        if can_continue {
+            self.cache_individual_node_expansion_between(
+                process_context,
+                ontology,
+                individual_node,
+                storing_data,
+                last_added_descriptor,
+                last_cached_descriptor,
+                signature,
+                previous_signature,
+            );
+        }
+        false
+    }
+
+    /// Direct port of
+    /// `CSatisfiableExpanderCacheHandler::cacheIndividualNodeSatisfiable`.
+    pub fn cache_individual_node_satisfiable(
+        &mut self,
+        process_context: &mut ProcessContext,
+        ontology: &OntologyArenas,
+        individual_node: NodeId,
+    ) -> bool {
+        self.stat_satisfiable_write_requests += 1;
+        let label = process_context
+            .node(individual_node)
+            .use_reapply_con_label_set;
+        if label.is_none() {
+            return false;
+        }
+        if process_context
+            .label_set(label)
+            .concept_structure
+            .has_binding_propagation_concepts()
+            || process_context
+                .label_set(label)
+                .concept_structure
+                .has_dynamic_created_concepts()
+        {
+            return false;
+        }
+
+        let signature = process_context
+            .label_set(label)
+            .get_concept_signature_value();
+        let previous_data = process_context
+            .node(individual_node)
+            .individual_satisfiable_cache_storing_data(false);
+        if previous_data.is_some() {
+            let data = process_context.sat_exp_storing_data(previous_data);
+            if data.has_caching_error()
+                || (data.has_previous_satisfiable_cached()
+                    && data.last_cached_signature() == signature)
+            {
+                return false;
+            }
+        }
+
+        let local_data = process_context
+            .node(individual_node)
+            .individual_satisfiable_cache_storing_data(true);
+        if local_data.is_some() && previous_data.is_none() {
+            return false;
+        }
+        let storing_data = Self::localize_storing_data(process_context, individual_node);
+        let last_added_descriptor = process_context
+            .label_set(label)
+            .get_adding_sorted_concept_description_linker();
+
+        let existing = self.cache_entry_for_signature(signature);
+        if existing.is_some() {
+            if !self.compare_individual_node_compatibility(
+                process_context,
+                individual_node,
+                existing,
+            ) {
+                process_context
+                    .sat_exp_storing_data_mut(storing_data)
+                    .set_caching_error(true);
+                return false;
+            }
+            if !self
+                .cache_context
+                .sig_expander_cache_entry(existing)
+                .is_satisfiable()
+            {
+                let values =
+                    self.descriptor_cache_values(process_context, ontology, individual_node);
+                let branched_values =
+                    self.cardinality_critical_values(process_context, ontology, individual_node);
+                let sat_values = self.alloc_value_list(&values);
+                let branched_values = self.alloc_value_list(&branched_values);
+                let mut sat_write = SignatureSatisfiableExpanderCacheEntryWriteData::new();
+                sat_write.init_satisfiable_branch_write_data(
+                    signature,
+                    sat_values,
+                    branched_values,
+                );
+                let sat_write = self
+                    .cache_context
+                    .alloc_sig_expander_entry_write_data(sat_write);
+                self.append_write_data(sat_write);
+                self.stat_satisfiable_writes += 1;
+            }
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_last_cached_concept_descriptor(last_added_descriptor)
+                .set_previous_cached(true)
+                .set_previous_satisfiable_cached(true)
+                .set_last_cached_signature(signature);
+            return true;
+        }
+
+        let mut last_cached_descriptor = process_context
+            .sat_exp_storing_data(storing_data)
+            .last_cached_concept_descriptor();
+        let mut descriptors_newest_first = Vec::new();
+        let mut directly_branched = false;
+        let mut dependency_to_ancestor = false;
+        let mut descriptor = last_added_descriptor;
+        while descriptor != last_cached_descriptor {
+            if descriptor.is_none() {
+                process_context
+                    .sat_exp_storing_data_mut(storing_data)
+                    .set_caching_error(true);
+                return false;
+            }
+            let dependency_track_point = process_context
+                .con_desc(descriptor)
+                .get_dependency_track_point();
+            dependency_to_ancestor |= Self::has_dependency_to_ancestor(
+                process_context,
+                individual_node,
+                dependency_track_point,
+                &mut directly_branched,
+            );
+            descriptors_newest_first.push(descriptor);
+            descriptor = process_context
+                .con_desc(descriptor)
+                .get_next_concept_descriptor();
+        }
+        if dependency_to_ancestor {
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_previous_cached(false)
+                .set_previous_satisfiable_cached(false)
+                .set_last_cached_signature(0)
+                .set_last_cached_concept_descriptor(ConDescId::NONE);
+            last_cached_descriptor = ConDescId::NONE;
+        }
+        if directly_branched {
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_individual_node_or_successor_branched_concept(true);
+        }
+        while descriptor.is_some() {
+            descriptors_newest_first.push(descriptor);
+            descriptor = process_context
+                .con_desc(descriptor)
+                .get_next_concept_descriptor();
+        }
+        descriptors_newest_first.reverse();
+
+        let mut last_signature = process_context
+            .sat_exp_storing_data(storing_data)
+            .last_cached_signature();
+        if !process_context
+            .sat_exp_storing_data(storing_data)
+            .has_previous_cached()
+            && last_cached_descriptor.is_some()
+            && last_signature != 0
+            && last_signature != signature
+        {
+            self.cache_individual_node_expansion_between(
+                process_context,
+                ontology,
+                individual_node,
+                storing_data,
+                last_cached_descriptor,
+                ConDescId::NONE,
+                last_signature,
+                0,
+            );
+        }
+
+        if !process_context
+            .sat_exp_storing_data(storing_data)
+            .has_previous_cached()
+        {
+            last_cached_descriptor = ConDescId::NONE;
+            last_signature = 0;
+        }
+
+        let mut dependency_hash = SignatureSatisfiableExpanderDepHash::new();
+        let mut expansion_values = Vec::new();
+        let mut satisfiable_values = Vec::new();
+        let mut branched_values = Vec::new();
+        let mut last_cached_descriptor_reached = false;
+        let mut caching_error = false;
+        let mut not_branch_concepts = std::collections::HashSet::new();
+
+        for descriptor in descriptors_newest_first {
+            let concept_tag = process_context
+                .con_desc(descriptor)
+                .get_concept_tag(ontology);
+            let mut concept_dependency_branched = false;
+            if last_cached_descriptor_reached {
+                let dependency_track_point = process_context
+                    .con_desc(descriptor)
+                    .get_dependency_track_point();
+                if !Self::simple_dependency_tracking(
+                    process_context,
+                    ontology,
+                    individual_node,
+                    concept_tag,
+                    dependency_track_point,
+                    &mut dependency_hash,
+                    Some(&not_branch_concepts),
+                    &mut concept_dependency_branched,
+                ) && !Self::complex_dependency_tracking(
+                    process_context,
+                    ontology,
+                    individual_node,
+                    concept_tag,
+                    dependency_track_point,
+                    &mut dependency_hash,
+                    Some(&not_branch_concepts),
+                    &mut concept_dependency_branched,
+                ) {
+                    caching_error = true;
+                }
+            }
+
+            let cache_value =
+                Self::cache_value_for_descriptor(process_context, ontology, descriptor);
+            let add_to_branched_values = if concept_dependency_branched {
+                Self::is_concept_relevant_for_satisfiable_branch(
+                    process_context,
+                    ontology,
+                    individual_node,
+                    descriptor,
+                )
+            } else {
+                not_branch_concepts.insert(concept_tag);
+                expansion_values.push(cache_value);
+                satisfiable_values.push(cache_value);
+                Self::is_cardinality_restriction_critical_for_satisfiable(
+                    process_context,
+                    ontology,
+                    individual_node,
+                    descriptor,
+                )
+            };
+            if add_to_branched_values {
+                branched_values.push(cache_value);
+            }
+            directly_branched |= concept_dependency_branched;
+
+            if !last_cached_descriptor_reached && descriptor == last_cached_descriptor {
+                last_cached_descriptor_reached = true;
+            }
+        }
+
+        if caching_error {
+            process_context
+                .sat_exp_storing_data_mut(storing_data)
+                .set_caching_error(true);
+            return false;
+        }
+
+        let mut previous_signature = last_signature;
+        if !process_context
+            .sat_exp_storing_data(storing_data)
+            .has_previous_satisfiable_cached()
+            && last_signature == signature
+        {
+            previous_signature = 0;
+        }
+        self.queue_expansion_write(
+            previous_signature,
+            signature,
+            &expansion_values,
+            dependency_hash,
+        );
+        let satisfiable_values = self.alloc_value_list(&satisfiable_values);
+        let branched_values = self.alloc_value_list(&branched_values);
+        let mut satisfiable_write = SignatureSatisfiableExpanderCacheEntryWriteData::new();
+        satisfiable_write.init_satisfiable_branch_write_data(
+            signature,
+            satisfiable_values,
+            branched_values,
+        );
+        let satisfiable_write = self
+            .cache_context
+            .alloc_sig_expander_entry_write_data(satisfiable_write);
+        self.append_write_data(satisfiable_write);
+        self.stat_satisfiable_writes += 1;
+
+        process_context
+            .sat_exp_storing_data_mut(storing_data)
+            .set_previous_cached(true)
+            .set_previous_satisfiable_cached(true)
+            .set_last_cached_signature(signature)
+            .set_last_cached_concept_descriptor(last_added_descriptor)
+            .set_individual_node_or_successor_branched_concept(directly_branched);
+        true
     }
 
     /// Port of `CSatisfiableExpanderCacheHandler::isIndividualNodeExpandCached`.
@@ -409,6 +1581,7 @@ impl SatisfiableExpanderCacheHandler {
         satisfiable: Option<&mut bool>,
         entry: Option<&mut SigExpanderCacheEntryId>,
     ) -> bool {
+        self.stat_retrieval_requests += 1;
         let con_set = process_context
             .node(individual_node)
             .use_reapply_con_label_set;
@@ -438,6 +1611,7 @@ impl SatisfiableExpanderCacheHandler {
         if cached_entry.is_none() {
             return false;
         }
+        self.stat_signature_hits += 1;
 
         let con_set_count = con_set_ref.get_concept_count();
         let exp_count = self
@@ -455,15 +1629,20 @@ impl SatisfiableExpanderCacheHandler {
         ) {
             return false;
         }
+        self.stat_compatible_hits += 1;
 
         if let Some(out) = entry {
             *out = cached_entry;
         }
+        let entry_satisfiable = self
+            .cache_context
+            .sig_expander_cache_entry(cached_entry)
+            .is_satisfiable();
         if let Some(out) = satisfiable {
-            *out = self
-                .cache_context
-                .sig_expander_cache_entry(cached_entry)
-                .is_satisfiable();
+            *out = entry_satisfiable;
+        }
+        if entry_satisfiable {
+            self.stat_satisfiable_hits += 1;
         }
         true
     }
@@ -5805,12 +6984,19 @@ impl SatisfiableTaskClassificationMessageAnalyser {
         ontology: &OntologyArenas,
         node: NodeId,
     ) -> Option<usize> {
-        self.single_ancestor_dependency_descriptor_and_index_from_process_node(
-            process_context,
-            ontology,
-            node,
-        )
-        .map(|(_, index)| index)
+        let (descriptor, _) = self
+            .single_ancestor_dependency_descriptor_and_index_from_process_node(
+                process_context,
+                ontology,
+                node,
+            )?;
+        let descriptor_ref = process_context.con_desc(descriptor);
+        let target_concept = descriptor_ref.get_concept();
+        let target_negated = descriptor_ref.is_negated();
+        let label_set = process_context.node(node).use_reapply_con_label_set;
+        self.extract_classification_analyser_labels_from_label_set(process_context, label_set)
+            .iter()
+            .position(|label| label.concept == target_concept && label.negated == target_negated)
     }
 
     fn single_ancestor_dependency_descriptor_and_index_from_process_node(
@@ -7141,12 +8327,18 @@ mod tests {
         negated: bool,
         track_point: TrackPointId,
     ) -> ConDescId {
+        let previous_head = process_context
+            .label_set(label_set)
+            .get_adding_sorted_concept_description_linker();
         let mut con_des = ConceptDescriptor::new();
         con_des.concept = concept;
         con_des.negated = negated;
-        con_des.set_dependency_track_point(track_point);
+        con_des
+            .set_dependency_track_point(track_point)
+            .set_next(previous_head);
         let con_des_id = process_context.alloc_con_desc(con_des);
         let con_tag = ontology.concept(concept).get_concept_tag();
+        let concept_identity = ontology.concept(concept) as *const _ as usize as Cint64;
         process_context
             .label_set_mut(label_set)
             .insert_concept_get_clash_resolved(
@@ -7154,6 +8346,7 @@ mod tests {
                 concept,
                 con_tag,
                 negated,
+                concept_identity,
                 &|_stored| false,
                 None,
                 None,
@@ -7190,12 +8383,18 @@ mod tests {
         negated: bool,
         track_point: TrackPointId,
     ) {
+        let previous_head = process_context
+            .label_set(label_set)
+            .get_adding_sorted_concept_description_linker();
         let mut con_des = ConceptDescriptor::new();
         con_des.concept = concept;
         con_des.negated = negated;
-        con_des.set_dependency_track_point(track_point);
+        con_des
+            .set_dependency_track_point(track_point)
+            .set_next(previous_head);
         let con_des_id = process_context.alloc_con_desc(con_des);
         let con_tag = concepts.get(concept).get_concept_tag();
+        let concept_identity = concepts.get(concept) as *const _ as usize as Cint64;
         process_context
             .label_set_mut(label_set)
             .insert_concept_get_clash_resolved(
@@ -7203,6 +8402,7 @@ mod tests {
                 concept,
                 con_tag,
                 negated,
+                concept_identity,
                 &|_stored| false,
                 None,
                 None,
@@ -7351,6 +8551,112 @@ mod tests {
         seed_sat_expander_handler_entry(&mut handler, signature, concept, 103, true, true, 1);
 
         assert!(!handler.is_individual_node_expand_cached(&process_context, node, None, None));
+    }
+
+    #[test]
+    fn satisfiable_expander_handler_extends_an_earlier_signature_with_cached_suffix() {
+        let mut process_context = ProcessContext::new();
+        let mut ontology = OntologyArenas::new();
+        // Keep the synthetic base concept off arena index zero. With one
+        // descriptor whose tag is 201, the faithful signature fold would be
+        // `201 ^ 201 ^ 0 == 0`; zero is the cache protocol's "no previous
+        // signature" sentinel and is not representative of ontology labels.
+        ontology.alloc_concept(concept_with_tag(CCATOM, 200, true));
+        let base_concept = ontology.alloc_concept(concept_with_tag(CCATOM, 201, true));
+        let derived_concept = ontology.alloc_concept(concept_with_tag(CCATOM, 202, true));
+        let (node, label_set) = add_completion_label_set_node(&mut process_context);
+        let base_descriptor = add_ontology_label_descriptor(
+            &mut process_context,
+            label_set,
+            &ontology,
+            base_concept,
+            false,
+            TrackPointId::NONE,
+        );
+        let base_signature = process_context
+            .label_set(label_set)
+            .get_concept_signature_value();
+
+        let mut handler = SatisfiableExpanderCacheHandler::new();
+        assert!(handler.cache_individual_node_expansion(&mut process_context, &ontology, node,));
+        assert!(handler.write_data.is_none());
+
+        let mut dependency = dependency_base(DepKind::And, node, TrackPointId::NONE);
+        dependency.concept_descriptor = base_descriptor;
+        let dependency =
+            process_context.alloc_dep_node(DependencyNode::Deterministic { base: dependency });
+        let dependency = process_context.alloc_track_point(DependencyTrackPoint::new(dependency));
+        add_ontology_label_descriptor(
+            &mut process_context,
+            label_set,
+            &ontology,
+            derived_concept,
+            false,
+            dependency,
+        );
+        let derived_signature = process_context
+            .label_set(label_set)
+            .get_concept_signature_value();
+        assert_ne!(base_signature, derived_signature);
+
+        // Konclude returns false after publishing the two transition writes;
+        // the return value denotes an already reusable entry, not a write.
+        assert!(!handler.cache_individual_node_expansion(&mut process_context, &ontology, node,));
+        assert!(handler.write_data.is_some());
+        assert!(handler.commit_cache_messages());
+        assert_eq!(
+            handler.cache_context.sig_expander_entry_write_datas.len(),
+            0
+        );
+        assert_eq!(
+            handler.cache_context.sig_expander_cache_value_lists.len(),
+            0
+        );
+        assert_eq!(handler.cache_context.sig_expander_dep_hashes.len(), 0);
+
+        let base_entry = handler.cache_entry_for_signature(base_signature);
+        let derived_entry = handler.cache_entry_for_signature(derived_signature);
+        assert!(base_entry.is_some());
+        assert_eq!(base_entry, derived_entry);
+        assert_eq!(
+            handler
+                .cache_context
+                .sig_expander_cache_entry(base_entry)
+                .get_expander_cache_value_count(),
+            2
+        );
+
+        let first = handler
+            .cache_context
+            .sig_expander_cache_entry(base_entry)
+            .get_expander_cache_value_linker();
+        let second = handler
+            .cache_context
+            .expander_cache_value_linker(first)
+            .get_next();
+        assert_eq!(
+            handler
+                .cache_context
+                .expander_cache_value_linker(first)
+                .get_cache_value()
+                .get_tag(),
+            201
+        );
+        assert_eq!(
+            handler
+                .cache_context
+                .expander_cache_value_linker(second)
+                .get_cache_value()
+                .get_tag(),
+            202
+        );
+        assert_eq!(
+            handler
+                .cache_context
+                .expander_cache_value_linker(second)
+                .get_expander_dependency_list(),
+            &vec![first]
+        );
     }
 
     fn add_saturation_label_set_node(
@@ -8616,6 +9922,17 @@ mod tests {
         assert_eq!(observer.get_told_messages().len(), 1);
         assert_eq!(observer.get_told_messages()[0].0, 71);
         assert_eq!(observer.get_told_messages()[0].2, 91);
+        let init_subsumed = observer.get_told_messages()[0]
+            .1
+            .iter()
+            .filter_map(|payload| match payload {
+                ClassificationMessageDataPayload::InitializePossibleClassSubsumption(message) => {
+                    Some(message.get_subsumed_concept())
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(init_subsumed, vec![other_analyse, root_subsumer, testing]);
         let message_types = observer.get_told_messages()[0].1.message_types();
         assert_eq!(
             message_types,
@@ -8624,6 +9941,7 @@ mod tests {
                 ClassificationMessageDataType::TellClassInitializePossibleSubsumption,
                 ClassificationMessageDataType::TellClassInitializePossibleSubsumption,
                 ClassificationMessageDataType::TellClassPseudoModelIdentifiers,
+                ClassificationMessageDataType::TellClassSubsumption,
                 ClassificationMessageDataType::TellClassSubsumption,
             ]
         );
@@ -14888,7 +16206,7 @@ mod tests {
                 &ontology,
                 current,
             ),
-            Some(0)
+            Some(1)
         );
     }
 

@@ -3850,7 +3850,14 @@ pub fn bridged_unsat(
     if algo.completeness_poisoned {
         return None;
     }
-    if algo.conf_saturation_satisfiabilitiy_expansion_cache_writing {
+    // Konclude calls `cacheSatisfiableIndividualNodes` at every successful
+    // task fixpoint; that routine itself enters when either the signature
+    // satisfiable-expander writer or the saturation-node writer is active.
+    // The bridge drives completion directly, so it must reproduce the same OR
+    // gate before committing both handlers' pending messages.
+    if algo.conf_sat_exp_cache_writing
+        || algo.conf_saturation_satisfiabilitiy_expansion_cache_writing
+    {
         let wrote = algo.cache_satisfiable_individual_nodes(ctx);
         algo.commit_cache_messages(ctx);
         if wrote && std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
@@ -4012,7 +4019,9 @@ fn bridged_classify_subject_with_root(
     if algo.completeness_poisoned {
         return None;
     }
-    if algo.conf_saturation_satisfiabilitiy_expansion_cache_writing {
+    if algo.conf_sat_exp_cache_writing
+        || algo.conf_saturation_satisfiabilitiy_expansion_cache_writing
+    {
         let wrote = algo.cache_satisfiable_individual_nodes(ctx);
         algo.commit_cache_messages(ctx);
         if wrote && std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
@@ -4232,6 +4241,57 @@ fn install_bridge_saturation_node_expansion_cache(ctx: &mut CalculationAlgorithm
     ctx.install_used_saturation_node_expansion_cache_handler(handler, cache_context);
 }
 
+/// Install Konclude's ontology-wide signature satisfiable-expander cache. Its
+/// reader/writer state is shared by every classification job and survives the
+/// bridge's per-probe databox reset, exactly like the reasoner-manager cache in
+/// Konclude.
+fn install_bridge_satisfiable_expander_cache(ctx: &mut CalculationAlgorithmContextBase) {
+    use super::completion::stubs::SatisfiableExpanderCacheHandler;
+    ctx.install_used_satisfiable_expander_cache_handler(SatisfiableExpanderCacheHandler::new());
+}
+
+fn log_bridge_satisfiable_expander_cache_stats(
+    ctx: &CalculationAlgorithmContextBase,
+    phase: &str,
+    subject: usize,
+) {
+    if std::env::var_os("KM_HT_SATEXP_STATS").is_none() {
+        return;
+    }
+    if let Some(state) = ctx.base.used_sat_exp_cache_handler_state.as_ref() {
+        let handler = &state.handler;
+        let mut direct_cached = 0usize;
+        let mut ancestor_cached = 0usize;
+        for index in 0..ctx.process_context().node_count() {
+            let node = ctx.process_context().node(NodeId::new(index as Cint64));
+            direct_cached += usize::from(node.has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_SATISFIABLECACHED,
+            ));
+            ancestor_cached += usize::from(node.has_partial_processing_restriction_flags(
+                IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED,
+            ));
+        }
+        eprintln!(
+            "SATEXP-STATS phase={phase} subject={subject} entries={} read={}/{}/{} sat={} sat-compat={}/{}/{} cached-nodes={}/{} write-requests={}/{} writes={}/{} commits={}",
+            handler.cache.sig_item_hash.len(),
+            handler.stat_retrieval_requests,
+            handler.stat_signature_hits,
+            handler.stat_compatible_hits,
+            handler.stat_satisfiable_hits,
+            handler.stat_satisfiable_compatibility_tests,
+            handler.stat_compatible_satisfiable_hits,
+            handler.stat_incompatible_satisfiable_hits,
+            direct_cached,
+            ancestor_cached,
+            handler.stat_expansion_write_requests,
+            handler.stat_satisfiable_write_requests,
+            handler.stat_expansion_writes,
+            handler.stat_satisfiable_writes,
+            handler.stat_commit_batches,
+        );
+    }
+}
+
 fn fresh_bridge_env(
     tin: &TInput,
 ) -> (
@@ -4306,6 +4366,7 @@ fn reset_probe_env(
     // ON later probes are deliberately order-dependent (they prune using
     // earlier probes' nogoods) while verdicts stay sound+complete.
     let unsat_cache = ctx.base.take_used_unsatisfiable_cache_handler();
+    let satisfiable_expander_cache = ctx.take_used_satisfiable_expander_cache_handler();
     let sat_node_expansion_cache = ctx.take_used_saturation_node_expansion_cache_handler();
     // KM_HT_SATURATION: the saturation-side arenas DELIBERATELY survive the
     // probe reset when a saturation pass ran on this env — the ontology
@@ -4329,6 +4390,9 @@ fn reset_probe_env(
     if let Some(state) = unsat_cache {
         ctx.base.restore_used_unsatisfiable_cache_handler(state);
     }
+    if let Some(state) = satisfiable_expander_cache {
+        ctx.restore_used_satisfiable_expander_cache_handler(state);
+    }
     if let Some(state) = sat_node_expansion_cache {
         ctx.restore_used_saturation_node_expansion_cache_handler(state);
     }
@@ -4348,8 +4412,14 @@ fn configure_production_search(algo: &mut CompletionTaskHandleAlgorithm) {
 /// saturation-cached node after direct modification; without it the retest
 /// path drops successor-creation blocking and expands the cached subtree.
 fn configure_production_completion_saturation_coupling(algo: &mut CompletionTaskHandleAlgorithm) {
-    algo.conf_expand_created_successors_from_saturation = true;
-    algo.conf_caching_blocking_from_saturation = true;
+    // The `KM_HT_NO_*` switches are diagnostic cuts through Konclude's
+    // completion-side saturation coupling. They leave production unchanged
+    // unless explicitly set and let ontology traces isolate the first
+    // divergent half without disabling the saturation pre-pass itself.
+    algo.conf_expand_created_successors_from_saturation =
+        std::env::var_os("KM_HT_NO_SAT_SUCCESSOR_EXPANSION").is_none();
+    algo.conf_caching_blocking_from_saturation =
+        std::env::var_os("KM_HT_NO_SAT_CACHING_BLOCKING").is_none();
     // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor lines
     // 226-229 deliberately leave this OFF: the dependency for a resolved
     // successor must include the resolved universal restrictions, which that
@@ -4360,11 +4430,13 @@ fn configure_production_completion_saturation_coupling(algo: &mut CompletionTask
     // These three absorption switches are independent of cache establishment:
     // they park rules while the corresponding cache flag remains valid and the
     // u10/u21 reapply paths restore them if that flag is later abolished.
-    algo.conf_sat_exp_cached_disj_absorp = true;
-    algo.conf_sat_exp_cached_merg_absorp = true;
-    algo.conf_sat_exp_cached_succ_absorp = true;
+    let cached_absorption = std::env::var_os("KM_HT_NO_SAT_CACHED_ABSORPTION").is_none();
+    algo.conf_sat_exp_cached_disj_absorp = cached_absorption;
+    algo.conf_sat_exp_cached_merg_absorp = cached_absorption;
+    algo.conf_sat_exp_cached_succ_absorp = cached_absorption;
     // CCalculationTableauCompletionTaskHandleAlgorithm.cpp ctor line 237.
-    algo.conf_saturation_expansion_cache_reading = true;
+    algo.conf_saturation_expansion_cache_reading =
+        std::env::var_os("KM_HT_NO_SAT_CACHE_READING").is_none();
 }
 
 // ---------------------------------------------------------------------------
@@ -5881,7 +5953,40 @@ pub fn bridged_classify_opts(
     if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() {
         install_bridge_saturation_node_expansion_cache(&mut ctx);
     }
+    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() {
+        install_bridge_satisfiable_expander_cache(&mut ctx);
+    }
     let mut kpset_state = kpset_state.expect("synchronous KPSet state initialized");
+    // Diagnostic scheduler replay: accept an explicit comma-separated subject
+    // order so a Konclude trace can be replayed without baking ontology names or
+    // ids into the reasoner. Production never sets these variables.
+    if let Ok(order) = std::env::var("KM_BRIDGE_ORDER_SUBJECTS") {
+        let ordered: Vec<usize> = order
+            .split(',')
+            .filter_map(|value| value.trim().parse().ok())
+            .collect();
+        let rank: HashMap<usize, usize> = ordered
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(rank, subject)| (subject, rank))
+            .collect();
+        let original_rank: HashMap<usize, usize> = pending
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(rank, subject)| (subject, rank))
+            .collect();
+        pending.sort_by_key(|subject| {
+            (
+                rank.get(subject).copied().unwrap_or(usize::MAX),
+                original_rank.get(subject).copied().unwrap_or(usize::MAX),
+            )
+        });
+        if std::env::var_os("KM_BRIDGE_ORDER_ONLY").is_some() {
+            pending.retain(|subject| rank.contains_key(subject));
+        }
+    }
     // Diagnostic only: retain a single post-saturation subject while preserving
     // construction of the complete KPSet graph and saturation cache above.
     if let Ok(subject) = std::env::var("KM_BRIDGE_ONLY_SUBJECT") {
@@ -5948,6 +6053,14 @@ pub fn bridged_classify_opts(
                 reset_probe_env(algo, ctx, &bridged, saturation_ran);
             }
             configure_production_search(algo);
+            if ctx.base.used_sat_exp_cache_handler.is_some() {
+                // CCalculationTableauCompletionTaskHandleAlgorithm defaults,
+                // cpp 194-199 and readCalculationConfig cpp 536-539.
+                algo.conf_sat_exp_cache_retrieval = true;
+                algo.conf_sat_exp_cache_concept_expansion = true;
+                algo.conf_sat_exp_cache_satisfiable_blocking = true;
+                algo.conf_sat_exp_cache_writing = true;
+            }
             // Saturation-node coupling (task #24 wave 2): Konclude's production
             // completion profile — expand created successors from saturation +
             // caching-blocking from saturation, including cache revalidation
@@ -5958,7 +6071,8 @@ pub fn bridged_classify_opts(
             // stays off there (the lookups would find no reference linkings).
             if satcache_active && !fresh_env {
                 configure_production_completion_saturation_coupling(algo);
-                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = true;
+                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing =
+                    std::env::var_os("KM_HT_NO_SAT_CACHE_WRITING").is_none();
             }
             // VERDICT TRUST HIERARCHY, escalation leg: re-run an untrusted
             // probe under COW branch epochs — complete per-alternative state
@@ -6322,6 +6436,7 @@ pub fn bridged_classify_opts(
                     deferred.push(s);
                 }
             }
+            log_bridge_satisfiable_expander_cache_stats(&ctx, "prepare", s);
             if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
                 eprintln!(
                     "BRIDGE-PREPARE round {round} subject {}/{total} deferred={} permanent={}",
@@ -6374,6 +6489,7 @@ pub fn bridged_classify_opts(
                     deferred.push(s);
                 }
             }
+            log_bridge_satisfiable_expander_cache_stats(&ctx, "verify", s);
             if progress && (k % 64 == 0 || k + 1 == total || permanent_defer > 0) {
                 eprintln!(
                     "BRIDGE-VERIFY round {round} subject {}/{total} deferred={} permanent={}",

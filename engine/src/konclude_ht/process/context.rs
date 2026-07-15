@@ -78,6 +78,10 @@ use super::node_resolution::ProcessTagger;
 use super::node_switch_history::{NodeSwitchHistory, NodeSwitchHistoryId};
 use super::rs1::{RoleSuccessorIterator, RoleSuccessorLinkIterator};
 use super::sat_block::IndividualNodeSaturationBlockingData;
+use super::sat_exp_store::{
+    IndividualNodeSatisfiableExpandingCacheStoringData,
+    IndividualNodeSatisfiableExpandingCacheStoringDataId,
+};
 use super::sat_linker::{
     IndividualSaturationProcessNodeLinker, IndividualSaturationProcessNodeLinkerId,
 };
@@ -377,6 +381,8 @@ pub struct ProcessContext {
     branching_merging_candidate_linkers: Arena<BranchingMergingIndividualNodeCandidateLinker>,
     /// `CIndividualNodeSaturationBlockingData` pool.
     indi_sat_block_datas: Arena<IndividualNodeSaturationBlockingData>,
+    /// `CIndividualNodeSatisfiableExpandingCacheStoringData` pool.
+    sat_exp_storing_datas: Arena<IndividualNodeSatisfiableExpandingCacheStoringData>,
     /// `CExtendedConceptReferenceLinkingData` / `CSaturationConceptDataItem` pool.
     extended_con_ref_linking_datas: Arena<ExtendedConceptReferenceLinkingData>,
     /// `CProcessAssertedDataLiteralLinker` pool.
@@ -718,6 +724,7 @@ impl ProcessContext {
             restriction_specs: Arena::new(),
             branching_merging_candidate_linkers: Arena::new(),
             indi_sat_block_datas: Arena::new(),
+            sat_exp_storing_datas: Arena::new(),
             extended_con_ref_linking_datas: Arena::new(),
             process_asserted_data_literal_linkers: Arena::new(),
             additional_role_assertion_linkers: Arena::new(),
@@ -1902,6 +1909,14 @@ impl ProcessContext {
         indi_sat_block_data,
         indi_sat_block_data_mut,
         alloc_indi_sat_block_data
+    );
+    arena_accessors!(
+        sat_exp_storing_datas,
+        IndividualNodeSatisfiableExpandingCacheStoringData,
+        IndividualNodeSatisfiableExpandingCacheStoringDataId,
+        sat_exp_storing_data,
+        sat_exp_storing_data_mut,
+        alloc_sat_exp_storing_data
     );
     arena_accessors!(
         extended_con_ref_linking_datas,

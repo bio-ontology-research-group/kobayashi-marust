@@ -72,6 +72,12 @@ pub struct UsedUnsatisfiableCacheHandlerState {
     pub cache_context: CacheContext,
 }
 
+/// Live Rust owner for the C++ `CSatisfiableExpanderCacheHandler*` and its
+/// ontology-wide signature cache. The state survives per-probe context resets.
+pub struct UsedSatisfiableExpanderCacheHandlerState {
+    pub handler: SatisfiableExpanderCacheHandler,
+}
+
 /// Live Rust owner for the C++ `CSaturationNodeExpansionCacheHandler*`.
 pub struct UsedSaturationNodeExpansionCacheHandlerState {
     pub handler: SaturationNodeExpansionCacheHandler,
@@ -154,6 +160,8 @@ pub struct CalculationAlgorithmContext {
     pub used_dep_factory: Id<DependencyFactory>,
     /// `CSatisfiableExpanderCacheHandler* mUsedSatExpCacheHandler`.
     pub used_sat_exp_cache_handler: Id<SatisfiableExpanderCacheHandler>,
+    /// Live owner for the used satisfiable-expander cache handler.
+    pub used_sat_exp_cache_handler_state: Option<UsedSatisfiableExpanderCacheHandlerState>,
     /// `cint64 mMaxCompletionGraphCachedIndiNodeID`.
     pub max_completion_graph_cached_indi_node_id: Cint64,
     /// `CIndividualProcessNode* mCurrentIndiNode`.
@@ -248,6 +256,7 @@ impl CalculationAlgorithmContext {
             used_unsat_cach_ret_strategy: None,
             used_dep_factory: Id::NONE,
             used_sat_exp_cache_handler: Id::NONE,
+            used_sat_exp_cache_handler_state: None,
             max_completion_graph_cached_indi_node_id: 0,
             current_indi_node: Id::NONE,
             completion_graph_cached_localization_tag: 0,
@@ -647,6 +656,33 @@ impl CalculationAlgorithmContext {
     ) {
         self.used_unsat_cache_handler_state = Some(state);
         self.used_unsat_cache_handler = Id::new(0);
+    }
+    /// Install a live port-owned `CSatisfiableExpanderCacheHandler` target for
+    /// `getUsedSatisfiableExpanderCacheHandler`.
+    pub fn install_used_satisfiable_expander_cache_handler(
+        &mut self,
+        handler: SatisfiableExpanderCacheHandler,
+    ) -> Id<SatisfiableExpanderCacheHandler> {
+        let handler_id = Id::new(0);
+        self.used_sat_exp_cache_handler = handler_id;
+        self.used_sat_exp_cache_handler_state =
+            Some(UsedSatisfiableExpanderCacheHandlerState { handler });
+        handler_id
+    }
+    /// Temporarily move out the live satisfiable-expander handler target.
+    pub fn take_used_satisfiable_expander_cache_handler(
+        &mut self,
+    ) -> Option<UsedSatisfiableExpanderCacheHandlerState> {
+        self.used_sat_exp_cache_handler_state.take()
+    }
+    /// Restore a handler target after
+    /// `take_used_satisfiable_expander_cache_handler`.
+    pub fn restore_used_satisfiable_expander_cache_handler(
+        &mut self,
+        state: UsedSatisfiableExpanderCacheHandlerState,
+    ) {
+        self.used_sat_exp_cache_handler_state = Some(state);
+        self.used_sat_exp_cache_handler = Id::new(0);
     }
     /// Install a live port-owned `CSaturationNodeExpansionCacheHandler` target for
     /// `getUsedSaturationNodeExpansionCacheHandler`.
@@ -1599,6 +1635,16 @@ impl CalculationAlgorithmContextBase {
         &mut self.base.ontology_arenas
     }
 
+    /// Borrow the mutable per-probe graph and immutable ontology together.
+    ///
+    /// Konclude passes both as independent raw pointers. Rust callers that port
+    /// those methods need this explicit split over the two disjoint `base`
+    /// fields instead of borrowing the complete calculation context twice.
+    pub fn process_context_and_ontology(&mut self) -> (&mut ProcessContext, &OntologyArenas) {
+        let base = &mut self.base;
+        (&mut base.used_process_context, &base.ontology_arenas)
+    }
+
     /// Disjoint borrow helper for
     /// `CIndividualConceptBatchProcessingQueue::takeNextConceptProcessIndividual`.
     pub fn take_next_variable_binding_concept_batch_process_individual(
@@ -1649,6 +1695,33 @@ impl CalculationAlgorithmContextBase {
     ) {
         self.base.restore_used_unsatisfiable_cache_handler(state);
         self.unsat_cache_handler = self.base.used_unsat_cache_handler;
+    }
+    /// Install the live satisfiable-expander cache handler for this context.
+    pub fn install_used_satisfiable_expander_cache_handler(
+        &mut self,
+        handler: SatisfiableExpanderCacheHandler,
+    ) -> Id<SatisfiableExpanderCacheHandler> {
+        let handler_id = self
+            .base
+            .install_used_satisfiable_expander_cache_handler(handler);
+        self.sat_exp_cache_handler = handler_id;
+        handler_id
+    }
+    /// Temporarily move out the live satisfiable-expander handler target.
+    pub fn take_used_satisfiable_expander_cache_handler(
+        &mut self,
+    ) -> Option<UsedSatisfiableExpanderCacheHandlerState> {
+        self.base.take_used_satisfiable_expander_cache_handler()
+    }
+    /// Restore a handler target after
+    /// `take_used_satisfiable_expander_cache_handler`.
+    pub fn restore_used_satisfiable_expander_cache_handler(
+        &mut self,
+        state: UsedSatisfiableExpanderCacheHandlerState,
+    ) {
+        self.base
+            .restore_used_satisfiable_expander_cache_handler(state);
+        self.sat_exp_cache_handler = self.base.used_sat_exp_cache_handler;
     }
     /// Install a live port-owned `CSaturationNodeExpansionCacheHandler` target for
     /// this calculation context.

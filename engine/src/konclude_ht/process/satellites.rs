@@ -166,13 +166,28 @@ impl ConceptSetSignature {
 
     /// Port of `CConceptSetSignature::addConceptSignature(CConcept*, bool)`.
     ///
-    /// KONCLUDE-PORT-NOTE[ownership]: Konclude folds the raw `CConcept*` pointer
-    /// into `mValue3`; the arena port uses the stable `ConceptId` raw value.
+    /// Context-free compatibility form. Konclude folds the raw `CConcept*`
+    /// pointer into `mValue3`; live reasoning instead calls
+    /// [`Self::add_concept_signature_with_identity`] with the resolved arena
+    /// address. Tests and legacy helpers without ontology access retain the
+    /// `ConceptId` value as an explicit fallback.
     pub fn add_concept_signature(
         &mut self,
         concept: ConceptId,
         concept_tag: Cint64,
         negation: bool,
+    ) -> &mut Self {
+        self.add_concept_signature_with_identity(concept_tag, negation, concept.raw)
+    }
+
+    /// Context-threaded form of Konclude's pointer contribution. C++ folds the
+    /// stable `CConcept*` address into `mValue3`; callers that can resolve the
+    /// ontology arena pass the corresponding stable Rust concept address here.
+    pub fn add_concept_signature_with_identity(
+        &mut self,
+        concept_tag: Cint64,
+        negation: bool,
+        concept_identity: Cint64,
     ) -> &mut Self {
         let con_sig = if negation {
             Cint64::MAX.wrapping_sub(concept_tag)
@@ -181,7 +196,7 @@ impl ConceptSetSignature {
         };
         self.value1 = self.value1.wrapping_add(con_sig);
         self.value2 = self.value2.wrapping_mul(con_sig);
-        self.value3 = self.value3.wrapping_add(concept.raw);
+        self.value3 = self.value3.wrapping_add(concept_identity);
         self.signature_value = self.value1 ^ self.value2 ^ self.value3;
         self
     }

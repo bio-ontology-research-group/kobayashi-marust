@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RequestMessage xmlns="http://www.owllink.org/owllink-xml#">
+  <Set key="Konclude.Calculation.Optimization.SatisfiableExpansionCacheRetrieval">
+    <Literal>false</Literal>
+  </Set>
+  <Set key="Konclude.Calculation.Optimization.SatisfiableExpansionCacheConceptExpansion">
+    <Literal>false</Literal>
+  </Set>
+  <Set key="Konclude.Calculation.Optimization.SatisfiableExpansionCacheSatisfiableBlocking">
+    <Literal>false</Literal>
+  </Set>
+  <Set key="Konclude.Calculation.Optimization.SatisfiableExpansionCacheWriting">
+    <Literal>false</Literal>
+  </Set>
+</RequestMessage>
