@@ -21,7 +21,7 @@ set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
 root=$km_root/routing_20260715
-runner=$root/bench_one_matrix-3b1d2a87.py
+runner=$root/bench_one_matrix-f3a8cb28.py
 gold_dir=$km_root/gold
 result_dir=$root/production-sweeps/$SWEEP_TAG/results
 failure_dir=$root/production-sweeps/$SWEEP_TAG/failures
