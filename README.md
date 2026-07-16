@@ -1,69 +1,54 @@
 # Kobayashi-MaRust
 
-**A sound disjunctive context reasoner for SROIQ / OWL 2 DL — with machine-checked soundness in Lean 4.**
+**An experimental SROIQ / OWL 2 DL reasoner with a production routing
+portfolio, broad ORE 2015 evaluation, and a separate Lean formalisation of core
+calculus results.**
 
 [![CI](https://github.com/bio-ontology-research-group/kobayashi-marust/actions/workflows/ci.yml/badge.svg)](https://github.com/bio-ontology-research-group/kobayashi-marust/actions/workflows/ci.yml)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD--3--Clause-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/engine-Rust-orange.svg)](engine)
-[![Lean 4](https://img.shields.io/badge/proofs-Lean%204-brightgreen.svg)](lean)
-[![Proof axioms](https://img.shields.io/badge/proof%20axioms-propext%2C%20Quot.sound-success.svg)](lean)
+[![Lean 4](https://img.shields.io/badge/formalisation-Lean%204-brightgreen.svg)](lean)
 
 Kobayashi-MaRust is a consequence-based ("context") reasoner for the description
 logic **SROIQ** — the logic behind **OWL 2 DL** — built on the disjunctive
 context calculus of Tena-Cucala, Cuenca Grau and Horrocks (the core of the
-[Sequoia](https://github.com/andrewdbate/Sequoia) reasoner). What makes it
-unusual is *what is proved about it*:
+[Sequoia](https://github.com/andrewdbate/Sequoia) reasoner). The shipped
+classifier is a hybrid portfolio: a consequence-based engine, an EL++
+completion path, and several gated completion procedures ported from Konclude.
 
-- the **soundness of the calculus** is proved in **Lean 4**, kernel-checked, with
-  no `sorry` (axioms: `propext` only); and
-- **every verdict the actual compiled reasoner emits is re-checked by the Lean
-  kernel, per run**, by an independent verified certificate checker — so a green
-  build is a machine-checked guarantee that the reasoner's output is a genuine
-  logical consequence, not merely that *some* idealised algorithm is correct.
-
-To our knowledge this combination — a running DL reasoner whose outputs are
-kernel-certified against a formally verified calculus — is uncommon among
-description-logic reasoners.
-
-> *Why the name?* SROIQ subsumption is a worst-case-intractable test
-> (N2ExpTime-complete). Rather than fight the no-win scenario head-on, this line
-> of work **changes the conditions of the test**: it compiles the ontology's
-> symbolic structure into a tractable arithmetic circuit for differentiable
-> weighted model counting. Kobayashi Maru, in Rust.
-
----
+The repository also contains a `sorry`-free Lean development for abstract
+soundness and completeness results on several calculus components, plus a
+small certificate-validation suite. That formalisation does **not** verify the
+current Rust implementation, its router, or every production procedure and
+optimization. The benchmark and regression evidence below is therefore
+reported as empirical evidence, not as a proof of the whole executable.
 
 ## Highlights
 
-- **Sound on the full disjunctive fragment.** Disjunction (`⊔`), conjunction,
-  full negation, existentials/universals, role hierarchy, inverse & symmetric
-  roles, **number restrictions** (`≥n R.C`, `≤n R.C`), **nominals** (`{a}`), and
-  **transitive roles / role chains** (`R∘S⊑T`). An earlier Horn-only prototype was
-  unsound on the disjunction × existential interaction; this calculus is not.
-- **Soundness proved in Lean 4** (`resolution_sound`, `derivable_sound`,
-  `subsumption_sound`, `unsat_sound`, `paramodulation_sound`).
-- **Completeness proved** for the foundational fragments by the four constructions
-  the calculus combines (propositional resolution; consequence-based EL; the
-  disjunctive-ALC filtration / good-type model; the equality-quotient Herbrand
-  model for merging features), plus **blocking termination** and
-  **optimised-saturation ≡ ground-resolution**.
-- **Per-run verified validation.** A Lean-verified certificate checker
-  re-derives and kernel-checks **45 verdicts** from real engine runs — disjunctive
-  subsumption, disjointness, number-restriction clashes, paramodulation,
-  disjunction-over-a-successor, nested successors `f(g(x))`, and nominals —
-  matching the **HermiT** oracle exactly (e.g. `kinship` 21/21).
-- **Parallel classification.** Each named concept is classified by an
-  independent context saturation, so classification is embarrassingly parallel:
-  the engine splits the named concepts across cores (`rayon`) and merges the
-  results, producing output **identical** to the sequential run (the verified
-  saturation core is unchanged). On a 2300-class ontology this is a ~50×
-  speed-up on 16 cores. Set `KM_THREADS=1` to force sequential.
-- **Compact calculus core, dependency-light.** The disjunctive-context
-  saturation core is ~7k lines of Rust (`engine.rs`, `calc.rs`, `clause.rs`).
-  The shipped reasoner adds the OWL functional-syntax frontend, the EL++ fast
-  path, and the ported Konclude completion bridge, so `engine/src` as a whole is
-  much larger. Runtime dependencies stay light: `serde`, `serde_json`, `rayon`,
-  `smallvec`, and `libc`; the proofs are Lean 4 + mathlib.
+- **Complete all-route ORE matrix.** The retained benchmark runs 28 procedures
+  over all 592 ORE 2015 ontologies: 16,576 isolated measurements at 240 seconds
+  and 20 GiB per route. It reports successful-row average, median, and p95 wall
+  time and peak memory for every procedure.
+- **Broad but not universal production coverage.** The portfolio handles EL,
+  disjunction, quantifiers, role hierarchies and chains, inverses, nominals,
+  number restrictions, and selected rule/ABox cases. Some ontologies time out
+  or require a specialized route, and five corpus cases lack an
+  independently adjudicated gold result.
+- **Measured routing rather than one universal algorithm.** `km classify`
+  profiles each ontology and selects among the CB engine, EL completion, exact
+  nominal handling, and gated Konclude-derived completion procedures. The
+  route matrix records where each procedure succeeds and where it declines.
+- **Standard OWL input.** The CLI accepts OWL functional syntax, OWL/XML,
+  RDF/XML, and Turtle. Conversion and imports fail closed instead of silently
+  classifying a partial ontology.
+- **Protégé Desktop integration.** The 0.2.0 plugin targets Protégé 5.6,
+  flattens loaded imports, invokes the native `km` executable, and exposes the
+  inferred named-class hierarchy and unsatisfiable classes.
+- **Formal work kept in scope.** Lean files prove results about abstract
+  resolution, selected context-calculus fragments, inverse-role encoding,
+  nominal rules, and certificate checkers. They are useful specifications and
+  supporting mathematics, but they are not a verification of the complete
+  current production portfolio.
 
 ---
 
@@ -126,9 +111,24 @@ procedures per ontology, for 16,576 measurements at a 240 second timeout and
 median, and p95 time and memory are documented in
 [`results/benchmarks/2026-07-16-routing-complete592/`](results/benchmarks/2026-07-16-routing-complete592/).
 
+Selected measured rows from that matrix:
+
+| procedure | completed / 592 | average wall time | median wall time | average peak RSS |
+|---|---:|---:|---:|---:|
+| Konclude, 16 threads | 588 | 2.129 s | 0.264 s | 738 MB |
+| ELK | 579 | 1.995 s | 0.824 s | 611 MB |
+| HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB |
+| KM CB plain, 16 threads | 537 | 4.643 s | 0.319 s | 1,136 MB |
+| KM EL certificate route | 467 | 3.111 s | 0.215 s | 267 MB |
+| KM Konclude bridge route | 505 | 4.921 s | 0.266 s | 475 MB |
+
+These averages use completed rows only. They must be read together with the
+completion count. The matrix measures individual procedures; it is not a claim
+that the automatic production route returns 592 correct classifications.
+
 KM uses a typed production portfolio rather than one universal procedure.
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md) records the mechanism
-that recovered each previously failing ontology. The main special-treatment
+used for each ontology requiring special treatment. The main special-treatment
 families are exact nominal/ABox reasoning, the Konclude-derived KPSet bridge,
 cardinality successors, role-specific saturation successors, EL certification,
 DL-safe-rule consistency checks, and source-symbol isolation. The current hard
@@ -138,78 +138,65 @@ invalid Konclude gold is tracked separately in
 [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
 
 The root-context ordered-resolution experiment is compiled but remains opt-in
-behind `KM_ROOT_ORDERED`. It changes calculus derivations, and its Lean
-re-certification is deliberately deferred. Do not treat it as part of the
-certified default route until the obligations in
+behind `KM_ROOT_ORDERED`. It changes calculus derivations and has no
+implementation-level Lean certification. It is not part of the automatic
+production route; the obligations in
 [`docs/ROOT-ORDERED-RESOLUTION.md`](docs/ROOT-ORDERED-RESOLUTION.md) and the
-full-corpus A/B gate are complete.
+full-corpus A/B gate remain open.
 
-### 2. Check the proofs
+### 2. Build the Lean formalisation
 
 ```sh
 cd lean
 lake exe cache get      # fetch prebuilt mathlib oleans
-lake build              # kernel-checks the calculus proofs AND all 45 validation theorems
+lake build
 ```
 
-### 3. Reproduce the end-to-end validation
+This checks the abstract calculus theorems and the checked-in small validation
+examples. It does not certify the Rust source, production routing policy, or
+the full ORE output.
+
+### 3. Regenerate the small certificate examples
 
 ```sh
-bash validation/run.sh  # build engine -> re-derive every verdict -> kernel-check
+bash validation/run.sh
 ```
 
-This runs the real engine, independently re-derives each reported verdict from
-the genuine premises (engine output is **never** assumed as an axiom), and has
-the Lean kernel re-check every certificate. A green run prints
-`OK: every reasoner verdict above is a kernel-checked theorem.`
+This exercises a fixed set of small examples and regenerates Lean-checkable
+certificates for those examples. It is not the ORE benchmark and does not
+certify arbitrary classifications.
 
----
+## Formalisation status
 
-## What is proved
+The retained Lean development is `sorry`-free. It contains:
 
-All Lean theorems are `sorry`-free and reduce to `[propext, Quot.sound]` (the
-soundness core needs only `propext`). See [`lean/README.md`](lean/README.md) for
-the full account.
+- soundness lemmas for abstract resolution and paramodulation;
+- completeness results for propositional resolution, an EL completion model,
+  selected disjunctive/context and equality constructions, and ordered ground
+  resolution;
+- formal accounts of inverse-role bridge encoding and nominal rules; and
+- certificate checkers used by the small examples under `lean/Validation/`.
 
-| Property | Statement | File |
-|---|---|---|
-| Calculus soundness | every derived clause is entailed; subsumption/⊥/paramodulation sound | `ContextCalculus/Basic.lean` |
-| Completeness — disjunction | refutational completeness of propositional resolution | `CompletenessProp.lean` |
-| Completeness — existentials | canonical-model completeness for consequence-based EL | `CompletenessEL.lean` |
-| Completeness — disjunction × ∃ | finite filtration / good-type model for disjunctive ALC | `CompletenessContext.lean` |
-| Completeness — merging | equality-quotient Herbrand model (`≤n R.C`, nominals, inverses) | `CompletenessEq.lean` |
-| Termination | blocking ⇒ finite saturation (König) | `Termination.lean` |
-| Saturation ≡ resolution | engine saturation refutes iff ground resolution does | `Equivalence.lean` |
-| Verified checker | accepted certificate ⇒ verdict entailed | `Checker.lean`, `CheckerFO.lean`, `CheckerTerm.lean` |
-
-### Per-run validation (45 kernel-checked verdicts)
-
-The `Validation` library turns real engine runs into theorems proved `by decide`:
-
-| input | what it exercises |
-|---|---|
-| `disj`, `disjoint`, `hierarchy` | disjunctive subsumption, `⊥` clash, class hierarchy |
-| `exists` | `∃R` / value restriction (Succ) |
-| `numrestr` | number restrictions (`≥2 R.C ⊓ ≤1 R.C ⊑ ⊥`) |
-| `paramod` | paramodulation into a literal (superposition) |
-| `disjsucc` | disjunction over a successor (only the complete disjunctive engine derives it) |
-| `trans_test.ofn` | transitive role, incl. nested successor `A ⊑ D` via `f(g(x))` |
-| `kinship.ofn` | all **21** subsumptions, incl. the nominal `Queen ≡ {Elizabeth}` |
-
-The certified verdict set equals the HermiT oracle's on every benchmark.
+These are mathematical results about Lean definitions. The Rust engine includes
+multiple frontends, routing decisions, specialized completion procedures,
+concurrency, resource fallbacks, and many performance optimizations. No theorem
+currently connects all of that executable code to one end-to-end soundness or
+completeness statement. See [`lean/README.md`](lean/README.md) for theorem-level
+details, but do not interpret that document as a certification of every
+production route.
 
 ---
 
 ## Repository layout
 
 ```
-engine/        Rust reasoner (the `kobayashi-marust` binary) + Python tooling
-  src/                 calculus, clause/term representation, saturation engine, JSON I/O
-  py/                  certificate generators, the .ofn front-end, HermiT adapter
+engine/        Rust reasoner and multi-call `km` executable
+  src/                 frontend, routing, reasoners, orchestration, and JSON I/O
+  py/                  reference and analysis tooling
 lean/          Lean 4 formalisation
-  ContextCalculus/     soundness, completeness, termination, the verified checkers
-  Validation/          auto-generated, kernel-checked per-run verdicts
-validation/    end-to-end driver (run.sh) + normalised JSON inputs
+  ContextCalculus/     abstract calculus theorems and certificate checkers
+  Validation/          checked-in small certificate examples
+validation/    small-example certificate regeneration
 oracle/        HermiT cross-check (scripts, reference results, ontologies)
 examples/      example OWL ontologies (.ofn)
 protege/       Protégé reasoner plugin (Maven; OSGi bundle)
@@ -242,16 +229,13 @@ Each named concept `A` seeds a **root context** with core `{A(x)}`; anonymous
 successors live in **successor contexts**. Context clauses `Γ → Δ` (a body
 conjunction of predicates implying a head disjunction of literals) are derived by
 the rules **Core / Hyper / Pred / Succ / Eq / Ineq / Elim**. Every rule is, model-
-theoretically, a clausal resolution or paramodulation step — which is exactly
-what the Lean soundness proof formalises. Terms are integer-encoded as in Sequoia
+theoretically, related to clausal resolution or paramodulation. The Lean
+development formalises abstract versions of these operations; it does not prove
+that every Rust rule implementation is equivalent to those definitions. Terms
+are integer-encoded as in Sequoia
 (`x=0`, `y=-1`, `z_i=-(i+1)`, `f_i(x)=+i`). The engine uses a *pay-as-you-go*
-expansion strategy — **one successor context per function symbol `f`** rather
-than the trivial strategy's single shared empty-core context for all anonymous
-successors. Both are sound and complete; partitioning per `f` keeps each
-existential's successors out of one another's context, which avoids the
-shared-context blow-up that the trivial strategy suffers under disjunction
-(≈45× faster on a distinct-skolem disjunction×existential stress test, with
-byte-identical verdicts).
+expansion strategy with one successor context per function symbol. The
+production classifier also uses procedures outside this CB core.
 
 **References**
 
@@ -264,48 +248,33 @@ byte-identical verdicts).
 
 ## Scope and honest limitations
 
-- **Soundness is the headline guarantee** (proved + kernel-certified per run).
-  Completeness is proved for the foundational fragments above and validated
-  empirically against HermiT on the benchmarks. The engine classifies by
-  consequence-based *type-elimination* (and uses a *pay-as-you-go* representation:
-  one successor context per function symbol). Its strategy completeness is now
-  **machine-checked, `sorry`-free**, in `lean/ContextCalculus/CompletenessStrategy.lean`
-  (imported by the root module, so it is part of the default certified build):
-  `saturate_decides` proves that iterating the elimination operator from the
-  consistent candidates converges (in ≤ `|candidates|` rounds) to exactly the
-  good types, which decide `A ⊑ B` via `subsumption_complete`. `engine_complete`
-  carries this through with **no residual hypothesis**: the engine's pre-elimination
-  candidate space, at the type level, is all consistent types `cand` (its disjunctive
-  clauses represent that whole space), and `goodFS ⊆ cand` is immediate, so the
-  `coverage` hypothesis of the general `engine_decides` is discharged. The single
-  remaining gap is then *not* coverage but the **representation refinement**: the
-  engine manipulates disjunctive context clauses rather than enumerated types, and
-  that its clause saturation computes the same `goodFS` is the disjunctive-saturation
-  completeness. That clause engine's soundness is hypothesis-free and kernel-certified
-  per run (the checker); its completeness is validated empirically against HermiT
-  (byte-identical verdicts). Mechanising clause-level completeness is the remaining
-  substantial theorem and is not claimed.
-- The per-run certificate search re-derives verdicts by a complete layered method
-  (propositional, Horn forward chaining, and a complete disjunctive saturation
-  over a term algebra); the disjunctive layer is bounded, so an ontology with very
-  many excluded-middle definitions may exceed the bound.
-- Still open in the engine: the general regular-role-hierarchy automaton (only
-  transitivity and single chains are encoded). The Table-3 nominal rules are
-  implemented and certified in `lean/ContextCalculus/Nominals.lean`. The
-  pay-as-you-go strategy is implemented (per-`f` successor contexts) and
-  its type-level completeness is machine-checked with no residual hypothesis
-  (`engine_complete`). The sole remaining obligation is the clause-level
-  disjunctive-saturation completeness (the engine works on disjunctive context
-  clauses, not enumerated types) — soundness-certified per run and HermiT-validated,
-  but not yet mechanised.
+- The current production executable is not formally verified end to end.
+- The Lean development proves properties of abstract definitions and validates
+  a fixed collection of small certificates. It does not cover the complete
+  router, all Konclude-derived procedures, the Rust frontend, concurrency,
+  resource fallback behavior, or every optimization.
+- ORE evidence is empirical. The complete route matrix measures all 592
+  ontologies, but successful termination does not itself establish correctness.
+  Comparisons use retained Konclude signatures where available, with contested
+  and missing gold documented separately.
+- No single KM procedure solves the full corpus within the benchmark limits.
+  Coverage comes from the union of specialized routes. Some procedures are
+  experimental or complete-or-defer only and are excluded from automatic
+  routing unless their gate succeeds.
+- `KM_ROOT_ORDERED` remains opt-in. It changes the CB derivation system and has
+  no current implementation-level Lean certification or complete corpus gate.
+- The general regular-role-hierarchy automaton is not implemented. The frontend
+  supports transitivity and the role-chain handling documented in the source
+  and benchmark records.
+- The Protégé plugin exposes TBox classification only. Property and individual
+  inference methods return no inferred results.
 
-## The `.ofn` front-end (optional)
+## OWL frontend
 
-The OWL functional-syntax front-end (`engine/py/frontend.py`) reuses the separate
-[`moose`](https://github.com/bio-ontology-research-group) package for SROIQ
-normalisation. It is needed **only to regenerate** `.ofn`-sourced certificates;
-the engine and all checked-in proofs need no moose. Point to it with
-`MOOSE_HOME=/path/to/moose` or place `moose` beside this repository.
+The production frontend is Rust. It accepts OWL functional syntax directly and
+uses Horned-OWL adapters for OWL/XML, RDF/XML, and Turtle. Imports are not
+downloaded by the CLI; callers must provide a merged ontology. The Protégé
+plugin supplies the loaded imports closure explicitly.
 
 ## License & citation
 
@@ -316,4 +285,6 @@ via [CITATION.cff](CITATION.cff).
 
 Built in the [Bio-Ontology Research Group](https://github.com/bio-ontology-research-group)
 at KAUST. The calculus follows Tena-Cucala, Cuenca Grau and Horrocks and the
-Sequoia reasoner; HermiT is used as the validation oracle.
+Sequoia reasoner. Konclude signatures provide the main ORE comparison, with
+HermiT and manual witnesses used only where the retained adjudication records
+say so.
