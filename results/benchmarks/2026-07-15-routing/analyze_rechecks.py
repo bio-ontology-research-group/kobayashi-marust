@@ -19,8 +19,11 @@ ADJUDICATED_INCONSISTENT = {
 
 
 def exact(ont, row):
+    # `nogold` is not correctness: there is no authoritative reference for the
+    # no-Konclude-gold inputs, so a nogold row must not be scored as exact.
+    # Aligns with analyze_matrix.py is_correct and the gold-adjudication docs.
     return row.get("status") == "ok" and (
-        row.get("verdict") in ("match", "nogold")
+        row.get("verdict") == "match"
         or (ont in ADJUDICATED_INCONSISTENT and row.get("consistent") is False)
     )
 

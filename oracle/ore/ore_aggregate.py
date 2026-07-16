@@ -129,6 +129,39 @@ def load_sig(reasoner, ont):
     return head == "1", subs, unsat
 
 
+def classify_vs_gold(gold_sig, reasoner_sig):
+    """Classify a reasoner signature against gold as one of
+    'agree' | 'incomplete' | 'unsound' | 'both'.
+
+    Each *_sig is the (consistent_bool, subs_set, unsat_set) triple returned by
+    load_sig. The comparison covers ALL three channels of the canonical
+    signature - the consistency head, the subsumption set, AND the per-class
+    unsat set - because sig_sha (used for the fast agree path) hashes all three
+    (see ore_runone.py: blob = "1|0\\n" + subs + "\\n#UNSAT\\n" + unsat). Dropping
+    the unsat/consistency channels here silently reclassifies a genuine
+    inconsistency / unsatisfiable-class disagreement as "agree".
+
+    Mirrors the established repo logic in results/router-sweep-harness/
+    fast_soundness.py and the frozen matrix runner's compare_km (unsat and
+    consistency counted alongside subsumptions).
+    """
+    gcons, gsubs, gunsat = gold_sig
+    rcons, rsubs, runsat = reasoner_sig
+    if gcons != rcons:
+        # whole-ontology consistency disagreement: one side derived (or missed)
+        # global unsatisfiability the other did not - a two-sided disagreement.
+        return "both"
+    unsound = len(rsubs - gsubs) + len(runsat - gunsat)      # reasoner has, gold lacks
+    incomplete = len(gsubs - rsubs) + len(gunsat - runsat)   # gold has, reasoner lacks
+    if unsound and incomplete:
+        return "both"
+    if unsound:
+        return "unsound"
+    if incomplete:
+        return "incomplete"
+    return "agree"
+
+
 def med(xs):
     return round(st.median(xs), 3) if xs else None
 
@@ -180,7 +213,8 @@ def main():
 
     # ---- correctness vs gold ----
     print(f"\n## Correctness vs {GOLD} (gold), on applicable ontologies where both succeeded & uncapped\n")
-    print("| reasoner | compared | agree | incomplete (missing>0,extra=0) | unsound (extra>0) | both-disagree |")
+    print("| reasoner | compared | agree | incomplete (missing only) | unsound (extra only) | "
+          "both-disagree (incl. consistency) |")
     print("|" + "---|" * 6)
     gold_sigs = {}
     for o in onts:
@@ -206,16 +240,20 @@ def main():
             sr = load_sig(R, o)
             if not sg or not sr:
                 continue
-            missing = sg[1] - sr[1]
-            extra = sr[1] - sg[1]
-            if extra and missing:
+            # Compare all three signature channels (consistency head, subs,
+            # unsat classes). The sig differed from gold's sig_sha, so a plain
+            # subs-only diff would call an unsat/consistency-only disagreement
+            # "agree" and undercount unsound/incomplete.
+            verdict = classify_vs_gold(sg, sr)
+            if verdict == "both":
                 both += 1; detail[R]["unsound"].append(o)
-            elif extra:
+            elif verdict == "unsound":
                 uns += 1; detail[R]["unsound"].append(o)
-            elif missing:
+            elif verdict == "incomplete":
                 inc += 1; detail[R]["incomplete"].append(o)
             else:
-                # subs equal but unsat/consistency differ
+                # all three channels agree; the sha differed only in canonical
+                # byte encoding (e.g. representative choice), so this is a match.
                 agree += 1
         print(f"| {R} | {comp} | {agree} | {inc} | {uns} | {both} |")
 

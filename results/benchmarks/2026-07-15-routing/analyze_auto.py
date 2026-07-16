@@ -31,7 +31,14 @@ def percentile(values, fraction):
 def exact(ont, row):
     if row.get("status") != "ok":
         return False
-    if row.get("verdict") in ("match", "nogold"):
+    # `nogold` means canonicalization succeeded but there is NO authoritative
+    # reference to check against (the five no-Konclude-gold ORE inputs). It is
+    # never correctness on its own - promoting it inflates the exact count with
+    # unadjudicated ontologies. This matches the strict analyzer's is_correct
+    # (analyze_matrix.py), the frozen runner's own comment
+    # (bench_one_matrix_frozen.py), and the gold-adjudication / hard-residual
+    # docs ("do not count a KM ok/nogold result as correct without adjudication").
+    if row.get("verdict") == "match":
         return True
     return ont in ADJUDICATED_INCONSISTENT and row.get("consistent") is False
 

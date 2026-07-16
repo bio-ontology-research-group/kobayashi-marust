@@ -50,7 +50,9 @@ for o in sorted(UNS, key=int):
 print("\n=== separability probes ===")
 bu = [F[o]["union"] for o in BULK]
 print("BULK union: median=%s p90=%s max=%s" % (
-    st.median(bu), sorted(bu)[int(len(bu) * 0.9)], max(bu)))
+    st.median(bu),
+    sorted(bu)[max(0, -(-len(bu) * 9 // 10) - 1)] if bu else None,
+    max(bu)))
 print("BULK with union>0: %d/%d" % (sum(1 for x in bu if x > 0), len(bu)))
 hi_union = [o for o in F if F[o]["union"] >= 50]
 print("onts with union>=50 (%d): %s" % (len(hi_union), sorted(hi_union, key=int)))

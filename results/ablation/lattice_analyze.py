@@ -54,7 +54,7 @@ print("median peak_mb:  %s (ref) -> %s (per-ont best)  [%.1fx]" % (
     st.median(ref_mem) / max(st.median(best_mem), 1)))
 print("median wall_s :  %s (ref) -> %s (per-ont best)" % (
     round(st.median(ref_wall), 2), round(st.median(best_wall), 2)))
-print("total GB-s of peak (ref) %.0f -> (best) %.0f" % (
+print("total GB of peak, summed over onts (ref) %.0f -> (best) %.0f" % (
     sum(ref_mem) / 1024, sum(best_mem) / 1024))
 print("\nbest-MEM config frequency:", dict(sorted(win_mem.items(), key=lambda x: -x[1])))
 print("best-WALL config frequency:", dict(sorted(win_wall.items(), key=lambda x: -x[1])))

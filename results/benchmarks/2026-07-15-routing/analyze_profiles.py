@@ -66,8 +66,14 @@ def main():
         flatten("expressivity", profile["expressivity"], row)
         flatten("source", profile["source"], row)
         flatten("clauses", profile["clauses"], row)
+        # None => no Konclude expressivity reference for this ont. Do NOT fold
+        # that into a mismatch (None == code is False), which would score an
+        # ontology with no ground truth as a KM/Konclude disagreement. Only a
+        # present-and-differing reference is a real mismatch.
+        km_code = row["expressivity.code"]
+        kon_code = row["konclude_expressivity"]
         row["expressivity_match"] = (
-            row["konclude_expressivity"] == row["expressivity.code"]
+            None if kon_code is None else (kon_code == km_code)
         )
         row["source.axiom_types_json"] = json.dumps(
             profile["source"].get("axiom_types", {}), sort_keys=True, separators=(",", ":")
@@ -89,8 +95,9 @@ def main():
             "km": row["expressivity.code"],
         }
         for row in rows
-        if not row["expressivity_match"]
+        if row["expressivity_match"] is False
     ]
+    unreferenced = [row["ont"] for row in rows if row["expressivity_match"] is None]
     numeric = {}
     for field in fields:
         values = [row[field] for row in rows if isinstance(row.get(field), (int, float))]
@@ -130,8 +137,11 @@ def main():
         "official_rows": len(official),
         "profile_rows": len(rows),
         "profile_errors": errors,
-        "expressivity_matches": len(rows) - len(mismatches),
+        "expressivity_matches": sum(
+            1 for row in rows if row["expressivity_match"] is True
+        ),
         "expressivity_mismatches": mismatches,
+        "expressivity_unreferenced": unreferenced,
         "expressivity_distribution": dict(
             sorted(Counter(row["expressivity.code"] for row in rows).items())
         ),
