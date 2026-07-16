@@ -791,6 +791,26 @@ mod tests {
         assert!(Route::HtQo.settings().contains(&("KM_HT_ONLY", "qo")));
         assert!(Route::HtShoq.settings().contains(&("KM_HT_ONLY", "shoq")));
         assert!(Route::HtCard.settings().contains(&("KM_HT_ONLY", "card")));
+        // The production portfolio runs the HT arm in `certified` mode, and must
+        // NOT disable the first-class cardinality arm: `certified` admits the
+        // CB-guarded additive card fallback that recovers ore_ont_7499 / 9540.
+        for bundle in [
+            Route::ProductionAll,
+            Route::ProductionAll8,
+            Route::ProductionAll1,
+        ] {
+            assert!(bundle.settings().contains(&("KM_HT_ONLY", "certified")));
+            assert!(bundle.settings().contains(&("KM_MECHANISM", "portfolio")));
+            assert!(
+                !bundle
+                    .settings()
+                    .iter()
+                    .any(|(key, _)| *key == "KM_NO_HT_CARD"),
+                "production portfolio must keep the additive card arm enabled"
+            );
+        }
+        // The isolated card specialist stays fenced from the learned policy tree.
+        assert!(!sriq_policy_eligible(Route::HtCard));
         assert!(Route::HtBridge
             .settings()
             .contains(&("KM_HT_ONLY", "bridge")));

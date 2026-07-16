@@ -9,6 +9,44 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Restore the additive production cardinality arm (recovers 7499 / 9540) (2026-07-16)
+
+The 2026-07-15 "fence named HT specialists" change set the production portfolio
+(`PRODUCTION_ALL`, `KM_MECHANISM=portfolio`) to `KM_HT_ONLY=certified`, which
+`specialist_route_allows` narrowed to the Konclude bridge arm alone. That was
+correct for policy-LEAF eligibility (the isolated `ht_card` specialist, where CB
+never runs, is incomplete on ore_ont_10702 and must stay out of the learned
+tree). But it also silenced the first-class cardinality arm as a CB-guarded
+FALLBACK inside the production race, regressing ore_ont_7499 and 9540 back to
+240 s timeouts. Those two had been recovered by the pre-fence default
+(`KM_HT_CARD` on, job 48067625: 573 gold-MATCH) precisely because the card arm
+runs under `race_cb_vs_ht` fallback mode, where CB is authoritative: the arm's
+answer is taken ONLY when the certified CB engine times out, and the number
+rules are sound, so it can only ever replace a CB timeout.
+
+`specialist_route_allows(Some("certified"), ...)` now admits `card_candidate` in
+addition to `bridge_candidate`. This is strictly the additive fallback arm, not
+a policy leaf — `sriq_policy_eligible` still excludes `HtCard`, so the routing
+tree cannot select the isolated card procedure. SHOQ and QO stay bridge-only
+under certified: their incomplete onts (10702 / 15098) could otherwise emit a
+wrong taxonomy on a CB timeout. The inverse+nominal onts on which the card route
+is incomplete (10702) never become `card_candidate` because `cb_to_ht::convert`
+refuses the card transform under inverse (no `card_defs` emitted), so this does
+not expose that incompleteness. 15672 needs the SHOQ arm, which is entangled
+with 10702's incompleteness, so it is left for a separate SHOQ-scoped change.
+
+`KM_HT_BRIDGE_ONLY` was extended (via the new `bridge_only_worker` gate) so that
+a certified worker carrying BOTH a bridge and a card arm no longer forces
+bridge-only: a bridge defer now hands off to the card fallback instead of
+exiting empty, matching the pre-fence single-worker behaviour. The
+`card_candidate` gate is factored into `card_candidate_from` so the exact
+production gate is exercised on a reduced cardinality probe. This changes only
+procedure eligibility and worker composition, not any CB-calculus derivation, so
+it requires no Lean re-certification. Unit tests assert the certified env bundle
+keeps the card arm live, the `certified` admittance, the bridge/card hand-off,
+and that a synthetic `≥2 R.C` restriction converts to a `card_def` and passes
+the gate.
+
 ### Separate provably positive ABoxes from TBox classification (2026-07-16)
 
 The procedure matrix found assertion-heavy ORE 10697, 15725, and 15846 where

@@ -565,6 +565,26 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
 /// incomplete taxonomy. They therefore cannot masquerade as policy-safe
 /// procedures. The Konclude completion bridge is different: its read-off path
 /// either returns a complete answer or explicitly defers to CB.
+///
+/// `certified` is the production portfolio's mode (`PRODUCTION_ALL`,
+/// `KM_MECHANISM=portfolio`). There the HT arm runs INSIDE `race_cb_vs_ht` in
+/// fallback mode, where CB is authoritative: an HT arm's answer is taken ONLY
+/// when the certified CB engine errors or runs past its budget. Under that
+/// CB-preference the first-class cardinality arm is monotone-safe — it can only
+/// ever replace a CB timeout, and the number rules are sound (they never assert
+/// a subsumption CB would not), so admitting it recovers the SHQ/SHOQ number
+/// onts (ore_ont_7499 / 9540, both previously 240 s timeouts) without a
+/// MATCH-to-DIFF risk. This is the additive production cardinality behaviour the
+/// pre-fence default already validated (job 48067625: 573 gold-MATCH). It is a
+/// distinct question from policy-LEAF eligibility (`sriq_policy_eligible`, which
+/// still excludes `HtCard`): the fence keeps the ISOLATED `ht_card` specialist —
+/// where CB never runs — out of the learned tree, and this admittance only adds
+/// the CB-guarded fallback arm. The inverse+nominal onts on which the isolated
+/// card route is incomplete (ore_ont_10702) never become `card_candidate`
+/// because `cb_to_ht::convert` refuses the card transform under inverse, so this
+/// does not expose that incompleteness. SHOQ and QO stay bridge-only under
+/// certified (their incomplete onts, e.g. 10702/15098, could otherwise surface a
+/// wrong taxonomy on a CB timeout).
 fn specialist_route_allows(
     requested: Option<&str>,
     qo_candidate: bool,
@@ -575,7 +595,7 @@ fn specialist_route_allows(
     match requested {
         None => true,
         Some("general") => true,
-        Some("certified") => bridge_candidate,
+        Some("certified") => bridge_candidate || card_candidate,
         Some("qo") => qo_candidate,
         Some("shoq") => shoq_candidate,
         Some("card") => card_candidate,
@@ -585,6 +605,52 @@ fn specialist_route_allows(
         Some("features") | Some("full") => true,
         Some(_) => false,
     }
+}
+
+/// Gate for `KM_HT_BRIDGE_ONLY`: the worker must produce NO answer when the
+/// bridge arm declines (the legacy tableau is not a validated fallback) — but
+/// ONLY when the bridge is genuinely the sole arm this worker carries. Under the
+/// certified production portfolio a worker may carry BOTH a bridge and a card
+/// arm; forcing bridge-only there would suppress the card fallback the bridge
+/// defer should hand off to, so require the other candidates absent.
+fn bridge_only_worker(
+    requested: Option<&str>,
+    bridge_candidate: bool,
+    ht_routable: bool,
+    qo_candidate: bool,
+    shoq_candidate: bool,
+    card_candidate: bool,
+) -> bool {
+    if !bridge_candidate {
+        return false;
+    }
+    let no_other_arm = !qo_candidate && !shoq_candidate && !card_candidate;
+    requested == Some("bridge")
+        || (requested == Some("certified") && no_other_arm)
+        || (!ht_routable && no_other_arm)
+}
+
+/// The first-class number route (`KM_HT_CARD`): a faithful,
+/// datatype/inverse/nominal-safe TInput carrying first-class `≥n`/`≤n`
+/// restrictions (`card_defs`). Extracted so the exact gate the production
+/// portfolio uses can be exercised on a reduced cardinality probe. `card_recog`
+/// (propagation-based `≤n` recognition, default on) relaxes the inverse
+/// exclusion; datatype onts are always excluded (no concrete-domain oracle in
+/// the fast Ht). `convert` only emits `card_defs` on a card-routable,
+/// inverse-free TInput, so an inverse+nominal ont (ore_ont_10702) has no
+/// `card_defs` and is never a candidate regardless of `card_recog`.
+fn card_candidate_from(
+    tin: &cb_to_ht::TInput,
+    ht_card: bool,
+    card_recog: bool,
+    has_datatype: bool,
+) -> bool {
+    ht_card
+        && !tin.card_defs.is_empty()
+        && tin.dropped == 0
+        && tin.fenced.is_empty()
+        && (!tin.inverse || card_recog)
+        && !has_datatype
 }
 
 /// Does the clause set contain an inverse/symmetric BRIDGE clause
@@ -751,12 +817,7 @@ fn spawn_ht(
     // exclusion and let inverse+cardinality onts (the SRIQ number giants) onto the
     // card route. Default OFF -> production routing is unchanged.
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
-    let card_candidate = cfg.ht_card
-        && !tin.card_defs.is_empty()
-        && tin.dropped == 0
-        && tin.fenced.is_empty()
-        && (!tin.inverse || card_recog)
-        && !has_datatype(&cl);
+    let card_candidate = card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let qo_candidate = cfg.qo_router
         && !card_candidate
         && tin.dropped == 0
@@ -833,15 +894,19 @@ fn spawn_ht(
     if bridge_candidate || std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
         cmd.env("KM_HT_BRIDGE", "1");
     }
-    let bridge_is_only_certified_candidate = specialist_only.as_deref() == Some("certified");
-    if bridge_candidate
-        && (specialist_only.as_deref() == Some("bridge")
-            || bridge_is_only_certified_candidate
-            || (!ht_routable(&tin) && !qo_candidate && !shoq_candidate && !card_candidate))
-    {
+    if bridge_only_worker(
+        specialist_only.as_deref(),
+        bridge_candidate,
+        ht_routable(&tin),
+        qo_candidate,
+        shoq_candidate,
+        card_candidate,
+    ) {
         // The bridge is the ONLY reason this worker was spawned: if its arm
         // declines, the worker must produce NO answer (the legacy tableau is
-        // not validated on this fragment — "tableau is NOT a fallback").
+        // not validated on this fragment — "tableau is NOT a fallback"). When a
+        // card arm rides along (certified production portfolio), the worker must
+        // instead hand a bridge defer off to the card path, so this stays unset.
         cmd.env("KM_HT_BRIDGE_ONLY", "1");
     }
     if qo_candidate {
@@ -1358,6 +1423,10 @@ mod tests {
             false,
             false
         ));
+        // certified admits the bridge and the CB-guarded additive card arm, but
+        // NOT a lone SHOQ or QO candidate (those stay bridge-only under the
+        // production portfolio; their incomplete onts could otherwise emit a
+        // wrong taxonomy on a CB timeout).
         assert!(!specialist_route_allows(
             Some("certified"),
             false,
@@ -1366,6 +1435,21 @@ mod tests {
             false
         ));
         assert!(!specialist_route_allows(
+            Some("certified"),
+            true,
+            false,
+            false,
+            false
+        ));
+        // A card candidate is enough under certified even with no bridge.
+        assert!(specialist_route_allows(
+            Some("certified"),
+            false,
+            false,
+            true,
+            false
+        ));
+        assert!(specialist_route_allows(
             Some("certified"),
             true,
             true,
@@ -1434,6 +1518,133 @@ mod tests {
             true,
             true,
             true
+        ));
+    }
+
+    /// Build the smallest TInput that carries a first-class `≥n` restriction.
+    fn card_def_tin() -> cb_to_ht::TInput {
+        let mut tin = cb_to_ht::TInput::default();
+        tin.card_defs.push(cb_to_ht::CardDefJson {
+            marker: 0,
+            min: true,
+            n: 2,
+            role: 0,
+            filler: 1,
+        });
+        tin
+    }
+
+    #[test]
+    fn card_arm_is_a_candidate_and_certified_admits_it() {
+        // A reduced cardinality probe: a datatype/inverse-free TInput with a
+        // single `≥2 R.C` restriction is a card candidate, and the production
+        // portfolio's `certified` mode admits it as the CB-guarded fallback arm
+        // that recovers ore_ont_7499 / 9540.
+        let tin = card_def_tin();
+        let card = card_candidate_from(&tin, true, true, false);
+        assert!(card, "≥n restriction must be a card candidate");
+        assert!(specialist_route_allows(
+            Some("certified"),
+            false,
+            false,
+            card,
+            false
+        ));
+    }
+
+    #[test]
+    fn card_arm_respects_its_fences() {
+        let tin = card_def_tin();
+        // KM_NO_HT_CARD (ht_card=false) disables the arm entirely.
+        assert!(!card_candidate_from(&tin, false, true, false));
+        // A datatype ontology is always excluded (no concrete-domain oracle).
+        assert!(!card_candidate_from(&tin, true, true, true));
+        // A dropped/fenced TInput is not faithful and is excluded.
+        let mut dropped = card_def_tin();
+        dropped.dropped = 1;
+        assert!(!card_candidate_from(&dropped, true, true, false));
+        let mut fenced = card_def_tin();
+        fenced.fenced.push(cb_to_ht::Fenced {
+            reason: "inverse+number(SHIQ)".into(),
+            detail: "x".into(),
+        });
+        assert!(!card_candidate_from(&fenced, true, true, false));
+        // Inverse is excluded only when recognition is off; with recognition on
+        // (production default) the SHIQ number giants stay on the card route.
+        let mut inverse = card_def_tin();
+        inverse.inverse = true;
+        assert!(!card_candidate_from(&inverse, true, false, false));
+        assert!(card_candidate_from(&inverse, true, true, false));
+        // No card_defs (e.g. the inverse+nominal ore_ont_10702, whose convert
+        // refuses the card transform) is never a card candidate.
+        let empty = cb_to_ht::TInput::default();
+        assert!(!card_candidate_from(&empty, true, true, false));
+    }
+
+    #[test]
+    fn convert_emits_card_defs_for_a_faithful_ge_n_restriction() {
+        // End-to-end reduced cardinality probe through cb_to_ht::convert: a
+        // single `≥2 R.C` CardMeta on a datatype-free, inverse-free clause set
+        // produces exactly one first-class card_def, which is what makes the
+        // ontology a production card candidate.
+        use crate::json_io::CardMeta;
+        let named = std::collections::HashSet::new();
+        let cards = vec![CardMeta {
+            marker: "M".into(),
+            min: true,
+            n: 2,
+            role: "R".into(),
+            filler: "C".into(),
+        }];
+        let tin = cb_to_ht::convert(&[], None, &named, &cards, &[], &[], true, &[], false);
+        assert_eq!(tin.card_defs.len(), 1);
+        assert!(tin.card_defs[0].min && tin.card_defs[0].n == 2);
+        assert!(card_candidate_from(&tin, true, true, false));
+
+        // card_enabled=false (KM_NO_HT_CARD) suppresses the transform entirely.
+        let off = cb_to_ht::convert(&[], None, &named, &cards, &[], &[], false, &[], false);
+        assert!(off.card_defs.is_empty());
+        assert!(!card_candidate_from(&off, true, true, false));
+    }
+
+    #[test]
+    fn bridge_only_worker_keeps_card_fallback_under_certified() {
+        // Isolated bridge route: always bridge-only.
+        assert!(bridge_only_worker(
+            Some("bridge"),
+            true,
+            false,
+            false,
+            false,
+            false
+        ));
+        // certified + bridge alone: bridge-only (no card to hand off to).
+        assert!(bridge_only_worker(
+            Some("certified"),
+            true,
+            true,
+            false,
+            false,
+            false
+        ));
+        // certified + bridge AND card: NOT bridge-only, so a bridge defer hands
+        // the worker off to the card fallback arm instead of exiting empty.
+        assert!(!bridge_only_worker(
+            Some("certified"),
+            true,
+            true,
+            false,
+            false,
+            true
+        ));
+        // No bridge candidate: never bridge-only.
+        assert!(!bridge_only_worker(
+            Some("certified"),
+            false,
+            true,
+            false,
+            false,
+            false
         ));
     }
 
