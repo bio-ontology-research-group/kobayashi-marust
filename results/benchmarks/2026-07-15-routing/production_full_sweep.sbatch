@@ -44,12 +44,13 @@ ckpt=$result.ckpt
 /usr/bin/mkdir -p "$result_dir" "$failure_dir" "$manifest_dir" "$work"
 [[ -s "$SWEEP_KM" && -s "$runner" && -s "$ontology_path" ]] \
   || { echo "missing sweep input for $ontology" >&2; exit 2; }
+km_sha=$(/usr/bin/sha256sum "$SWEEP_KM" | /usr/bin/cut -d' ' -f1)
 
 # One publishable row per ontology: exactly one JSON object naming this
 # ontology and arm, with a status and a binary hash. A memout row satisfies
 # this too, so a genuine 20 GB blow-up publishes and is never retried forever.
 validate_row() {
-  /usr/bin/python3 - "$1" "$ontology" <<'PY'
+  /usr/bin/python3 - "$1" "$ontology" "$km_sha" <<'PY'
 import json, sys
 try:
     rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
@@ -60,7 +61,7 @@ if len(rows) != 1:
 row = rows[0]
 sys.exit(0 if (row.get("ont") == sys.argv[2]
                and row.get("arm") == "production_all"
-               and row.get("binary_sha256")
+               and row.get("binary_sha256") == sys.argv[3]
                and row.get("status")) else 1)
 PY
 }
@@ -89,7 +90,6 @@ case "$ontology" in
     ;;
 esac
 
-km_sha=$(/usr/bin/sha256sum "$SWEEP_KM" | /usr/bin/cut -d' ' -f1)
 {
   echo "job_id=$SLURM_JOB_ID"
   echo "array_task_id=$SLURM_ARRAY_TASK_ID"
