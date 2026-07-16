@@ -248,8 +248,11 @@ def run(args):
     wrapped = ["/usr/bin/time", "-v", "-o", time_path] + argv
     if args.slurm_step_mem_mb:
         step_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", args.workers))
+        srun = shutil.which("srun")
+        if not srun:
+            raise FileNotFoundError("srun is required for --slurm-step-mem-mb")
         wrapped = [
-            "/usr/bin/srun",
+            srun,
             "--exclusive",
             "--nodes=1",
             "--ntasks=1",

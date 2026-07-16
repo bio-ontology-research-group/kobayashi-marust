@@ -21,7 +21,7 @@ set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
 root=$km_root/routing_20260715
-runner=$root/bench_one_matrix-aaa64dc7.py
+runner=$root/bench_one_matrix-4524a418.py
 gold_dir=$km_root/gold
 result_dir=$root/production-sweeps/$SWEEP_TAG/results
 failure_dir=$root/production-sweeps/$SWEEP_TAG/failures
@@ -62,7 +62,8 @@ row = rows[0]
 sys.exit(0 if (row.get("ont") == sys.argv[2]
                and row.get("arm") == "production_all"
                and row.get("binary_sha256") == sys.argv[3]
-               and row.get("status")) else 1)
+               and row.get("status")
+               and row.get("status") != "harness_error") else 1)
 PY
 }
 
