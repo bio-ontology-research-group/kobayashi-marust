@@ -917,6 +917,48 @@ mod tests {
     }
 
     #[test]
+    fn rules_route_keeps_the_validated_precheck_enabled() {
+        // The DL-safe rule consistency precheck is gated on the ABSENCE of
+        // KM_NO_HT_RULES in both the frontend (rule collection + ABox
+        // retention in the clause set) and the orchestrator
+        // (`rules_consistency`). The rules bundle must never pin it off, and
+        // its taxonomy fall-through must be the one atomic CB run.
+        let settings = Route::HtRules.settings();
+        assert!(
+            !settings.iter().any(|(key, _)| *key == "KM_NO_HT_RULES"),
+            "ht_rules must keep the consistency precheck enabled"
+        );
+        assert!(settings.contains(&("KM_MECHANISM", "cb")));
+        assert!(settings.contains(&("KM_NO_HT_RACE", "1")));
+
+        // Exactly the rules bundle and the preserved composed portfolios keep
+        // the precheck; every other named bundle pins it off so isolated
+        // measurement rows never run the rule machinery by accident.
+        for route in Route::NAMED {
+            let keeps_precheck = !route
+                .settings()
+                .iter()
+                .any(|(key, value)| *key == "KM_NO_HT_RULES" && *value == "1");
+            let expected = matches!(
+                route,
+                Route::HtRules
+                    | Route::Default
+                    | Route::Default8
+                    | Route::Default1
+                    | Route::ProductionAll
+                    | Route::ProductionAll8
+                    | Route::ProductionAll1
+                    | Route::CbAbsorbPortfolio16
+                    | Route::TabRace
+            );
+            assert_eq!(
+                keeps_precheck, expected,
+                "{route} precheck gating drifted from the validated contract"
+            );
+        }
+    }
+
+    #[test]
     fn generated_tree_has_no_ontology_identity() {
         let source = include_str!("routing/routing_tree_generated.rs");
         assert!(!source.contains("ore_ont_"));

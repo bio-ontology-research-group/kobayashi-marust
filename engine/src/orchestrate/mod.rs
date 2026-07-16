@@ -756,9 +756,18 @@ fn rules_consistency(
         return Ok(None);
     }
     let named: HashSet<String> = meta.named.iter().cloned().collect();
+    // rbox is deliberately NOT threaded here (`None`): this is the validated
+    // 2669/15516 precheck configuration. The rbox side channel only feeds the
+    // fast-Ht first-class role machinery and, crucially, its inverse records
+    // arm the `nominal+inverse(SHOI/SHOIQ)` classification fence, which would
+    // unseat the ABox nominal seeds this consistency check exists to create
+    // (the tableau then has no roots, trivially answers "consistent", and the
+    // rule-detected inconsistency is lost). Inverse/subrole/domain/range
+    // semantics still reach the tableau through the frontend's bridge clauses
+    // inside `input.clauses`, so a detected clash remains a real clash.
     let tin = cb_to_ht::convert(
         &input.clauses,
-        Some(&input.rbox),
+        None,
         &named,
         &input.cardinalities,
         &input.definers,

@@ -4922,11 +4922,34 @@ fn atom_of(j: &JAtom) -> Atom {
     }
 }
 
-/// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
-pub fn run_json(input: &str) -> Result<String, String> {
-    let inp: TInput = serde_json::from_str(input).map_err(|e| e.to_string())?;
-    let clauses: Vec<Clause> = inp
-        .clauses
+/// The KM_RULES_CONSISTENCY verdict for an already-parsed `TInput`: seed one
+/// root per nominal (the rule route's `__nom__` ABox seeds), apply the o-rule,
+/// and decide KB consistency on the default Tableau. Runs on a large stack
+/// because the careful DFS can recurse deeply. Exposed separately from
+/// `run_json` so the orchestrator's precheck contract is testable without the
+/// env-var gate.
+pub fn rules_consistency_verdict(inp: &TInput, ht_clauses: Vec<Clause>) -> Result<bool, String> {
+    let inverse = inp.inverse;
+    let number = inp.number || !inp.card_defs.is_empty();
+    let noms = inp.nominals.clone();
+    std::thread::Builder::new()
+        .stack_size(4usize << 30)
+        .spawn(move || {
+            let mut t = Tableau::new(ht_clauses);
+            t.set_pairwise(inverse);
+            t.set_number(number);
+            t.set_nominals(noms);
+            t.consistent(&[])
+        })
+        .map_err(|e| e.to_string())?
+        .join()
+        .map_err(|_| "rules-consistency thread panicked".to_string())
+}
+
+/// Build the tableau clause vector from a parsed `TInput` (the deserialised
+/// wire form the worker consumes).
+pub fn clauses_of_tinput(inp: &TInput) -> Vec<Clause> {
+    inp.clauses
         .iter()
         .map(|c| {
             Clause::new(
@@ -4934,7 +4957,13 @@ pub fn run_json(input: &str) -> Result<String, String> {
                 c.head.iter().map(atom_of).collect(),
             )
         })
-        .collect();
+        .collect()
+}
+
+/// Read a `TInput` JSON string, classify, and return a `TOutput` JSON string.
+pub fn run_json(input: &str) -> Result<String, String> {
+    let inp: TInput = serde_json::from_str(input).map_err(|e| e.to_string())?;
+    let clauses: Vec<Clause> = clauses_of_tinput(&inp);
     let queries: Vec<C> = if inp.queries.is_empty() {
         (0..inp.concepts.len() as C).collect()
     } else {
@@ -4948,22 +4977,7 @@ pub fn run_json(input: &str) -> Result<String, String> {
     // default Tableau (whose `find_model` seeds one root per nominal and applies the
     // o-rule). Run on a large stack since the careful DFS can recurse deeply.
     if std::env::var_os("KM_RULES_CONSISTENCY").is_some() {
-        let ht_clauses = clauses.clone();
-        let inverse = inp.inverse;
-        let number = inp.number || !inp.card_defs.is_empty();
-        let noms = inp.nominals.clone();
-        let consistent = std::thread::Builder::new()
-            .stack_size(4usize << 30)
-            .spawn(move || {
-                let mut t = Tableau::new(ht_clauses);
-                t.set_pairwise(inverse);
-                t.set_number(number);
-                t.set_nominals(noms);
-                t.consistent(&[])
-            })
-            .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|_| "rules-consistency thread panicked".to_string())?;
+        let consistent = rules_consistency_verdict(&inp, clauses.clone())?;
         let out = TOutput {
             consistent,
             unsatisfiable: Vec::new(),

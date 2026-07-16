@@ -2001,7 +2001,16 @@ pub fn convert(
     nom_names.dedup();
     let mut nominal_ids: Vec<usize> = nom_names.iter().map(|n| ids.con_id[n]).collect();
 
-    if !nominal_ids.is_empty() && !inverse_pairs.is_empty() {
+    // The SHOI/SHOIQ fence protects the CLASSIFICATION consumers (the fast Ht
+    // has no sound nominal+inverse completion). It must not unseat the
+    // rule-route ABox seeds: their only consumer is the KM_RULES_CONSISTENCY
+    // check, which acts solely on a derived clash (every tableau step is a
+    // sound consequence, so a clash is real regardless of the fragment), and
+    // a "consistent" verdict merely falls through to normal classification.
+    // Clearing the seeds here leaves the tableau rootless and turns a real
+    // rule-induced inconsistency into a silent fall-through (the 2669/15516
+    // regression).
+    if !nominal_ids.is_empty() && !inverse_pairs.is_empty() && !rules_active {
         fenced.push(Fenced {
             reason: "nominal+inverse(SHOI/SHOIQ)".into(),
             detail: format!(
@@ -2517,6 +2526,156 @@ mod trigger_absorb_tests {
             c: 0,
             t: 0
         }));
+    }
+
+    #[test]
+    fn rule_abox_seeds_survive_the_inverse_fence() {
+        // Regression: threading the rbox into the rules-consistency conversion
+        // armed the SHOI classification fence, which cleared the ABox nominal
+        // seeds and left the consistency tableau rootless (2669/15516 lost
+        // their 0.17 s inconsistent verdict). The seeds must survive an
+        // inverse-declaring rbox whenever the rule machinery is active.
+        let (clauses, rules, named) = rule_kb(true);
+        let rbox = vec![vec!["inverse".into(), "partOf".into(), "hasPart".into()]];
+        let tin = convert(
+            &clauses,
+            Some(&rbox),
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &rules,
+            true,
+        );
+        assert!(
+            !tin.nominals.is_empty(),
+            "ABox seeds must survive the nominal+inverse fence on the rules route"
+        );
+        assert!(
+            !tin.fenced.iter().any(|f| f.reason.contains("nominal+inverse")),
+            "the classification fence must not fire on rule-seeded nominals"
+        );
+        assert!(!rules_verdict(&tin), "rule-induced clash must be detected");
+    }
+
+    #[test]
+    fn consistent_rule_ontology_reports_consistent() {
+        // The fall-through case: a satisfiable DL-safe rule ontology must get
+        // a "consistent" verdict so classify proceeds to normal taxonomy work.
+        let (clauses, rules, named) = rule_kb(false);
+        let rbox = vec![vec!["inverse".into(), "partOf".into(), "hasPart".into()]];
+        let tin = convert(
+            &clauses,
+            Some(&rbox),
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &rules,
+            true,
+        );
+        assert!(!tin.nominals.is_empty());
+        assert!(rules_verdict(&tin));
+    }
+
+    #[test]
+    fn classification_nominals_stay_fenced_with_inverse() {
+        // Without active rules the SHOI fence must keep clearing nominals:
+        // the fast-Ht classification path has no sound nominal+inverse
+        // completion, and that contract is unchanged by the rules fix.
+        use crate::json_io::{JAtom, JTerm};
+        let clauses = vec![crate::json_io::JClause {
+            body: vec![JAtom::Concept {
+                concept: "__nom__a".into(),
+                term: JTerm::Var { name: "X".into() },
+            }],
+            head: vec![JAtom::Concept {
+                concept: "A".into(),
+                term: JTerm::Var { name: "X".into() },
+            }],
+        }];
+        let rbox = vec![vec!["inverse".into(), "partOf".into(), "hasPart".into()]];
+        let named = std::collections::HashSet::from(["A".to_string()]);
+        let tin = convert(&clauses, Some(&rbox), &named, &[], &[], &[], false, &[], true);
+        assert!(tin.nominals.is_empty());
+        assert!(tin
+            .fenced
+            .iter()
+            .any(|f| f.reason == "nominal+inverse(SHOI/SHOIQ)"));
+    }
+
+    /// A synthetic DL-safe rule KB mirroring the 2669/15516 core: an asserted
+    /// `KeyAttr(a)`, a rule `KeyAttr(x) → NonKeyAttr(x)`, and (when `unsat`)
+    /// the disjointness `KeyAttr ⊓ NonKeyAttr ⊑ ⊥`.
+    fn rule_kb(
+        unsat: bool,
+    ) -> (
+        Vec<crate::json_io::JClause>,
+        Vec<crate::json_io::JRule>,
+        std::collections::HashSet<String>,
+    ) {
+        use crate::json_io::{JAtom, JClause, JRule, JRuleAtom, JRuleTerm, JTerm};
+        let vx = || JTerm::Var { name: "X".into() };
+        let mut clauses = vec![
+            // ClassAssertion(KeyAttr a): the ground clause the frontend keeps
+            // in the clause set when rules are present.
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Concept {
+                    concept: "KeyAttr".into(),
+                    term: JTerm::Ind { name: "a".into() },
+                }],
+            },
+            // RoleAssertion(partOf a b) so the seeded graph has a role edge.
+            JClause {
+                body: vec![],
+                head: vec![JAtom::Role {
+                    role: "partOf".into(),
+                    source: JTerm::Ind { name: "a".into() },
+                    target: JTerm::Ind { name: "b".into() },
+                }],
+            },
+        ];
+        if unsat {
+            clauses.push(JClause {
+                body: vec![
+                    JAtom::Concept {
+                        concept: "KeyAttr".into(),
+                        term: vx(),
+                    },
+                    JAtom::Concept {
+                        concept: "NonKeyAttr".into(),
+                        term: vx(),
+                    },
+                ],
+                head: vec![],
+            });
+        }
+        let rules = vec![JRule {
+            body: vec![JRuleAtom::Class {
+                concept: "KeyAttr".into(),
+                term: JRuleTerm::Var { name: "x".into() },
+            }],
+            head: vec![JRuleAtom::Class {
+                concept: "NonKeyAttr".into(),
+                term: JRuleTerm::Var { name: "x".into() },
+            }],
+        }];
+        let named =
+            std::collections::HashSet::from(["KeyAttr".to_string(), "NonKeyAttr".to_string()]);
+        (clauses, rules, named)
+    }
+
+    /// Run the exact production consistency verdict on a converted TInput:
+    /// serialise over the worker wire format and call the same entry the
+    /// `KM_RULES_CONSISTENCY` tableau worker uses.
+    fn rules_verdict(tin: &TInput) -> bool {
+        let wire = serde_json::to_string(tin).expect("serialise TInput");
+        let inp: crate::tableau::TInput = serde_json::from_str(&wire).expect("parse TInput");
+        let clauses = crate::tableau::clauses_of_tinput(&inp);
+        crate::tableau::rules_consistency_verdict(&inp, clauses).expect("consistency verdict")
     }
 
     #[test]

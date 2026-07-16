@@ -47,6 +47,56 @@ keeps the card arm live, the `certified` admittance, the bridge/card hand-off,
 and that a synthetic `≥2 R.C` restriction converts to a `card_def` and passes
 the gate.
 
+### Restore the validated DL-safe rule consistency precheck (2026-07-16)
+
+The `ht_rules` procedure (named route, matrix row, and the automatic
+semantic-fragment gate for rule-bearing input) lost its short-circuit on ORE
+2669 and 15516: instead of the validated 0.17 s "inconsistent" verdict, both
+drove a full engine run to the 240 s timeout. Root cause: the KPSet checkpoint
+(`592462b`) threaded `Some(&input.rbox)` into `rules_consistency`'s
+`cb_to_ht::convert` call while updating the signature. The rbox side channel
+carries the source inverse-role records, and those arm the
+`nominal+inverse(SHOI/SHOIQ)` classification fence, which cleared the
+`__nom__` ABox seeds the consistency check exists to create. The rules
+tableau then started with no roots, trivially answered "consistent", and the
+rule-detected inconsistency fell through to the long CB path. Both ontologies
+declare inverse roles, so the precheck never fired.
+
+Two-part fix, both sound. First, `rules_consistency` passes `rbox = None`
+again — the exact validated 2669/15516 configuration; inverse/subrole/
+domain/range semantics still reach the tableau through the frontend's bridge
+clauses inside the clause set, so a detected clash remains a real clash.
+Second, the fence in `cb_to_ht::convert` no longer unseats nominal seeds when
+`rules_active`: the fence protects classification consumers (the fast Ht has
+no sound nominal+inverse completion), while the rule seeds' only consumer is
+the consistency verdict, which short-circuits solely on a clash — every
+tableau step is a sound consequence, so a clash is real regardless of the
+fragment; a "consistent" verdict merely falls through to normal
+classification. Rule-free ontologies are byte-identical (`rules_active`
+requires actual rules), so the corpus blast radius is exactly the SWRL onts.
+
+Validated on the workstation: 2669 and 15516 return `consistent=false` in
+0.12–0.17 s / ~19 MB again through `--route ht_rules`, `auto`, and `manual`;
+the synthetic consistent-rule control falls through and classifies its
+taxonomy correctly. New tests: `cb_to_ht` unit tests (rule seeds survive an
+inverse rbox and the production verdict detects the clash; the fence still
+clears classification nominals without rules), a route-provenance test
+(exactly `ht_rules` plus the composed portfolios keep `KM_NO_HT_RULES`
+unset), and `engine/tests/rules_route.rs` end-to-end fixtures with inverse
+roles (short-circuit only on inconsistency, taxonomy fall-through, automatic
+route provenance). The `KM_RULES_CONSISTENCY` worker block is refactored into
+`tableau::rules_consistency_verdict` so the tests exercise the production
+entry without the env gate.
+
+Rule-bearing ORE 10860 stays an honest decline, now in 0.01 s: it carries 17
+`DLSafeRule` axioms and exactly 4 use SWRL built-ins (`BuiltInAtom` time/date
+comparisons, with `DataPropertyAtom` operands) outside every supported rule
+shape, matching the profile corpus record of 4 unsupported rule axioms. The
+frontend's exact rule contract rejects the ontology
+(`parsed 13 of 17`) rather than silently dropping rules, per the fail-closed
+policy in docs/ROUTING.md; its gold remains unadjudicated
+(docs/CONTESTED-GOLD.md: HermiT cannot parse it).
+
 ### Separate provably positive ABoxes from TBox classification (2026-07-16)
 
 The procedure matrix found assertion-heavy ORE 10697, 15725, and 15846 where
