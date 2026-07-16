@@ -1181,12 +1181,34 @@ pub fn convert(
     // `card_defs`, silently LOSING the cardinality → unsound (ore_ont_10702, a
     // nominal+inverse ont that my `card_routable` __nom__ relaxation would otherwise
     // mis-transform). So exclude inverse here too, matching the route guard exactly.
-    let has_inverse = rbox
+    let has_inverse_rbox = rbox
         .map(|rb| {
             rb.iter()
                 .any(|ax| ax.first().map(String::as_str) == Some("inverse"))
         })
         .unwrap_or(false);
+    // Inverse roles used INSIDE a concept expression (`ObjectInverseOf` in
+    // `∃R⁻.C` / `∀R⁻.C` / `≥n R⁻.C` / `≤n R⁻.C`, or `SubObjectPropertyOf(_, R⁻)`)
+    // NEVER surface as an RBox `inverse` axiom: the frontend clausifies them into
+    // `__inv__R` bridge clauses (`normalise.rs::link_inverse`, the sole producer
+    // of `__inv__` role names), which stay in the ordinary clause set. So
+    // `has_inverse_rbox` above is blind to them, and a number restriction over
+    // such a role would look inverse-free here. That is unsound: `card_active`
+    // would drop the clausal `⋁ Eq` pigeonhole and emit first-class `card_defs`,
+    // yet `inverse_pairs` stays empty (so `tin.inverse=false`) and the ont would
+    // reach the INVERSE-BLIND fast-Ht card/ALCQ arm, which has no double blocking
+    // (SHIQ needs inverse-aware blocking). Detect the `__inv__` roles and fold
+    // them into the inverse signal so the card transform fails closed (keeps the
+    // pigeonhole, emits no `card_defs` → CB/QO handles it) and the
+    // `inverse+number(SHIQ)` fence below arms. Precise + fail-closed: `__inv__`
+    // is frontend-internal, so a genuine inverse-free cardinality ont (the
+    // validated 9540/7499 SHOQ/SHQ number route) is untouched.
+    let has_concept_inverse = clauses.iter().any(|c| {
+        c.body.iter().chain(c.head.iter()).any(|a| {
+            matches!(a, JAtom::Role { role, .. } if short(role).starts_with("__inv__"))
+        })
+    });
+    let has_inverse = has_inverse_rbox || has_concept_inverse;
     let card_active = !cardinalities.is_empty() && card_enabled && card_routable && !has_inverse;
     let mut min_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut max_markers: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -2020,7 +2042,14 @@ pub fn convert(
         });
         nominal_ids = Vec::new();
     }
-    if !inverse_pairs.is_empty() && number {
+    // Arm the SHIQ fence for BOTH inverse encodings: the RBox `inverse`/symmetric
+    // pairs (`inverse_pairs`) and concept-position `ObjectInverseOf` roles
+    // (`has_concept_inverse`, the `__inv__` bridge clauses). Without the second
+    // disjunct a `≤n R⁻.C` ontology whose card transform was already refused above
+    // still has `inverse_pairs` empty, so it would fall through to the
+    // inverse-blind `ht_routable` fast Ht (which ignores `tin.inverse` bridges)
+    // instead of the Konclude bridge / CB that handle inverse+number soundly.
+    if (!inverse_pairs.is_empty() || has_concept_inverse) && number {
         fenced.push(Fenced {
             reason: "inverse+number(SHIQ)".into(),
             detail: "inverse roles together with number restrictions".into(),
@@ -2708,5 +2737,162 @@ mod trigger_absorb_tests {
         assert!(out.is_empty());
         assert_eq!(moved, 0);
         assert_eq!(dropped, 1);
+    }
+
+    // ---- concept-position inverse (ObjectInverseOf / __inv__) SHIQ fence ----
+    // The frontend clausifies inverse roles used inside concept expressions into
+    // `__inv__R` bridge clauses (normalise.rs::link_inverse), which never reach the
+    // RBox. A number restriction over such a role is SHIQ, but the RBox-only
+    // inverse guard cannot see it, so the card transform and the inverse+number
+    // fence must key off the `__inv__` roles too, failing closed off the
+    // inverse-blind fast Ht.
+    use crate::json_io::{CardMeta, JAtom, JClause, JTerm};
+
+    fn vx() -> JTerm {
+        JTerm::Var { name: "x".into() }
+    }
+    fn vy() -> JTerm {
+        JTerm::Var { name: "y".into() }
+    }
+    fn vy2() -> JTerm {
+        JTerm::Var { name: "y2".into() }
+    }
+    /// The link_inverse bridge clause `R(x,y) -> __inv__R(y,x)`.
+    fn inv_bridge() -> JClause {
+        JClause {
+            body: vec![JAtom::Role {
+                role: "R".into(),
+                source: vx(),
+                target: vy(),
+            }],
+            head: vec![JAtom::Role {
+                role: "__inv__R".into(),
+                source: vy(),
+                target: vx(),
+            }],
+        }
+    }
+    /// A `≤1 role.C`-style pigeonhole `role(x,y) ∧ role(x,y2) -> y≈y2` (Eq head,
+    /// which sets `number`).
+    fn le1_over(role: &str) -> JClause {
+        JClause {
+            body: vec![
+                JAtom::Role {
+                    role: role.into(),
+                    source: vx(),
+                    target: vy(),
+                },
+                JAtom::Role {
+                    role: role.into(),
+                    source: vx(),
+                    target: vy2(),
+                },
+            ],
+            head: vec![JAtom::Eq {
+                left: vy(),
+                right: vy2(),
+            }],
+        }
+    }
+
+    #[test]
+    fn concept_position_inverse_disables_card_transform() {
+        // A `≤1` restriction over an inverse role (__inv__R) must NOT be lifted to
+        // first-class card_defs: the resulting ont would look inverse-free and
+        // reach the inverse-blind card arm. Fail closed → keep the pigeonhole.
+        let card = vec![CardMeta {
+            marker: "Q_card".into(),
+            min: false,
+            n: 1,
+            role: "__inv__R".into(),
+            filler: "C".into(),
+        }];
+        let named = std::collections::HashSet::new();
+        let tin = convert(&[inv_bridge()], None, &named, &card, &[], &[], true, &[], false);
+        assert!(
+            tin.card_defs.is_empty(),
+            "concept-position inverse must fail closed: no first-class card_defs"
+        );
+    }
+
+    #[test]
+    fn plain_role_cardinality_still_uses_card_transform() {
+        // Control: an inverse-FREE cardinality ont keeps the validated first-class
+        // card route (no regression to 9540/7499-style SHQ/SHOQ number onts).
+        let card = vec![CardMeta {
+            marker: "Q_card".into(),
+            min: false,
+            n: 1,
+            role: "R".into(),
+            filler: "C".into(),
+        }];
+        let filler_intro = JClause {
+            body: vec![JAtom::Concept {
+                concept: "A".into(),
+                term: vx(),
+            }],
+            head: vec![JAtom::Concept {
+                concept: "B".into(),
+                term: vx(),
+            }],
+        };
+        let named = std::collections::HashSet::new();
+        let tin = convert(
+            &[filler_intro],
+            None,
+            &named,
+            &card,
+            &[],
+            &[],
+            true,
+            &[],
+            false,
+        );
+        assert!(
+            !tin.card_defs.is_empty(),
+            "inverse-free cardinality must keep the first-class card_defs route"
+        );
+    }
+
+    #[test]
+    fn concept_position_inverse_with_number_arms_the_shiq_fence() {
+        // __inv__R bridge + a ≤1 Eq-head over it: number is set and the
+        // inverse+number(SHIQ) fence must arm even though inverse_pairs is empty.
+        let named = std::collections::HashSet::new();
+        let tin = convert(
+            &[inv_bridge(), le1_over("__inv__R")],
+            None,
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            false,
+        );
+        assert!(tin.number, "the ≤1 Eq-head must set the number flag");
+        assert!(
+            !tin.inverse,
+            "concept-position inverse is bridge-clause only, so tin.inverse stays false"
+        );
+        assert!(
+            tin.fenced
+                .iter()
+                .any(|f| f.reason == "inverse+number(SHIQ)"),
+            "concept-position inverse + number must arm the SHIQ fence"
+        );
+    }
+
+    #[test]
+    fn plain_number_restriction_is_not_shiq_fenced() {
+        // Control: inverse-free ALCQ number restrictions must stay unfenced so the
+        // sound fast-Ht/card route is not needlessly declined.
+        let named = std::collections::HashSet::new();
+        let tin = convert(&[le1_over("R")], None, &named, &[], &[], &[], false, &[], false);
+        assert!(tin.number);
+        assert!(
+            !tin.fenced.iter().any(|f| f.reason.contains("SHIQ")),
+            "inverse-free number restrictions must not arm the SHIQ fence"
+        );
     }
 }
