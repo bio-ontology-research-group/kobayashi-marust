@@ -237,13 +237,17 @@ fn trace_pred_product(
 /// `HashMap`.  Body atoms are in DL normal form, so one Hyper match binds only
 /// the central variable (under the `X` key) and the clause's few neighbour
 /// variables — an inline `SmallVec` holds every real substitution without
-/// touching the heap.  Hyper's backtracking join (`hyper_join`) clones the
-/// substitution once per candidate per depth; with the inline list that clone
-/// is a small `memcpy` instead of a `HashMap` allocation + rehash.  Keys stay
-/// unique by construction (`add` only pushes a key it does not already hold),
-/// so the list is a faithful finite map: `get`/`apply` return the same value
-/// for every queried key that the `HashMap` returned, independent of insertion
-/// order.  Every resolvent Hyper builds is therefore byte-identical.
+/// touching the heap.  Keys stay unique by construction (`add` only pushes a
+/// key it does not already hold), so the list is a faithful finite map:
+/// `get`/`apply` return the same value for every queried key that the `HashMap`
+/// returned, independent of insertion order.
+///
+/// Because `add` is strictly *append-only*, the list doubles as a backtracking
+/// trail: Hyper's join (`hyper_join`) extends it in place for a candidate and
+/// restores it with `mark`/`rollback` (a `truncate`) instead of cloning the
+/// substitution once per candidate per depth.  Rolling back to a marked length
+/// reproduces the exact prior bindings, so every resolvent Hyper builds is
+/// byte-identical to the clone-per-candidate enumeration it replaces.
 #[derive(Clone)]
 struct CentralSubst {
     map: SmallVec<[(Term, Term); 4]>,
@@ -305,6 +309,25 @@ impl CentralSubst {
     }
     fn get(&self, v: Term) -> Option<Term> {
         self.lookup(v)
+    }
+    /// Current binding count — the mark for a backtracking trail.  Paired with
+    /// `rollback`, it lets Hyper's join extend and undo the substitution in
+    /// place instead of cloning it per candidate.  This is sound because `add`
+    /// is strictly *append-only*: it only ever `push`es a new `(key, value)`
+    /// and never mutates or removes an existing entry, so the bindings present
+    /// at a given length are exactly the first `len` entries, in order.
+    #[inline]
+    fn mark(&self) -> usize {
+        self.map.len()
+    }
+    /// Undo every binding appended since `mark` was taken, restoring the exact
+    /// prior substitution (same entries, same order).  Faithful because `add`
+    /// only appends: truncating to the marked length is a byte-for-byte revert
+    /// of the intervening `add`/`unify` calls, so the substitution passed to
+    /// `build_hyper_resolvent` is identical to the clone-based join's.
+    #[inline]
+    fn rollback(&mut self, mark: usize) {
+        self.map.truncate(mark);
     }
 }
 
@@ -2654,10 +2677,17 @@ impl Engine {
                                 v.push((ci as usize, wanted));
                             } else {
                                 for (p, _) in arena[ci as usize].max_head_predicates() {
-                                    let mut probe = sigma.clone();
-                                    if unify(&mut probe, &oc.body[i], &p) {
+                                    // Probe compatibility with the side binding
+                                    // via the append-only trail rather than a
+                                    // clone: `add` only appends, so rolling back
+                                    // to `mark` leaves `sigma` in its exact
+                                    // pre-probe (side-bound) state for the next
+                                    // candidate.
+                                    let mark = sigma.mark();
+                                    if unify(&mut sigma, &oc.body[i], &p) {
                                         v.push((ci as usize, p));
                                     }
+                                    sigma.rollback(mark);
                                 }
                             }
                         }
@@ -2672,10 +2702,11 @@ impl Engine {
                     // to `y ≈ y`, the Nom-rule trigger, which must fire.
                     if self.ground_ctx == Some(id) {
                         for (p, _) in side.max_head_predicates() {
-                            let mut probe = sigma.clone();
-                            if unify(&mut probe, &oc.body[i], &p) {
+                            let mark = sigma.mark();
+                            if unify(&mut sigma, &oc.body[i], &p) {
                                 v.push((usize::MAX, p));
                             }
+                            sigma.rollback(mark);
                         }
                     }
                     if v.is_empty() {
@@ -2740,7 +2771,7 @@ impl Engine {
                 &candidates,
                 &order,
                 0,
-                &sigma,
+                &mut sigma,
                 &exempt,
                 &mut chosen,
                 root,
@@ -2762,7 +2793,7 @@ impl Engine {
         candidates: &[Vec<(usize, Pred)>],
         order: &[usize],
         depth: usize,
-        sigma: &CentralSubst,
+        sigma: &mut CentralSubst,
         exempt: &[Term],
         chosen: &mut Vec<usize>,
         root: bool,
@@ -2778,9 +2809,14 @@ impl Engine {
         }
         let pos = order[depth];
         for (j, &(_ci, p)) in candidates[pos].iter().enumerate() {
-            let mut s2 = sigma.clone();
-            if unify(&mut s2, &oc.body[pos], &p)
-                && (oc.sym_groups.is_empty() || sym_groups_ok(oc, exempt, &s2))
+            // Extend the shared substitution in place and undo it on backtrack
+            // via the append-only trail, instead of cloning `sigma` per
+            // candidate.  `mark`/`rollback` restore the exact prior bindings, so
+            // the resolvent built at every leaf — and their enumeration order —
+            // is identical to the clone-per-candidate join.
+            let mark = sigma.mark();
+            if unify(sigma, &oc.body[pos], &p)
+                && (oc.sym_groups.is_empty() || sym_groups_ok(oc, exempt, sigma))
             {
                 chosen[pos] = j;
                 self.hyper_join(
@@ -2790,13 +2826,14 @@ impl Engine {
                     candidates,
                     order,
                     depth + 1,
-                    &s2,
+                    sigma,
                     exempt,
                     chosen,
                     root,
                     out,
                 );
             }
+            sigma.rollback(mark);
         }
     }
 
@@ -5616,6 +5653,145 @@ mod tests {
         assert_eq!(g.apply(fterm(1)), comp_term(fterm(1), o));
         // Re-binding x to a different individual is rejected.
         assert!(!g.add(X, ind_term(4)));
+    }
+
+    /// Trail invariant for the clone-free Hyper join: `mark()` + `rollback()`
+    /// must be a faithful undo of any `add`/`unify` appended in between, i.e. a
+    /// rolled-back substitution behaves identically to the clone taken at the
+    /// mark on every probe term.  `build_hyper_resolvent` depends only on
+    /// `sigma` as a function, so this is exactly the property that makes the
+    /// in-place join derive the same resolvents the clone-per-candidate join did.
+    #[test]
+    fn central_subst_mark_rollback_restores_like_clone() {
+        let probes = [
+            X,
+            Y,
+            zvar(1),
+            zvar(2),
+            zvar(5),
+            zvar(7),
+            ind_term(1),
+            ind_term(2),
+            fterm(1),
+            fterm(2),
+        ];
+        // A pool of (i, o) pairs; some conflict with the seed, some are fresh,
+        // some are re-binds — covering the 0-, 1-, and reject-after-partial
+        // append cases inside `unify`.
+        let steps = [
+            (zvar(2), fterm(2)),
+            (zvar(5), ind_term(2)),
+            (zvar(2), zvar(4)), // conflicts once zvar(2) is bound: rejected, no append
+            (Y, ind_term(2)),
+            (zvar(7), fterm(1)),
+            (zvar(1), zvar(3)), // consistent re-bind of the seed: accepted, no append
+        ];
+        for &allow_ground in &[false, true] {
+            let mut subst = CentralSubst::new(allow_ground);
+            // Seed a "side condition" binding, as Hyper does before the join.
+            let _ = subst.add(X, if allow_ground { ind_term(1) } else { X });
+            let _ = subst.add(zvar(1), zvar(3));
+            for &(i, o) in &steps {
+                let snapshot = subst.clone();
+                let mark = subst.mark();
+                // Append-only mutation (single and role-like double add).
+                let _ = subst.add(i, o);
+                let _ = subst.add(o, i);
+                subst.rollback(mark);
+                assert_eq!(subst.mark(), snapshot.mark());
+                for &p in &probes {
+                    assert_eq!(
+                        subst.apply(p),
+                        snapshot.apply(p),
+                        "apply({p}) after rollback (allow_ground={allow_ground})"
+                    );
+                    assert_eq!(subst.get(p), snapshot.get(p), "get({p}) after rollback");
+                }
+            }
+        }
+    }
+
+    /// Differential test of the two Hyper backtracking strategies over
+    /// `CentralSubst`: the pre-patch **clone-per-candidate** descent and the new
+    /// **mark/rollback trail** descent.  Run over the same body atoms and the
+    /// same ordered candidate lists, they must visit leaves in the identical
+    /// order with the identical accumulated substitution — which is exactly what
+    /// determines every resolvent `build_hyper_resolvent` emits.
+    #[test]
+    fn hyper_join_trail_matches_clone_join() {
+        // Leaf record: the substitution as a function over a fixed probe set.
+        fn leaf(sigma: &CentralSubst) -> Vec<Term> {
+            [X, Y, zvar(1), zvar(2), zvar(3), ind_term(1), fterm(1)]
+                .iter()
+                .map(|&p| sigma.apply(p))
+                .collect()
+        }
+        fn clone_join(
+            bodies: &[Pred],
+            cands: &[Vec<Pred>],
+            depth: usize,
+            sigma: &CentralSubst,
+            out: &mut Vec<Vec<Term>>,
+        ) {
+            if depth == bodies.len() {
+                out.push(leaf(sigma));
+                return;
+            }
+            for &p in &cands[depth] {
+                let mut s2 = sigma.clone();
+                if unify(&mut s2, &bodies[depth], &p) {
+                    clone_join(bodies, cands, depth + 1, &s2, out);
+                }
+            }
+        }
+        fn trail_join(
+            bodies: &[Pred],
+            cands: &[Vec<Pred>],
+            depth: usize,
+            sigma: &mut CentralSubst,
+            out: &mut Vec<Vec<Term>>,
+        ) {
+            if depth == bodies.len() {
+                out.push(leaf(sigma));
+                return;
+            }
+            for &p in &cands[depth] {
+                let mark = sigma.mark();
+                if unify(sigma, &bodies[depth], &p) {
+                    trail_join(bodies, cands, depth + 1, sigma, out);
+                }
+                sigma.rollback(mark);
+            }
+        }
+        let con = |iri: Iri, t: Term| Pred::Concept { iri, t };
+        let rol = |iri: Iri, s: Term, t: Term| Pred::Role { iri, s, t };
+        // Body atoms sharing neighbour variables (y1=zvar(1), y2=zvar(2)) so that
+        // cross-position consistency actually prunes branches, exercising the
+        // partial-append/backtrack path of the trail.
+        let bodies = vec![
+            rol(10, X, zvar(1)),
+            con(20, zvar(1)),
+            rol(10, X, zvar(2)),
+            con(21, zvar(2)),
+        ];
+        // Candidate heads per position; several unify, several clash on iri or on
+        // an already-bound neighbour variable.
+        let cands = vec![
+            vec![rol(10, X, ind_term(1)), rol(10, X, ind_term(2)), rol(99, X, ind_term(3))],
+            vec![con(20, ind_term(1)), con(20, ind_term(2)), con(20, ind_term(3))],
+            vec![rol(10, X, ind_term(1)), rol(10, X, ind_term(2))],
+            vec![con(21, ind_term(1)), con(21, ind_term(2))],
+        ];
+        for &allow_ground in &[false, true] {
+            let mut a = Vec::new();
+            clone_join(&bodies, &cands, 0, &CentralSubst::new(allow_ground), &mut a);
+            let mut b = Vec::new();
+            let mut sigma = CentralSubst::new(allow_ground);
+            trail_join(&bodies, &cands, 0, &mut sigma, &mut b);
+            assert_eq!(a, b, "trail/clone join diverged (allow_ground={allow_ground})");
+            // And the trail must leave the substitution empty again at the top.
+            assert_eq!(sigma.mark(), 0, "trail leaked bindings at depth 0");
+        }
     }
 
     /// arXiv:1805.01396 Example 3 — the O+I+Q interaction that needs the Nom
