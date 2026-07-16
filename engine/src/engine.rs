@@ -371,6 +371,41 @@ fn root_succ_form(p: &Pred) -> Option<(Pred, Term)> {
     }
 }
 
+/// r-Succ reach extraction: the CENTRAL reachability predicates
+/// (`__trans__`/`__chain__(x)`) contributed by the clauses at arena ids `pool`,
+/// in first-occurrence order, WITHOUT cross-call dedup (the caller folds the
+/// result into a persistent ordered-unique accumulator).  Shared by
+/// `propagate_inner`'s semi-naive r-Succ scan and its invariance test, so the
+/// test certifies the exact predicate production uses.
+fn rsucc_reach_tail(arena: &[ContextClause], pool: &[u32], sig: &Sig) -> Vec<Pred> {
+    let mut out: Vec<Pred> = Vec::new();
+    for &ci in pool {
+        for (p, _) in arena[ci as usize].max_head_predicates() {
+            if let Pred::Concept { iri, t } = p {
+                if is_central(t) && sig.is_reach(iri) {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Fold a reach-tail (see [`rsucc_reach_tail`]) into a persistent ordered-unique
+/// accumulator: append each predicate not already present, first occurrence
+/// winning; `set` mirrors `acc` for O(1) membership.  Folding successive tails
+/// of an append-only pool reproduces exactly the ordered-unique list a single
+/// full rescan of the concatenated pool would build (the reach extraction never
+/// consults `clause_keys`, so pool entries are effectively immutable once
+/// appended) — the invariant the semi-naive r-Succ scan relies on.
+fn fold_reach_unique(acc: &mut Vec<Pred>, set: &mut HashSet<Pred>, tail: Vec<Pred>) {
+    for p in tail {
+        if set.insert(p) {
+            acc.push(p);
+        }
+    }
+}
+
 /// Merge-form literal of the r-Succ side condition (*): `x ≈ o`, `y ≈ o`, or
 /// `x ≈ y` (canonical `Lit::eq` puts the larger term first: individuals sit
 /// above x above y).  A clause `Γ'' → Δ'' ∨ ⋁ L_i` of merge-form `L_i` with
@@ -1038,6 +1073,17 @@ struct Context {
     /// step that lets a successor fire the transitivity clause across an inverse
     /// back-edge.  Entries are arena ids.  Empty unless `sig.rsucc`.
     rsucc_pool: Vec<u32>,
+    /// Semi-naive r-Succ: the distinct CENTRAL reachability predicates extracted
+    /// from `rsucc_pool` so far, in first-occurrence (pool) order, with
+    /// `rsucc_hwm` the count of `rsucc_pool` entries already scanned into it.
+    /// `rsucc_pool` is append-only and its reach extraction never consults
+    /// `clause_keys`, so accumulating incrementally reproduces exactly the
+    /// ordered-unique set a full rescan would build — the same delta discipline
+    /// as `succ_hwm`/`pred_hwm`, avoiding the per-`propagate` full-pool rescan.
+    /// `rsucc_reach_set` mirrors `rsucc_reach` for O(1) dedup on insertion.
+    rsucc_reach: Vec<Pred>,
+    rsucc_reach_set: HashSet<Pred>,
+    rsucc_hwm: usize,
     /// per (successor function term, target ctx, central reach pred) already
     /// forwarded, to dedup the edge × reach-fact cross-product across `propagate`
     /// rounds.  The target id is part of the key so a re-targeted (grown-core)
@@ -1102,6 +1148,9 @@ impl Context {
             succ_pool: Vec::new(),
             succ_hwm: 0,
             rsucc_pool: Vec::new(),
+            rsucc_reach: Vec::new(),
+            rsucc_reach_set: HashSet::new(),
+            rsucc_hwm: 0,
             pushed_rsucc: HashSet::new(),
             seeded_inds: HashSet::new(),
             ground_body_index: HashMap::new(),
@@ -3830,28 +3879,40 @@ impl Engine {
         // pushed set contains `reach(y)` — i.e. only to predecessors that actually
         // vouched for `reach`; a co-sharing predecessor that did not is unaffected.
         if self.sig.rsucc && !self.contexts[id].rsucc_pool.is_empty() {
-            let reach_preds: Vec<Pred> = {
-                let ctx = &self.contexts[id];
-                let arena = &self.cc_arena[ctx.root as usize];
-                let mut v: Vec<Pred> = Vec::new();
-                for &ci in &ctx.rsucc_pool {
-                    for (p, _) in arena[ci as usize].max_head_predicates() {
-                        if let Pred::Concept { iri, t } = p {
-                            if is_central(t) && self.sig.is_reach(iri) && !v.contains(&p) {
-                                v.push(p);
-                            }
-                        }
-                    }
-                }
-                v
-            };
+            // Semi-naive: extend the persistent reach set from only the
+            // `rsucc_pool` entries appended since the last scan (`rsucc_hwm`).
+            // Because `rsucc_pool` is append-only and its reach extraction never
+            // consults `clause_keys`, the accumulated `rsucc_reach` is exactly
+            // the ordered-unique list the former full rescan produced, so the
+            // reach × successor cross-product below (still gated by
+            // `pushed_rsucc`) emits an identical set and order of Succ messages.
+            {
+                // Immutable pass: gather the reach predicates from only the new
+                // pool tail (in pool order, duplicates tolerated by the fold).
+                let new_reach = {
+                    let ctx = &self.contexts[id];
+                    let arena = &self.cc_arena[ctx.root as usize];
+                    rsucc_reach_tail(arena, &ctx.rsucc_pool[ctx.rsucc_hwm..], &self.sig)
+                };
+                // Mutable pass: fold the tail into the persistent ordered-unique
+                // accumulator (first occurrence wins, matching a full rescan).
+                let ctx = &mut self.contexts[id];
+                fold_reach_unique(&mut ctx.rsucc_reach, &mut ctx.rsucc_reach_set, new_reach);
+                ctx.rsucc_hwm = ctx.rsucc_pool.len();
+            }
             let successors: Vec<(Term, usize)> = self.contexts[id]
                 .successors
                 .iter()
                 .map(|(&f, &t)| (f, t))
                 .collect();
+            // `rsucc_reach` only grew in the scan above, not in this loop, so its
+            // length is stable here; index it (Pred is Copy) to release the borrow
+            // before the `pushed_rsucc` mutation. Order is identical to iterating
+            // the former freshly-built `reach_preds` list.
+            let nreach = self.contexts[id].rsucc_reach.len();
             for (f, target) in successors {
-                for &p in &reach_preds {
+                for j in 0..nreach {
+                    let p = self.contexts[id].rsucc_reach[j];
                     if self.contexts[id].pushed_rsucc.insert((f, target, p)) {
                         let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
                         self.msgs.push_back(Msg::Succ {
@@ -6201,5 +6262,287 @@ mod tests {
                 .all(|cid| !ctx.clause_keys.contains(cid)),
             "a back-subsumed intermediate must not cross the Pred boundary"
         );
+    }
+}
+
+#[cfg(test)]
+mod rsucc_rolechain_tests {
+    //! Invariance tests for the semi-naive (delta) r-Succ reach forwarding.
+    //!
+    //! The optimization replaced a per-`propagate` FULL rescan of `rsucc_pool`
+    //! (rebuilding the ordered-unique reach-predicate list every round) with an
+    //! incremental fold into a persistent accumulator gated by an `rsucc_hwm`
+    //! high-water mark.  Everything downstream (the successor × reach
+    //! cross-product, the `pushed_rsucc` dedup, the `Msg::Succ` construction) is
+    //! byte-for-byte unchanged, so if the accumulated reach list equals what the
+    //! full rescan produced, the emitted message set/order — hence the whole
+    //! saturation fixpoint — is identical.  `rsucc_reach_delta_equals_full_rescan`
+    //! certifies exactly that equality (the crux); the witness tests confirm the
+    //! four role-chain families still classify correctly and identically with
+    //! r-Succ on vs off (answer invariance).
+    use super::*;
+
+    fn cx(iri: Iri, t: Term) -> Pred {
+        Pred::Concept { iri, t }
+    }
+    fn rl(iri: Iri, s: Term, t: Term) -> Pred {
+        Pred::Role { iri, s, t }
+    }
+
+    // ---- Test 1 (crux): delta reach extraction == full rescan, every split. ----
+    #[test]
+    fn rsucc_reach_delta_equals_full_rescan() {
+        let mut sig = Sig::default();
+        let t1 = sig.concept("__trans__R__A"); // reach
+        let t2 = sig.concept("__trans__R__B"); // reach
+        let ch = sig.concept("__chain__S__A"); // reach
+        let plain = sig.concept("PlainC"); // NOT reach
+        assert!(sig.is_reach(t1) && sig.is_reach(ch) && !sig.is_reach(plain));
+        let f = fterm(1);
+        // Single-literal heads are always maximal, so `max_head_predicates`
+        // returns exactly the head predicate — isolating the reach filter.
+        let mk = |p: Pred| ContextClause::new(vec![], vec![Lit::P(p)], false, &sig);
+        let arena: Vec<ContextClause> = vec![
+            mk(cx(t1, X)),    // 0: reach t1
+            mk(cx(plain, X)), // 1: filtered (not a reach concept)
+            mk(cx(t2, X)),    // 2: reach t2
+            mk(cx(t1, X)),    // 3: duplicate t1
+            mk(cx(ch, X)),    // 4: reach ch
+            mk(cx(t2, X)),    // 5: duplicate t2
+            mk(cx(t1, f)),    // 6: filtered (reach concept but non-central term)
+        ];
+        let pool: Vec<u32> = (0..arena.len() as u32).collect();
+
+        // Full rescan reference — what the pre-optimization code recomputed
+        // every propagate.
+        let full = {
+            let mut acc = Vec::new();
+            let mut set = HashSet::new();
+            fold_reach_unique(&mut acc, &mut set, rsucc_reach_tail(&arena, &pool, &sig));
+            acc
+        };
+        assert_eq!(
+            full,
+            vec![cx(t1, X), cx(t2, X), cx(ch, X)],
+            "full rescan must be the ordered-unique central reach preds"
+        );
+
+        // For EVERY 2-way split point the incremental fold reproduces `full`
+        // (append-only pool ⇒ scanning [..k] then [k..] equals scanning all).
+        for k in 0..=pool.len() {
+            let mut acc = Vec::new();
+            let mut set = HashSet::new();
+            fold_reach_unique(
+                &mut acc,
+                &mut set,
+                rsucc_reach_tail(&arena, &pool[..k], &sig),
+            );
+            fold_reach_unique(
+                &mut acc,
+                &mut set,
+                rsucc_reach_tail(&arena, &pool[k..], &sig),
+            );
+            assert_eq!(acc, full, "delta split at {k} diverged from full rescan");
+        }
+
+        // Per-entry arrival (the real propagate cadence: pool grows one worked-off
+        // clause at a time across rounds).
+        let mut acc = Vec::new();
+        let mut set = HashSet::new();
+        for i in 0..pool.len() {
+            fold_reach_unique(
+                &mut acc,
+                &mut set,
+                rsucc_reach_tail(&arena, &pool[i..i + 1], &sig),
+            );
+        }
+        assert_eq!(
+            acc, full,
+            "per-entry incremental arrival diverged from full rescan"
+        );
+    }
+
+    /// Run `clauses` (querying `query`) with r-Succ forced on or off, returning
+    /// `query`'s named supers.  `sig.rsucc` is set AFTER `Engine::new` so the
+    /// result is independent of the ambient `KM_RSUCC` env var (no test races).
+    fn supers_rsucc(
+        clauses: Vec<OntologyClause>,
+        sig: Sig,
+        query_id: Iri,
+        rsucc: bool,
+    ) -> Vec<String> {
+        let name = sig.concept_names[query_id as usize].clone();
+        let mut e = Engine::new(sig, clauses, 0);
+        e.sig.rsucc = rsucc;
+        e.run_for(&[query_id]);
+        let mut s = e
+            .subsumptions()
+            .into_iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, v)| v)
+            .unwrap_or_default();
+        s.sort();
+        s
+    }
+
+    // ---- Test 2: transitive witness. ∃R.C ⊑ D over transitive R, two R-hops. --
+    #[test]
+    fn transitive_witness_answer_invariant() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let p = sig.concept("__trans__R__C"); // reach concept
+        let r = sig.role("R");
+        let (f1, f2) = (fterm(1), fterm(2));
+        let clauses = vec![
+            // A ⊑ ∃R.B ; B ⊑ ∃R.C
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f1))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(rl(r, X, f2))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(cx(c, f2))]),
+            // transitivity recognition of the consumer ∃R.C ⊑ D:
+            OntologyClause::new(vec![rl(r, X, Y), cx(c, Y)], vec![Lit::P(cx(p, X))]),
+            OntologyClause::new(vec![rl(r, X, Y), cx(p, Y)], vec![Lit::P(cx(p, X))]),
+            OntologyClause::new(vec![cx(p, X)], vec![Lit::P(cx(d, X))]),
+        ];
+        let off = supers_rsucc(clauses.clone(), sig_clone(&sig), a, false);
+        let on = supers_rsucc(clauses, sig, a, true);
+        assert!(
+            off.contains(&"D".to_string()),
+            "transitive A ⊑ D (off): {off:?}"
+        );
+        assert_eq!(on, off, "r-Succ changed the transitive answer");
+    }
+
+    // ---- Test 3: chain witness. R∘S ⊑ T, consumer ∃T.C ⊑ D. ----
+    #[test]
+    fn chain_witness_answer_invariant() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let q = sig.concept("__chain__S__C"); // reach concept
+        let r = sig.role("R");
+        let s = sig.role("S");
+        let (f1, f2) = (fterm(1), fterm(2));
+        let clauses = vec![
+            // A ⊑ ∃R.B ; B ⊑ ∃S.C
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f1))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(rl(s, X, f2))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(cx(c, f2))]),
+            // chain recognition of R∘S⊑T with consumer ∃T.C ⊑ D:
+            //   S(x,y) ∧ C(y) → __chain__S__C(x) ; R(x,y) ∧ __chain__S__C(y) → D(x)
+            OntologyClause::new(vec![rl(s, X, Y), cx(c, Y)], vec![Lit::P(cx(q, X))]),
+            OntologyClause::new(vec![rl(r, X, Y), cx(q, Y)], vec![Lit::P(cx(d, X))]),
+        ];
+        let off = supers_rsucc(clauses.clone(), sig_clone(&sig), a, false);
+        let on = supers_rsucc(clauses, sig, a, true);
+        assert!(off.contains(&"D".to_string()), "chain A ⊑ D (off): {off:?}");
+        assert_eq!(on, off, "r-Succ changed the chain answer");
+    }
+
+    // ---- Test 4: inverse witness. Transitive R with an inverse pair (R, Ri);
+    //      the delta scan runs over an ontology carrying inverse back-edges. ----
+    #[test]
+    fn inverse_witness_answer_invariant() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let d = sig.concept("D");
+        let p = sig.concept("__trans__R__C"); // reach concept
+        let r = sig.role("R");
+        let ri = sig.role("Ri");
+        let (f1, f2) = (fterm(1), fterm(2));
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f1))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(rl(r, X, f2))]),
+            OntologyClause::new(vec![cx(b, X)], vec![Lit::P(cx(c, f2))]),
+            // inverse bridges R⁻ = Ri
+            OntologyClause::new(vec![rl(r, X, Y)], vec![Lit::P(rl(ri, Y, X))]),
+            OntologyClause::new(vec![rl(ri, X, Y)], vec![Lit::P(rl(r, Y, X))]),
+            // transitivity recognition of ∃R.C ⊑ D
+            OntologyClause::new(vec![rl(r, X, Y), cx(c, Y)], vec![Lit::P(cx(p, X))]),
+            OntologyClause::new(vec![rl(r, X, Y), cx(p, Y)], vec![Lit::P(cx(p, X))]),
+            OntologyClause::new(vec![cx(p, X)], vec![Lit::P(cx(d, X))]),
+        ];
+        let off = supers_rsucc(clauses.clone(), sig_clone(&sig), a, false);
+        let on = supers_rsucc(clauses, sig, a, true);
+        assert!(
+            off.contains(&"D".to_string()),
+            "inverse+transitive A ⊑ D (off): {off:?}"
+        );
+        assert_eq!(on, off, "r-Succ changed the inverse+transitive answer");
+    }
+
+    // ---- Test 5: domain/range witness. domain(R)=D ⇒ A ⊑ D; range(S)=⊥ under an
+    //      existential ⇒ the subject is unsatisfiable. ----
+    #[test]
+    fn domain_range_witness_answer_invariant() {
+        // domain: A ⊑ ∃R.B, domain(R)=D  ⟹  A ⊑ D
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let d = sig.concept("D");
+        let r = sig.role("R");
+        let f1 = fterm(1);
+        let dom = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(rl(r, X, f1))]),
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(b, f1))]),
+            OntologyClause::new(vec![rl(r, X, Y)], vec![Lit::P(cx(d, X))]), // domain(R)=D
+        ];
+        let off = supers_rsucc(dom.clone(), sig_clone(&sig), a, false);
+        let on = supers_rsucc(dom, sig, a, true);
+        assert!(
+            off.contains(&"D".to_string()),
+            "domain A ⊑ D (off): {off:?}"
+        );
+        assert_eq!(on, off, "r-Succ changed the domain answer");
+
+        // range: A2 ⊑ ∃S.⊤, range(S)=E, E ⊑ ⊥  ⟹  A2 unsatisfiable (⊑ owl:Nothing)
+        let mut sig2 = Sig::default();
+        let a2 = sig2.concept("A2");
+        let e = sig2.concept("E");
+        let s = sig2.role("S");
+        let g = fterm(1);
+        let rng = vec![
+            OntologyClause::new(vec![cx(a2, X)], vec![Lit::P(rl(s, X, g))]),
+            OntologyClause::new(vec![rl(s, X, Y)], vec![Lit::P(cx(e, Y))]), // range(S)=E
+            OntologyClause::new(vec![cx(e, X)], vec![]),                    // E ⊑ ⊥
+        ];
+        let name = sig2.concept_names[a2 as usize].clone();
+        // A2 is unsatisfiable (its S-successor is E ⊑ ⊥); `subsumptions` surfaces
+        // the ⊥ subject. We only need the answer to be identical with r-Succ on/off.
+        let mut e_off = Engine::new(sig2.clone(), rng.clone(), 0);
+        e_off.sig.rsucc = false;
+        e_off.run_for(&[a2]);
+        let mut e_on = Engine::new(sig2, rng, 0);
+        e_on.sig.rsucc = true;
+        e_on.run_for(&[a2]);
+        let supers_off = e_off
+            .subsumptions()
+            .into_iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, v)| v)
+            .unwrap_or_default();
+        let supers_on = e_on
+            .subsumptions()
+            .into_iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, v)| v)
+            .unwrap_or_default();
+        assert_eq!(
+            supers_on, supers_off,
+            "r-Succ changed the range/unsat answer"
+        );
+    }
+
+    fn sig_clone(sig: &Sig) -> Sig {
+        sig.clone()
     }
 }
