@@ -406,6 +406,41 @@ fn fold_reach_unique(acc: &mut Vec<Pred>, set: &mut HashSet<Pred>, tail: Vec<Pre
     }
 }
 
+/// Semi-naive r-Succ cross-product for ONE `propagate` round: emit, for each
+/// current successor edge `(f, target)`, the reach preds it has not yet been
+/// offered (`reach[hwm(edge)..]`), gated by the persistent `pushed` dedup set;
+/// then advance each visited edge's hwm to `reach.len()`.
+///
+/// `reach` is append-only (grown only by `fold_reach_unique`), so for any edge
+/// the preds in `reach[..hwm(edge)]` were all offered to `pushed` in a prior
+/// round the edge was visited — `pushed.insert` returned `false`/`true` for them
+/// then and would return `false` now.  Skipping that prefix therefore drops only
+/// work the gate already rejected: the fired triples (and their order:
+/// successors outer, reach inner) are byte-for-byte what the former full
+/// `successors × reach` rescan produced, so the emitted `Msg::Succ` set and
+/// order — hence the saturation fixpoint — is identical.  Shared by
+/// `propagate_inner` and its invariance test so the test certifies the exact
+/// production the engine uses.
+fn rsucc_cross_step(
+    successors: &[(Term, usize)],
+    reach: &[Pred],
+    hwm: &mut HashMap<(Term, usize), usize>,
+    pushed: &mut HashSet<(Term, usize, Pred)>,
+) -> Vec<(Term, usize, Pred)> {
+    let nreach = reach.len();
+    let mut fired: Vec<(Term, usize, Pred)> = Vec::new();
+    for &(f, target) in successors {
+        let start = hwm.get(&(f, target)).copied().unwrap_or(0);
+        for &p in &reach[start..nreach] {
+            if pushed.insert((f, target, p)) {
+                fired.push((f, target, p));
+            }
+        }
+        hwm.insert((f, target), nreach);
+    }
+    fired
+}
+
 /// Merge-form literal of the r-Succ side condition (*): `x ≈ o`, `y ≈ o`, or
 /// `x ≈ y` (canonical `Lit::eq` puts the larger term first: individuals sit
 /// above x above y).  A clause `Γ'' → Δ'' ∨ ⋁ L_i` of merge-form `L_i` with
@@ -1089,6 +1124,14 @@ struct Context {
     /// rounds.  The target id is part of the key so a re-targeted (grown-core)
     /// successor is re-sent the reach facts.
     pushed_rsucc: HashSet<(Term, usize, Pred)>,
+    /// Semi-naive r-Succ cross-product: per successor edge `(f, target)` the
+    /// number of `rsucc_reach` entries already offered to the `pushed_rsucc`
+    /// gate for that edge.  `rsucc_reach` is append-only, so `reach[..hwm]` were
+    /// all offered (hence already gate-checked) in prior rounds; scanning only
+    /// `reach[hwm..]` per round skips work `pushed_rsucc.insert` would reject,
+    /// avoiding the per-`propagate` full `successors × reach` rescan while
+    /// emitting an identical `Msg::Succ` set and order (see `rsucc_cross_step`).
+    rsucc_pair_reach_hwm: HashMap<(Term, usize), usize>,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -1152,6 +1195,7 @@ impl Context {
             rsucc_reach_set: HashSet::new(),
             rsucc_hwm: 0,
             pushed_rsucc: HashSet::new(),
+            rsucc_pair_reach_hwm: HashMap::new(),
             seeded_inds: HashSet::new(),
             ground_body_index: HashMap::new(),
             bridge_index: HashMap::new(),
@@ -3905,24 +3949,30 @@ impl Engine {
                 .iter()
                 .map(|(&f, &t)| (f, t))
                 .collect();
-            // `rsucc_reach` only grew in the scan above, not in this loop, so its
-            // length is stable here; index it (Pred is Copy) to release the borrow
-            // before the `pushed_rsucc` mutation. Order is identical to iterating
-            // the former freshly-built `reach_preds` list.
-            let nreach = self.contexts[id].rsucc_reach.len();
-            for (f, target) in successors {
-                for j in 0..nreach {
-                    let p = self.contexts[id].rsucc_reach[j];
-                    if self.contexts[id].pushed_rsucc.insert((f, target, p)) {
-                        let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
-                        self.msgs.push_back(Msg::Succ {
-                            from: id,
-                            f,
-                            p: psigma,
-                            target,
-                        });
-                    }
-                }
+            // Semi-naive cross-product: for each successor edge scan only the
+            // reach preds it has not yet been offered (`reach[hwm(edge)..]`),
+            // still gated by `pushed_rsucc`.  `rsucc_reach` only grew in the scan
+            // above (not in this loop) so its length is stable; `rsucc_cross_step`
+            // reproduces the former full `successors × reach` rescan's fired
+            // triples and order exactly (see its doc-comment).  Disjoint field
+            // borrows let it read `rsucc_reach` while mutating the two maps.
+            let fired = {
+                let ctx = &mut self.contexts[id];
+                rsucc_cross_step(
+                    &successors,
+                    &ctx.rsucc_reach,
+                    &mut ctx.rsucc_pair_reach_hwm,
+                    &mut ctx.pushed_rsucc,
+                )
+            };
+            for (f, target, p) in fired {
+                let psigma = p.apply(&|v| forwards(f, v)); // reach(x) -> reach(y)
+                self.msgs.push_back(Msg::Succ {
+                    from: id,
+                    f,
+                    p: psigma,
+                    target,
+                });
             }
         }
         // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
@@ -6547,5 +6597,87 @@ mod rsucc_rolechain_tests {
 
     fn sig_clone(sig: &Sig) -> Sig {
         sig.clone()
+    }
+
+    // ---- Test 6 (crux of the follow-up optimization): the semi-naive
+    //      successor × reach cross-product (`rsucc_cross_step`, per-edge hwm)
+    //      reproduces the former full per-round `successors × reach` rescan
+    //      exactly — same fired triples, same order, same final `pushed` set —
+    //      across a schedule that grows the reach list AND grows / re-targets /
+    //      drops-and-restores successor edges (the cases a naive global reach
+    //      high-water mark would get wrong).  Everything downstream of the fired
+    //      list (the `Msg::Succ` build) is unchanged, so equal fired sequences
+    //      ⇒ identical emitted messages ⇒ identical fixpoint. ----
+    #[test]
+    fn rsucc_cross_delta_equals_full_rescan() {
+        let mut sig = Sig::default();
+        let r0 = cx(sig.concept("__trans__R__A"), X);
+        let r1 = cx(sig.concept("__trans__R__B"), X);
+        let r2 = cx(sig.concept("__chain__S__A"), X);
+        // Successor edges (function term, target ctx id).
+        let (fa, fb, fc) = (fterm(1), fterm(2), fterm(3));
+        let (ta, tb, tb2, tc) = (10usize, 20, 21, 30);
+
+        // A schedule of propagate rounds: (current successor edges, reach list).
+        // reach is append-only; successor edges grow, re-target (fb: tb -> tb2),
+        // drop (fa absent in round 3) and restore (fa back in round 5).
+        let rounds: Vec<(Vec<(Term, usize)>, Vec<Pred>)> = vec![
+            (vec![(fa, ta)], vec![r0]),                       // 1: one edge, one reach
+            (vec![(fa, ta), (fb, tb)], vec![r0, r1]),         // 2: +edge, +reach
+            (vec![(fb, tb)], vec![r0, r1, r2]),               // 3: fa absent, +reach
+            (vec![(fb, tb2), (fc, tc)], vec![r0, r1, r2]),    // 4: fb re-targeted, +edge
+            (vec![(fa, ta), (fb, tb2)], vec![r0, r1, r2]),    // 5: fa restored (must get r1,r2)
+            (vec![(fa, ta), (fb, tb2)], vec![r0, r1, r2]),    // 6: steady state (no new work)
+        ];
+
+        // Reference: the pre-optimization inline loop — every round rescans the
+        // FULL current `successors × reach`, gated by a persistent `pushed`.
+        fn full_round(
+            successors: &[(Term, usize)],
+            reach: &[Pred],
+            pushed: &mut HashSet<(Term, usize, Pred)>,
+        ) -> Vec<(Term, usize, Pred)> {
+            let mut fired = Vec::new();
+            for &(f, target) in successors {
+                for &p in reach {
+                    if pushed.insert((f, target, p)) {
+                        fired.push((f, target, p));
+                    }
+                }
+            }
+            fired
+        }
+
+        let mut full_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut full_fired: Vec<(Term, usize, Pred)> = Vec::new();
+        let mut delta_pushed: HashSet<(Term, usize, Pred)> = HashSet::new();
+        let mut delta_hwm: HashMap<(Term, usize), usize> = HashMap::new();
+        let mut delta_fired: Vec<(Term, usize, Pred)> = Vec::new();
+        for (succ, reach) in &rounds {
+            full_fired.extend(full_round(succ, reach, &mut full_pushed));
+            delta_fired.extend(rsucc_cross_step(
+                succ,
+                reach,
+                &mut delta_hwm,
+                &mut delta_pushed,
+            ));
+        }
+
+        // Per-round and cumulative equality of the fired sequence (order + set).
+        assert_eq!(
+            delta_fired, full_fired,
+            "semi-naive cross-product fired a different (triple, order) sequence than the full rescan"
+        );
+        // The dedup set the two paths accumulate must also coincide.
+        assert_eq!(
+            delta_pushed, full_pushed,
+            "semi-naive cross-product built a different pushed_rsucc set than the full rescan"
+        );
+        // Restored edge fa must have received the reach preds (r1, r2) that were
+        // appended while it was absent — the exact case a global reach hwm drops.
+        assert!(
+            full_fired.contains(&(fa, ta, r1)) && full_fired.contains(&(fa, ta, r2)),
+            "restored edge should receive reach preds appended while it was absent"
+        );
     }
 }
