@@ -23,6 +23,40 @@ result. Pure-EL completion releases normal-form vectors after their indexed
 copies have been built and before saturation. These ownership changes do not
 alter clauses, rule indexes, or derivations.
 
+### konclude_ht bridge: stop dropping colon-localname classes from the universe (2026-07-17)
+
+The Konclude completion bridge builds its classification universe (the set of
+real named classes eligible as subjects and candidate supers) by excluding
+frontend-synthetic markers and builtin vocabulary via
+`orchestrate::cb_to_ht::is_internal` (`bridge.rs::bridged_classify`). That
+predicate treated ANY name containing a `:` as internal. A real class whose
+localname legitimately contains a colon — a URN class IRI such as
+`urn:example:Foo` (for which `short` strips no `#`/`/`), or a colon-bearing
+fragment such as `#Part:Whole` — was therefore silently excluded from the
+universe: it was dropped as a candidate super (`subs.retain`,
+`saturation_known_pairs.retain`, the `known_subsumers` filter), so no
+subsumption `X ⊑ ThatClass` was ever emitted, and the drop was counted as
+neither unsound nor incomplete. That is exactly the kind of silent
+approximation the project forbids.
+
+The colon clause is a proxy for builtin vocabulary (`owl:Thing`,
+`rdfs:Literal`, `xsd:integer`, …). Konclude never approximates these classes
+away, and the frontend's own internal-name predicate
+(`frontend::iri::reserved_internal_prefix`) is prefix-based, not colon-based.
+`is_internal` now excludes a colon name only when its prefix is a reserved
+vocabulary prefix (`owl`/`rdf`/`rdfs`/`xsd`/`xml`) — exactly the builtins the
+heuristic intends to catch — via the new `is_reserved_vocabulary_curie` helper.
+The `Nothing`/`owl:Nothing` handling (owned by `is_bottom`) is unchanged.
+
+Soundness/completeness: the change is a strict narrowing of the exclusion set,
+so it can only ADD real classes back to the universe, never remove one; it
+introduces no new subsumption test verdict. Every builtin the old clause caught
+uses a reserved prefix, so the ORE corpus (no class has a non-reserved-prefix
+colon localname) is byte-identical. The fix touches only the HT-bridge feeder
+(`cb_to_ht`), not the production CB engine output path. New unit test
+`is_internal_excludes_markers_and_builtins_but_keeps_colon_localname_classes`.
+See `docs/BRIDGE-UNIVERSE-COLON-CLASSES.md`.
+
 ### Protégé 5.6 plugin refresh (2026-07-16)
 
 The Protégé plugin now targets the Maven-published Protégé 5.6.6 API and OWL

@@ -283,7 +283,28 @@ pub(crate) fn is_internal(n: &str) -> bool {
         || s.starts_with("__")
         || s.starts_with("aux_")
         || s.starts_with("def_")
-        || (s.contains(':') && s != "Nothing" && s != "owl:Nothing")
+        || (is_reserved_vocabulary_curie(s) && s != "Nothing" && s != "owl:Nothing")
+}
+
+/// True for OWL/RDF/RDFS/XSD/XML builtin vocabulary written in CURIE form
+/// (`owl:Thing`, `rdfs:Literal`, `xsd:integer`, …).
+///
+/// The bridge's classification universe uses [`is_internal`] to drop synthetic
+/// frontend markers and builtin vocabulary. It previously treated ANY name
+/// containing a `:` as internal, but a real class localname may legitimately
+/// contain a colon (URN class IRIs like `urn:example:Foo` for which `short`
+/// strips no `#`/`/`, or colon-bearing fragments like `#Part:Whole`). Matching
+/// every colon silently excluded such a class from the universe, so no
+/// subsumption `X ⊑ ThatClass` was ever emitted and the drop was not counted as
+/// unsound or incomplete. Konclude never approximates this away, and the
+/// frontend's own internal-name predicate (`iri::reserved_internal_prefix`) is
+/// prefix-based, not colon-based. Match only the reserved vocabulary prefixes,
+/// which are exactly the builtins the heuristic intends to exclude.
+fn is_reserved_vocabulary_curie(s: &str) -> bool {
+    matches!(
+        s.split_once(':'),
+        Some(("owl" | "rdf" | "rdfs" | "xsd" | "xml", _))
+    )
 }
 
 // ===========================================================================
@@ -2497,6 +2518,43 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
 #[cfg(test)]
 mod trigger_absorb_tests {
     use super::*;
+
+    #[test]
+    fn is_internal_excludes_markers_and_builtins_but_keeps_colon_localname_classes() {
+        // Frontend synthetic markers stay internal.
+        for marker in ["Q_5", "__trans__R__C", "aux_1", "def_2"] {
+            assert!(is_internal(marker), "{marker} should be internal");
+        }
+        // Builtin OWL/RDF/RDFS/XSD/XML vocabulary in CURIE form stays internal.
+        for builtin in ["owl:Thing", "rdfs:Literal", "rdf:type", "xsd:integer", "xml:lang"] {
+            assert!(is_internal(builtin), "{builtin} should be internal");
+        }
+        // Bottom is handled by `is_bottom`, not `is_internal` — behaviour
+        // preserved from the pre-fix predicate.
+        assert!(!is_internal("owl:Nothing"));
+        assert!(!is_internal("Nothing"));
+
+        // Ordinary named classes are not internal.
+        assert!(!is_internal("http://example.org/onto#Foo"));
+        assert!(!is_internal("Foo"));
+
+        // Regression: a REAL named class whose localname legitimately contains a
+        // colon must NOT be dropped from the classification universe. The old
+        // `s.contains(':')` heuristic silently excluded these, emitting no
+        // subsumption for them and flagging neither unsound nor incomplete.
+        assert!(
+            !is_internal("http://example.org/onto#Part:Whole"),
+            "colon-bearing fragment class must be kept"
+        );
+        assert!(
+            !is_internal("urn:example:Foo"),
+            "URN class IRI must be kept"
+        );
+        assert!(
+            !is_internal("myprefix:MyClass"),
+            "non-reserved CURIE class must be kept"
+        );
+    }
 
     #[test]
     fn convert_preserves_rbox_domain_range_provenance() {
