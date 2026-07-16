@@ -33,7 +33,7 @@ CARGO_TARGET_DIR="$target_root" nice cargo build --release --bin km
 "$candidate" routes > "$build_root/routes.txt"
 grep -q '^production_all' "$build_root/routes.txt"
 
-env KM_ROUTE=elc timeout -k 5 120 "$candidate" classify "$smoke_ontology" \
+env KM_ROUTE=production_all timeout -k 5 120 "$candidate" classify "$smoke_ontology" \
   > "$smoke_output"
 python3 - "$smoke_output" <<'PY'
 import json
