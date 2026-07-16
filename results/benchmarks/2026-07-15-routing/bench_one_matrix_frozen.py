@@ -246,6 +246,17 @@ def run(args):
             args.ontology,
         ]
     wrapped = ["/usr/bin/time", "-v", "-o", time_path] + argv
+    if args.slurm_step_mem_mb:
+        step_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", args.workers))
+        wrapped = [
+            "/usr/bin/srun",
+            "--exclusive",
+            "--nodes=1",
+            "--ntasks=1",
+            f"--cpus-per-task={max(1, step_cpus)}",
+            f"--mem={args.slurm_step_mem_mb}M",
+            "--kill-on-bad-exit=1",
+        ] + wrapped
 
     # The invariant provenance fields are computed up front so a checkpoint row
     # written the instant a limit is crossed already carries everything the
@@ -376,6 +387,8 @@ def run(args):
         or "cannot allocate memory" in stderr_text.lower()
         or "std::bad_alloc" in stderr_text
         or "MemoryError" in stderr_text
+        or "oom_kill" in stderr_text.lower()
+        or "out of memory" in stderr_text.lower()
     )
     if status == "ok" and proc.returncode != 0 and allocation_failed:
         status = "memout"
@@ -480,6 +493,12 @@ def main():
         type=int,
         default=0,
         help="child RLIMIT_AS spike backstop; default is memcap + 4096 MiB",
+    )
+    parser.add_argument(
+        "--slurm-step-mem-mb",
+        type=int,
+        default=0,
+        help="run the reasoner in a nested Slurm step with this tree-wide cap",
     )
     parser.add_argument(
         "--kind", choices=("km", "konclude", "elk", "hermit"), required=True

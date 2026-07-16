@@ -21,7 +21,7 @@ set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
 root=$km_root/routing_20260715
-runner=$root/bench_one_matrix-d25be8c0.py
+runner=$root/bench_one_matrix-aaa64dc7.py
 gold_dir=$km_root/gold
 result_dir=$root/production-sweeps/$SWEEP_TAG/results
 failure_dir=$root/production-sweeps/$SWEEP_TAG/failures
@@ -110,6 +110,7 @@ set +e
   --binary "$SWEEP_KM" --binary-sha "$km_sha" \
   "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir" \
   --checkpoint "$ckpt" \
+  --slurm-step-mem-mb 24576 \
   --order-index 0 --timeout 240 --memcap-mb 20480 \
   --env KM_ROUTE=production_all > "$tmp"
 runner_rc=$?
