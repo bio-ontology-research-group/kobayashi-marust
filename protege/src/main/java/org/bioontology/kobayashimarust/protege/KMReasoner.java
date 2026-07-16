@@ -51,11 +51,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         group.clear(); rep.clear(); supers.clear(); subs.clear(); unsatisfiable.clear();
         OWLOntology ont = getRootOntology();
 
-        // fragment -> named class
-        Map<String, OWLClass> byFrag = new HashMap<>();
+        // Complete IRI -> named class. Local fragments are not unique.
+        Map<String, OWLClass> byIri = new HashMap<>();
         Set<OWLClass> classes = new HashSet<>(ont.getClassesInSignature(Imports.INCLUDED));
         classes.add(owlThing); classes.add(owlNothing);
-        for (OWLClass c : classes) byFrag.put(frag(c.getIRI()), c);
+        for (OWLClass c : classes) byIri.put(c.getIRI().toString(), c);
 
         Classifier.Result res;
         try {
@@ -69,11 +69,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // direct (non-closed) named subsumptions
         List<OWLClass[]> pairs = new ArrayList<>();
         for (String[] p : res.subsumptions) {
-            OWLClass a = byFrag.get(p[0]), b = byFrag.get(p[1]);
+            OWLClass a = byIri.get(normalizeIri(p[0]));
+            OWLClass b = byIri.get(normalizeIri(p[1]));
             if (a != null && b != null && !a.equals(b)) pairs.add(new OWLClass[]{a, b});
         }
         for (String u : res.unsatisfiable) {
-            OWLClass c = byFrag.get(u);
+            OWLClass c = byIri.get(normalizeIri(u));
             if (c != null) unsatisfiable.add(c);
         }
 
@@ -131,12 +132,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (!ra.equals(rb)) rep.put(ra, rb);
     }
 
-    private static String frag(IRI iri) {
-        String s = iri.toString();
-        int h = s.lastIndexOf('#');
-        if (h >= 0) return s.substring(h + 1);
-        int sl = s.lastIndexOf('/');
-        return sl >= 0 ? s.substring(sl + 1) : s;
+    private static String normalizeIri(String iri) {
+        if (iri.length() >= 2 && iri.charAt(0) == '<'
+                && iri.charAt(iri.length() - 1) == '>') {
+            return iri.substring(1, iri.length() - 1);
+        }
+        return iri;
     }
 
     // ---- node helpers ---------------------------------------------------
@@ -227,7 +228,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- precompute / metadata -----------------------------------------
 
     @Override public String getReasonerName() { return "Kobayashi-MaRust"; }
-    @Override public Version getReasonerVersion() { return new Version(0, 1, 0, 0); }
+    @Override public Version getReasonerVersion() { return new Version(0, 2, 0, 0); }
 
     @Override public void precomputeInferences(InferenceType... types) { /* eager in ctor */ }
     @Override public boolean isPrecomputed(InferenceType inferenceType) { return true; }
@@ -239,7 +240,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         classify(); // re-run on flush()
     }
 
-    @Override public void interrupt() { /* engine runs to completion */ }
+    @Override public void interrupt() { /* subprocess timeout is configurable */ }
 
     // ---- entailment ----------------------------------------------------
 

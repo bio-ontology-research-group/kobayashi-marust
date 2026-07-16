@@ -9,6 +9,17 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Protégé 5.6 plugin refresh (2026-07-16)
+
+The Protégé plugin now targets the Maven-published Protégé 5.6.6 API and OWL
+API 4.5.29, uses the pure-Rust `km` executable without the legacy Python/moose
+fallback, and reports version 0.2.0. It flattens the loaded imports closure
+before classification, maps results using complete IRIs rather than ambiguous
+local fragments, captures subprocess diagnostics, and enforces a configurable
+timeout. Headless regression tests cover imports and duplicate local names.
+The plugin guide now includes complete installation and runtime configuration
+instructions for Linux, macOS, and Windows.
+
 ### Standard OWL syntax input adapter (2026-07-16)
 
 `km classify`, `km profile`, and `km features` now accept OWL functional

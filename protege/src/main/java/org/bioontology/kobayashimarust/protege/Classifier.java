@@ -2,43 +2,35 @@ package org.bioontology.kobayashimarust.protege;
 
 import org.semanticweb.owlapi.formats.FunctionalSyntaxDocumentFormat;
 import org.semanticweb.owlapi.model.OWLOntology;
+import org.semanticweb.owlapi.model.OWLImportsDeclaration;
 import org.semanticweb.owlapi.model.OWLOntologyManager;
+import org.semanticweb.owlapi.model.parameters.Imports;
+import org.semanticweb.owlapi.apibinding.OWLManager;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Bridge to the Kobayashi-MaRust engine: serialise the ontology to OWL
  * functional syntax, run the {@code --lines} classifier, and parse the result.
  *
- * <p>Prefers the pure-Rust {@code km classify --lines} (the multi-call binary
- * that spawns its own ofn/elc/engine/tableau workers) when {@code km.bin} /
- * {@code KM_BIN} is configured; otherwise falls back to
- * {@code python owl_classify.py --lines}.
+ * <p>Invokes the pure-Rust {@code km classify --lines} multi-call binary.
  *
  * <p>Configuration (system property, else environment variable, else default):
  * <ul>
- *   <li>{@code km.bin} / {@code KM_BIN} — path to the {@code km} binary. When
- *       set, {@code km classify --lines} is used (no Python). Default: none.</li>
- *   <li>{@code km.home} / {@code KM_HOME} — repository root (to locate the
- *       bridge script and engine). Default: {@code user.dir}.</li>
- *   <li>{@code km.python} / {@code KM_PYTHON} — Python interpreter (fallback).
- *       Default {@code python3}.</li>
- *   <li>{@code km.classify} / {@code KM_CLASSIFY} — path to owl_classify.py
- *       (fallback). Default {@code <km.home>/engine/py/owl_classify.py}.</li>
- *   <li>{@code km.engine} / {@code KM_ENGINE} — path to the engine binary
- *       (else autodetected / self-dispatched).</li>
+ *   <li>{@code km.bin} / {@code KM_BIN} — path to the {@code km} binary.
+ *       Default: {@code km}, resolved from {@code PATH}.</li>
+ *   <li>{@code km.timeout.seconds} / {@code KM_TIMEOUT_SECONDS} — maximum
+ *       classification time. Default: 600 seconds.</li>
  * </ul>
  */
 public final class Classifier {
 
-    /** Parsed classification result, in terms of short class-name fragments. */
+    /** Parsed classification result, in terms of complete class IRIs. */
     public static final class Result {
         public boolean consistent = true;
         public int dropped = 0;
@@ -55,62 +47,92 @@ public final class Classifier {
     }
 
     public static Result classify(OWLOntology ontology) throws Exception {
-        String home = cfg("km.home", "KM_HOME", System.getProperty("user.dir"));
-        String kmBin = cfg("km.bin", "KM_BIN", null);
-        String python = cfg("km.python", "KM_PYTHON", "python3");
-        String script = cfg("km.classify", "KM_CLASSIFY",
-                home + File.separator + "engine" + File.separator + "py"
-                     + File.separator + "owl_classify.py");
-        String engine = cfg("km.engine", "KM_ENGINE", null);
-
-        // 1. Serialise the ontology to a temporary .ofn file.
-        Path tmp = Files.createTempFile("kmarust-", ".ofn");
+        String kmBin = cfg("km.bin", "KM_BIN", "km");
+        long timeout;
         try {
-            OWLOntologyManager mgr = ontology.getOWLOntologyManager();
-            mgr.saveOntology(ontology, new FunctionalSyntaxDocumentFormat(),
-                    org.semanticweb.owlapi.model.IRI.create(tmp.toUri()));
+            timeout = Long.parseLong(cfg(
+                    "km.timeout.seconds", "KM_TIMEOUT_SECONDS", "600"));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    "km.timeout.seconds must be an integer number of seconds", e);
+        }
+        if (timeout <= 0) {
+            throw new IllegalArgumentException(
+                    "km.timeout.seconds must be greater than zero");
+        }
 
-            // 2. Run the classifier: the pure-Rust `km classify --lines` when a
-            //    km binary is configured, else the Python `owl_classify.py`.
-            ProcessBuilder pb = (kmBin != null)
-                    ? new ProcessBuilder(kmBin, "classify", "--lines", tmp.toString())
-                    : new ProcessBuilder(python, script, "--lines", tmp.toString());
-            if (engine != null) pb.environment().put("KM_ENGINE", engine);
-            pb.redirectErrorStream(false);
-            Process proc = pb.start();
-
-            Result r = new Result();
-            try (BufferedReader in = new BufferedReader(new InputStreamReader(
-                    proc.getInputStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = in.readLine()) != null) {
-                    String[] f = line.split("\t");
-                    if (line.startsWith("CONSISTENT ")) {
-                        r.consistent = line.trim().endsWith("1");
-                    } else if (line.startsWith("DROPPED ")) {
-                        try { r.dropped = Integer.parseInt(line.trim().substring(8)); }
-                        catch (NumberFormatException ignore) {}
-                    } else if (f.length == 3 && f[0].equals("SUB")) {
-                        r.subsumptions.add(new String[]{f[1], f[2]});
-                    } else if (f.length == 2 && f[0].equals("UNSAT")) {
-                        r.unsatisfiable.add(f[1]);
+        // Flatten the complete imports closure. KM intentionally rejects
+        // unresolved owl:imports declarations rather than classifying a
+        // partial ontology.
+        Path tmp = Files.createTempFile("kmarust-", ".ofn");
+        Path log = Files.createTempFile("kmarust-", ".log");
+        try {
+            OWLOntologyManager sourceManager = ontology.getOWLOntologyManager();
+            for (OWLOntology member : ontology.getImportsClosure()) {
+                for (OWLImportsDeclaration declaration : member.getImportsDeclarations()) {
+                    if (sourceManager.getImportedOntology(declaration) == null) {
+                        throw new IllegalStateException(
+                                "Protégé has not loaded ontology import "
+                                + declaration.getIRI());
                     }
                 }
             }
-            StringBuilder err = new StringBuilder();
-            try (BufferedReader e = new BufferedReader(new InputStreamReader(
-                    proc.getErrorStream(), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = e.readLine()) != null) err.append(line).append('\n');
+            OWLOntologyManager mgr = OWLManager.createOWLOntologyManager();
+            OWLOntology flattened = mgr.createOntology(
+                    ontology.getAxioms(Imports.INCLUDED));
+            mgr.saveOntology(flattened, new FunctionalSyntaxDocumentFormat(),
+                    org.semanticweb.owlapi.model.IRI.create(tmp.toUri()));
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    kmBin, "classify", "--lines", "--format", "functional",
+                    tmp.toString());
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(log.toFile());
+            Process proc = pb.start();
+
+            if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
+                proc.destroyForcibly();
+                throw new RuntimeException(
+                        "Kobayashi-MaRust classification timed out after "
+                        + timeout + " seconds");
             }
-            int rc = proc.waitFor();
+            int rc = proc.exitValue();
+            List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
             if (rc != 0) {
                 throw new RuntimeException(
-                        "kobayashi-marust classification failed (rc=" + rc + "):\n" + err);
+                        "Kobayashi-MaRust classification failed (exit "
+                        + rc + "):\n" + String.join("\n", lines));
+            }
+            Result r = new Result();
+            boolean protocolSeen = false;
+            for (String line : lines) {
+                String[] f = line.split("\t");
+                if (line.startsWith("CONSISTENT ")) {
+                    protocolSeen = true;
+                    r.consistent = line.trim().endsWith("1");
+                } else if (line.startsWith("DROPPED ")) {
+                    try { r.dropped = Integer.parseInt(line.trim().substring(8)); }
+                    catch (NumberFormatException ignore) {}
+                } else if (f.length == 3 && f[0].equals("SUB")) {
+                    r.subsumptions.add(new String[]{f[1], f[2]});
+                } else if (f.length == 2 && f[0].equals("UNSAT")) {
+                    r.unsatisfiable.add(f[1]);
+                }
+            }
+            if (!protocolSeen) {
+                throw new RuntimeException(
+                        "Kobayashi-MaRust returned no classification result:\n"
+                        + String.join("\n", lines));
+            }
+            if (r.dropped != 0) {
+                throw new RuntimeException(
+                        "Kobayashi-MaRust declined a complete classification: "
+                        + r.dropped + " clause(s) were dropped");
             }
             return r;
         } finally {
             Files.deleteIfExists(tmp);
+            Files.deleteIfExists(log);
         }
     }
 }

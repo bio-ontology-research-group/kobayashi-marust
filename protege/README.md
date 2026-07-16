@@ -1,62 +1,125 @@
-# Kobayashi-MaRust — Protege plugin
+# Kobayashi-MaRust Protégé plugin
 
-A [Protege](https://protege.stanford.edu/) **reasoner plugin** that classifies the
-active ontology with the Kobayashi-MaRust SROIQ / OWL 2 DL context reasoner.
-It appears in Protege's *Reasoner* menu as **Kobayashi-MaRust**; "Start reasoner"
-then computes the inferred class hierarchy and unsatisfiable classes.
+This module provides a Protégé Desktop reasoner plugin for KM. It appears in
+the **Reasoner** menu as **Kobayashi-MaRust** and supplies the inferred named
+class hierarchy, equivalence classes, unsatisfiable classes, and ontology
+consistency.
 
-## How it works
+The plugin is a TBox classifier. Property hierarchy, property assertion, and
+individual realization queries are not currently exposed through the OWL API.
 
-The plugin is a thin Java `OWLReasoner` (`KMReasoner`) over the OWL API. On
-classification it:
+## Requirements
 
-1. serialises the active ontology to OWL functional syntax,
-2. runs the bridge `engine/py/owl_classify.py`, which performs the **real**
-   normalisation (moose's `normalise` + `augment`) and runs the Rust engine,
-3. parses the named-class subsumptions and unsatisfiable classes back into an
-   OWL API class hierarchy (with equivalence grouping and direct/indirect
-   sub-/super-class queries).
+- Protégé Desktop 5.6.x. The plugin is compiled against the Maven-published
+  Protégé 5.6.6 API and is intended for the current Protégé 5.6 line.
+- Java 11 or newer.
+- The native `km` executable for the user's operating system and architecture.
+  Python and `moose` are not required.
 
-It is a **TBox classifier**: class hierarchy + (un)satisfiability. Property and
-individual inferences are intentionally empty.
+## Build KM and the plugin
 
-## Runtime requirements
-
-Because normalisation is shared with `moose`, the plugin shells out to Python:
-
-- Python 3 with the `moose` package importable (set `MOOSE_HOME`), and
-- the built `kobayashi-marust` engine binary (`cargo build --release` in
-  `../engine`).
-
-These are located via system properties (or environment variables), all
-optional with sensible defaults:
-
-| property      | env           | default                                   |
-|---------------|---------------|-------------------------------------------|
-| `km.home`     | `KM_HOME`     | `user.dir` (point at the repo root)       |
-| `km.python`   | `KM_PYTHON`   | `python3`                                 |
-| `km.classify` | `KM_CLASSIFY` | `<km.home>/engine/py/owl_classify.py`     |
-| `km.engine`   | `KM_ENGINE`   | autodetected under `engine/target/release`|
-
-In Protege, set these in the launch script (e.g. `-Dkm.home=/path/to/kobayashi-marust`).
-
-## Build
+Build the release reasoner from the repository root:
 
 ```sh
-mvn -DskipTests package      # -> target/kobayashi-marust-protege-0.1.0.jar (OSGi bundle)
+cd engine
+cargo build --release --bin km
 ```
 
-Drop the jar into Protege's `plugins/` directory and restart Protege.
-
-## Test (headless, no GUI)
+Build and test the plugin:
 
 ```sh
-mvn test                     # drives KMReasoner via the OWL API
+cd ../protege
+mvn test
+mvn package
 ```
 
-The tests need Python + moose + the engine binary (as above); `km.home`
-defaults to the repository root. They check:
+The OSGi plugin bundle is:
 
-- disjunctive subsumption `A ⊑ B⊔C, B⊑D, C⊑D ⊢ A ⊑ D`, and
-- the bundled `examples/ontologies/kinship.ofn` (e.g. `Father ⊑ Person, Parent,
-  Male, Narcissist`), matching the HermiT oracle.
+```text
+protege/target/kobayashi-marust-protege-0.2.0.jar
+```
+
+Set `KM_BIN` while testing if `km` is not on `PATH`:
+
+```sh
+KM_BIN=/absolute/path/to/km mvn test
+```
+
+## Install in Protégé
+
+1. Download and unpack Protégé Desktop 5.6.x from the
+   [Protégé website](https://protege.stanford.edu/software/).
+2. Copy `kobayashi-marust-protege-0.2.0.jar` into the `plugins` directory
+   inside the Protégé installation.
+3. Put the `km` executable on the process `PATH`, or configure its absolute
+   path as described below.
+4. Restart Protégé.
+5. Open an ontology and choose **Reasoner → Kobayashi-MaRust → Start
+   reasoner**.
+
+The `plugins` directory is beside the Protégé launcher in the platform
+independent distribution. Typical locations are:
+
+- Linux: `/opt/Protege-5.6.x/plugins/`
+- macOS application bundle:
+  `/Applications/Protege.app/Contents/Java/plugins/`
+- Windows: `C:\Program Files\Protege-5.6.x\plugins\`
+
+The exact directory may differ if Protégé was unpacked elsewhere. Use the
+`plugins` directory belonging to the launcher you actually start.
+
+### Configure the KM executable
+
+The plugin first reads the Java property `km.bin`, then the environment
+variable `KM_BIN`, and finally tries `km` on `PATH`.
+
+The environment variable is usually the simplest installation:
+
+```sh
+export KM_BIN=/absolute/path/to/km
+./run.sh
+```
+
+On macOS, applications launched from Finder may not inherit shell environment
+variables. Add the following JVM option to Protégé's launcher configuration:
+
+```text
+-Dkm.bin=/absolute/path/to/km
+```
+
+The same JVM property works in the Linux and Windows launcher configuration.
+Use an absolute path. On Windows, point it to `km.exe`.
+
+Classification defaults to a 600 second subprocess timeout. Override it with
+`KM_TIMEOUT_SECONDS` or the JVM property `km.timeout.seconds`.
+
+## Runtime behavior
+
+The plugin:
+
+1. Flattens the active ontology's loaded imports closure.
+2. Serializes the merged axioms to a temporary OWL functional-syntax document.
+3. Runs `km classify --lines --format functional`.
+4. Maps results back into the OWL API using complete entity IRIs.
+
+Flattening imports avoids silently classifying only the root ontology. Protégé
+must have successfully loaded every import before reasoning starts; the plugin
+rejects an unresolved import.
+
+KM runs outside the Protégé JVM, so its native memory is separate from the Java
+heap. Errors, timeouts, and any result that reports dropped clauses are
+reported as reasoner failures in Protégé rather than displayed as a partial
+classification.
+
+## Test coverage
+
+The headless OWL API tests cover:
+
+- disjunctive subsumption;
+- the bundled kinship ontology;
+- inclusion of the loaded imports closure; and
+- rejection of unresolved imports;
+- distinct classes that share the same local-name fragment.
+
+The Maven bundle build also checks that the plugin classes and `plugin.xml` are
+packaged into a valid OSGi JAR.

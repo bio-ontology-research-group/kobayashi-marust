@@ -6,7 +6,7 @@
 
   <groupId>org.bioontology</groupId>
   <artifactId>kobayashi-marust-protege</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <packaging>bundle</packaging>
 
   <name>Kobayashi-MaRust Protege plugin</name>
@@ -17,8 +17,8 @@
     <maven.compiler.source>11</maven.compiler.source>
     <maven.compiler.target>11</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <owlapi.version>4.5.26</owlapi.version>
-    <protege.version>5.5.0</protege.version>
+    <owlapi.version>4.5.29</owlapi.version>
+    <protege.version>5.6.6</protege.version>
   </properties>
 
   <dependencies>
@@ -48,6 +48,21 @@
   <build>
     <finalName>kobayashi-marust-protege-${project.version}</finalName>
     <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
       <plugin>
         <groupId>org.apache.felix</groupId>
         <artifactId>maven-bundle-plugin</artifactId>

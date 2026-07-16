@@ -212,25 +212,27 @@ lean/          Lean 4 formalisation
 validation/    end-to-end driver (run.sh) + normalised JSON inputs
 oracle/        HermiT cross-check (scripts, reference results, ontologies)
 examples/      example OWL ontologies (.ofn)
-protege/       Protege reasoner plugin (Maven; OSGi bundle)
+protege/       Protégé reasoner plugin (Maven; OSGi bundle)
 ```
 
-## Protege plugin
+## Protégé plugin
 
-`protege/` is a [Protege](https://protege.stanford.edu/) **reasoner plugin**:
+`protege/` is a [Protégé](https://protege.stanford.edu/) **reasoner plugin**:
 Kobayashi-MaRust appears in the *Reasoner* menu and computes the inferred class
 hierarchy and unsatisfiable classes. It is a thin OWL API `OWLReasoner` that
-serialises the ontology and calls `engine/py/owl_classify.py` (the real moose
-normalisation + the Rust engine), then maps the named-class subsumptions back
-into Protege.
+serialises the loaded imports closure, invokes the pure-Rust `km` binary, and
+maps the named-class subsumptions back into Protégé.
 
 ```sh
 cd protege
-mvn -DskipTests package   # -> target/kobayashi-marust-protege-0.1.0.jar  (drop into Protege plugins/)
-mvn test                  # headless OWL-API tests (disjunction; kinship.ofn vs HermiT)
+mvn test
+mvn package   # -> target/kobayashi-marust-protege-0.2.0.jar
 ```
 
-Runtime needs Python 3 + `moose` + the built engine (see `protege/README.md`).
+The plugin does not require Python. Copy the JAR into Protégé's `plugins/`
+directory and configure `KM_BIN` or `-Dkm.bin`. See
+[`protege/README.md`](protege/README.md) for complete Linux, macOS, and Windows
+installation instructions.
 
 ---
 
