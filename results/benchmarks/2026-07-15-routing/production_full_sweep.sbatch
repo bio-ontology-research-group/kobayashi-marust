@@ -42,7 +42,7 @@ if [[ -s "$result" ]] && /usr/bin/python3 - "$result" "$ontology" <<'PY'
 import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 assert len(rows) == 1
-assert rows[0]["ontology"] == sys.argv[2]
+assert rows[0]["ont"] == sys.argv[2]
 assert rows[0]["arm"] == "production_all"
 PY
 then
@@ -82,7 +82,7 @@ import json, sys
 rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 assert len(rows) == 1
 row = rows[0]
-assert row["ontology"] == sys.argv[2]
+assert row["ont"] == sys.argv[2]
 assert row["arm"] == "production_all"
 assert row.get("binary_sha")
 assert row.get("status")

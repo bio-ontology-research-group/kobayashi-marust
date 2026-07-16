@@ -76,10 +76,31 @@ configuration's `ok` count must be read together with its averages.
 | KM HT features | 399 | 11.731 | 0.421 | 575 | 111 |
 | KM HT general | 378 | 12.284 | 0.469 | 606 | 128 |
 | KM HT rules | 537 | 4.899 | 0.320 | 1,215 | 139 |
+| KM CB absorb portfolio 16, completed follow-up | 547 exact | 10.543 | 0.374 | 1,189 | 125 |
 
 The specialist `ht_qo`, `ht_shoq`, `ht_card`, and `card_fn` routes accept only
 14, 19, 8, and 10 ontologies respectively. Their averages are present in the
 CSV but are not corpus-level competitors.
+
+The follow-up `cb_absorb_portfolio16` array completed after the frozen matrix.
+It produced 590 parseable rows: 547 exact matches, 37 timeouts, three memory
+limits, two unsupported results, and one unsound result on `11745`. The two
+no-gold tasks `15703` and `3524` created empty result files, so scheduler
+completion is not counted as benchmark completion for those inputs. This run
+adds one exact KM closure absent from the frozen matrix: `10908`, in 208.227
+seconds at 1,071.61 MB. The current-result registry therefore rises from 575
+to 576 exact ontologies. The broader 584-ontology demonstrated union still
+includes retained historical routes that must be rerun successfully before
+they enter the current-result registry.
+
+## Named-route proof run audit
+
+The later 34-route proof array also finished at the scheduler level, but its
+output cannot support route claims. The retained tree contains 7,888 rows, all
+with `status=error`, and all rows carry one ontology identity instead of the
+expected 592 identities. No row from that run is included in
+`ontology-routes.tsv`. The next proof run must pass a multi-ontology smoke gate
+and verify ontology identity before the full array is submitted.
 
 ## Strict correctness audit
 

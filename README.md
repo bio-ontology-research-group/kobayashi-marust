@@ -137,6 +137,15 @@ mix different ontology sets. Once the focused recheck finishes, each ontology
 will contribute its minimum wall time across exact KM routes and,
 independently, its minimum peak memory across exact KM routes.
 
+A completed follow-up `cb_absorb_portfolio16` sweep supplies 547 exact rows and
+restores `10908` beyond the frozen matrix, so the current-result route registry
+now contains 576 exact ontologies. Its exact-row averages are 10.543 seconds
+and 1,189 MB, with medians of 0.374 seconds and 125 MB. Two no-gold tasks
+published empty files and one completed result for `11745` disagreed with
+gold; none of those are counted. The separate 34-route proof array completed
+as Slurm work but emitted only invalid error rows, so it contributes no route
+claims.
+
 Individual KM configurations remain available in the complete matrix report.
 For example, `cb_plain16` completed 537 ontologies, `ht_bridge` completed 505,
 and `elc_cert` completed 467; their separate time and memory distributions are

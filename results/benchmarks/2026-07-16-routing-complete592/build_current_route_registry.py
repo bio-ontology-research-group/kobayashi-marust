@@ -66,7 +66,7 @@ def main():
     if args.supplemental_root:
         roots.append(args.supplemental_root)
 
-    for root in roots:
+    for root_index, root in enumerate(roots):
         for path, row in load_rows(root):
             ontology = row.get("ont")
             route = row.get("arm")
@@ -95,7 +95,11 @@ def main():
                 "signature_sha256": row.get("signature_sha256", ""),
                 "invocation": f"km classify --route {route} {ontology}",
                 "evidence": os.path.relpath(path, root),
-                "notes": "",
+                "notes": (
+                    "verified completed supplemental sweep"
+                    if root_index > 0
+                    else "verified complete frozen matrix"
+                ),
             }
             prior = accepted.get(key)
             if prior is None or float(record["wall_s"] or 1e30) < float(
@@ -142,7 +146,12 @@ def main():
         )
 
     with open(args.output, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=FIELDS, delimiter="\t")
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=FIELDS,
+            delimiter="\t",
+            lineterminator="\n",
+        )
         writer.writeheader()
         writer.writerows(records)
 
