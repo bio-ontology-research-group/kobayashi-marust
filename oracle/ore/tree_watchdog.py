@@ -51,6 +51,7 @@ keeps running and always returns a terminal :class:`WatchResult`.
 
 import errno
 import os
+import resource
 import signal
 import time
 
@@ -201,7 +202,7 @@ def protect_supervisor(proc="/proc"):
         pass
 
 
-def child_preexec():
+def child_preexec(hard_as_bytes=None):
     """``preexec_fn`` for the reasoner: new session + first OOM victim.
 
     ``os.setsid`` makes the reasoner a session and group leader (so its pgid ==
@@ -211,6 +212,12 @@ def child_preexec():
     in the non-group cgroup case.
     """
     os.setsid()
+    if hard_as_bytes is not None:
+        try:
+            limit = int(hard_as_bytes)
+            resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+        except (OSError, ValueError):
+            pass
     try:
         with open("/proc/self/oom_score_adj", "w") as handle:
             handle.write("1000")

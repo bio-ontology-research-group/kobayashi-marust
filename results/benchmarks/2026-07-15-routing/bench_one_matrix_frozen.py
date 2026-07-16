@@ -9,6 +9,7 @@ Where a retained Konclude signature exists, the answer is also compared to it.
 """
 
 import argparse
+import functools
 import gzip
 import hashlib
 import json
@@ -328,7 +329,13 @@ def run(args):
         stdin=subprocess.DEVNULL,
         stdout=stdout_handle,
         stderr=stderr_handle,
-        preexec_fn=_watchdog.child_preexec,
+        # Keep the measured RSS cap authoritative.  The higher address-space
+        # limit is only a spike backstop: allocation fails in this child before
+        # the 28 GiB Slurm cgroup can kill the supervisor and lose the row.
+        preexec_fn=functools.partial(
+            _watchdog.child_preexec,
+            (args.hard_as_mb or (args.memcap_mb + 4096)) * 1024 * 1024,
+        ),
     )
     result = _watchdog.monitor(
         proc,
@@ -364,6 +371,15 @@ def run(args):
 
     keep_failure = status != "ok" or proc.returncode != 0
     stderr_text = read_text(stderr_path)
+    allocation_failed = (
+        "memory allocation of " in stderr_text
+        or "cannot allocate memory" in stderr_text.lower()
+        or "std::bad_alloc" in stderr_text
+        or "MemoryError" in stderr_text
+    )
+    if status == "ok" and proc.returncode != 0 and allocation_failed:
+        status = "memout"
+        record.update(status=status, verdict=status)
     unsupported_baseline = args.kind != "km" and any(
         marker in stderr_text.lower() for marker in UNSUPPORTED_PATTERNS
     )
@@ -459,6 +475,12 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--hard-as-mb",
+        type=int,
+        default=0,
+        help="child RLIMIT_AS spike backstop; default is memcap + 4096 MiB",
+    )
     parser.add_argument(
         "--kind", choices=("km", "konclude", "elk", "hermit"), required=True
     )

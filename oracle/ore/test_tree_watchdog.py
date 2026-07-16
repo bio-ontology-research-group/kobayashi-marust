@@ -235,6 +235,18 @@ def test_clean_small_run_is_ok():
     assert proc.returncode == 0
 
 
+def test_child_preexec_installs_address_space_backstop():
+    proc = subprocess.run(
+        ["sh", "-c", "ulimit -v"],
+        capture_output=True,
+        text=True,
+        preexec_fn=lambda: tw.child_preexec(256 * MB),
+        timeout=10,
+    )
+    assert proc.returncode == 0, proc
+    assert int(proc.stdout.strip()) == 256 * 1024, proc.stdout
+
+
 # ---------------------------------------------------------------------------
 # end-to-end: the frozen runner always emits exactly one terminal row, and
 # checkpoints it to disk before the kill.
@@ -290,6 +302,36 @@ def test_runner_emits_one_memout_row_and_checkpoint():
         assert crow["arm"] == "production_all"
         assert crow["status"] == "memout"
         assert crow["binary_sha256"] == "deadbeef"
+
+
+def test_runner_adjudicates_hard_as_allocation_failure_as_memout():
+    if not os.path.exists(RUNNER):
+        print("SKIP runner missing")
+        return
+    with tempfile.TemporaryDirectory() as d:
+        fake = os.path.join(d, "fake_km")
+        with open(fake, "w") as fh:
+            fh.write(FAKE_KM_SRC)
+        os.chmod(fake, 0o755)
+        ont = os.path.join(d, "ore_ont_15703.owl")
+        open(ont, "w").close()
+        ckpt = os.path.join(d, "row.ckpt")
+        out = subprocess.run(
+            [sys.executable, RUNNER,
+             "--kind", "km", "--arm", "production_all",
+             "--ontology", ont, "--binary", fake, "--binary-sha", "cafebabe",
+             "--gold-kind", "none", "--workdir", os.path.join(d, "work"),
+             "--checkpoint", ckpt, "--timeout", "60", "--memcap-mb", "512",
+             "--hard-as-mb", "128", "--env", "KM_ROUTE=production_all"],
+            capture_output=True, text=True, timeout=120,
+        )
+        lines = [ln for ln in out.stdout.splitlines() if ln.strip()]
+        assert len(lines) == 1, (out.stdout, out.stderr)
+        row = json.loads(lines[0])
+        assert row["status"] == "memout", row
+        assert row["verdict"] == "memout", row
+        assert row["peak_mb"] < 512, row
+        assert json.loads(open(ckpt).read())["status"] == "memout"
 
 
 def main():
