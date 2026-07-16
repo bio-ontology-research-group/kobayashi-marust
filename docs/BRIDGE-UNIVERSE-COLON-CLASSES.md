@@ -91,10 +91,11 @@ are escaped to `km_src_…`, never colon-matched).
   with a reserved prefix (`owl`/`rdf`/`rdfs`/`xsd`/`xml`), so it is still
   internal. `owl:Thing`, `rdfs:Literal`, `xsd:*` remain excluded.
   `Nothing`/`owl:Nothing` remain owned by `is_bottom`, unchanged.
-- **Corpus byte-identity.** No ORE 2015 class has a non-reserved-prefix colon in
-  its localname, so the bridged classification signatures are unchanged on the
-  corpus. The fix only changes behaviour on inputs that were previously handled
-  incorrectly.
+- **Corpus regression gate.** ORE ontology `12698` contains colon-localname
+  classes and exposed a related named-set defect in an older HT path. It must be
+  rerun through the current bridge and compared with adjudicated gold. The fix
+  is expected to restore candidates that the bridge previously omitted, not to
+  be byte-identical by assumption.
 - **Scope.** The change touches only `cb_to_ht`, the HT-bridge feeder. The
   production CB engine output path (`reasoner.rs` → `orchestrate::mod.rs`) is not
   affected.
@@ -108,3 +109,5 @@ are escaped to `km_src_…`, never colon-matched).
   CURIE).
 - Full `konclude_ht` + orchestrate suite — no regression (the change is additive
   and gated on the reserved-prefix set).
+- Focused `12698` bridge and production-route checks, followed by the complete
+  592-ontology regression sweep, are the empirical promotion gates.

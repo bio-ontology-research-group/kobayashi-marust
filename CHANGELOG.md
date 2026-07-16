@@ -144,11 +144,12 @@ heuristic intends to catch — via the new `is_reserved_vocabulary_curie` helper
 The `Nothing`/`owl:Nothing` handling (owned by `is_bottom`) is unchanged.
 
 Soundness/completeness: the change is a strict narrowing of the exclusion set,
-so it can only ADD real classes back to the universe, never remove one; it
-introduces no new subsumption test verdict. Every builtin the old clause caught
-uses a reserved prefix, so the ORE corpus (no class has a non-reserved-prefix
-colon localname) is byte-identical. The fix touches only the HT-bridge feeder
-(`cb_to_ht`), not the production CB engine output path. New unit test
+so it can only add real classes back to the universe, never remove one; it
+introduces no new subsumption test verdict. Every reserved-vocabulary builtin
+the filter intends to catch remains excluded. The ORE corpus does contain
+colon-localname classes (`12698`), so that ontology is a required focused
+regression gate rather than a byte-identity assumption. The fix touches only
+the HT-bridge feeder (`cb_to_ht`), not the production CB engine output path. New unit test
 `is_internal_excludes_markers_and_builtins_but_keeps_colon_localname_classes`.
 See `docs/BRIDGE-UNIVERSE-COLON-CLASSES.md`.
 
