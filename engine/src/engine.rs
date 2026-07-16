@@ -5536,7 +5536,10 @@ mod tests {
             let mut cloned = subst.clone();
             let _ = cloned.add(zvar(9), zvar(1));
             let after: Vec<_> = probes.iter().map(|&p| subst.apply(p)).collect();
-            assert_eq!(before, after, "clone mutation leaked (allow_ground={allow_ground})");
+            assert_eq!(
+                before, after,
+                "clone mutation leaked (allow_ground={allow_ground})"
+            );
         }
     }
 

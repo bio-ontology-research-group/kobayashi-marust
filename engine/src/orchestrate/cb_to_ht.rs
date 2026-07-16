@@ -1204,9 +1204,10 @@ pub fn convert(
     // is frontend-internal, so a genuine inverse-free cardinality ont (the
     // validated 9540/7499 SHOQ/SHQ number route) is untouched.
     let has_concept_inverse = clauses.iter().any(|c| {
-        c.body.iter().chain(c.head.iter()).any(|a| {
-            matches!(a, JAtom::Role { role, .. } if short(role).starts_with("__inv__"))
-        })
+        c.body
+            .iter()
+            .chain(c.head.iter())
+            .any(|a| matches!(a, JAtom::Role { role, .. } if short(role).starts_with("__inv__")))
     });
     let has_inverse = has_inverse_rbox || has_concept_inverse;
     let card_active = !cardinalities.is_empty() && card_enabled && card_routable && !has_inverse;
@@ -2808,7 +2809,17 @@ mod trigger_absorb_tests {
             filler: "C".into(),
         }];
         let named = std::collections::HashSet::new();
-        let tin = convert(&[inv_bridge()], None, &named, &card, &[], &[], true, &[], false);
+        let tin = convert(
+            &[inv_bridge()],
+            None,
+            &named,
+            &card,
+            &[],
+            &[],
+            true,
+            &[],
+            false,
+        );
         assert!(
             tin.card_defs.is_empty(),
             "concept-position inverse must fail closed: no first-class card_defs"
@@ -2888,7 +2899,17 @@ mod trigger_absorb_tests {
         // Control: inverse-free ALCQ number restrictions must stay unfenced so the
         // sound fast-Ht/card route is not needlessly declined.
         let named = std::collections::HashSet::new();
-        let tin = convert(&[le1_over("R")], None, &named, &[], &[], &[], false, &[], false);
+        let tin = convert(
+            &[le1_over("R")],
+            None,
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            false,
+        );
         assert!(tin.number);
         assert!(
             !tin.fenced.iter().any(|f| f.reason.contains("SHIQ")),

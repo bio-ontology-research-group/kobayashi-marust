@@ -957,13 +957,13 @@ mod tests {
         let mut r = Reasoner::new(&[]);
         r.saturate();
         assert!(
-            inproc_engine_out(&r).is_some(),
+            inproc_engine_out(&mut r).is_some(),
             "a complete closure must publish"
         );
         // Force the resource-backstop state the engine workers report.
         r.absorb(Vec::new(), false, true, 0);
         assert!(
-            inproc_engine_out(&r).is_none(),
+            inproc_engine_out(&mut r).is_none(),
             "a resource-truncated closure must defer to the forked path, not publish"
         );
     }
@@ -987,7 +987,7 @@ mod tests {
         }];
         let mut r = Reasoner::new(&clauses);
         r.saturate();
-        let out = inproc_engine_out(&r).expect("complete closure publishes");
+        let out = inproc_engine_out(&mut r).expect("complete closure publishes");
         assert_eq!(out.dropped, 1, "the dropped count must be forwarded");
     }
 
