@@ -15,7 +15,7 @@
 set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
-proof_root=$km_root/route_proof_20260716
+proof_root=${PROOF_ROOT:-$km_root/route_proof_20260716}
 matrix_root=$km_root/routing_20260715
 list=$matrix_root/onts.txt
 runner=$matrix_root/bench_one_matrix-3b1d2a87.py
@@ -45,6 +45,24 @@ work=${SLURM_TMPDIR:-/tmp}/km-all-route-proof-${SLURM_JOB_ID}_${SLURM_ARRAY_TASK
 /usr/bin/mkdir -p "$failure_dir" "$work"
 /usr/bin/cp "$source_ontology" "$local_ontology"
 
+km_sha=$(/usr/bin/sha256sum "$km" | /usr/bin/cut -d' ' -f1)
+
+# Fail before producing any result row if the deployed binary cannot start on
+# this compute node. This catches incompatible GLIBC or loader dependencies.
+routes_stdout=$work/km-routes.stdout
+routes_stderr=$work/km-routes.stderr
+if ! "$km" routes >"$routes_stdout" 2>"$routes_stderr"; then
+  /usr/bin/cat "$routes_stderr" >&2
+  /usr/bin/printf 'FATAL binary preflight failed sha=%s host=%s\n' \
+    "$km_sha" "$(hostname)" >&2
+  exit 90
+fi
+if ! /usr/bin/grep -q '^production_all' "$routes_stdout"; then
+  /usr/bin/printf 'FATAL unexpected route-list output: ' >&2
+  /usr/bin/cat "$routes_stdout" >&2
+  exit 91
+fi
+
 case "$ontology" in
   ore_ont_10860.owl|ore_ont_1194.owl|ore_ont_15703.owl|ore_ont_3524.owl|ore_ont_4669.owl)
     gold_args=(--gold-kind none)
@@ -54,7 +72,6 @@ case "$ontology" in
     ;;
 esac
 
-km_sha=$(/usr/bin/sha256sum "$km" | /usr/bin/cut -d' ' -f1)
 for route in "${routes[@]}"; do
   result_dir=$proof_root/results/$route
   result=$result_dir/$ontology.jsonl
@@ -65,7 +82,52 @@ for route in "${routes[@]}"; do
     "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir/$route" \
     --order-index 0 --timeout 240 --memcap-mb 20480 \
     --env "KM_ROUTE=$route" > "$result"
+
+  /usr/bin/python3 - "$result" "$ontology" "$route" "$km_sha" <<'PY'
+import json
+import sys
+
+path, ontology, route, binary_sha = sys.argv[1:]
+with open(path, encoding="utf-8") as handle:
+    lines = [line for line in handle if line.strip()]
+if len(lines) != 1:
+    raise SystemExit(f"{path}: expected one non-empty JSON row, found {len(lines)}")
+row = json.loads(lines[0])
+expected = {
+    "ont": ontology,
+    "arm": route,
+    "requested_route": route,
+    "binary_sha256": binary_sha,
+}
+for key, value in expected.items():
+    if row.get(key) != value:
+        raise SystemExit(f"{path}: {key}={row.get(key)!r}, expected {value!r}")
+if row.get("status") == "error":
+    raise SystemExit(f"{path}: route execution error, rc={row.get('rc')}")
+if row.get("status") == "ok" and not row.get("signature_sha256"):
+    raise SystemExit(f"{path}: successful row has no canonical signature")
+PY
 done
+
+/usr/bin/python3 - "$proof_root/results" "$ontology" "$km_sha" "${routes[@]}" <<'PY'
+import json
+import os
+import sys
+
+root, ontology, binary_sha, *routes = sys.argv[1:]
+seen = set()
+for route in routes:
+    path = os.path.join(root, route, ontology + ".jsonl")
+    with open(path, encoding="utf-8") as handle:
+        row = json.load(handle)
+    if row["arm"] in seen:
+        raise SystemExit(f"{ontology}: duplicate route {row['arm']}")
+    seen.add(row["arm"])
+    if row["binary_sha256"] != binary_sha:
+        raise SystemExit(f"{ontology}: binary hash drift in {route}")
+if seen != set(routes):
+    raise SystemExit(f"{ontology}: route set mismatch")
+PY
 
 /usr/bin/rm -rf "$work" "$local_ontology"
 /usr/bin/printf 'DONE ontology=%s routes=%s\n' "$ontology" "${#routes[@]}"

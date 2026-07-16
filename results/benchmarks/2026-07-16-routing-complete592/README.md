@@ -116,3 +116,12 @@ gold matches and completed no-gold cases are distinguished explicitly. The TSV
 records the invocation, binary and signature hashes, wall time, peak memory,
 and the individual evidence file. A route is not listed on historical
 reputation alone: it must complete in this current proof matrix.
+
+The proof harness fails closed. Before writing a result it executes `km routes`
+on the allocated compute node, catching loader and GLIBC incompatibilities. It
+then validates every JSON row against the expected ontology, route, requested
+route, and binary hash; an execution error or an `ok` row without a canonical
+signature aborts the array task. A panel receives its `DONE` marker only after
+all 34 distinct routes pass those structural checks. The TSV builder separately
+requires all 20,128 expected pairs, one binary hash, no execution-error rows,
+and no duplicate, missing, or unknown routes.
