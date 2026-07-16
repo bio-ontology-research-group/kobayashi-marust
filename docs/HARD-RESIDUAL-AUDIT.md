@@ -2,20 +2,18 @@
 
 ## Current production sweep checkpoint (2026-07-17)
 
-The baseline and integrated long IBEX arrays have completed. Jobs `49004275`
-and `49006549` published 590 ordinary result rows each. Isolated retry jobs
-then reproduced Slurm OOM kills for `3524` and `15703`; the guarded finalizer
-published a terminal `memout` row only after checking that explicit OOM
-evidence and the matching binary SHA. Both datasets now contain exactly 592
-unique, SHA-validated rows.
+The current production array, job `49009500`, has completed. It published 590
+ordinary rows; `3524` and `15703` reproduced explicit Slurm OOM kills, after
+which the guarded finalizer published their SHA-matched `memout` rows. The
+dataset contains exactly 592 unique rows for binary SHA `86eb3831…`.
 
-The integrated `production_all` candidate reports 580 `ok`, eight timeout,
-three memout, and one unsupported. It has 573 literal matches
-to stored signatures and 574 adjudicated exact-equivalent results after
-correcting the known `13503` gold omission. Its remaining production-route
-tail is `10702`, `10908`, `15672`, `6934`, `7499`, `9540`, and `3215`
-(timeouts), `10621` (timeout), `1194` (memout), `10860` (unsupported), plus
-completed disagreements or no-gold cases documented below. This checkpoint
+The current `production_all` candidate reports 582 `ok`, six timeout, three
+memout, and one unsupported. It has 576 literal matches to stored signatures.
+It restores `10908`, makes `13503` literally exact, and recovers `16303` from
+incomplete to exact. Its remaining production-route timeout tail is `10702`,
+`15672`, `6934`, `9540`, `3215`, and `10621`; `7499` completes but remains
+incomplete. `1194`, `3524`, and `15703` are memout, while `10860` is
+unsupported. This checkpoint
 does not replace the 584-case cross-run exact union: it measures one current
 production route and identifies which historic route closures still need to
 be restored into that route.

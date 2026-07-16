@@ -120,27 +120,27 @@ Selected measured rows from that matrix:
 | ELK | 579 | 1.995 s | 0.824 s | 611 MB | 349 MB |
 | HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
 
-The current `production_all` portfolio was also rerun across the complete
-592-entry corpus on IBEX. Array job `49006549` published 590 ordinary rows;
-isolated retries confirmed Slurm OOM kills for `3524` and `15703`, and a
-guarded finalizer recorded those outcomes only after checking the OOM logs and
-binary SHA. The resulting dataset has 592 unique, SHA-validated rows: 580
-returned `ok`, eight timed out, three reached the memory cap, and one declined
-an unsupported DL-safe-rule input. The raw stored-gold audit contains 573 matches; the
-adjudicated count is 574 because the only baseline-to-candidate difference,
-the named class `daml:Nothing` in `13503`, is explicitly equivalent to
-`ObjectComplementOf(owl:Thing)` and therefore must be unsatisfiable. Over the
-573 literal stored-gold matches, the candidate averages 4.230 seconds and 615
-MB, with medians of 0.268 seconds and 36 MB. These figures describe the single
-production route, not the larger all-route union in the headline row.
+The current `production_all` portfolio was rerun across the complete 592-entry
+corpus on IBEX as array job `49009500`, using immutable binary SHA
+`86eb38310683ab964d88ed87a86b61811fb6e2debc843f2c91c784c4bf535230`.
+The guarded finalizer recorded `3524` and `15703` as memout only after their
+Slurm logs contained explicit OOM-kill evidence. The resulting dataset has 592
+unique, SHA-validated rows: 582 returned `ok`, six timed out, three reached the
+memory cap, and one declined an unsupported DL-safe-rule input. It contains
+576 literal stored-gold matches. Over those exact rows, the candidate averages
+4.581 seconds and 614 MB, with medians of 0.227 seconds and 38 MB. These figures
+describe the single production route, not the larger all-route union in the
+headline row.
 
-The paired baseline dataset likewise has 592 SHA-validated rows: 580 `ok`,
-eight timeout, three memout, and one unsupported. It has 574 stored-gold
-matches, 4.646 seconds average and 623 MB average over those matches, with
-medians of 0.267 seconds and 36 MB. Across the 589 directly
-comparable ontology rows, the candidate has no genuine correctness change.
-Notable wall-time reductions include `7581` (179.4 to 19.8 seconds), `16744`
-(120.9 to 95.0 seconds), and `14459` (59.6 to 43.2 seconds).
+Against the preceding integrated dataset, the strict comparator reports three
+new literal exact matches: `10908` moved from timeout to exact, `16303` moved
+from incomplete to exact, and `13503` now emits its directly-unsatisfiable
+named class and therefore matches the stored signature without adjudication.
+`7499` moved from timeout to a completed but incomplete result and is not
+counted exact. There are no exact-to-wrong regressions. Exact-row average wall
+time rose from 4.230 to 4.581 seconds because the newly restored `10908` takes
+about 206 seconds; median wall time improved from 0.268 to 0.227 seconds and
+average peak memory improved from 615 to 614 MB.
 
 The KM headline is the union of every retained, valid exact closure, not only
 the routes present in one matrix binary. The complete frozen matrix contains
