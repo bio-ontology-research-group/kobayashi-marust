@@ -232,9 +232,21 @@ fn trace_pred_product(
 
 /// Central substitution used by Hyper: maps ontology variables (x, z_i) to
 /// context terms.  `x -> x` always; function terms map to themselves.
+///
+/// The bindings are stored as an inline association list rather than a
+/// `HashMap`.  Body atoms are in DL normal form, so one Hyper match binds only
+/// the central variable (under the `X` key) and the clause's few neighbour
+/// variables — an inline `SmallVec` holds every real substitution without
+/// touching the heap.  Hyper's backtracking join (`hyper_join`) clones the
+/// substitution once per candidate per depth; with the inline list that clone
+/// is a small `memcpy` instead of a `HashMap` allocation + rehash.  Keys stay
+/// unique by construction (`add` only pushes a key it does not already hold),
+/// so the list is a faithful finite map: `get`/`apply` return the same value
+/// for every queried key that the `HashMap` returned, independent of insertion
+/// order.  Every resolvent Hyper builds is therefore byte-identical.
 #[derive(Clone)]
 struct CentralSubst {
-    map: HashMap<Term, Term>,
+    map: SmallVec<[(Term, Term); 4]>,
     /// Grounded Hyper (σ(x) ∈ Σo, arXiv:1805.01396): permitted only in the
     /// ground (nominal root) context — everywhere else the central variable
     /// maps to itself, as before. Binding x in one ground match and to X in
@@ -245,48 +257,54 @@ struct CentralSubst {
 impl CentralSubst {
     fn new(allow_ground: bool) -> Self {
         CentralSubst {
-            map: HashMap::new(),
+            map: SmallVec::new(),
             allow_ground,
         }
+    }
+    /// Look up the term bound to key `k` (the `X` slot holds the central
+    /// binding).  Linear over the handful of bound variables.
+    #[inline]
+    fn lookup(&self, k: Term) -> Option<Term> {
+        self.map.iter().find(|(key, _)| *key == k).map(|&(_, v)| v)
     }
     fn add(&mut self, i: Term, o: Term) -> bool {
         if is_central(i) {
             if o == X || (self.allow_ground && is_individual(o)) {
-                return match self.map.get(&X) {
-                    Some(&e) => e == o,
+                return match self.lookup(X) {
+                    Some(e) => e == o,
                     None => {
-                        self.map.insert(X, o);
+                        self.map.push((X, o));
                         true
                     }
                 };
             }
             return false;
         }
-        match self.map.get(&i) {
-            Some(&existing) => existing == o,
+        match self.lookup(i) {
+            Some(existing) => existing == o,
             None => {
-                self.map.insert(i, o);
+                self.map.push((i, o));
                 true
             }
         }
     }
     fn apply(&self, v: Term) -> Term {
         if v == X {
-            return *self.map.get(&X).unwrap_or(&X);
+            return self.lookup(X).unwrap_or(X);
         }
         if is_function(v) {
             // f(x) under a grounded central becomes the composite f(o).
-            if let Some(&b) = self.map.get(&X) {
+            if let Some(b) = self.lookup(X) {
                 if b != X {
                     return comp_term(v, b);
                 }
             }
             return v;
         }
-        *self.map.get(&v).unwrap_or(&v)
+        self.lookup(v).unwrap_or(v)
     }
     fn get(&self, v: Term) -> Option<Term> {
-        self.map.get(&v).copied()
+        self.lookup(v)
     }
 }
 
@@ -5352,6 +5370,138 @@ mod tests {
             .find(|(n, _)| n == name)
             .map(|(_, v)| v)
             .unwrap_or_default()
+    }
+
+    /// Invariance guard for the inline-`SmallVec` `CentralSubst`: it must behave
+    /// exactly like the previous `HashMap<Term, Term>` — same `add` accept/reject
+    /// decisions, same `get`, same `apply` on every kind of term. `add`/`get` are
+    /// mirrored against a reference `HashMap` oracle with the identical
+    /// central/grounded special-casing, so any divergence in the substitution as
+    /// a function (which is all Hyper's resolvents depend on) fails the test.
+    #[test]
+    fn central_subst_matches_hashmap_oracle() {
+        use std::collections::HashMap;
+
+        // Reference: what the old HashMap-backed `add` would store/decide.
+        fn oracle_add(map: &mut HashMap<Term, Term>, allow_ground: bool, i: Term, o: Term) -> bool {
+            if is_central(i) {
+                if o == X || (allow_ground && is_individual(o)) {
+                    return match map.get(&X) {
+                        Some(&e) => e == o,
+                        None => {
+                            map.insert(X, o);
+                            true
+                        }
+                    };
+                }
+                return false;
+            }
+            match map.get(&i) {
+                Some(&existing) => existing == o,
+                None => {
+                    map.insert(i, o);
+                    true
+                }
+            }
+        }
+        fn oracle_apply(map: &HashMap<Term, Term>, v: Term) -> Term {
+            if v == X {
+                return *map.get(&X).unwrap_or(&X);
+            }
+            if is_function(v) {
+                if let Some(&b) = map.get(&X) {
+                    if b != X {
+                        return comp_term(v, b);
+                    }
+                }
+                return v;
+            }
+            *map.get(&v).unwrap_or(&v)
+        }
+
+        // Probe terms across every category the substitution sees.
+        let probes = [
+            X,
+            Y,
+            zvar(1),
+            zvar(2),
+            zvar(5),
+            ind_term(1),
+            ind_term(2),
+            fterm(1),
+            fterm(2),
+        ];
+
+        for &allow_ground in &[false, true] {
+            // Enough neighbour bindings to spill past the inline capacity (4),
+            // exercising the heap path of the SmallVec too.
+            let inserts: Vec<(Term, Term)> = vec![
+                (X, if allow_ground { ind_term(1) } else { X }),
+                (zvar(1), zvar(3)),
+                (zvar(2), fterm(2)),
+                (zvar(5), ind_term(2)),
+                (zvar(1), zvar(4)), // conflicting re-bind: must be rejected by both
+                (zvar(1), zvar(3)), // consistent re-bind: must be accepted by both
+                (X, X),             // central re-bind (non-ground): may be rejected in ground mode
+                (Y, ind_term(2)),
+                (zvar(7), fterm(1)),
+            ];
+
+            let mut subst = CentralSubst::new(allow_ground);
+            let mut oracle: HashMap<Term, Term> = HashMap::new();
+
+            for (i, o) in inserts {
+                let got = subst.add(i, o);
+                let want = oracle_add(&mut oracle, allow_ground, i, o);
+                assert_eq!(got, want, "add({i},{o}) allow_ground={allow_ground}");
+                // After each step the two agree on every probe term.
+                for &p in &probes {
+                    assert_eq!(
+                        subst.get(p),
+                        oracle.get(&p).copied(),
+                        "get({p}) allow_ground={allow_ground}"
+                    );
+                    assert_eq!(
+                        subst.apply(p),
+                        oracle_apply(&oracle, p),
+                        "apply({p}) allow_ground={allow_ground}"
+                    );
+                }
+            }
+
+            // Clone is an independent map: mutating the clone leaves the
+            // original untouched (Hyper relies on this per-candidate).
+            let before: Vec<_> = probes.iter().map(|&p| subst.apply(p)).collect();
+            let mut cloned = subst.clone();
+            let _ = cloned.add(zvar(9), zvar(1));
+            let after: Vec<_> = probes.iter().map(|&p| subst.apply(p)).collect();
+            assert_eq!(before, after, "clone mutation leaked (allow_ground={allow_ground})");
+        }
+    }
+
+    /// A fresh (empty) substitution is the identity on every term, and an
+    /// ungrounded central binding never accepts an individual image.
+    #[test]
+    fn central_subst_identity_and_ground_gate() {
+        let mut subst = CentralSubst::new(false);
+        for &t in &[X, Y, zvar(1), ind_term(1), fterm(1)] {
+            assert_eq!(subst.apply(t), t);
+            assert_eq!(subst.get(t), None);
+        }
+        // Non-ground context: x may only bind to x.
+        assert!(!subst.add(X, ind_term(1)));
+        assert!(subst.add(X, X));
+        assert_eq!(subst.apply(X), X);
+        assert_eq!(subst.apply(fterm(1)), fterm(1)); // b == X ⇒ no composite
+
+        // Ground context: x binds to an individual, and f(x) ↦ f(o).
+        let mut g = CentralSubst::new(true);
+        let o = ind_term(3);
+        assert!(g.add(X, o));
+        assert_eq!(g.apply(X), o);
+        assert_eq!(g.apply(fterm(1)), comp_term(fterm(1), o));
+        // Re-binding x to a different individual is rejected.
+        assert!(!g.add(X, ind_term(4)));
     }
 
     /// arXiv:1805.01396 Example 3 — the O+I+Q interaction that needs the Nom
