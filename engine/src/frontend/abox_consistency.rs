@@ -37,6 +37,10 @@ pub struct AboxData {
     mem: HashMap<String, HashSet<String>>,
     /// named object-property assertions `(prop, subject, object)`
     roles: Vec<(String, String, String)>,
+    /// negative object-property assertions `(prop, subject, object)`:
+    /// `¬p(a,b)` clashing with an asserted `p'(a,b)` for `p' ⊑* p` is a
+    /// genuine global inconsistency.
+    neg_roles: Vec<(String, String, String)>,
     /// `SameIndividual` pairs
     same: Vec<(String, String)>,
 }
@@ -62,11 +66,17 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
             _ => {}
         }
     }
-    if disjoint.is_empty() {
+    // Negative object-property assertions are a clash source independent of
+    // class disjointness, so their presence also forces the ABox collection.
+    let has_negative = ont
+        .abox()
+        .any(|ax| matches!(ax, Axiom::NegativeRoleAssertion(..)));
+    if disjoint.is_empty() && !has_negative {
         return None;
     }
     let mut mem: HashMap<String, HashSet<String>> = HashMap::new();
     let mut roles: Vec<(String, String, String)> = Vec::new();
+    let mut neg_roles: Vec<(String, String, String)> = Vec::new();
     let mut same: Vec<(String, String)> = Vec::new();
     for ax in ont.abox() {
         match ax {
@@ -74,6 +84,9 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
                 mem.entry(i.clone()).or_default().insert(c.clone());
             }
             Axiom::RoleAssertion(p, a, b) => roles.push((p.clone(), a.clone(), b.clone())),
+            Axiom::NegativeRoleAssertion(p, a, b) => {
+                neg_roles.push((p.clone(), a.clone(), b.clone()))
+            }
             Axiom::SameIndividual(a, b) => same.push((a.clone(), b.clone())),
             _ => {}
         }
@@ -83,6 +96,7 @@ pub fn collect(ont: &Ontology) -> Option<AboxData> {
         disjoint,
         mem,
         roles,
+        neg_roles,
         same,
     })
 }
@@ -198,6 +212,50 @@ impl AboxData {
         for (a, b) in &self.same {
             uf_union(&mut parent, a, b);
         }
+        // NegativeObjectPropertyAssertion clash: `¬p(a,b)` together with an
+        // asserted `p'(a',b')` where `p' ⊑* p` (named subrole closure) and
+        // `a≈a'`, `b≈b'` (SameIndividual closure) is a genuine entailment of
+        // global inconsistency. Sound: every step is an asserted axiom.
+        if !self.neg_roles.is_empty() {
+            let mut rsup: HashMap<&str, Vec<&str>> = HashMap::new();
+            for r in rbox {
+                if let RboxRecord::Subrole(s, p) = r {
+                    rsup.entry(s.as_str()).or_default().push(p.as_str());
+                }
+            }
+            // upward closure of a positive assertion's role under Subrole
+            let role_ancestors = |start: &str| -> HashSet<String> {
+                let mut seen: HashSet<String> = HashSet::new();
+                seen.insert(start.to_string());
+                let mut stack = vec![start.to_string()];
+                while let Some(x) = stack.pop() {
+                    if let Some(ps) = rsup.get(x.as_str()) {
+                        for p in ps {
+                            if seen.insert((*p).to_string()) {
+                                stack.push((*p).to_string());
+                            }
+                        }
+                    }
+                }
+                seen
+            };
+            let neg: Vec<(String, String, String)> = self
+                .neg_roles
+                .iter()
+                .map(|(p, a, b)| (p.clone(), uf_find(&mut parent, a), uf_find(&mut parent, b)))
+                .collect();
+            for (p, a, b) in &self.roles {
+                let ra = uf_find(&mut parent, a);
+                let rb = uf_find(&mut parent, b);
+                let sups = role_ancestors(p);
+                if neg
+                    .iter()
+                    .any(|(np, na, nb)| *na == ra && *nb == rb && sups.contains(np))
+                {
+                    return true;
+                }
+            }
+        }
         let mut merged: HashMap<String, HashSet<String>> = HashMap::new();
         for (ind, cs) in &self.mem {
             let r = uf_find(&mut parent, ind);
@@ -218,5 +276,70 @@ impl AboxData {
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frontend::syntax::Axiom;
+
+    fn ont(axioms: Vec<Axiom>) -> Ontology {
+        let mut o = Ontology::new();
+        for ax in axioms {
+            o.add(ax);
+        }
+        o
+    }
+
+    /// Regression: `R(a,b)` together with `¬R(a,b)` is a globally inconsistent
+    /// ontology that was reported consistent with a full taxonomy (the negative
+    /// assertion never reached any layer).
+    #[test]
+    fn negative_assertion_clash_is_detected() {
+        let o = ont(vec![
+            Axiom::RoleAssertion("r".into(), "a".into(), "b".into()),
+            Axiom::NegativeRoleAssertion("r".into(), "a".into(), "b".into()),
+        ]);
+        let data = collect(&o).expect("negatives force collection");
+        assert!(data.is_inconsistent(&[]));
+    }
+
+    /// The consistent direction: a negative assertion on a DIFFERENT pair must
+    /// not fire (the precheck may only report provable clashes).
+    #[test]
+    fn negative_assertion_on_other_pair_is_consistent() {
+        let o = ont(vec![
+            Axiom::RoleAssertion("r".into(), "a".into(), "b".into()),
+            Axiom::NegativeRoleAssertion("r".into(), "b".into(), "a".into()),
+        ]);
+        let data = collect(&o).expect("negatives force collection");
+        assert!(!data.is_inconsistent(&[]));
+    }
+
+    /// Closure checks: the clash also fires through the named subrole
+    /// hierarchy (`s(a,b)`, `s ⊑ r`, `¬r(a,b)`) and SameIndividual merging.
+    #[test]
+    fn negative_assertion_clash_closes_under_subroles_and_same_individual() {
+        let o = ont(vec![
+            Axiom::RoleAssertion("s".into(), "a".into(), "b".into()),
+            Axiom::NegativeRoleAssertion("r".into(), "a2".into(), "b".into()),
+            Axiom::SameIndividual("a".into(), "a2".into()),
+        ]);
+        let data = collect(&o).expect("negatives force collection");
+        let rbox = vec![RboxRecord::Subrole("s".into(), "r".into())];
+        assert!(data.is_inconsistent(&rbox));
+    }
+
+    /// The pre-existing early return must survive: no disjointness and no
+    /// negative assertions ⇒ nothing to collect.
+    #[test]
+    fn collect_still_skips_without_disjointness_or_negatives() {
+        let o = ont(vec![Axiom::RoleAssertion(
+            "r".into(),
+            "a".into(),
+            "b".into(),
+        )]);
+        assert!(collect(&o).is_none());
     }
 }

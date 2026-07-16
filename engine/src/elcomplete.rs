@@ -253,11 +253,17 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
         }
 
         if clause.head.is_empty() {
+            // Mirror `to_nf`: every body concept on ONE shared variable.
+            let shared = clause.body.first().and_then(|atom| match atom {
+                JAtom::Concept { term, .. } => var_name(term),
+                _ => None,
+            });
             if clause.body.is_empty()
+                || shared.is_none()
                 || !clause.body.iter().all(|atom| {
                     matches!(
                         atom,
-                        JAtom::Concept { term, .. } if var_name(term).is_some()
+                        JAtom::Concept { term, .. } if var_name(term) == shared
                     )
                 })
             {
@@ -271,20 +277,25 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
 
         match &clause.head[0] {
             JAtom::Concept { term, .. } if var_name(term).is_some() => {
+                let head_var = var_name(term);
                 // NF1/NF2 (including top and n-ary conjunction): every body
-                // atom is a variable concept. As in `to_nf`, variable names do
-                // not need to be identical for this normalized frontend shape.
+                // atom is a variable concept ON THE HEAD VARIABLE. As in
+                // `to_nf`, a variable mismatch (`A(x) ∧ B(y) → C(x)`) is not
+                // a conjunction axiom and must be rejected to the residual.
                 if clause.body.iter().all(|atom| {
                     matches!(
                         atom,
-                        JAtom::Concept { term, .. } if var_name(term).is_some()
+                        JAtom::Concept { term, .. } if var_name(term) == head_var
                     )
                 }) {
                     continue;
                 }
 
                 // NF4: R(x,y) ∧ A(y) -> B(x). Match the same wiring that
-                // `to_nf` checks: filler variable equals the role target.
+                // `to_nf` checks: filler variable equals the role target, the
+                // head sits on the role source, and source ≠ target (a head on
+                // the target or a self-loop body is NOT ∃R.A ⊑ B — reading it
+                // so is unsound).
                 if clause.body.len() == 2 {
                     let mut role = None;
                     let mut filler = None;
@@ -303,6 +314,8 @@ pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
                         if var_name(source).is_some()
                             && var_name(target).is_some()
                             && var_name(target) == var_name(filler)
+                            && var_name(source) == head_var
+                            && var_name(source) != var_name(target)
                         {
                             continue;
                         }
@@ -465,11 +478,18 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
             .filter(|a| matches!(a, JAtom::Role { .. }))
             .collect();
 
-        // empty head => ⊥ (NF5 / disjointness)
+        // empty head => ⊥ (NF5 / disjointness). Every body concept must sit on
+        // ONE shared variable: `A(x) ∧ B(y) → ⊥` is a global constraint (A
+        // empty or B empty), not `A ⊓ B ⊑ ⊥` — misreading it is incomplete,
+        // so a variable mismatch falls to `residual` (cert-off: defer).
         if h.is_empty() {
-            let all_var = bc
-                .iter()
-                .all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(_)));
+            let shared = bc
+                .first()
+                .and_then(|a| vname(&tk(concept_of(a).unwrap().1)));
+            let all_var = shared.is_some()
+                && bc.iter().all(
+                    |a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(v) if Some(v) == shared),
+                );
             if br.is_empty() && !bc.is_empty() && all_var {
                 if bc.len() == 1 {
                     let s = addc!(concept_of(bc[0]).unwrap().0);
@@ -518,10 +538,17 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
         if !hc.is_empty() {
             let (hd_name, hd_term) = concept_of(hc[0]).unwrap();
             match tk(hd_term) {
-                Tk::Var(_) => {
+                Tk::Var(hv) => {
+                    // NF1/NF2 require every body concept on the HEAD variable:
+                    // `A(x) ∧ B(y) → C(x)` is NOT `A ⊓ B ⊑ C` (reading it so is
+                    // incomplete), so a variable mismatch must fall to
+                    // `residual` (cert-off: defer to the CB engine) instead of
+                    // being silently misread. The frontend's normalized shapes
+                    // always share the central variable, so this rejects only
+                    // out-of-contract input.
                     let all_var = bc
                         .iter()
-                        .all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(_)));
+                        .all(|a| matches!(tk(concept_of(a).unwrap().1), Tk::Var(v) if v == hv));
                     if br.is_empty() && all_var {
                         match bc.len() {
                             0 => {
@@ -578,7 +605,13 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
                         }
                         continue;
                     }
-                    // NF4:  R(x,y) ∧ A(y) ⊑ B(x)
+                    // NF4:  R(x,y) ∧ A(y) ⊑ B(x). The head must sit on the
+                    // role SOURCE and the source/target must be distinct:
+                    // `R(x,y) ∧ A(y) → B(y)` is `A ⊓ ∃R⁻.⊤ ⊑ B` and
+                    // `R(x,x) ∧ A(x) → B(x)` is a self-restriction — reading
+                    // either as `∃R.A ⊑ B` is UNSOUND. Mismatches fall to
+                    // `residual` (cert-off: defer). The frontend's NF4 shape
+                    // always has the head on the central source variable.
                     if br.len() == 1 && bc.len() == 1 {
                         if let JAtom::Role {
                             role,
@@ -587,9 +620,9 @@ fn to_nf(clauses: &[JClause], it: &mut Interner) -> Option<(Nfs, Vec<JClause>, H
                         } = br[0]
                         {
                             let (cc_name, cc_term) = concept_of(bc[0]).unwrap();
-                            if let (Tk::Var(_), Tk::Var(ty)) = (tk(source), tk(target)) {
+                            if let (Tk::Var(sv), Tk::Var(ty)) = (tk(source), tk(target)) {
                                 if let Tk::Var(cv) = tk(cc_term) {
-                                    if cv == ty {
+                                    if cv == ty && hv == sv && sv != ty {
                                         let r = addr!(role);
                                         let f = addc!(cc_name);
                                         let hd = addc!(hd_name);
@@ -2886,6 +2919,46 @@ mod tests {
         ));
         assert!(!is_pure_el_shape(&equality));
         assert!(classify_inner(equality, CertMode::Off, false).is_none());
+    }
+
+    /// Regression: the NF recognizers accepted clauses whose VARIABLE WIRING
+    /// does not match the normal form they were filed under — `to_nf` compared
+    /// the body concept to the role target but never the head to the role
+    /// source, and NF1/NF2/⊥ never required a shared variable at all. Reading
+    /// such a clause as its nearest normal form is unsound (NF4 head on the
+    /// target / self-loop) or incomplete (split-variable conjunctions), so
+    /// every one of these shapes must land in the residual: cert-off classify
+    /// declines (exit-3 defer to the CB engine) and the pure-EL screen rejects.
+    #[test]
+    fn adversarial_variable_wiring_is_rejected_to_residual() {
+        // R(x,y) ∧ A(y) → B(y) is A ⊓ ∃R⁻.⊤ ⊑ B, not ∃R.A ⊑ B.
+        let head_on_target = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "y"), c("A", "y")], &[c("B", "y")])
+        ));
+        assert!(!is_pure_el_shape(&head_on_target));
+        assert!(classify_inner(head_on_target, CertMode::Off, false).is_none());
+
+        // R(x,x) ∧ A(x) → B(x) is a self-restriction, not ∃R.A ⊑ B.
+        let self_loop = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "x"), c("A", "x")], &[c("B", "x")])
+        ));
+        assert!(!is_pure_el_shape(&self_loop));
+        assert!(classify_inner(self_loop, CertMode::Off, false).is_none());
+
+        // A(x) ∧ B(y) → C(x) is not A ⊓ B ⊑ C.
+        let split_conj = clauses(&format!(
+            "[{}]",
+            cl(&[c("A", "x"), c("B", "y")], &[c("C", "x")])
+        ));
+        assert!(!is_pure_el_shape(&split_conj));
+        assert!(classify_inner(split_conj, CertMode::Off, false).is_none());
+
+        // A(x) ∧ B(y) → ⊥ is a global constraint, not A ⊓ B ⊑ ⊥.
+        let split_bottom = clauses(&format!("[{}]", cl(&[c("A", "x"), c("B", "y")], &[])));
+        assert!(!is_pure_el_shape(&split_bottom));
+        assert!(classify_inner(split_bottom, CertMode::Off, false).is_none());
     }
 
     #[test]

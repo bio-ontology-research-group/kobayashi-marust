@@ -84,13 +84,15 @@ impl From<serde_json::Error> for OrchestrateError {
 // ---------------------------------------------------------------------------
 /// The reasoner-output JSON shape shared by the engine and elc:
 /// `{subsumptions:{A:[B,...]}, inconsistent, dropped, unresolved}`.
+/// `subsumptions`, `inconsistent` and `dropped` are REQUIRED: both workers
+/// always serialise them (`JOutput` / `ElcOutput`), so an empty or truncated
+/// object must fail to parse and surface as a worker error instead of
+/// decoding into a fail-open "consistent, nothing subsumes" answer. Only
+/// `unresolved` is legitimately absent (elc skips it when empty).
 #[derive(serde::Deserialize, Default)]
 pub struct EngineOut {
-    #[serde(default)]
     pub subsumptions: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
     pub inconsistent: bool,
-    #[serde(default)]
     pub dropped: usize,
     /// elc exit-4 residue (named subjects the certificate could not determine)
     #[serde(default)]
@@ -367,18 +369,7 @@ fn try_inproc_engine(
                 return;
             }
             r.saturate();
-            let subsumptions = r
-                .subsumptions()
-                .into_iter()
-                .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
-                .collect();
-            let inconsistent = r.inconsistent();
-            let _ = tx.send(Some(EngineOut {
-                subsumptions,
-                inconsistent,
-                dropped: 0,
-                unresolved: Vec::new(),
-            }));
+            let _ = tx.send(inproc_engine_out(&r));
         })
         .map_err(|e| OrchestrateError::Spawn {
             bin: "inproc-cb".into(),
@@ -386,9 +377,33 @@ fn try_inproc_engine(
         })?;
     match rx.recv_timeout(budget) {
         Ok(Some(out)) => Ok(Some(out)),
-        Ok(None) => Ok(None), // declined (definer disjunction)
+        Ok(None) => Ok(None), // declined (definer disjunction / incomplete closure)
         Err(_) => Ok(None),   // overran the budget ⇒ fall through (bounded mem)
     }
+}
+
+/// The in-process CB publish gate. A saturated reasoner's output may be
+/// published only when no resource backstop fired: `incomplete()` means the
+/// accumulated closure is sound but PARTIAL, and the forked engine worker
+/// declines exactly that state with exit 4 (`cli.rs`). The in-process fast
+/// path must hold the same line — decline (fall through to the forked path)
+/// rather than publish a silently incomplete taxonomy as a complete one.
+/// A published result carries the reasoner's real `dropped_unsupported()`
+/// count, keeping it byte-identical to the forked worker's output.
+fn inproc_engine_out(r: &crate::reasoner::Reasoner) -> Option<EngineOut> {
+    if r.incomplete() {
+        return None;
+    }
+    Some(EngineOut {
+        subsumptions: r
+            .subsumptions()
+            .into_iter()
+            .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
+            .collect(),
+        inconsistent: r.inconsistent(),
+        dropped: r.dropped_unsupported(),
+        unresolved: Vec::new(),
+    })
 }
 
 fn try_inproc_elc(
@@ -918,7 +933,50 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
-    use super::use_elc_portfolio;
+    use super::{inproc_engine_out, use_elc_portfolio};
+    use crate::reasoner::Reasoner;
+
+    /// Regression: the in-process CB fast path published a resource-truncated
+    /// (incomplete) closure as a complete taxonomy — the forked worker declines
+    /// that state with exit 4, and the fast path must decline it too.
+    #[test]
+    fn inproc_engine_declines_an_incomplete_reasoner() {
+        let mut r = Reasoner::new(&[]);
+        r.saturate();
+        assert!(
+            inproc_engine_out(&r).is_some(),
+            "a complete closure must publish"
+        );
+        // Force the resource-backstop state the engine workers report.
+        r.absorb(Vec::new(), false, true, 0);
+        assert!(
+            inproc_engine_out(&r).is_none(),
+            "a resource-truncated closure must defer to the forked path, not publish"
+        );
+    }
+
+    /// Regression: the in-process path hard-coded `dropped: 0`, hiding the
+    /// reasoner's unsupported-clause count from the output contract.
+    #[test]
+    fn inproc_engine_reports_the_real_dropped_count() {
+        use crate::json_io::{JAtom, JClause, JTerm};
+        // An `aux` term is unsupported by the CB reasoner: the clause is
+        // dropped and counted.
+        let clauses = vec![JClause {
+            body: vec![],
+            head: vec![JAtom::Concept {
+                concept: "A".into(),
+                term: JTerm::Aux {
+                    root: "a0".into(),
+                    label: vec![],
+                },
+            }],
+        }];
+        let mut r = Reasoner::new(&clauses);
+        r.saturate();
+        let out = inproc_engine_out(&r).expect("complete closure publishes");
+        assert_eq!(out.dropped, 1, "the dropped count must be forwarded");
+    }
 
     #[test]
     fn explicit_tableau_race_is_not_shadowed_by_elc_portfolio() {

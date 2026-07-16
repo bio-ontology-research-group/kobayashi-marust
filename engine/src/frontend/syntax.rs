@@ -109,6 +109,11 @@ pub enum Axiom {
     // ABox
     ConceptAssertion(Concept, String),
     RoleAssertion(String, String, String),
+    /// `NegativeObjectPropertyAssertion(R a b)` (an inverse spelling arrives
+    /// argument-swapped). Not clausified (the CB core drops ABox negations —
+    /// sound for subsumption); consumed by the `abox_consistency` precheck,
+    /// where a matching positive assertion is a genuine global inconsistency.
+    NegativeRoleAssertion(String, String, String),
     SameIndividual(String, String),
     DifferentIndividuals(String, String),
     // SWRL DL-safe rule: body ⟶ head (conjunction of atoms each side). Variables
@@ -164,6 +169,7 @@ impl Axiom {
             self,
             Axiom::ConceptAssertion(..)
                 | Axiom::RoleAssertion(..)
+                | Axiom::NegativeRoleAssertion(..)
                 | Axiom::SameIndividual(..)
                 | Axiom::DifferentIndividuals(..)
         )

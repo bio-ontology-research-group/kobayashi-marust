@@ -330,6 +330,26 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 }
             }
         }
+        "DisjointUnion" if args.len() >= 2 => {
+            // DisjointUnion(A C1 ... Cn) ≡ EquivalentClasses(A, C1 ⊔ ... ⊔ Cn)
+            // + pairwise DisjointClasses(Ci, Cj). Previously fell into the
+            // silent catch-all arm below, so the whole axiom produced NO
+            // clause: B ⊑ A / C ⊑ A, the covering A ⊑ B ⊔ C, and the B/C
+            // disjointness were all lost (both an incompleteness and a missed
+            // unsatisfiability). Desugared here into the two axiom kinds the
+            // clausifier already handles.
+            let a = cls(reg, args[0])?;
+            let mut cs = Vec::new();
+            for arg in &args[1..] {
+                cs.push(cls(reg, arg)?);
+            }
+            o.add(Axiom::EquivalentClasses(a, mk_or(cs.iter().cloned())));
+            for k in 0..cs.len() {
+                for l in (k + 1)..cs.len() {
+                    o.add(Axiom::DisjointClasses(cs[k].clone(), cs[l].clone()));
+                }
+            }
+        }
         "SubObjectPropertyOf" => {
             let sub = args[0];
             if let Node::List(h, chain_args) = sub {
@@ -388,6 +408,28 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 reg.short(args[1].as_atom().unwrap_or("")),
                 reg.short(args[2].as_atom().unwrap_or("")),
             ));
+        }
+        "NegativeObjectPropertyAssertion" if args.len() >= 3 => {
+            // ¬R(a,b): previously hit the silent catch-all, so an ontology
+            // asserting both R(a,b) and ¬R(a,b) was reported consistent with a
+            // full taxonomy. Record it for the ABox-inconsistency precheck
+            // (the clause pipeline still drops it — sound for subsumption).
+            // The inverse spelling ¬R⁻(a,b) is ¬R(b,a).
+            let a = reg.short(args[1].as_atom().unwrap_or(""));
+            let b = reg.short(args[2].as_atom().unwrap_or(""));
+            match args[0] {
+                Node::Atom(s) => {
+                    let r = reg.short(s);
+                    o.add(Axiom::NegativeRoleAssertion(r, a, b));
+                }
+                Node::List(h, ia) if *h == "ObjectInverseOf" => {
+                    if let Some(s) = ia.first().and_then(|x| x.as_atom()) {
+                        let r = reg.short(s);
+                        o.add(Axiom::NegativeRoleAssertion(r, b, a));
+                    }
+                }
+                _ => {}
+            }
         }
         "SameIndividual" => {
             let ids: Vec<String> = args
@@ -460,6 +502,45 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 Concept::Top,
                 Concept::Forall(role_cls(reg, args[0])?, Box::new(cls(reg, args[1])?)),
             ));
+        }
+        "ObjectPropertyDomain"
+            if matches!(args.first(), Some(Node::List("ObjectInverseOf", _))) =>
+        {
+            // domain(R⁻) = C ≡ range(R) = C ≡ ⊤ ⊑ ∀R.C. Previously this fell
+            // into the silent no-op arm below (the rbox pass only records a
+            // `Fenced("inverse-role")`), so the axiom produced NO clause
+            // anywhere — a real incompleteness (e.g. a missed unsatisfiability
+            // when combined with ∃R.C ⊑ ⊥ and A ⊑ ∃R.⊤). Desugar to the
+            // exactly equivalent direct-role range form, which the standard
+            // subclass encoding captures; the rbox fence record stays, keeping
+            // the EL fast path and the HT arms conservatively off.
+            let inner = match args.first() {
+                Some(Node::List(_, ia)) => ia.first().and_then(|x| x.as_atom()),
+                _ => None,
+            };
+            if let Some(rname) = inner {
+                let r = reg.short(rname);
+                o.add(Axiom::SubClassOf(
+                    Concept::Top,
+                    Concept::Forall(Role::Name(r), Box::new(cls(reg, args[1])?)),
+                ));
+            }
+        }
+        "ObjectPropertyRange" if matches!(args.first(), Some(Node::List("ObjectInverseOf", _))) => {
+            // range(R⁻) = C ≡ domain(R) = C ≡ ∃R.⊤ ⊑ C. Same silent-drop
+            // history as the domain(R⁻) arm above; desugared to the exactly
+            // equivalent direct-role domain form.
+            let inner = match args.first() {
+                Some(Node::List(_, ia)) => ia.first().and_then(|x| x.as_atom()),
+                _ => None,
+            };
+            if let Some(rname) = inner {
+                let r = reg.short(rname);
+                o.add(Axiom::SubClassOf(
+                    Concept::Exists(Role::Name(r), Box::new(Concept::Top)),
+                    cls(reg, args[1])?,
+                ));
+            }
         }
         "Import" => {
             return Err(OutOfFragment(
@@ -624,6 +705,97 @@ pub fn declared_class_node<'a>(node: &Node<'a>) -> Option<&'a str> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod axiom_drop_regression_tests {
+    use super::*;
+    use crate::frontend::syntax::{mk_or, Axiom, Concept, Role};
+
+    fn axioms(txt: &str) -> Vec<Axiom> {
+        let mut reg = IriRegistry::new();
+        let o = parse_axioms(&mut reg, txt).expect("parse");
+        o.tbox().chain(o.rbox()).chain(o.abox()).cloned().collect()
+    }
+
+    /// Regression: `DisjointUnion` fell into the silent catch-all and produced
+    /// no axiom at all (losing B ⊑ A, C ⊑ A, the covering A ⊑ B ⊔ C, and the
+    /// B/C disjointness — confirmed end-to-end as both missed subsumptions and
+    /// a missed unsatisfiability).
+    #[test]
+    fn disjoint_union_desugars_to_equivalence_and_disjointness() {
+        let axs = axioms("Ontology(DisjointUnion(<http://e#A> <http://e#B> <http://e#C>))");
+        let union = mk_or([Concept::Name("B".into()), Concept::Name("C".into())]);
+        assert!(
+            axs.iter()
+                .any(|a| *a == Axiom::EquivalentClasses(Concept::Name("A".into()), union.clone())),
+            "A ≡ B ⊔ C expected, got {axs:?}"
+        );
+        assert!(
+            axs.iter().any(|a| matches!(
+                a,
+                Axiom::DisjointClasses(Concept::Name(x), Concept::Name(y))
+                    if (x == "B" && y == "C") || (x == "C" && y == "B")
+            )),
+            "Disjoint(B, C) expected, got {axs:?}"
+        );
+    }
+
+    /// Regression: domain/range on an INVERSE role produced no clause anywhere
+    /// (the rbox pass only records a fence). They are exactly the flipped
+    /// direct-role axioms: domain(R⁻)=C ≡ range(R)=C, range(R⁻)=C ≡ domain(R)=C.
+    #[test]
+    fn inverse_domain_and_range_desugar_to_direct_role_axioms() {
+        let axs = axioms(
+            "Ontology(\
+ObjectPropertyDomain(ObjectInverseOf(<http://e#r>) <http://e#C>) \
+ObjectPropertyRange(ObjectInverseOf(<http://e#r>) <http://e#D>))",
+        );
+        assert!(
+            axs.iter().any(|a| *a
+                == Axiom::SubClassOf(
+                    Concept::Top,
+                    Concept::Forall(Role::Name("r".into()), Box::new(Concept::Name("C".into()))),
+                )),
+            "domain(r⁻)=C must become ⊤ ⊑ ∀r.C, got {axs:?}"
+        );
+        assert!(
+            axs.iter().any(|a| *a
+                == Axiom::SubClassOf(
+                    Concept::Exists(Role::Name("r".into()), Box::new(Concept::Top)),
+                    Concept::Name("D".into()),
+                )),
+            "range(r⁻)=D must become ∃r.⊤ ⊑ D, got {axs:?}"
+        );
+    }
+
+    /// Regression: `NegativeObjectPropertyAssertion` was silently dropped, so
+    /// `R(a,b) ∧ ¬R(a,b)` was reported consistent. The parser must record it
+    /// (inverse spelling argument-swapped) for the ABox precheck.
+    #[test]
+    fn negative_object_property_assertion_is_recorded() {
+        let axs = axioms(
+            "Ontology(\
+NegativeObjectPropertyAssertion(<http://e#r> <http://e#a> <http://e#b>) \
+NegativeObjectPropertyAssertion(ObjectInverseOf(<http://e#s>) <http://e#a> <http://e#b>))",
+        );
+        assert!(
+            axs.contains(&Axiom::NegativeRoleAssertion(
+                "r".into(),
+                "a".into(),
+                "b".into()
+            )),
+            "direct spelling recorded, got {axs:?}"
+        );
+        assert!(
+            axs.contains(&Axiom::NegativeRoleAssertion(
+                "s".into(),
+                "b".into(),
+                "a".into()
+            )),
+            "inverse spelling arrives argument-swapped, got {axs:?}"
+        );
+    }
 }
 
 #[cfg(test)]

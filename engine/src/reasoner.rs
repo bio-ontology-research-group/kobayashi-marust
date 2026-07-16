@@ -249,7 +249,7 @@ impl Reasoner {
         Engine::new(self.sig0.clone(), self.clauses0.clone(), self.dropped)
     }
 
-    fn absorb(
+    pub(crate) fn absorb(
         &mut self,
         subs: Vec<(String, Vec<String>)>,
         inc: bool,

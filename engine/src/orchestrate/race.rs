@@ -25,17 +25,17 @@ use super::{cb_to_ht, engine_run, frontend_run, parse_out, Config, EngineOut, Or
 // ---------------------------------------------------------------------------
 // tableau output -> engine `out` shape
 // ---------------------------------------------------------------------------
+/// All three fields are REQUIRED: every tableau/HT worker serialises the full
+/// `Classification` shape, so a structurally-valid-but-empty object (`{}`, a
+/// truncated write, a version skew) must fail to parse — the race then treats
+/// the arm as having no answer and CB stays authoritative — rather than decode
+/// into a fail-open "consistent, nothing subsumes" verdict that would win the
+/// race and kill the CB engine.
 #[derive(serde::Deserialize)]
 struct TOutput {
-    #[serde(default = "default_true")]
     consistent: bool,
-    #[serde(default)]
     subsumptions: Vec<Vec<String>>,
-    #[serde(default)]
     unsatisfiable: Vec<String>,
-}
-fn default_true() -> bool {
-    true
 }
 
 fn tableau_to_out(t: TOutput) -> EngineOut {
@@ -715,7 +715,7 @@ fn spawn_ht(
     cfg: &Config,
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
-) -> Option<(Child, super::tmpfile::TempPath, bool, Option<usize>)> {
+) -> Option<(Child, super::tmpfile::TempPath, bool, Option<usize>, bool)> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let (cl, rbox, cards, definers, source_axioms): (
         Vec<JClause>,
@@ -894,14 +894,15 @@ fn spawn_ht(
     if bridge_candidate || std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
         cmd.env("KM_HT_BRIDGE", "1");
     }
-    if bridge_only_worker(
+    let bridge_exclusive = bridge_only_worker(
         specialist_only.as_deref(),
         bridge_candidate,
         ht_routable(&tin),
         qo_candidate,
         shoq_candidate,
         card_candidate,
-    ) {
+    );
+    if bridge_exclusive {
         // The bridge is the ONLY reason this worker was spawned: if its arm
         // declines, the worker must produce NO answer (the legacy tableau is
         // not validated on this fragment — "tableau is NOT a fallback"). When a
@@ -1078,6 +1079,11 @@ fn spawn_ht(
         out_path,
         shoq_candidate || qo_candidate || card_candidate || bridge_candidate,
         bridge_candidate.then_some(tin.queries.len()),
+        // Whether KM_HT_BRIDGE_ONLY was set on this worker: only then does the
+        // race scheduler's instant (0 s) trigger-absorb harvest apply — any
+        // other worker can answer from a non-bridge arm without the bridge's
+        // complete-answer-or-defer guarantee.
+        bridge_exclusive,
     ))
 }
 
@@ -1089,7 +1095,7 @@ pub fn run_ht_only(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut child, out_path, _, _)) = spawn_ht(cfg, clauses_path, named) else {
+    let Some((mut child, out_path, _, _, _)) = spawn_ht(cfg, clauses_path, named) else {
         return Err(OrchestrateError::OutOfFragment(
             "ontology is outside the selected HT mechanism's structural gate".into(),
         ));
@@ -1175,19 +1181,27 @@ fn limit_large_synchronous_bridge_competitor(
 }
 
 /// Wall-clock threshold after which a finished HT answer is accepted in
-/// fallback mode. Under source-terminology trigger absorption the worker's
-/// answer can only come from the Konclude bridge (sound+complete or no
-/// result), so it is harvested the moment it is ready — waiting out CB's
-/// fallback budget on a 3215-scale terminology would discard a finished exact
-/// closure. CB is still preferred whenever it finishes: the CB slot is checked
-/// before the budget on every loop iteration.
+/// fallback mode. Under source-terminology trigger absorption a
+/// BRIDGE-EXCLUSIVE worker's answer can only come from the Konclude bridge
+/// (sound+complete or no result — `KM_HT_BRIDGE_ONLY` forbids any other arm
+/// from answering), so it is harvested the moment it is ready — waiting out
+/// CB's fallback budget on a 3215-scale terminology would discard a finished
+/// exact closure. The instant harvest is gated on `bridge_exclusive`: a
+/// certified worker that also carries a card (or, under manual env
+/// combinations, a legacy/specialist) arm can emit an answer that does NOT
+/// carry the bridge's complete-answer-or-defer guarantee, and accepting that
+/// at 0 s would let it preempt a healthy CB run — those workers keep the
+/// fast-certify / full HT budgets. CB is still preferred whenever it
+/// finishes: the CB slot is checked before the budget on every loop
+/// iteration.
 fn ht_acceptance_budget(
     trigger_absorb: bool,
+    bridge_exclusive: bool,
     fast_certify: bool,
     shoq_budget_s: f64,
     ht_budget_s: f64,
 ) -> f64 {
-    if trigger_absorb {
+    if trigger_absorb && bridge_exclusive {
         0.0
     } else if fast_certify {
         shoq_budget_s.min(ht_budget_s)
@@ -1216,7 +1230,7 @@ pub fn race_cb_vs_ht<F>(
 where
     F: FnOnce(Option<usize>) -> Result<EngineOut, OrchestrateError> + Send,
 {
-    let (mut ht, ht_out, fast_certify, bridge_class_count) =
+    let (mut ht, ht_out, fast_certify, bridge_class_count, bridge_exclusive) =
         match spawn_ht(cfg, clauses_path, named) {
             Some(x) => x,
             None => return engine_run(cfg.threads), // HT not routable: CB alone, no reservation
@@ -1241,6 +1255,7 @@ where
     // ready, so a QO arm that certifies later than the SHOQ default is still taken.
     let budget = ht_acceptance_budget(
         std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+        bridge_exclusive,
         fast_certify,
         cfg.shoq_budget_s,
         cfg.ht_budget_s,
@@ -1669,14 +1684,38 @@ mod tests {
     #[test]
     fn bridge_answers_are_harvested_immediately_under_trigger_absorption() {
         // The proven 3215 closure depends on taking the bridge's finished
-        // exact answer without waiting out CB's 225 s fallback budget.
-        assert_eq!(ht_acceptance_budget(true, false, 20.0, 225.0), 0.0);
-        assert_eq!(ht_acceptance_budget(true, true, 20.0, 225.0), 0.0);
+        // exact answer without waiting out CB's 225 s fallback budget — but
+        // ONLY when the worker is bridge-exclusive (KM_HT_BRIDGE_ONLY), i.e.
+        // its answer necessarily carries the bridge's complete-answer-or-defer
+        // guarantee.
+        assert_eq!(ht_acceptance_budget(true, true, false, 20.0, 225.0), 0.0);
+        assert_eq!(ht_acceptance_budget(true, true, true, 20.0, 225.0), 0.0);
         // Fast certify-or-defer arms keep the short SHOQ budget; the plain HT
         // racer keeps the full fallback budget.
-        assert_eq!(ht_acceptance_budget(false, true, 20.0, 225.0), 20.0);
-        assert_eq!(ht_acceptance_budget(false, true, 300.0, 225.0), 225.0);
-        assert_eq!(ht_acceptance_budget(false, false, 20.0, 225.0), 225.0);
+        assert_eq!(ht_acceptance_budget(false, false, true, 20.0, 225.0), 20.0);
+        assert_eq!(
+            ht_acceptance_budget(false, false, true, 300.0, 225.0),
+            225.0
+        );
+        assert_eq!(
+            ht_acceptance_budget(false, false, false, 20.0, 225.0),
+            225.0
+        );
+    }
+
+    /// Regression: under trigger absorption a NON-bridge-exclusive worker (the
+    /// certified production portfolio may carry a card arm as the bridge-defer
+    /// fallback, and manual trigger-absorb env combinations can carry legacy or
+    /// specialist arms) must NOT get the instant harvest: its answer can come
+    /// from an arm without the bridge's complete-answer-or-defer guarantee,
+    /// and accepting it at 0 s would let it preempt a healthy CB run instead
+    /// of only ever replacing a CB timeout.
+    #[test]
+    fn non_bridge_exclusive_workers_keep_their_budgets_under_trigger_absorption() {
+        // bridge+card certified worker: fast-certify short budget, not 0.
+        assert_eq!(ht_acceptance_budget(true, false, true, 20.0, 225.0), 20.0);
+        // manual trigger-absorb worker with a legacy arm: full fallback budget.
+        assert_eq!(ht_acceptance_budget(true, false, false, 20.0, 225.0), 225.0);
     }
 
     #[test]
