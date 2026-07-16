@@ -769,6 +769,20 @@ mod tests {
     }
 
     #[test]
+    fn direct_bottom_class_reported_unsat() {
+        let rr = run(vec![
+            cl(vec![c("C", vx())], vec![]),
+            cl(vec![c("D", vx())], vec![c("C", vx())]),
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+        ]);
+        assert!(supers(&rr, "C").contains("owl:Nothing"));
+        assert!(supers(&rr, "D").contains("owl:Nothing"));
+        assert!(!supers(&rr, "A").contains("owl:Nothing"));
+        assert!(!supers(&rr, "B").contains("owl:Nothing"));
+        assert!(supers(&rr, "A").contains("B"));
+    }
+
+    #[test]
     fn disjunction_no_spurious_subsumption() {
         // A ⊑ B ⊔ C must NOT yield A ⊑ B or A ⊑ C (this was the soundness bug).
         let rr = run(vec![cl(

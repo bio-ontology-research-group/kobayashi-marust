@@ -5129,6 +5129,18 @@ impl Engine {
             names.dedup();
             out.push((a, names));
         }
+        // A direct `C(x) -> bottom` clause marks C as a nothing-concept and
+        // removes it from the query set. Report such real named classes even
+        // though they have no root context of their own.
+        for iri in 0..self.sig.concept_names.len() as Iri {
+            if self.sig.bottom == Some(iri) || self.sig.is_internal(iri) {
+                continue;
+            }
+            if self.sig.is_nothing_concept(iri) {
+                let a = self.sig.concept_names[iri as usize].clone();
+                out.push((a, vec!["owl:Nothing".to_string()]));
+            }
+        }
         out.sort();
         out
     }

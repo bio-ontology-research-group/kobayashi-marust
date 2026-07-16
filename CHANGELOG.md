@@ -9,6 +9,18 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Report directly-unsatisfiable named classes (2026-07-17)
+
+A direct `C ⊑ ⊥` axiom marks `C` as a bottom-equivalent concept during CB
+ontology construction. That correctly removes `C` from the saturation query
+set, but the readout then omitted `C` from the classification because it had no
+root context. `Engine::subsumptions` now emits `C ⊑ owl:Nothing` for every real
+named class with that marker, excluding the canonical bottom and internal
+proxies. Saturation and the derived closure are unchanged. A focused regression
+test covers direct and inherited unsatisfiability without flagging unrelated
+satisfiable classes. The agent's 41-ontology agreement panel had 40 identical
+outputs, one skipped input, and zero regressions.
+
 ### Process-tree memory watchdog: always publish a terminal row (2026-07-17)
 
 The production sweep enforced the 20 GB reasoner cap by polling the reasoner
