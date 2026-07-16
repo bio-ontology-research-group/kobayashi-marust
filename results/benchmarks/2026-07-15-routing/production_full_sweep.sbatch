@@ -84,7 +84,7 @@ assert len(rows) == 1
 row = rows[0]
 assert row["ont"] == sys.argv[2]
 assert row["arm"] == "production_all"
-assert row.get("binary_sha")
+assert row.get("binary_sha256")
 assert row.get("status")
 PY
 
