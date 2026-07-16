@@ -1394,7 +1394,7 @@ impl Context {
                 continue;
             }
             let candidate = &arena[ci as usize];
-            if candidate.body.len() <= nb && candidate.test_strengthening(clause) == -1 {
+            if candidate.body.len() <= nb && candidate.strengthens(clause) {
                 return true;
             }
         }
@@ -1407,7 +1407,7 @@ impl Context {
                     let candidate = &arena[ci as usize];
                     if candidate.body.len() <= nb
                         && candidate.head.len() <= nh
-                        && candidate.test_strengthening(clause) == -1
+                        && candidate.strengthens(clause)
                     {
                         return true;
                     }
@@ -1452,7 +1452,7 @@ impl Context {
                 let candidate = &arena[ci as usize];
                 candidate.body.len() >= nb
                     && candidate.head.len() >= nh
-                    && clause.test_strengthening(candidate) == -1
+                    && clause.strengthens(candidate)
                     && !same(candidate)
             })
             .collect();

@@ -245,13 +245,27 @@ impl ContextClause {
         })
     }
 
+    /// Does `self` strengthen (subsume) `that`?  A clause `c1` strengthens `c2`
+    /// iff `c1.body ⊆ c2.body` and `c1.head ⊆ c2.head`.  This is exactly the
+    /// `-1` case of `test_strengthening`, but computed without the reverse
+    /// (`+1`-direction) subset scans.  The subsumption loops (`fwd_subsumed`,
+    /// `back_subsume`) only ever ask this single direction, so evaluating the
+    /// `+1`/`0` distinction there is wasted work: on the common case (a
+    /// candidate that does NOT subsume) the old `test_strengthening` still paid
+    /// two extra `subset_*` scans before returning `0`.  Same antichain, same
+    /// fixpoint — just the one-directional predicate the callers actually use.
+    #[inline]
+    pub fn strengthens(&self, that: &ContextClause) -> bool {
+        subset_pred(&self.body, &that.body) && subset_lit(&self.head, &that.head)
+    }
+
     /// Strengthening test: returns -1 if `self` strengthens `that` (or equal),
     /// +1 if `that` strengthens `self`, 0 otherwise. A clause `c1` strengthens
     /// `c2` iff `c1.body ⊆ c2.body` and `c1.head ⊆ c2.head`.
     pub fn test_strengthening(&self, that: &ContextClause) -> i32 {
-        if subset_pred(&self.body, &that.body) && subset_lit(&self.head, &that.head) {
+        if self.strengthens(that) {
             -1
-        } else if subset_pred(&that.body, &self.body) && subset_lit(&that.head, &self.head) {
+        } else if that.strengthens(self) {
             1
         } else {
             0
@@ -260,6 +274,97 @@ impl ContextClause {
 
     pub fn key(&self) -> (Vec<Pred>, Vec<Lit>) {
         (self.body.clone(), self.head.clone())
+    }
+}
+
+#[cfg(test)]
+mod strengthens_tests {
+    use super::*;
+
+    fn cc(body: Vec<Pred>, head: Vec<Lit>) -> ContextClause {
+        ContextClause::new(body, head, false, &Sig::default())
+    }
+    fn cpt(iri: Iri, t: Term) -> Pred {
+        Pred::Concept { iri, t }
+    }
+
+    /// Invariance guard for the one-directional `strengthens` predicate that the
+    /// three subsumption call sites now use in place of
+    /// `test_strengthening(..) == -1`.  On every ordered pair drawn from a
+    /// spread of bodies and heads it must agree BOTH with the `-1` branch of
+    /// `test_strengthening` (the function it replaces) AND with the naive
+    /// set-subset definition it encodes.  Any divergence would change the
+    /// derived antichain, so this is the fixpoint-preservation contract.
+    #[test]
+    fn strengthens_matches_test_strengthening_and_subset_oracle() {
+        let (a, b, c) = (cpt(1, X), cpt(2, X), cpt(3, X));
+        let (ha, hb, hc) = (
+            Lit::P(cpt(10, X)),
+            Lit::P(cpt(11, X)),
+            Lit::P(cpt(12, X)),
+        );
+        let bodies = vec![
+            vec![],
+            vec![a],
+            vec![b],
+            vec![a, b],
+            vec![b, c],
+            vec![a, b, c],
+        ];
+        let heads = vec![
+            vec![],
+            vec![ha],
+            vec![hb],
+            vec![ha, hb],
+            vec![hb, hc],
+            vec![ha, hb, hc],
+        ];
+        let mut clauses = Vec::new();
+        for body in &bodies {
+            for head in &heads {
+                clauses.push(cc(body.clone(), head.clone()));
+            }
+        }
+        for x in &clauses {
+            for y in &clauses {
+                // strengthens == the -1 branch of test_strengthening.
+                assert_eq!(
+                    x.strengthens(y),
+                    x.test_strengthening(y) == -1,
+                    "strengthens vs test_strengthening==-1 diverge:\n x={x:?}\n y={y:?}"
+                );
+                // strengthens == naive set-subset (body ⊆ body ∧ head ⊆ head).
+                let naive = x.body.iter().all(|p| y.body.contains(p))
+                    && x.head.iter().all(|l| y.head.contains(l));
+                assert_eq!(
+                    x.strengthens(y),
+                    naive,
+                    "strengthens vs subset oracle diverge:\n x={x:?}\n y={y:?}"
+                );
+            }
+        }
+    }
+
+    /// The refactor must leave `test_strengthening`'s three-way result
+    /// unchanged, now expressed through `strengthens` on both directions.
+    #[test]
+    fn test_strengthening_three_way_still_consistent() {
+        let (a, b) = (cpt(1, X), cpt(2, X));
+        let x = cc(vec![a], vec![]); // body {a}
+        let y = cc(vec![a, b], vec![]); // body {a,b} ⊋ {a}
+        // Fewer body atoms strengthens: -1 from x, +1 from y.
+        assert_eq!(x.test_strengthening(&y), -1);
+        assert_eq!(y.test_strengthening(&x), 1);
+        assert!(x.strengthens(&y));
+        assert!(!y.strengthens(&x));
+        // Equal clauses strengthen each other (the -1 case includes equality).
+        assert_eq!(x.test_strengthening(&x), -1);
+        assert!(x.strengthens(&x));
+        // Incomparable bodies {a} vs {b}: 0, and neither strengthens.
+        let z = cc(vec![b], vec![]);
+        assert_eq!(x.test_strengthening(&z), 0);
+        assert!(!x.strengthens(&z));
+        assert!(!z.strengthens(&x));
     }
 }
 
