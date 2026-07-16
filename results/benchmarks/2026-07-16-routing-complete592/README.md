@@ -125,3 +125,13 @@ signature aborts the array task. A panel receives its `DONE` marker only after
 all 34 distinct routes pass those structural checks. The TSV builder separately
 requires all 20,128 expected pairs, one binary hash, no execution-error rows,
 and no duplicate, missing, or unknown routes.
+
+The launch is staged. `build_ibex_binary.sbatch` builds from a hash-pinned
+source archive on an IBEX compute node and publishes the binary only after a
+real ontology classification parses successfully. `smoke_named_routes.sbatch`
+then checks representative EL, CB, nominal, cardinality, KPSet-bridge, and
+DL-safe-rule cases against gold. The full 592-ontology array is submitted only
+after all six smoke rows are exact. During the full run,
+`monitor_route_proof.py` reports row, panel, status, verdict, and binary-hash
+counts and exits nonzero on malformed rows, mixed binaries, missing signatures,
+or any execution error.
