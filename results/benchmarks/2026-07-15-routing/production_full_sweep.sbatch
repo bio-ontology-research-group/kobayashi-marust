@@ -8,7 +8,9 @@
 #SBATCH --constraint=cpu_intel_gold_6248
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=22G
+# The measured reasoner remains capped at 20 GB below. Extra allocation keeps
+# the Python watchdog and Slurm step alive long enough to publish a memout row.
+#SBATCH --mem=28G
 #SBATCH --array=0-591%100
 #SBATCH --output=/ibex/scratch/hohndor/km/routing_20260715/slurm/prod-%A_%a.out
 
