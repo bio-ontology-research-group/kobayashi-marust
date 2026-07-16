@@ -35,20 +35,47 @@ ontology_path=$km_root/corpus/$ontology
 gold=$gold_dir/konclude__$ontology.sig.gz
 result=$result_dir/$ontology.jsonl
 tmp=$result.partial.${SLURM_JOB_ID}
+# Durable, attempt-independent path the watchdog publishes the terminal row to
+# BEFORE it kills the reasoner. If the Slurm cgroup OOM-killer takes the whole
+# step (supervisor included) on a later line, this file already holds the memout
+# row and the next array attempt salvages it instead of blowing up forever.
+ckpt=$result.ckpt
 
 /usr/bin/mkdir -p "$result_dir" "$failure_dir" "$manifest_dir" "$work"
 [[ -s "$SWEEP_KM" && -s "$runner" && -s "$ontology_path" ]] \
   || { echo "missing sweep input for $ontology" >&2; exit 2; }
 
-if [[ -s "$result" ]] && /usr/bin/python3 - "$result" "$ontology" <<'PY'
+# One publishable row per ontology: exactly one JSON object naming this
+# ontology and arm, with a status and a binary hash. A memout row satisfies
+# this too, so a genuine 20 GB blow-up publishes and is never retried forever.
+validate_row() {
+  /usr/bin/python3 - "$1" "$ontology" <<'PY'
 import json, sys
-rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
-assert len(rows) == 1
-assert rows[0]["ont"] == sys.argv[2]
-assert rows[0]["arm"] == "production_all"
+try:
+    rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+except (OSError, ValueError):
+    sys.exit(1)
+if len(rows) != 1:
+    sys.exit(1)
+row = rows[0]
+sys.exit(0 if (row.get("ont") == sys.argv[2]
+               and row.get("arm") == "production_all"
+               and row.get("binary_sha256")
+               and row.get("status")) else 1)
 PY
-then
+}
+
+if [[ -s "$result" ]] && validate_row "$result"; then
   echo "SKIP complete ontology=$ontology"
+  /usr/bin/rm -f "$ckpt"
+  exit 0
+fi
+
+# Recover a memout/terminal row a previous attempt's watchdog durably wrote just
+# before a whole-cgroup OOM kill of that attempt's supervisor.
+if [[ -s "$ckpt" ]] && validate_row "$ckpt"; then
+  /usr/bin/mv "$ckpt" "$result"
+  echo "SALVAGE prior-attempt checkpoint ontology=$ontology"
   exit 0
 fi
 
@@ -72,24 +99,41 @@ km_sha=$(/usr/bin/sha256sum "$SWEEP_KM" | /usr/bin/cut -d' ' -f1)
   echo "host=$(hostname)"
 } > "$manifest_dir/$ontology.txt"
 
+# The measured reasoner cap stays at 20 GB (--memcap-mb 20480); the step's
+# extra --mem is headroom for the supervisor, not for KM. The watchdog trips its
+# own memout off the cgroup accounting before the 28 GB hard limit, and writes
+# --checkpoint durably before the kill. Do not let a SIGKILLed runner abort the
+# task under set -e: capture its rc and adjudicate below.
+set +e
 /usr/bin/python3 "$runner" \
   --kind km --arm production_all --ontology "$ontology_path" \
   --binary "$SWEEP_KM" --binary-sha "$km_sha" \
   "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir" \
+  --checkpoint "$ckpt" \
   --order-index 0 --timeout 240 --memcap-mb 20480 \
   --env KM_ROUTE=production_all > "$tmp"
+runner_rc=$?
+set -e
 
-/usr/bin/python3 - "$tmp" "$ontology" <<'PY'
-import json, sys
-rows = [json.loads(line) for line in open(sys.argv[1]) if line.strip()]
-assert len(rows) == 1
-row = rows[0]
-assert row["ont"] == sys.argv[2]
-assert row["arm"] == "production_all"
-assert row.get("binary_sha256")
-assert row.get("status")
-PY
+if validate_row "$tmp"; then
+  /usr/bin/mv "$tmp" "$result"
+  /usr/bin/rm -f "$ckpt"
+  /usr/bin/rm -rf "$work"
+  echo "DONE ontology=$ontology rc=$runner_rc"
+  exit 0
+fi
 
-/usr/bin/mv "$tmp" "$result"
+# The runner produced no usable stdout row (killed after emitting its durable
+# checkpoint, or the OOM-killer took only the runner). Publish the checkpoint.
+if [[ -s "$ckpt" ]] && validate_row "$ckpt"; then
+  /usr/bin/mv "$ckpt" "$result"
+  /usr/bin/rm -f "$tmp"
+  /usr/bin/rm -rf "$work"
+  echo "SALVAGE checkpoint ontology=$ontology rc=$runner_rc"
+  exit 0
+fi
+
+echo "NO-ROW ontology=$ontology rc=$runner_rc (resumable)" >&2
+/usr/bin/rm -f "$tmp"
 /usr/bin/rm -rf "$work"
-echo "DONE ontology=$ontology"
+exit 1

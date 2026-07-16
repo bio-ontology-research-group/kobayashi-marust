@@ -9,6 +9,44 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Process-tree memory watchdog: always publish a terminal row (2026-07-17)
+
+The production sweep enforced the 20 GB reasoner cap by polling the reasoner
+*process group* every 40 ms and killing it on the sample. On the fast-blowup
+giants (ore_ont_3524, ore_ont_15703) a giant can allocate several GB between two
+samples, so real RSS crossed the 28 GB Slurm hard limit before the poller ever
+observed 20 GB. The cgroup OOM-killer then fired, and under Slurm's
+`memory.oom.group` it took the whole step, the Python supervisor included, so no
+memout row was ever written. The sbatch sanity check then failed under `set -e`
+and the array task stayed permanently unfinished on those ontologies.
+
+New `oracle/ore/tree_watchdog.py` replaces the group poller with a watchdog that
+enforces the same 20 GB measured cap without giving the reasoner more memory:
+
+- Measurement is over the full process *tree* (descendants by PPID) unioned with
+  the process group, so a worker that leaves the group via `setsid` still counts
+  toward the cap. `/proc/<pid>/stat` is parsed relative to the final `)` so a
+  `comm` holding spaces or parentheses no longer mis-indexes RSS.
+- The cgroup's own accounting (`memory.current` on v2, `memory.usage_in_bytes`
+  on v1) is read every tick as a race-free backstop, using the reasoner's growth
+  since start so a shared cgroup baseline does not false-trip. It stops the run
+  as a memout at cap plus a small supervisor headroom, well below the 28 GB hard
+  limit, before the kernel OOM-killer can reach the supervisor.
+- The supervisor lowers its own `oom_score_adj` and raises the reasoner's, so in
+  the non-group cgroup case the kernel prefers the reasoner as victim.
+- On a trip the terminal row is checkpointed to a durable, attempt-independent
+  path *before* the kill. `production_full_sweep.sbatch` salvages that checkpoint
+  (same attempt, or a later array attempt) so a genuine 20 GB blow-up publishes
+  its memout row once and is never retried forever. An unsolicited SIGKILL near
+  the cap now reads back as a memout, not an error, and the frozen runner always
+  prints exactly one terminal JSON row.
+
+Validated by `oracle/ore/test_tree_watchdog.py` (12 synthetic cases: tree-walk
+beats the group poller on a setsid escapee, robust stat parsing, cgroup v1/v2
+delta accounting, SIGKILL of a SIGTERM-ignoring child, timeout, and an
+end-to-end runner run that emits one memout row plus a matching durable
+checkpoint). The measured cap and `--mem` allocation are unchanged.
+
 ### Exact OWL top and bottom recognition (2026-07-17)
 
 The functional-syntax frontend now recognizes `owl:Thing` and `owl:Nothing`

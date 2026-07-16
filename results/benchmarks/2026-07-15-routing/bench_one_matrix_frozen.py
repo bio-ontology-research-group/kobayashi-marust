@@ -15,16 +15,17 @@ import json
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import time
 
 try:
     import ore_canon as _ore_canon
+    import tree_watchdog as _watchdog
 except ModuleNotFoundError:
-    # In the repository the canonicalizer lives under oracle/ore; the frozen
-    # IBEX deployment places the same hash-pinned file beside this runner.
+    # In the repository the canonicalizer and watchdog live under oracle/ore;
+    # the frozen IBEX deployment places the same hash-pinned files beside this
+    # runner.
     sys.path.insert(
         0,
         os.path.abspath(
@@ -32,8 +33,10 @@ except ModuleNotFoundError:
         ),
     )
     import ore_canon as _ore_canon
+    import tree_watchdog as _watchdog
 
 ORE_CANON_PATH = os.path.abspath(_ore_canon.__file__)
+WATCHDOG_PATH = os.path.abspath(_watchdog.__file__)
 
 UNSUPPORTED_PATTERNS = (
     "unsupported",
@@ -43,25 +46,6 @@ UNSUPPORTED_PATTERNS = (
     "owlprofileviolation",
     "cannot handle",
 )
-
-
-def process_group_rss(pgid, page_size):
-    total = 0
-    try:
-        entries = os.listdir("/proc")
-    except OSError:
-        return 0
-    for entry in entries:
-        if not entry.isdigit():
-            continue
-        try:
-            with open(f"/proc/{entry}/stat", encoding="ascii") as handle:
-                fields = handle.read().split()
-            if int(fields[4]) == pgid:
-                total += int(fields[23]) * page_size
-        except (OSError, IndexError, ValueError):
-            pass
-    return total
 
 
 def local_name(value):
@@ -262,6 +246,79 @@ def run(args):
         ]
     wrapped = ["/usr/bin/time", "-v", "-o", time_path] + argv
 
+    # The invariant provenance fields are computed up front so a checkpoint row
+    # written the instant a limit is crossed already carries everything the
+    # sweep's JSON sanity check requires (ont / arm / status / binary_sha256).
+    record = {
+        "ont": os.path.basename(args.ontology),
+        "arm": args.arm,
+        "order_index": args.order_index,
+        "kind": args.kind,
+        "status": "ok",
+        "rc": None,
+        "wall_s": 0.0,
+        "peak_mb": 0.0,
+        "host": os.uname().nodename,
+        "cpu_model": first_cpu_model(),
+        "cpus": int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)),
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
+        "binary_sha256": args.binary_sha or sha256_file(args.binary),
+        "runtime_sha256": args.runtime_sha or None,
+        "runner_sha256": sha256_file(os.path.abspath(__file__)),
+        "canonicalizer_sha256": sha256_file(ORE_CANON_PATH),
+        "watchdog_sha256": sha256_file(WATCHDOG_PATH),
+        "gold_kind": args.gold_kind,
+        "gold_basename": os.path.basename(args.gold) if args.gold else None,
+        "gold_sha256": (
+            sha256_file(args.gold) if args.gold and os.path.exists(args.gold) else None
+        ),
+        "signature_sha256": None,
+        "requested_route": env.get("KM_ROUTE"),
+        "verdict": "ok",
+        "extra": 0,
+        "missing": 0,
+        "extra_unsat": 0,
+        "missing_unsat": 0,
+        "consistency_mismatch": False,
+        "solved": False,
+        "checkpointed": False,
+    }
+
+    def checkpoint(row):
+        """Atomically publish ``row`` to the checkpoint path (if configured).
+
+        Written before the kill on a limit trip so a subsequent whole-cgroup
+        OOM kill of this supervisor cannot lose the terminal row; the sbatch
+        salvages this file when the runner's stdout is empty.
+        """
+        if not args.checkpoint:
+            return
+        tmp = f"{args.checkpoint}.partial.{os.getpid()}"
+        try:
+            with open(tmp, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, args.checkpoint)
+        except OSError:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+    def on_trip(trip_status, peak_bytes):
+        row = dict(record)
+        row.update(
+            status=trip_status,
+            verdict=trip_status,
+            wall_s=round(time.monotonic() - start, 4),
+            peak_mb=round(peak_bytes / 1024 / 1024, 2),
+            checkpointed=True,
+        )
+        checkpoint(row)
+
+    _watchdog.protect_supervisor()
     stdout_handle = open(stdout_path, "wb")
     stderr_handle = open(stderr_path, "wb")
     start = time.monotonic()
@@ -271,38 +328,18 @@ def run(args):
         stdin=subprocess.DEVNULL,
         stdout=stdout_handle,
         stderr=stderr_handle,
-        start_new_session=True,
+        preexec_fn=_watchdog.child_preexec,
     )
-    pgid = os.getpgid(proc.pid)
-    page_size = os.sysconf("SC_PAGE_SIZE")
-    mem_cap = args.memcap_mb * 1024 * 1024
-    peak = 0
-    status = "ok"
-    while proc.poll() is None:
-        peak = max(peak, process_group_rss(pgid, page_size))
-        elapsed = time.monotonic() - start
-        if elapsed > args.timeout:
-            status = "timeout"
-            break
-        if peak > mem_cap:
-            status = "memout"
-            break
-        time.sleep(0.04)
-    if status != "ok":
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except OSError:
-            pass
-    try:
-        proc.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except OSError:
-            pass
-        proc.wait()
-    peak = max(peak, process_group_rss(pgid, page_size))
-    wall = time.monotonic() - start
+    result = _watchdog.monitor(
+        proc,
+        timeout=args.timeout,
+        memcap_bytes=args.memcap_mb * 1024 * 1024,
+        sample_interval=0.02,
+        on_trip=on_trip,
+    )
+    status = result.status
+    peak = result.peak_bytes
+    wall = result.wall_s
     stdout_handle.close()
     stderr_handle.close()
 
@@ -317,39 +354,13 @@ def run(args):
         pass
     peak = max(peak, direct_peak)
 
-    record = {
-        "ont": os.path.basename(args.ontology),
-        "arm": args.arm,
-        "order_index": args.order_index,
-        "kind": args.kind,
-        "status": status,
-        "rc": proc.returncode,
-        "wall_s": round(wall, 4),
-        "peak_mb": round(peak / 1024 / 1024, 2),
-        "host": os.uname().nodename,
-        "cpu_model": first_cpu_model(),
-        "cpus": int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1)),
-        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-        "slurm_array_task_id": os.environ.get("SLURM_ARRAY_TASK_ID"),
-        "binary_sha256": args.binary_sha or sha256_file(args.binary),
-        "runtime_sha256": args.runtime_sha or None,
-        "runner_sha256": sha256_file(os.path.abspath(__file__)),
-        "canonicalizer_sha256": sha256_file(ORE_CANON_PATH),
-        "gold_kind": args.gold_kind,
-        "gold_basename": os.path.basename(args.gold) if args.gold else None,
-        "gold_sha256": (
-            sha256_file(args.gold) if args.gold and os.path.exists(args.gold) else None
-        ),
-        "signature_sha256": None,
-        "requested_route": env.get("KM_ROUTE"),
-        "verdict": status,
-        "extra": 0,
-        "missing": 0,
-        "extra_unsat": 0,
-        "missing_unsat": 0,
-        "consistency_mismatch": False,
-        "solved": False,
-    }
+    record.update(
+        status=status,
+        rc=proc.returncode,
+        wall_s=round(wall, 4),
+        peak_mb=round(peak / 1024 / 1024, 2),
+        verdict=status,
+    )
 
     keep_failure = status != "ok" or proc.returncode != 0
     stderr_text = read_text(stderr_path)
@@ -438,6 +449,11 @@ def run(args):
             os.remove(path)
         except OSError:
             pass
+    # Overwrite any provisional checkpoint with the fully adjudicated row. The
+    # sbatch prefers the runner's stdout row but salvages this file verbatim
+    # when the runner was killed after emitting a provisional checkpoint.
+    record["checkpointed"] = bool(args.checkpoint)
+    checkpoint(record)
     return record
 
 
@@ -462,13 +478,41 @@ def main():
     parser.add_argument("--gold-kind", choices=("konclude", "none"), default="none")
     parser.add_argument("--workdir", required=True)
     parser.add_argument("--failures-dir")
+    parser.add_argument(
+        "--checkpoint",
+        help="path to atomically publish the terminal row to before the kill, "
+        "so a whole-cgroup OOM kill of this supervisor cannot lose it",
+    )
     parser.add_argument("--env", action="append", default=[])
     args = parser.parse_args()
     if args.gold_kind == "konclude" and not args.gold:
         parser.error("--gold-kind konclude requires --gold")
     if args.gold_kind == "none" and args.gold:
         parser.error("--gold is incompatible with --gold-kind none")
-    print(json.dumps(run(args), sort_keys=True), flush=True)
+    try:
+        record = run(args)
+    except Exception as exc:  # noqa: BLE001 - a terminal row must always print
+        # run() building its own record makes this path unlikely, but the sweep
+        # contract is one publishable row per invocation no matter what. Emit a
+        # sanity-check-passing harness_error row (and checkpoint it) rather than
+        # exit silently and strand the ontology as permanently unfinished.
+        record = {
+            "ont": os.path.basename(args.ontology),
+            "arm": args.arm,
+            "kind": args.kind,
+            "status": "harness_error",
+            "verdict": "harness_error",
+            "rc": None,
+            "binary_sha256": args.binary_sha or None,
+            "err_tail": repr(exc)[:500],
+        }
+        if args.checkpoint:
+            try:
+                with open(args.checkpoint, "w", encoding="utf-8") as handle:
+                    handle.write(json.dumps(record, sort_keys=True) + "\n")
+            except OSError:
+                pass
+    print(json.dumps(record, sort_keys=True), flush=True)
 
 
 if __name__ == "__main__":
