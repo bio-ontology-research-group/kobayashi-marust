@@ -113,18 +113,24 @@ median, and p95 time and memory are documented in
 
 Selected measured rows from that matrix:
 
-| procedure | completed / 592 | average wall time | median wall time | average peak RSS |
-|---|---:|---:|---:|---:|
-| Konclude, 16 threads | 588 | 2.129 s | 0.264 s | 738 MB |
-| ELK | 579 | 1.995 s | 0.824 s | 611 MB |
-| HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB |
-| KM CB plain, 16 threads | 537 | 4.643 s | 0.319 s | 1,136 MB |
-| KM EL certificate route | 467 | 3.111 s | 0.215 s | 267 MB |
-| KM Konclude bridge route | 505 | 4.921 s | 0.266 s | 475 MB |
+| reasoner | solved / 592 | average wall time | median wall time | average peak RSS | median peak RSS |
+|---|---:|---:|---:|---:|---:|
+| **KM, union of all exact routes** | **575** | **3.351 s** | **0.215 s** | **291 MB** | **30 MB** |
+| Konclude, 16 threads | 588 | 2.129 s | 0.264 s | 738 MB | 245 MB |
+| ELK | 579 | 1.995 s | 0.824 s | 611 MB | 349 MB |
+| HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
 
-These averages use completed rows only. They must be read together with the
-completion count. The matrix measures individual procedures; it is not a claim
-that the automatic production route returns 592 correct classifications.
+For the KM row, “solved” means that at least one KM route completed and matched
+the retained gold signature exactly. Each ontology contributes its minimum
+wall time across exact KM routes and, independently, its minimum peak memory
+across exact KM routes. The time and memory minima may therefore come from
+different routes. Averages and medians use those 575 ontology-wise minima.
+
+Individual KM configurations remain available in the complete matrix report.
+For example, `cb_plain16` completed 537 ontologies, `ht_bridge` completed 505,
+and `elc_cert` completed 467; their separate time and memory distributions are
+reported in the linked CSV and JSON. The union is an oracle envelope over all
+measured KM configurations, not the performance of the automatic router.
 
 KM uses a typed production portfolio rather than one universal procedure.
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md) records the mechanism

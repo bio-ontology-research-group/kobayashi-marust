@@ -25,12 +25,33 @@ The successful-row count must therefore be read with every average.
 
 ## Main comparison
 
-| route | ok / 592 | wall avg s | wall med s | memory avg MB | memory med MB |
+The headline KM result is the ontology-wise union of every measured KM route.
+An ontology enters the union only when at least one KM route matches its
+retained gold signature exactly. For each included ontology, the wall-time
+column uses the fastest exact KM route and the memory column independently uses
+the lowest-memory exact KM route. Consequently, the time and memory minima can
+come from different configurations.
+
+| route | solved / 592 | wall avg s | wall med s | memory avg MB | memory med MB |
 |---|---:|---:|---:|---:|---:|
+| **KM union, exact oracle minima** | **575** | **3.351** | **0.215** | **291** | **30** |
 | Konclude 16 threads | 588 | 2.129 | 0.264 | 738 | 245 |
 | Konclude 1 thread | 588 | 2.483 | 0.265 | 590 | 143 |
 | ELK | 579 | 1.995 | 0.824 | 611 | 349 |
 | HermiT | 545 | 13.196 | 1.851 | 1,392 | 745 |
+
+The KM union is an oracle envelope over the matrix, not a measured automatic
+router run. Its p95 wall time is 19.985 seconds and its p95 minimum memory is
+1,771 MB.
+
+## Individual KM configurations
+
+These rows remain useful for understanding which mechanisms contribute to the
+union. Their averages use every successful row for that configuration, so a
+configuration's `ok` count must be read together with its averages.
+
+| route | ok / 592 | wall avg s | wall med s | memory avg MB | memory med MB |
+|---|---:|---:|---:|---:|---:|
 | KM CB absorb 16 | 536 | 4.442 | 0.273 | 1,139 | 133 |
 | KM CB absorb 8 | 537 | 5.882 | 0.317 | 879 | 105 |
 | KM CB absorb 1 | 517 | 11.367 | 0.419 | 420 | 67 |
