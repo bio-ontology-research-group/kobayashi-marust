@@ -615,6 +615,34 @@ pub fn set_branch_ordered(b: bool) {
     BRANCH_ORDERED.with(|c| c.set(b));
 }
 
+thread_local! {
+    /// Direction A (docs/ROOT-ORDERED-RESOLUTION.md): `KM_ROOT_ORDERED` mode for
+    /// the current thread. `0` = off (default; the complete incomparable
+    /// regime). `1` = same-term concept literals TOTALLY ordered in ROOT
+    /// contexts (internal definers above named concepts, iri tie-break within
+    /// each block); non-root contexts unchanged. `2` = the same total order in
+    /// EVERY context (the old `KM_ORDERED_ALL` regime). The total order alone
+    /// is refutationally complete but loses the direct `⊤ → B(x)` subsumption
+    /// readout (the KM_ORDERED_ALL verdict above); the driver in reasoner.rs
+    /// restores readout completeness with the complement-guard refutation
+    /// residue readout (`Engine::ordered_residue_repair`). Thread-local like
+    /// `BRANCH_ORDERED`: the gated driver is single-threaded, and tests can
+    /// toggle it without cross-test env races.
+    static ROOT_ORDERED: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+/// Set the `KM_ROOT_ORDERED` mode for the current thread (0 = off, 1 = root
+/// contexts, 2 = all contexts). Called by the reasoner driver and tests.
+pub fn set_root_ordered(mode: u8) {
+    ROOT_ORDERED.with(|c| c.set(mode));
+}
+
+/// Current thread's `KM_ROOT_ORDERED` mode (see `ROOT_ORDERED`).
+#[inline]
+pub fn root_ordered_mode() -> u8 {
+    ROOT_ORDERED.with(|c| c.get())
+}
+
 /// `true` while the Direction-B splitting driver is saturating a branch (the
 /// tame ordered regime + unit-propagation resolvent suppression). Read by the
 /// engine's Hyper builder as well as the ordering.
@@ -663,6 +691,22 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     // case split there.  Validation: probe + corpus A/B before any default.
     if let (Pred::Concept { iri: i1, t: t1 }, Pred::Concept { iri: i2, t: t2 }) = (p1, p2) {
         if t1 == t2 {
+            // KM_ROOT_ORDERED (Direction A, docs/ROOT-ORDERED-RESOLUTION.md):
+            // total order on same-term concepts in root contexts (mode 1) or
+            // everywhere (mode 2) — internal definers above named, iri
+            // tie-break within each block. The driver pairs this with the
+            // complement-guard refutation readout, which restores the
+            // subsumption completeness that a bare total order loses.
+            let rom = root_ordered_mode();
+            if rom == 2 || (rom == 1 && root) {
+                let in1 = sig.is_internal(*i1);
+                let in2 = sig.is_internal(*i2);
+                return match (in1, in2) {
+                    (true, true) | (false, false) => i1 <= i2,
+                    (false, true) => true,  // named ≤ internal
+                    (true, false) => false, // internal not ≤ named
+                };
+            }
             // KM_ORDERED_ALL: total order among same-term concepts in EVERY
             // context (root included) — ordered resolution everywhere.
             // Direction B branches use the same total order (per-thread,

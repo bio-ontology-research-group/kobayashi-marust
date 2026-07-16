@@ -101,6 +101,12 @@ context into split mode. Gate: `KM_SPLIT` (default OFF).
 
 ## 3. Direction A — ordered resolution + selection + residue readout
 
+> **2026-07-16 update:** implemented, gated `KM_ROOT_ORDERED` (modes `1` =
+> root contexts, `all` = every context), with a complement-guard REFUTATION
+> residue readout instead of the selection machinery sketched below — see
+> docs/ROOT-ORDERED-RESOLUTION.md for the design, the soundness/completeness
+> argument, the focused tests, and the precise Lean obligations (O1–O3).
+
 Layered on B (or standalone): within a branch (or in a context not yet split),
 order same-term concepts (the `KM_SEQ_ORDER` regime) so Hyper fires only on the
 ordering-maximal disjunct, and recover the subsumptions `KM_ORDERED_ALL` loses

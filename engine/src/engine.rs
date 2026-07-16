@@ -1983,6 +1983,15 @@ impl Engine {
     /// its full message fixpoint; if any resource backstop fired, no shortcut is
     /// published and ordinary CB remains responsible for the query.
     fn complete_nominal_enumeration_queries(&mut self, queries: &[Iri]) {
+        // KM_ROOT_ORDERED: the enumeration shortcut reads ⊤ → B(o) units off
+        // the ground context, and its completeness was validated under the
+        // default (incomparable) regime only. Under the ordered regime an
+        // entailed unit can be trapped in a residual disjunction, so the
+        // shortcut readout is not certified there — fall back to ordinary CB
+        // classification (complete via the refutation residue readout).
+        if root_ordered_mode() != 0 {
+            return;
+        }
         if std::env::var_os("KM_NO_NOMINAL_LABEL_CACHE").is_some()
             || !queries
                 .iter()
@@ -5243,6 +5252,107 @@ impl Engine {
             }
         }
         cf
+    }
+
+    /// `KM_ROOT_ORDERED` refutation residue readout (Direction A,
+    /// docs/ROOT-ORDERED-RESOLUTION.md). Under the ordered regime an entailed
+    /// named subsumer `B` of query `A` can be trapped non-maximal behind an
+    /// unresolvable ordering-maximal disjunct, so the unit `⊤ → B(x)` never
+    /// surfaces (the measured `KM_ORDERED_ALL` incompleteness). The unsat
+    /// readout, by contrast, is order-robust, so recover the trapped subsumers
+    /// by reduction to unsat: with the complement guard `B ⊓ NotB ⊑ ⊥` in the
+    /// ontology (injected by the driver; `NotB` is fresh and occurs in no head,
+    /// so the guard is inert outside refutation cores), `O ⊨ A ⊑ B` iff the
+    /// context with core `{A(x), NotB(x)}` derives `⊥`.
+    ///
+    /// Candidate set: the named concepts occurring ORDERING-MAXIMAL in some
+    /// worked-off head of `A`'s root context. Coverage argument: a refutation
+    /// of `{A(x), NotB(x)}` must fire the complement guard at least once, and
+    /// its first firing resolves a `NotB`-free clause with `B(x)` maximal in
+    /// the head; every `NotB`-free derivation in the `{A, NotB}` context
+    /// mirrors into the `{A}` context (`NotB` occurs in no ontology head, is
+    /// never a Succ/Pred trigger, and so never leaves its own core), so such a
+    /// clause also exists in `A`'s saturation. Hence every entailed subsumer is
+    /// either a direct unit or a candidate here. (Proof obligations O1–O3 in
+    /// docs/ROOT-ORDERED-RESOLUTION.md; the feature stays gated until they are
+    /// certified.)
+    ///
+    /// Returns the recovered `(query, subsumer)` pairs. Sound: a returned pair
+    /// is backed by a derived empty clause, i.e. `O + guards ⊨ A ⊓ NotB ⊑ ⊥`,
+    /// and the guards are jointly conservative (interpret each `NotB` as the
+    /// complement of `B`), so `O ⊨ A ⊑ B`.
+    pub fn ordered_residue_repair(&mut self, not_of: &HashMap<Iri, Iri>) -> Vec<(Iri, Iri)> {
+        let mut out = Vec::new();
+        let roots: Vec<(usize, Iri)> = self
+            .contexts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| if c.root { c.query.map(|q| (i, q)) } else { None })
+            .collect();
+        for (cid, q) in roots {
+            let mut units: HashSet<Iri> = HashSet::new();
+            let mut unsat = false;
+            let mut cands: BTreeSet<Iri> = BTreeSet::new();
+            {
+                let ctx = &self.contexts[cid];
+                let arena = &self.cc_arena[ctx.root as usize];
+                for &ci in &ctx.worked_off {
+                    let c = &arena[ci as usize];
+                    if c.body.is_empty() && c.head.is_empty() {
+                        unsat = true;
+                        break;
+                    }
+                    if c.body.is_empty() && c.head.len() == 1 {
+                        if let Lit::P(Pred::Concept { iri, t }) = c.head[0] {
+                            if is_central(t) {
+                                units.insert(iri);
+                            }
+                        }
+                    }
+                    for l in c.max_head() {
+                        if let Lit::P(Pred::Concept { iri, t }) = l {
+                            if is_central(t)
+                                && !self.sig.is_internal(iri)
+                                && !self.sig.is_nothing_concept(iri)
+                            {
+                                cands.insert(iri);
+                            }
+                        }
+                    }
+                }
+            }
+            if unsat {
+                // ⊥ subsumes the readout (`subsumptions` reports owl:Nothing);
+                // no refutation can add anything.
+                continue;
+            }
+            for b in cands {
+                if b == q || units.contains(&b) {
+                    continue;
+                }
+                let Some(&nb) = not_of.get(&b) else { continue };
+                let mut core = vec![
+                    Pred::Concept { iri: q, t: X },
+                    Pred::Concept { iri: nb, t: X },
+                ];
+                core.sort();
+                core.dedup();
+                let rid = self.get_or_create_context(core, true, None);
+                self.saturate(rid);
+                self.propagate(rid);
+                self.run_msg_fixpoint_min();
+                let ctx = &self.contexts[rid];
+                let arena = &self.cc_arena[ctx.root as usize];
+                let closed = ctx.worked_off.iter().any(|&ci| {
+                    let c = &arena[ci as usize];
+                    c.body.is_empty() && c.head.is_empty()
+                });
+                if closed {
+                    out.push((q, b));
+                }
+            }
+        }
+        out
     }
 }
 

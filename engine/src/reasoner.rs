@@ -406,6 +406,71 @@ impl Reasoner {
         }
     }
 
+    /// Direction A (`KM_ROOT_ORDERED`, docs/ROOT-ORDERED-RESOLUTION.md):
+    /// classify under the ordered same-term concept regime (root contexts for
+    /// mode 1, every context for mode 2), then restore the subsumption readout
+    /// completeness that the bare total order loses with the complement-guard
+    /// refutation residue readout. Single-threaded (the ordering mode is
+    /// thread-local), gated, default OFF.
+    ///
+    /// Input augmentation: for every named concept `B`, a fresh internal
+    /// concept `__notb__B` and the guard clause `B ⊓ NotB ⊑ ⊥`. The guards are
+    /// jointly conservative — every model of the input extends to a model of
+    /// the guarded input by interpreting each `NotB` as the complement of `B` —
+    /// and inert outside refutation cores (`NotB` occurs in no head, so it is
+    /// never derivable). Source names beginning with `__` are escaped to
+    /// `km_src_` by the frontend registry, so `__notb__` cannot collide with a
+    /// source class.
+    fn saturate_root_ordered(&mut self, queries: &[Iri]) {
+        let mut sig = self.sig0.clone();
+        let mut clauses = self.clauses0.clone();
+        let mut not_of: HashMap<Iri, Iri> = HashMap::new();
+        let named: Vec<Iri> = (0..sig.concept_names.len() as Iri)
+            .filter(|&i| !sig.is_internal(i) && !sig.is_nothing_concept(i))
+            .collect();
+        for b in named {
+            let name = format!("__notb__{}", sig.concept_names[b as usize]);
+            let nb = sig.concept(&name);
+            clauses.push(OntologyClause::new(
+                vec![
+                    Pred::Concept { iri: b, t: X },
+                    Pred::Concept { iri: nb, t: X },
+                ],
+                vec![],
+            ));
+            not_of.insert(b, nb);
+        }
+        let mut e = Engine::new(sig, clauses, self.dropped);
+        e.run_for(queries);
+        let repaired = e.ordered_residue_repair(&not_of);
+        if std::env::var_os("KM_PROF").is_some() {
+            eprintln!(
+                "KM_PROF root-ordered: queries={} repaired_pairs={}",
+                queries.len(),
+                repaired.len()
+            );
+            for (q, b) in &repaired {
+                eprintln!(
+                    "KM_PROF root-ordered repair: {} ⊑ {}",
+                    short(&self.sig0.concept_names[*q as usize]),
+                    short(&self.sig0.concept_names[*b as usize])
+                );
+            }
+        }
+        let (subs, inc, incomplete, n) = (
+            e.subsumptions(),
+            e.inconsistent(),
+            e.incomplete(),
+            e.num_contexts(),
+        );
+        self.absorb(subs, inc, incomplete, n);
+        for (q, b) in repaired {
+            let a = self.sig0.concept_names[q as usize].clone();
+            let bn = self.sig0.concept_names[b as usize].clone();
+            self.subs.entry(a).or_default().insert(bn);
+        }
+    }
+
     /// `DISJ_INT >= 1`: does any clause head hold a disjunction (>= 2 concept
     /// literals) in which at least one concept is an internal (normaliser-
     /// introduced) definer? This is the routing feature for `KM_SEQ_ORDER`:
@@ -446,6 +511,21 @@ impl Reasoner {
         // KM_SPLIT is set. Gated, default OFF.
         if std::env::var_os("KM_SPLIT").is_some() {
             self.saturate_split(&queries);
+            return;
+        }
+        // Direction A (docs/ROOT-ORDERED-RESOLUTION.md): ordered resolution in
+        // root contexts (`KM_ROOT_ORDERED=1`) or every context
+        // (`KM_ROOT_ORDERED=all`) with the refutation residue readout. Gated,
+        // default OFF; tests select it via `set_root_ordered` on their thread.
+        let rom = match std::env::var("KM_ROOT_ORDERED").ok().as_deref() {
+            Some("all") | Some("2") => 2u8,
+            Some(s) if !s.is_empty() && s != "0" => 1u8,
+            _ => root_ordered_mode(),
+        };
+        if rom != 0 {
+            set_root_ordered(rom);
+            self.saturate_root_ordered(&queries);
+            set_root_ordered(0);
             return;
         }
         let threads = Self::want_threads().min(queries.len().max(1));
@@ -707,6 +787,196 @@ mod tests {
             "expected A ⊑ D, got {:?}",
             supers(&rr, "A")
         );
+    }
+
+    /// KM_ROOT_ORDERED test driver: select the mode on this thread (the
+    /// gated driver is single-threaded, so the thread-local is authoritative)
+    /// and classify. `saturate` resets the mode before returning.
+    fn run_root_ordered(clauses: Vec<JClause>, mode: u8) -> Reasoner {
+        let mut rr = Reasoner::new(&clauses);
+        set_root_ordered(mode);
+        rr.saturate();
+        rr
+    }
+
+    /// The `KM_ORDERED_ALL` trap (calc.rs verdict): with `X` interned before
+    /// `B`, the entailed named unit `B` is non-maximal behind the maximal `B`
+    /// in `⊤ → X ∨ B`... precisely: from `A ⊑ X ⊔ B` and `X ⊑ B`, `B` is
+    /// entailed, but under the total order `B` is maximal and unresolvable, so
+    /// `X ⊑ B` never fires and `⊤ → B(x)` never surfaces. The refutation
+    /// residue readout must recover it in both modes.
+    #[test]
+    fn root_ordered_recovers_trapped_named_unit() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
+            cl(vec![c("X", vx())], vec![c("B", vx())]),
+        ];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            assert!(
+                supers(&rr, "A").contains("B"),
+                "mode {}: expected A ⊑ B (trapped unit recovered), got {:?}",
+                mode,
+                supers(&rr, "A")
+            );
+            assert!(
+                !supers(&rr, "A").contains("X"),
+                "mode {}: A ⊑ X is not entailed, got {:?}",
+                mode,
+                supers(&rr, "A")
+            );
+            assert!(!rr.inconsistent());
+        }
+    }
+
+    /// Same ontology with the opposite interning order (`B` before `X`): the
+    /// maximal disjunct `X` IS resolvable, so ordered resolution consumes it
+    /// directly and the unit surfaces without repair. Result must be identical.
+    #[test]
+    fn root_ordered_trap_other_interning_order() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("B", vx()), c("X", vx())]),
+            cl(vec![c("X", vx())], vec![c("B", vx())]),
+        ];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            assert!(supers(&rr, "A").contains("B"));
+            assert!(!supers(&rr, "A").contains("X"));
+        }
+    }
+
+    /// Trapped unit chained through a second named super: A ⊑ X ⊔ B, X ⊑ B,
+    /// B ⊑ C entails A ⊑ B and A ⊑ C; under the order both are trapped
+    /// (C maximal-unresolvable in ⊤ → X ∨ C) and both must be recovered.
+    #[test]
+    fn root_ordered_recovers_chained_trapped_units() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
+            cl(vec![c("X", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+        ];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            let s = supers(&rr, "A");
+            assert!(s.contains("B") && s.contains("C"), "mode {mode}: got {s:?}");
+            assert!(!s.contains("X"), "mode {mode}: got {s:?}");
+        }
+    }
+
+    /// The soundness direction: a bare disjunction must not turn into a
+    /// subsumption through the refutation readout (candidates that are not
+    /// entailed must fail their refutation).
+    #[test]
+    fn root_ordered_no_spurious_subsumption() {
+        let clauses = vec![cl(
+            vec![c("A", vx())],
+            vec![c("B", vx()), c("C", vx())],
+        )];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            assert!(!supers(&rr, "A").contains("B"));
+            assert!(!supers(&rr, "A").contains("C"));
+            assert!(!rr.inconsistent());
+        }
+    }
+
+    /// Exclusive global disjunction (the live-family shape): ⊤ ⊑ P ⊔ N with
+    /// P ⊓ N ⊑ ⊥ and A ⊑ P. Expect exactly A ⊑ P (never the sibling), and no
+    /// inconsistency, in both modes.
+    #[test]
+    fn root_ordered_exclusive_global_disjunction() {
+        let clauses = vec![
+            cl(vec![], vec![c("P", vx()), c("N", vx())]),
+            cl(vec![c("P", vx()), c("N", vx())], vec![]),
+            cl(vec![c("A", vx())], vec![c("P", vx())]),
+        ];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            let s = supers(&rr, "A");
+            assert!(s.contains("P"), "mode {mode}: got {s:?}");
+            assert!(!s.contains("N"), "mode {mode}: got {s:?}");
+            assert!(!rr.inconsistent());
+        }
+    }
+
+    /// Unsat query under the ordered regime: the ⊥ readout is order-robust.
+    #[test]
+    fn root_ordered_unsat_query() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+            cl(vec![c("A", vx())], vec![c("C", vx())]),
+            cl(vec![c("B", vx()), c("C", vx())], vec![]),
+        ];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            assert!(supers(&rr, "A").contains("owl:Nothing"), "mode {mode}");
+        }
+    }
+
+    /// Disjunction over a successor (the historical KM_ORDERED_ALL probe,
+    /// calc.rs + lean disjsucc): A ⊑ ∃R.Q, Q ⊑ C ⊔ D, C ⊑ E, D ⊑ E,
+    /// ∃R.E ⊑ G ⟹ A ⊑ G. Mode 1 leaves successors on the complete
+    /// incomparable regime; mode 2 orders them and must still export G via the
+    /// disjunct-by-disjunct consumption chain (pred triggers sit at the bottom
+    /// of the order).
+    #[test]
+    fn root_ordered_disjunction_over_successor() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
+            cl(vec![c("A", vx())], vec![c("Q", fx("f"))]),
+            cl(vec![c("Q", vx())], vec![c("C", vx()), c("D", vx())]),
+            cl(vec![c("C", vx())], vec![c("E", vx())]),
+            cl(vec![c("D", vx())], vec![c("E", vx())]),
+            cl(
+                vec![r("R", vx(), vn("y")), c("E", vn("y"))],
+                vec![c("G", vx())],
+            ),
+        ];
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            assert!(
+                supers(&rr, "A").contains("G"),
+                "mode {}: expected A ⊑ G, got {:?}",
+                mode,
+                supers(&rr, "A")
+            );
+        }
+    }
+
+    /// End-to-end equivalence on a mixed ontology (disjunction + existential +
+    /// disjointness + hierarchy): the ordered modes must produce exactly the
+    /// default engine's subsumption map.
+    #[test]
+    fn root_ordered_matches_default_engine() {
+        let clauses = vec![
+            cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
+            cl(vec![c("X", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+            cl(vec![c("H", vx())], vec![r("R", vx(), fx("f"))]),
+            cl(vec![c("H", vx())], vec![c("Q", fx("f"))]),
+            cl(vec![c("Q", vx())], vec![c("C2", vx()), c("D2", vx())]),
+            cl(vec![c("C2", vx())], vec![c("E", vx())]),
+            cl(vec![c("D2", vx())], vec![c("E", vx())]),
+            cl(
+                vec![r("R", vx(), vn("y")), c("E", vn("y"))],
+                vec![c("G", vx())],
+            ),
+            cl(vec![], vec![c("P", vx()), c("N", vx())]),
+            cl(vec![c("P", vx()), c("N", vx())], vec![]),
+            cl(vec![c("U", vx())], vec![c("P", vx())]),
+            cl(vec![c("W", vx())], vec![c("B", vx())]),
+            cl(vec![c("W", vx())], vec![c("N", vx())]),
+        ];
+        let base = run(clauses.clone());
+        for mode in [1u8, 2u8] {
+            let rr = run_root_ordered(clauses.clone(), mode);
+            assert_eq!(
+                rr.subsumptions(),
+                base.subsumptions(),
+                "mode {mode}: ordered readout differs from the default engine"
+            );
+            assert_eq!(rr.inconsistent(), base.inconsistent(), "mode {mode}");
+        }
     }
 
     #[test]

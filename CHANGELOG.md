@@ -132,6 +132,33 @@ absorption (`bridge_answers_are_harvested_immediately_under_trigger_absorption`,
 a pure-function extraction of the race budget) alongside the existing 50,000
 active-class synchronous-bridge thread reservation test.
 
+### Root-context ordered resolution with refutation residue readout (2026-07-16, gated)
+
+Direction A of docs/DISJUNCTION-SPLITTING.md, narrowed to the smallest sound
+and complete step and implemented behind `KM_ROOT_ORDERED` (default OFF;
+`1` = root contexts, `all` = every context). Same-term concept literals get a
+total order (internal definers above named, iri tie-break), which restricts
+Hyper to the ordering-maximal disjunct and tames the incomparable-disjunction
+product closure that drives the live `∀ + ⊔` timeout family (CB-only members
+10702, 15672, 6934, 9540). The known `KM_ORDERED_ALL` incompleteness — an
+entailed named unit trapped non-maximal behind an unresolvable maximal
+sibling — is repaired by reduction to the order-robust unsat readout: for
+every named concept `B` a fresh inert complement guard `B ⊓ __notb__B ⊑ ⊥`
+is injected, and every named concept occurring ordering-maximal in a query
+root's worked-off heads that is not already a unit is decided by saturating
+the `{A(x), NotB(x)}` context in the same engine and reading `⊥`. The
+candidate set is provably complete (a refutation must fire the guard against
+a NotB-free clause with `B(x)` maximal, which mirrors into `A`'s own
+saturation). The nominal-enumeration shortcut is disabled under the ordered
+modes (its ground-context unit readout is only validated in the default
+regime). Focused synthetic tests cover the trap in both interning orders,
+chained trapped supers, exclusive global disjunctions, unsat queries,
+disjunction over a successor, refutation-negative candidates, and
+subsumption-map equality with the default engine; the full lib suite passes
+(1529/0). This CHANGES CALCULUS DERIVATIONS, so it stays gated until the
+Lean obligations O1–O3 and a full corpus A/B are discharged — see
+docs/ROOT-ORDERED-RESOLUTION.md.
+
 ### Separate provably positive ABoxes from TBox classification (2026-07-16)
 
 The procedure matrix found assertion-heavy ORE 10697, 15725, and 15846 where
