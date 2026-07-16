@@ -120,6 +120,29 @@ Selected measured rows from that matrix:
 | ELK | 579 | 1.995 s | 0.824 s | 611 MB | 349 MB |
 | HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
 
+The current `production_all` portfolio was also rerun across the complete
+592-entry corpus on IBEX. Array job `49006549` finished all scheduled work and
+durably published 590 unique ontology rows. The two absent rows, `3524` and
+`15703`, are process-tree/cgroup OOM failures in the benchmark supervisor, not
+recorded KM outcomes. Among the 590 durable rows, 580 returned `ok`, eight
+timed out, one reached the reasoner memory cap, and one declined an unsupported
+DL-safe-rule input. The raw stored-gold audit contains 573 matches; the
+adjudicated count is 574 because the only baseline-to-candidate difference,
+the named class `daml:Nothing` in `13503`, is explicitly equivalent to
+`ObjectComplementOf(owl:Thing)` and therefore must be unsatisfiable. Over the
+573 literal stored-gold matches, the candidate averages 4.230 seconds and 615
+MB, with medians of 0.268 seconds and 36 MB. These figures describe the single
+production route, not the larger all-route union in the headline row.
+
+The paired baseline job `49004275` likewise published 590 unique rows: 574
+stored-gold matches, 4.646 seconds average and 623 MB average over those
+matches, with medians of 0.267 seconds and 36 MB. Across the 589 directly
+comparable ontology rows, the candidate has no genuine correctness change.
+Notable wall-time reductions include `7581` (179.4 to 19.8 seconds), `16744`
+(120.9 to 95.0 seconds), and `14459` (59.6 to 43.2 seconds). Recovery jobs for
+the two missing terminal rows remain a harness-validation task and do not
+invalidate the completed long-array measurements.
+
 The KM headline is the union of every retained, valid exact closure, not only
 the routes present in one matrix binary. The complete frozen matrix contains
 575 exact KM closures. Retained route-specific runs add `10702`, `10908`,
