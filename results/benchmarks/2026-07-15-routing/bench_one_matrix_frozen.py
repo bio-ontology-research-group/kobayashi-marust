@@ -245,25 +245,7 @@ def run(args):
             "Oracle",
             args.ontology,
         ]
-    timed_argv = argv
-    if args.slurm_step_mem_mb:
-        step_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", args.workers))
-        srun = shutil.which("srun")
-        if not srun:
-            raise FileNotFoundError("srun is required for --slurm-step-mem-mb")
-        timed_argv = [
-            srun,
-            "--exclusive",
-            "--nodes=1",
-            "--ntasks=1",
-            f"--cpus-per-task={max(1, step_cpus)}",
-            f"--mem={args.slurm_step_mem_mb}M",
-            "--kill-on-bad-exit=1",
-        ] + argv
-    # Keep GNU time in the parent batch step. Nested Slurm steps do not share
-    # the batch step's temporary-directory namespace, so opening `time_path`
-    # inside the nested step fails before the reasoner starts.
-    wrapped = ["/usr/bin/time", "-v", "-o", time_path] + timed_argv
+    wrapped = ["/usr/bin/time", "-v", "-o", time_path] + argv
 
     # The invariant provenance fields are computed up front so a checkpoint row
     # written the instant a limit is crossed already carries everything the
@@ -500,12 +482,6 @@ def main():
         type=int,
         default=0,
         help="child RLIMIT_AS spike backstop; default is memcap + 4096 MiB",
-    )
-    parser.add_argument(
-        "--slurm-step-mem-mb",
-        type=int,
-        default=0,
-        help="run the reasoner in a nested Slurm step with this tree-wide cap",
     )
     parser.add_argument(
         "--kind", choices=("km", "konclude", "elk", "hermit"), required=True

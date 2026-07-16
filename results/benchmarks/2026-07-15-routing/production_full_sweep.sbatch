@@ -10,7 +10,7 @@
 #SBATCH --cpus-per-task=16
 # The measured reasoner remains capped at 20 GB below. Extra allocation keeps
 # the Python watchdog and Slurm step alive long enough to publish a memout row.
-#SBATCH --mem=28G
+#SBATCH --mem=64G
 #SBATCH --array=0-591%100
 #SBATCH --output=/ibex/scratch/hohndor/km/routing_20260715/slurm/prod-%A_%a.out
 
@@ -21,7 +21,7 @@ set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
 root=$km_root/routing_20260715
-runner=$root/bench_one_matrix-ee87bce7.py
+runner=$root/bench_one_matrix-392f90aa.py
 gold_dir=$km_root/gold
 result_dir=$root/production-sweeps/$SWEEP_TAG/results
 failure_dir=$root/production-sweeps/$SWEEP_TAG/failures
@@ -111,7 +111,6 @@ set +e
   --binary "$SWEEP_KM" --binary-sha "$km_sha" \
   "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir" \
   --checkpoint "$ckpt" \
-  --slurm-step-mem-mb 20480 \
   --order-index 0 --timeout 240 --memcap-mb 20480 \
   --env KM_ROUTE=production_all > "$tmp"
 runner_rc=$?
