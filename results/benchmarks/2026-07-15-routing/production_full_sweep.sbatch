@@ -111,7 +111,7 @@ set +e
   --binary "$SWEEP_KM" --binary-sha "$km_sha" \
   "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir" \
   --checkpoint "$ckpt" \
-  --slurm-step-mem-mb 24576 \
+  --slurm-step-mem-mb 20480 \
   --order-index 0 --timeout 240 --memcap-mb 20480 \
   --env KM_ROUTE=production_all > "$tmp"
 runner_rc=$?
