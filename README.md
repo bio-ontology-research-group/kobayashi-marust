@@ -58,8 +58,12 @@ description-logic reasoners.
   results, producing output **identical** to the sequential run (the verified
   saturation core is unchanged). On a 2300-class ontology this is a ~50×
   speed-up on 16 cores. Set `KM_THREADS=1` to force sequential.
-- **Tiny, dependency-light.** The engine is ~1k lines of Rust with only `serde`
-  and `rayon`; the proofs are Lean 4 + mathlib.
+- **Compact calculus core, dependency-light.** The disjunctive-context
+  saturation core is ~7k lines of Rust (`engine.rs`, `calc.rs`, `clause.rs`).
+  The shipped reasoner adds the OWL functional-syntax frontend, the EL++ fast
+  path, and the ported Konclude completion bridge, so `engine/src` as a whole is
+  much larger. Runtime dependencies stay light: `serde`, `serde_json`, `rayon`,
+  `smallvec`, and `libc`; the proofs are Lean 4 + mathlib.
 
 ---
 
@@ -99,6 +103,32 @@ default. `--route NAME` selects any named procedure; `--route manual` preserves
 individually supplied `KM_*` options. See [`docs/ROUTING.md`](docs/ROUTING.md)
 for the exact expressivity calculation, statistics schema, option bundles, and
 decision-tree validation.
+
+## ORE 2015 benchmark status
+
+The retained complete routing matrix covers all 592 ORE 2015 ontologies and 28
+procedures per ontology, for 16,576 measurements at a 240 second timeout and
+20 GiB memory cap. The frozen matrix, strict audit, and per-route average,
+median, and p95 time and memory are documented in
+[`results/benchmarks/2026-07-16-routing-complete592/`](results/benchmarks/2026-07-16-routing-complete592/).
+
+KM uses a typed production portfolio rather than one universal procedure.
+[`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md) records the mechanism
+that recovered each previously failing ontology. The main special-treatment
+families are exact nominal/ABox reasoning, the Konclude-derived KPSet bridge,
+cardinality successors, role-specific saturation successors, EL certification,
+DL-safe-rule consistency checks, and source-symbol isolation. The current hard
+residual and restoration audit is in
+[`docs/HARD-RESIDUAL-AUDIT.md`](docs/HARD-RESIDUAL-AUDIT.md); disputed or
+invalid Konclude gold is tracked separately in
+[`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
+
+The root-context ordered-resolution experiment is compiled but remains opt-in
+behind `KM_ROOT_ORDERED`. It changes calculus derivations, and its Lean
+re-certification is deliberately deferred. Do not treat it as part of the
+certified default route until the obligations in
+[`docs/ROOT-ORDERED-RESOLUTION.md`](docs/ROOT-ORDERED-RESOLUTION.md) and the
+full-corpus A/B gate are complete.
 
 ### 2. Check the proofs
 

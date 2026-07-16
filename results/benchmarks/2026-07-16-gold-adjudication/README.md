@@ -1,8 +1,17 @@
-# Gold adjudication for ORE 10621, 10860, and 1194
+# Gold adjudication for ORE 10860 and 1194
+
+> **Status: running / no results committed.** This directory holds the job
+> specification only. No adjudicated signatures or verdicts are recorded yet.
 
 This directory records the independent adjudication requested on 2026-07-16.
 The governing status vocabulary and historical closure audit are in
 `docs/HARD-RESIDUAL-AUDIT.md`.
+
+`10621` is not part of this cross-check. Its current gold is already
+semantically confirmed: Konclude, HermiT, and KM agree on the
+functional-datatype unsatisfiability witness. Its remaining KM gap is
+classification performance, not a gold dispute. See
+`docs/CONTESTED-GOLD.md`.
 
 ## Cross-reasoner job
 

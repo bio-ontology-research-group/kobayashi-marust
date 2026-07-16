@@ -154,7 +154,6 @@ impl RedundancyTrie {
             Self::take_all(&mut child, removed);
         }
     }
-
 }
 
 thread_local! {
@@ -715,11 +714,7 @@ fn merge_asserted_ground_equalities(
             if let Lit::Eq { s, t } = clause.head[0] {
                 if is_individual(s) && is_individual(t) {
                     stats.asserted_pairs += 1;
-                    ground_equality_union_min(
-                        &mut parent,
-                        ind_id(s) as u32,
-                        ind_id(t) as u32,
-                    );
+                    ground_equality_union_min(&mut parent, ind_id(s) as u32, ind_id(t) as u32);
                 }
             }
         }
@@ -767,8 +762,7 @@ fn merge_asserted_ground_equalities(
         let hash = content_hash(&(&rewritten.body, &rewritten.head));
         let duplicate = index.get(&hash).is_some_and(|candidates| {
             candidates.iter().any(|&candidate| {
-                merged[candidate].body == rewritten.body
-                    && merged[candidate].head == rewritten.head
+                merged[candidate].body == rewritten.body && merged[candidate].head == rewritten.head
             })
         });
         if duplicate {
@@ -1133,19 +1127,13 @@ impl Context {
             self.max_head_pred_index.entry(p).or_default().push(cid);
             if let Pred::Role { iri, s, t } = p {
                 if is_individual(s) || is_comp(s) {
-                    let source = self
-                        .ground_role_source_index
-                        .entry((iri, s))
-                        .or_default();
+                    let source = self.ground_role_source_index.entry((iri, s)).or_default();
                     if source.last() != Some(&cid) {
                         source.push(cid);
                     }
                 }
                 if is_individual(t) || is_comp(t) {
-                    let target = self
-                        .ground_role_target_index
-                        .entry((iri, t))
-                        .or_default();
+                    let target = self.ground_role_target_index.entry((iri, t)).or_default();
                     if target.last() != Some(&cid) {
                         target.push(cid);
                     }
@@ -2226,9 +2214,9 @@ impl Engine {
                         nhyper, npred, neqp, neqe, nfact
                     );
                     if self.prof_time {
-                        let ms = |cell: &'static std::thread::LocalKey<
-                            std::cell::Cell<u64>,
-                        >| { cell.with(|value| value.get()) as f64 / 1e6 };
+                        let ms = |cell: &'static std::thread::LocalKey<std::cell::Cell<u64>>| {
+                            cell.with(|value| value.get()) as f64 / 1e6
+                        };
                         eprintln!(
                             "KM_PROF[time-ms] subsume={:.1} hyper={:.1} pred_local={:.1} add_clause={:.1}",
                             ms(&SUBSUME_NS),
@@ -2521,9 +2509,7 @@ impl Engine {
                     let mut v = Vec::new();
                     let wanted = oc.body[i].apply(&|term| sigma.apply(term));
                     let (cand, exact) = match (oc.body[i], wanted) {
-                        (Pred::Concept { t, .. }, wanted)
-                            if hyper_term_determined(t, &sigma) =>
-                        {
+                        (Pred::Concept { t, .. }, wanted) if hyper_term_determined(t, &sigma) => {
                             (ctx.max_head_pred_index.get(&wanted), true)
                         }
                         (
@@ -2540,27 +2526,16 @@ impl Engine {
                                 (ctx.max_head_pred_index.get(&wanted), true)
                             } else if source_fixed && (is_individual(wanted_s) || is_comp(wanted_s))
                             {
-                                (
-                                    ctx.ground_role_source_index.get(&(iri, wanted_s)),
-                                    false,
-                                )
-                            } else if target_fixed
-                                && (is_individual(wanted_t) || is_comp(wanted_t))
+                                (ctx.ground_role_source_index.get(&(iri, wanted_s)), false)
+                            } else if target_fixed && (is_individual(wanted_t) || is_comp(wanted_t))
                             {
-                                (
-                                    ctx.ground_role_target_index.get(&(iri, wanted_t)),
-                                    false,
-                                )
+                                (ctx.ground_role_target_index.get(&(iri, wanted_t)), false)
                             } else {
                                 (ctx.head_role_index.get(&iri), false)
                             }
                         }
-                        (Pred::Concept { iri, .. }, _) => {
-                            (ctx.head_concept_index.get(&iri), false)
-                        }
-                        (Pred::Role { iri, .. }, _) => {
-                            (ctx.head_role_index.get(&iri), false)
-                        }
+                        (Pred::Concept { iri, .. }, _) => (ctx.head_concept_index.get(&iri), false),
+                        (Pred::Role { iri, .. }, _) => (ctx.head_role_index.get(&iri), false),
                     };
                     if let Some(cand) = cand {
                         for &ci in cand {
@@ -2725,9 +2700,7 @@ impl Engine {
             return Some(t);
         }
         let next = self.nom_next.get();
-        if self.nom_table.borrow().len() >= self.nom_budget
-            || next >= (FTERM_BASE - X) as i32
-        {
+        if self.nom_table.borrow().len() >= self.nom_budget || next >= (FTERM_BASE - X) as i32 {
             if !self.nom_truncated.replace(true) {
                 eprintln!(
                     "WARNING: kobayashi-marust additional-nominal budget ({}) exhausted; \
@@ -5287,7 +5260,13 @@ impl Engine {
             .contexts
             .iter()
             .enumerate()
-            .filter_map(|(i, c)| if c.root { c.query.map(|q| (i, q)) } else { None })
+            .filter_map(|(i, c)| {
+                if c.root {
+                    c.query.map(|q| (i, q))
+                } else {
+                    None
+                }
+            })
             .collect();
         for (cid, q) in roots {
             let mut units: HashSet<Iri> = HashSet::new();
@@ -5569,9 +5548,9 @@ mod tests {
         assert!(merged.iter().any(|clause| {
             clause.body.is_empty() && clause.head == vec![Lit::P(canonical_role)]
         }));
-        assert!(merged.iter().any(|clause| {
-            clause.body == vec![cx(8, X)] && clause.head == vec![Lit::eq(X, a)]
-        }));
+        assert!(merged
+            .iter()
+            .any(|clause| { clause.body == vec![cx(8, X)] && clause.head == vec![Lit::eq(X, a)] }));
         assert!(!merged.iter().any(|clause| {
             clause.head == vec![Lit::eq(alias, a)]
                 || clause.head == vec![Lit::P(concept)]
@@ -5656,12 +5635,8 @@ mod tests {
             };
             assert!(has(cx(d, left)));
             assert!(has(cx(e, left)));
-            assert!(context
-                .ground_role_target_index
-                .contains_key(&(r, right)));
-            assert!(context
-                .ground_role_source_index
-                .contains_key(&(r, right)));
+            assert!(context.ground_role_target_index.contains_key(&(r, right)));
+            assert!(context.ground_role_source_index.contains_key(&(r, right)));
             assert!(context
                 .ground_role_source_index
                 .get(&(r, left))

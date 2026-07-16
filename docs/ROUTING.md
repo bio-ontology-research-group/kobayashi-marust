@@ -154,6 +154,24 @@ Named bundles normalize their conflicting routing keys to the same settings as
 the IBEX matrix. Diagnostic settings remain available. `manual` is the route to
 use when a caller wants complete control over individual algorithm settings.
 
+The consolidated production portfolio also restores two guarded mechanisms
+that the frozen matrix measured separately:
+
+- the first-class cardinality arm may answer only as a CB-guarded fallback on
+  its structural candidate fragment, restoring the historical 7499/9540 path;
+- the DL-safe-rule consistency precheck may short-circuit only when it finds a
+  sound clash, restoring 2669/15516 while unsupported rule forms still fail
+  closed.
+
+The generated bootstrap tree selects `production_all`, which retains the
+validated KPSet bridge stack used by 541, 12653, 7914, 3215, 9663, 9724, and
+14817. Isolated specialist routes remain excluded from learned automatic
+leaves unless their complete-or-defer contract is documented.
+
+`KM_ROOT_ORDERED` is intentionally outside the automatic route catalog. It
+changes CB derivations and remains an opt-in experiment pending Lean
+re-certification and a complete corpus A/B comparison.
+
 ## Learning objective and safety gates
 
 Each ontology and all 24 KM procedures run sequentially on one exclusive Intel

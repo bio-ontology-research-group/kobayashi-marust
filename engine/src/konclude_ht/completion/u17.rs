@@ -658,19 +658,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         descriptor.get_next_concept_desciptor(),
                     )
                 };
-                let concept_ref = calc_alg_context
-                    .ontology_arenas()
-                    .concept(debug_concept);
-                if concept_ref.get_operator_code()
-                    == super::super::model::op::CCAQCHOOCE
-                {
+                let concept_ref = calc_alg_context.ontology_arenas().concept(debug_concept);
+                if concept_ref.get_operator_code() == super::super::model::op::CCAQCHOOCE {
                     let operands = concept_ref
                         .get_operand_list()
                         .iter()
                         .map(|operand| {
-                            let target = calc_alg_context
-                                .ontology_arenas()
-                                .concept(operand.target);
+                            let target = calc_alg_context.ontology_arenas().concept(operand.target);
                             format!(
                                 "{}{}:{}",
                                 if operand.negated { "-" } else { "+" },
@@ -825,9 +819,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .get_operand_list()
                     .iter()
                     .map(|operand| {
-                        let target = calc_alg_context
-                            .ontology_arenas()
-                            .concept(operand.target);
+                        let target = calc_alg_context.ontology_arenas().concept(operand.target);
                         format!(
                             "{}{}:{}",
                             if operand.negated { "-" } else { "+" },
@@ -893,16 +885,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let concept_ref = calc_alg_context
                         .ontology_arenas()
                         .concept(*expansion_concept);
-                    if concept_ref.get_operator_code()
-                        == super::super::model::op::CCAQCHOOCE
-                    {
+                    if concept_ref.get_operator_code() == super::super::model::op::CCAQCHOOCE {
                         let operands = concept_ref
                             .get_operand_list()
                             .iter()
                             .map(|operand| {
-                                let target = calc_alg_context
-                                    .ontology_arenas()
-                                    .concept(operand.target);
+                                let target =
+                                    calc_alg_context.ontology_arenas().concept(operand.target);
                                 format!(
                                     "{}{}:{}",
                                     if operand.negated { "-" } else { "+" },

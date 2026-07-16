@@ -562,9 +562,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         if connection_dependency.is_some() {
                             let connection_track_point = calc_alg_context
                                 .process_context_mut()
-                                .materialize_continue_dependency_track_point(
-                                    connection_dependency,
-                                );
+                                .materialize_continue_dependency_track_point(connection_dependency);
                             dependencies = calc_alg_context.process_context_mut().alloc_dep_link(
                                 super::super::process::dependency::DependencyLink {
                                     dep_track_point: connection_track_point,

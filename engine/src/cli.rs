@@ -353,10 +353,7 @@ pub fn run_engine() {
     let mut r = Reasoner::new(&input.clauses);
     let t_build = t1.elapsed();
     if prof {
-        eprintln!(
-            "KM_STATS[phase] build={:.1}ms",
-            t_build.as_secs_f64() * 1e3
-        );
+        eprintln!("KM_STATS[phase] build={:.1}ms", t_build.as_secs_f64() * 1e3);
     }
     let t2 = std::time::Instant::now();
     r.saturate();

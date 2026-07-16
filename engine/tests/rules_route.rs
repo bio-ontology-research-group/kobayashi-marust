@@ -50,7 +50,9 @@ fn classify(args: &[&str], ontology: &str) -> Output {
             None => std::thread::sleep(Duration::from_millis(50)),
         }
     }
-    child.wait_with_output().expect("collect km classify output")
+    child
+        .wait_with_output()
+        .expect("collect km classify output")
 }
 
 fn json_of(out: &Output) -> serde_json::Value {
@@ -107,8 +109,7 @@ fn named_rules_route_falls_through_to_taxonomy_when_consistent() {
         (":Parent", ":Human"),
     ] {
         assert!(
-            subs.iter()
-                .any(|(a, b)| a == expected.0 && b == expected.1),
+            subs.iter().any(|(a, b)| a == expected.0 && b == expected.1),
             "missing {expected:?} in {subs:?} (stderr: {stderr})"
         );
     }

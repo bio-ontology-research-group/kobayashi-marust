@@ -689,12 +689,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let dispatches_to_apply_and = if !con_neg {
             matches!(
                 op_code,
-                op::CCTOP
-                    | op::CCAND
-                    | op::CCSUB
-                    | op::CCEQ
-                    | op::CCIMPLTRIG
-                    | op::CCBRANCHTRIG
+                op::CCTOP | op::CCAND | op::CCSUB | op::CCEQ | op::CCIMPLTRIG | op::CCBRANCHTRIG
             ) || (!self.conf_specialized_automate_rules
                 && matches!(op_code, op::CCAQAND | op::CCIMPLAQAND | op::CCBRANCHAQAND))
         } else {

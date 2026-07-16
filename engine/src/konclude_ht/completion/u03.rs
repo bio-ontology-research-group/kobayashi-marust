@@ -682,7 +682,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let (con_des, dep_track_point, process_priority) = {
-            let cpd = calc_alg_context.process_context().con_proc_desc(con_pro_des);
+            let cpd = calc_alg_context
+                .process_context()
+                .con_proc_desc(con_pro_des);
             (
                 cpd.get_concept_descriptor(),
                 cpd.get_dependency_track_point(),
@@ -777,10 +779,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .base
                 .used_concept_priority_strategy()
                 .expect("concept priority strategy")
-                .get_priority_offset_for_disjunction_delayed_considering(
-                    con_des,
-                    process_indi,
-                );
+                .get_priority_offset_for_disjunction_delayed_considering(con_des, process_indi);
             let queue = calc_alg_context
                 .process_context_mut()
                 .node_concept_processing_queue(process_indi, true);
@@ -922,11 +921,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // These are the opposite-polarity facts that eliminated operands
         // before the true multi-way branch was opened.
         if self.conf_build_dependencies {
-            self.ht_add_branch_clashes(
-                or_dependency_node,
-                branch_clashes,
-                calc_alg_context,
-            );
+            self.ht_add_branch_clashes(or_dependency_node, branch_clashes, calc_alg_context);
         }
 
         // DDB: mint ONE non-deterministic track point PER ALTERNATIVE, upfront
@@ -1167,7 +1162,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
         let (con_des, dep_track_point, proc_rest) = {
-            let cpd = calc_alg_context.process_context().con_proc_desc(con_pro_des);
+            let cpd = calc_alg_context
+                .process_context()
+                .con_proc_desc(con_pro_des);
             (
                 cpd.get_concept_descriptor(),
                 cpd.get_dependency_track_point(),

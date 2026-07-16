@@ -2553,7 +2553,9 @@ mod trigger_absorb_tests {
             "ABox seeds must survive the nominal+inverse fence on the rules route"
         );
         assert!(
-            !tin.fenced.iter().any(|f| f.reason.contains("nominal+inverse")),
+            !tin.fenced
+                .iter()
+                .any(|f| f.reason.contains("nominal+inverse")),
             "the classification fence must not fire on rule-seeded nominals"
         );
         assert!(!rules_verdict(&tin), "rule-induced clash must be detected");
@@ -2598,7 +2600,17 @@ mod trigger_absorb_tests {
         }];
         let rbox = vec![vec!["inverse".into(), "partOf".into(), "hasPart".into()]];
         let named = std::collections::HashSet::from(["A".to_string()]);
-        let tin = convert(&clauses, Some(&rbox), &named, &[], &[], &[], false, &[], true);
+        let tin = convert(
+            &clauses,
+            Some(&rbox),
+            &named,
+            &[],
+            &[],
+            &[],
+            false,
+            &[],
+            true,
+        );
         assert!(tin.nominals.is_empty());
         assert!(tin
             .fenced

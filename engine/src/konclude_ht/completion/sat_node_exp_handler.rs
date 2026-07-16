@@ -528,7 +528,9 @@ impl SaturationNodeExpansionCacheHandler {
                 .get_concept_tag();
             if cache_trace_tags.contains(&descriptor_tag) {
                 let dep_node = if dep_track_point.is_some() {
-                    process_context.track_point(dep_track_point).dependency_node()
+                    process_context
+                        .track_point(dep_track_point)
+                        .dependency_node()
                 } else {
                     Id::NONE
                 };
@@ -548,7 +550,10 @@ impl SaturationNodeExpansionCacheHandler {
                 };
                 let (dep_kind, dep_indi) = if dep_node.is_some() {
                     let dependency = process_context.dep_node(dep_node);
-                    (dependency.kind() as Cint64, dependency.individual_node().raw)
+                    (
+                        dependency.kind() as Cint64,
+                        dependency.individual_node().raw,
+                    )
                 } else {
                     (-1, -1)
                 };

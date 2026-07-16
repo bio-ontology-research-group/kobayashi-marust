@@ -868,10 +868,7 @@ mod tests {
     /// entailed must fail their refutation).
     #[test]
     fn root_ordered_no_spurious_subsumption() {
-        let clauses = vec![cl(
-            vec![c("A", vx())],
-            vec![c("B", vx()), c("C", vx())],
-        )];
+        let clauses = vec![cl(vec![c("A", vx())], vec![c("B", vx()), c("C", vx())])];
         for mode in [1u8, 2u8] {
             let rr = run_root_ordered(clauses.clone(), mode);
             assert!(!supers(&rr, "A").contains("B"));

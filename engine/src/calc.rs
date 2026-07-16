@@ -48,7 +48,10 @@ pub const COMP_IND_BITS: u32 = 17;
 
 #[inline]
 pub fn zvar(i: i32) -> Term {
-    assert!(i >= 1 && (i as Term) < Y, "neighbour-variable term space exhausted");
+    assert!(
+        i >= 1 && (i as Term) < Y,
+        "neighbour-variable term space exhausted"
+    );
     Y - i as Term
 }
 #[inline]
@@ -784,9 +787,6 @@ mod term_encoding_tests {
 
         // The documented 17/15 composite split uses the final u32 value
         // exactly; arithmetic must neither wrap nor leave an accidental gap.
-        assert_eq!(
-            comp_term(fterm(32_735), ind_term(131_071)),
-            Term::MAX
-        );
+        assert_eq!(comp_term(fterm(32_735), ind_term(131_071)), Term::MAX);
     }
 }

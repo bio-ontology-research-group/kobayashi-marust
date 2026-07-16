@@ -42,6 +42,24 @@ Use these terms consistently:
 | `1194` | **No authoritative gold; no confirmed prior KM closure** | No retained Konclude signature. The ontology is a 75 MB SRIQ input with about 1.06 M normalized clauses, 70,231 named classes, and 221,086 class assertions. Historical KM routes time out. Earlier “thread artifact” language was a hypothesis, not a closure. | Establish consistency and taxonomy by decomposition/cross-checking, not by treating `nogold` as success. |
 | `10860` | **No authoritative gold; no confirmed prior KM closure** | No retained Konclude signature. The ontology contains 17 `DLSafeRule` axioms; Konclude's ORE path cannot supply valid gold and HermiT cannot parse the raw input. Historical KM routes time out or exhaust memory. | Inspect the rules and ABox directly, derive or refute an inconsistency witness, then classify the rule-free and rule consequences separately with independently checked results. |
 
+## Additional no-gold ontologies from the complete 592 matrix
+
+The 2026-07-16 complete routing matrix
+(`results/benchmarks/2026-07-16-routing-complete592/`) confirmed the corpus
+contract as **587 Konclude-gold plus five no-Konclude-gold**. Two of the five,
+`1194` and `10860`, are tracked above. The strict correctness audit reported
+three more that HermiT could not adjudicate in that run:
+
+| Ontology | HermiT status | Audited status |
+|---|---|---|
+| `15703` | error | **No authoritative gold; unadjudicated** |
+| `3524` | error | **No authoritative gold; unadjudicated** |
+| `4669` | timeout | **No authoritative gold; unadjudicated** |
+
+The strict analyzer deliberately exited with code 2, and no `nogold` result was
+promoted to a match. These three still need an independent oracle; do not count
+a KM `ok` result as correct without adjudication.
+
 ## Consequences for coverage accounting
 
 - `10702`, `15672`, and `6934` are restoration failures, not new reasoning

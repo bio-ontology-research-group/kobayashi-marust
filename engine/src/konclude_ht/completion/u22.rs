@@ -1387,7 +1387,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .sat_indi_node_succ_ext_data(successor_extension)
                     .get_extension_resolve_data();
                 if trace {
-                    eprintln!("SAT-CACHE-RESOLVE base={} resolve-data={}", exist_indi_node.raw, resolve_data.raw);
+                    eprintln!(
+                        "SAT-CACHE-RESOLVE base={} resolve-data={}",
+                        exist_indi_node.raw, resolve_data.raw
+                    );
                 }
                 if resolve_data.is_some() {
                     let creation_role = calc_alg_context

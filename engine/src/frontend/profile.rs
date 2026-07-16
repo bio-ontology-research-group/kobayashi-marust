@@ -306,10 +306,8 @@ impl<'a> SourceProfileBuilder<'a> {
                 | "AnnotationPropertyDomain"
                 | "AnnotationPropertyRange"
         ) {
-            self.stats.bottom_role_occurrences += raw_args
-                .iter()
-                .map(bottom_role_occurrences)
-                .sum::<u64>();
+            self.stats.bottom_role_occurrences +=
+                raw_args.iter().map(bottom_role_occurrences).sum::<u64>();
         }
         // Almost every OFN axiom/expression has <=4 operands. SmallVec keeps
         // annotation filtering on the stack instead of allocating once per
