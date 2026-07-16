@@ -1,0 +1,7 @@
+Ontology(
+ Declaration(Class(<http://www.daml.org/2001/03/daml+oil#Nothing>))
+ EquivalentClasses(
+  <http://www.daml.org/2001/03/daml+oil#Nothing>
+  ObjectComplementOf(owl:Thing)
+ )
+)

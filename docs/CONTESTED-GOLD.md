@@ -13,7 +13,7 @@ against the wrong oracle. Short answer:
 > was wrong for two distinct, benchmark-harness / parser reasons (not a KM bug
 > and, on two of them, not even a Konclude *reasoning* error).
 
-## The four proven cases
+## The five proven cases
 
 Proof method: delta-debug (`ddmin` over the axioms, oracle = HermiT reports
 inconsistent) reduced each ontology to a 2–8 axiom **inconsistent core**, then
@@ -25,6 +25,7 @@ ran that core through **both HermiT and Konclude directly**.
 | 13912 | inconsistent | inconsistent ✓ | inconsistent ✓ (same `Thing≡Nothing`) | "consistent" ✗ | same `ore_canon.py` bug |
 | 15516 | inconsistent | inconsistent ✓ | **cannot parse** (SWRL `DLSafeRule`; exits 0 with empty output) | "consistent" ✗ | `ore_runone.py` recorded Konclude's parse-failure-exit-0 as a bogus "consistent" |
 | 2669  | inconsistent | inconsistent ✓ | **cannot parse** (SWRL `DLSafeRule`) | "consistent" ✗ | same `ore_runone.py` bug |
+| 13503 | consistent ontology; `daml+oil#Nothing` is unsatisfiable | not needed: direct OWL identity | recorded signature omits the named unsatisfiable class | missing `#UNSAT` member ✗ | local-name filtering confused a declared DAML class named `Nothing` with `owl:Nothing` |
 
 Minimal inconsistent cores (witnesses):
 - **8941**: `DataPropertyRange(hasTopic xsd:string)` + a language-tagged literal
@@ -35,13 +36,21 @@ Minimal inconsistent cores (witnesses):
 - **15516 / 2669**: `DisjointClasses(DBKeyAttribute, DBNonKeyAttribute)` +
   `DBNonPrimaryKeyAttribute ≡ union(...) ⊑ DBKeyAttribute` +
   `ClassAssertion(DBNonKeyAttribute, salary)` ⇒ inconsistent.
+- **13503**: the ontology directly asserts
+  `daml+oil#Nothing ≡ ObjectComplementOf(owl:Thing)`. By the OWL 2 direct
+  semantics, `ObjectComplementOf(owl:Thing)` has the empty extension in every
+  interpretation. Therefore the declared named class `daml+oil#Nothing` is
+  unsatisfiable. The ontology itself remains consistent. The stored Konclude
+  signature has an empty `#UNSAT` block, so it omits this entailed named-class
+  result. This proof requires no reasoner fallback.
 
 The minimal `.min.owl` cores were produced on `ws:~/minimize/` (via
 `ddmin_entail.py`). They are now committed in-repo at
 [`results/contested-cores/`](../results/contested-cores/) (8941, 13912,
 15516_norules, 2669_norules) so the proof is self-contained; regenerate from the
-witnesses above if ever lost. (10621's core lives on IBEX, job 47787383, not yet
-copied.)
+witnesses above if ever lost. The 13503 identity witness is
+`ore_ont_13503_daml_nothing.min.owl`. (10621's core lives on IBEX, job
+47787383, not yet copied.)
 
 ## The two harness fixes (so the gold is now correct)
 
@@ -135,8 +144,9 @@ treating KM as unsound.
 
 ## Scope / honesty note
 
-Four ontologies remain proven current Konclude-gold failures (8941, 13912,
-15516, 2669 via ddmin cores). The `10621` witness remains proven, but the
+Five ontologies remain proven current Konclude-gold failures (8941, 13912,
+15516, 2669 via ddmin cores, plus 13503 by direct OWL identity). The `10621`
+witness remains proven, but the
 current Konclude signature now agrees with it and is no longer a live gold
 failure. CLAUDE.md notes HermiT differs
 from Konclude on ~12 ontologies overall; the rest are **not yet adjudicated** — do

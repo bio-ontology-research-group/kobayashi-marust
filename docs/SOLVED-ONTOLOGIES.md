@@ -482,11 +482,16 @@ branch-open-free is.**
 - **16744**: Skolem-exclusion in EL-routing relevance (`72acb3a`) — the ont
   is EL-safe once Skolem-only symbols are excluded from the relevance check.
 
-### Correctness family — the 4 "unsound" + contested gold (2026-06)
+### Correctness family — contested gold
 
 - All 4 apparent unsoundnesses were GOLD bugs; fixed data_abox precheck +
   complex-domain handling. 8941/13912/15516/2669 are genuinely inconsistent
   (HermiT agrees); proof in `CONTESTED-GOLD.md`.
+- **13503** is a separate named-unsatisfiable-class gold omission. It declares
+  `daml+oil#Nothing ≡ ¬owl:Thing`, so that declared class is necessarily
+  unsatisfiable although the ontology is consistent. Exact builtin recognition
+  exposes the missing `#UNSAT` member in the stored Konclude signature. The
+  two-axiom witness is committed under `results/contested-cores/`.
 
 ---
 
