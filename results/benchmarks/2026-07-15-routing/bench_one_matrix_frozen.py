@@ -347,12 +347,16 @@ def run(args):
         stdin=subprocess.DEVNULL,
         stdout=stdout_handle,
         stderr=stderr_handle,
-        # Keep the measured RSS cap authoritative.  The higher address-space
-        # limit is only a spike backstop: allocation fails in this child before
-        # the 28 GiB Slurm cgroup can kill the supervisor and lose the row.
-        preexec_fn=functools.partial(
-            _watchdog.child_preexec,
-            (args.hard_as_mb or (args.memcap_mb + 4096)) * 1024 * 1024,
+        # Keep the measured RSS cap authoritative. An optional address-space
+        # limit is available for diagnostics but stays disabled in production
+        # because VMS is not comparable to measured resident memory.
+        preexec_fn=(
+            functools.partial(
+                _watchdog.child_preexec,
+                args.hard_as_mb * 1024 * 1024,
+            )
+            if args.hard_as_mb
+            else _watchdog.child_preexec
         ),
     )
     result = _watchdog.monitor(
@@ -500,7 +504,7 @@ def main():
         "--hard-as-mb",
         type=int,
         default=0,
-        help="child RLIMIT_AS spike backstop; default is memcap + 4096 MiB",
+        help="optional per-process RLIMIT_AS spike backstop (disabled by default)",
     )
     parser.add_argument(
         "--kind", choices=("km", "konclude", "elk", "hermit"), required=True

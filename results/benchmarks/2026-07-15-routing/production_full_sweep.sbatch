@@ -8,9 +8,10 @@
 #SBATCH --constraint=cpu_intel_gold_6248
 #SBATCH --time=00:12:00
 #SBATCH --cpus-per-task=16
-# The measured reasoner remains capped at 20 GB below. Extra allocation keeps
-# the Python watchdog and Slurm step alive long enough to publish a memout row.
-#SBATCH --mem=64G
+# The reasoner is measured at a 20 GiB cap. Ordinary workers get modest
+# supervisor headroom; a whole-step OOM is finalized separately and only from
+# explicit Slurm OOM evidence.
+#SBATCH --mem=28G
 #SBATCH --array=0-591%100
 #SBATCH --output=/ibex/scratch/hohndor/km/routing_20260715/slurm/prod-%A_%a.out
 
@@ -21,7 +22,7 @@ set -euo pipefail
 
 km_root=/ibex/scratch/hohndor/km
 root=$km_root/routing_20260715
-runner=$root/bench_one_matrix-404ef099.py
+runner=$root/bench_one_matrix-ca86b612.py
 gold_dir=$km_root/gold
 result_dir=$root/production-sweeps/$SWEEP_TAG/results
 failure_dir=$root/production-sweeps/$SWEEP_TAG/failures
@@ -100,11 +101,12 @@ esac
   echo "host=$(hostname)"
 } > "$manifest_dir/$ontology.txt"
 
-# The measured reasoner cap stays at 20 GB (--memcap-mb 20480); the step's
-# extra --mem is headroom for the supervisor, not for KM. The watchdog trips its
-# own memout off the cgroup accounting before the 28 GB hard limit, and writes
-# --checkpoint durably before the kill. Do not let a SIGKILLed runner abort the
-# task under set -e: capture its rc and adjudicate below.
+# The measured reasoner cap stays at 20 GiB (--memcap-mb 20480); the step's
+# extra memory is supervisor headroom, not part of the KM allowance. The
+# watchdog normally writes --checkpoint before killing an over-cap process
+# tree. If a descendant allocation spike kills the whole step first, leave the
+# row absent for finalize_oom_rows.py to adjudicate from the Slurm log. Do not
+# let a SIGKILLed runner abort the task under set -e: capture its rc below.
 set +e
 /usr/bin/python3 "$runner" \
   --kind km --arm production_all --ontology "$ontology_path" \

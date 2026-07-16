@@ -313,3 +313,13 @@ After analysis, every oracle-best route with either time or memory more than
 `recheck_gaps.sbatch`. The KM runs retain `KM_TIMING` and frontend stage timing;
 these traces support the required algorithm and complexity comparison rather
 than attributing a one-run ratio to the reasoning kernel without evidence.
+
+For production-route sweeps, submit `production_full_sweep.sbatch` with an
+immutable `SWEEP_KM` and a unique `SWEEP_TAG`. A valid dataset has one JSON row
+per ontology, the expected binary SHA on every row, and only `ok`, `timeout`,
+`memout`, or `unsupported` terminal statuses. If a descendant allocation spike
+kills the complete Slurm step before the watchdog checkpoints a row, rerun only
+that array index. After the retry log contains an explicit `oom_kill event` or
+`OUT_OF_MEMORY`, use `finalize_oom_rows.py`; it refuses to publish without that
+evidence and computes the binary SHA itself. Never infer `memout` merely from a
+fast job exit or a missing result file.

@@ -3,13 +3,14 @@
 ## Current production sweep checkpoint (2026-07-17)
 
 The baseline and integrated long IBEX arrays have completed. Jobs `49004275`
-and `49006549` each published 590 unique results from the 592-entry corpus.
-Both lack only `3524` and `15703`: repeated high-memory retries killed the
-whole Slurm step before the old supervisor could publish a terminal row. These
-are missing measurements, not timeouts, memouts, or successful closures.
+and `49006549` published 590 ordinary result rows each. Isolated retry jobs
+then reproduced Slurm OOM kills for `3524` and `15703`; the guarded finalizer
+published a terminal `memout` row only after checking that explicit OOM
+evidence and the matching binary SHA. Both datasets now contain exactly 592
+unique, SHA-validated rows.
 
-The integrated `production_all` candidate reports 580 `ok`, eight timeout, one
-memout, and one unsupported among the durable rows. It has 573 literal matches
+The integrated `production_all` candidate reports 580 `ok`, eight timeout,
+three memout, and one unsupported. It has 573 literal matches
 to stored signatures and 574 adjudicated exact-equivalent results after
 correcting the known `13503` gold omission. Its remaining production-route
 tail is `10702`, `10908`, `15672`, `6934`, `7499`, `9540`, and `3215`
@@ -19,13 +20,12 @@ does not replace the 584-case cross-run exact union: it measures one current
 production route and identifies which historic route closures still need to
 be restored into that route.
 
-Next work proceeds in this order: make the benchmark supervisor publish one
-SHA-validated terminal row even when a descendant process spikes memory;
-recover `3524` and `15703`; review and integrate the active route, memory,
-correctness, timeout, and watchdog agent patches; run release tests and focused
-ontology checks; then freeze and sweep the next candidate over all 592 inputs.
-Only validated exact rows may update the route TSV and union/min time-memory
-table.
+Next work proceeds in this order: land the guarded OOM finalizer and keep the
+production worker allocation at its normal size; review and integrate the
+active route, correctness, timeout, and watchdog patches; run release tests and
+focused ontology checks; then freeze and sweep the next candidate over all 592
+inputs. Only validated exact rows may update the route TSV and union/min
+time-memory table.
 
 This is the durable status record for the six ontologies that were called the
 "hard residuals" during the 2026-07-15 routing-matrix analysis:
