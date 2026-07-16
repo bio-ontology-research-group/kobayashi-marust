@@ -5777,8 +5777,16 @@ mod tests {
         // Candidate heads per position; several unify, several clash on iri or on
         // an already-bound neighbour variable.
         let cands = vec![
-            vec![rol(10, X, ind_term(1)), rol(10, X, ind_term(2)), rol(99, X, ind_term(3))],
-            vec![con(20, ind_term(1)), con(20, ind_term(2)), con(20, ind_term(3))],
+            vec![
+                rol(10, X, ind_term(1)),
+                rol(10, X, ind_term(2)),
+                rol(99, X, ind_term(3)),
+            ],
+            vec![
+                con(20, ind_term(1)),
+                con(20, ind_term(2)),
+                con(20, ind_term(3)),
+            ],
             vec![rol(10, X, ind_term(1)), rol(10, X, ind_term(2))],
             vec![con(21, ind_term(1)), con(21, ind_term(2))],
         ];
@@ -5788,7 +5796,10 @@ mod tests {
             let mut b = Vec::new();
             let mut sigma = CentralSubst::new(allow_ground);
             trail_join(&bodies, &cands, 0, &mut sigma, &mut b);
-            assert_eq!(a, b, "trail/clone join diverged (allow_ground={allow_ground})");
+            assert_eq!(
+                a, b,
+                "trail/clone join diverged (allow_ground={allow_ground})"
+            );
             // And the trail must leave the substitution empty again at the top.
             assert_eq!(sigma.mark(), 0, "trail leaked bindings at depth 0");
         }
@@ -6798,12 +6809,12 @@ mod rsucc_rolechain_tests {
         // reach is append-only; successor edges grow, re-target (fb: tb -> tb2),
         // drop (fa absent in round 3) and restore (fa back in round 5).
         let rounds: Vec<(Vec<(Term, usize)>, Vec<Pred>)> = vec![
-            (vec![(fa, ta)], vec![r0]),                       // 1: one edge, one reach
-            (vec![(fa, ta), (fb, tb)], vec![r0, r1]),         // 2: +edge, +reach
-            (vec![(fb, tb)], vec![r0, r1, r2]),               // 3: fa absent, +reach
-            (vec![(fb, tb2), (fc, tc)], vec![r0, r1, r2]),    // 4: fb re-targeted, +edge
-            (vec![(fa, ta), (fb, tb2)], vec![r0, r1, r2]),    // 5: fa restored (must get r1,r2)
-            (vec![(fa, ta), (fb, tb2)], vec![r0, r1, r2]),    // 6: steady state (no new work)
+            (vec![(fa, ta)], vec![r0]),                    // 1: one edge, one reach
+            (vec![(fa, ta), (fb, tb)], vec![r0, r1]),      // 2: +edge, +reach
+            (vec![(fb, tb)], vec![r0, r1, r2]),            // 3: fa absent, +reach
+            (vec![(fb, tb2), (fc, tc)], vec![r0, r1, r2]), // 4: fb re-targeted, +edge
+            (vec![(fa, ta), (fb, tb2)], vec![r0, r1, r2]), // 5: fa restored (must get r1,r2)
+            (vec![(fa, ta), (fb, tb2)], vec![r0, r1, r2]), // 6: steady state (no new work)
         ];
 
         // Reference: the pre-optimization inline loop — every round rescans the

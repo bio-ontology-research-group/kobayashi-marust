@@ -64,7 +64,14 @@ impl IriRegistry {
         if let Some(cached) = self.short_iri.get(&full) {
             return cached.clone();
         }
-        let raw_base = short_base(name);
+        // Canonicalise only the standard OWL builtin IRIs. A user class in
+        // another namespace may legitimately have the local name Thing or
+        // Nothing and must remain an ordinary named class.
+        let raw_base = match full.as_str() {
+            "http://www.w3.org/2002/07/owl#Thing" => "owl:Thing".to_string(),
+            "http://www.w3.org/2002/07/owl#Nothing" => "owl:Nothing".to_string(),
+            _ => short_base(name),
+        };
         if raw_base == "owl:Thing" || raw_base == "owl:Nothing" {
             // specials: never disambiguate
             self.short_iri.insert(full, raw_base.clone());
@@ -171,5 +178,20 @@ mod tests {
         assert!(!reserved_internal_prefix(&escaped));
         assert_eq!(reg.full_iri(&ordinary), "http://first.example#km_src___A");
         assert_eq!(reg.full_iri(&escaped), "http://second.example#__A");
+    }
+
+    #[test]
+    fn canonicalises_only_standard_owl_top_and_bottom() {
+        let mut reg = IriRegistry::new();
+        assert_eq!(
+            reg.short("<http://www.w3.org/2002/07/owl#Thing>"),
+            "owl:Thing"
+        );
+        assert_eq!(
+            reg.short("<http://www.w3.org/2002/07/owl#Nothing>"),
+            "owl:Nothing"
+        );
+        assert_eq!(reg.short("<http://example.org#Thing>"), "Thing");
+        assert_eq!(reg.short("<http://example.org#Nothing>"), "Nothing");
     }
 }

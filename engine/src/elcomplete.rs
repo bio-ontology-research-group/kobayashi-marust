@@ -2714,6 +2714,21 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             }
         }
     }
+    // build_idx owns copies of every normal form used by the fixpoint. On the
+    // pure-EL path there is no residual certificate, so only concept_names is
+    // read after this point. Release the duplicate normal forms before the
+    // saturation peak.
+    if rcs.is_empty() {
+        nfs.nf1 = Vec::new();
+        nfs.nf2 = Vec::new();
+        nfs.nf3 = Vec::new();
+        nfs.nf4 = Vec::new();
+        nfs.nf5 = Vec::new();
+        nfs.nf6 = Vec::new();
+        nfs.nf7 = Vec::new();
+        nfs.role_names = HashSet::default();
+        nfs.reflexive_roles = HashSet::default();
+    }
     let mut nf4_buf: Vec<u32> = Vec::new();
     let mut prof = Prof::default();
     run(&idx, &mut st, &mut nf4_buf, &mut prof);

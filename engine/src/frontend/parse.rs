@@ -120,9 +120,9 @@ fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFragment> {
     match node {
         Node::Atom(s) => {
             let sh = reg.short(s);
-            if sh == "owl:Thing" || sh == "Thing" {
+            if sh == "owl:Thing" {
                 Ok(Concept::Top)
-            } else if sh == "owl:Nothing" || sh == "Nothing" {
+            } else if sh == "owl:Nothing" {
                 Ok(Concept::Bottom)
             } else {
                 Ok(Concept::Name(sh))
@@ -795,6 +795,37 @@ NegativeObjectPropertyAssertion(ObjectInverseOf(<http://e#s>) <http://e#a> <http
             )),
             "inverse spelling arrives argument-swapped, got {axs:?}"
         );
+    }
+
+    #[test]
+    fn user_classes_named_thing_and_nothing_are_not_builtins() {
+        let axs = axioms(
+            "Ontology(\
+SubClassOf(<http://example.org#Thing> <http://example.org#B>) \
+SubClassOf(<http://example.org#A> <http://example.org#Nothing>))",
+        );
+        assert!(axs.contains(&Axiom::SubClassOf(
+            Concept::Name("Thing".into()),
+            Concept::Name("B".into())
+        )));
+        assert!(axs.contains(&Axiom::SubClassOf(
+            Concept::Name("A".into()),
+            Concept::Name("Nothing".into())
+        )));
+    }
+
+    #[test]
+    fn full_owl_top_and_bottom_iris_remain_builtins() {
+        let axs = axioms(
+            "Ontology(\
+SubClassOf(<http://www.w3.org/2002/07/owl#Thing> <http://example.org#B>) \
+SubClassOf(<http://example.org#A> <http://www.w3.org/2002/07/owl#Nothing>))",
+        );
+        assert!(axs.contains(&Axiom::SubClassOf(Concept::Top, Concept::Name("B".into()))));
+        assert!(axs.contains(&Axiom::SubClassOf(
+            Concept::Name("A".into()),
+            Concept::Bottom
+        )));
     }
 }
 

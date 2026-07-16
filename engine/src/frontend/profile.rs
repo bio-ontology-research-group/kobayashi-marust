@@ -1291,16 +1291,10 @@ enum CardKind {
 }
 
 fn is_top(s: &str) -> bool {
-    matches!(
-        s,
-        "owl:Thing" | "Thing" | "<http://www.w3.org/2002/07/owl#Thing>"
-    )
+    matches!(s, "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>")
 }
 fn is_bottom(s: &str) -> bool {
-    matches!(
-        s,
-        "owl:Nothing" | "Nothing" | "<http://www.w3.org/2002/07/owl#Nothing>"
-    )
+    matches!(s, "owl:Nothing" | "<http://www.w3.org/2002/07/owl#Nothing>")
 }
 fn is_bottom_role(s: &str) -> bool {
     matches!(

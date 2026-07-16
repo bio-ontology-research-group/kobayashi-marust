@@ -158,6 +158,10 @@ pub fn run_ofn(args: &[String]) {
             exit(3);
         }
     };
+    // The frontend result owns everything needed below. Release the potentially
+    // very large source document before serialising the clause array so both do
+    // not contribute to the same peak.
+    drop(text);
     // Stream JSON to a buffered stdout (the clause array dominates peak memory).
     let stdout = std::io::stdout();
     let mut w = std::io::BufWriter::new(stdout.lock());

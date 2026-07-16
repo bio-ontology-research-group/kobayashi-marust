@@ -9,6 +9,20 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Exact OWL top and bottom recognition (2026-07-17)
+
+The functional-syntax frontend now recognizes `owl:Thing` and `owl:Nothing`
+only from their standard OWL names and full IRIs. A user class in another
+namespace whose local name is `Thing` or `Nothing` remains an ordinary named
+class. Parsing, RBox analysis, and profile routing use the same exact test.
+
+### Lower frontend and EL completion peaks (2026-07-17)
+
+The frontend releases the source document before serializing its owned clause
+result. Pure-EL completion releases normal-form vectors after their indexed
+copies have been built and before saturation. These ownership changes do not
+alter clauses, rule indexes, or derivations.
+
 ### Protégé 5.6 plugin refresh (2026-07-16)
 
 The Protégé plugin now targets the Maven-published Protégé 5.6.6 API and OWL

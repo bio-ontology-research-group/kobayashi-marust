@@ -67,9 +67,9 @@ fn plain_class(reg: &mut IriRegistry, node: &Node) -> Option<String> {
     match node {
         Node::Atom(s) => {
             let sh = reg.short(s);
-            if sh == "owl:Thing" || sh == "Thing" {
+            if sh == "owl:Thing" {
                 Some(String::new())
-            } else if sh == "owl:Nothing" || sh == "Nothing" {
+            } else if sh == "owl:Nothing" {
                 None
             } else {
                 Some(sh)
