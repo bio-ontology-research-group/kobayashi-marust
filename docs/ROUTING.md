@@ -132,11 +132,23 @@ discriminator. A nonmatching input returns `unsupported`; it never falls
 through to CB, the unrestricted HT worker, or the historical tableau. QO,
 SHOQ, cardinality, general HT, and the additive feature packs remain measurable
 but are excluded from policy learning because they have incomplete corpus
-counterexamples or no complete-procedure contract. The bridge emits either a
-complete taxonomy or an explicit defer, but it also remains excluded until the
-automatic route has a source-level applicability contract or a non-racing CB
-fallback. The composed `production_all*` manual routes retain that certified
-fallback behavior outside the isolated matrix.
+counterexamples or no complete-procedure contract. The ISOLATED bridge row
+emits either a complete taxonomy or an explicit defer, but it remains excluded
+as a policy leaf until the automatic route has a source-level applicability
+contract, because a defer under `KM_MECHANISM=ht` has no in-process fallback.
+
+The composed `production_all*` routes are different: `KM_HT_ONLY=certified`
+admits only the bridge's complete-answer-or-defer path, the EL portfolio
+answers only on a passing certificate, and the always-running CB engine is the
+preferred fallback with the CB-preference winner rule. That composition has a
+complete-procedure contract and is the exact configuration of the 2026-07-13
+production sweep (574 ok / 508 exact matches, zero gold-match regressions,
+docs/SOLVE-3215.md). It is therefore policy-eligible for the SRIQ core, and
+the bootstrap generated tree selects `production_all` until the learned matrix
+tree replaces it. The earlier `cb_plain16` bootstrap silently normalized the
+trigger-absorption/bridge environment away before the frontend ran, so the
+bridge-closed terminologies (541, 12653, 7914, 3215, 9663, 9724) regressed to
+plain-CB timeouts whenever `KM_ROUTE` was unset — the deployed harness default.
 
 Named bundles normalize their conflicting routing keys to the same settings as
 the IBEX matrix. Diagnostic settings remain available. `manual` is the route to

@@ -97,6 +97,41 @@ frontend's exact rule contract rejects the ontology
 policy in docs/ROUTING.md; its gold remains unadjudicated
 (docs/CONTESTED-GOLD.md: HermiT cannot parse it).
 
+### Restore the proven KPSet bridge stack on the automatic route (2026-07-16)
+
+The routing snapshot made `auto` the classify default whenever `KM_ROUTE` is
+unset, with a bootstrap generated tree whose only leaf was `cb_plain16`. Route
+normalization removes every routing key before installing the selected bundle,
+so the deployed production environment (`KM_TRIGGER_ABSORB=1`, the 30 s /
+0-retry bridge probe budgets, the 180 s saturation budget — exactly the
+2026-07-13 ORE 3215 closure configuration) was silently erased before the
+frontend ran. Without `KM_TRIGGER_ABSORB` at normalisation the frontend emits
+no `source_axioms`, the source-TBox bridge candidate gate fails, and
+classification degrades to the plain-CB fallback that times out on the
+bridge-closed terminologies (541, 12653, 7914, 3215, 9663, 9724). The typed
+`ht_bridge` and `production_all` routes themselves reproduce the closure
+end-to-end (verified on a 3215-shaped SHI fixture: trigger absorption, the
+saturation pre-pass, and both KPSet prepare/verify phases run, output equal to
+CB); the break was confined to the default/auto path that the harness uses.
+
+The bootstrap tree now selects `production_all` — the exact corpus-validated
+production sweep configuration (574 ok / 508 exact Konclude matches, zero
+gold-match regressions) — and `production_all{,8,1}` are policy-eligible for
+the SRIQ core: `KM_HT_ONLY=certified` admits only the bridge's
+complete-answer-or-defer path, the EL portfolio answers only on a passing
+certificate, and the always-running CB engine keeps the CB-preference winner
+rule, so the composition has a complete-procedure contract. The isolated
+`ht_bridge` measurement row stays policy-ineligible (a defer under
+`KM_MECHANISM=ht` has no in-process fallback). Focused tests pin the proven
+closure environment to the production and bridge bundles
+(`production_bundles_normalize_to_the_proven_3215_closure_environment`),
+require the automatic SRIQ route to reach the bridge stack
+(`automatic_sriq_routing_reaches_the_proven_bridge_stack`), and cover the
+scheduler's immediate harvest of a finished bridge answer under trigger
+absorption (`bridge_answers_are_harvested_immediately_under_trigger_absorption`,
+a pure-function extraction of the race budget) alongside the existing 50,000
+active-class synchronous-bridge thread reservation test.
+
 ### Separate provably positive ABoxes from TBox classification (2026-07-16)
 
 The procedure matrix found assertion-heavy ORE 10697, 15725, and 15846 where

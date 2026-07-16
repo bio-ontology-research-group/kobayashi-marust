@@ -1174,6 +1174,28 @@ fn limit_large_synchronous_bridge_competitor(
     }
 }
 
+/// Wall-clock threshold after which a finished HT answer is accepted in
+/// fallback mode. Under source-terminology trigger absorption the worker's
+/// answer can only come from the Konclude bridge (sound+complete or no
+/// result), so it is harvested the moment it is ready — waiting out CB's
+/// fallback budget on a 3215-scale terminology would discard a finished exact
+/// closure. CB is still preferred whenever it finishes: the CB slot is checked
+/// before the budget on every loop iteration.
+fn ht_acceptance_budget(
+    trigger_absorb: bool,
+    fast_certify: bool,
+    shoq_budget_s: f64,
+    ht_budget_s: f64,
+) -> f64 {
+    if trigger_absorb {
+        0.0
+    } else if fast_certify {
+        shoq_budget_s.min(ht_budget_s)
+    } else {
+        ht_budget_s
+    }
+}
+
 /// Race the CB engine stack against the KM_HT hypertableau. CB is the certified
 /// sound+complete engine; HT is sound but incomplete on the live-disjunction
 /// fragment, so the win rule is correctness-aware:
@@ -1217,16 +1239,12 @@ where
     // monotone-safety on CB-solvable onts). The budget is only the "start accepting
     // HT" threshold: past it, the certified answer is harvested the moment it is
     // ready, so a QO arm that certifies later than the SHOQ default is still taken.
-    let budget = if std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
-        // The source-terminology bridge emits only a sound+complete result or
-        // no result. Once it has answered there is no reason to wait out CB's
-        // fallback budget; the CB slot is still checked first each iteration.
-        0.0
-    } else if fast_certify {
-        cfg.shoq_budget_s.min(cfg.ht_budget_s)
-    } else {
-        cfg.ht_budget_s
-    };
+    let budget = ht_acceptance_budget(
+        std::env::var_os("KM_TRIGGER_ABSORB").is_some(),
+        fast_certify,
+        cfg.shoq_budget_s,
+        cfg.ht_budget_s,
+    );
 
     let read_tout = |p: &Path| -> Option<EngineOut> {
         let f = File::open(p).ok()?;
@@ -1646,6 +1664,19 @@ mod tests {
             false,
             false
         ));
+    }
+
+    #[test]
+    fn bridge_answers_are_harvested_immediately_under_trigger_absorption() {
+        // The proven 3215 closure depends on taking the bridge's finished
+        // exact answer without waiting out CB's 225 s fallback budget.
+        assert_eq!(ht_acceptance_budget(true, false, 20.0, 225.0), 0.0);
+        assert_eq!(ht_acceptance_budget(true, true, 20.0, 225.0), 0.0);
+        // Fast certify-or-defer arms keep the short SHOQ budget; the plain HT
+        // racer keeps the full fallback budget.
+        assert_eq!(ht_acceptance_budget(false, true, 20.0, 225.0), 20.0);
+        assert_eq!(ht_acceptance_budget(false, true, 300.0, 225.0), 225.0);
+        assert_eq!(ht_acceptance_budget(false, false, 20.0, 225.0), 225.0);
     }
 
     #[test]

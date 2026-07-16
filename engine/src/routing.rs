@@ -312,6 +312,17 @@ fn sriq_policy_eligible(route: Route) -> bool {
             | Route::Lean
             | Route::SeqOn
             | Route::SeqOff
+            // The composed production bundles have a complete-procedure
+            // contract on this domain: `KM_HT_ONLY=certified` admits only the
+            // Konclude bridge's complete-answer-or-defer path (never a
+            // measurement HT arm), the certified EL portfolio answers only on
+            // a passing certificate, and the CB engine is the preferred,
+            // always-running fallback. They are what closed 3215/9663/9724 in
+            // the 2026-07-13 production sweep, so the learned tree may select
+            // them; the isolated measurement arms below remain ineligible.
+            | Route::ProductionAll
+            | Route::ProductionAll8
+            | Route::ProductionAll1
     )
 }
 
@@ -871,7 +882,7 @@ mod tests {
     fn semantic_fragment_gate_precedes_the_learned_tree() {
         let mut profile = OntologyProfile::default();
         assert_eq!(semantic_fragment(&profile), SemanticFragment::SriqCore);
-        assert_eq!(select(&profile), Route::CbPlain16);
+        assert_eq!(select(&profile), Route::ProductionAll);
 
         profile.source.abox_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
@@ -880,7 +891,7 @@ mod tests {
         profile.schema_version = 2;
         profile.positive_abox_tbox_separable = true;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
-        assert_eq!(select(&profile), Route::CbPlain16);
+        assert_eq!(select(&profile), Route::ProductionAll);
 
         profile.source.rule_axioms = 1;
         assert_eq!(semantic_fragment(&profile), SemanticFragment::Rules);
@@ -892,6 +903,89 @@ mod tests {
             SemanticFragment::UnsupportedRules
         );
         assert_eq!(select(&profile), Route::HtRules);
+    }
+
+    /// The exact environment of the proven ORE 3215 closure (IBEX jobs
+    /// 48790271/48790295, binary 87ee76f1…, docs/SOLVE-3215.md). A named
+    /// production route must normalize to precisely this bundle so the
+    /// deterministic route invokes the Konclude KPSet bridge — source-TBox
+    /// trigger absorption at normalisation, the saturation pre-pass, the
+    /// all-satisfiability-jobs barrier, and the 30 s / 0-retry probe budgets —
+    /// instead of a plain-CB fallback that times out on the 54,974-class
+    /// terminology.
+    const PROVEN_3215_CLOSURE_ENV: &[(&str, &str)] = &[
+        ("KM_TRIGGER_ABSORB", "1"),
+        ("KM_KEEP_CHAIN_AXIOMS", "1"),
+        ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
+        ("KM_BRIDGE_RETRY_ROUNDS", "0"),
+        ("KM_HT_SATURATION_BUDGET_S", "180"),
+        ("KM_HT_MEM_GB", "18"),
+        ("KM_PAR_MEM_GB", "18"),
+    ];
+
+    fn normalized_environment(route: Route) -> Vec<(&'static str, &'static str)> {
+        // Mirrors `apply_environment`: COMMON first, then the bundle, later
+        // duplicate keys winning — without mutating the process environment
+        // (tests run concurrently).
+        let mut env: Vec<(&'static str, &'static str)> = Vec::new();
+        for &(key, value) in COMMON_SETTINGS.iter().chain(route.settings()) {
+            env.retain(|(existing, _)| *existing != key);
+            env.push((key, value));
+        }
+        env
+    }
+
+    #[test]
+    fn production_bundles_normalize_to_the_proven_3215_closure_environment() {
+        for route in [
+            Route::ProductionAll,
+            Route::ProductionAll8,
+            Route::ProductionAll1,
+        ] {
+            let env = normalized_environment(route);
+            for required in PROVEN_3215_CLOSURE_ENV {
+                assert!(
+                    env.contains(required),
+                    "{route} must carry {required:?} for KPSet-bridge parity"
+                );
+            }
+            assert!(env.contains(&("KM_MECHANISM", "portfolio")), "{route}");
+            assert!(env.contains(&("KM_HT_ONLY", "certified")), "{route}");
+        }
+        // The isolated bridge measurement route needs the same worker-side
+        // closure environment on top of its exact mechanism discriminator.
+        let env = normalized_environment(Route::HtBridge);
+        for required in PROVEN_3215_CLOSURE_ENV {
+            assert!(env.contains(required), "ht_bridge must carry {required:?}");
+        }
+        assert!(env.contains(&("KM_MECHANISM", "ht")));
+        assert!(env.contains(&("KM_HT_ONLY", "bridge")));
+    }
+
+    #[test]
+    fn automatic_sriq_routing_reaches_the_proven_bridge_stack() {
+        // Regression for the 3215 coverage break: with KM_ROUTE unset the
+        // orchestrator routes SRIQ-core terminologies through this selection,
+        // and `apply_environment` REPLACES the ambient routing keys. If the
+        // selected route does not itself carry KM_TRIGGER_ABSORB, the frontend
+        // never emits `source_axioms`, the bridge candidate gate fails, and
+        // classification silently degrades to the plain-CB fallback that times
+        // out on the proven 3215-scale closures.
+        let route = select(&OntologyProfile::default());
+        let env = normalized_environment(route);
+        assert!(
+            env.contains(&("KM_TRIGGER_ABSORB", "1")),
+            "the automatic SRIQ route {route} must enable source-TBox trigger absorption"
+        );
+        assert!(
+            env.contains(&("KM_BRIDGE_PROBE_BUDGET_S", "30"))
+                && env.contains(&("KM_BRIDGE_RETRY_ROUNDS", "0")),
+            "the automatic SRIQ route {route} must carry the proven bridge budgets"
+        );
+        assert!(
+            sriq_policy_eligible(route),
+            "the bootstrap tree may only emit a policy-eligible route"
+        );
     }
 
     #[test]
