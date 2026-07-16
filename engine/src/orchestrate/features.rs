@@ -638,6 +638,11 @@ pub fn extract(cfg: &Config, ont: &Path) -> Features {
     if !ont.exists() {
         return blank("no_ont");
     }
+    let prepared = match super::input::prepare(ont) {
+        Ok(prepared) => prepared,
+        Err(_) => return blank("input_unsupported"),
+    };
+    let ont = prepared.path();
     let meta_tmp = TempPath::new(".feat.meta.json");
     let (plain, code) = run_ofn(cfg, ont, false, Some(meta_tmp.path()));
     if code == 3 {

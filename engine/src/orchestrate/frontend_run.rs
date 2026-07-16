@@ -100,6 +100,8 @@ fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, Orchestra
 }
 
 pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), OrchestrateError> {
+    let prepared = super::input::prepare(ont)?;
+    let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
 
     // In-process fast path for small ontologies (avoids the ofn subprocess).
@@ -168,6 +170,8 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
 /// absorption portfolio to obtain the *plain* clause set. Port of
 /// `_ofn_clauses_file`; returns None on any failure.
 pub fn run_ofn_plain(cfg: &Config, ont: &Path, absorb: bool) -> Option<TempPath> {
+    let prepared = super::input::prepare(ont).ok()?;
+    let ont = prepared.path();
     let clauses = TempPath::new(".clauses.json");
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
     let status = Command::new(&ofn_prog)

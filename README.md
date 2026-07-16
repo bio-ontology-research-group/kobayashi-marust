@@ -90,10 +90,13 @@ The engine reads normalised DL clauses as JSON on stdin and writes the entailed
 subsumptions, derived clauses, and a consistency flag on stdout (see
 [`engine/README.md`](engine/README.md)).
 
-For end-to-end OWL functional-syntax classification, use the multi-call binary:
+For end-to-end OWL classification, use the multi-call binary:
 
 ```sh
 ./target/release/km classify ontology.ofn
+./target/release/km classify ontology.owl
+./target/release/km classify ontology.owx
+./target/release/km classify ontology.ttl
 ./target/release/km profile ontology.ofn
 ./target/release/km routes
 ```
@@ -103,6 +106,17 @@ default. `--route NAME` selects any named procedure; `--route manual` preserves
 individually supplied `KM_*` options. See [`docs/ROUTING.md`](docs/ROUTING.md)
 for the exact expressivity calculation, statistics schema, option bundles, and
 decision-tree validation.
+
+KM accepts OWL functional syntax, OWL/XML, RDF/XML, and Turtle. It detects the
+format from content and the filename; use
+`--format functional|owlxml|rdfxml|turtle` to override detection. External
+syntaxes are parsed into Horned-OWL's structural model and serialized to the
+same functional syntax frontend used by native inputs. RDF-to-OWL conversion
+must be complete, or KM declines instead of reasoning over a partial graph.
+Ontology imports are not fetched implicitly: supply a self-contained ontology
+with imports already merged. See
+[`docs/INPUT-FORMATS.md`](docs/INPUT-FORMATS.md) for the exact detection,
+conversion, safety, and licensing contract.
 
 ## ORE 2015 benchmark status
 

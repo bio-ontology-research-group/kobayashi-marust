@@ -9,6 +9,23 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Standard OWL syntax input adapter (2026-07-16)
+
+`km classify`, `km profile`, and `km features` now accept OWL functional
+syntax, OWL/XML, RDF/XML, and Turtle. The adapter detects the syntax from file
+content and extension, with `--format` and `KM_INPUT_FORMAT` overrides for
+ambiguous inputs. OWL/XML and RDF serializations pass through Horned-OWL's
+structural ontology model before entering KM's existing functional-syntax
+frontend, so every route continues to consume the same normalized clause
+contract.
+
+The adapter fails closed when RDF-to-OWL mapping is incomplete and when an
+ontology contains unresolved imports. This prevents KM from silently
+classifying a partial ontology. Native functional-syntax benchmark inputs keep
+their existing direct path. Cross-syntax tests check that a simple subclass
+ontology produces equivalent normalized clauses in OWL/XML, RDF/XML, and
+Turtle. See `docs/INPUT-FORMATS.md` for the interface and licensing details.
+
 ### Restore the additive production cardinality arm (recovers 7499 / 9540) (2026-07-16)
 
 The 2026-07-15 "fence named HT specialists" change set the production portfolio

@@ -38,9 +38,9 @@ fn main() {
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
-            eprintln!("usage: km classify [--lines] [--route ROUTE] <ontology.ofn>");
-            eprintln!("       km features <ontology.ofn> ...");
-            eprintln!("       km profile <ontology.ofn> ...");
+            eprintln!("usage: km classify [--lines] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("       km features [--format FORMAT] <ontology> ...");
+            eprintln!("       km profile [--format FORMAT] <ontology> ...");
             eprintln!("       km routes");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
             exit(2);
@@ -69,13 +69,9 @@ fn profile_cmd(rest: &[String]) {
         error: Option<String>,
     }
 
-    let onts: Vec<&str> = rest
-        .iter()
-        .map(String::as_str)
-        .filter(|a| !a.starts_with("--"))
-        .collect();
+    let onts = parse_multi_input_args("profile", rest);
     if onts.is_empty() {
-        eprintln!("usage: km profile <ontology.ofn> ...");
+        eprintln!("usage: km profile [--format FORMAT] <ontology> ...");
         exit(2);
     }
     // Full statistics are intentionally opt-in on the normal frontend path so
@@ -125,13 +121,9 @@ fn profile_cmd(rest: &[String]) {
 }
 
 fn features_cmd(rest: &[String]) {
-    let onts: Vec<&str> = rest
-        .iter()
-        .map(String::as_str)
-        .filter(|a| !a.starts_with("--"))
-        .collect();
+    let onts = parse_multi_input_args("features", rest);
     if onts.is_empty() {
-        eprintln!("usage: km features <ontology.ofn> ...");
+        eprintln!("usage: km features [--format FORMAT] <ontology> ...");
         exit(2);
     }
     let cfg = Config::from_env();
@@ -151,6 +143,33 @@ fn features_cmd(rest: &[String]) {
         }
     }
     let _ = w.flush();
+}
+
+fn parse_multi_input_args<'a>(command: &str, rest: &'a [String]) -> Vec<&'a str> {
+    let mut onts = Vec::new();
+    let mut index = 0;
+    while index < rest.len() {
+        match rest[index].as_str() {
+            "--format" => {
+                index += 1;
+                let Some(format) = rest.get(index) else {
+                    eprintln!("--format requires a format name");
+                    exit(2);
+                };
+                std::env::set_var("KM_INPUT_FORMAT", format);
+            }
+            value if value.starts_with("--format=") => {
+                std::env::set_var("KM_INPUT_FORMAT", value.trim_start_matches("--format="));
+            }
+            value if value.starts_with('-') => {
+                eprintln!("unknown {command} option: {value}");
+                exit(2);
+            }
+            value => onts.push(value),
+        }
+        index += 1;
+    }
+    onts
 }
 
 fn cb_to_ht_cmd() {
@@ -227,6 +246,17 @@ fn classify_cmd(rest: &[String]) {
             value if value.starts_with("--route=") => {
                 route = Some(value.trim_start_matches("--route="));
             }
+            "--format" => {
+                index += 1;
+                let Some(format) = rest.get(index) else {
+                    eprintln!("--format requires a format name");
+                    exit(2);
+                };
+                std::env::set_var("KM_INPUT_FORMAT", format);
+            }
+            value if value.starts_with("--format=") => {
+                std::env::set_var("KM_INPUT_FORMAT", value.trim_start_matches("--format="));
+            }
             value if value.starts_with('-') => {
                 eprintln!("unknown classify option: {value}");
                 exit(2);
@@ -240,7 +270,7 @@ fn classify_cmd(rest: &[String]) {
         index += 1;
     }
     let Some(ontology) = ontology else {
-        eprintln!("usage: km classify [--lines] [--route ROUTE] <ontology.ofn>");
+        eprintln!("usage: km classify [--lines] [--route ROUTE] [--format FORMAT] <ontology>");
         exit(2);
     };
     if let Some(requested) = route {

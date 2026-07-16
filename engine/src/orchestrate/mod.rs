@@ -15,6 +15,7 @@ pub mod config;
 pub mod engine_run;
 pub mod features;
 pub mod frontend_run;
+pub mod input;
 pub mod race;
 pub mod tmpfile;
 

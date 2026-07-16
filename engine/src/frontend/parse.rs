@@ -461,9 +461,13 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 Concept::Forall(role_cls(reg, args[0])?, Box::new(cls(reg, args[1])?)),
             ));
         }
+        "Import" => {
+            return Err(OutOfFragment(
+                "owl:imports is not resolved; provide a self-contained ontology".into(),
+            ));
+        }
         "Declaration"
         | "Prefix"
-        | "Import"
         | "Annotation"
         | "AnnotationAssertion"
         | "DisjointObjectProperties"
