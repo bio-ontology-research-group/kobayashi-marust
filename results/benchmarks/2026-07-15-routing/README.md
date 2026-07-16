@@ -323,3 +323,10 @@ that array index. After the retry log contains an explicit `oom_kill event` or
 `OUT_OF_MEMORY`, use `finalize_oom_rows.py`; it refuses to publish without that
 evidence and computes the binary SHA itself. Never infer `memout` merely from a
 fast job exit or a missing result file.
+
+After both datasets reach 592 rows, `compare_production_sweeps.py` validates
+that every file contains exactly one terminal row, every ontology is unique,
+and every row carries the expected immutable binary SHA. It then reports the
+status/verdict distributions, exact-row time and memory summaries, and every
+ontology whose `(status, verdict)` changed. A nonzero exit means the comparison
+is not publishable.
