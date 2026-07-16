@@ -64,6 +64,11 @@ a KM `ok` result as correct without adjudication.
 
 - `10702`, `15672`, and `6934` are restoration failures, not new reasoning
   frontiers.
+- The frozen 592-ontology route matrix also omitted retained exact closures for
+  `10908`, `7499`, `9540`, and `3215`. Together these seven closures raise the
+  exact cross-run KM union from the matrix-local 575 to 582.
+- `2669` and `15516` raise the adjudicated demonstrated-correct total to 584,
+  but must not be described as matches to their stale Konclude signatures.
 - `10621` may be scored against the current IBEX Konclude signature. Do not use
   or describe the older zero-unsatisfiable signature. KM still owes a complete
   within-budget taxonomy.

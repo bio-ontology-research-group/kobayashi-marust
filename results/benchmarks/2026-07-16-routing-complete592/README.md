@@ -25,7 +25,8 @@ The successful-row count must therefore be read with every average.
 
 ## Main comparison
 
-The headline KM result is the ontology-wise union of every measured KM route.
+The matrix-local KM result is the ontology-wise union of every KM route in this
+frozen matrix.
 An ontology enters the union only when at least one KM route matches its
 retained gold signature exactly. For each included ontology, the wall-time
 column uses the fastest exact KM route and the memory column independently uses
@@ -40,9 +41,12 @@ come from different configurations.
 | ELK | 579 | 1.995 | 0.824 | 611 | 349 |
 | HermiT | 545 | 13.196 | 1.851 | 1,392 | 745 |
 
-The KM union is an oracle envelope over the matrix, not a measured automatic
-router run. Its p95 wall time is 19.985 seconds and its p95 minimum memory is
-1,771 MB.
+This 575-case union is an oracle envelope over the frozen matrix, not a
+measured automatic router run and not KM's all-retained-run coverage headline.
+Retained exact closures from route families absent or not faithfully
+reproduced here raise the demonstrated exact union to 582; the top-level
+README tracks that broader union. This matrix-local union's p95 wall time is
+19.985 seconds and its p95 minimum memory is 1,771 MB.
 
 ## Individual KM configurations
 

@@ -115,22 +115,34 @@ Selected measured rows from that matrix:
 
 | reasoner | solved / 592 | average wall time | median wall time | average peak RSS | median peak RSS |
 |---|---:|---:|---:|---:|---:|
-| **KM, union of all exact routes** | **575** | **3.351 s** | **0.215 s** | **291 MB** | **30 MB** |
+| **KM, demonstrated union of all exact routes** | **582** | pending current-route recheck | pending | pending | pending |
 | Konclude, 16 threads | 588 | 2.129 s | 0.264 s | 738 MB | 245 MB |
 | ELK | 579 | 1.995 s | 0.824 s | 611 MB | 349 MB |
 | HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
 
-For the KM row, “solved” means that at least one KM route completed and matched
-the retained gold signature exactly. Each ontology contributes its minimum
-wall time across exact KM routes and, independently, its minimum peak memory
-across exact KM routes. The time and memory minima may therefore come from
-different routes. Averages and medians use those 575 ontology-wise minima.
+The KM headline is the union of every retained, valid exact closure, not only
+the routes present in one matrix binary. The complete frozen matrix contains
+575 exact KM closures. Retained route-specific runs add `10702`, `10908`,
+`15672`, `6934`, `7499`, `9540`, and `3215`, giving 582 exact matches to
+authoritative gold. In addition, `2669` and `15516` are independently
+adjudicated inconsistent while their stored Konclude signatures are stale, so
+KM has 584 demonstrated-correct corpus cases under the adjudicated-gold
+accounting described in [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
+
+The time and memory cells are temporarily withheld while those seven restored
+routes are rerun under the current binary, 240 second timeout, and 20 GiB cap.
+Publishing the frozen-matrix averages beside the larger cross-run union would
+mix different ontology sets. Once the focused recheck finishes, each ontology
+will contribute its minimum wall time across exact KM routes and,
+independently, its minimum peak memory across exact KM routes.
 
 Individual KM configurations remain available in the complete matrix report.
 For example, `cb_plain16` completed 537 ontologies, `ht_bridge` completed 505,
 and `elc_cert` completed 467; their separate time and memory distributions are
-reported in the linked CSV and JSON. The union is an oracle envelope over all
-measured KM configurations, not the performance of the automatic router.
+reported in the linked CSV and JSON. The 575-case matrix union is an oracle
+envelope over that matrix's measured configurations. The 582-case headline
+also includes retained exact closures from route families omitted or not
+faithfully reproduced by that frozen matrix.
 
 KM uses a typed production portfolio rather than one universal procedure.
 [`docs/SOLVED-ONTOLOGIES.md`](docs/SOLVED-ONTOLOGIES.md) records the mechanism
