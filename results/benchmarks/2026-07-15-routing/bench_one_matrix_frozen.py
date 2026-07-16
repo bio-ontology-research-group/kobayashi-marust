@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -319,10 +320,27 @@ def run(args):
         )
         checkpoint(row)
 
+    def on_hard_alarm(_signum, _frame):
+        # Independent of the /proc tree walk: even if a fork storm makes one
+        # sampling pass stall, publish a durable timeout before leaving. The
+        # batch script then exits and Slurm tears down every remaining child.
+        row = dict(record)
+        row.update(
+            status="timeout",
+            verdict="timeout",
+            rc=124,
+            wall_s=round(time.monotonic() - start, 4),
+            checkpointed=True,
+        )
+        checkpoint(row)
+        os._exit(124)
+
     _watchdog.protect_supervisor()
     stdout_handle = open(stdout_path, "wb")
     stderr_handle = open(stderr_path, "wb")
     start = time.monotonic()
+    signal.signal(signal.SIGALRM, on_hard_alarm)
+    signal.setitimer(signal.ITIMER_REAL, args.timeout + 5.0)
     proc = subprocess.Popen(
         wrapped,
         env=env,
@@ -344,6 +362,7 @@ def run(args):
         sample_interval=0.02,
         on_trip=on_trip,
     )
+    signal.setitimer(signal.ITIMER_REAL, 0.0)
     status = result.status
     peak = result.peak_bytes
     wall = result.wall_s
