@@ -6021,6 +6021,13 @@ pub fn bridged_classify_opts(
     // journal cost — ore_ont_12653 subjects blew their 900 s validation
     // window). Becomes the default once per-node COW localization lands.
     let cow_confirm = std::env::var_os("KM_BRIDGE_COW_CONFIRM").is_some();
+    // Deterministic-subsumer short-circuit (Konclude parity): a branch-tag-gated
+    // subsumer recorded on the item's subsumer set is entailed in every model,
+    // so the pairwise loop accepts it directly instead of running a full
+    // satisfiability probe. This mirrors the trust the authoritative read-off
+    // already grants deterministic label positives; disable with
+    // `KM_HT_NO_DET_SUBSUMER=1` for an A/B against the probe-every-pair path.
+    let deterministic_subsumer_shortcut = std::env::var_os("KM_HT_NO_DET_SUBSUMER").is_none();
     let mut synchronous_satisfiable_phase_finished = false;
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
@@ -6290,6 +6297,23 @@ pub fn bridged_classify_opts(
                 continue;
             }
             if saturation_known_pairs.contains(&(s, c)) {
+                continue;
+            }
+            // Deterministic subsumers were extracted branch-tag gated, so
+            // `s ⊑ c` is entailed. Konclude records them as subsumptions and
+            // never tests them; accept without a probe (see the authoritative
+            // read-off above, which trusts deterministic positives the same
+            // way). Recorded directly like an authoritative subsumer rather
+            // than routed through `interprete_subsumption_result`, so retries
+            // recompute idempotently and no propagation state is mutated.
+            if deterministic_subsumer_shortcut && kpset_state.certain_subsumer(s, c) {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: deterministic-subsumer",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                pairs.push((s, c));
                 continue;
             }
             if let Some((confirmed, invalid)) = kpset_state.candidate_state(s, c) {

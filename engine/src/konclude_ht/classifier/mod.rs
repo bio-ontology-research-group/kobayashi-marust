@@ -4083,6 +4083,39 @@ impl SynchronousKPSetClassState {
             })
     }
 
+    /// A certain (deterministic / told) subsumer already recorded on the
+    /// subsumed item's subsumer set.
+    ///
+    /// Konclude extracts the root node's branch-independent label concepts
+    /// (`branching_tag <= max_deterministic_branch_tag`) as
+    /// `CClassificationClassSubsumptionMessageData` and records them directly as
+    /// subsumptions through `add_subsuming_concept_item`; it never schedules a
+    /// possible-subsumption satisfiability test for them (only the
+    /// possible-subsumption map is tested). Because the extraction is branch-tag
+    /// gated, such a subsumer holds in EVERY model of the subject, so
+    /// `subsumed ⊑ subsumer` is entailed. Accepting it without a pair probe is
+    /// therefore sound and never drops a subsumption.
+    ///
+    /// Distinct from [`candidate_state`](Self::candidate_state): a deterministic
+    /// subsumer lives in the subsumer set, not the possible-subsumption map, so
+    /// `candidate_state` returns `None` for it and the bridge would otherwise
+    /// re-run a full satisfiability probe for an already-certain subsumption.
+    pub fn certain_subsumer(&self, subsumed: usize, subsumer: usize) -> bool {
+        let Some(&subsumed_item) = self.item_ids.get(subsumed) else {
+            return false;
+        };
+        let Some(&subsumer_item) = self.item_ids.get(subsumer) else {
+            return false;
+        };
+        if subsumed_item.is_none() || subsumer_item.is_none() {
+            return false;
+        }
+        self.ontology_item
+            .get_concept_satisfiable_test_item_container()
+            .get(subsumed_item.index())
+            .is_some_and(|item| item.has_subsumer_concept_item(subsumer_item))
+    }
+
     /// Synchronous use of Konclude's fast pseudo-model precheck. It can decide
     /// only non-subsumption; `true` therefore means the expensive pair probe is
     /// unnecessary.
@@ -7092,6 +7125,59 @@ mod tests {
         .expect("parent candidate");
         assert!(candidate.is_subsumption_invalided());
         assert!(candidate.is_subsumption_updated());
+    }
+
+    #[test]
+    fn certain_subsumer_reads_recorded_deterministic_subsumer_set() {
+        let mut concepts = Arena::new();
+        // Konclude reserves concept tag 1 for ⊤.
+        let mut top = Concept::new();
+        top.set_concept_tag(1)
+            .set_operator_code(super::super::model::op::CCTOP);
+        concepts.push(top);
+        let named: Vec<ConceptId> = (0..3)
+            .map(|offset| {
+                let mut concept = Concept::new();
+                concept
+                    .set_concept_tag(10 + offset)
+                    .set_operator_code(super::super::model::op::CCATOM)
+                    .add_class_name_linker(super::super::model::stubs::NameId::new(10 + offset));
+                concepts.push(concept)
+            })
+            .collect();
+
+        // Subject 1 has a single deterministic (branch-independent) subsumer 0
+        // (e.g. the axiom C1 ⊑ C0); subjects 0 and 2 have none. This mirrors the
+        // analyser's `add_subsuming_concept_item` deposit for a non-authoritative
+        // subject whose deterministic label carries C0.
+        let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();
+        let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            &named,
+            &[Some(false), Some(false), Some(false)],
+            &[None, None, None],
+            &[vec![], vec![0], vec![]],
+            &[0, 1, 2],
+            &concepts,
+        );
+
+        // The recorded deterministic subsumer is certain: the bridge accepts it
+        // without a probe.
+        assert!(state.certain_subsumer(1, 0));
+        // A deterministic subsumer lives in the subsumer set, NOT the
+        // possible-subsumption map, so `candidate_state` cannot see it — this is
+        // precisely why `certain_subsumer` is needed as a separate short-circuit
+        // to avoid re-probing an already-entailed subsumption.
+        assert_eq!(state.candidate_state(1, 0), None);
+
+        // It is directional and does not leak to unrelated or self pairs.
+        assert!(!state.certain_subsumer(0, 1));
+        assert!(!state.certain_subsumer(1, 2));
+        assert!(!state.certain_subsumer(2, 1));
+        assert!(!state.certain_subsumer(1, 1));
+
+        // Out-of-range subjects fail closed (never a spurious accept).
+        assert!(!state.certain_subsumer(99, 0));
+        assert!(!state.certain_subsumer(1, 99));
     }
 
     #[test]

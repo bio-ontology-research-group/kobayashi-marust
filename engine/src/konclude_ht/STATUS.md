@@ -84,6 +84,18 @@ The "plain bridge no longer closes 12653" suspicion was bisect-closed as
 NOT a regression: complete-or-defer (`7a01372`) intentionally poison-defers
 it; the recorded plain closes predate that contract.
 
+Deterministic-subsumer shortcut (2026-07-16, `KM_HT_NO_DET_SUBSUMER` disable
+hatch, default ON): the pairwise verification re-probed candidates the
+completion model already proved to be *deterministic* (branch-tag gated)
+subsumers, because `candidate_state` reads the possible-subsumption map and a
+deterministic subsumer lives in the item's subsumer set. New
+`SynchronousKPSetClassState::certain_subsumer` reads that set, and the loop now
+accepts such pairs without a probe — Konclude never tests deterministic
+subsumers. Sound (entailed in every model) and completeness-preserving (possible
+subsumers still probed); the same trust the authoritative read-off already
+grants. Targets the deep-hierarchy `∀ + ⊔` family probe volume. See
+`docs/DETERMINISTIC-SUBSUMER-SHORTCUT.md`.
+
 Debug aids (env-gated, cached lookups): `KM_SAT_DEBUG=1` (per-node label/flag
 dump + SAT-SUBJ/SAT-NAME/SAT-CONCEPT tables), `KM_SAT_CLASH_TRACE=1` (every
 CLASHED-set site, indirect clash-propagation edges, implication executions),

@@ -36,6 +36,47 @@ classifying a partial ontology. Native functional-syntax benchmark inputs keep
 their existing direct path. Cross-syntax tests check that a simple subclass
 ontology produces equivalent normalized clauses in OWL/XML, RDF/XML, and
 Turtle. See `docs/INPUT-FORMATS.md` for the interface and licensing details.
+### konclude_ht bridge: accept deterministic subsumers without a pair probe (2026-07-16)
+
+The Konclude completion bridge's non-deterministic subject verification
+(`bridge.rs::classify_one`) probed EVERY candidate subsumer with a full
+`bridged_unsat(s ⊓ ¬c)` satisfiability test, including candidates that the
+completion model already proved to be *deterministic* subsumers. That re-runs an
+expensive probe for a subsumption that is already entailed.
+
+Konclude never tests deterministic subsumers. Its satisfiability-message
+analyser extracts the root node's branch-independent label concepts
+(`branching_tag <= max_deterministic_branch_tag`,
+`create_root_class_subsumption_message`) as a `TellClassSubsumption` message and
+records them directly through `add_subsuming_concept_item`; only the
+possible-subsumption MAP is scheduled for pair tests. The port already delivers
+and processes that message (`process_class_subsumption_message`), so on a
+non-authoritative subject the item's `subsuming_concept_item_set` holds exactly
+those certain subsumers — but the pairwise loop could not see them, because
+`candidate_state` reads the possible map, not the subsumer set.
+
+New `SynchronousKPSetClassState::certain_subsumer(subsumed, subsumer)` reads that
+subsumer set, and the pairwise loop accepts a certain subsumer directly (records
+the pair, skips the probe) before the `candidate_state` / `pseudo_model_refutes`
+/ `bridged_unsat` cascade. This mirrors the trust the authoritative read-off
+already grants deterministic label positives (same file, the `authoritative`
+branch pushes them with no probe). It is recorded like an authoritative
+subsumer rather than routed through `interprete_subsumption_result`, so budget
+retries recompute idempotently and no classifier propagation state is mutated.
+
+Soundness/completeness: the extraction is branch-tag gated, so `s ⊑ c` holds in
+every model of `s` — accepting it is sound, and no possible subsumer is dropped
+(those still take the full probe). Default ON with `KM_HT_NO_DET_SUBSUMER=1` as a
+disable hatch for a corpus A/B against the probe-every-pair path. Likely to help
+the deep-hierarchy `∀ + ⊔` timeout family, where each non-deterministic subject
+carries many deterministic supers that were being re-probed. See
+[`docs/DETERMINISTIC-SUBSUMER-SHORTCUT.md`](docs/DETERMINISTIC-SUBSUMER-SHORTCUT.md).
+
+Tests: `classifier/mod.rs::certain_subsumer_reads_recorded_deterministic_subsumer_set`
+(certain subsumer accepted; not visible to `candidate_state`; directional;
+self- and out-of-range pairs fail closed). No Lean re-certification: this is
+bridge classification bookkeeping, not CB-calculus logic, and derives no new
+subsumption a full probe would not have confirmed.
 
 ### Restore the additive production cardinality arm (recovers 7499 / 9540) (2026-07-16)
 
