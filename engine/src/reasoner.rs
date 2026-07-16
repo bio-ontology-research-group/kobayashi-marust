@@ -645,6 +645,16 @@ impl Reasoner {
         self.subs.clone()
     }
 
+    /// Move the final classification out instead of cloning it. The map holds
+    /// one owned `String` per subsumption pair, so on large outputs the clone
+    /// in `subsumptions()` doubles the answer exactly at peak RSS (the full
+    /// map, its clone, and the serialised bytes would coexist). End-of-run
+    /// extraction paths use this; the reasoner's own map is left empty, so it
+    /// can be taken once per run.
+    pub fn take_subsumptions(&mut self) -> BTreeMap<String, BTreeSet<String>> {
+        std::mem::take(&mut self.subs)
+    }
+
     pub fn emit_clauses(&self) -> Vec<JClause> {
         fn ax(name: &str) -> JAtom {
             JAtom::Concept {
@@ -787,6 +797,25 @@ mod tests {
             "expected A ⊑ D, got {:?}",
             supers(&rr, "A")
         );
+    }
+
+    #[test]
+    fn take_subsumptions_moves_the_final_map_once() {
+        // The moving accessor must return exactly the map the cloning accessor
+        // returns (end-of-run extraction paths use it to avoid doubling the
+        // answer at peak RSS), and it can only be taken once.
+        let mut rr = run(vec![
+            cl(vec![c("A", vx())], vec![c("B", vx())]),
+            cl(vec![c("B", vx())], vec![c("C", vx())]),
+        ]);
+        let cloned = rr.subsumptions();
+        let taken = rr.take_subsumptions();
+        assert_eq!(cloned, taken);
+        assert!(taken
+            .get("A")
+            .is_some_and(|s| s.contains("B") && s.contains("C")));
+        assert!(rr.subsumptions().is_empty());
+        assert!(rr.take_subsumptions().is_empty());
     }
 
     /// KM_ROOT_ORDERED test driver: select the mode on this thread (the

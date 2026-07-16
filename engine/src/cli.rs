@@ -340,6 +340,10 @@ pub fn run_engine() {
             exit(1);
         }
     };
+    // The raw JSON is dead once parsed; free it before saturation so it never
+    // coexists with the peak context state (on the big CB-routed ontologies it
+    // is hundreds of MB of dead weight held across the whole run).
+    drop(buf);
     let t_parse = t0.elapsed();
     if prof {
         eprintln!(
@@ -351,6 +355,10 @@ pub fn run_engine() {
 
     let t1 = std::time::Instant::now();
     let mut r = Reasoner::new(&input.clauses);
+    // Likewise the parsed `JClause` block (String-owning IRIs, several times
+    // the raw JSON size) is fully interned into the Reasoner; drop it before
+    // saturation rather than at end of function.
+    drop(input);
     let t_build = t1.elapsed();
     if prof {
         eprintln!("KM_STATS[phase] build={:.1}ms", t_build.as_secs_f64() * 1e3);
@@ -366,33 +374,43 @@ pub fn run_engine() {
     }
 
     let t3 = std::time::Instant::now();
-    let subs = r.subsumptions();
-    let subsumptions = subs
+    // The derived-clause echo doubles output volume and is only consumed by the
+    // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on
+    // the giant ontologies. It reads the reasoner's subsumption map, so it is
+    // built BEFORE the map is moved out below.
+    let derived_clauses = if std::env::var_os("KM_EMIT_CLAUSES").is_some() {
+        r.emit_clauses()
+    } else {
+        Vec::new()
+    };
+    let inconsistent = r.inconsistent();
+    let dropped = r.dropped_unsupported();
+    let subsumptions = r
+        .take_subsumptions()
         .into_iter()
         .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
         .collect();
+    // The reasoner (contexts, clause arenas, indexes — the saturation peak) is
+    // dead once the answer is moved out; free it before serialising so the
+    // output bytes reuse that memory instead of stacking on top of it.
+    drop(r);
     let t_extract = t3.elapsed();
 
-    // The derived-clause echo doubles output volume and is only consumed by the
-    // certificate path (KM_EMIT_CLAUSES); off it would blow the driver's RSS on
-    // the giant ontologies.
     let out = JOutput {
         subsumptions,
-        derived_clauses: if std::env::var_os("KM_EMIT_CLAUSES").is_some() {
-            r.emit_clauses()
-        } else {
-            Vec::new()
-        },
-        inconsistent: r.inconsistent(),
-        dropped: r.dropped_unsupported(),
+        derived_clauses,
+        inconsistent,
+        dropped,
     };
 
     let t4 = std::time::Instant::now();
-    let s = serde_json::to_string(&out).expect("serialise output");
+    // Stream the serialisation: `to_string` materialised the whole output as
+    // one extra String (identical bytes either way).
     let stdout = std::io::stdout();
-    let mut h = stdout.lock();
-    h.write_all(s.as_bytes()).expect("write stdout");
+    let mut h = std::io::BufWriter::new(stdout.lock());
+    serde_json::to_writer(&mut h, &out).expect("serialise output");
     h.write_all(b"\n").expect("write newline");
+    h.flush().expect("flush stdout");
     if prof {
         eprintln!(
             "KM_STATS[phase-ms] parse={:.1} build={:.1} saturate={:.1} extract={:.1} write={:.1}",

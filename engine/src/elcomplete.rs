@@ -2783,21 +2783,39 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
 
     let unresolved_set: std::collections::BTreeSet<&str> =
         unresolved.iter().map(|s| s.as_str()).collect();
+    // Everything below reads only the completed relation (`sub_super`) and the
+    // interner names. The rule indexes, the normal forms, the residual, the
+    // compiled residual clauses, and the role graph (`edges` / `in_edges` /
+    // `prop`) are dead here — free them BEFORE materialising the output
+    // strings, so the string map reuses their memory instead of stacking on
+    // top of the full saturation state (process peak RSS on the ORE giants
+    // sits exactly at this point, the fixpoint). Destructuring `res` drops the
+    // unbound `State` fields in place.
+    let State { mut sub_super, .. } = res;
+    drop(idx);
+    drop(nfs);
+    drop(rcs);
+    drop(residual);
+    drop(skolem_filler);
     let mut subsumptions = std::collections::BTreeMap::new();
-    for (c, sups) in res.sub_super.iter().enumerate() {
-        let c = c as u32;
+    for c in 0..sub_super.len() {
+        let cid = c as u32;
         // ⊤/⊥ as a *subject* give trivially-true ⊤⊑X / ⊥⊑X, which no reasoner
         // reports as a class subsumption — skip them.
-        if c == TOP || c == BOTTOM {
+        if cid == TOP || cid == BOTTOM {
             continue;
         }
         // unresolved subjects are answered by the context engine instead
-        if unresolved_set.contains(it.name(c)) {
+        if unresolved_set.contains(it.name(cid)) {
             continue;
         }
+        // Take the subject's super-set so it is freed as soon as it has been
+        // converted (the set and its string form never coexist in full); the
+        // element sequence is the set's own iteration, exactly as before.
+        let sups = std::mem::take(&mut sub_super[c]);
         let mut out = Vec::new();
         for &d in sups.iter() {
-            if d == c || d == TOP {
+            if d == cid || d == TOP {
                 continue;
             }
             out.push(if d == BOTTOM {
@@ -2807,7 +2825,7 @@ fn classify_inner(clauses: Vec<JClause>, cert: CertMode, debug: bool) -> Option<
             });
         }
         if !out.is_empty() {
-            subsumptions.insert(it.name(c).to_string(), out);
+            subsumptions.insert(it.name(cid).to_string(), out);
         }
     }
 
@@ -2959,6 +2977,32 @@ mod tests {
         let split_bottom = clauses(&format!("[{}]", cl(&[c("A", "x"), c("B", "y")], &[])));
         assert!(!is_pure_el_shape(&split_bottom));
         assert!(classify_inner(split_bottom, CertMode::Off, false).is_none());
+    }
+
+    #[test]
+    fn output_tail_semantics_preserved() {
+        // Pins the exact semantics of classify_inner's output loop, which now
+        // frees the saturation state before (and while) materialising the
+        // string map: an unsatisfiable subject reports owl:Nothing; ⊤/⊥ never
+        // appear as subjects; ⊤ and the subject itself are never reported as
+        // supers; a ⊤ ⊑ G axiom surfaces on the named subjects instead.
+        let cs = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("Z", "x")], &[]),
+            cl(&[], &[c("G", "x")]),
+        ));
+        let res = classify_inner(cs, CertMode::Off, false).expect("pure EL");
+        assert!(subs_of(&res, "Z").contains(&"owl:Nothing".to_string()));
+        let a = subs_of(&res, "A");
+        assert!(a.contains(&"B".to_string()));
+        assert!(a.contains(&"G".to_string()));
+        assert!(!a.contains(&"A".to_string()));
+        for (subject, supers) in &res.subsumptions {
+            assert!(subject != "\u{22a4}" && subject != "\u{22a5}");
+            assert!(supers.iter().all(|s| s != "\u{22a4}" && s != subject));
+        }
+        assert!(!res.inconsistent);
     }
 
     #[test]

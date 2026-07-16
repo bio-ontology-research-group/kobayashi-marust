@@ -344,6 +344,9 @@ fn try_inproc_engine(
     use crate::json_io::JInput;
     let buf = std::fs::read(clauses_path)?;
     let input: JInput = serde_json::from_slice(&buf)?;
+    // The raw JSON bytes are dead once parsed; free them now instead of
+    // holding them across the whole in-process saturation below.
+    drop(buf);
     if !input.rules.is_empty() {
         return Ok(None); // rule ontologies need the HT-rules route
     }
@@ -364,12 +367,19 @@ fn try_inproc_engine(
         .spawn(move || {
             use crate::reasoner::Reasoner;
             let mut r = Reasoner::new(&clauses);
+            // The String-owning `JClause` block is fully interned into the
+            // Reasoner; free it before saturation rather than holding it (it
+            // is several times the raw JSON size) across the peak.
+            drop(clauses);
             if r.has_internal_definer_disjunction() {
                 let _ = tx.send(None); // blow-up-prone ⇒ decline, use forked path
                 return;
             }
             r.saturate();
-            let _ = tx.send(inproc_engine_out(&r));
+            let out = inproc_engine_out(&mut r);
+            // Contexts, arenas, and indexes are dead once the answer is out.
+            drop(r);
+            let _ = tx.send(out);
         })
         .map_err(|e| OrchestrateError::Spawn {
             bin: "inproc-cb".into(),
@@ -390,13 +400,13 @@ fn try_inproc_engine(
 /// rather than publish a silently incomplete taxonomy as a complete one.
 /// A published result carries the reasoner's real `dropped_unsupported()`
 /// count, keeping it byte-identical to the forked worker's output.
-fn inproc_engine_out(r: &crate::reasoner::Reasoner) -> Option<EngineOut> {
+fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
     if r.incomplete() {
         return None;
     }
     Some(EngineOut {
         subsumptions: r
-            .subsumptions()
+            .take_subsumptions()
             .into_iter()
             .map(|(k, v)| (k, v.into_iter().collect::<Vec<_>>()))
             .collect(),
@@ -412,6 +422,9 @@ fn try_inproc_elc(
 ) -> Result<Option<EngineOut>, OrchestrateError> {
     let buf = std::fs::read(clauses_path)?;
     let input: crate::json_io::JInput = serde_json::from_slice(&buf)?;
+    // Raw JSON bytes are dead once parsed; `classify` itself drops the parsed
+    // clause block before its saturation, so free the bytes symmetrically.
+    drop(buf);
     match crate::elcomplete::classify(input.clauses) {
         None => Ok(None), // not EL ⇒ exit-3 equivalent, fall through
         Some(res) => {
