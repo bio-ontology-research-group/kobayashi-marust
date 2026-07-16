@@ -389,10 +389,25 @@ const COMMON_SETTINGS: &[(&str, &str)] = &[
     ("KM_KEEP_CHAIN_AXIOMS", "1"),
 ];
 
+// The always-running CB fallback needs `KM_ABSORB=1` (polarity-gated
+// definitional clausification) so its clause set is the same disjunction-shrunk
+// set the isolated `cb_absorb_portfolio16` route feeds CB. `KM_TRIGGER_ABSORB`
+// alone leaves the frontend clausifier's `absorb` flag off (it reads only
+// `KM_ABSORB`), so without this the CB fallback saturates the un-absorbed
+// excluded-middle clause set and the disjunction-absorption family (6212, 10908,
+// 15491, 16444) times out — the exact regression `cb_absorb_portfolio16` does
+// not have. The two absorptions compose: `source_axioms` (the Konclude bridge's
+// native terminology) are recorded from the original NNF axioms gated purely on
+// `KM_TRIGGER_ABSORB`, so polarity absorption never changes what the bridge
+// sees; it only shrinks the DL-clause set the CB engine consumes. `KM_ABSORB` is
+// verdict-preserving (equisatisfiable), so admitting it adds no unsound/
+// incomplete risk (2026-06-21 absorb-portfolio ablation: 0 unsound, 0 incomplete,
+// 0 regressions).
 const PRODUCTION_ALL: &[(&str, &str)] = &[
     ("KM_MECHANISM", "portfolio"),
     ("KM_HT_ONLY", "certified"),
     ("KM_TRIGGER_ABSORB", "1"),
+    ("KM_ABSORB", "1"),
     ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
     ("KM_BRIDGE_RETRY_ROUNDS", "0"),
     ("KM_HT_SATURATION_BUDGET_S", "180"),
@@ -402,6 +417,7 @@ const PRODUCTION_ALL_8: &[(&str, &str)] = &[
     ("KM_HT_ONLY", "certified"),
     ("KM_THREADS", "8"),
     ("KM_TRIGGER_ABSORB", "1"),
+    ("KM_ABSORB", "1"),
     ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
     ("KM_BRIDGE_RETRY_ROUNDS", "0"),
     ("KM_HT_SATURATION_BUDGET_S", "180"),
@@ -411,6 +427,7 @@ const PRODUCTION_ALL_1: &[(&str, &str)] = &[
     ("KM_HT_ONLY", "certified"),
     ("KM_THREADS", "1"),
     ("KM_TRIGGER_ABSORB", "1"),
+    ("KM_ABSORB", "1"),
     ("KM_BRIDGE_PROBE_BUDGET_S", "30"),
     ("KM_BRIDGE_RETRY_ROUNDS", "0"),
     ("KM_HT_SATURATION_BUDGET_S", "180"),
@@ -985,6 +1002,75 @@ mod tests {
         assert!(
             sriq_policy_eligible(route),
             "the bootstrap tree may only emit a policy-eligible route"
+        );
+    }
+
+    /// Regression for ore_ont_10908 (and the disjunction-absorption family
+    /// 6212 / 15491 / 16444): the isolated `cb_absorb_portfolio16` route closes
+    /// them exactly because `KM_ABSORB=1` makes the frontend emit the
+    /// polarity-gated clause set that Horn-ifies LHS disjunctions and drops the
+    /// unguarded excluded-middle clauses. The composed production portfolio ran
+    /// the same always-on CB fallback but only carried `KM_TRIGGER_ABSORB=1`;
+    /// the frontend clausifier's absorption flag reads *only* `KM_ABSORB`, so its
+    /// CB fallback saturated the un-absorbed clause set and timed out where the
+    /// absorbed route did not. The production bundles must carry `KM_ABSORB=1` so
+    /// the CB fallback is fed the identical disjunction-shrunk clause set.
+    #[test]
+    fn production_bundles_absorb_the_cb_fallback_clause_set() {
+        for route in [
+            Route::ProductionAll,
+            Route::ProductionAll8,
+            Route::ProductionAll1,
+        ] {
+            let env = normalized_environment(route);
+            // The exact key the frontend clausifier reads for polarity-gated
+            // absorption (`KM_ABSORB` present and != "0"); this is what
+            // `cb_absorb_portfolio16` sets and what recovers the family.
+            assert!(
+                env.contains(&("KM_ABSORB", "1")),
+                "{route} must enable KM_ABSORB so its CB fallback gets the \
+                 disjunction-shrunk clause set (else 10908 regresses to timeout)"
+            );
+            // Absorption must COMPOSE with the bridge stack, not replace it:
+            // `source_axioms` are recorded from the original NNF axioms gated on
+            // KM_TRIGGER_ABSORB, so both must remain set.
+            assert!(
+                env.contains(&("KM_TRIGGER_ABSORB", "1")),
+                "{route} must keep KM_TRIGGER_ABSORB for the Konclude bridge"
+            );
+            assert!(env.contains(&("KM_HT_ONLY", "certified")), "{route}");
+            assert!(env.contains(&("KM_MECHANISM", "portfolio")), "{route}");
+        }
+        // The polarity-absorbed clause set the production CB fallback now uses is
+        // exactly the one the isolated absorb-portfolio route feeds CB: both set
+        // KM_ABSORB=1 and neither pins KM_ABSORB=0.
+        let portfolio = normalized_environment(Route::CbAbsorbPortfolio16);
+        assert!(portfolio.contains(&("KM_ABSORB", "1")));
+        let production = normalized_environment(Route::ProductionAll);
+        assert_eq!(
+            production.iter().find(|(k, _)| *k == "KM_ABSORB"),
+            portfolio.iter().find(|(k, _)| *k == "KM_ABSORB"),
+            "production CB fallback must see the same KM_ABSORB setting as \
+             cb_absorb_portfolio16"
+        );
+    }
+
+    /// The bootstrap SRIQ route (what `select` returns for a nominal-free core,
+    /// and the CB fallback every ABox/nominal portfolio also relies on) must both
+    /// reach the bridge stack AND feed CB the absorbed clause set. This pins the
+    /// two absorptions together on the automatic path so a future edit cannot
+    /// restore one without the other.
+    #[test]
+    fn automatic_sriq_route_absorbs_the_cb_fallback() {
+        let route = select(&OntologyProfile::default());
+        let env = normalized_environment(route);
+        assert!(
+            env.contains(&("KM_ABSORB", "1")),
+            "the automatic SRIQ route {route} must feed CB the absorbed clause set"
+        );
+        assert!(
+            env.contains(&("KM_TRIGGER_ABSORB", "1")),
+            "the automatic SRIQ route {route} must keep the bridge trigger absorption"
         );
     }
 

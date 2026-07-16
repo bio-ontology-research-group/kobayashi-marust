@@ -47,6 +47,51 @@ delta accounting, SIGKILL of a SIGTERM-ignoring child, timeout, and an
 end-to-end runner run that emits one memout row plus a matching durable
 checkpoint). The measured cap and `--mem` allocation are unchanged.
 
+### Absorb the production portfolio's CB fallback clause set (2026-07-17)
+
+`ore_ont_10908` is exact under the isolated `cb_absorb_portfolio16` route
+(208.2 s, 1,071 MB, gold-exact 6001/6001 subsumptions; the completed follow-up
+array in `results/benchmarks/2026-07-16-routing-complete592`) but times out
+under the bootstrap-selected `production_all` route. Both routes run the same
+always-on CB fallback (`race_absorbed_plain` inside `race_adaptive_vs_elc`),
+so the gap is not the orchestrator — it is the clause set the frontend hands
+that fallback.
+
+Root cause: the frontend clausifier's polarity-gated absorption
+(`normalise.rs`, `Clausifier::absorb`) reads *only* `KM_ABSORB`. It Horn-ifies
+LHS disjunctions and drops the unguarded `⊤ → Q ∨ A` excluded-middle clauses,
+shrinking the live-disjunction blow-up at source — this is the mechanism the
+2026-06-21 ablation named the "dominant lever" (recovers 6212, 10908, 15491,
+16444; 0 unsound, 0 incomplete, 0 regressions). `cb_absorb_portfolio16` sets
+`KM_ABSORB=1`. `production_all` set only `KM_TRIGGER_ABSORB=1`, which leaves the
+`absorb` flag off, so its CB fallback saturated the un-absorbed excluded-middle
+clause set and hit the 240 s wall on exactly the disjunction family the absorbed
+route closes. `KM_TRIGGER_ABSORB` alone drives the Konclude bridge, not the CB
+clause encoding.
+
+Fix (ontology-independent, no ontology identity): `production_all{,8,1}` now
+carry `KM_ABSORB=1` alongside `KM_TRIGGER_ABSORB=1`, so the CB fallback is fed
+the identical disjunction-shrunk clause set `cb_absorb_portfolio16` uses. The
+two absorptions compose rather than conflict: `source_axioms` (the bridge's
+native Konclude terminology) are recorded from the original NNF axioms gated
+purely on `KM_TRIGGER_ABSORB` (`normalise.rs:1264-1306`), so polarity absorption
+never changes what the bridge sees, and `mark_subclass_polarity` was already
+written to keep triggered antecedents from recreating excluded-middle clauses
+under `KM_ABSORB`. The card arm reads the `cardinalities` metadata (unaffected
+by `KM_ABSORB`), and the CB engine is sound+complete on any equisatisfiable
+encoding, so admitting absorption adds no unsound/incomplete risk. Focused
+routing tests pin the composition
+(`production_bundles_absorb_the_cb_fallback_clause_set`,
+`automatic_sriq_route_absorbs_the_cb_fallback`).
+
+Lean re-certification is NOT required. `KM_ABSORB` is a frontend clausification
+choice, not CB-calculus logic (AGENTS.md: "the frontend is not calculus logic").
+It changes which equisatisfiable clause set the engine receives, not the
+saturation rules, ordering, redundancy, or what the engine derives from a given
+clause set; the transform is already corpus-validated verdict-preserving. The
+IBEX gate is a `production_all` A/B on the disjunction-absorption family versus
+the frozen matrix, confirming the recovery and no bridge/card regression.
+
 ### Exact OWL top and bottom recognition (2026-07-17)
 
 The functional-syntax frontend now recognizes `owl:Thing` and `owl:Nothing`
