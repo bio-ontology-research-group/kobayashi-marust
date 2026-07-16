@@ -60,14 +60,35 @@ The strict analyzer deliberately exited with code 2, and no `nogold` result was
 promoted to a match. These three still need an independent oracle; do not count
 a KM `ok` result as correct without adjudication.
 
+## Corpus remainder after the all-retained-run union
+
+After restoring every retained exact closure, eight ontologies lie outside the
+584-case exact-to-authoritative-gold union:
+
+- `2669` and `15516` are solved by KM and independently adjudicated
+  inconsistent, but cannot enter the exact-Konclude column because their stored
+  Konclude signatures are stale parse-failure artifacts.
+- `3524`, `15703`, and `4669` have completed KM classifications, but no
+  authoritative reference signature. They are candidate closures, not yet
+  demonstrated-correct full taxonomies.
+- `10621` has authoritative current gold and a confirmed unsatisfiability
+  witness, but no retained complete KM classification within the benchmark
+  budget.
+- `10860` and `1194` have neither an authoritative full gold signature nor a
+  confirmed retained KM closure.
+
+Thus the current counts are 584 exact, 586 demonstrated correct after gold
+adjudication, and three further completed-but-unadjudicated candidates.
+
 ## Consequences for coverage accounting
 
 - `10702`, `15672`, and `6934` are restoration failures, not new reasoning
   frontiers.
 - The frozen 592-ontology route matrix also omitted retained exact closures for
-  `10908`, `7499`, `9540`, and `3215`. Together these seven closures raise the
-  exact cross-run KM union from the matrix-local 575 to 582.
-- `2669` and `15516` raise the adjudicated demonstrated-correct total to 584,
+  `10908`, `11745`, `7499`, `9540`, `9635`, and `3215`. Together with the three
+  hard-residual restorations, these nine closures raise the exact cross-run KM
+  union from the matrix-local 575 to 584.
+- `2669` and `15516` raise the adjudicated demonstrated-correct total to 586,
   but must not be described as matches to their stale Konclude signatures.
 - `10621` may be scored against the current IBEX Konclude signature. Do not use
   or describe the older zero-unsatisfiable signature. KM still owes a complete

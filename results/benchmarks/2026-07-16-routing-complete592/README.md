@@ -44,7 +44,7 @@ come from different configurations.
 This 575-case union is an oracle envelope over the frozen matrix, not a
 measured automatic router run and not KM's all-retained-run coverage headline.
 Retained exact closures from route families absent or not faithfully
-reproduced here raise the demonstrated exact union to 582; the top-level
+reproduced here raise the demonstrated exact union to 584; the top-level
 README tracks that broader union. This matrix-local union's p95 wall time is
 19.985 seconds and its p95 minimum memory is 1,771 MB.
 

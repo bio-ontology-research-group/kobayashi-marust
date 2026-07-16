@@ -115,7 +115,7 @@ Selected measured rows from that matrix:
 
 | reasoner | solved / 592 | average wall time | median wall time | average peak RSS | median peak RSS |
 |---|---:|---:|---:|---:|---:|
-| **KM, demonstrated union of all exact routes** | **582** | pending current-route recheck | pending | pending | pending |
+| **KM, demonstrated union of all exact routes** | **584** | pending current-route recheck | pending | pending | pending |
 | Konclude, 16 threads | 588 | 2.129 s | 0.264 s | 738 MB | 245 MB |
 | ELK | 579 | 1.995 s | 0.824 s | 611 MB | 349 MB |
 | HermiT | 545 | 13.196 s | 1.851 s | 1,392 MB | 745 MB |
@@ -123,14 +123,15 @@ Selected measured rows from that matrix:
 The KM headline is the union of every retained, valid exact closure, not only
 the routes present in one matrix binary. The complete frozen matrix contains
 575 exact KM closures. Retained route-specific runs add `10702`, `10908`,
-`15672`, `6934`, `7499`, `9540`, and `3215`, giving 582 exact matches to
-authoritative gold. In addition, `2669` and `15516` are independently
-adjudicated inconsistent while their stored Konclude signatures are stale, so
-KM has 584 demonstrated-correct corpus cases under the adjudicated-gold
-accounting described in [`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
+`11745`, `15672`, `6934`, `7499`, `9540`, `9635`, and `3215`, giving 584 exact
+matches to authoritative gold. In addition, `2669` and `15516` are
+independently adjudicated inconsistent while their stored Konclude signatures
+are stale, so KM has 586 demonstrated-correct corpus cases under the
+adjudicated-gold accounting described in
+[`docs/CONTESTED-GOLD.md`](docs/CONTESTED-GOLD.md).
 
-The time and memory cells are temporarily withheld while those seven restored
-routes are rerun under the current binary, 240 second timeout, and 20 GiB cap.
+The time and memory cells are temporarily withheld while the restored routes
+are rerun under the current binary, 240 second timeout, and 20 GiB cap.
 Publishing the frozen-matrix averages beside the larger cross-run union would
 mix different ontology sets. Once the focused recheck finishes, each ontology
 will contribute its minimum wall time across exact KM routes and,
