@@ -100,3 +100,19 @@ The benchmark and performance comparison are complete. Correctness claims for
 those five remain explicitly unadjudicated; a `nogold` result was not promoted
 to a match. The complete strict audit output is retained in
 `strict-analysis-audit.log`.
+
+## Complete ontology-to-route proof matrix
+
+`validate_all_named_routes.sbatch` reruns every concrete route exposed by
+`km routes`, plus the automatic source-profile policy, over every ontology.
+That is 34 routes × 592 ontologies = 20,128 isolated route invocations. Each
+invocation has its own 240 second timeout and 20 GiB RSS watchdog. `manual` is
+not included because it denotes arbitrary caller-supplied `KM_*` options, not a
+single reproducible route.
+
+`build_ontology_routes_tsv.py` accepts the completed IBEX result tree and emits
+`ontology-routes.tsv`. Each row is one route that completed an ontology. Exact
+gold matches and completed no-gold cases are distinguished explicitly. The TSV
+records the invocation, binary and signature hashes, wall time, peak memory,
+and the individual evidence file. A route is not listed on historical
+reputation alone: it must complete in this current proof matrix.
