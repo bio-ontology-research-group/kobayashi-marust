@@ -135,3 +135,14 @@ after all six smoke rows are exact. During the full run,
 `monitor_route_proof.py` reports row, panel, status, verdict, and binary-hash
 counts and exits nonzero on malformed rows, mixed binaries, missing signatures,
 or any execution error.
+
+The full proof is resumable at route-row granularity. Before running a route,
+the array task validates any existing row against the ontology, route,
+requested route, current binary hash, execution status, and signature contract.
+Valid rows are retained. Stale, malformed, or execution-error rows are moved to
+`quarantine/` and replaced atomically through a temporary file. Therefore a
+preemption after route 17 resumes at route 18 instead of discarding the panel.
+`resume_route_proof.py` audits all expected rows and produces the minimal Slurm
+array index set requiring work; `resume_route_proof.sh` submits only those
+panels. A changed binary hash automatically causes every stale panel to be
+revalidated.

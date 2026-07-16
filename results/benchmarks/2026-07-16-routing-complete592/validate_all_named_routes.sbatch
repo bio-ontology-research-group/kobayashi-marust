@@ -46,6 +46,7 @@ work=${SLURM_TMPDIR:-/tmp}/km-all-route-proof-${SLURM_JOB_ID}_${SLURM_ARRAY_TASK
 /usr/bin/cp "$source_ontology" "$local_ontology"
 
 km_sha=$(/usr/bin/sha256sum "$km" | /usr/bin/cut -d' ' -f1)
+quarantine_root=$proof_root/quarantine
 
 # Fail before producing any result row if the deployed binary cannot start on
 # this compute node. This catches incompatible GLIBC or loader dependencies.
@@ -76,14 +77,9 @@ for route in "${routes[@]}"; do
   result_dir=$proof_root/results/$route
   result=$result_dir/$ontology.jsonl
   /usr/bin/mkdir -p "$result_dir"
-  /usr/bin/python3 "$runner" \
-    --kind km --arm "$route" --ontology "$local_ontology" \
-    --binary "$km" --binary-sha "$km_sha" \
-    "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir/$route" \
-    --order-index 0 --timeout 240 --memcap-mb 20480 \
-    --env "KM_ROUTE=$route" > "$result"
 
-  /usr/bin/python3 - "$result" "$ontology" "$route" "$km_sha" <<'PY'
+  validate_row() {
+    /usr/bin/python3 - "$result" "$ontology" "$route" "$km_sha" <<'PY'
 import json
 import sys
 
@@ -107,6 +103,29 @@ if row.get("status") == "error":
 if row.get("status") == "ok" and not row.get("signature_sha256"):
     raise SystemExit(f"{path}: successful row has no canonical signature")
 PY
+  }
+
+  if [[ -s "$result" ]] && validate_row; then
+    /usr/bin/printf 'RESUME_KEEP ontology=%s route=%s\n' "$ontology" "$route"
+    continue
+  fi
+
+  if [[ -e "$result" ]]; then
+    quarantine_dir=$quarantine_root/$km_sha/$route
+    /usr/bin/mkdir -p "$quarantine_dir"
+    /usr/bin/mv -f "$result" \
+      "$quarantine_dir/${ontology}.invalid.${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}.jsonl"
+  fi
+
+  temporary=$result.tmp.${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+  /usr/bin/python3 "$runner" \
+    --kind km --arm "$route" --ontology "$local_ontology" \
+    --binary "$km" --binary-sha "$km_sha" \
+    "${gold_args[@]}" --workdir "$work" --failures-dir "$failure_dir/$route" \
+    --order-index 0 --timeout 240 --memcap-mb 20480 \
+    --env "KM_ROUTE=$route" > "$temporary"
+  /usr/bin/mv -f "$temporary" "$result"
+  validate_row
 done
 
 /usr/bin/python3 - "$proof_root/results" "$ontology" "$km_sha" "${routes[@]}" <<'PY'
