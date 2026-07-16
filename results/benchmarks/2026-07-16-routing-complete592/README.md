@@ -146,3 +146,13 @@ preemption after route 17 resumes at route 18 instead of discarding the panel.
 array index set requiring work; `resume_route_proof.sh` submits only those
 panels. A changed binary hash automatically causes every stale panel to be
 revalidated.
+
+`ontology-routes.tsv` is the immediate complete registry. It contains every
+verified exact route from the frozen complete matrix, one row per
+ontology-route pair, and an explicit `unresolved` row for every ontology with
+no completing route in that evidence. It therefore always covers all 592
+ontologies even while restoration work is in progress.
+`build_current_route_registry.py` regenerates it from result JSONL and records
+the binary, gold, signature, invocation, timing, memory, and evidence path.
+Historical closures are noted only as restoration targets until a current
+result row confirms them.
