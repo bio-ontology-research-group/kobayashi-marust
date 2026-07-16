@@ -17,4 +17,5 @@ pub mod konclude_ht;
 pub mod orchestrate;
 pub mod reasoner;
 pub mod role_automaton;
+pub mod routing;
 pub mod tableau;

@@ -1,14 +1,20 @@
 # Nominal support in the CB engine (ALCHOIQ calculus)
 
-Status: PHASES 0–3 IMPLEMENTED (2026-06-12). Phases 0+1 (frontend DL7/DL8 +
+Status: PHASES 0–3 IMPLEMENTED AND ROUTED (updated 2026-07-16). Phases 0+1 (frontend DL7/DL8 +
 ground ABox; engine v_r, r-Succ/r-Pred, grounded Hyper, Table-2 deltas) landed
 first; Phase 2 (Join, r-Succ condition (*), the Nom rule with additional
 nominals) and Phase 3 (Lean soundness certification,
 `lean/ContextCalculus/Nominals.lean`) followed. All six witness probes pass
 (the five Phase-1 probes plus `oracle/ontologies/nom_oiq_funct.ofn`, the
-paper's Example 3 — the O+I+Q interaction that *requires* Nom), each matching
-the HermiT oracle. Still gated by `KM_NOMINALS=1` pending the 60-ontology
-corpus A/B and performance work.
+paper's Example 3, the O+I+Q interaction that *requires* Nom), each matching
+the HermiT oracle. `KM_NOMINALS=1` is now the internal setting of the exact
+`nominals` route. The default router selects that route whenever the source
+profile contains an ABox or nominal individual, except when the version-2
+source profile proves that a strictly positive ABox is consistent and cannot
+change TBox subsumptions. It excludes proxy CB and EL from every uncertified
+nominal fragment. ORE 148, 178, and 11016 match their exact Konclude
+signatures with the production route; the post-fix full-corpus matrix is the
+remaining regression and performance audit.
 
 Phase-2 implementation notes (engine.rs):
 - Nom fires inside `build_hyper_resolvent` in the ground context when σ(x)=o
@@ -46,7 +52,7 @@ source tarball includes full soundness/completeness proofs
 (proof-sound.tex, proof-completeness.tex, proof-payasyougo.tex), which the
 Lean re-certification will follow.
 
-## 1. The gap today
+## 1. The gap before the port
 
 The frontend rewrites `{o}` to a fresh concept `__nom__o`
 (normalise.rs `nominal_name`), lifts unconditional ABox facts `C(o)` to

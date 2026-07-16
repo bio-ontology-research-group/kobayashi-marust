@@ -21,6 +21,14 @@ pub struct Meta {
     pub abox_inconsistent: bool,
     #[serde(default)]
     pub asserted_classes: Vec<String>,
+    #[serde(default)]
+    pub profile: crate::frontend::profile::OntologyProfile,
+    #[serde(default = "manual_route")]
+    pub route: String,
+}
+
+fn manual_route() -> String {
+    "manual".to_string()
 }
 
 /// Returns the clauses temp file (caller owns it; reasoners read it as stdin)
@@ -73,6 +81,8 @@ fn run_ofn_in_process(ont: &Path, clauses_path: &Path) -> Result<Meta, Orchestra
         el_rbox_safe: result.el_rbox_safe,
         abox_inconsistent: result.abox_inconsistent,
         asserted_classes: result.asserted_classes,
+        profile: result.profile,
+        route: result.route,
     };
     let out = ClausesFile {
         clauses: result.clauses,

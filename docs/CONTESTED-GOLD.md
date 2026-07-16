@@ -1,5 +1,9 @@
 # Contested gold: where the reference reasoners disagree, and who is right
 
+For the current six-item residual audit and the distinction between exact
+closure, verdict adjudication, and absent gold, also see
+[`HARD-RESIDUAL-AUDIT.md`](HARD-RESIDUAL-AUDIT.md).
+
 This is the durable record of the ORE-2015 ontologies where the recorded gold
 (Konclude) was **wrong** and KM was right. It exists so we never benchmark
 against the wrong oracle. Short answer:
@@ -67,7 +71,7 @@ copied.)
   | 10906 | **inconsistent** | HermiT on the datatype-cleaned ont → `InconsistentOntologyException` |
   | 13129 | consistent | HermiT cleaned → `owl:Thing satisfiable` |
   | 12451 | consistent | HermiT (full parse) → `owl:Thing satisfiable` |
-  | 10860 | unknown | HermiT can't parse; KM times out |
+| 10860 | under direct adjudication | HermiT can't parse the raw ontology; no valid Konclude gold exists |
 
   KM closes 2669/15516/10906 (correctly **inconsistent**) and 13129 (correctly
   consistent) under `KM_HT_RULES=1` (the ABox-seeded HT consistency path,
@@ -92,12 +96,14 @@ all regenerated together. Verified 2026-06-17 on IBEX
 Action on IBEX: exclude 15516 / 2669 from Konclude comparison (or drop their
 gold files), since Konclude cannot produce a valid signature for them.
 
-## 10621 — functional-datatype unsatisfiability Konclude's gold misses (proven 2026-06-25)
+## 10621 — historical stale-gold report, current gold corrected
 
-`ore_ont_10621` (FMAInOWL anatomy, ~244k clauses) has **functional boolean datatype
-properties**. Konclude's gold records it **consistent with an empty `#UNSAT` block
-(0 unsatisfiable concepts)** — this is **wrong**. The ontology genuinely has many
-unsatisfiable named concepts. Minimal proof from the told axioms:
+`ore_ont_10621` (FMAInOWL anatomy, ~244k clauses) has **functional boolean
+datatype properties**. An older retained report described a Konclude signature
+with an empty `#UNSAT` block. That report is stale. The current IBEX signature,
+checked on 2026-07-16, contains **33,433 unsatisfiable named classes**, including
+`Zone_of_cell`. The ontology genuinely has many unsatisfiable named concepts.
+Minimal proof from the told axioms:
 
 ```
 Zone_of_cell ⊑ Fiat_cell_part ⊑ Fiat_anatomical_structure ⊑ Anatomical_structure
@@ -113,14 +119,14 @@ Three-way adjudication on the minimal extracted ontology (IBEX job 47787383):
 |----------|------------------------|-------|
 | **HermiT 1.4.6** | `≡ owl:Nothing` (unsatisfiable) | datatype-sound authority — **correct** |
 | **KM (CB engine)** | `unsatisfiable: [Zone_of_cell]` | **correct** |
-| Konclude (gold)  | consistent, 0 unsat | **wrong** |
+| Current Konclude gold | `Zone_of_cell` unsatisfiable | **correct on the witness** |
+| Historical stale gold report | consistent, 0 unsat | wrong/obsolete |
 | ELK              | consistent, `Zone_of_cell ⊑ Anatomical_structure` | EL profile drops functional datatypes — **cannot see it** |
 
-So **ELK "consistent" does NOT validate Konclude here** — both miss the functional
-datatype. KM (CB *and* the fast hypertableau) is **sound** on 10621; its
-"unsatisfiable" verdicts are genuine. The 10621 timeout in any KM engine is
-correct-but-expensive unsatisfiability work, not a soundness defect. Exclude 10621
-from Konclude gold-match scoring, or re-gold it with HermiT.
+So **ELK "consistent" does not adjudicate this ontology** because ELK drops the
+functional-datatype consequence. KM's unsatisfiability derivation and the
+current Konclude signature agree. The 10621 timeout in KM is
+correct-but-expensive classification work, not a gold or soundness defect.
 
 **General rule this establishes:** functional-datatype unsatisfiability is a
 Konclude-ORE-gold blind spot. For any datatype-bearing ontology where KM reports
@@ -129,8 +135,10 @@ treating KM as unsound.
 
 ## Scope / honesty note
 
-**Five** ontologies are now *proven* (8941, 13912, 15516, 2669 via ddmin cores;
-10621 via the minimal told-axiom ontology + HermiT). CLAUDE.md notes HermiT differs
+Four ontologies remain proven current Konclude-gold failures (8941, 13912,
+15516, 2669 via ddmin cores). The `10621` witness remains proven, but the
+current Konclude signature now agrees with it and is no longer a live gold
+failure. CLAUDE.md notes HermiT differs
 from Konclude on ~12 ontologies overall; the rest are **not yet adjudicated** — do
 not assume HermiT is right on those without the same proof. On every proven case so
-far, **KM agrees with HermiT and Konclude's gold is the one that is wrong.**
+far, KM agrees with the independently checked witnesses.

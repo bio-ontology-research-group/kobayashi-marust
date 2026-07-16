@@ -9,6 +9,35 @@
 
 use std::path::PathBuf;
 
+/// Top-level classifier selected by the source-profile router. `Portfolio` is
+/// the historical composed orchestrator and remains available explicitly for
+/// diagnostics. Every learned/default route selects one of the other variants,
+/// which execute exactly one classification mechanism and never start a
+/// speculative competitor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Mechanism {
+    Portfolio,
+    Elc,
+    Cb,
+    Ht,
+    Tableau,
+    Unknown(String),
+}
+
+impl Mechanism {
+    fn from_env() -> Self {
+        match std::env::var("KM_MECHANISM").as_deref() {
+            Ok("portfolio") | Err(_) => Mechanism::Portfolio,
+            Ok("elc") => Mechanism::Elc,
+            Ok("cb") => Mechanism::Cb,
+            Ok("ht") => Mechanism::Ht,
+            Ok("tableau") => Mechanism::Tableau,
+            Ok(other) => Mechanism::Unknown(other.to_string()),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Config {
     /// path of the running multi-call binary (for sibling-worker resolution)
     pub self_exe: PathBuf,
@@ -16,6 +45,9 @@ pub struct Config {
     pub elc_bin_override: Option<PathBuf>,
     pub engine_bin_override: Option<PathBuf>,
     pub tab_bin_override: Option<PathBuf>,
+    /// Exactly one top-level classifier for atomic routes. The historical
+    /// orchestrated portfolios are retained only as `Portfolio`.
+    pub mechanism: Mechanism,
     // --- absorption portfolio (KM_ABSORB_PORTFOLIO) ---
     pub absorb_portfolio: bool,
     /// KM_ABSORB present and != "0"
@@ -39,6 +71,11 @@ pub struct Config {
     pub no_retry: bool,
     /// KM_NO_CENTRAL: start from the legacy per-`f` strategy
     pub no_central: bool,
+    /// Master EL worker gate. Default ON; `KM_NO_ELC=1` is an explicit
+    /// procedure override used by benchmarking and by the learned router when
+    /// it selects a pure CB/HT route. It does not remove any of the more
+    /// specific EL portfolio controls.
+    pub elc: bool,
     // --- certified-elc portfolio (KM_ELC_PORTFOLIO) ---
     pub elc_portfolio: bool,
     /// KM_ELC_FORCE: attempt elc on a non-EL-safe RBox (certificate gate)
@@ -126,6 +163,7 @@ impl Config {
             elc_bin_override: std::env::var_os("KM_ELC_BIN").map(PathBuf::from),
             engine_bin_override: std::env::var_os("KM_ENGINE").map(PathBuf::from),
             tab_bin_override: std::env::var_os("KM_TAB_BIN").map(PathBuf::from),
+            mechanism: Mechanism::from_env(),
             // Default ON: the sequential plain-then-absorbed CB portfolio. The
             // 2026-06-21 full-corpus ablation (results/benchmarks/2026-06-21-ablation)
             // found it the strictly dominant single lever: +4 ORE onts
@@ -155,6 +193,7 @@ impl Config {
             central_time_cap: env_f64("KM_CENTRAL_TIME_CAP", 190.0),
             no_retry: std::env::var_os("KM_NO_RETRY").is_some(),
             no_central: std::env::var_os("KM_NO_CENTRAL").is_some(),
+            elc: std::env::var_os("KM_NO_ELC").is_none(),
             // Default ON (the validated router): the certified-elc portfolio is
             // sound+complete and, with the giant-exclusion guard in classify(),
             // never regresses. Opt out with KM_NO_ELC_PORTFOLIO.

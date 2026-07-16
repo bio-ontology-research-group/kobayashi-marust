@@ -1,0 +1,824 @@
+{
+  "el_rbox_safe": {
+    "false": 125,
+    "true": 467
+  },
+  "expressivity_distribution": {
+    "ALEHI+": 12,
+    "ALEI+": 96,
+    "ALHI+": 26,
+    "ALHIF+": 1,
+    "ALI+": 97,
+    "SHI": 89,
+    "SHIF": 20,
+    "SHIF(D)": 11,
+    "SHIN": 2,
+    "SHIN(D)": 2,
+    "SHIQ": 1,
+    "SHIQ(D)": 2,
+    "SHOI": 13,
+    "SHOI(D)": 2,
+    "SHOIF(D)": 13,
+    "SHOIN": 4,
+    "SHOIN(D)": 10,
+    "SHOIQ": 1,
+    "SI": 123,
+    "SI(D)": 1,
+    "SIF(D)": 4,
+    "SIN(D)": 1,
+    "SOI": 8,
+    "SOIF(D)": 4,
+    "SOIN": 1,
+    "SOIN(D)": 1,
+    "SRI": 25,
+    "SRIF": 5,
+    "SRIQ": 5,
+    "SRIQ(D)": 1,
+    "SROI": 3,
+    "SROIF": 7,
+    "SROIQ": 1
+  },
+  "expressivity_matches": 592,
+  "expressivity_mismatches": [],
+  "largest_by_file_bytes": [
+    {
+      "ont": "ore_ont_16744.owl",
+      "value": 576729915
+    },
+    {
+      "ont": "ore_ont_15059.owl",
+      "value": 576728615
+    },
+    {
+      "ont": "ore_ont_8737.owl",
+      "value": 472349807
+    },
+    {
+      "ont": "ore_ont_1559.owl",
+      "value": 393840303
+    },
+    {
+      "ont": "ore_ont_3836.owl",
+      "value": 349620447
+    },
+    {
+      "ont": "ore_ont_3524.owl",
+      "value": 305482391
+    },
+    {
+      "ont": "ore_ont_15703.owl",
+      "value": 274783723
+    },
+    {
+      "ont": "ore_ont_13482.owl",
+      "value": 178779907
+    },
+    {
+      "ont": "ore_ont_868.owl",
+      "value": 178070030
+    },
+    {
+      "ont": "ore_ont_9674.owl",
+      "value": 178069608
+    },
+    {
+      "ont": "ore_ont_10689.owl",
+      "value": 178069556
+    },
+    {
+      "ont": "ore_ont_11395.owl",
+      "value": 173850448
+    },
+    {
+      "ont": "ore_ont_15280.owl",
+      "value": 167417960
+    },
+    {
+      "ont": "ore_ont_8486.owl",
+      "value": 163865868
+    },
+    {
+      "ont": "ore_ont_14042.owl",
+      "value": 159104159
+    },
+    {
+      "ont": "ore_ont_14459.owl",
+      "value": 153642871
+    },
+    {
+      "ont": "ore_ont_1012.owl",
+      "value": 146045080
+    },
+    {
+      "ont": "ore_ont_10750.owl",
+      "value": 138901880
+    },
+    {
+      "ont": "ore_ont_6212.owl",
+      "value": 137004898
+    },
+    {
+      "ont": "ore_ont_16008.owl",
+      "value": 132673984
+    }
+  ],
+  "largest_by_logical_axioms": [
+    {
+      "ont": "ore_ont_16744.owl",
+      "value": 3137907
+    },
+    {
+      "ont": "ore_ont_15059.owl",
+      "value": 3137899
+    },
+    {
+      "ont": "ore_ont_8737.owl",
+      "value": 2544794
+    },
+    {
+      "ont": "ore_ont_1559.owl",
+      "value": 2249889
+    },
+    {
+      "ont": "ore_ont_3524.owl",
+      "value": 1974320
+    },
+    {
+      "ont": "ore_ont_3836.owl",
+      "value": 1869498
+    },
+    {
+      "ont": "ore_ont_15703.owl",
+      "value": 1727700
+    },
+    {
+      "ont": "ore_ont_868.owl",
+      "value": 981146
+    },
+    {
+      "ont": "ore_ont_10689.owl",
+      "value": 981144
+    },
+    {
+      "ont": "ore_ont_9674.owl",
+      "value": 981144
+    },
+    {
+      "ont": "ore_ont_11739.owl",
+      "value": 952087
+    },
+    {
+      "ont": "ore_ont_8486.owl",
+      "value": 903613
+    },
+    {
+      "ont": "ore_ont_14459.owl",
+      "value": 847755
+    },
+    {
+      "ont": "ore_ont_6212.owl",
+      "value": 772142
+    },
+    {
+      "ont": "ore_ont_3377.owl",
+      "value": 747967
+    },
+    {
+      "ont": "ore_ont_15803.owl",
+      "value": 747725
+    },
+    {
+      "ont": "ore_ont_16008.owl",
+      "value": 733098
+    },
+    {
+      "ont": "ore_ont_9794.owl",
+      "value": 678470
+    },
+    {
+      "ont": "ore_ont_11395.owl",
+      "value": 652361
+    },
+    {
+      "ont": "ore_ont_14042.owl",
+      "value": 652361
+    }
+  ],
+  "largest_by_normalized_clauses": [
+    {
+      "ont": "ore_ont_16744.owl",
+      "value": 4227742
+    },
+    {
+      "ont": "ore_ont_8737.owl",
+      "value": 3637685
+    },
+    {
+      "ont": "ore_ont_15059.owl",
+      "value": 3546085
+    },
+    {
+      "ont": "ore_ont_1559.owl",
+      "value": 2925744
+    },
+    {
+      "ont": "ore_ont_13482.owl",
+      "value": 2192049
+    },
+    {
+      "ont": "ore_ont_15280.owl",
+      "value": 2096850
+    },
+    {
+      "ont": "ore_ont_3836.owl",
+      "value": 1931916
+    },
+    {
+      "ont": "ore_ont_3524.owl",
+      "value": 1851011
+    },
+    {
+      "ont": "ore_ont_1012.owl",
+      "value": 1824059
+    },
+    {
+      "ont": "ore_ont_10750.owl",
+      "value": 1764333
+    },
+    {
+      "ont": "ore_ont_15703.owl",
+      "value": 1727709
+    },
+    {
+      "ont": "ore_ont_1306.owl",
+      "value": 1351404
+    },
+    {
+      "ont": "ore_ont_11395.owl",
+      "value": 1331669
+    },
+    {
+      "ont": "ore_ont_14042.owl",
+      "value": 1331669
+    },
+    {
+      "ont": "ore_ont_6233.owl",
+      "value": 1324179
+    },
+    {
+      "ont": "ore_ont_1194.owl",
+      "value": 1062226
+    },
+    {
+      "ont": "ore_ont_868.owl",
+      "value": 981153
+    },
+    {
+      "ont": "ore_ont_10689.owl",
+      "value": 981144
+    },
+    {
+      "ont": "ore_ont_9674.owl",
+      "value": 981144
+    },
+    {
+      "ont": "ore_ont_11739.owl",
+      "value": 952087
+    }
+  ],
+  "numeric_statistics": {
+    "clauses.binary_bottom_clauses": {
+      "max": 109484,
+      "mean": 196.5658783783784,
+      "median": 0.0,
+      "min": 0,
+      "p95": 42
+    },
+    "clauses.binary_top_disjunctions": {
+      "max": 72989,
+      "mean": 124.66722972972973,
+      "median": 0.0,
+      "min": 0,
+      "p95": 4
+    },
+    "clauses.body_atoms": {
+      "max": 4908892,
+      "mean": 140262.16047297296,
+      "median": 7564.0,
+      "min": 60,
+      "p95": 742177
+    },
+    "clauses.clauses": {
+      "max": 4227742,
+      "mean": 122378.6081081081,
+      "median": 6702.5,
+      "min": 60,
+      "p95": 595914
+    },
+    "clauses.clauses_with_aux_terms": {
+      "max": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "clauses.clauses_with_function_terms": {
+      "max": 646630,
+      "mean": 17434.006756756757,
+      "median": 266.0,
+      "min": 0,
+      "p95": 77048
+    },
+    "clauses.complementary_definers": {
+      "max": 72989,
+      "mean": 124.66722972972973,
+      "median": 0.0,
+      "min": 0,
+      "p95": 4
+    },
+    "clauses.concept_symbols": {
+      "max": 981154,
+      "mean": 43984.54222972973,
+      "median": 3802.0,
+      "min": 50,
+      "p95": 187431
+    },
+    "clauses.disjunctive_clauses": {
+      "max": 72989,
+      "mean": 158.09121621621622,
+      "median": 0.0,
+      "min": 0,
+      "p95": 18
+    },
+    "clauses.empty_body_clauses": {
+      "max": 72990,
+      "mean": 125.15371621621621,
+      "median": 0.0,
+      "min": 0,
+      "p95": 6
+    },
+    "clauses.empty_head_clauses": {
+      "max": 109485,
+      "mean": 273.35472972972974,
+      "median": 0.0,
+      "min": 0,
+      "p95": 44
+    },
+    "clauses.equality_atoms": {
+      "max": 44863,
+      "mean": 82.0608108108108,
+      "median": 0.0,
+      "min": 0,
+      "p95": 37
+    },
+    "clauses.head_atoms": {
+      "max": 4227742,
+      "mean": 122266.39527027027,
+      "median": 6676.5,
+      "min": 60,
+      "p95": 595914
+    },
+    "clauses.horn_clauses": {
+      "max": 4227742,
+      "mean": 122220.5168918919,
+      "median": 6702.5,
+      "min": 60,
+      "p95": 595914
+    },
+    "clauses.max_body_atoms": {
+      "max": 133,
+      "mean": 3.20777027027027,
+      "median": 2.0,
+      "min": 1,
+      "p95": 8
+    },
+    "clauses.max_disjunction_width": {
+      "max": 60,
+      "mean": 0.9425675675675675,
+      "median": 0.0,
+      "min": 0,
+      "p95": 6
+    },
+    "clauses.max_head_atoms": {
+      "max": 60,
+      "mean": 1.8175675675675675,
+      "median": 1.0,
+      "min": 1,
+      "p95": 6
+    },
+    "clauses.role_chain_clauses": {
+      "max": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "clauses.role_symbols": {
+      "max": 950,
+      "mean": 50.336148648648646,
+      "median": 7.0,
+      "min": 0,
+      "p95": 264
+    },
+    "clauses.transitivity_clauses": {
+      "max": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "el_rbox_safe": {
+      "max": true,
+      "mean": 0.7888513513513513,
+      "median": 1.0,
+      "min": false,
+      "p95": true
+    },
+    "expressivity_match": {
+      "max": true,
+      "mean": 1.0,
+      "median": 1.0,
+      "min": true,
+      "p95": true
+    },
+    "schema_version": {
+      "max": 1,
+      "mean": 1.0,
+      "median": 1.0,
+      "min": 1,
+      "p95": 1
+    },
+    "source.abox_axioms": {
+      "max": 607933,
+      "mean": 18976.488175675677,
+      "median": 0.0,
+      "min": 0,
+      "p95": 155169
+    },
+    "source.annotation_axioms": {
+      "max": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.class_assertions": {
+      "max": 470571,
+      "mean": 16055.684121621622,
+      "median": 0.0,
+      "min": 0,
+      "p95": 143388
+    },
+    "source.complements": {
+      "max": 36495,
+      "mean": 63.070945945945944,
+      "median": 0.0,
+      "min": 0,
+      "p95": 4
+    },
+    "source.concept_expressions": {
+      "max": 9413697,
+      "mean": 231607.1706081081,
+      "median": 11316.0,
+      "min": 7,
+      "p95": 1049807
+    },
+    "source.datatype_constructors": {
+      "max": 237,
+      "mean": 1.4375,
+      "median": 0.0,
+      "min": 0,
+      "p95": 2
+    },
+    "source.declarations": {
+      "max": 981151,
+      "mean": 28656.87162162162,
+      "median": 3030.5,
+      "min": 35,
+      "p95": 105947
+    },
+    "source.declared_classes": {
+      "max": 981151,
+      "mean": 28604.868243243243,
+      "median": 2987.5,
+      "min": 4,
+      "p95": 105917
+    },
+    "source.declared_data_properties": {
+      "max": 107,
+      "mean": 3.2550675675675675,
+      "median": 0.0,
+      "min": 0,
+      "p95": 30
+    },
+    "source.declared_named_individuals": {
+      "max": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.declared_object_properties": {
+      "max": 950,
+      "mean": 48.748310810810814,
+      "median": 8.0,
+      "min": 0,
+      "p95": 260
+    },
+    "source.disjoint_class_axioms": {
+      "max": 10315,
+      "mean": 35.847972972972975,
+      "median": 0.0,
+      "min": 0,
+      "p95": 68
+    },
+    "source.distinct_classes": {
+      "max": 981151,
+      "mean": 28604.868243243243,
+      "median": 2987.5,
+      "min": 4,
+      "p95": 105917
+    },
+    "source.distinct_data_properties": {
+      "max": 107,
+      "mean": 3.2567567567567566,
+      "median": 0.0,
+      "min": 0,
+      "p95": 30
+    },
+    "source.distinct_individuals": {
+      "max": 470571,
+      "mean": 13827.533783783783,
+      "median": 0.0,
+      "min": 0,
+      "p95": 108512
+    },
+    "source.distinct_object_properties": {
+      "max": 950,
+      "mean": 48.748310810810814,
+      "median": 8.0,
+      "min": 0,
+      "p95": 260
+    },
+    "source.domain_axioms": {
+      "max": 430,
+      "mean": 13.43918918918919,
+      "median": 0.0,
+      "min": 0,
+      "p95": 80
+    },
+    "source.equivalent_class_axioms": {
+      "max": 57979,
+      "mean": 1066.9780405405406,
+      "median": 0.0,
+      "min": 0,
+      "p95": 3133
+    },
+    "source.exact_cardinalities": {
+      "max": 121,
+      "mean": 1.2280405405405406,
+      "median": 0.0,
+      "min": 0,
+      "p95": 11
+    },
+    "source.existentials": {
+      "max": 3137899,
+      "mean": 54699.52533783784,
+      "median": 170.0,
+      "min": 0,
+      "p95": 242008
+    },
+    "source.file_bytes": {
+      "max": 576729915,
+      "mean": 17266868.14695946,
+      "median": 1297565.0,
+      "min": 13865,
+      "p95": 85665240
+    },
+    "source.functional_role_axioms": {
+      "max": 337,
+      "mean": 2.2652027027027026,
+      "median": 0.0,
+      "min": 0,
+      "p95": 1
+    },
+    "source.has_self": {
+      "max": 30,
+      "mean": 0.060810810810810814,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.has_values": {
+      "max": 6692,
+      "mean": 20.56081081081081,
+      "median": 0.0,
+      "min": 0,
+      "p95": 9
+    },
+    "source.imports": {
+      "max": 0,
+      "mean": 0.0,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.intersections": {
+      "max": 297719,
+      "mean": 4157.959459459459,
+      "median": 0.0,
+      "min": 0,
+      "p95": 7515
+    },
+    "source.inverse_functional_role_axioms": {
+      "max": 337,
+      "mean": 0.625,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.logical_axioms": {
+      "max": 3137907,
+      "mean": 95068.3902027027,
+      "median": 6714.5,
+      "min": 55,
+      "p95": 432805
+    },
+    "source.max_cardinalities": {
+      "max": 88,
+      "mean": 0.7179054054054054,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.max_cardinality": {
+      "max": 300,
+      "mean": 0.6824324324324325,
+      "median": 0.0,
+      "min": 0,
+      "p95": 1
+    },
+    "source.max_concept_arity": {
+      "max": 133,
+      "mean": 3.0371621621621623,
+      "median": 2.0,
+      "min": 0,
+      "p95": 9
+    },
+    "source.max_concept_depth": {
+      "max": 13,
+      "mean": 2.364864864864865,
+      "median": 2.0,
+      "min": 1,
+      "p95": 6
+    },
+    "source.max_role_chain_length": {
+      "max": 2,
+      "mean": 0.27702702702702703,
+      "median": 0.0,
+      "min": 0,
+      "p95": 2
+    },
+    "source.min_cardinalities": {
+      "max": 93,
+      "mean": 0.5067567567567568,
+      "median": 0.0,
+      "min": 0,
+      "p95": 2
+    },
+    "source.nominals": {
+      "max": 283,
+      "mean": 3.8260135135135136,
+      "median": 0.0,
+      "min": 0,
+      "p95": 1
+    },
+    "source.ontology_children": {
+      "max": 3280800,
+      "mean": 123726.26182432432,
+      "median": 10588.0,
+      "min": 114,
+      "p95": 533137
+    },
+    "source.qualified_cardinalities": {
+      "max": 74,
+      "mean": 0.38682432432432434,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.range_axioms": {
+      "max": 813,
+      "mean": 19.88006756756757,
+      "median": 0.0,
+      "min": 0,
+      "p95": 157
+    },
+    "source.rbox_axioms": {
+      "max": 2165,
+      "mean": 72.94425675675676,
+      "median": 3.0,
+      "min": 0,
+      "p95": 428
+    },
+    "source.role_assertions": {
+      "max": 225420,
+      "mean": 2665.045608108108,
+      "median": 0.0,
+      "min": 0,
+      "p95": 2660
+    },
+    "source.role_chain_axioms": {
+      "max": 55,
+      "mean": 1.4256756756756757,
+      "median": 0.0,
+      "min": 0,
+      "p95": 7
+    },
+    "source.role_inclusion_axioms": {
+      "max": 958,
+      "mean": 29.658783783783782,
+      "median": 0.0,
+      "min": 0,
+      "p95": 176
+    },
+    "source.rule_axioms": {
+      "max": 17,
+      "mean": 0.04560810810810811,
+      "median": 0.0,
+      "min": 0,
+      "p95": 0
+    },
+    "source.subclass_axioms": {
+      "max": 3137899,
+      "mean": 74916.08614864865,
+      "median": 3233.0,
+      "min": 0,
+      "p95": 257159
+    },
+    "source.tbox_axioms": {
+      "max": 3137899,
+      "mean": 76018.91216216216,
+      "median": 3869.0,
+      "min": 0,
+      "p95": 257159
+    },
+    "source.transitive_role_axioms": {
+      "max": 58,
+      "mean": 2.1182432432432434,
+      "median": 0.0,
+      "min": 0,
+      "p95": 9
+    },
+    "source.unions": {
+      "max": 18323,
+      "mean": 42.633445945945944,
+      "median": 0.0,
+      "min": 0,
+      "p95": 12
+    },
+    "source.universals": {
+      "max": 6347,
+      "mean": 31.45777027027027,
+      "median": 0.0,
+      "min": 0,
+      "p95": 249
+    },
+    "source.unqualified_cardinalities": {
+      "max": 254,
+      "mean": 2.0658783783783785,
+      "median": 0.0,
+      "min": 0,
+      "p95": 7
+    },
+    "source.unsupported_rule_axioms": {
+      "max": 4,
+      "mean": 1.3333333333333333,
+      "median": 0,
+      "min": 0,
+      "p95": 4
+    }
+  },
+  "official_rows": 592,
+  "profile_errors": [],
+  "profile_rows": 592,
+  "totals": {
+    "clauses.clauses": 72448136,
+    "clauses.disjunctive_clauses": 93590,
+    "clauses.horn_clauses": 72354546,
+    "source.abox_axioms": 11234081,
+    "source.concept_expressions": 137111445,
+    "source.declarations": 16964868,
+    "source.distinct_classes": 16934082,
+    "source.distinct_data_properties": 1928,
+    "source.distinct_individuals": 8185900,
+    "source.distinct_object_properties": 28859,
+    "source.file_bytes": 10221985943,
+    "source.logical_axioms": 56280487,
+    "source.ontology_children": 73245947,
+    "source.rbox_axioms": 43183,
+    "source.rule_axioms": 27,
+    "source.tbox_axioms": 45003196,
+    "source.unsupported_rule_axioms": 4
+  }
+}

@@ -1,0 +1,481 @@
+[
+  {
+    "arm": "card_fn",
+    "mem_mean_mb": 26.063,
+    "mem_median_mb": 11.715,
+    "mem_p95_mb": 69.38,
+    "ok": 10,
+    "rows": 592,
+    "runner_match": 8,
+    "statuses": {
+      "error": 13,
+      "ok": 10,
+      "unsupported": 569
+    },
+    "wall_mean_s": 2.0597199999999996,
+    "wall_median_s": 0.06255,
+    "wall_p95_s": 7.3763
+  },
+  {
+    "arm": "cb_absorb1",
+    "mem_mean_mb": 419.7109477756284,
+    "mem_median_mb": 66.78,
+    "mem_p95_mb": 2270.61,
+    "ok": 517,
+    "rows": 592,
+    "runner_match": 516,
+    "statuses": {
+      "error": 75,
+      "ok": 517
+    },
+    "wall_mean_s": 11.366848549323027,
+    "wall_median_s": 0.4185,
+    "wall_p95_s": 71.7705
+  },
+  {
+    "arm": "cb_absorb16",
+    "mem_mean_mb": 1138.7598320895543,
+    "mem_median_mb": 132.91,
+    "mem_p95_mb": 6103.82,
+    "ok": 536,
+    "rows": 592,
+    "runner_match": 535,
+    "statuses": {
+      "error": 56,
+      "ok": 536
+    },
+    "wall_mean_s": 4.442215858208958,
+    "wall_median_s": 0.2734,
+    "wall_p95_s": 25.3939
+  },
+  {
+    "arm": "cb_absorb8",
+    "mem_mean_mb": 879.4182309124762,
+    "mem_median_mb": 104.61,
+    "mem_p95_mb": 4827.38,
+    "ok": 537,
+    "rows": 592,
+    "runner_match": 536,
+    "statuses": {
+      "error": 55,
+      "ok": 537
+    },
+    "wall_mean_s": 5.881753072625688,
+    "wall_median_s": 0.3174,
+    "wall_p95_s": 38.33
+  },
+  {
+    "arm": "cb_plain1",
+    "mem_mean_mb": 424.7462669245646,
+    "mem_median_mb": 68.54,
+    "mem_p95_mb": 2275.52,
+    "ok": 517,
+    "rows": 592,
+    "runner_match": 516,
+    "statuses": {
+      "error": 75,
+      "ok": 517
+    },
+    "wall_mean_s": 11.402563249516444,
+    "wall_median_s": 0.4288,
+    "wall_p95_s": 70.0403
+  },
+  {
+    "arm": "cb_plain16",
+    "mem_mean_mb": 1136.2443575418986,
+    "mem_median_mb": 137.85,
+    "mem_p95_mb": 6102.32,
+    "ok": 537,
+    "rows": 592,
+    "runner_match": 536,
+    "statuses": {
+      "error": 55,
+      "ok": 537
+    },
+    "wall_mean_s": 4.643188640595893,
+    "wall_median_s": 0.3193,
+    "wall_p95_s": 28.8949
+  },
+  {
+    "arm": "cb_plain8",
+    "mem_mean_mb": 871.9759514925374,
+    "mem_median_mb": 108.735,
+    "mem_p95_mb": 4798.21,
+    "ok": 536,
+    "rows": 592,
+    "runner_match": 535,
+    "statuses": {
+      "error": 56,
+      "ok": 536
+    },
+    "wall_mean_s": 5.839071828358214,
+    "wall_median_s": 0.3169,
+    "wall_p95_s": 38.407
+  },
+  {
+    "arm": "cb_trigger1",
+    "mem_mean_mb": 433.13642857142844,
+    "mem_median_mb": 69.655,
+    "mem_p95_mb": 2151.59,
+    "ok": 518,
+    "rows": 592,
+    "runner_match": 515,
+    "statuses": {
+      "error": 74,
+      "ok": 518
+    },
+    "wall_mean_s": 11.834849613899623,
+    "wall_median_s": 0.46055,
+    "wall_p95_s": 73.7522
+  },
+  {
+    "arm": "cb_trigger16",
+    "mem_mean_mb": 1158.4483240223453,
+    "mem_median_mb": 134.2,
+    "mem_p95_mb": 6113.3,
+    "ok": 537,
+    "rows": 592,
+    "runner_match": 534,
+    "statuses": {
+      "error": 55,
+      "ok": 537
+    },
+    "wall_mean_s": 4.698418994413409,
+    "wall_median_s": 0.3246,
+    "wall_p95_s": 29.3094
+  },
+  {
+    "arm": "cb_trigger8",
+    "mem_mean_mb": 895.660372439479,
+    "mem_median_mb": 104.05,
+    "mem_p95_mb": 4911.32,
+    "ok": 537,
+    "rows": 592,
+    "runner_match": 534,
+    "statuses": {
+      "error": 55,
+      "ok": 537
+    },
+    "wall_mean_s": 6.013181191806334,
+    "wall_median_s": 0.3172,
+    "wall_p95_s": 39.2629
+  },
+  {
+    "arm": "elc",
+    "mem_mean_mb": 296.06548469387735,
+    "mem_median_mb": 34.815,
+    "mem_p95_mb": 1908.5,
+    "ok": 392,
+    "rows": 592,
+    "runner_match": 392,
+    "statuses": {
+      "error": 13,
+      "ok": 392,
+      "unsupported": 187
+    },
+    "wall_mean_s": 3.075393622448981,
+    "wall_median_s": 0.26339999999999997,
+    "wall_p95_s": 18.5792
+  },
+  {
+    "arm": "elc_cert",
+    "mem_mean_mb": 267.11325481798707,
+    "mem_median_mb": 29.75,
+    "mem_p95_mb": 1266.06,
+    "ok": 467,
+    "rows": 592,
+    "runner_match": 467,
+    "statuses": {
+      "error": 13,
+      "ok": 467,
+      "timeout": 4,
+      "unsupported": 108
+    },
+    "wall_mean_s": 3.1110235546038494,
+    "wall_median_s": 0.2154,
+    "wall_p95_s": 18.2802
+  },
+  {
+    "arm": "elk",
+    "mem_mean_mb": 611.1177202072544,
+    "mem_median_mb": 349.12,
+    "mem_p95_mb": 1505.34,
+    "ok": 579,
+    "rows": 592,
+    "runner_match": 518,
+    "statuses": {
+      "error": 13,
+      "ok": 579
+    },
+    "wall_mean_s": 1.9951279792746126,
+    "wall_median_s": 0.8238,
+    "wall_p95_s": 4.1883
+  },
+  {
+    "arm": "hermit",
+    "mem_mean_mb": 1392.4343486238538,
+    "mem_median_mb": 744.95,
+    "mem_p95_mb": 5026.23,
+    "ok": 545,
+    "rows": 592,
+    "runner_match": 536,
+    "statuses": {
+      "error": 13,
+      "ok": 545,
+      "timeout": 33,
+      "unsupported": 1
+    },
+    "wall_mean_s": 13.195629541284404,
+    "wall_median_s": 1.8513,
+    "wall_p95_s": 74.9041
+  },
+  {
+    "arm": "ht_bridge",
+    "mem_mean_mb": 475.0729702970297,
+    "mem_median_mb": 48.42,
+    "mem_p95_mb": 2017.06,
+    "ok": 505,
+    "rows": 592,
+    "runner_match": 502,
+    "statuses": {
+      "error": 13,
+      "memout": 1,
+      "ok": 505,
+      "timeout": 8,
+      "unsupported": 65
+    },
+    "wall_mean_s": 4.9212079207920825,
+    "wall_median_s": 0.2658,
+    "wall_p95_s": 22.8274
+  },
+  {
+    "arm": "ht_card",
+    "mem_mean_mb": 16.55125,
+    "mem_median_mb": 9.594999999999999,
+    "mem_p95_mb": 66.65,
+    "ok": 8,
+    "rows": 592,
+    "runner_match": 8,
+    "statuses": {
+      "error": 13,
+      "ok": 8,
+      "unsupported": 571
+    },
+    "wall_mean_s": 0.7286375,
+    "wall_median_s": 0.0624,
+    "wall_p95_s": 5.3945
+  },
+  {
+    "arm": "ht_features",
+    "mem_mean_mb": 575.3596491228069,
+    "mem_median_mb": 110.56,
+    "mem_p95_mb": 3369.6,
+    "ok": 399,
+    "rows": 592,
+    "runner_match": 398,
+    "statuses": {
+      "error": 13,
+      "memout": 6,
+      "ok": 399,
+      "timeout": 42,
+      "unsupported": 132
+    },
+    "wall_mean_s": 11.73084561403509,
+    "wall_median_s": 0.4212,
+    "wall_p95_s": 75.2537
+  },
+  {
+    "arm": "ht_full",
+    "mem_mean_mb": 463.97536679536677,
+    "mem_median_mb": 44.3,
+    "mem_p95_mb": 2015.96,
+    "ok": 518,
+    "rows": 592,
+    "runner_match": 515,
+    "statuses": {
+      "error": 13,
+      "memout": 1,
+      "ok": 518,
+      "timeout": 9,
+      "unsupported": 51
+    },
+    "wall_mean_s": 4.796364478764473,
+    "wall_median_s": 0.26635,
+    "wall_p95_s": 22.8588
+  },
+  {
+    "arm": "ht_general",
+    "mem_mean_mb": 605.5169047619046,
+    "mem_median_mb": 127.78,
+    "mem_p95_mb": 3928.23,
+    "ok": 378,
+    "rows": 592,
+    "runner_match": 377,
+    "statuses": {
+      "error": 13,
+      "memout": 7,
+      "ok": 378,
+      "timeout": 39,
+      "unsupported": 155
+    },
+    "wall_mean_s": 12.283605291005289,
+    "wall_median_s": 0.46895,
+    "wall_p95_s": 77.212
+  },
+  {
+    "arm": "ht_qo",
+    "mem_mean_mb": 46.15357142857143,
+    "mem_median_mb": 10.625,
+    "mem_p95_mb": 475.1,
+    "ok": 14,
+    "rows": 592,
+    "runner_match": 14,
+    "statuses": {
+      "error": 13,
+      "ok": 14,
+      "timeout": 1,
+      "unsupported": 564
+    },
+    "wall_mean_s": 0.3799428571428571,
+    "wall_median_s": 0.06235,
+    "wall_p95_s": 4.1594
+  },
+  {
+    "arm": "ht_rules",
+    "mem_mean_mb": 1215.3940968342642,
+    "mem_median_mb": 139.16,
+    "mem_p95_mb": 6258.1,
+    "ok": 537,
+    "rows": 592,
+    "runner_match": 536,
+    "statuses": {
+      "error": 50,
+      "memout": 4,
+      "ok": 537,
+      "unsupported": 1
+    },
+    "wall_mean_s": 4.898809124767223,
+    "wall_median_s": 0.3201,
+    "wall_p95_s": 29.4665
+  },
+  {
+    "arm": "ht_shoq",
+    "mem_mean_mb": 29.085789473684212,
+    "mem_median_mb": 19.54,
+    "mem_p95_mb": 126.91,
+    "ok": 19,
+    "rows": 592,
+    "runner_match": 19,
+    "statuses": {
+      "error": 13,
+      "ok": 19,
+      "timeout": 1,
+      "unsupported": 559
+    },
+    "wall_mean_s": 0.24349473684210524,
+    "wall_median_s": 0.1123,
+    "wall_p95_s": 0.8647
+  },
+  {
+    "arm": "konclude_w1",
+    "mem_mean_mb": 590.1557142857142,
+    "mem_median_mb": 143.145,
+    "mem_p95_mb": 2920.44,
+    "ok": 588,
+    "rows": 592,
+    "runner_match": 577,
+    "statuses": {
+      "error": 1,
+      "memout": 2,
+      "ok": 588,
+      "timeout": 1
+    },
+    "wall_mean_s": 2.4829112244897944,
+    "wall_median_s": 0.26465,
+    "wall_p95_s": 11.9305
+  },
+  {
+    "arm": "konclude_w16",
+    "mem_mean_mb": 738.2853401360536,
+    "mem_median_mb": 244.825,
+    "mem_p95_mb": 3346.29,
+    "ok": 588,
+    "rows": 592,
+    "runner_match": 577,
+    "statuses": {
+      "error": 1,
+      "memout": 2,
+      "ok": 588,
+      "timeout": 1
+    },
+    "wall_mean_s": 2.1289073129251683,
+    "wall_median_s": 0.2641,
+    "wall_p95_s": 10.5414
+  },
+  {
+    "arm": "lean",
+    "mem_mean_mb": 358.0073100616018,
+    "mem_median_mb": 67.71,
+    "mem_p95_mb": 1467.59,
+    "ok": 487,
+    "rows": 592,
+    "runner_match": 487,
+    "statuses": {
+      "error": 14,
+      "ok": 487,
+      "timeout": 88,
+      "unsupported": 3
+    },
+    "wall_mean_s": 10.402331827515399,
+    "wall_median_s": 0.5092,
+    "wall_p95_s": 61.5046
+  },
+  {
+    "arm": "nominals",
+    "mem_mean_mb": 970.8034029227554,
+    "mem_median_mb": 146.32,
+    "mem_p95_mb": 4910.93,
+    "ok": 479,
+    "rows": 592,
+    "runner_match": 479,
+    "statuses": {
+      "error": 113,
+      "ok": 479
+    },
+    "wall_mean_s": 7.740058246346557,
+    "wall_median_s": 0.3667,
+    "wall_p95_s": 48.2886
+  },
+  {
+    "arm": "seq_off",
+    "mem_mean_mb": 1112.0060266159696,
+    "mem_median_mb": 135.6,
+    "mem_p95_mb": 5859.08,
+    "ok": 526,
+    "rows": 592,
+    "runner_match": 525,
+    "statuses": {
+      "error": 66,
+      "ok": 526
+    },
+    "wall_mean_s": 4.607943346007611,
+    "wall_median_s": 0.3195,
+    "wall_p95_s": 28.7928
+  },
+  {
+    "arm": "seq_on",
+    "mem_mean_mb": 1136.0608566108008,
+    "mem_median_mb": 138.46,
+    "mem_p95_mb": 6100.38,
+    "ok": 537,
+    "rows": 592,
+    "runner_match": 536,
+    "statuses": {
+      "error": 55,
+      "ok": 537
+    },
+    "wall_mean_s": 4.463931098696458,
+    "wall_median_s": 0.3119,
+    "wall_p95_s": 25.5359
+  }
+]

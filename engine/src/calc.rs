@@ -6,12 +6,13 @@
 //! and the *context literal ordering* (`clauses/package.scala`,
 //! `clauses/Term.scala`).
 //!
-//! Term encoding (identical to Sequoia `clauses/Term.scala`):
-//!   * central variable `x`        -> id  0
-//!   * predecessor variable `y`    -> id -1
-//!   * neighbour variable `z_i`    -> id -(i+1)   (i >= 1)
-//!   * successor term `f_i(x)`     -> id +i       (i >= 1)
-//! Term order is the integer order on ids, so  z_i < y < x < o_k < f_i(x)
+//! Term encoding preserves Sequoia's integer term order in a `u32` layout:
+//!   * neighbour variables `z_i`, predecessor `y`, and central `x` occupy the
+//!     first 2^16 ids, in that order;
+//!   * named individuals follow `x`;
+//!   * successor terms `f_i(x)` start at `FTERM_BASE`;
+//!   * grounded successors `f_i(o_k)` start at `COMP_BASE`.
+//! Thus `z_i < y < x < o_k < f_i(x)`
 //! < f_i(o_k); function terms are maximal, which orients paramodulation
 //! downward. Individuals (nominal constants, ALCHOIQ calculus — see
 //! docs/NOMINALS-CB.md) sit between x and the function terms: this total
@@ -20,58 +21,78 @@
 //! atoms not to dominate non-trivial terms, which that refinement enforces).
 //! Composite `f(o)` terms (root-context successors) live above all `f(x)`
 //! terms and embed the (function, individual) pair order positionally so the
-//! congruence condition `f(o1) ≻ f(o2) ⟺ o1 ≻ o2` holds on the raw ids.
+//! congruence condition `f(o1) ≻ f(o2) ⟺ o1 ≻ o2` holds on the raw ids. Using
+//! the full unsigned 32-bit space avoids the old signed packing ceiling hit by
+//! assertion-heavy ontologies while keeping every stored term four bytes.
 
 use std::collections::HashMap;
 
-/// A term is just its integer id (see module docs).
-pub type Term = i32;
+/// A term is just its ordered unsigned integer id (see module docs).
+pub type Term = u32;
 
-pub const X: Term = 0;
-pub const Y: Term = -1;
-/// Individuals occupy `1 .. FTERM_BASE`.
-pub const FTERM_BASE: Term = 1 << 24;
+/// Leave 2^16 ordered slots for Sequoia's variables. In normalized OWL clauses
+/// the actual neighbour-variable count is tiny, but the explicit guard in
+/// `zvar` makes exhaustion fail loudly rather than wrap.
+pub const X: Term = (1 << 16) - 1;
+pub const Y: Term = X - 1;
+const IND_BASE: Term = X;
+/// Individuals occupy `X + 1 .. FTERM_BASE` (983,040 available ids).
+pub const FTERM_BASE: Term = 1 << 20;
 /// `f(x)` Skolem terms occupy `FTERM_BASE .. COMP_BASE`.
-pub const COMP_BASE: Term = 1 << 30;
+pub const COMP_BASE: Term = 1 << 22;
 /// Composite `f(o)` terms occupy `COMP_BASE ..`: `(f - FTERM_BASE)` in the
-/// bits above `COMP_IND_BITS`, the individual id in the low bits.
-pub const COMP_IND_BITS: u32 = 14;
+/// bits above `COMP_IND_BITS`, the raw individual id in the low bits. The
+/// 17/15 split covers 131,071 named individuals and 32,735 Skolem functions
+/// simultaneously, including ORE 15846 (129,647 / 20,932).
+pub const COMP_IND_BITS: u32 = 17;
 
 #[inline]
 pub fn zvar(i: i32) -> Term {
-    debug_assert!(i >= 1);
-    -(i + 1)
+    assert!(i >= 1 && (i as Term) < Y, "neighbour-variable term space exhausted");
+    Y - i as Term
 }
 #[inline]
 pub fn fterm(i: i32) -> Term {
-    debug_assert!(i >= 1 && i < COMP_BASE - FTERM_BASE);
-    FTERM_BASE + i
+    assert!(
+        i >= 1 && (i as Term) < COMP_BASE - FTERM_BASE,
+        "Skolem-function term space exhausted"
+    );
+    FTERM_BASE + i as Term
 }
 /// Individual (nominal constant) term, id `k >= 1`.
 #[inline]
 pub fn ind_term(k: i32) -> Term {
-    debug_assert!(k >= 1 && k < FTERM_BASE);
-    k
+    assert!(
+        k >= 1 && (k as Term) < FTERM_BASE - IND_BASE,
+        "named-individual term space exhausted"
+    );
+    IND_BASE + k as Term
+}
+/// Recover the dense named-individual id used by the frontend interner.
+#[inline]
+pub fn ind_id(t: Term) -> i32 {
+    debug_assert!(is_individual(t));
+    (t - IND_BASE) as i32
 }
 #[inline]
 pub fn is_central(t: Term) -> bool {
-    t == 0
+    t == X
 }
 #[inline]
 pub fn is_pred_var(t: Term) -> bool {
-    t == -1
+    t == Y
 }
 #[inline]
 pub fn is_neighbour(t: Term) -> bool {
-    t < 0
+    t < X
 }
 #[inline]
 pub fn is_var(t: Term) -> bool {
-    t <= 0
+    t <= X
 }
 #[inline]
 pub fn is_individual(t: Term) -> bool {
-    t >= 1 && t < FTERM_BASE
+    t > IND_BASE && t < FTERM_BASE
 }
 /// `true` for Skolem terms: both `f(x)` and root-context `f(o)` composites.
 #[inline]
@@ -85,11 +106,14 @@ pub fn is_function(t: Term) -> bool {
 pub fn comp_term(f: Term, o: Term) -> Term {
     debug_assert!(is_function(f) && f < COMP_BASE && is_individual(o));
     let fi = f - FTERM_BASE;
+    let oi = o - IND_BASE;
+    let packed = ((fi as u64) << COMP_IND_BITS) + oi as u64;
     assert!(
-        fi < (1 << (30 - COMP_IND_BITS)) && o < (1 << COMP_IND_BITS),
-        "nominal mode: f(o) term space exhausted (f id {fi}, individual {o})"
+        oi < (1 << COMP_IND_BITS) && packed <= (Term::MAX - COMP_BASE) as u64,
+        "nominal mode: f(o) term space exhausted (f id {fi}, individual {})",
+        ind_id(o)
     );
-    COMP_BASE + (fi << COMP_IND_BITS) + o
+    COMP_BASE + packed as Term
 }
 #[inline]
 pub fn is_comp(t: Term) -> bool {
@@ -103,7 +127,7 @@ pub fn comp_parts(t: Term) -> (Term, Term) {
     let v = t - COMP_BASE;
     (
         FTERM_BASE + (v >> COMP_IND_BITS),
-        v & ((1 << COMP_IND_BITS) - 1),
+        IND_BASE + (v & ((1 << COMP_IND_BITS) - 1)),
     )
 }
 #[inline]
@@ -694,5 +718,31 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
         (Pred::Concept { iri: i1, .. }, Pred::Concept { iri: i2, .. }) => i1 <= i2,
         (Pred::Role { .. }, Pred::Concept { .. }) => false,
         (Pred::Concept { .. }, Pred::Role { .. }) => true,
+    }
+}
+
+#[cfg(test)]
+mod term_encoding_tests {
+    use super::*;
+
+    #[test]
+    fn unsigned_layout_preserves_sequoia_order_and_ore_15846_capacity() {
+        assert_eq!(std::mem::size_of::<Term>(), 4);
+        assert!(zvar(2) < zvar(1));
+        assert!(zvar(1) < Y && Y < X);
+
+        let o = ind_term(129_647);
+        let f = fterm(20_932);
+        let fo = comp_term(f, o);
+        assert!(X < o && o < f && f < fo);
+        assert_eq!(ind_id(o), 129_647);
+        assert_eq!(comp_parts(fo), (f, o));
+
+        // The documented 17/15 composite split uses the final u32 value
+        // exactly; arithmetic must neither wrap nor leave an accidental gap.
+        assert_eq!(
+            comp_term(fterm(32_735), ind_term(131_071)),
+            Term::MAX
+        );
     }
 }

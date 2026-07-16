@@ -212,6 +212,197 @@ fn concept_of(a: &JAtom) -> Option<(&str, &JTerm)> {
     }
 }
 
+fn var_name(term: &JTerm) -> Option<&str> {
+    if let JTerm::Var { name } = term {
+        Some(name)
+    } else {
+        None
+    }
+}
+
+fn fun_name(term: &JTerm) -> Option<&str> {
+    if let JTerm::Fun { function, .. } = term {
+        Some(function)
+    } else {
+        None
+    }
+}
+
+/// Zero-copy membership screen for the cert-off EL worker.
+///
+/// This deliberately mirrors every accepted branch of [`to_nf`], including
+/// its exact variable-wiring checks and its asymmetric existential halves. It
+/// borrows names from the already-built JSON clauses and allocates only the
+/// small pending-half table. The automatic router uses it after normalisation:
+/// a source-profile leaf may propose ELC, but only this exact clause-level test
+/// may authorize that worker.
+pub(crate) fn is_pure_el_shape(clauses: &[JClause]) -> bool {
+    // (sub concept, skolem function) -> (role half, filler half). A role half
+    // without a filler is A⊑∃R.⊤ and is accepted by `to_nf`; a filler without a
+    // role is the one orphan shape for which `to_nf` returns None.
+    let mut pending_ex: HashMap<(&str, &str), (bool, bool)> = HashMap::default();
+
+    for clause in clauses {
+        if clause
+            .body
+            .iter()
+            .chain(clause.head.iter())
+            .any(|atom| matches!(atom, JAtom::Eq { .. }))
+        {
+            return false;
+        }
+
+        if clause.head.is_empty() {
+            if clause.body.is_empty()
+                || !clause.body.iter().all(|atom| {
+                    matches!(
+                        atom,
+                        JAtom::Concept { term, .. } if var_name(term).is_some()
+                    )
+                })
+            {
+                return false;
+            }
+            continue;
+        }
+        if clause.head.len() != 1 {
+            return false;
+        }
+
+        match &clause.head[0] {
+            JAtom::Concept { term, .. } if var_name(term).is_some() => {
+                // NF1/NF2 (including top and n-ary conjunction): every body
+                // atom is a variable concept. As in `to_nf`, variable names do
+                // not need to be identical for this normalized frontend shape.
+                if clause.body.iter().all(|atom| {
+                    matches!(
+                        atom,
+                        JAtom::Concept { term, .. } if var_name(term).is_some()
+                    )
+                }) {
+                    continue;
+                }
+
+                // NF4: R(x,y) ∧ A(y) -> B(x). Match the same wiring that
+                // `to_nf` checks: filler variable equals the role target.
+                if clause.body.len() == 2 {
+                    let mut role = None;
+                    let mut filler = None;
+                    for atom in &clause.body {
+                        match atom {
+                            JAtom::Role { source, target, .. } if role.is_none() => {
+                                role = Some((source, target));
+                            }
+                            JAtom::Concept { term, .. } if filler.is_none() => {
+                                filler = Some(term);
+                            }
+                            _ => return false,
+                        }
+                    }
+                    if let (Some((source, target)), Some(filler)) = (role, filler) {
+                        if var_name(source).is_some()
+                            && var_name(target).is_some()
+                            && var_name(target) == var_name(filler)
+                        {
+                            continue;
+                        }
+                    }
+                }
+                return false;
+            }
+            JAtom::Concept { term, .. } => {
+                // Existential filler half: A(x) -> B(f(x)).
+                let Some(function) = fun_name(term) else {
+                    return false;
+                };
+                let [JAtom::Concept {
+                    concept: sub,
+                    term: sub_term,
+                }] = clause.body.as_slice()
+                else {
+                    return false;
+                };
+                if var_name(sub_term).is_none() {
+                    return false;
+                }
+                pending_ex.entry((sub, function)).or_default().1 = true;
+            }
+            JAtom::Role { source, target, .. } => {
+                // Reflexive role fact: [] -> R(x,x).
+                if clause.body.is_empty()
+                    && var_name(source).is_some()
+                    && var_name(source) == var_name(target)
+                {
+                    continue;
+                }
+
+                // Existential role half: A(x) -> R(x,f(x)).
+                if let Some(function) = fun_name(target) {
+                    if var_name(source).is_some() {
+                        if let [JAtom::Concept {
+                            concept: sub,
+                            term: sub_term,
+                        }] = clause.body.as_slice()
+                        {
+                            if var_name(sub_term).is_some() {
+                                pending_ex.entry((sub, function)).or_default().0 = true;
+                                continue;
+                            }
+                        }
+                    }
+                    return false;
+                }
+
+                // Forward role inclusion: R(x,y) -> S(x,y), with exact head
+                // and body orientation (inverse bridges must not pass).
+                if let [JAtom::Role {
+                    source: body_source,
+                    target: body_target,
+                    ..
+                }] = clause.body.as_slice()
+                {
+                    if var_name(body_source).is_some()
+                        && var_name(body_target).is_some()
+                        && var_name(body_source) == var_name(source)
+                        && var_name(body_target) == var_name(target)
+                    {
+                        continue;
+                    }
+                }
+
+                // Connected two-role chain in either body order.
+                if let [JAtom::Role {
+                    source: a0,
+                    target: a1,
+                    ..
+                }, JAtom::Role {
+                    source: b0,
+                    target: b1,
+                    ..
+                }] = clause.body.as_slice()
+                {
+                    let ordered = var_name(a1) == var_name(b0)
+                        && var_name(source) == var_name(a0)
+                        && var_name(target) == var_name(b1);
+                    let reversed = var_name(b1) == var_name(a0)
+                        && var_name(source) == var_name(b0)
+                        && var_name(target) == var_name(a1);
+                    let all_variables = [a0, a1, b0, b1, source, target]
+                        .into_iter()
+                        .all(|term| var_name(term).is_some());
+                    if all_variables && (ordered || reversed) {
+                        continue;
+                    }
+                }
+                return false;
+            }
+            JAtom::Eq { .. } => return false,
+        }
+    }
+
+    pending_ex.values().all(|(role, _filler)| *role)
+}
+
 /// Map the clause set onto EL++ normal forms. Clauses outside EL++
 /// (disjunctive head, equality/number atom, nominal `ind` term, unsupported
 /// shape) are collected into the returned *residual* list instead of aborting:
@@ -2645,6 +2836,56 @@ mod tests {
 
     fn subs_of(res: &ElResult, sub: &str) -> Vec<String> {
         res.subsumptions.get(sub).cloned().unwrap_or_default()
+    }
+
+    #[test]
+    fn pure_el_screen_matches_all_cert_off_normal_forms() {
+        let cs = clauses(&format!(
+            "[{},{},{},{},{},{},{},{}]",
+            cl(&[c("A", "x")], &[c("B", "x")]),
+            cl(&[c("A", "x"), c("B", "x")], &[c("C", "x")]),
+            cl(&[c("Z", "x")], &[]),
+            cl(&[c("A", "x")], &[rf("R", "x", "f")]),
+            cl(&[c("A", "x")], &[cf("B", "f", "x")]),
+            cl(&[r("R", "x", "y"), c("B", "y")], &[c("D", "x")]),
+            cl(&[r("R", "x", "y")], &[r("S", "x", "y")]),
+            cl(&[r("R", "x", "y"), r("S", "y", "z")], &[r("T", "x", "z")]),
+        ));
+        assert!(is_pure_el_shape(&cs));
+        assert!(classify_inner(cs, CertMode::Off, false).is_some());
+
+        let reflexive = clauses(&format!("[{}]", cl(&[], &[r("R", "x", "x")])));
+        assert!(is_pure_el_shape(&reflexive));
+        assert!(classify_inner(reflexive, CertMode::Off, false).is_some());
+    }
+
+    #[test]
+    fn pure_el_screen_rejects_every_cert_off_residual_and_orphan() {
+        let disjunction = clauses(&format!(
+            "[{}]",
+            cl(&[c("A", "x")], &[c("B", "x"), c("C", "x")])
+        ));
+        assert!(!is_pure_el_shape(&disjunction));
+        assert!(classify_inner(disjunction, CertMode::Off, false).is_none());
+
+        let inverse = clauses(&format!(
+            "[{}]",
+            cl(&[r("R", "x", "y")], &[r("S", "y", "x")])
+        ));
+        assert!(!is_pure_el_shape(&inverse));
+        assert!(classify_inner(inverse, CertMode::Off, false).is_none());
+
+        let orphan_filler = clauses(&format!("[{}]", cl(&[c("A", "x")], &[cf("B", "f", "x")])));
+        assert!(!is_pure_el_shape(&orphan_filler));
+        assert!(classify_inner(orphan_filler, CertMode::Off, false).is_none());
+
+        let equality = clauses(&format!(
+            "[{{\"body\":[],\"head\":[{{\"kind\":\"eq\",\"left\":{},\"right\":{}}}]}}]",
+            v("x"),
+            v("y")
+        ));
+        assert!(!is_pure_el_shape(&equality));
+        assert!(classify_inner(equality, CertMode::Off, false).is_none());
     }
 
     #[test]

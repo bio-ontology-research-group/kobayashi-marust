@@ -260,8 +260,9 @@ fn parse_rule_term(reg: &mut IriRegistry, node: &Node) -> Option<RuleTerm> {
 
 /// Parse a `Body(...)` / `Head(...)` node into rule atoms. Returns `None` if any
 /// atom is of a kind we do not represent (datatype/builtin/data-range atom) or is
-/// malformed — the caller then drops the whole rule (sound: a dropped constraint
-/// can lose an inconsistency, never invent one).
+/// malformed. The parser omits that AST rule, and the rule-aware frontend later
+/// detects the source/AST count mismatch and declines classification. This
+/// keeps parsing streaming while preventing a silent incomplete rule answer.
 fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec<RuleAtom>> {
     let args = match node {
         Node::List(_, a) => a,
@@ -411,7 +412,8 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         "DLSafeRule" => {
             // DLSafeRule(Body(...) Head(...)). DL-safe: variables range only over
             // named individuals. A rule with any atom we cannot represent
-            // (datatype/builtin) is dropped wholesale (sound — see parse_rule_atoms).
+            // (datatype/builtin) is omitted here; the rule-aware frontend
+            // compares source and AST counts and rejects the route explicitly.
             let body = args.iter().find(|a| a.head() == Some("Body"));
             let head_n = args.iter().find(|a| a.head() == Some("Head"));
             if let (Some(b), Some(hd)) = (body, head_n) {
@@ -580,8 +582,26 @@ where
 /// Port of `parse_ontology`'s axiom pass: build the SROIQ `Ontology` by
 /// streaming over the document.
 pub fn parse_axioms(reg: &mut IriRegistry, text: &str) -> Result<Ontology, OutOfFragment> {
+    parse_axioms_observed(reg, text, |_| {})
+}
+
+/// Build the SROIQ ontology while exposing each zero-copy source node to a
+/// read-only observer in the same streaming pass.  The routing profiler uses
+/// this hook to finish its source-only feature vector *before* normalisation;
+/// no document AST, token vector, or third parse is introduced.
+pub fn parse_axioms_observed<'a, F>(
+    reg: &mut IriRegistry,
+    text: &'a str,
+    mut observe: F,
+) -> Result<Ontology, OutOfFragment>
+where
+    F: FnMut(&Node<'a>),
+{
     let mut o = Ontology::new();
-    for_each_ontology_child(text, |node| add_axiom(reg, &mut o, node))?;
+    for_each_ontology_child(text, |node| {
+        observe(node);
+        add_axiom(reg, &mut o, node)
+    })?;
     Ok(o)
 }
 

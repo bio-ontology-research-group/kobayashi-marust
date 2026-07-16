@@ -12,6 +12,68 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
 
 ---
 
+## Solved via typed source-symbol encoding
+
+### ore_ont_8864, 12009, and 6817: source names that look generated (2026-07-16)
+
+- **Symptom**: the first corrected matrix canonicalizer removed four false
+  disagreements but left three real incomplete classifications. Every missing
+  row had a declared source class beginning with `__`, such as
+  `__adipocyte_glucose_uptake`, `__SyndromeDeBuckley`, or
+  `__hydroxy_proline_MI_0149`.
+- **Precise cause**: KM encoded generated concepts through reserved string
+  prefixes. `Signature::is_internal_concept` therefore treated these legal OWL
+  source names as generated auxiliaries and did not create query contexts for
+  them. Sequoia instead carries source and generated symbols as different
+  types, so the collision cannot occur.
+- **Fix**: the IRI registry assigns reserved-looking source names a
+  collision-safe `km_src_` internal spelling. Generated symbols never pass
+  through that registry. The inverse map restores the exact source IRI in
+  public output, including a collision with a real `km_src_*` source name.
+- **Result**: production `cb_plain16` returns exact frozen Konclude signatures:
+  6,094 pairs for 8864, 10,509 for 12009, and 2,431 for 6817, with zero extra,
+  missing, unsatisfiability, or consistency differences.
+- **Validation**: 1,515 release tests pass, none fail, and 7 are ignored. IBEX
+  Gold-6248 job 48946056 repeats all three exact comparisons and also preserves
+  the 148/178/11016 nominal signatures. Corrected full matrix job 48946164 is
+  the remaining corpus-wide regression gate.
+
+---
+
+## Solved via the exact CB nominal calculus
+
+### ore_ont_148: nominal-label isolation and incremental Pred (2026-07-16)
+
+- **Symptom**: the exact nominal route hit its resource backstop after about
+  190 seconds. A proxy-only CB run was fast and happened to match gold, but that
+  transformation is incomplete for OWL nominals and cannot satisfy the routing
+  contract.
+- **Precise cause**: `Cryosphere` adds `Ice` to the `Water` nominal reached
+  through `Hydrosphere ⊑ hasSubstance value Water`. One eight-premise r-Pred
+  clause then had six exact providers per premise, causing repeated
+  `6^8 = 1,679,616` Cartesian products. Dynamic workers also accumulated
+  independently conditioned nominal labels in one ground context.
+- **Konclude/Sequoia correspondence**: Konclude copies each nominal's completed
+  consistency-graph label into an isolated influenced task. Sequoia enumerates
+  Pred products and retains their strengthening antichain through exact context
+  indexes. KM now uses exact maximal-head indexes, an exact rarest-posting
+  active redundancy index, a provably equivalent incremental Pred antichain,
+  and fixed per-engine nominal query partitions.
+- **Result**: normal `km classify --route nominals`, without an external static
+  flag, finishes on `ws` in 54.69 seconds at 3,029,400 KB. It returns all 21,037
+  canonical pairs, zero extra, zero missing, no unsatisfiable-class difference,
+  and the same consistency result and signature SHA-256 as Konclude.
+- **Validation**: 1,515 release tests pass, none fail, and 7 are ignored after
+  the independent source-symbol typing tests. Exact
+  regression checks keep ore_ont_11016 at 265/265 and ore_ont_178 at 56/56.
+  IBEX jobs 48943813 and 48946056 independently confirm all three signatures;
+  the current binary classifies 148 in 53.3149 seconds at 2,956.60 MB on the
+  required Xeon 6248. Full current-binary matrix job 48946164 is the remaining
+  corpus-regression and paired-performance gate. Full diagnosis and proof
+  obligations are in `SOLVE-148.md`.
+
+---
+
 ## Solved via the konclude_ht bridge (Konclude's algorithm in Rust)
 
 ### ore_ont_14817: saturation-aware cardinality successors (2026-07-15)
@@ -277,6 +339,14 @@ Companion docs: `../CHANGELOG.md` (result tables per change),
   distinct classes share the local name `ProcessQuality`.
 - **Validation**: 1433 passed, 0 failed, 7 ignored; default frontend output for
   both ontologies is byte-identical with the flag off.
+- **2026-07-15 routing audit**: later exact source-RBox provenance caused
+  `cb_to_ht` to fence 541's complex domain and range for the legacy tableau.
+  The orchestrator mistakenly reused that legacy fence for the source-TBox
+  bridge, so the documented bridge kernel remained exact but was never
+  spawned. The gate now accepts complex domain/range fences only when
+  `KM_TRIGGER_ABSORB` supplied a complete source TBox; the reconstructed-clause
+  path remains fenced. Production `km classify` again closes 541 in 0.25 s at
+  53 MB and 12653 in 0.15 s at 18 MB on `ws`.
 
 ### ore_ont_12653 — path/universe QCR ontology (2026-07-06, `d64e78b`)
 
@@ -424,8 +494,14 @@ branch-open-free is.**
 
 | Ont | Route | Signature | The path |
 |---|---|---|---|
-| 14817 | production | 71 missing = transitive `part_of` propagation | Role-automaton ∀-propagation is ported and live in konclude_ht tests (`6a7a67e`) but not production-wired: needs OntologyArenas-from-clauses + consistency classify. |
-| 10621 | — | contested gold | Konclude-vs-HermiT disagreement; resolve gold first. |
+| 10621 | — | current gold confirmed, KM timeout | Functional-boolean witness agrees with the current corrected Konclude signature, which contains 33,433 unsatisfiable classes including `Zone_of_cell`. |
+| 1194 | — | no authoritative gold | 75 MB SRIQ ontology; no confirmed previous KM closure. Establish gold by decomposition and independent checks. |
+| 10860 | — | no authoritative gold | DL-safe-rule ontology; inspect ABox/rules and adjudicate directly because neither raw Konclude nor raw HermiT supplies valid gold. |
+
+The six-item “hard residual” audit, including the previously lost closures of
+10702, 15672, and 6934, is maintained in
+[`HARD-RESIDUAL-AUDIT.md`](HARD-RESIDUAL-AUDIT.md). Do not describe all six as
+unsolved.
 
 ## Reusable diagnostics
 

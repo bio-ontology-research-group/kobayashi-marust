@@ -105,6 +105,8 @@ struct OfnMeta {
     el_rbox_safe: bool,
     abox_inconsistent: bool,
     asserted_classes: Vec<String>,
+    profile: crate::frontend::profile::OntologyProfile,
+    route: String,
 }
 
 #[derive(serde::Serialize)]
@@ -168,6 +170,8 @@ pub fn run_ofn(args: &[String]) {
             el_rbox_safe: result.el_rbox_safe,
             abox_inconsistent: result.abox_inconsistent,
             asserted_classes: result.asserted_classes,
+            profile: result.profile,
+            route: result.route,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {
@@ -322,6 +326,13 @@ pub fn run_engine() {
         eprintln!("failed to read stdin: {e}");
         exit(1);
     }
+    if prof {
+        eprintln!(
+            "KM_STATS[phase] read={:.1}ms bytes={}",
+            t0.elapsed().as_secs_f64() * 1e3,
+            buf.len()
+        );
+    }
     let input: JInput = match serde_json::from_str(&buf) {
         Ok(v) => v,
         Err(e) => {
@@ -330,13 +341,32 @@ pub fn run_engine() {
         }
     };
     let t_parse = t0.elapsed();
+    if prof {
+        eprintln!(
+            "KM_STATS[phase] parse-cumulative={:.1}ms clauses={}",
+            t_parse.as_secs_f64() * 1e3,
+            input.clauses.len()
+        );
+    }
 
     let t1 = std::time::Instant::now();
     let mut r = Reasoner::new(&input.clauses);
     let t_build = t1.elapsed();
+    if prof {
+        eprintln!(
+            "KM_STATS[phase] build={:.1}ms",
+            t_build.as_secs_f64() * 1e3
+        );
+    }
     let t2 = std::time::Instant::now();
     r.saturate();
     let t_saturate = t2.elapsed();
+    if r.incomplete() {
+        eprintln!(
+            "classification declined: a resource backstop was reached before the CB fixpoint"
+        );
+        exit(4);
+    }
 
     let t3 = std::time::Instant::now();
     let subs = r.subsumptions();

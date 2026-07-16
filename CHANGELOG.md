@@ -9,6 +9,196 @@ All notable changes to the kobayashi-marust reasoner. Newest first.
 
 ## [unreleased] — CB engine scaling (ORE 2015 coverage push)
 
+### Separate provably positive ABoxes from TBox classification (2026-07-16)
+
+The procedure matrix found assertion-heavy ORE 10697, 15725, and 15846 where
+the exact nominal CB route reached its 190 second central cap. Direct tests of
+the same calculus with per-function scheduling at 1, 8, and 16 threads also
+timed out at 240 seconds on all three. This rules out a scheduler-only fix. KM
+currently builds and saturates the complete ground context inside every query
+engine.
+
+Konclude instead separates ABox consistency precomputation from class
+classification. Its `CTotallyPrecomputationThread` saturates individuals and an
+all-assertion individual, accepts the result only when its direct and indirect
+status is completed, non-clashed, and sufficient, and reuses the precomputed
+state for classification. Official Konclude diagnostic job 48947466 confirms
+this boundary: on 10697 and 15725, precomputation takes 1,211 ms and 540 ms,
+while class classification takes only 3 ms and 2 ms. On 15846 the corresponding
+times are 16,164 ms and 80 ms.
+
+Profile schema 2 now records bottom-class and bottom-role occurrences and a
+fail-closed `positive_abox_tbox_separable` certificate. The certificate accepts
+only positive assertions with no negative constraint, number restriction,
+nominal, universal role, rule, key, or datatype constraint. A one-element
+all-positive interpretation proves consistency. Disjoint-union preservation
+for nominal-free SRIQ without the universal role proves that such an ABox
+cannot add a TBox subsumption. Certified inputs use the same independently
+complete EL/CB decision tree as the TBox core; every other ABox remains on the
+exact nominal calculus. This is a source-level proof gate, not empirical
+routing. The checker uses an explicit safe-axiom whitelist: imports, unknown
+axioms, and every functional-syntax axiom that the frontend could otherwise
+skip fail closed.
+
+The post-whitelist optimized `ws` suite passes 1,516 tests with 0 failures and
+7 ignored. Default `auto` selects `cb_plain16` for 10697 and 15725. Their
+canonical signatures match Konclude with zero differences in 0.9152 seconds at
+161.57 MB and 0.7212 seconds at 123.62 MB, respectively. Default-auto
+regressions 148, 178, and 11016 stay on the exact nominal gate and remain
+gold-exact. Ontology 15846 is intentionally not certified because it contains
+nominals, equality and inequality assertions, and disjointness. See
+`docs/POSITIVE-ABOX-SEPARATION.md` for the contract and proof.
+
+### Separate source entities from generated concepts (2026-07-16)
+
+The first post-148 matrix audit found one real completeness family after
+discarding four canonicalizer false positives. ORE 8864, 12009, and 6817 were
+missing only rows whose source class local names begin with `__`, including
+`__adipocyte_glucose_uptake`, `__SyndromeDeBuckley`, and
+`__hydroxy_proline_MI_0149`. These are explicitly declared OWL classes. KM's
+engine historically recognized generated concepts by string prefixes, so it
+mistook those legal source classes for auxiliaries, omitted their query
+contexts, and returned otherwise sound but incomplete classifications.
+
+Sequoia represents source symbols and generated definers as different typed
+symbols. KM now preserves the same distinction at its frontend boundary.
+Registry-owned source names beginning with `Q_`, `__`, `_aux`, `aux_`, or
+`def_` receive a collision-safe `km_src_` internal spelling. Generated symbols
+are constructed after parsing and never pass through that registry. The
+existing inverse IRI map restores the exact public IRI in the classification,
+including when a real source name already uses the escaped spelling. The
+superseded Python frontend mirrors the same encoding so it remains a valid
+orchestration oracle.
+
+Production `cb_plain16` on `ws` now matches frozen Konclude gold exactly for
+8864 (6,094 pairs), 12009 (10,509), and 6817 (2,431), with no extra or missing
+pairs and no unsatisfiability or consistency difference. The 148 nominal
+closure and its 178/11016 regressions retain their exact signature hashes. The
+release suite reports 1,515 passed, 0 failed, and 7 ignored. Portable Bullseye
+binary `c229366fcc9efbfec729f5a7dcc1a5f1ef9b12fe41f433b67282930bf18a92f6`
+repeats all six exact comparisons on an IBEX Intel Gold 6248 node in job
+48946056. Full 592-ontology, 28-arm matrix job 48946164 uses only this binary
+in 50 isolated shards. This changes frontend symbol encoding, not a CB
+inference rule or the derived fixpoint, so it requires no Lean
+re-certification.
+
+### Exact nominal classification closes ore_ont_148 (2026-07-16)
+
+The production `nominals` route now closes ore_ont_148 in 54.69 seconds at
+3,029,400 KB on `ws`. Its canonical signature contains all 21,037 Konclude
+pairs, zero extra and zero missing pairs, no unsatisfiable-class difference,
+and the same consistency result. The signature SHA-256 is
+`10ef79ea10318d5197169737fc59d7d5771162a452a2e4e1a74a7a0ca880d944`.
+The route selects the winning schedule itself; the validation command did not
+supply `KM_STATIC_SCHED`.
+
+The exact failure localized to `Cryosphere`. Its universal `hasSubstance.Ice`
+restriction meets `Hydrosphere ⊑ hasSubstance value Water`, making the
+completed `Water` nominal label query-dependent. One incoming eight-premise
+Pred clause had six exact providers per premise and repeatedly materialized
+`6^8 = 1,679,616` Cartesian resolvents. A long-lived dynamic worker also mixed
+several independently conditioned nominal tasks in one ground context. This
+matches Konclude's reason for copying the consistency-test nominal label into
+separate influenced saturation tasks.
+
+KM now follows Sequoia's exact maximal-head predicate and term indexes and its
+complete active redundancy semantics, represented as exact rarest-head
+postings plus explicit todo checks. Pred computes the same strengthening
+antichain incrementally after each left-deep join dimension. The equivalence is
+algebraic: if partial `P` strengthens `Q`, then `P ∪ R` strengthens
+`Q ∪ R` for every remaining completion `R`. The `nominals` route assigns
+one fixed query slice per Engine, bounding influenced labels per ground
+context; `KM_NOMINAL_DYNAMIC=1` retains the general scheduler for A/B tests.
+All three changes preserve the inferred fixpoint and require no Lean
+re-certification.
+
+A separate certified optimization recognizes exact finite nominal
+enumerations only when both union directions, singleton equalities, and ground
+facts are present. It completes the ground sameAs/type fixpoint and intersects
+the enumerated labels, matching Konclude's completed nominal-label reuse. This
+keeps ore_ont_11016 exact at 265/265 in 0.74 seconds and ore_ont_178 exact at
+56/56 in 0.23 seconds; it is inert on ore_ont_148, which has no
+`ObjectOneOf`. The release suite reports 1,513 passed, 0 failed, and 7 ignored.
+The first portable binary
+`bf2875c9c234017a47881dc9b25086c8fdf6c2a673a869fb0ebbb48b142691f8`
+passes the IBEX exact-signature smoke in job 48943813: 148 takes 53.7969 seconds
+at 2,985.21 MB, 178 takes 0.2687 seconds at 40.94 MB, and 11016 takes 0.5875
+seconds at 190.62 MB. Matrix job 48943875 was cancelled after its early audit
+exposed the source/generated symbol collision documented above. Corrected
+binary `c229366f…` repeats the three exact signatures in IBEX job 48946056;
+148 takes 53.3149 seconds at 2,956.60 MB. Closure must not be confused with the
+outstanding greater-than-20-percent performance gap to Konclude. See
+`docs/SOLVE-148.md`.
+
+### Fence named HT specialists from the incomplete general racer (2026-07-15)
+
+The procedure-matrix audit found that `ht_qo`, `ht_shoq`, `ht_card`, and
+`ht_bridge` enabled their named specialist but silently fell through to the
+unrestricted general HT racer when the specialist's structural candidate was
+absent. General HT is a useful explicit measurement arm, but it is known
+incomplete on part of ALC+disjunction and is excluded from policy learning.
+Allowing the same algorithm under a policy-eligible specialist name could make
+a source-profile tree generalize an empirically exact row into an incomplete
+classification.
+
+The audit also rejected empirical success as a completeness certificate. QO
+race is incomplete on 15098, 7216, and 7901; the SHOQ and first-class
+cardinality routes are incomplete on 10702; and the historical tableau has no
+full-fragment completeness contract. Those procedures remain benchmark and
+manual options, but they cannot become learned-policy leaves.
+
+Every policy-eligible named bundle now starts with `KM_HT_ONLY=certified`, which
+admits only the Konclude completion bridge's complete-answer-or-defer path.
+Named specialists narrow execution to
+`KM_HT_ONLY=qo|shoq|card|bridge`; `spawn_ht` returns to certified CB when the
+requested candidate is absent. A bridge-only worker also exits on bridge defer
+instead of falling through to the legacy tableau, even when the input is
+otherwise legacy-HT routable. The unrestricted measurement route explicitly
+sets `KM_HT_ONLY=general`, and every individual option remains available in
+manual mode. Unit tests cover every discriminator and the route bundles.
+This changes only safe procedure eligibility, not any inference rule, so it
+requires no Lean re-certification.
+
+### Make the historical tableau procedure measurable again (2026-07-15)
+
+The all-procedure audit found that `KM_TAB_RACE=1` no longer reached the
+legacy label-caching tableau on ordinary non-giant inputs. The later certified
+EL portfolio wrapped the entire CB stack, while the tableau is composed only
+inside that stack. Explicit tableau selection now suppresses that outer EL
+portfolio, and the named `tab_race` bundle supplies `KM_TAB_FEAT=1` and disables
+the unrelated outer HT racer. A unit test fixes this precedence boundary.
+
+An isolated 9635 probe then established a second, intentional boundary. The
+modern converter rejects the input before spawning a worker because it combines
+inverse roles and number restrictions, producing the explicit
+`inverse+number(SHIQ)` soundness fence. This supersedes the old 9635 legacy-race
+claim; the newer certified cardinality and Konclude-bridge paths own SHIQ. An
+opt-in `KM_TAB_DUMP_TIN` plus `KM_TAB_TRACE` diagnostic now records the exact
+pre-fence tableau input and reasons without changing routing. On the current
+in-fragment witness 6246, the named route and its explicit option bundle both
+return the complete 322-pair gold signature in 30.95–31.07 seconds on IBEX job
+48889958. These changes only alter procedure composition and diagnostics, not
+any calculus derivation, so they require no Lean re-certification.
+
+### Restore source-TBox bridge routing for complex domains/ranges (2026-07-15)
+
+The new all-procedure routing matrix exposed that `ore_ont_541` timed out in
+every triggered-bridge arm even though the Konclude bridge kernel still
+classified its exact input immediately. The failure was at the procedure gate.
+Exact source-RBox provenance added `complex-domain` and `complex-range` fences
+for the legacy clause-reconstructed tableau. `spawn_ht` reused those fences for
+the source-terminology bridge and declined to spawn it.
+
+The bridge gate now accepts those two fences only when triggered absorption
+carried a nonempty normalized source TBox and source-TBox mode is enabled. In
+that case the bridge builds Konclude's native domain/range concepts directly;
+without source provenance the same inputs remain fenced. Other fence reasons,
+including unsupported RBox constructs, remain rejected. The actual production
+race again classifies 541 in 0.25 seconds at 53 MB and 12653 in 0.15 seconds at
+18 MB on `ws`. A focused test proves the source-only fence distinction. This
+changes orchestration eligibility, not CB-calculus derivations, so it requires
+no Lean re-certification.
+
 ### Saturation-aware cardinality successors close ore_ont_14817 (2026-07-15)
 
 `ore_ont_14817` now completes through production `km classify` and matches

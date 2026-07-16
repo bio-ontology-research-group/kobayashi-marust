@@ -86,6 +86,20 @@ The engine reads normalised DL clauses as JSON on stdin and writes the entailed
 subsumptions, derived clauses, and a consistency flag on stdout (see
 [`engine/README.md`](engine/README.md)).
 
+For end-to-end OWL functional-syntax classification, use the multi-call binary:
+
+```sh
+./target/release/km classify ontology.ofn
+./target/release/km profile ontology.ofn
+./target/release/km routes
+```
+
+`km classify` profiles the ontology and selects its measured procedure by
+default. `--route NAME` selects any named procedure; `--route manual` preserves
+individually supplied `KM_*` options. See [`docs/ROUTING.md`](docs/ROUTING.md)
+for the exact expressivity calculation, statistics schema, option bundles, and
+decision-tree validation.
+
 ### 2. Check the proofs
 
 ```sh
@@ -230,8 +244,9 @@ byte-identical verdicts).
   over a term algebra); the disjunctive layer is bounded, so an ontology with very
   many excluded-middle definitions may exceed the bound.
 - Still open in the engine: the general regular-role-hierarchy automaton (only
-  transitivity and single chains are encoded) and the full Table-3 nominal merge
-  rules. The pay-as-you-go strategy is implemented (per-`f` successor contexts) and
+  transitivity and single chains are encoded). The Table-3 nominal rules are
+  implemented and certified in `lean/ContextCalculus/Nominals.lean`. The
+  pay-as-you-go strategy is implemented (per-`f` successor contexts) and
   its type-level completeness is machine-checked with no residual hypothesis
   (`engine_complete`). The sole remaining obligation is the clause-level
   disjunctive-saturation completeness (the engine works on disjunctive context

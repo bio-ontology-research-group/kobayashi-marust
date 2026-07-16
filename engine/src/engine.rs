@@ -11,11 +11,11 @@
 //! blows up under disjunction (≈45× on a distinct-skolem disjunctive stress
 //! test).  Soundness is re-checked per run by the Lean certificate checker;
 //! completeness is validated against the HermiT oracle and scaffolded in
-//! `lean/ContextCalculus/CompletenessStrategy.lean`.  Factor and full nominal
-//! rules (Nom/Join/r-Succ/r-Pred of Table 3) are not implemented; clauses
-//! requiring them are reported.
+//! `lean/ContextCalculus/CompletenessStrategy.lean`.  The flag-gated nominal
+//! extension implements Join, r-Succ, r-Pred, and Nom; its soundness lemmas and
+//! finite covering bound live in `lean/ContextCalculus/Nominals.lean`.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use smallvec::SmallVec;
 
@@ -30,6 +30,132 @@ use crate::clause::*;
 /// singleton postings; SmallVec collapses that.  Output-identical: a posting is
 /// the same id sequence, stored inline below the spill threshold.
 type Posting = SmallVec<[u32; 2]>;
+
+/// One component of Sequoia's context-clause redundancy-trie key.  Sequoia
+/// encodes every head literal below every body predicate (by setting the sign
+/// bit on head UIDs), then sorts the two regions.  Keeping the exact values in
+/// an enum gives the same lexicographic key without relying on a collision-prone
+/// numeric hash: `Head` is declared first, so all sorted head literals precede
+/// all sorted body predicates.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum RedundancyKey {
+    Head(Lit),
+    Body(Pred),
+}
+
+#[derive(Default)]
+struct RedundancyTrieNode {
+    value: Option<u32>,
+    children: BTreeMap<RedundancyKey, RedundancyTrieNode>,
+}
+
+/// Faithful Rust port of Sequoia's `TrieContextClauseRedundancyIndex` and the
+/// subset/superset operations of `TrieSearchTree`.  A context clause maps to
+/// the sorted set key `head ++ body`; key inclusion is therefore exactly
+/// `ContextClause::test_strengthening` in both components.
+#[derive(Default)]
+struct RedundancyTrie {
+    root: RedundancyTrieNode,
+}
+
+impl RedundancyTrie {
+    fn key(clause: &ContextClause) -> Vec<RedundancyKey> {
+        let mut key = Vec::with_capacity(clause.head.len() + clause.body.len());
+        key.extend(clause.head.iter().copied().map(RedundancyKey::Head));
+        key.extend(clause.body.iter().copied().map(RedundancyKey::Body));
+        key
+    }
+
+    fn insert(&mut self, clause: &ContextClause, cid: u32) {
+        let key = Self::key(clause);
+        let mut node = &mut self.root;
+        for component in key {
+            node = node.children.entry(component).or_default();
+        }
+        debug_assert!(node.value.is_none() || node.value == Some(cid));
+        node.value = Some(cid);
+    }
+
+    /// Does the trie contain a clause key that is a subset of `clause`'s key?
+    /// `exclude` is used only by the work-off recheck: the queued clause itself
+    /// is already in Sequoia's active redundancy index and must not subsume
+    /// itself, while any different value on a shorter path is a true subsumer.
+    fn contains_subset(&self, clause: &ContextClause, exclude: Option<u32>) -> bool {
+        let key = Self::key(clause);
+        Self::contains_subset_from(&self.root, &key, 0, exclude)
+    }
+
+    fn contains_subset_from(
+        node: &RedundancyTrieNode,
+        pattern: &[RedundancyKey],
+        start: usize,
+        exclude: Option<u32>,
+    ) -> bool {
+        if node.value.is_some() && node.value != exclude {
+            return true;
+        }
+        // A subset path can take only components present in the pattern, in
+        // order. Iterating the (usually short) pattern and doing exact child
+        // lookups is the same search as Sequoia's ordered-child traversal.
+        for i in start..pattern.len() {
+            if let Some(child) = node.children.get(&pattern[i]) {
+                if Self::contains_subset_from(child, pattern, i + 1, exclude) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Remove and return every clause whose key is a superset of `clause`'s
+    /// key.  Extra components smaller than the next required component remain
+    /// admissible; once a child component is larger, the sorted path can no
+    /// longer contain that requirement.  This is Sequoia's
+    /// `removeKeySuperset` traversal.
+    fn remove_supersets(&mut self, clause: &ContextClause) -> Vec<u32> {
+        let key = Self::key(clause);
+        let mut removed = Vec::new();
+        Self::remove_supersets_from(&mut self.root, &key, 0, &mut removed);
+        removed
+    }
+
+    fn remove_supersets_from(
+        node: &mut RedundancyTrieNode,
+        pattern: &[RedundancyKey],
+        pattern_index: usize,
+        removed: &mut Vec<u32>,
+    ) -> bool {
+        if pattern_index == pattern.len() {
+            Self::take_all(node, removed);
+            return true;
+        }
+        let required = pattern[pattern_index];
+        let candidates: Vec<RedundancyKey> =
+            node.children.range(..=required).map(|(&k, _)| k).collect();
+        for component in candidates {
+            let next_pattern = pattern_index + usize::from(component == required);
+            let empty = {
+                let child = node.children.get_mut(&component).unwrap();
+                Self::remove_supersets_from(child, pattern, next_pattern, removed)
+            };
+            if empty {
+                node.children.remove(&component);
+            }
+        }
+        node.value.is_none() && node.children.is_empty()
+    }
+
+    fn take_all(node: &mut RedundancyTrieNode, removed: &mut Vec<u32>) {
+        if let Some(cid) = node.value.take() {
+            removed.push(cid);
+        }
+        let children = std::mem::take(&mut node.children);
+        for (_, mut child) in children {
+            Self::take_all(&mut child, removed);
+        }
+    }
+
+}
 
 thread_local! {
     /// Hyper-call counter (only read under KM_STATS). Thread-local because
@@ -52,6 +178,55 @@ thread_local! {
 #[inline(always)]
 fn prof_add(cell: &'static std::thread::LocalKey<std::cell::Cell<u64>>, t: std::time::Instant) {
     cell.with(|c| c.set(c.get() + t.elapsed().as_nanos() as u64));
+}
+
+/// `KM_PRED_PRODUCT=N`: print the first Pred Cartesian products with at least
+/// N combinations. Gated diagnostic only; cached so normal reasoning pays one
+/// predictable branch.
+fn pred_product_threshold() -> Option<usize> {
+    static THRESHOLD: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    *THRESHOLD.get_or_init(|| {
+        std::env::var("KM_PRED_PRODUCT")
+            .ok()
+            .map(|v| v.parse().unwrap_or(10_000))
+    })
+}
+
+fn trace_pred_product(
+    phase: &str,
+    id: usize,
+    max: Option<Pred>,
+    pc: &PredClause,
+    ground: &[Pred],
+    candidates: &[Vec<(usize, Pred)>],
+) {
+    let Some(threshold) = pred_product_threshold() else {
+        return;
+    };
+    let product = candidates
+        .iter()
+        .fold(1usize, |n, c| n.saturating_mul(c.len()));
+    if product < threshold {
+        return;
+    }
+    static PRINTED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let serial = PRINTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    if serial >= 64 {
+        return;
+    }
+    let widths: Vec<usize> = candidates.iter().map(Vec::len).collect();
+    eprintln!(
+        "KM_PRED_PRODUCT phase={} serial={} ctx={} max={:?} body_len={} ground_len={} widths={:?} product={} body={:?}",
+        phase,
+        serial,
+        id,
+        max,
+        pc.body.len(),
+        ground.len(),
+        widths,
+        product,
+        pc.body,
+    );
 }
 
 // ----------------------------- substitutions -------------------------------
@@ -312,6 +487,36 @@ fn backwards(f: Term, v: Term) -> Term {
 
 // ------------------------------- unification -------------------------------
 
+/// Whether `term` has a fixed image under the substitution already supplied
+/// by Hyper's side premise. In the ground context an unbound `x` is still a
+/// wildcard over named individuals, and an unbound `f(x)` may become any
+/// `f(o)`; elsewhere `x` and `f(x)` are syntactically fixed. Neighbour
+/// variables are fixed only after an earlier premise binds them.
+fn hyper_term_determined(term: Term, sigma: &CentralSubst) -> bool {
+    if is_central(term) {
+        return !sigma.allow_ground || sigma.get(X).is_some();
+    }
+    if is_neighbour(term) {
+        return sigma.get(term).is_some();
+    }
+    if is_function(term) && !is_comp(term) {
+        return !sigma.allow_ground || sigma.get(X).is_some();
+    }
+    true
+}
+
+/// Optional diagnostic threshold for logging Hyper's pre-join Cartesian upper
+/// bound. Cached because Hyper is the hottest rule and reading the environment
+/// per invocation would perturb the profile being measured.
+fn hyper_product_trace_threshold() -> Option<u128> {
+    static THRESHOLD: std::sync::OnceLock<Option<u128>> = std::sync::OnceLock::new();
+    *THRESHOLD.get_or_init(|| {
+        std::env::var("KM_TRACE_HYPER_PRODUCT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+    })
+}
+
 fn can_unify(body: &Pred, head_max: &Pred) -> bool {
     // A central body term must match a central head term or — grounded Hyper
     // of the nominal calculus — an individual; a neighbour body term (e.g.
@@ -402,6 +607,299 @@ impl Ontology {
     }
 }
 
+/// Statistics for the deterministic same-individual quotient applied before
+/// the nominal ground context is built. Konclude performs the corresponding
+/// operation by resolving each asserted nominal to its process node and then
+/// merging the nodes, their labels, links, and distinctness data into one
+/// representative. KM stores those data as ground clauses, so rewriting every
+/// occurrence to the least representative is the clause-level form of the
+/// same deterministic merge.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct GroundEqualityMergeStats {
+    asserted_pairs: usize,
+    merged_aliases: usize,
+    clauses_before: usize,
+    clauses_after: usize,
+}
+
+fn input_max_individual(clauses: &[OntologyClause]) -> i32 {
+    let mut max_ind = 0;
+    let mut see = |t: Term| {
+        if is_individual(t) {
+            max_ind = max_ind.max(ind_id(t));
+        } else if is_comp(t) {
+            max_ind = max_ind.max(ind_id(comp_parts(t).1));
+        }
+    };
+    for clause in clauses {
+        for pred in &clause.body {
+            match *pred {
+                Pred::Concept { t, .. } => see(t),
+                Pred::Role { s, t, .. } => {
+                    see(s);
+                    see(t);
+                }
+            }
+        }
+        for literal in &clause.head {
+            match *literal {
+                Lit::P(Pred::Concept { t, .. }) => see(t),
+                Lit::P(Pred::Role { s, t, .. }) => {
+                    see(s);
+                    see(t);
+                }
+                Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                    see(s);
+                    see(t);
+                }
+            }
+        }
+    }
+    max_ind
+}
+
+fn ground_equality_find(parent: &mut [u32], id: u32) -> u32 {
+    let mut root = id;
+    while parent[root as usize] != root {
+        root = parent[root as usize];
+    }
+    let mut current = id;
+    while parent[current as usize] != root {
+        let next = parent[current as usize];
+        parent[current as usize] = root;
+        current = next;
+    }
+    root
+}
+
+fn ground_equality_union_min(parent: &mut [u32], left: u32, right: u32) {
+    let left_root = ground_equality_find(parent, left);
+    let right_root = ground_equality_find(parent, right);
+    if left_root != right_root {
+        let (keep, merge) = if left_root < right_root {
+            (left_root, right_root)
+        } else {
+            (right_root, left_root)
+        };
+        parent[merge as usize] = keep;
+    }
+}
+
+/// Eagerly merge unconditional named-individual equalities.
+///
+/// Only unit ground facts `top -> o1 = o2` participate. A conditional or
+/// disjunctive equality is deliberately ignored because treating it as an
+/// asserted merge would be unsound. After computing the transitive closure,
+/// every individual occurrence is rewritten to the least id in its class,
+/// tautological equality clauses are removed, collapsed inequalities become
+/// empty-head clashes, and duplicate clauses are coalesced. This is an exact
+/// equality quotient, not an approximation: all labels and role links from an
+/// alias are transferred to the same representative, just as in Konclude's
+/// deterministic `getMergedIndividualNodes`/`mergeIndividualNodeInto` path.
+fn merge_asserted_ground_equalities(
+    clauses: Vec<OntologyClause>,
+) -> (Vec<OntologyClause>, i32, GroundEqualityMergeStats) {
+    let max_ind = input_max_individual(&clauses);
+    let mut stats = GroundEqualityMergeStats {
+        clauses_before: clauses.len(),
+        clauses_after: clauses.len(),
+        ..GroundEqualityMergeStats::default()
+    };
+    if max_ind == 0 {
+        return (clauses, max_ind, stats);
+    }
+
+    let mut parent: Vec<u32> = (0..=max_ind as u32).collect();
+    for clause in &clauses {
+        if clause.body.is_empty() && clause.head.len() == 1 {
+            if let Lit::Eq { s, t } = clause.head[0] {
+                if is_individual(s) && is_individual(t) {
+                    stats.asserted_pairs += 1;
+                    ground_equality_union_min(
+                        &mut parent,
+                        ind_id(s) as u32,
+                        ind_id(t) as u32,
+                    );
+                }
+            }
+        }
+    }
+    for id in 1..=max_ind as u32 {
+        let representative = ground_equality_find(&mut parent, id);
+        parent[id as usize] = representative;
+        stats.merged_aliases += usize::from(representative != id);
+    }
+    if stats.merged_aliases == 0 {
+        return (clauses, max_ind, stats);
+    }
+
+    let canonical_term = |term: Term| {
+        if is_individual(term) {
+            ind_term(parent[ind_id(term) as usize] as i32)
+        } else if is_comp(term) {
+            let (function, individual) = comp_parts(term);
+            let representative = ind_term(parent[ind_id(individual) as usize] as i32);
+            comp_term(function, representative)
+        } else {
+            term
+        }
+    };
+    let mut merged: Vec<OntologyClause> = Vec::with_capacity(clauses.len());
+    let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
+    for clause in clauses {
+        let body: Vec<Pred> = clause
+            .body
+            .iter()
+            .map(|pred| pred.apply(&canonical_term))
+            .collect();
+        let mut head: Vec<Lit> = clause
+            .head
+            .iter()
+            .map(|literal| literal.apply(&canonical_term))
+            .collect();
+        // A true equality makes the disjunctive head true, hence the whole
+        // clause tautological. A false inequality contributes no disjunct.
+        if head.iter().any(Lit::is_valid_equation) {
+            continue;
+        }
+        head.retain(|literal| !literal.is_invalid_equation());
+        let rewritten = OntologyClause::new(body, head);
+        let hash = content_hash(&(&rewritten.body, &rewritten.head));
+        let duplicate = index.get(&hash).is_some_and(|candidates| {
+            candidates.iter().any(|&candidate| {
+                merged[candidate].body == rewritten.body
+                    && merged[candidate].head == rewritten.head
+            })
+        });
+        if duplicate {
+            continue;
+        }
+        let id = merged.len();
+        merged.push(rewritten);
+        index.entry(hash).or_default().push(id);
+    }
+    stats.clauses_after = merged.len();
+    (merged, max_ind, stats)
+}
+
+/// Detect named concepts that the normalised clause set proves equivalent to a
+/// finite union of exact nominal proxies.  The frontend represents
+/// `A ≡ {o1,…,on}` as an auxiliary `Q` with
+///
+/// * `A(x) → Q(x)` and `Q(x) → A(x)`,
+/// * `Q(x) → N1(x) ∨ … ∨ Nn(x)` and every `Ni(x) → Q(x)`, and
+/// * `Ni(x) → x ≈ oi` (plus the ground nominal fact).
+///
+/// We recognise the proof obligations from the clauses rather than trusting
+/// auxiliary names.  This is the certificate used by the nominal-label reuse
+/// path: if any direction is absent, the query stays on ordinary CB saturation.
+fn detect_nominal_enumerations(sig: &Sig, clauses: &[OntologyClause]) -> HashMap<Iri, Vec<Term>> {
+    let mut nominal_individual: HashMap<Iri, Term> = HashMap::new();
+    let mut nominal_facts: HashSet<(Iri, Term)> = HashSet::new();
+    let mut edges: HashSet<(Iri, Iri)> = HashSet::new();
+    let mut forward: HashMap<Iri, Vec<Iri>> = HashMap::new();
+    let mut reverse: HashMap<Iri, Vec<Iri>> = HashMap::new();
+
+    for clause in clauses {
+        if clause.body.is_empty() && clause.head.len() == 1 {
+            if let Lit::P(Pred::Concept { iri, t }) = clause.head[0] {
+                if is_individual(t) {
+                    nominal_facts.insert((iri, t));
+                }
+            }
+        }
+    }
+    for clause in clauses {
+        if clause.body.len() != 1 || clause.head.len() != 1 {
+            continue;
+        }
+        let Pred::Concept { iri: from, t: X } = clause.body[0] else {
+            continue;
+        };
+        match clause.head[0] {
+            Lit::P(Pred::Concept { iri: to, t: X }) => {
+                if edges.insert((from, to)) {
+                    forward.entry(from).or_default().push(to);
+                    reverse.entry(to).or_default().push(from);
+                }
+            }
+            Lit::Eq { s, t } => {
+                let individual = if s == X && is_individual(t) {
+                    Some(t)
+                } else if t == X && is_individual(s) {
+                    Some(s)
+                } else {
+                    None
+                };
+                if let Some(o) = individual.filter(|&o| nominal_facts.contains(&(from, o))) {
+                    nominal_individual.insert(from, o);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let reachable = |start: Iri, graph: &HashMap<Iri, Vec<Iri>>| {
+        let mut seen = HashSet::from([start]);
+        let mut todo = vec![start];
+        while let Some(node) = todo.pop() {
+            if let Some(next) = graph.get(&node) {
+                for &n in next {
+                    if seen.insert(n) {
+                        todo.push(n);
+                    }
+                }
+            }
+        }
+        seen
+    };
+
+    let mut out: HashMap<Iri, Vec<Term>> = HashMap::new();
+    for clause in clauses {
+        if clause.body.len() != 1 || clause.head.is_empty() {
+            continue;
+        }
+        let Pred::Concept { iri: q, t: X } = clause.body[0] else {
+            continue;
+        };
+        let mut proxies = Vec::with_capacity(clause.head.len());
+        let mut individuals = Vec::with_capacity(clause.head.len());
+        let mut exact_nominal_union = true;
+        for &literal in &clause.head {
+            let Lit::P(Pred::Concept { iri: nominal, t: X }) = literal else {
+                exact_nominal_union = false;
+                break;
+            };
+            let Some(&individual) = nominal_individual.get(&nominal) else {
+                exact_nominal_union = false;
+                break;
+            };
+            proxies.push(nominal);
+            individuals.push(individual);
+        }
+        // The reverse implications prove `N1 ∨ … ∨ Nn ⊑ Q`; without
+        // them this is only an upper bound on Q and cannot certify either the
+        // complete subsumer set or satisfiability.
+        if !exact_nominal_union || !proxies.iter().all(|&n| edges.contains(&(n, q))) {
+            continue;
+        }
+        individuals.sort_unstable();
+        individuals.dedup();
+
+        let q_forward = reachable(q, &forward);
+        let q_reverse = reachable(q, &reverse);
+        for iri in 0..sig.concept_names.len() as Iri {
+            if sig.is_internal(iri) || sig.is_nothing_concept(iri) {
+                continue;
+            }
+            if q_forward.contains(&iri) && q_reverse.contains(&iri) {
+                out.entry(iri).or_insert_with(|| individuals.clone());
+            }
+        }
+    }
+    out
+}
+
 // ------------------------------- contexts ----------------------------------
 
 struct Context {
@@ -422,22 +920,40 @@ struct Context {
     clause_keys: HashSet<u32>,
     /// Index from a head-predicate iri to the (ascending, de-duplicated)
     /// `worked_off` indices of clauses having a *maximal* head predicate with
-    /// that iri.  Lets Hyper/Pred find resolution partners without scanning all
+    /// that iri.  Lets Hyper find unification candidates without scanning all
     /// of `worked_off`.  Concept and role iris live in separate namespaces, so
-    /// they are indexed separately; `can_unify` / exact-predicate tests still
-    /// filter precisely, so the candidate set (and its order) is unchanged.
+    /// they are indexed separately; `can_unify` still filters precisely.
     head_concept_index: HashMap<Iri, Posting>,
     head_role_index: HashMap<Iri, Posting>,
-    /// Subsumption index over `worked_off`: each clause is recorded under every
-    /// literal of its head.  A clause `c` can subsume `clause` only if
-    /// `c.head ⊆ clause.head`, so every true subsumer with a non-empty head is
-    /// found under some literal of `clause.head`; conversely `clause` can
-    /// subsume only clauses that contain *all* of `clause.head`, i.e. those in
-    /// the intersection of these lists.  Empty-head clauses (which subsume on
-    /// the body alone) are tracked separately.  This replaces the per-`add`
-    /// linear scan of `worked_off` for both forward and backward subsumption.
-    head_lit_index: HashMap<Lit, Posting>,
-    empty_head_wo: Vec<u32>,
+    /// Role postings refined by one fixed ground endpoint. In the nominal root,
+    /// Hyper commonly joins `C(y)` with `R(x,y)`: after the side fact binds
+    /// `y=o`, Sequoia's substitution-aware lookup visits only `R(_,o)` rather
+    /// than every assertion of `R`. The other endpoint may remain a variable
+    /// (`S(o,y)` is a crucial Nom premise), so indexing only fully ground roles
+    /// is incomplete. These postings contain every maximal role whose indexed
+    /// endpoint is an individual or grounded successor.
+    ground_role_source_index: HashMap<(Iri, Term), Posting>,
+    ground_role_target_index: HashMap<(Iri, Term), Posting>,
+    /// Exact maximal-head predicate lookup used by Pred.  This mirrors
+    /// Sequoia's `maxHeadPredicateIndex`: unlike Hyper, Pred does not unify a
+    /// body atom, it matches the already-substituted predicate exactly.  The
+    /// IRI indexes above remain the broader candidate indexes used by Hyper.
+    max_head_pred_index: HashMap<Pred, Posting>,
+    /// Clauses containing a term at a rewrite position in a maximal head
+    /// literal.  This is Sequoia's `maxHeadLiteralTermIndex`, extended to
+    /// nominal ground terms because KM's nominal Eq/Join rules can rewrite
+    /// individuals as well as `f(x)` terms.
+    max_head_term_index: HashMap<Term, Posting>,
+    /// Every active clause (`worked_off` plus `todo`) indexed by each head
+    /// literal. This is Sequoia's active context redundancy index: pending
+    /// clauses participate in Elim without a linear scan of the pending queue.
+    /// The rarest posting is verified with exact set inclusion, avoiding the
+    /// exponential subset walk of a generic Rust trie on long nominal clauses.
+    active_head_lit_index: HashMap<Lit, Posting>,
+    /// Active clauses with an empty head. Such a clause can subsume a
+    /// non-empty-head clause without sharing a literal, so it has a dedicated
+    /// posting list.
+    active_empty_head: Vec<u32>,
     todo: VecDeque<u32>,
     /// pred clauses pushed in from successor contexts (already back-substituted),
     /// as ids into the engine-level `pred_interned` table.  The same substituted
@@ -446,6 +962,12 @@ struct Context {
     /// dedups arrivals, which only skips re-deriving already-derived clauses.
     neighbor_pred: Vec<u32>,
     neighbor_pred_seen: HashSet<u32>,
+    /// Exact body-predicate posting lists over `neighbor_pred`, in arrival
+    /// order.  Local Pred only needs clauses whose body contains the maximal
+    /// function predicate currently being processed; indexing that membership
+    /// avoids rescanning every received predecessor clause for every such
+    /// predicate.
+    neighbor_pred_body_index: HashMap<Pred, Vec<u32>>,
     /// successor edges: function term -> successor context id
     successors: HashMap<Term, usize>,
     /// Central strategy: per function symbol, the full (raw, un-substituted)
@@ -546,11 +1068,16 @@ impl Context {
             clause_keys: HashSet::new(),
             head_concept_index: HashMap::new(),
             head_role_index: HashMap::new(),
-            head_lit_index: HashMap::new(),
-            empty_head_wo: Vec::new(),
+            ground_role_source_index: HashMap::new(),
+            ground_role_target_index: HashMap::new(),
+            max_head_pred_index: HashMap::new(),
+            max_head_term_index: HashMap::new(),
+            active_head_lit_index: HashMap::new(),
+            active_empty_head: Vec::new(),
             todo: VecDeque::new(),
             neighbor_pred: Vec::new(),
             neighbor_pred_seen: HashSet::new(),
+            neighbor_pred_body_index: HashMap::new(),
             successors: HashMap::new(),
             trigger_sets: HashMap::new(),
             fact_trigger_sets: HashMap::new(),
@@ -602,14 +1129,54 @@ impl Context {
         for iri in role_iris {
             self.head_role_index.entry(iri).or_default().push(cid);
         }
-        // subsumption index: record under every head literal (or the empty-head
-        // list).
-        if c.head.is_empty() {
-            self.empty_head_wo.push(cid);
-        } else {
-            for &l in &c.head {
-                self.head_lit_index.entry(l).or_default().push(cid);
+        for (p, _) in c.max_head_predicates() {
+            self.max_head_pred_index.entry(p).or_default().push(cid);
+            if let Pred::Role { iri, s, t } = p {
+                if is_individual(s) || is_comp(s) {
+                    let source = self
+                        .ground_role_source_index
+                        .entry((iri, s))
+                        .or_default();
+                    if source.last() != Some(&cid) {
+                        source.push(cid);
+                    }
+                }
+                if is_individual(t) || is_comp(t) {
+                    let target = self
+                        .ground_role_target_index
+                        .entry((iri, t))
+                        .or_default();
+                    if target.last() != Some(&cid) {
+                        target.push(cid);
+                    }
+                }
             }
+        }
+        let mut rewrite_terms: SmallVec<[Term; 2]> = SmallVec::new();
+        for l in c.max_head() {
+            match l {
+                Lit::P(Pred::Concept { t, .. }) => {
+                    if !rewrite_terms.contains(&t) {
+                        rewrite_terms.push(t);
+                    }
+                }
+                Lit::P(Pred::Role { s, t, .. }) => {
+                    if !rewrite_terms.contains(&s) {
+                        rewrite_terms.push(s);
+                    }
+                    if !rewrite_terms.contains(&t) {
+                        rewrite_terms.push(t);
+                    }
+                }
+                Lit::Eq { s, .. } | Lit::Ineq { s, .. } => {
+                    if !rewrite_terms.contains(&s) {
+                        rewrite_terms.push(s);
+                    }
+                }
+            }
+        }
+        for term in rewrite_terms {
+            self.max_head_term_index.entry(term).or_default().push(cid);
         }
         // nominal-calculus indexes (all empty without individuals)
         for p in &c.body {
@@ -634,154 +1201,152 @@ impl Context {
         }
     }
 
-    /// Rebuild every `worked_off` index from scratch.  Called after
-    /// back-subsumption physically removes clauses from `worked_off` (which
-    /// shifts the indices the maps refer to); removals are comparatively rare,
-    /// so a full rebuild keeps the common (append-only) path fast.
+    /// Rebuild every `worked_off` index from scratch after back-subsumption.
     fn rebuild_head_index(&mut self, arena: &[ContextClause]) {
         self.head_concept_index.clear();
         self.head_role_index.clear();
-        self.head_lit_index.clear();
-        self.empty_head_wo.clear();
+        self.ground_role_source_index.clear();
+        self.ground_role_target_index.clear();
+        self.max_head_pred_index.clear();
+        self.max_head_term_index.clear();
         self.ground_body_index.clear();
         self.bridge_index.clear();
         self.merge_clauses.clear();
-        for k in 0..self.worked_off.len() {
-            let cid = self.worked_off[k];
+        let worked_off = self.worked_off.clone();
+        for cid in worked_off {
             self.index_clause(arena, cid);
         }
     }
 
-    /// Forward subsumption: is `clause` subsumed by some existing clause in
-    /// `worked_off` or `todo`?  `worked_off` is consulted via the head-literal
-    /// index (every non-empty-head subsumer shares a head literal with
-    /// `clause`); `todo` is scanned linearly (it is the small work queue).
-    /// The `(nb, nh)` length pre-filter skips clauses that cannot subsume.
+    /// Add a clause to Sequoia's active redundancy index. Exact duplicates are
+    /// rejected before this function is called, so each posting contains `cid`
+    /// once.
+    fn index_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
+        let clause = &arena[cid as usize];
+        if clause.head.is_empty() {
+            self.active_empty_head.push(cid);
+        } else {
+            for &literal in &clause.head {
+                self.active_head_lit_index
+                    .entry(literal)
+                    .or_default()
+                    .push(cid);
+            }
+        }
+    }
+
+    /// Remove one clause from the active redundancy index.
+    fn unindex_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
+        let clause = &arena[cid as usize];
+        if clause.head.is_empty() {
+            self.active_empty_head.retain(|&candidate| candidate != cid);
+        } else {
+            let mut empty = Vec::new();
+            for &literal in &clause.head {
+                if let Some(posting) = self.active_head_lit_index.get_mut(&literal) {
+                    posting.retain(|candidate| *candidate != cid);
+                    if posting.is_empty() {
+                        empty.push(literal);
+                    }
+                }
+            }
+            for literal in empty {
+                self.active_head_lit_index.remove(&literal);
+            }
+        }
+    }
+
+    /// Forward redundancy over the complete active set (`worked_off ∪ todo`).
+    /// This has the same active semantics as Sequoia's context-clause
+    /// redundancy index, including queued-clause subsumption.
     fn fwd_subsumed(
         &self,
         arena: &[ContextClause],
         clause: &ContextClause,
-        nb: usize,
-        nh: usize,
+        exclude: Option<u32>,
     ) -> bool {
-        for &ci in &self.empty_head_wo {
-            let c = &arena[ci as usize];
-            if c.body.len() <= nb && c.test_strengthening(clause) == -1 {
+        let nb = clause.body.len();
+        let nh = clause.head.len();
+        for &ci in &self.active_empty_head {
+            if Some(ci) == exclude {
+                continue;
+            }
+            let candidate = &arena[ci as usize];
+            if candidate.body.len() <= nb && candidate.test_strengthening(clause) == -1 {
                 return true;
             }
         }
-        for l in &clause.head {
-            if let Some(cands) = self.head_lit_index.get(l) {
-                for &ci in cands {
-                    let c = &arena[ci as usize];
-                    if c.body.len() <= nb
-                        && c.head.len() <= nh
-                        && c.test_strengthening(clause) == -1
+        for literal in &clause.head {
+            if let Some(candidates) = self.active_head_lit_index.get(literal) {
+                for &ci in candidates {
+                    if Some(ci) == exclude {
+                        continue;
+                    }
+                    let candidate = &arena[ci as usize];
+                    if candidate.body.len() <= nb
+                        && candidate.head.len() <= nh
+                        && candidate.test_strengthening(clause) == -1
                     {
                         return true;
                     }
                 }
             }
         }
-        for &ci in &self.todo {
-            let c = &arena[ci as usize];
-            if c.body.len() <= nb && c.head.len() <= nh && c.test_strengthening(clause) == -1 {
-                return true;
-            }
-        }
         false
     }
 
     /// Backward subsumption: remove every existing clause that `clause`
-    /// strengthens, from both `worked_off` and `todo`, dropping their keys.
-    /// `worked_off` candidates come from the intersection of the head-literal
-    /// lists (a clause strengthened by `clause` contains all of `clause.head`),
-    /// approximated by the rarest such list and verified by `test_strengthening`;
-    /// when `clause.head` is empty every clause is a candidate.  The common case
-    /// removes nothing, so the expensive full `worked_off` scan and index
-    /// rebuild are skipped entirely.  Same removed set and survivor order as a
-    /// full linear scan, so the result is unchanged.
-    fn back_subsume(
-        &mut self,
-        arena: &[ContextClause],
-        clause: &ContextClause,
-        nb: usize,
-        nh: usize,
-    ) {
-        // The incoming clause must not remove an existing *identical* clause
-        // (callers reject exact duplicates before back-subsuming, but the guard
-        // mirrors the historical key check).
-        let same = |c: &ContextClause| c.body == clause.body && c.head == clause.head;
-        // ---- worked_off ----
-        let mut remove_wo: Vec<u32> = Vec::new();
-        if clause.head.is_empty() {
-            for &ci in &self.worked_off {
-                let c = &arena[ci as usize];
-                if c.body.len() >= nb
-                    && c.head.len() >= nh
-                    && clause.test_strengthening(c) == -1
-                    && !same(c)
-                {
-                    remove_wo.push(ci);
-                }
-            }
+    /// strengthens, from both `worked_off` and `todo`, dropping their keys. The
+    /// rarest active head posting generates candidates; exact inclusion
+    /// verification preserves the same removal set as Sequoia's superset walk.
+    fn back_subsume(&mut self, arena: &[ContextClause], clause: &ContextClause) {
+        let nb = clause.body.len();
+        let nh = clause.head.len();
+        let same = |candidate: &ContextClause| {
+            candidate.body == clause.body && candidate.head == clause.head
+        };
+        let candidates: Vec<u32> = if clause.head.is_empty() {
+            self.clause_keys.iter().copied().collect()
         } else {
-            // smallest head-literal list (None if some head literal is absent,
-            // in which case no clause contains all of `clause.head`).
-            let mut best: Option<&Posting> = None;
-            for l in &clause.head {
-                match self.head_lit_index.get(l) {
+            let mut rarest: Option<&Posting> = None;
+            for literal in &clause.head {
+                match self.active_head_lit_index.get(literal) {
                     None => {
-                        best = None;
-                        break;
+                        return;
                     }
-                    Some(v) => {
-                        if best.map_or(true, |b| v.len() < b.len()) {
-                            best = Some(v);
-                        }
+                    Some(posting) if rarest.map_or(true, |old| posting.len() < old.len()) => {
+                        rarest = Some(posting);
                     }
+                    Some(_) => {}
                 }
             }
-            if let Some(cands) = best {
-                for &ci in cands {
-                    let c = &arena[ci as usize];
-                    if c.body.len() >= nb
-                        && c.head.len() >= nh
-                        && clause.test_strengthening(c) == -1
-                        && !same(c)
-                    {
-                        remove_wo.push(ci);
-                    }
-                }
-            }
+            rarest
+                .map(|posting| posting.iter().copied().collect())
+                .unwrap_or_default()
+        };
+        let removed: HashSet<u32> = candidates
+            .into_iter()
+            .filter(|&ci| {
+                let candidate = &arena[ci as usize];
+                candidate.body.len() >= nb
+                    && candidate.head.len() >= nh
+                    && clause.test_strengthening(candidate) == -1
+                    && !same(candidate)
+            })
+            .collect();
+        if removed.is_empty() {
+            return;
         }
-        if !remove_wo.is_empty() {
-            let remove_set: HashSet<u32> = remove_wo.into_iter().collect();
-            self.worked_off.retain(|ci| !remove_set.contains(ci));
-            for ci in &remove_set {
-                self.clause_keys.remove(ci);
-            }
-            self.rebuild_head_index(arena);
-        }
-        // ---- todo (not indexed) ----
-        let mut removed_todo: Vec<u32> = Vec::new();
-        let mut todo = std::mem::take(&mut self.todo);
-        todo.retain(|&ci| {
-            let c = &arena[ci as usize];
-            if c.body.len() >= nb
-                && c.head.len() >= nh
-                && clause.test_strengthening(c) == -1
-                && !same(c)
-            {
-                removed_todo.push(ci);
-                false
-            } else {
-                true
-            }
-        });
-        self.todo = todo;
-        for ci in removed_todo {
+
+        let removed_worked = self.worked_off.iter().any(|ci| removed.contains(ci));
+        for &ci in &removed {
+            self.unindex_active_clause(arena, ci);
             self.clause_keys.remove(&ci);
+        }
+        self.worked_off.retain(|ci| !removed.contains(ci));
+        self.todo.retain(|ci| !removed.contains(ci));
+        if removed_worked {
+            self.rebuild_head_index(arena);
         }
     }
 }
@@ -796,6 +1361,46 @@ impl Context {
 struct PredClause {
     body: Vec<Pred>,
     head: Vec<Lit>,
+}
+
+/// Sequoia `Rules.Pred` inserts each Cartesian-product conclusion through
+/// `resultsBuffer.removeRedundant` before returning it to the context.  Keep
+/// that exact strengthening antichain, but use the same exact-key trie as
+/// Sequoia's active redundancy index instead of comparing every new result
+/// with every buffered result.  The original `UnprocessedDeque` implementation
+/// is linear; on nominal roots one Pred call can buffer thousands of mutually
+/// related conclusions and make the pairwise scan quadratic.
+///
+/// This changes only the batch representation.  A buffered strengthening (or
+/// equal clause) rejects the new result; otherwise the new strengthening
+/// removes every weaker buffered result.  Therefore `into_vec` contains exactly
+/// the same antichain and the context fixpoint is unchanged.
+#[derive(Default)]
+struct PredResultBuffer {
+    clauses: Vec<Option<ContextClause>>,
+    redundancy_trie: RedundancyTrie,
+}
+
+impl PredResultBuffer {
+    fn push_nonredundant(&mut self, clause: ContextClause) {
+        if self.redundancy_trie.contains_subset(&clause, None) {
+            return;
+        }
+        for removed in self.redundancy_trie.remove_supersets(&clause) {
+            self.clauses[removed as usize] = None;
+        }
+        let id = u32::try_from(self.clauses.len()).expect("Pred result buffer exhausted u32 ids");
+        self.redundancy_trie.insert(&clause, id);
+        self.clauses.push(Some(clause));
+    }
+
+    fn into_vec(self) -> Vec<ContextClause> {
+        self.clauses.into_iter().flatten().collect()
+    }
+}
+
+fn push_nonredundant_pred_result(out: &mut PredResultBuffer, clause: ContextClause) {
+    out.push_nonredundant(clause);
 }
 
 /// Content hash for interning (collisions are resolved by exact comparison,
@@ -840,6 +1445,16 @@ pub struct Engine {
     /// may ground the central variable. Created lazily on the first r-Succ
     /// push or ground fact; None for ontologies without individuals.
     ground_ctx: Option<usize>,
+    /// Named classes certified by `detect_nominal_enumerations` as exactly a
+    /// finite union of input individuals. Konclude's nominal saturation reuses
+    /// the completed ABox label when such a nominal is integrated; KM uses the
+    /// exact multi-nominal analogue and intersects the completed ground labels
+    /// instead of replaying the whole ABox through a query root.
+    nominal_enumerations: HashMap<Iri, Vec<Term>>,
+    /// Complete named atomic subsumers for enumeration-certified queries already
+    /// answered from the ground closure. Kept outside `contexts` so the
+    /// expensive nominal query root is never created.
+    nominal_shortcuts: HashMap<Iri, BTreeSet<Iri>>,
     /// Pay-as-you-go expansion: one successor context per function symbol `f`,
     /// instead of a single shared empty-core context for every anonymous
     /// successor (the trivial strategy).  Successors generated by distinct
@@ -939,6 +1554,10 @@ pub struct Engine {
     /// content hash -> candidate arena ids, per domain (exact-compare verified)
     cc_intern_idx: [HashMap<u64, Vec<u32>>; 2],
     pub dropped_unsupported: usize,
+    /// A resource backstop dropped work before the monotone fixpoint. The
+    /// derived clauses remain sound, but classification is not complete and
+    /// must never be published as a successful answer.
+    message_truncated: bool,
     /// Nom rule (arXiv:1805.01396 Table 3): `K`, where `K + 1` is the largest
     /// neighbour-variable index `i` (of `z_i`) over the whole ontology — the
     /// width of the additional-nominal disjunction `⋁_{i=1}^K y ≈ o'_{ρ·S^i}`.
@@ -957,7 +1576,7 @@ pub struct Engine {
     /// first additional-nominal id (= the initial `nom_next`): ids at or
     /// above this are Nom-introduced and exempt from the r-Pred
     /// announcement guard (no context can have announced them)
-    nom_base: i32,
+    nom_base: Term,
     /// Additional-nominal budget (`KM_NOM_BUDGET`, default 4096).  The Nom rule
     /// is the doubly-exponential source of the calculus; on exhaustion further
     /// Nom conclusions are dropped with an explicit warning (sound, possibly
@@ -1002,6 +1621,17 @@ impl Engine {
     pub fn new(sig: Sig, ont_clauses: Vec<OntologyClause>, dropped: usize) -> Engine {
         let mut sig = sig;
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some();
+        let (ont_clauses, max_input_ind, ground_merge) =
+            merge_asserted_ground_equalities(ont_clauses);
+        if std::env::var_os("KM_PROF").is_some() && ground_merge.asserted_pairs != 0 {
+            eprintln!(
+                "KM_PROF deterministic-same-merge asserted_pairs={} merged_aliases={} clauses_before={} clauses_after={}",
+                ground_merge.asserted_pairs,
+                ground_merge.merged_aliases,
+                ground_merge.clauses_before,
+                ground_merge.clauses_after,
+            );
+        }
         let mut ont = Ontology::default();
         for c in ont_clauses {
             let idx = ont.clauses.len();
@@ -1071,15 +1701,18 @@ impl Engine {
         // and fresh additional nominals are allocated above every input
         // individual id (so the term/label order extends allocation order).
         let mut max_z: i32 = 0;
-        let mut max_ind: i32 = 0;
+        // Fresh additional nominals must lie above every INPUT individual,
+        // including aliases removed by the deterministic equality quotient.
+        // Reusing a merged-away input id would not be fresh in OWL semantics.
+        let mut max_ind: i32 = max_input_ind;
         {
             let mut see = |t: Term| {
                 if is_neighbour(t) && t != Y {
-                    max_z = max_z.max(-t - 1);
+                    max_z = max_z.max((Y - t) as i32);
                 } else if is_individual(t) {
-                    max_ind = max_ind.max(t);
+                    max_ind = max_ind.max(ind_id(t));
                 } else if is_comp(t) {
-                    max_ind = max_ind.max(comp_parts(t).1);
+                    max_ind = max_ind.max(ind_id(comp_parts(t).1));
                 }
             };
             for c in &ont.clauses {
@@ -1111,12 +1744,15 @@ impl Engine {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(4096);
+        let nominal_enumerations = detect_nominal_enumerations(&sig, &ont.clauses);
         Engine {
             sig,
             ont,
             contexts: Vec::new(),
             core_index: HashMap::new(),
             ground_ctx: None,
+            nominal_enumerations,
+            nominal_shortcuts: HashMap::new(),
             msgs: VecDeque::new(),
             successor_ctxs: HashMap::new(),
             central_index: HashMap::new(),
@@ -1145,10 +1781,11 @@ impl Engine {
             cc_arena: [Vec::new(), Vec::new()],
             cc_intern_idx: [HashMap::new(), HashMap::new()],
             dropped_unsupported: dropped,
+            message_truncated: false,
             nom_k: (max_z - 1).max(0) as usize,
             nom_table: std::cell::RefCell::new(HashMap::new()),
             nom_next: std::cell::Cell::new(max_ind + 1),
-            nom_base: max_ind + 1,
+            nom_base: ind_term(max_ind + 1),
             nom_budget,
             nom_truncated: std::cell::Cell::new(false),
             stat_propagate: 0,
@@ -1334,6 +1971,114 @@ impl Engine {
         id
     }
 
+    /// Complete enumeration-certified class queries from the saturated ground
+    /// context. For `A ≡ {o1,…,on}` and any atomic class B,
+    /// The governing equivalence is `O ⊨ A ⊑ B` iff `O ⊨ B(oi)` for every
+    /// listed individual `oi`.
+    ///
+    /// The forward direction instantiates the subsumption at every nominal;
+    /// the reverse direction follows because every A-element equals one of the
+    /// listed individuals. This is the exact finite-enumeration specialization
+    /// of Konclude's nominal-label reuse. The ground context is first taken to
+    /// its full message fixpoint; if any resource backstop fired, no shortcut is
+    /// published and ordinary CB remains responsible for the query.
+    fn complete_nominal_enumeration_queries(&mut self, queries: &[Iri]) {
+        if std::env::var_os("KM_NO_NOMINAL_LABEL_CACHE").is_some()
+            || !queries
+                .iter()
+                .any(|q| self.nominal_enumerations.contains_key(q))
+        {
+            return;
+        }
+        self.run_msg_fixpoint_min();
+        if self.incomplete() {
+            return;
+        }
+        let Some(gid) = self.ground_ctx else {
+            return;
+        };
+        let ground = &self.contexts[gid];
+        let arena = &self.cc_arena[ground.root as usize];
+        if ground.worked_off.iter().any(|&ci| {
+            let c = &arena[ci as usize];
+            c.body.is_empty() && c.head.is_empty()
+        }) {
+            // The ontology is already inconsistent. `inconsistent()` reports
+            // that globally, so no per-class shortcut is needed.
+            return;
+        }
+
+        let mut direct_types: HashMap<Term, BTreeSet<Iri>> = HashMap::new();
+        let mut equal: HashMap<Term, Vec<Term>> = HashMap::new();
+        for &ci in &ground.worked_off {
+            let clause = &arena[ci as usize];
+            if !clause.body.is_empty() || clause.head.len() != 1 {
+                continue;
+            }
+            match clause.head[0] {
+                Lit::P(Pred::Concept { iri, t })
+                    if is_individual(t)
+                        && !self.sig.is_internal(iri)
+                        && !self.sig.is_nothing_concept(iri) =>
+                {
+                    direct_types.entry(t).or_default().insert(iri);
+                }
+                Lit::Eq { s, t } if is_individual(s) && is_individual(t) => {
+                    equal.entry(s).or_default().push(t);
+                    equal.entry(t).or_default().push(s);
+                }
+                _ => {}
+            }
+        }
+
+        let types_for = |individual: Term| {
+            let mut types = BTreeSet::new();
+            let mut seen = HashSet::from([individual]);
+            let mut todo = vec![individual];
+            while let Some(o) = todo.pop() {
+                if let Some(found) = direct_types.get(&o) {
+                    types.extend(found.iter().copied());
+                }
+                if let Some(same) = equal.get(&o) {
+                    for &other in same {
+                        if seen.insert(other) {
+                            todo.push(other);
+                        }
+                    }
+                }
+            }
+            types
+        };
+
+        let mut completed = 0usize;
+        for &query in queries {
+            let Some(individuals) = self.nominal_enumerations.get(&query) else {
+                continue;
+            };
+            let mut common: Option<BTreeSet<Iri>> = None;
+            for &individual in individuals {
+                let types = types_for(individual);
+                common = Some(match common {
+                    None => types,
+                    Some(current) => current.intersection(&types).copied().collect(),
+                });
+            }
+            // A certified enumeration is non-empty. The detector never emits an
+            // empty individual list, but retain the guard so a malformed future
+            // normal form falls back instead of asserting a vacuous answer.
+            if let Some(common) = common {
+                self.nominal_shortcuts.insert(query, common);
+                completed += 1;
+            }
+        }
+        if self.prof && completed != 0 {
+            eprintln!(
+                "KM_PROF nominal-label-cache completed_queries={completed} ground_clauses={}",
+                ground.worked_off.len()
+            );
+        }
+    }
+
     /// Filter a head literal vector: apply the Ineq rule (drop `t != t`),
     /// drop valid equations `t == t` (makes clause a tautology -> None), and
     /// drop owl:Nothing predicates.  Returns None if the clause is tautological.
@@ -1357,7 +2102,7 @@ impl Engine {
     }
 
     /// Redundancy-aware clause addition (Elim): skip if subsumed; remove clauses
-    /// it subsumes; enqueue to todo.  Returns true if added.
+    /// it subsumes; enqueue to todo. Returns true if added.
     fn add_clause(&mut self, id: usize, clause: ContextClause) -> bool {
         if !self.prof_time {
             return self.add_clause_inner(id, clause);
@@ -1381,18 +2126,17 @@ impl Engine {
                 return false;
             }
         }
-        let (nb, nh) = (clause.body.len(), clause.head.len());
+        let nb = clause.body.len();
         let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[d];
         // Forward subsumption: skip if some existing clause subsumes `clause`.
-        if ctx.fwd_subsumed(arena, &clause, nb, nh) {
+        if ctx.fwd_subsumed(&self.cc_arena[d], &clause, None) {
             return false;
         }
         // Back-subsumption: drop existing clauses that `clause` strengthens.
         {
             let arena = &self.cc_arena[d];
             let ctx = &mut self.contexts[id];
-            ctx.back_subsume(arena, &clause, nb, nh);
+            ctx.back_subsume(arena, &clause);
         }
         // Demand-driven ground-fact seeding (nominal mode): the first clause
         // mentioning an individual brings that individual's ground ontology
@@ -1420,6 +2164,7 @@ impl Engine {
         };
         let ctx = &mut self.contexts[id];
         ctx.clause_keys.insert(cid);
+        ctx.index_active_clause(&self.cc_arena[d], cid);
         // KM_TODO_UNITS_FIRST: prioritise empty-body (fact) clauses so the strong
         // subsumers are worked off first and prune the rest earlier. Pure work-off
         // ordering — saturation is confluent, so the fixpoint/output is unchanged.
@@ -1471,26 +2216,38 @@ impl Engine {
                         id, iters, subsumed, nadded, ctx.todo.len(), ctx.worked_off.len(),
                         nhyper, npred, neqp, neqe, nfact
                     );
+                    if self.prof_time {
+                        let ms = |cell: &'static std::thread::LocalKey<
+                            std::cell::Cell<u64>,
+                        >| { cell.with(|value| value.get()) as f64 / 1e6 };
+                        eprintln!(
+                            "KM_PROF[time-ms] subsume={:.1} hyper={:.1} pred_local={:.1} add_clause={:.1}",
+                            ms(&SUBSUME_NS),
+                            ms(&HYPER_NS),
+                            ms(&PREDLOCAL_NS),
+                            ms(&ADDCLAUSE_NS),
+                        );
+                    }
                 }
             }
             // Re-check forward subsumption at work-off time: a clause that was
             // not subsumed when enqueued may since have been subsumed by a
-            // newly worked-off clause (back_subsume only scans worked_off, not
-            // todo).  Skipping it here -- before it fires its rules -- prevents a
+            // newly added strengthening.  Skipping it here -- before it fires
+            // its rules -- prevents a
             // redundant clause from spawning a cascade of further redundant
             // consequences.  Sound (a subsumed clause is entailed by its
             // subsumer, so dropping it preserves completeness).
             {
                 let ctx = &self.contexts[id];
-                let arena = &self.cc_arena[d];
-                let (nb, nh) = (clause.body.len(), clause.head.len());
                 let __t_sub = self.prof_time.then(std::time::Instant::now);
-                let is_sub = ctx.fwd_subsumed(arena, &clause, nb, nh);
+                let is_sub = ctx.fwd_subsumed(&self.cc_arena[d], &clause, Some(cid));
                 if let Some(t) = __t_sub {
                     prof_add(&SUBSUME_NS, t);
                 }
                 if is_sub {
-                    self.contexts[id].clause_keys.remove(&cid);
+                    let ctx = &mut self.contexts[id];
+                    ctx.unindex_active_clause(&self.cc_arena[d], cid);
+                    ctx.clause_keys.remove(&cid);
                     if prof {
                         subsumed += 1;
                     }
@@ -1735,34 +2492,77 @@ impl Engine {
                 Some(p) => p,
                 None => continue,
             };
+            // Pin the triggering maximal predicate as Sequoia's side
+            // condition before looking up the other body atoms. Saturation
+            // invokes Hyper once for every maximal predicate, so allowing all
+            // of the side clause's other maxima here only re-enumerates the
+            // same resolvents. The early binding also enables exact and
+            // one-endpoint postings in the nominal ground context.
+            let mut sigma = CentralSubst::new(self.ground_ctx == Some(id));
+            if !unify(&mut sigma, &oc.body[side_pos], &max) {
+                continue;
+            }
             // candidate (matched max-head-predicate) lists per body position
             let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(n);
             let mut ok = true;
             for i in 0..n {
                 if i == side_pos {
-                    // side condition: its max-head-preds unifiable with body[i]
-                    let mut v = Vec::new();
-                    for (p, _) in side.max_head_predicates() {
-                        if can_unify(&oc.body[i], &p) {
-                            v.push((usize::MAX, p)); // usize::MAX marks the side clause
-                        }
-                    }
-                    if v.is_empty() {
-                        ok = false;
-                        break;
-                    }
-                    candidates.push(v);
+                    candidates.push(vec![(usize::MAX, max)]);
                 } else {
                     let mut v = Vec::new();
-                    let cand = match oc.body[i] {
-                        Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
-                        Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
+                    let wanted = oc.body[i].apply(&|term| sigma.apply(term));
+                    let (cand, exact) = match (oc.body[i], wanted) {
+                        (Pred::Concept { t, .. }, wanted)
+                            if hyper_term_determined(t, &sigma) =>
+                        {
+                            (ctx.max_head_pred_index.get(&wanted), true)
+                        }
+                        (
+                            Pred::Role { s, t, .. },
+                            wanted @ Pred::Role {
+                                iri,
+                                s: wanted_s,
+                                t: wanted_t,
+                            },
+                        ) => {
+                            let source_fixed = hyper_term_determined(s, &sigma);
+                            let target_fixed = hyper_term_determined(t, &sigma);
+                            if source_fixed && target_fixed {
+                                (ctx.max_head_pred_index.get(&wanted), true)
+                            } else if source_fixed && (is_individual(wanted_s) || is_comp(wanted_s))
+                            {
+                                (
+                                    ctx.ground_role_source_index.get(&(iri, wanted_s)),
+                                    false,
+                                )
+                            } else if target_fixed
+                                && (is_individual(wanted_t) || is_comp(wanted_t))
+                            {
+                                (
+                                    ctx.ground_role_target_index.get(&(iri, wanted_t)),
+                                    false,
+                                )
+                            } else {
+                                (ctx.head_role_index.get(&iri), false)
+                            }
+                        }
+                        (Pred::Concept { iri, .. }, _) => {
+                            (ctx.head_concept_index.get(&iri), false)
+                        }
+                        (Pred::Role { iri, .. }, _) => {
+                            (ctx.head_role_index.get(&iri), false)
+                        }
                     };
                     if let Some(cand) = cand {
                         for &ci in cand {
-                            for (p, _) in arena[ci as usize].max_head_predicates() {
-                                if can_unify(&oc.body[i], &p) {
-                                    v.push((ci as usize, p));
+                            if exact {
+                                v.push((ci as usize, wanted));
+                            } else {
+                                for (p, _) in arena[ci as usize].max_head_predicates() {
+                                    let mut probe = sigma.clone();
+                                    if unify(&mut probe, &oc.body[i], &p) {
+                                        v.push((ci as usize, p));
+                                    }
                                 }
                             }
                         }
@@ -1777,7 +2577,8 @@ impl Engine {
                     // to `y ≈ y`, the Nom-rule trigger, which must fire.
                     if self.ground_ctx == Some(id) {
                         for (p, _) in side.max_head_predicates() {
-                            if can_unify(&oc.body[i], &p) {
+                            let mut probe = sigma.clone();
+                            if unify(&mut probe, &oc.body[i], &p) {
                                 v.push((usize::MAX, p));
                             }
                         }
@@ -1791,6 +2592,27 @@ impl Engine {
             }
             if !ok {
                 continue;
+            }
+            if let Some(threshold) = hyper_product_trace_threshold() {
+                let widths: Vec<usize> = candidates.iter().map(Vec::len).collect();
+                let product = widths
+                    .iter()
+                    .fold(1u128, |acc, &width| acc.saturating_mul(width as u128));
+                if product >= threshold {
+                    eprintln!(
+                        "KM_HYPER_PRODUCT ctx={} oci={} max={:?} side=({},{}) \
+                         widths={:?} product={} body={:?} head={:?}",
+                        id,
+                        oci,
+                        max,
+                        side.body.len(),
+                        side.head.len(),
+                        widths,
+                        product,
+                        oc.body,
+                        oc.head,
+                    );
+                }
             }
             // Enumerate the unifiable combinations by a backtracking *join* rather
             // than the full cartesian product: extend the central substitution one
@@ -1807,7 +2629,6 @@ impl Engine {
             let mut order: Vec<usize> = (0..n).collect();
             order.sort_by_key(|&i| candidates[i].len());
             let mut chosen = vec![0usize; n];
-            let sigma = CentralSubst::new(self.ground_ctx == Some(id));
             // side-position variables are exempt from symmetric-group pruning
             let exempt: Vec<Term> = if oc.sym_groups.is_empty() {
                 Vec::new()
@@ -1895,7 +2716,9 @@ impl Engine {
             return Some(t);
         }
         let next = self.nom_next.get();
-        if self.nom_table.borrow().len() >= self.nom_budget || next >= FTERM_BASE {
+        if self.nom_table.borrow().len() >= self.nom_budget
+            || next >= (FTERM_BASE - X) as i32
+        {
             if !self.nom_truncated.replace(true) {
                 eprintln!(
                     "WARNING: kobayashi-marust additional-nominal budget ({}) exhausted; \
@@ -2069,14 +2892,14 @@ impl Engine {
         max: Pred,
         root: bool,
     ) -> Vec<ContextClause> {
-        let mut out = Vec::new();
+        let mut out = PredResultBuffer::default();
         let ctx = &self.contexts[id];
-        let arena = &self.cc_arena[root as usize];
-        for &pid in &ctx.neighbor_pred {
+        let relevant = match ctx.neighbor_pred_body_index.get(&max) {
+            Some(relevant) => relevant.as_slice(),
+            None => return out.into_vec(),
+        };
+        for &pid in relevant {
             let pc = &self.pred_interned[pid as usize];
-            if !pc.body.iter().any(|b| *b == max) {
-                continue;
-            }
             // For each nonground body predicate, candidate clauses with that
             // predicate maximal in head; `max` is provided by `side`. Ground
             // body atoms (nominal mode) are copied to the resolvent body.
@@ -2084,23 +2907,19 @@ impl Engine {
             let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
             let mut ok = true;
             for &bp in &pc.body {
-                let mut v = Vec::new();
+                // Sequoia Context.PredRule pins the occurrence equal to the
+                // currently processed maximal predicate to `sideConditionToUse`.
+                // Older providers for the same predicate fired when they were
+                // worked off; a Pred clause arriving later is handled by
+                // `pred_from_neighbor` against the complete worked-off index.
+                // Including them here only repeats prior Cartesian products.
                 if bp == max {
-                    v.push((usize::MAX, bp));
+                    candidates.push(vec![(usize::MAX, bp)]);
+                    continue;
                 }
-                let cand = match bp {
-                    Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
-                    Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
-                };
-                if let Some(cand) = cand {
-                    for &ci in cand {
-                        if arena[ci as usize]
-                            .max_head_predicates()
-                            .any(|(p, _)| p == bp)
-                        {
-                            v.push((ci as usize, bp));
-                        }
-                    }
+                let mut v = Vec::new();
+                if let Some(cand) = ctx.max_head_pred_index.get(&bp) {
+                    v.extend(cand.iter().map(|&ci| (ci as usize, bp)));
                 }
                 if v.is_empty() {
                     if bp.is_ground() {
@@ -2115,13 +2934,14 @@ impl Engine {
             if !ok {
                 continue;
             }
+            trace_pred_product("local", id, Some(max), pc, &ground, &candidates);
             let n = candidates.len();
             let mut idxs = vec![0usize; n];
             loop {
                 if let Some(c) =
                     self.build_pred_resolvent(id, side, pc, &ground, &candidates, &idxs, root)
                 {
-                    out.push(c);
+                    push_nonredundant_pred_result(&mut out, c);
                 }
                 let mut k = 0;
                 loop {
@@ -2141,7 +2961,7 @@ impl Engine {
                 }
             }
         }
-        out
+        out.into_vec()
     }
 
     fn build_pred_resolvent(
@@ -2503,7 +3323,10 @@ impl Engine {
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
         let mterm = max.max_term();
-        for &ci in &ctx.worked_off {
+        let Some(candidates) = ctx.max_head_term_index.get(&mterm) else {
+            return out;
+        };
+        for &ci in candidates {
             let c = &arena[ci as usize];
             for l in c.max_head() {
                 if let Lit::Eq { s, t } = l {
@@ -2533,7 +3356,10 @@ impl Engine {
             Lit::Eq { s, .. } | Lit::Ineq { s, .. } => s,
             _ => return out,
         };
-        for &ci in &ctx.worked_off {
+        let Some(candidates) = ctx.max_head_term_index.get(&s) else {
+            return out;
+        };
+        for &ci in candidates {
             let c = &arena[ci as usize];
             for l in c.max_head() {
                 if l.contains_at_rewrite_position(s) && l != max {
@@ -2732,6 +3558,7 @@ impl Engine {
         if !ctx.clause_keys.insert(cid) {
             return;
         }
+        ctx.index_active_clause(arena, cid);
         if pred_eligible {
             ctx.pred_pool.push(cid);
         }
@@ -3039,8 +3866,11 @@ impl Engine {
         }
         // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
         // `pred_pool` (function-free, predicate-only head — built when a clause is
-        // worked off, see `saturate`; pushing a back-subsumed pool entry stays
-        // sound because it is still context-entailed).  A `(clause, edge)`
+        // worked off, see `saturate`). The pool is an append-only derivation log,
+        // but only entries still present in `clause_keys` may be pushed. This
+        // mirrors Sequoia's `predClausesOnLastRound.removeRedundant`: an
+        // intermediate clause back-subsumed before the end-of-round push is not
+        // sent to predecessors. A `(clause, edge)`
         // covered-check `c.body ⊆ pushed[edge]` can only flip from fail to pass
         // when `pushed[edge]` gains a predicate, so we re-check a pair only when
         // the clause is new (index ≥ `pred_hwm`) or the edge's pushed-set grew
@@ -3082,6 +3912,13 @@ impl Engine {
                 }
             }
             for (i, &ci) in ctx.pred_pool.iter().enumerate() {
+                // Back-subsumption removes the arena id from `clause_keys`.
+                // Skipping it here is not an inference change: the retained
+                // strengthening entails the dead clause and is itself eligible
+                // for this round's Pred push.
+                if !ctx.clause_keys.contains(&ci) {
+                    continue;
+                }
                 let c = &arena[ci as usize];
                 let new_clause = i >= hwm;
                 // r-Pred (ground sender, x-free clauses): each body atom may be
@@ -3216,12 +4053,13 @@ impl Engine {
         }
     }
 
-    /// Apply a Succ message: record the edge and add the hypothesis clause,
-    /// saturating the target.  Returns the target id; the caller propagates it
-    /// (deferred, batched: many messages may target the same context, and
-    /// propagating once after the whole batch -- rather than per message --
-    /// avoids re-scanning the edge/pool sets thousands of times on
-    /// disjunction/role-chain ontologies, without changing the fixpoint).
+    /// Apply a Succ message: record the edge and add the hypothesis clause.
+    /// Returns the target id; the caller saturates and propagates each touched
+    /// target once after the whole message batch. Accumulating messages before
+    /// saturation mirrors Sequoia's context work queue and avoids replaying an
+    /// otherwise identical saturation tail once per incoming edge predicate.
+    /// The fixpoint is unchanged: every added clause remains in `todo`, and the
+    /// batch-end saturation processes their union before any propagation.
     fn apply_succ(&mut self, from: usize, f: Term, p: Pred, target: usize) -> usize {
         // record predecessor edge
         self.contexts[target]
@@ -3232,7 +4070,8 @@ impl Engine {
         // a new edge / pushed predicate may let existing worked-off clauses be
         // pushed back to this predecessor, so the next propagate must re-scan.
         self.contexts[target].dirty = true;
-        // Succ rule: add hypothesis clause  p -> p.  Saturate unconditionally:
+        // Succ rule: add hypothesis clause p -> p. The batch driver saturates
+        // the target unconditionally after all messages have been accumulated:
         // under the central strategy a FACT trigger's hypothesis is subsumed by
         // the core's `-> p` (add_clause returns false), while a disjunctively
         // derived trigger's hypothesis is genuinely new and saturates — its
@@ -3242,13 +4081,12 @@ impl Engine {
         let root = self.contexts[target].root;
         let c = ContextClause::new(vec![p], vec![Lit::P(p)], root, &self.sig);
         self.add_clause(target, c);
-        self.saturate(target);
         target
     }
 
     /// Apply a Pred message: back-substitute and add the resulting pred clause /
-    /// resolvents, saturating `to`.  Returns `to`; the caller propagates it
-    /// (deferred, batched -- see `apply_succ`).
+    /// resolvents. Returns `to`; the caller saturates and propagates it once at
+    /// the end of the message batch (see `apply_succ`).
     fn apply_pred(&mut self, to: usize, from: usize, edge_label: Term, pool_idx: u32) -> usize {
         let pc = self.pred_payload(from, edge_label, pool_idx);
         self.apply_pred_payload(to, pc)
@@ -3277,14 +4115,26 @@ impl Engine {
         // Full literals: pool-eligible heads are predicates plus (nominal
         // mode) the individual equality forms; `x ≈ o` crosses as
         // `f(x) ≈ o`, which the receiver's Eq rule then rewrites.
-        let head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
+        // Substitution plus the appended sender core can collapse predicates
+        // that were distinct before crossing the edge.  PredClause denotes
+        // conjunction/disjunction sets, exactly like ContextClause, so
+        // normalize here before interning and before the receiver constructs a
+        // Cartesian join.  Leaving duplicates in `body` enumerated the same
+        // logical premise combination exponentially many times.
+        body.sort();
+        body.dedup();
+        let mut head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
+        head.sort();
+        head.dedup();
         PredClause { body, head }
     }
 
     /// The receiver-side half of a Pred message: intern the back-substituted
-    /// clause, dedup against prior arrivals, fire the Pred rule against `to`'s
-    /// worked-off clauses, and saturate `to`. Mutates only context `to` (plus
-    /// the shared arena / intern tables). Returns `to`.
+    /// clause, dedup against prior arrivals, and fire the Pred rule against
+    /// `to`'s already-worked-off clauses. Newly added local clauses remain in
+    /// `todo`; batch-end saturation both processes them and fires local Pred
+    /// against every neighbor clause received in this batch. Mutates only
+    /// context `to` (plus the shared arena / intern tables). Returns `to`.
     fn apply_pred_payload(&mut self, to: usize, pc: PredClause) -> usize {
         let pid = self.intern_pred(pc);
         // Duplicate arrival (same substituted clause already received, e.g. from
@@ -3294,6 +4144,13 @@ impl Engine {
             return to;
         }
         self.contexts[to].neighbor_pred.push(pid);
+        for &predicate in &self.pred_interned[pid as usize].body {
+            self.contexts[to]
+                .neighbor_pred_body_index
+                .entry(predicate)
+                .or_default()
+                .push(pid);
+        }
         // Apply Pred rule against worked-off clauses of `to`.
         let root = self.contexts[to].root;
         let results = {
@@ -3303,7 +4160,6 @@ impl Engine {
         for r in results {
             self.add_clause(to, r);
         }
-        self.saturate(to);
         to
     }
 
@@ -3312,77 +4168,71 @@ impl Engine {
     /// body atoms (nominal mode) resolve like the others when a provider
     /// exists and are otherwise copied verbatim to the resolvent body (the
     /// C_i of arXiv:1805.01396 Pred / r-Pred).
+    ///
+    /// Sequoia's `Rules.Pred` enumerates the full Cartesian product and retains
+    /// only its strengthening antichain. We compute exactly that antichain as a
+    /// left-deep join: after each premise, remove redundant partial unions before
+    /// joining the next premise. If partial P strengthens Q, then P union R
+    /// strengthens Q union R for every choice R from all remaining premises.
+    /// Consequently every extension pruned here has a stronger extension in the
+    /// final product. This changes join order and allocation only, not the Pred
+    /// conclusions admitted to the context fixpoint.
     fn pred_from_neighbor(&self, id: usize, pc: &PredClause, root: bool) -> Vec<ContextClause> {
-        let mut out = Vec::new();
         let ctx = &self.contexts[id];
         let arena = &self.cc_arena[root as usize];
         let mut ground: Vec<Pred> = Vec::new();
         let mut candidates: Vec<Vec<(usize, Pred)>> = Vec::with_capacity(pc.body.len());
         for &bp in &pc.body {
             let mut v = Vec::new();
-            let cand = match bp {
-                Pred::Concept { iri, .. } => ctx.head_concept_index.get(&iri),
-                Pred::Role { iri, .. } => ctx.head_role_index.get(&iri),
-            };
-            if let Some(cand) = cand {
-                for &ci in cand {
-                    if arena[ci as usize]
-                        .max_head_predicates()
-                        .any(|(p, _)| p == bp)
-                    {
-                        v.push((ci as usize, bp));
-                    }
-                }
+            if let Some(cand) = ctx.max_head_pred_index.get(&bp) {
+                v.extend(cand.iter().map(|&ci| (ci as usize, bp)));
             }
             if v.is_empty() {
                 if bp.is_ground() {
                     ground.push(bp);
                     continue;
                 }
-                return out; // a body predicate has no provider: no resolvent
+                return Vec::new(); // a body predicate has no provider: no resolvent
             }
             candidates.push(v);
         }
-        let n = candidates.len();
-        let mut idxs = vec![0usize; n];
-        loop {
-            // build resolvent (no side clause; all from worked-off)
-            let mut head: Vec<Lit> = pc.head.clone();
-            let mut body: Vec<Pred> = ground.clone();
-            for i in 0..n {
-                let (ci, matched) = candidates[i][idxs[i]];
-                let clause = &arena[ci];
-                for l in &clause.head {
-                    if *l != Lit::P(matched) {
-                        head.push(*l);
+        trace_pred_product("arrival", id, None, pc, &ground, &candidates);
+        // A smaller dimension first normally minimizes the live partial
+        // antichain. Dimension order cannot affect the set union represented by
+        // a complete selection from the Cartesian product.
+        candidates.sort_by_key(Vec::len);
+
+        let Some(head) = self.filter_head(pc.head.clone()) else {
+            return Vec::new();
+        };
+        let mut partials = vec![ContextClause::new(ground, head, root, &self.sig)];
+        for dimension in candidates {
+            let mut next = PredResultBuffer::default();
+            for partial in partials {
+                for &(ci, matched) in &dimension {
+                    let provider = &arena[ci];
+                    let mut body = partial.body.clone();
+                    body.extend_from_slice(&provider.body);
+                    let mut head = partial.head.clone();
+                    for &literal in &provider.head {
+                        if literal != Lit::P(matched) {
+                            head.push(literal);
+                        }
+                    }
+                    if let Some(head) = self.filter_head(head) {
+                        push_nonredundant_pred_result(
+                            &mut next,
+                            ContextClause::new(body, head, root, &self.sig),
+                        );
                     }
                 }
-                body.extend_from_slice(&clause.body);
             }
-            if let Some(head) = self.filter_head(head) {
-                out.push(ContextClause::new(body, head, root, &self.sig));
-            }
-            if n == 0 {
-                break;
-            }
-            let mut k = 0;
-            loop {
-                if k == n {
-                    idxs[0] = usize::MAX;
-                    break;
-                }
-                idxs[k] += 1;
-                if idxs[k] < candidates[k].len() {
-                    break;
-                }
-                idxs[k] = 0;
-                k += 1;
-            }
-            if idxs[0] == usize::MAX {
+            partials = next.into_vec();
+            if partials.is_empty() {
                 break;
             }
         }
-        out
+        partials
     }
 
     // ------------------------------ driver ---------------------------------
@@ -3423,8 +4273,12 @@ impl Engine {
             let gid = self.ground_context();
             self.propagate(gid);
         }
+        self.complete_nominal_enumeration_queries(queries);
         // Root contexts: one per named (query) concept.
         for (qi, &iri) in queries.iter().enumerate() {
+            if self.nominal_shortcuts.contains_key(&iri) {
+                continue;
+            }
             let core = vec![Pred::Concept { iri, t: X }];
             let id = self.get_or_create_context(core, true, Some(iri));
             self.saturate(id);
@@ -3458,16 +4312,15 @@ impl Engine {
         self.propagate(top);
         let t_seed = t_start.elapsed();
         // Process inter-context messages to fixpoint, *batched*: drain the whole
-        // pending set, apply each message (which saturates its target but does
-        // not propagate), recording the touched contexts, then propagate each
-        // touched context exactly once.  Applying a message never enqueues new
-        // messages (only `propagate` does), so a batch is self-contained and the
-        // next batch is the propagation output.  Propagating once per batch --
-        // instead of after every message -- avoids re-scanning each context's
-        // predecessor-edge and Succ/Pred pools thousands of times on
-        // disjunction/role-chain ontologies (the dominant cost there).  The
-        // fixpoint is unchanged: saturation is monotone and confluent, so the
-        // derived clause set is independent of the propagation schedule.
+        // pending set, apply every message as a clause/edge delta, record the
+        // touched contexts, then saturate and propagate each touched context
+        // exactly once. Applying a message never enqueues new messages (only
+        // `propagate` does), so a batch is self-contained and the next batch is
+        // the propagation output. Completing once per target and batch avoids
+        // replaying saturation and re-scanning predecessor-edge and Succ/Pred
+        // pools thousands of times on assertion-heavy or role-chain ontologies.
+        // The fixpoint is unchanged: saturation is monotone and confluent, so
+        // the derived clause set is independent of the completion schedule.
         let mut guard = 0usize;
         let (mut nsucc_msgs, mut npred_msgs) = (0u64, 0u64);
         let trace = std::env::var("KM_TRACE").is_ok();
@@ -3483,6 +4336,9 @@ impl Engine {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(25_000_000);
+        // Diagnostic opt-out retains the former one-saturation-per-message
+        // schedule for byte/result A/B checks of batched completion.
+        let batch_completion = std::env::var_os("KM_NO_BATCH_COMPLETION").is_none();
         let mut truncated = false;
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
@@ -3502,6 +4358,7 @@ impl Engine {
                         msg_cap, self.msgs.len()
                     );
                     truncated = true;
+                    self.message_truncated = true;
                     break;
                 }
                 if prof && guard % 20000 == 0 {
@@ -3566,12 +4423,26 @@ impl Engine {
                         self.apply_pred(to, from, edge_label, pool_idx)
                     }
                 };
+                if !batch_completion {
+                    self.saturate(t);
+                }
                 if seen.insert(t) {
                     touched.push(t);
                 }
             }
             if truncated {
                 break;
+            }
+            // Message application above only accumulates edge data and local
+            // clauses. Complete each touched context once for this round, then
+            // propagate its combined delta. Saturation is monotone and local
+            // Pred joins every newly worked-off clause with all neighbor clauses
+            // accumulated in the batch, so this schedule reaches the same
+            // fixpoint as saturating after every individual message.
+            if batch_completion {
+                for &id in &touched {
+                    self.saturate(id);
+                }
             }
             for id in touched {
                 self.propagate(id);
@@ -3648,8 +4519,8 @@ impl Engine {
                     "x".to_string()
                 } else if t == Y {
                     "y".to_string()
-                } else if t < 0 {
-                    format!("z{}", -t - 1)
+                } else if is_neighbour(t) {
+                    format!("z{}", Y - t)
                 } else {
                     format!("f{}(x)", t)
                 }
@@ -3717,8 +4588,8 @@ impl Engine {
                     "x".to_string()
                 } else if t == Y {
                     "y".to_string()
-                } else if t < 0 {
-                    format!("z{}", -t - 1)
+                } else if is_neighbour(t) {
+                    format!("z{}", Y - t)
                 } else {
                     format!("f{}(x)", t)
                 }
@@ -3893,7 +4764,8 @@ impl Engine {
                     "head_indexes",
                     ctx.head_concept_index.len()
                         + ctx.head_role_index.len()
-                        + ctx.head_lit_index.len(),
+                        + ctx.max_head_pred_index.len()
+                        + ctx.max_head_term_index.len(),
                     ctx.head_concept_index
                         .values()
                         .map(|v| 24 + 4 + v.capacity() * 4)
@@ -3904,9 +4776,29 @@ impl Engine {
                             .map(|v| 24 + 4 + v.capacity() * 4)
                             .sum::<usize>()
                         + ctx
-                            .head_lit_index
+                            .max_head_pred_index
                             .values()
-                            .map(|v| 24 + szl + v.capacity() * 4)
+                            .map(|v| 24 + szp + v.capacity() * 4)
+                            .sum::<usize>()
+                        + ctx
+                            .max_head_term_index
+                            .values()
+                            .map(|v| 24 + std::mem::size_of::<Term>() + v.capacity() * 4)
+                            .sum::<usize>(),
+                );
+                add(
+                    "redundancy_postings",
+                    ctx.active_empty_head.len()
+                        + ctx
+                            .active_head_lit_index
+                            .values()
+                            .map(|posting| posting.len())
+                            .sum::<usize>(),
+                    ctx.active_empty_head.capacity() * 4
+                        + ctx
+                            .active_head_lit_index
+                            .values()
+                            .map(|v| 24 + std::mem::size_of::<Lit>() + v.capacity() * 4)
                             .sum::<usize>(),
                 );
                 add("todo", ctx.todo.len(), ctx.todo.capacity() * 4);
@@ -4078,6 +4970,17 @@ impl Engine {
             supers.dedup();
             out.push((a, supers));
         }
+        for (&query, supers) in &self.nominal_shortcuts {
+            let a = self.sig.concept_names[query as usize].clone();
+            let mut names: Vec<String> = supers
+                .iter()
+                .filter(|&&iri| iri != query)
+                .map(|&iri| self.sig.concept_names[iri as usize].clone())
+                .collect();
+            names.sort();
+            names.dedup();
+            out.push((a, names));
+        }
         out.sort();
         out
     }
@@ -4120,6 +5023,12 @@ impl Engine {
         self.contexts.len()
     }
 
+    /// Whether a configured safety budget discarded inferences. Callers must
+    /// decline this run instead of serializing its sound but partial closure.
+    pub fn incomplete(&self) -> bool {
+        self.message_truncated || self.nom_truncated.get()
+    }
+
     /// Direction B (`KM_SPLIT`): run the ordered (tame) closure of query `Q`
     /// under the current `branch_decisions` (assumed disjunct facts per context
     /// core — installed via `set_branch_decisions` before the call), to fixpoint,
@@ -4143,7 +5052,12 @@ impl Engine {
         self.saturate(top);
         self.propagate(top);
         self.run_msg_fixpoint_min();
-        self.read_closure(id)
+        let mut facts = self.read_closure(id);
+        // A bounded branch is not a model and cannot participate in the
+        // exhaustive intersection. Force the splitting driver onto its
+        // complete default-engine fallback instead.
+        facts.foreign |= self.incomplete();
+        facts
     }
 
     /// The set of "chain-unique" contexts: those reachable from a root context
@@ -4195,6 +5109,7 @@ impl Engine {
             .and_then(|s| s.parse().ok())
             .unwrap_or(25_000_000);
         let prof = std::env::var_os("KM_PROF").is_some();
+        let batch_completion = std::env::var_os("KM_NO_BATCH_COMPLETION").is_none();
         let mut guard = 0usize;
         while !self.msgs.is_empty() {
             let batch: Vec<Msg> = self.msgs.drain(..).collect();
@@ -4211,6 +5126,7 @@ impl Engine {
                     );
                 }
                 if guard > msg_cap {
+                    self.message_truncated = true;
                     self.msgs.clear();
                     break;
                 }
@@ -4223,8 +5139,16 @@ impl Engine {
                         pool_idx,
                     } => self.apply_pred(to, from, edge_label, pool_idx),
                 };
+                if !batch_completion {
+                    self.saturate(t);
+                }
                 if seen.insert(t) {
                     touched.push(t);
+                }
+            }
+            if batch_completion {
+                for &id in &touched {
+                    self.saturate(id);
                 }
             }
             for id in touched {
@@ -4496,6 +5420,551 @@ mod tests {
             sups.contains(&"owl:Nothing".to_string()),
             "expected A unsatisfiable (successor is o, which is C and B), got {:?}",
             sups
+        );
+    }
+
+    #[test]
+    fn asserted_ground_equality_merge_transfers_labels_and_links() {
+        let a = ind_term(1);
+        let alias = ind_term(2);
+        let other = ind_term(3);
+        let concept = cx(7, alias);
+        let canonical_concept = cx(7, a);
+        let role = rl(11, alias, other);
+        let canonical_role = rl(11, a, other);
+        let clauses = vec![
+            OntologyClause::new(vec![], vec![Lit::eq(alias, a)]),
+            OntologyClause::new(vec![], vec![Lit::P(concept)]),
+            OntologyClause::new(vec![], vec![Lit::P(canonical_concept)]),
+            OntologyClause::new(vec![], vec![Lit::P(role)]),
+            OntologyClause::new(vec![cx(8, X)], vec![Lit::eq(X, alias)]),
+        ];
+
+        let (merged, max_ind, stats) = merge_asserted_ground_equalities(clauses);
+        assert_eq!(max_ind, 3, "fresh nominal allocation retains input ids");
+        assert_eq!(stats.asserted_pairs, 1);
+        assert_eq!(stats.merged_aliases, 1);
+        assert!(merged.iter().any(|clause| {
+            clause.body.is_empty() && clause.head == vec![Lit::P(canonical_concept)]
+        }));
+        assert_eq!(
+            merged
+                .iter()
+                .filter(|clause| clause.body.is_empty()
+                    && clause.head == vec![Lit::P(canonical_concept)])
+                .count(),
+            1,
+            "representative labels form a set"
+        );
+        assert!(merged.iter().any(|clause| {
+            clause.body.is_empty() && clause.head == vec![Lit::P(canonical_role)]
+        }));
+        assert!(merged.iter().any(|clause| {
+            clause.body == vec![cx(8, X)] && clause.head == vec![Lit::eq(X, a)]
+        }));
+        assert!(!merged.iter().any(|clause| {
+            clause.head == vec![Lit::eq(alias, a)]
+                || clause.head == vec![Lit::P(concept)]
+                || clause.head == vec![Lit::P(role)]
+        }));
+    }
+
+    #[test]
+    fn asserted_same_and_different_individuals_collapse_to_clash() {
+        let a = ind_term(1);
+        let alias = ind_term(2);
+        let clauses = vec![
+            OntologyClause::new(vec![], vec![Lit::eq(alias, a)]),
+            OntologyClause::new(vec![], vec![Lit::ineq(alias, a)]),
+        ];
+        let (merged, _, stats) = merge_asserted_ground_equalities(clauses);
+        assert_eq!(stats.merged_aliases, 1);
+        assert_eq!(merged.len(), 1);
+        assert!(merged[0].body.is_empty() && merged[0].head.is_empty());
+    }
+
+    #[test]
+    fn disjunctive_ground_equality_is_not_an_asserted_merge() {
+        let a = ind_term(1);
+        let b = ind_term(2);
+        let clauses = vec![OntologyClause::new(
+            vec![],
+            vec![Lit::eq(b, a), Lit::P(cx(7, X))],
+        )];
+        let (merged, _, stats) = merge_asserted_ground_equalities(clauses);
+        assert_eq!(stats.asserted_pairs, 0);
+        assert_eq!(stats.merged_aliases, 0);
+        assert_eq!(merged[0].head, vec![Lit::P(cx(7, X)), Lit::eq(b, a)]);
+    }
+
+    #[test]
+    fn ground_hyper_uses_bound_role_endpoints_without_order_dependence() {
+        fn run(facts_reversed: bool) {
+            let mut sig = Sig::default();
+            let c = sig.concept("C");
+            let d = sig.concept("D");
+            let e = sig.concept("E");
+            let r = sig.role("R");
+            let left = ind_term(1);
+            let right = ind_term(2);
+            let mut facts = vec![
+                OntologyClause::new(vec![], vec![Lit::P(cx(c, right))]),
+                OntologyClause::new(vec![], vec![Lit::P(rl(r, left, right))]),
+                OntologyClause::new(vec![], vec![Lit::P(rl(r, right, left))]),
+                // Mixed fixed/variable roles are the nominal-calculus shape
+                // used by functionality and r-Succ (`S(o,y)`). They must be
+                // present in the corresponding one-endpoint posting too.
+                OntologyClause::new(vec![], vec![Lit::P(rl(r, left, Y))]),
+                OntologyClause::new(vec![], vec![Lit::P(rl(r, Y, right))]),
+            ];
+            if facts_reversed {
+                facts.reverse();
+            }
+            let mut clauses = vec![
+                // Binding C(y) first selects only R(_, right) by target.
+                OntologyClause::new(
+                    vec![cx(c, zvar(1)), rl(r, X, zvar(1))],
+                    vec![Lit::P(cx(d, X))],
+                ),
+                // The inverse orientation selects only R(right, _) by source.
+                OntologyClause::new(
+                    vec![cx(c, zvar(1)), rl(r, zvar(1), X)],
+                    vec![Lit::P(cx(e, X))],
+                ),
+            ];
+            clauses.extend(facts);
+            let mut engine = Engine::new(sig, clauses, 0);
+            engine.run_for(&[]);
+            let ground_id = engine.ground_ctx.expect("ground context");
+            let context = &engine.contexts[ground_id];
+            let arena = &engine.cc_arena[context.root as usize];
+            let has = |predicate: Pred| {
+                context.worked_off.iter().any(|&cid| {
+                    let clause = &arena[cid as usize];
+                    clause.body.is_empty() && clause.head == vec![Lit::P(predicate)]
+                })
+            };
+            assert!(has(cx(d, left)));
+            assert!(has(cx(e, left)));
+            assert!(context
+                .ground_role_target_index
+                .contains_key(&(r, right)));
+            assert!(context
+                .ground_role_source_index
+                .contains_key(&(r, right)));
+            assert!(context
+                .ground_role_source_index
+                .get(&(r, left))
+                .is_some_and(|posting| posting.len() >= 2));
+            assert!(context
+                .ground_role_target_index
+                .get(&(r, right))
+                .is_some_and(|posting| posting.len() >= 2));
+        }
+
+        run(false);
+        run(true);
+    }
+
+    #[test]
+    fn resource_backstops_mark_the_engine_incomplete() {
+        let mut e = Engine::new(Sig::default(), Vec::new(), 0);
+        assert!(!e.incomplete());
+        e.message_truncated = true;
+        assert!(e.incomplete());
+        e.message_truncated = false;
+        e.nom_truncated.set(true);
+        assert!(e.incomplete());
+    }
+
+    #[test]
+    fn exact_max_head_pred_index_separates_terms() {
+        let sig = Sig::default();
+        let p1 = cx(7, fterm(1));
+        let p2 = cx(7, fterm(2));
+        let arena = vec![
+            ContextClause::new(vec![], vec![Lit::P(p1)], false, &sig),
+            ContextClause::new(vec![], vec![Lit::P(p2)], false, &sig),
+        ];
+        let mut ctx = Context::new(0, vec![], false, None);
+        for cid in 0..arena.len() as u32 {
+            ctx.worked_off.push(cid);
+            ctx.index_clause(&arena, cid);
+        }
+
+        assert_eq!(ctx.head_concept_index.get(&7).unwrap().as_slice(), &[0, 1]);
+        assert_eq!(ctx.max_head_pred_index.get(&p1).unwrap().as_slice(), &[0]);
+        assert_eq!(ctx.max_head_pred_index.get(&p2).unwrap().as_slice(), &[1]);
+    }
+
+    #[test]
+    fn max_head_term_index_matches_sequoia_eq_lookup() {
+        let sig = Sig::default();
+        let f1 = fterm(1);
+        let f2 = fterm(2);
+        let f3 = fterm(3);
+        let o = ind_term(1);
+        let arena = vec![
+            ContextClause::new(vec![], vec![Lit::P(cx(1, f1))], false, &sig),
+            ContextClause::new(
+                vec![],
+                vec![Lit::P(Pred::Role {
+                    iri: 1,
+                    s: X,
+                    t: f2,
+                })],
+                false,
+                &sig,
+            ),
+            ContextClause::new(vec![], vec![Lit::eq(f3, o)], false, &sig),
+        ];
+        let mut ctx = Context::new(0, vec![], false, None);
+        for cid in 0..arena.len() as u32 {
+            ctx.worked_off.push(cid);
+            ctx.index_clause(&arena, cid);
+        }
+
+        assert_eq!(ctx.max_head_term_index[&f1].as_slice(), &[0]);
+        assert_eq!(ctx.max_head_term_index[&f2].as_slice(), &[1]);
+        assert_eq!(ctx.max_head_term_index[&X].as_slice(), &[1]);
+        assert_eq!(ctx.max_head_term_index[&f3].as_slice(), &[2]);
+        assert!(!ctx.max_head_term_index.contains_key(&o));
+    }
+
+    #[test]
+    fn sequoia_active_redundancy_index_matches_linear_subsumption() {
+        let sig = Sig::default();
+        let o = ind_term(1);
+        let p1 = cx(1, o);
+        let p2 = cx(2, o);
+        let h1 = Lit::P(cx(3, o));
+        let h2 = Lit::P(cx(4, o));
+        let mut arena = vec![
+            ContextClause::new(vec![], vec![h1], false, &sig),
+            ContextClause::new(vec![p1], vec![h2], false, &sig),
+            ContextClause::new(vec![p2], vec![], false, &sig),
+        ];
+        // Inflate a shared head to exercise a case that made the former
+        // posting-list scan expensive.
+        for i in 0..32 {
+            arena.push(ContextClause::new(
+                vec![cx(100 + i, o)],
+                vec![h1],
+                false,
+                &sig,
+            ));
+        }
+        let mut ctx = Context::new(0, vec![], false, None);
+        for cid in 0..arena.len() as u32 {
+            ctx.clause_keys.insert(cid);
+            ctx.index_active_clause(&arena, cid);
+            if cid % 2 == 0 {
+                ctx.worked_off.push(cid);
+                ctx.index_clause(&arena, cid);
+            } else {
+                ctx.todo.push_back(cid);
+            }
+        }
+
+        let bodies = vec![vec![], vec![p1], vec![p2], vec![p1, p2], vec![cx(131, o)]];
+        let heads = vec![vec![], vec![h1], vec![h2], vec![h1, h2]];
+        for body in bodies {
+            for head in &heads {
+                let incoming = ContextClause::new(body.clone(), head.clone(), false, &sig);
+                let expected = ctx
+                    .clause_keys
+                    .iter()
+                    .any(|&cid| arena[cid as usize].test_strengthening(&incoming) == -1);
+                let actual = ctx.fwd_subsumed(&arena, &incoming, None);
+                assert_eq!(
+                    actual, expected,
+                    "indexed and linear forward subsumption differ for {:?}",
+                    incoming
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sequoia_redundancy_trie_removes_exact_supersets() {
+        let sig = Sig::default();
+        let a = cx(1, X);
+        let b = cx(2, X);
+        let c = Lit::P(cx(3, X));
+        let d = Lit::P(cx(4, X));
+        let strong = ContextClause::new(vec![a], vec![c], false, &sig);
+        let equal = ContextClause::new(vec![a], vec![c], false, &sig);
+        let weak_body = ContextClause::new(vec![a, b], vec![c], false, &sig);
+        let weak_head = ContextClause::new(vec![a], vec![c, d], false, &sig);
+        let incomparable = ContextClause::new(vec![b], vec![d], false, &sig);
+        let clauses = [equal, weak_body, weak_head, incomparable];
+        let mut trie = RedundancyTrie::default();
+        for (cid, clause) in clauses.iter().enumerate() {
+            trie.insert(clause, cid as u32);
+        }
+
+        assert!(trie.contains_subset(&strong, None));
+        assert!(!trie.contains_subset(&strong, Some(0)));
+        let mut removed = trie.remove_supersets(&strong);
+        removed.sort_unstable();
+        assert_eq!(removed, vec![0, 1, 2]);
+        assert!(!trie.contains_subset(&strong, None));
+        assert!(trie.contains_subset(&clauses[3], None));
+    }
+
+    #[test]
+    fn local_pred_pins_triggering_clause_like_sequoia() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let max = cx(a, fterm(1));
+        let other = cx(b, X);
+        let guard = cx(c, X);
+        let mut e = Engine::new(sig, vec![], 0);
+        e.contexts.push(Context::new(0, vec![], false, None));
+        e.cc_arena[0] = vec![
+            ContextClause::new(vec![], vec![Lit::P(max)], false, &e.sig),
+            ContextClause::new(vec![], vec![Lit::P(other)], false, &e.sig),
+        ];
+        for cid in 0..e.cc_arena[0].len() as u32 {
+            e.contexts[0].worked_off.push(cid);
+            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+        }
+        e.pred_interned.push(PredClause {
+            body: vec![max, other],
+            head: vec![],
+        });
+        e.contexts[0].neighbor_pred.push(0);
+        e.contexts[0]
+            .neighbor_pred_body_index
+            .entry(max)
+            .or_default()
+            .push(0);
+
+        let side = ContextClause::new(vec![guard], vec![Lit::P(max)], false, &e.sig);
+        let local = e.pred_local_inner(0, &side, max, false);
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].body, vec![guard]);
+
+        // The complementary event remains complete: if the Pred clause arrives
+        // after both providers, it joins against the full worked-off index.
+        let late = e.pred_from_neighbor(0, &e.pred_interned[0], false);
+        assert_eq!(late.len(), 1);
+        assert!(late[0].body.is_empty());
+    }
+
+    #[test]
+    fn incremental_pred_join_matches_sequoia_cartesian_antichain() {
+        let mut sig = Sig::default();
+        let p1 = cx(sig.concept("P1"), X);
+        let p2 = cx(sig.concept("P2"), X);
+        let p3 = cx(sig.concept("P3"), X);
+        let a = cx(sig.concept("A"), X);
+        let b = cx(sig.concept("B"), X);
+        let h = Lit::P(cx(sig.concept("H"), X));
+        let mut e = Engine::new(sig, vec![], 0);
+        e.contexts.push(Context::new(0, vec![], false, None));
+        // Each premise has two incomparable providers. The raw product has
+        // eight selections, but its final strengthening antichain has only the
+        // two unit bodies {A} and {B}; every mixed body is redundant.
+        e.cc_arena[0] = vec![
+            ContextClause::new(vec![a], vec![Lit::P(p1)], false, &e.sig),
+            ContextClause::new(vec![b], vec![Lit::P(p1)], false, &e.sig),
+            ContextClause::new(vec![a], vec![Lit::P(p2)], false, &e.sig),
+            ContextClause::new(vec![b], vec![Lit::P(p2)], false, &e.sig),
+            ContextClause::new(vec![a], vec![Lit::P(p3)], false, &e.sig),
+            ContextClause::new(vec![b], vec![Lit::P(p3)], false, &e.sig),
+        ];
+        for cid in 0..e.cc_arena[0].len() as u32 {
+            e.contexts[0].worked_off.push(cid);
+            e.contexts[0].index_clause(&e.cc_arena[0], cid);
+        }
+        let pred = PredClause {
+            body: vec![p1, p2, p3],
+            head: vec![h],
+        };
+
+        let incremental = e.pred_from_neighbor(0, &pred, false);
+        let mut cartesian = PredResultBuffer::default();
+        for first in [0usize, 1] {
+            for second in [2usize, 3] {
+                for third in [4usize, 5] {
+                    let mut body = Vec::new();
+                    body.extend_from_slice(&e.cc_arena[0][first].body);
+                    body.extend_from_slice(&e.cc_arena[0][second].body);
+                    body.extend_from_slice(&e.cc_arena[0][third].body);
+                    push_nonredundant_pred_result(
+                        &mut cartesian,
+                        ContextClause::new(body, vec![h], false, &e.sig),
+                    );
+                }
+            }
+        }
+        let canonical = |clauses: Vec<ContextClause>| {
+            clauses
+                .into_iter()
+                .map(|clause| (clause.body, clause.head))
+                .collect::<BTreeSet<_>>()
+        };
+        assert_eq!(canonical(incremental), canonical(cartesian.into_vec()));
+    }
+
+    #[test]
+    fn pred_payload_normalizes_substitution_collisions() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let o = ind_term(1);
+        let edge = comp_term(fterm(1), o);
+        let mut e = Engine::new(sig, vec![], 0);
+        e.contexts
+            .push(Context::new(0, vec![cx(a, X)], false, None));
+        e.cc_arena[0].push(ContextClause::new(
+            vec![cx(a, X)],
+            vec![Lit::P(cx(b, Y)), Lit::P(cx(b, o))],
+            false,
+            &e.sig,
+        ));
+        e.contexts[0].pred_pool.push(0);
+
+        let payload = e.pred_payload(0, edge, 0);
+        assert_eq!(payload.body, vec![cx(a, edge)]);
+        assert_eq!(payload.head, vec![Lit::P(cx(b, o))]);
+    }
+
+    #[test]
+    fn pred_result_buffer_keeps_a_strengthening_antichain() {
+        let sig = Sig::default();
+        let a = Lit::P(cx(1, X));
+        let b = cx(2, X);
+        let c = Lit::P(cx(3, X));
+        let weak = ContextClause::new(vec![b], vec![a, c], false, &sig);
+        let strong = ContextClause::new(vec![], vec![a], false, &sig);
+        let incomparable = ContextClause::new(vec![], vec![c], false, &sig);
+        let mut out = PredResultBuffer::default();
+
+        push_nonredundant_pred_result(&mut out, weak.clone());
+        push_nonredundant_pred_result(&mut out, strong.clone());
+        let live: Vec<&ContextClause> = out.clauses.iter().flatten().collect();
+        assert_eq!(
+            live.len(),
+            1,
+            "the stronger result must remove the weak one"
+        );
+        assert_eq!(live[0].body, strong.body);
+        assert_eq!(live[0].head, strong.head);
+
+        push_nonredundant_pred_result(&mut out, weak);
+        assert_eq!(
+            out.clauses.iter().flatten().count(),
+            1,
+            "a buffered strengthening must reject the weak result"
+        );
+        push_nonredundant_pred_result(&mut out, incomparable);
+        assert_eq!(
+            out.clauses.iter().flatten().count(),
+            2,
+            "incomparable conclusions must both survive"
+        );
+    }
+
+    #[test]
+    fn nominal_enumeration_reuses_complete_ground_labels() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let c = sig.concept("C");
+        let q = sig.concept("Q_0");
+        let n1 = sig.concept("__nom__o1");
+        let n2 = sig.concept("__nom__o2");
+        let o1 = ind_term(1);
+        let o2 = ind_term(2);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(q, X))]),
+            OntologyClause::new(vec![cx(q, X)], vec![Lit::P(cx(a, X))]),
+            OntologyClause::new(vec![cx(q, X)], vec![Lit::P(cx(n1, X)), Lit::P(cx(n2, X))]),
+            OntologyClause::new(vec![cx(n1, X)], vec![Lit::P(cx(q, X))]),
+            OntologyClause::new(vec![cx(n2, X)], vec![Lit::P(cx(q, X))]),
+            OntologyClause::new(vec![cx(n1, X)], vec![Lit::eq(X, o1)]),
+            OntologyClause::new(vec![cx(n2, X)], vec![Lit::eq(X, o2)]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(n1, o1))]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(n2, o2))]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(b, o1))]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(b, o2))]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(c, o1))]),
+        ];
+
+        let detected = detect_nominal_enumerations(&sig, &clauses);
+        assert_eq!(detected.get(&a), Some(&vec![o1, o2]));
+
+        let mut engine = Engine::new(sig, clauses, 0);
+        engine.run_for(&[a]);
+        assert!(engine.nominal_shortcuts.contains_key(&a));
+        assert!(
+            !engine.contexts.iter().any(|ctx| ctx.query == Some(a)),
+            "the certified enumeration must not create the expensive query root"
+        );
+        let row = engine
+            .subsumptions()
+            .into_iter()
+            .find(|(name, _)| name == "A")
+            .expect("A classification");
+        assert_eq!(row.1, vec!["B".to_string()]);
+    }
+
+    #[test]
+    fn nominal_enumeration_requires_the_reverse_union_proof() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let q = sig.concept("Q_0");
+        let n1 = sig.concept("__nom__o1");
+        let n2 = sig.concept("__nom__o2");
+        let o1 = ind_term(1);
+        let o2 = ind_term(2);
+        let clauses = vec![
+            OntologyClause::new(vec![cx(a, X)], vec![Lit::P(cx(q, X))]),
+            OntologyClause::new(vec![cx(q, X)], vec![Lit::P(cx(a, X))]),
+            OntologyClause::new(vec![cx(q, X)], vec![Lit::P(cx(n1, X)), Lit::P(cx(n2, X))]),
+            OntologyClause::new(vec![cx(n1, X)], vec![Lit::P(cx(q, X))]),
+            // Deliberately omit n2(x) -> q(x).
+            OntologyClause::new(vec![cx(n1, X)], vec![Lit::eq(X, o1)]),
+            OntologyClause::new(vec![cx(n2, X)], vec![Lit::eq(X, o2)]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(n1, o1))]),
+            OntologyClause::new(vec![], vec![Lit::P(cx(n2, o2))]),
+        ];
+        assert!(!detect_nominal_enumerations(&sig, &clauses).contains_key(&a));
+    }
+
+    #[test]
+    fn back_subsumption_deactivates_pending_pred_push() {
+        let sig = Sig::default();
+        let a = Lit::P(cx(1, X));
+        let b = cx(2, X);
+        let c = Lit::P(cx(3, X));
+        let weak = ContextClause::new(vec![b], vec![a, c], false, &sig);
+        let strong = ContextClause::new(vec![], vec![a], false, &sig);
+        let arena = vec![weak.clone(), weak, strong.clone()];
+        let mut ctx = Context::new(0, vec![], false, None);
+        ctx.todo.push_back(0);
+        ctx.worked_off.push(1);
+        ctx.clause_keys.insert(0);
+        ctx.clause_keys.insert(1);
+        ctx.pred_pool.push(1);
+        ctx.index_clause(&arena, 1);
+        ctx.index_active_clause(&arena, 0);
+        ctx.index_active_clause(&arena, 1);
+
+        ctx.back_subsume(&arena, &strong);
+        assert!(!ctx.clause_keys.contains(&0));
+        assert!(!ctx.clause_keys.contains(&1));
+        assert!(ctx.todo.is_empty());
+        assert!(ctx.worked_off.is_empty());
+        assert!(
+            ctx.pred_pool
+                .iter()
+                .all(|cid| !ctx.clause_keys.contains(cid)),
+            "a back-subsumed intermediate must not cross the Pred boundary"
         );
     }
 }

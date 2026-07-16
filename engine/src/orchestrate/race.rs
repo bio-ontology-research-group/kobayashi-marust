@@ -108,6 +108,33 @@ fn spawn_tableau(
         &[],
         false,
     );
+    // Diagnostic parity with the HT racer: preserve the exact converted input
+    // before any legacy-tableau fragment fence is applied.  This is inert unless
+    // explicitly requested and makes a declined race distinguishable from a
+    // worker failure without weakening a single soundness gate.
+    if let Some(path) = std::env::var_os("KM_TAB_DUMP_TIN") {
+        if let Ok(bytes) = serde_json::to_vec(&tin) {
+            let _ = std::fs::write(path, bytes);
+        }
+    }
+    if std::env::var_os("KM_TAB_TRACE").is_some() {
+        eprintln!(
+            "KM_TAB_ROUTE clauses={} converted={} dropped={} fenced={} nominals={} inverse={} number={}",
+            cl.len(),
+            tin.clauses.len(),
+            tin.dropped,
+            tin.fenced.len(),
+            tin.nominals.len(),
+            tin.inverse,
+            tin.number,
+        );
+        for fence in &tin.fenced {
+            eprintln!(
+                "KM_TAB_ROUTE fence={} detail={}",
+                fence.reason, fence.detail
+            );
+        }
+    }
     // only race when the TInput faithfully represents the ontology
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return None;
@@ -269,6 +296,11 @@ pub fn race_absorbed_plain(
     }
     // plain absent or did not finish fast: run the absorbed set with full budget
     let res = engine_run::run_engine_adaptive(cfg, absorbed_path, None, engine_threads)?;
+    if res.code == 4 {
+        return Err(OrchestrateError::OutOfFragment(
+            "selected CB mechanism did not reach its complete fixpoint".into(),
+        ));
+    }
     if res.code != 0 {
         return Err(OrchestrateError::Worker {
             bin: "engine".into(),
@@ -334,6 +366,11 @@ pub fn race_adaptive_vs_elc(
             race_absorbed_plain(cfg, ont, clauses_path, engine_threads)
         } else {
             let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
+            if res.code == 4 {
+                return Err(OrchestrateError::OutOfFragment(
+                    "selected CB mechanism did not reach its complete fixpoint".into(),
+                ));
+            }
             if res.code != 0 {
                 return Err(OrchestrateError::Worker {
                     bin: "engine".into(),
@@ -508,14 +545,46 @@ fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
 
 /// Fences that belong to the legacy fast tableau rather than the Konclude
 /// completion bridge. The bridge has native inverse-role and cardinality
-/// processing, so their combination is not a coverage loss there.
-fn bridge_fences_supported(tin: &cb_to_ht::TInput) -> bool {
+/// processing, so their combination is not a coverage loss there. Complex
+/// domains/ranges are also exact when the bridge builds Konclude's native
+/// terminology from `source_axioms`; they remain fenced on the reconstructed
+/// clause path, where the complex source expression is no longer available.
+fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
     tin.fenced.iter().all(|fence| {
         matches!(
             fence.reason.as_str(),
             "inverse+number(SHIQ)" | "inverse-functional"
-        )
+        ) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
     })
+}
+
+/// A named specialist route must never degrade into the unrestricted legacy
+/// HT racer when its structural/certificate candidate is absent. The general,
+/// QO, SHOQ, and first-class-cardinality racers are useful as explicit
+/// measurement arms, but corpus counterexamples show that each can return an
+/// incomplete taxonomy. They therefore cannot masquerade as policy-safe
+/// procedures. The Konclude completion bridge is different: its read-off path
+/// either returns a complete answer or explicitly defers to CB.
+fn specialist_route_allows(
+    requested: Option<&str>,
+    qo_candidate: bool,
+    shoq_candidate: bool,
+    card_candidate: bool,
+    bridge_candidate: bool,
+) -> bool {
+    match requested {
+        None => true,
+        Some("general") => true,
+        Some("certified") => bridge_candidate,
+        Some("qo") => qo_candidate,
+        Some("shoq") => shoq_candidate,
+        Some("card") => card_candidate,
+        Some("bridge") => bridge_candidate,
+        // Composite single-worker mechanisms. The common structural gate below
+        // still requires at least one faithful candidate before spawning.
+        Some("features") | Some("full") => true,
+        Some(_) => false,
+    }
 }
 
 /// Does the clause set contain an inverse/symmetric BRIDGE clause
@@ -714,11 +783,24 @@ fn spawn_ht(
     // read-off / pairwise-verified candidates; declines anything it cannot
     // encode losslessly). Nominal-free faithful TInputs only; the worker's
     // bridge arm re-checks coverage per clause. Opt-in while under validation.
-    let bridge_candidate = (std::env::var_os("KM_HT_BRIDGE").is_some()
-        || std::env::var_os("KM_TRIGGER_ABSORB").is_some())
+    let trigger_bridge = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+    let source_tbox = trigger_bridge
+        && !tin.source_axioms.is_empty()
+        && std::env::var_os("KM_NO_SOURCE_TBOX").is_none();
+    let bridge_candidate = (std::env::var_os("KM_HT_BRIDGE").is_some() || trigger_bridge)
         && tin.dropped == 0
-        && bridge_fences_supported(&tin)
+        && bridge_fences_supported(&tin, source_tbox)
         && tin.nominals.is_empty();
+    let specialist_only = std::env::var("KM_HT_ONLY").ok();
+    if !specialist_route_allows(
+        specialist_only.as_deref(),
+        qo_candidate,
+        shoq_candidate,
+        card_candidate,
+        bridge_candidate,
+    ) {
+        return None;
+    }
     if !ht_routable(&tin)
         && !qo_candidate
         && !shoq_candidate
@@ -751,7 +833,11 @@ fn spawn_ht(
     if bridge_candidate || std::env::var_os("KM_TRIGGER_ABSORB").is_some() {
         cmd.env("KM_HT_BRIDGE", "1");
     }
-    if bridge_candidate && !ht_routable(&tin) && !qo_candidate && !shoq_candidate && !card_candidate
+    let bridge_is_only_certified_candidate = specialist_only.as_deref() == Some("certified");
+    if bridge_candidate
+        && (specialist_only.as_deref() == Some("bridge")
+            || bridge_is_only_certified_candidate
+            || (!ht_routable(&tin) && !qo_candidate && !shoq_candidate && !card_candidate))
     {
         // The bridge is the ONLY reason this worker was spawned: if its arm
         // declines, the worker must produce NO answer (the legacy tableau is
@@ -928,6 +1014,63 @@ fn spawn_ht(
         shoq_candidate || qo_candidate || card_candidate || bridge_candidate,
         bridge_candidate.then_some(tin.queries.len()),
     ))
+}
+
+/// Run exactly the selected HT mechanism. Unlike `race_cb_vs_ht`, this starts
+/// no CB thread and has no fallback: a structural gate failure or a
+/// certify-only defer is reported as out-of-fragment to the caller.
+pub fn run_ht_only(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+) -> Result<EngineOut, OrchestrateError> {
+    let Some((mut child, out_path, _, _)) = spawn_ht(cfg, clauses_path, named) else {
+        return Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the selected HT mechanism's structural gate".into(),
+        ));
+    };
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(OrchestrateError::OutOfFragment(format!(
+            "selected HT mechanism deferred (worker exit {})",
+            status.code().unwrap_or(-1)
+        )));
+    }
+    let output = File::open(out_path.path())?;
+    let parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
+        OrchestrateError::Worker {
+            bin: "tableau/ht".into(),
+            code: 0,
+            stderr: format!("successful worker emitted no valid taxonomy: {error}"),
+        }
+    })?;
+    Ok(tableau_to_out(parsed))
+}
+
+/// Run the historical label-caching tableau as an isolated mechanism. Its
+/// existing structural gate remains authoritative, but CB is never started if
+/// the gate declines or the worker fails.
+pub fn run_tableau_only(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &std::collections::HashSet<String>,
+) -> Result<EngineOut, OrchestrateError> {
+    let Some((mut child, out_path)) = spawn_tableau(cfg, clauses_path, named) else {
+        return Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the selected tableau mechanism's structural gate".into(),
+        ));
+    };
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(OrchestrateError::Worker {
+            bin: "tableau".into(),
+            code: status.code().unwrap_or(-1),
+            stderr: String::new(),
+        });
+    }
+    let output = File::open(out_path.path())?;
+    let parsed: TOutput = serde_json::from_reader(BufReader::new(output))?;
+    Ok(tableau_to_out(parsed))
 }
 
 /// Reserved engine thread count for the HT race: reduce `KM_THREADS` by one when
@@ -1169,22 +1312,129 @@ mod tests {
     #[test]
     fn konclude_bridge_accepts_only_legacy_fast_tableau_fences() {
         let mut tin = cb_to_ht::TInput::default();
-        assert!(bridge_fences_supported(&tin));
+        assert!(bridge_fences_supported(&tin, false));
         tin.fenced.push(cb_to_ht::Fenced {
             reason: "inverse+number(SHIQ)".into(),
             detail: "legacy fast-tableau fence".into(),
         });
-        assert!(bridge_fences_supported(&tin));
+        assert!(bridge_fences_supported(&tin, false));
         tin.fenced.push(cb_to_ht::Fenced {
             reason: "inverse-functional".into(),
             detail: "r".into(),
         });
-        assert!(bridge_fences_supported(&tin));
+        assert!(bridge_fences_supported(&tin, false));
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "complex-domain".into(),
+            detail: "R -> (A or B)".into(),
+        });
+        assert!(!bridge_fences_supported(&tin, false));
+        assert!(bridge_fences_supported(&tin, true));
+        tin.fenced.push(cb_to_ht::Fenced {
+            reason: "complex-range".into(),
+            detail: "R -> (C or D)".into(),
+        });
+        assert!(bridge_fences_supported(&tin, true));
         tin.fenced.push(cb_to_ht::Fenced {
             reason: "irreflexivity".into(),
             detail: "r".into(),
         });
-        assert!(!bridge_fences_supported(&tin));
+        assert!(!bridge_fences_supported(&tin, true));
+    }
+
+    #[test]
+    fn named_ht_specialists_never_fall_through_to_general_ht() {
+        assert!(specialist_route_allows(None, false, false, false, false));
+        assert!(specialist_route_allows(
+            Some("general"),
+            false,
+            false,
+            false,
+            false
+        ));
+        assert!(!specialist_route_allows(
+            Some("certified"),
+            false,
+            false,
+            false,
+            false
+        ));
+        assert!(!specialist_route_allows(
+            Some("certified"),
+            false,
+            true,
+            false,
+            false
+        ));
+        assert!(!specialist_route_allows(
+            Some("certified"),
+            true,
+            true,
+            true,
+            false
+        ));
+        assert!(specialist_route_allows(
+            Some("certified"),
+            true,
+            true,
+            true,
+            true
+        ));
+        assert!(specialist_route_allows(
+            Some("qo"),
+            true,
+            false,
+            false,
+            false
+        ));
+        assert!(!specialist_route_allows(
+            Some("qo"),
+            false,
+            true,
+            true,
+            true
+        ));
+        assert!(specialist_route_allows(
+            Some("shoq"),
+            false,
+            true,
+            false,
+            false
+        ));
+        assert!(specialist_route_allows(
+            Some("card"),
+            false,
+            false,
+            true,
+            false
+        ));
+        assert!(specialist_route_allows(
+            Some("bridge"),
+            false,
+            false,
+            false,
+            true
+        ));
+        assert!(specialist_route_allows(
+            Some("features"),
+            false,
+            false,
+            false,
+            false
+        ));
+        assert!(specialist_route_allows(
+            Some("full"),
+            true,
+            true,
+            true,
+            true
+        ));
+        assert!(!specialist_route_allows(
+            Some("unknown"),
+            true,
+            true,
+            true,
+            true
+        ));
     }
 
     #[test]

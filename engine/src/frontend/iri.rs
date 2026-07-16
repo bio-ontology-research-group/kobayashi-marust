@@ -64,17 +64,32 @@ impl IriRegistry {
         if let Some(cached) = self.short_iri.get(&full) {
             return cached.clone();
         }
-        let base = short_base(name);
-        if base == "owl:Thing" || base == "owl:Nothing" {
+        let raw_base = short_base(name);
+        if raw_base == "owl:Thing" || raw_base == "owl:Nothing" {
             // specials: never disambiguate
-            self.short_iri.insert(full, base.clone());
-            return base;
+            self.short_iri.insert(full, raw_base.clone());
+            return raw_base;
         }
+        // Source IRIs and generated concepts are different symbol kinds in
+        // Sequoia. KM historically encoded that distinction through prefixes,
+        // so a legal source class such as `#__A` was mistaken for an auxiliary:
+        // no query context was created and definer preprocessing could rewrite
+        // it. Escape only registry-owned source names; generated symbols never
+        // pass through this registry. The inverse `full_iri` mapping preserves
+        // the exact public IRI.
+        let base = if reserved_internal_prefix(&raw_base) {
+            format!("km_src_{raw_base}")
+        } else {
+            raw_base.clone()
+        };
         let mut cand = base.clone();
         if let Some(owner) = self.short_owner.get(&cand) {
             if owner != &full {
                 // collision with a different IRI
-                let ns: &str = full[..full.len() - base.len()].trim_end_matches(['#', '/', ':']);
+                // `base` may be the escaped spelling, which is not a suffix of
+                // the source IRI. Namespace extraction must use `raw_base`.
+                let ns: &str = full[..full.len().saturating_sub(raw_base.len())]
+                    .trim_end_matches(['#', '/', ':']);
                 let tag = {
                     let t = short_base(ns);
                     if t.is_empty() {
@@ -119,5 +134,42 @@ impl IriRegistry {
     /// All internal short names registered to a real IRI (keys of `_short_owner`).
     pub fn owned_names(&self) -> Vec<String> {
         self.short_owner.keys().cloned().collect()
+    }
+}
+
+fn reserved_internal_prefix(name: &str) -> bool {
+    name.starts_with("Q_")
+        || name.starts_with("__")
+        || name.starts_with("_aux")
+        || name.starts_with("aux_")
+        || name.starts_with("def_")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn source_names_that_look_generated_are_typed_as_named() {
+        let mut reg = IriRegistry::new();
+        for local in ["__A", "Q_7", "_auxA", "aux_A", "def_A"] {
+            let full = format!("http://example.org#{local}");
+            let internal = reg.short(&format!("<{full}>"));
+            assert!(internal.starts_with("km_src_"), "{local} -> {internal}");
+            assert!(!reserved_internal_prefix(&internal));
+            assert_eq!(reg.full_iri(&internal), full);
+            assert!(reg.is_named_iri(&internal));
+        }
+    }
+
+    #[test]
+    fn escaped_source_name_remains_collision_safe() {
+        let mut reg = IriRegistry::new();
+        let ordinary = reg.short("<http://first.example#km_src___A>");
+        let escaped = reg.short("<http://second.example#__A>");
+        assert_ne!(ordinary, escaped);
+        assert!(!reserved_internal_prefix(&escaped));
+        assert_eq!(reg.full_iri(&ordinary), "http://first.example#km_src___A");
+        assert_eq!(reg.full_iri(&escaped), "http://second.example#__A");
     }
 }

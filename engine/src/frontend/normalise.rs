@@ -229,10 +229,23 @@ impl Clausifier {
         }
     }
 
-    /// Return a DNF of positive atom bodies exactly equivalent to `c(root)`.
-    /// Each alternative becomes one implication with the same head. Expansion
-    /// is capped to avoid distributing pathological nested unions in the
-    /// frontend; exceeding the cap falls back to ordinary reification.
+    /// Return a DNF of positive, context-local trigger bodies equivalent to
+    /// `c(root)`. Each alternative becomes one implication with the same head.
+    ///
+    /// Existential restrictions are deliberately represented by their local
+    /// restriction marker, rather than by inlining `R(root, yi) ∧ C(yi)`. This
+    /// is the propagated-trigger construction used by Konclude's
+    /// `CTriggeredImplicationBinaryAbsorberPreProcess`: the restriction is
+    /// recognised in one successor context, propagated to a concept at the
+    /// predecessor, and only those predecessor-local concepts are joined.
+    /// Inlining two existentials would create a body over two independent
+    /// successor variables. Such a clause is first-order equivalent, but is
+    /// outside the local DL-clause shape supported by KM's context calculus and
+    /// caused the deterministic seven-pair loss on ORE ontology 703 whenever
+    /// the trigger-absorbed CB worker won the bridge race.
+    ///
+    /// Expansion is capped to avoid distributing pathological nested unions in
+    /// the frontend; exceeding the cap falls back to ordinary reification.
     fn structural_trigger_bodies(
         &mut self,
         c: &Concept,
@@ -279,15 +292,15 @@ impl Clausifier {
                 }
                 Some(out)
             }
-            Concept::Exists(role, filler) | Concept::AtLeast(1, role, filler) => {
-                let role_name = self.resolve_role(role);
-                let succ = Term::Var(format!("__trig{}", *next_var));
-                *next_var += 1;
-                let mut out = self.structural_trigger_bodies(filler, &succ, next_var)?;
-                for body in &mut out {
-                    body.push(Atom::Role(role_name.clone(), root.clone(), succ.clone()));
-                }
-                Some(out)
+            Concept::Exists(..) | Concept::AtLeast(1, ..) => {
+                // `q(c)` emits the standard local recognition rule
+                //     R(x,y) ∧ F(y) -> Q_c(x)
+                // (and the matching generation direction required when the
+                // same restriction occurs positively elsewhere). Reusing that
+                // exact restriction marker gives the same propagated-trigger
+                // boundary as Konclude while retaining structural sharing.
+                let marker = self.q(c);
+                Some(vec![vec![Atom::Concept(marker, root.clone())]])
             }
             Concept::AtLeast(0, _, _) => Some(vec![Vec::new()]),
             Concept::HasSelf(role) => {
@@ -886,9 +899,11 @@ impl Clausifier {
     }
 
     fn mark_subclass_polarity(&mut self, sub: &Concept, sup: &Concept) {
-        // A structurally compiled antecedent never calls `q(sub)`, so marking
-        // it negative would emit recognition clauses for an unused definer and
-        // recreate the global disjunction this pass is intended to avoid.
+        // The structural compiler expands Boolean antecedents directly and
+        // reifies only existential restrictions. Those restriction definitions
+        // are Horn and emit both directions independently of KM_ABSORB, so the
+        // antecedent still needs no global polarity mark (which would recreate
+        // excluded-middle clauses for unrelated Boolean definers).
         if self.trigger_absorb {
             if let Some((trigger_sub, trigger_sup)) = Self::triggered_orientation(sub, sup) {
                 debug_assert!(Self::structurally_triggerable(&trigger_sub));
@@ -1072,19 +1087,87 @@ mod tests {
         cf.mark_subclass_polarity(&sub, &Concept::Name("C".into()));
         cf.subclass_clauses(&sub, &Concept::Name("C".into()));
 
-        assert_eq!(cf.clauses.len(), 1);
-        let cl = &cf.clauses[0];
-        assert_eq!(cl.head, vec![Atom::Concept("C".into(), var_x())]);
-        assert!(cl.body.contains(&Atom::Concept("A".into(), var_x())));
-        let y = Term::Var("__trig0".into());
-        assert!(cl
+        let implication = cf
+            .clauses
+            .iter()
+            .find(|cl| cl.head == vec![Atom::Concept("C".into(), var_x())])
+            .expect("trigger implication");
+        assert!(implication
             .body
-            .contains(&Atom::Role("r".into(), var_x(), y.clone())));
-        assert!(cl.body.contains(&Atom::Concept("B".into(), y)));
+            .contains(&Atom::Concept("A".into(), var_x())));
+        let exists_marker = implication
+            .body
+            .iter()
+            .find_map(|a| match a {
+                Atom::Concept(name, term) if term == &var_x() && name.starts_with("Q_") => {
+                    Some(name.clone())
+                }
+                _ => None,
+            })
+            .expect("predecessor-local existential trigger");
+        assert!(cf.clauses.iter().any(|cl| {
+            cl.head == vec![Atom::Concept(exists_marker.clone(), var_x())]
+                && cl
+                    .body
+                    .iter()
+                    .any(|a| matches!(a, Atom::Role(r, _, _) if r == "r"))
+                && cl
+                    .body
+                    .iter()
+                    .any(|a| matches!(a, Atom::Concept(n, Term::Var(v)) if n == "B" && v == "y"))
+        }));
+        assert!(!implication.body.iter().any(|a| matches!(a, Atom::Role(..))));
         assert!(!cf
             .clauses
             .iter()
             .any(|c| c.body.is_empty() && c.head.len() > 1));
+    }
+
+    /// ORE 703 witness: two existential conjuncts must be recognised in their
+    /// respective successor contexts and joined through local markers at x.
+    /// A single body containing `r(x,y0)` and `r(x,y1)` is not an admissible
+    /// context-calculus trigger even though it is first-order equivalent.
+    #[test]
+    fn trigger_absorb_localises_multiple_existential_antecedents() {
+        let mut cf = Clausifier::new();
+        cf.trigger_absorb = true;
+        let sub = mk_and([
+            Concept::Name("P".into()),
+            Concept::Exists(Role::Name("r".into()), Box::new(Concept::Name("B".into()))),
+            Concept::Exists(Role::Name("r".into()), Box::new(Concept::Name("D".into()))),
+        ]);
+        cf.mark_subclass_polarity(&sub, &Concept::Name("T".into()));
+        cf.subclass_clauses(&sub, &Concept::Name("T".into()));
+
+        let implication = cf
+            .clauses
+            .iter()
+            .find(|cl| cl.head == vec![Atom::Concept("T".into(), var_x())])
+            .expect("trigger implication");
+        assert_eq!(implication.body.len(), 3);
+        assert!(implication
+            .body
+            .iter()
+            .all(|a| matches!(a, Atom::Concept(_, t) if t == &var_x())));
+        assert_eq!(
+            implication
+                .body
+                .iter()
+                .filter(|a| matches!(a, Atom::Concept(n, _) if n.starts_with("Q_")))
+                .count(),
+            2
+        );
+        assert!(!cf.clauses.iter().any(|cl| {
+            cl.body
+                .iter()
+                .filter_map(|a| match a {
+                    Atom::Role(_, _, Term::Var(v)) if v.starts_with("__trig") => Some(v),
+                    _ => None,
+                })
+                .collect::<HashSet<_>>()
+                .len()
+                > 1
+        }));
     }
 
     #[test]

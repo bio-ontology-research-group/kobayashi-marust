@@ -131,14 +131,23 @@ def short(name: str) -> str:
     cached = _short_iri.get(full)
     if cached is not None:
         return cached
-    base = _short_base(name)
-    if base in ("owl:Thing", "owl:Nothing"):   # specials: never disambiguate
-        _short_iri[full] = base
-        return base
+    raw_base = _short_base(name)
+    if raw_base in ("owl:Thing", "owl:Nothing"):   # specials: never disambiguate
+        _short_iri[full] = raw_base
+        return raw_base
+    # Sequoia represents source concepts and generated definers as different
+    # symbol kinds. Preserve that distinction despite KM's prefix-based engine
+    # encoding: a legal source IRI such as `#__A` must remain a named query.
+    # Generated symbols are constructed after parsing and never call short().
+    base = (
+        f"km_src_{raw_base}"
+        if raw_base.startswith(("Q_", "__", "_aux", "aux_", "def_"))
+        else raw_base
+    )
     cand = base
     owner = _short_owner.get(cand)
     if owner is not None and owner != full:     # collision with a different IRI
-        ns = full[: len(full) - len(base)].rstrip("#/:")
+        ns = full[: len(full) - len(raw_base)].rstrip("#/:")
         tag = _short_base(ns) or "ns"
         cand = f"{base}__{tag}"
         i = 2

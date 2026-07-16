@@ -149,6 +149,11 @@ def _sccs(nodes, succ):
 def canonicalize(text, fmt):
     """Return (consistent, subs_frozenset, unsat_frozenset, capped_bool)."""
     consistent, edges, groups, unsat, declared = PARSERS[fmt](text)
+    # an explicitly-inconsistent result (json reasoners) canonicalises to the
+    # uniform empty signature, so all reasoners' inconsistent sigs are
+    # byte-identical
+    if not consistent:
+        return False, frozenset(), frozenset(), False
 
     succ = {}
     nodes = set()
@@ -196,8 +201,15 @@ def canonicalize(text, fmt):
             if ca != cb:
                 csucc.setdefault(ca, set()).add(cb)
 
-    # memoised reachable-component closure on the DAG
+    # memoised reachable-component closure on the DAG, with a global memo
+    # budget: on giant dense taxonomies the memo alone is quadratic (the
+    # 15703/3524 driver OOM), so exceeding the budget caps the signature
+    # exactly like exceeding CLOSURE_PAIR_CAP does.
     reach = {}
+    _reach_budget = [CLOSURE_PAIR_CAP * 4]
+
+    class _Capped(Exception):
+        pass
 
     def reach_of(c):
         if c in reach:
@@ -207,16 +219,34 @@ def canonicalize(text, fmt):
         for d in csucc.get(c, ()):
             acc.add(d)
             acc |= reach_of(d)
+        _reach_budget[0] -= len(acc)
+        if _reach_budget[0] < 0:
+            raise _Capped()
         return acc
 
-    # any comp that reaches the owl:Nothing SCC is unsatisfiable -> dropped, listed.
-    # the owl:Thing token is dropped, but named classes *equivalent* to Thing stay
-    # real (they are genuine supers of everything).
+    # any comp that reaches the owl:Nothing SCC is unsatisfiable -> dropped,
+    # listed. Detected by LINEAR reverse reachability from the Nothing SCCs
+    # (identical result to the old forward-closure scan, without
+    # materialising the quadratic memo for every component).
     nothing_comps = {comp[n] for n in nodes if _is_nothing(n)}
-    unsat_comps = set()
-    for ci in range(len(comps)):
-        if ci in nothing_comps or (reach_of(ci) & nothing_comps):
-            unsat_comps.add(ci)
+    rpred = {}
+    for a, sups in csucc.items():
+        for b in sups:
+            rpred.setdefault(b, set()).add(a)
+    unsat_comps = set(nothing_comps)
+    stack = list(nothing_comps)
+    while stack:
+        c = stack.pop()
+        for pcomp in rpred.get(c, ()):
+            if pcomp not in unsat_comps:
+                unsat_comps.add(pcomp)
+                stack.append(pcomp)
+    # owl:Thing subsumed by owl:Nothing == the ontology is INCONSISTENT.
+    # Konclude reports an inconsistent ontology as a classification with
+    # EquivalentClasses(Thing Nothing ...); without this check that came out
+    # as "consistent with unsat classes" (and Thing silently dropped).
+    if TOP in comp and comp[TOP] in unsat_comps:
+        return False, frozenset(), frozenset(), False
     for ci in unsat_comps:
         unsat.update(m for m in comps[ci] if not _is_nothing(m))
 
@@ -235,7 +265,12 @@ def canonicalize(text, fmt):
         if not reals:
             continue
         sup_names = []
-        for dc in reach_of(ci):
+        try:
+            ci_reach = reach_of(ci)
+        except _Capped:
+            capped = True
+            break
+        for dc in ci_reach:
             sup_names.extend(real_members.get(dc, ()))
         for sub in reals:
             for sup in sup_names:

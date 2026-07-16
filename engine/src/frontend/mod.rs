@@ -15,6 +15,7 @@ pub mod iri;
 pub mod normalise;
 pub mod parse;
 pub mod preprocess;
+pub mod profile;
 pub mod rbox;
 pub mod sexpr;
 pub mod syntax;
@@ -59,6 +60,13 @@ pub struct FrontendResult {
     /// KM_HT_RULES: parsed SWRL DL-safe rules, carried to `cb_to_ht`. Empty unless
     /// the frontend `KM_HT_RULES` flag is set (so the default output is unchanged).
     pub rules: Vec<crate::json_io::JRule>,
+    /// Konclude-compatible expressivity plus source/clause statistics. Carried
+    /// only in the split meta channel, never in the reasoner clause input.
+    pub profile: profile::OntologyProfile,
+    /// Procedure selected from the source profile and, for an ELC proposal,
+    /// refined by the exact normalized-clause fragment gate (`manual` for a
+    /// standalone frontend invocation).
+    pub route: String,
 }
 
 /// Concept names appearing (body or head) in a list of JSON clauses. Port of
@@ -128,7 +136,27 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // document AST is ever materialised (both used to be O(document) with a
     // heap string per token, and the AST was additionally deep-cloned for the
     // rbox/declared scans — together the 20 GB peak on 500 MB ontologies).
-    let ontology = parse::parse_axioms(&mut reg, text)?;
+    let mut profile_builder = profile::SourceProfileBuilder::new();
+    let ontology = parse::parse_axioms_observed(&mut reg, text, |node| {
+        profile_builder.observe(node);
+    })?;
+    // Source features are now complete and their borrowed distinct-entity sets
+    // can be freed before clausification. The learned router also makes its
+    // pre-normalisation choice at this exact boundary.
+    let mut profile = profile_builder.finish(text.len() as u64);
+    let requested = std::env::var("KM_ROUTE")
+        .unwrap_or_else(|_| "manual".to_string())
+        .parse::<crate::routing::Route>()
+        .map_err(|error| parse::OutOfFragment(format!("configuration: {error}")))?;
+    let automatic = requested == crate::routing::Route::Auto;
+    let mut route = if automatic {
+        crate::routing::select(&profile)
+    } else {
+        requested
+    };
+    // Named bundles control clausification as well as the later worker. This
+    // call occurs before normalisation and before any reasoner thread starts.
+    route.apply_environment();
     t.lap("parse+axioms");
     let (tbox, abox, mut hooks) = normalise::normalise(&ontology);
     // Project the named-class ABox-consistency data before the AST is dropped
@@ -147,9 +175,11 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     // set so cb_to_ht can seed it as named-individual nominal nodes. Default ON,
     // opt out with KM_NO_HT_RULES. `collect_rules` returns EMPTY on a rule-free
     // ontology, so `ht_rules` stays false there and the output is byte-identical
-    // to before — only ontologies that actually carry DL-safe rules change.
+    // to before. An active rule route rejects any rule shape it cannot encode;
+    // silently dropping one would make a supposedly complete policy leaf
+    // incomplete.
     let rules: Vec<crate::json_io::JRule> = if std::env::var_os("KM_NO_HT_RULES").is_none() {
-        collect_rules(&ontology)
+        collect_rules(&ontology, profile.source.rule_axioms)?
     } else {
         Vec::new()
     };
@@ -338,6 +368,23 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         tbox.into_iter().map(|c| clause_to_json(&c)).collect();
     t.lap("clause_to_json");
 
+    // ELC is the only learned leaf whose exact semantic domain is known only
+    // after normalization. The source tree may propose it, but the worker is
+    // authorized only when both the RBox relevance test and the cert-off ELC
+    // normal-form screen pass. A rejection changes the route, not the result of
+    // a speculative reasoner run: no race and no wasted classification worker.
+    // ELC and plain CB use the same clausification-affecting settings (rules and
+    // absorption off), so applying the final CB bundle here preserves exactly
+    // the clauses just constructed while configuring the parent orchestrator's
+    // one selected worker.
+    if automatic
+        && route == crate::routing::Route::Elc
+        && (!el_rbox_safe || !crate::elcomplete::is_pure_el_shape(&jclauses))
+    {
+        route = crate::routing::Route::CbPlain16;
+        route.apply_environment();
+    }
+
     // Seed every declared class absent from the clause set with a tautological
     // self-clause A(x) → A(x) (port of the declared-classes loop).
     let mut present = concept_names_in(&jclauses);
@@ -374,6 +421,15 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
     named.sort();
     t.lap("declared_seed+iri_map");
 
+    // The deployable tree uses source/expressivity features because it must
+    // choose before normalisation. A second full scan of multi-million-clause
+    // giants would add classification time without influencing that choice.
+    // `km profile` requests this detailed channel explicitly; ordinary
+    // classification carries zeroed clause statistics in its meta.
+    if std::env::var_os("KM_PROFILE_CLAUSES").is_some() {
+        profile.clauses = profile::clause_statistics(&jclauses);
+    }
+
     let rbox = rbox.iter().map(rbox::to_row).collect();
     Ok(FrontendResult {
         clauses: jclauses,
@@ -388,16 +444,20 @@ pub fn ofn_to_clauses(text: &str) -> Result<FrontendResult, parse::OutOfFragment
         definers,
         source_axioms,
         rules,
+        profile,
+        route: route.as_str().to_string(),
     })
 }
 
 /// Convert the ontology's parsed `DLSafeRule` axioms into the JSON rule channel
 /// (`JRule`). Only Class/Role/Same/Diff atoms over named classes are
-/// representable; an atom whose class is a complex expression makes the whole
-/// rule undrepresentable, so it is dropped (sound: a dropped rule can only lose
-/// an inconsistency, never invent one — cb_to_ht and the consistency check are
-/// monotone in the rule set).
-fn collect_rules(ontology: &syntax::Ontology) -> Vec<crate::json_io::JRule> {
+/// representable. Any unrepresentable rule rejects the rule-aware route rather
+/// than being silently dropped: omission is sound as an approximation, but it
+/// is not complete and therefore cannot back an automatic policy leaf.
+fn collect_rules(
+    ontology: &syntax::Ontology,
+    source_rule_count: u64,
+) -> Result<Vec<crate::json_io::JRule>, parse::OutOfFragment> {
     use crate::json_io::{JRule, JRuleAtom, JRuleTerm};
     use syntax::{Axiom, Concept, RuleAtom, RuleTerm};
     let term = |t: &RuleTerm| -> JRuleTerm {
@@ -429,15 +489,55 @@ fn collect_rules(ontology: &syntax::Ontology) -> Vec<crate::json_io::JRule> {
             },
         })
     };
+    let parsed_rule_count = ontology.rules().count() as u64;
+    if parsed_rule_count != source_rule_count {
+        return Err(parse::OutOfFragment(format!(
+            "DL-safe rules: parsed {parsed_rule_count} of {source_rule_count}; an atom or head shape is unsupported"
+        )));
+    }
     let mut out = Vec::new();
     for ax in ontology.rules() {
         if let Axiom::Rule(body, head) = ax {
             let jb: Option<Vec<_>> = body.iter().map(&conv_atom).collect();
             let jh: Option<Vec<_>> = head.iter().map(&conv_atom).collect();
-            if let (Some(b), Some(h)) = (jb, jh) {
-                out.push(JRule { body: b, head: h });
-            }
+            let (Some(b), Some(h)) = (jb, jh) else {
+                return Err(parse::OutOfFragment(
+                    "DL-safe rule contains a complex class atom".to_string(),
+                ));
+            };
+            out.push(JRule { body: b, head: h });
         }
     }
-    out
+    Ok(out)
+}
+
+#[cfg(test)]
+mod rule_contract_tests {
+    use super::*;
+
+    fn ontology(text: &str) -> syntax::Ontology {
+        let mut registry = IriRegistry::new();
+        parse::parse_axioms(&mut registry, text).expect("rule test ontology")
+    }
+
+    #[test]
+    fn named_dl_safe_rule_is_fully_representable() {
+        let parsed = ontology(
+            "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
+        );
+        assert_eq!(collect_rules(&parsed, 1).expect("supported rule").len(), 1);
+    }
+
+    #[test]
+    fn rule_contract_rejects_dropped_and_complex_atoms() {
+        let dropped = ontology(
+            "Ontology(DLSafeRule(Body(BuiltInAtom(<p> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
+        );
+        assert!(collect_rules(&dropped, 1).is_err());
+
+        let complex = ontology(
+            "Ontology(DLSafeRule(Body(ClassAtom(ObjectIntersectionOf(<A> <B>) Variable(<x>))) Head(ClassAtom(<C> Variable(<x>)))))",
+        );
+        assert!(collect_rules(&complex, 1).is_err());
+    }
 }

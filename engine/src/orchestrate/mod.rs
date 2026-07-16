@@ -24,6 +24,7 @@ use std::io::{BufReader, Write};
 use std::path::Path;
 
 pub use config::Config;
+use config::Mechanism;
 
 /// Local names denoting the bottom concept (⊥). Matches `owl_classify.BOTTOM`.
 fn is_bottom(s: &str) -> bool {
@@ -148,6 +149,11 @@ fn run_adaptive(
     engine_threads: Option<usize>,
 ) -> Result<EngineOut, OrchestrateError> {
     let res = engine_run::run_engine_adaptive(cfg, clauses_path, None, engine_threads)?;
+    if res.code == 4 {
+        return Err(OrchestrateError::OutOfFragment(
+            "selected CB mechanism did not reach its complete fixpoint".into(),
+        ));
+    }
     if res.code != 0 {
         return Err(OrchestrateError::Worker {
             bin: "engine".into(),
@@ -178,10 +184,112 @@ fn handle_elc_result(
     }
 }
 
+/// Execute one EL completion attempt and never resolve a residue with CB. Exit
+/// 3 (not EL) and exit 4 (certificate residue) are honest fragment declines for
+/// an atomic EL mechanism, not invitations to start another classifier.
+fn run_atomic_elc(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, OrchestrateError> {
+    let (program, prefix) = cfg.elc_cmd();
+    let res = engine_run::run_engine(
+        &program,
+        &prefix,
+        clauses_path,
+        None,
+        Some(cfg.par_mem_gb),
+        None,
+        &[],
+        false,
+    )?;
+    match res.code {
+        0 => {
+            let out = parse_out(&res)?;
+            if out.unresolved.is_empty() {
+                Ok(out)
+            } else {
+                Err(OrchestrateError::OutOfFragment(
+                    "EL completion returned a classification residue".into(),
+                ))
+            }
+        }
+        3 => Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the selected EL completion fragment".into(),
+        )),
+        4 => Err(OrchestrateError::OutOfFragment(
+            "EL completeness certificate left an unresolved residue".into(),
+        )),
+        code => Err(OrchestrateError::Worker {
+            bin: "elc".into(),
+            code,
+            stderr: res.stderr,
+        }),
+    }
+}
+
+/// Execute one CB configuration exactly once. In particular this bypasses the
+/// adaptive central-to-legacy retry, the in-process probe, every EL/HT racer,
+/// and the absorbed/plain portfolio. Thread count, central/per-function mode,
+/// ordering, and frontend transformation are the selected mechanism's explicit
+/// settings and are measured as such.
+fn run_atomic_cb(cfg: &Config, clauses_path: &Path) -> Result<EngineOut, OrchestrateError> {
+    let (program, prefix) = cfg.engine_cmd();
+    let threads = cfg.threads.map(|n| n.to_string());
+    let res = engine_run::run_engine(
+        &program,
+        &prefix,
+        clauses_path,
+        threads.as_deref(),
+        Some(cfg.par_mem_gb),
+        if cfg.no_central {
+            None
+        } else {
+            Some(cfg.central_time_cap)
+        },
+        &[],
+        false,
+    )?;
+    if res.code == 4 {
+        return Err(OrchestrateError::OutOfFragment(
+            "selected CB mechanism did not reach its complete fixpoint".into(),
+        ));
+    }
+    if res.code != 0 {
+        return Err(OrchestrateError::Worker {
+            bin: "engine".into(),
+            code: res.code,
+            stderr: res.stderr,
+        });
+    }
+    parse_out(&res)
+}
+
+/// Dispatch an isolated top-level mechanism. `None` means the explicitly
+/// requested historical portfolio; every other variant returns one worker's
+/// answer or an honest out-of-fragment/error result, never a fallback answer.
+fn run_atomic_mechanism(
+    cfg: &Config,
+    clauses_path: &Path,
+    named: &HashSet<String>,
+) -> Result<Option<EngineOut>, OrchestrateError> {
+    match &cfg.mechanism {
+        Mechanism::Portfolio => Ok(None),
+        Mechanism::Elc => run_atomic_elc(cfg, clauses_path).map(Some),
+        Mechanism::Cb => run_atomic_cb(cfg, clauses_path).map(Some),
+        Mechanism::Ht => race::run_ht_only(cfg, clauses_path, named).map(Some),
+        Mechanism::Tableau => race::run_tableau_only(cfg, clauses_path, named).map(Some),
+        Mechanism::Unknown(name) => Err(OrchestrateError::OutOfFragment(format!(
+            "unknown KM_MECHANISM {name:?}"
+        ))),
+    }
+}
+
 /// Upper size bound (bytes of the source ontology) for the in-process elc
 /// fast path. Trivial ORE onts are a few hundred KB; the bound stays well
 /// below the giants (whose elc peak must remain in an isolated subprocess).
 const INPROC_ELC_MAX: u64 = 4 << 20;
+
+#[inline]
+fn use_elc_portfolio(elc: bool, elc_portfolio: bool, is_giant: bool, tab_race: bool) -> bool {
+    elc && elc_portfolio && !is_giant && !tab_race
+}
 
 /// In-process elc for small EL-safe ontologies (`KM_NO_INPROC_ELC` to opt out).
 ///
@@ -309,14 +417,38 @@ fn try_inproc_elc(
 // ---------------------------------------------------------------------------
 // the conductor
 // ---------------------------------------------------------------------------
-pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateError> {
+pub fn classify(initial_cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateError> {
+    // Route selection changes process-wide KM_* keys because the frontend and
+    // worker subprocesses share the established environment contract. Restore
+    // them on every return path so repeated library calls route independently.
+    let _environment_guard = crate::routing::EnvironmentGuard::capture();
     let t_start = std::time::Instant::now();
     let timing = std::env::var_os("KM_TIMING").is_some();
-    let (clauses_path, meta) = frontend_run::run_ofn_split(cfg, ont)?;
+    let (clauses_path, meta) = frontend_run::run_ofn_split(initial_cfg, ont)?;
+    let selected_route = meta
+        .route
+        .parse::<crate::routing::Route>()
+        .map_err(|error| OrchestrateError::OutOfFragment(format!("configuration: {error}")))?;
+    let routed_cfg = if matches!(
+        selected_route,
+        crate::routing::Route::Auto | crate::routing::Route::Manual
+    ) {
+        None
+    } else {
+        // The frontend subprocess cannot mutate its parent's environment. Apply
+        // the same typed bundle here, then freeze subsequent frontend retries in
+        // manual mode so the absorption portfolio can explicitly request its
+        // plain/absorbed pass without the tree overriding it.
+        selected_route.apply_environment();
+        std::env::set_var("KM_ROUTE", "manual");
+        Some(Config::from_env())
+    };
+    let cfg = routed_cfg.as_ref().unwrap_or(initial_cfg);
     if timing {
         eprintln!(
-            "KM_TIMING frontend done @ {:.2}s",
-            t_start.elapsed().as_secs_f64()
+            "KM_TIMING frontend done @ {:.2}s route={}",
+            t_start.elapsed().as_secs_f64(),
+            selected_route,
         );
     }
 
@@ -362,6 +494,10 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
 
     let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
     let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    // Owned declaration set consumed by the CB-to-HT conversion. A declared
+    // class is always a query even when its spelling resembles an internal
+    // frontend symbol.
+    let named_set: HashSet<String> = meta.named.iter().cloned().collect();
     // In the Rust-frontend path the per-ontology short registry is empty, so
     // `short(n) == n`; is_internal keys directly on the internal name.
     let is_internal = |n: &str| -> bool {
@@ -388,64 +524,93 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
-    let out: EngineOut = {
-        // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
-        // and elc side by side); keep them on the safe single-arm paths (bare elc
-        // when EL-safe, else the CB stack) by suppressing the portfolio for them.
-        let is_giant = std::fs::metadata(ont)
-            .map(|m| m.len() > 100_000_000)
-            .unwrap_or(false);
-        let portfolio_on = cfg.elc_portfolio && !is_giant;
-        let mut out: Option<EngineOut> = None;
-        let (elc_prog, elc_pre) = cfg.elc_cmd();
+    let atomic_out = run_atomic_mechanism(cfg, clauses_path.path(), &named_set)?;
+    let out: EngineOut = match atomic_out {
+        Some(out) => out,
+        None => {
+            // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
+            // and elc side by side); keep them on the safe single-arm paths (bare elc
+            // when EL-safe, else the CB stack) by suppressing the portfolio for them.
+            let is_giant = std::fs::metadata(ont)
+                .map(|m| m.len() > 100_000_000)
+                .unwrap_or(false);
+            // KM_TAB_RACE is an explicitly selected alternative portfolio. A later
+            // certified-EL integration accidentally shadowed `cb_stack` (the only
+            // place the lazy tableau is composed) on every non-giant ontology.
+            // Suppress that outer EL race when tableau racing is requested; the
+            // normal bare-EL fast path still gets first refusal, and a non-EL input
+            // reaches the documented absorbed-CB-vs-tableau procedure below.
+            let portfolio_on =
+                use_elc_portfolio(cfg.elc, cfg.elc_portfolio, is_giant, cfg.tab_race);
+            let mut out: Option<EngineOut> = None;
+            let (elc_prog, elc_pre) = cfg.elc_cmd();
 
-        // In-process elc fast path for SMALL EL-safe ontologies: run elc as a
-        // library call and, when it fully certifies, skip the portfolio race
-        // entirely (no CB/HT/elc-cert forks). Equivalent to the trusted
-        // bare-elc branch below; elc reporting not-EL (None) falls straight
-        // through to the existing logic unchanged. Gated by size so the
-        // giants keep their isolated-subprocess elc. Opt out KM_NO_INPROC_ELC.
-        let inproc_ok = std::env::var_os("KM_NO_INPROC_ELC").is_none();
-        let small = std::fs::metadata(ont)
-            .map(|m| m.len() < INPROC_ELC_MAX)
-            .unwrap_or(false);
-        if inproc_ok && small && meta.el_rbox_safe {
-            out = try_inproc_elc(cfg, clauses_path.path())?;
-            if timing && out.is_some() {
-                eprintln!(
-                    "KM_TIMING in-process elc done @ {:.2}s (no race)",
-                    t_start.elapsed().as_secs_f64()
-                );
+            // In-process elc fast path for SMALL EL-safe ontologies: run elc as a
+            // library call and, when it fully certifies, skip the portfolio race
+            // entirely (no CB/HT/elc-cert forks). Equivalent to the trusted
+            // bare-elc branch below; elc reporting not-EL (None) falls straight
+            // through to the existing logic unchanged. Gated by size so the
+            // giants keep their isolated-subprocess elc. Opt out KM_NO_INPROC_ELC.
+            let inproc_ok = std::env::var_os("KM_NO_INPROC_ELC").is_none();
+            let small = std::fs::metadata(ont)
+                .map(|m| m.len() < INPROC_ELC_MAX)
+                .unwrap_or(false);
+            if cfg.elc && inproc_ok && small && meta.el_rbox_safe {
+                out = try_inproc_elc(cfg, clauses_path.path())?;
+                if timing && out.is_some() {
+                    eprintln!(
+                        "KM_TIMING in-process elc done @ {:.2}s (no race)",
+                        t_start.elapsed().as_secs_f64()
+                    );
+                }
             }
-        }
 
-        if out.is_none() && meta.el_rbox_safe && !portfolio_on {
-            // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
-            let res = engine_run::run_engine(
-                &elc_prog,
-                &elc_pre,
-                clauses_path.path(),
-                None,
-                None,
-                None,
-                &[],
-                false,
-            )?;
-            out = handle_elc_result(cfg, res, clauses_path.path())?;
-            if out.is_none() {
-                // EL-safe RBox but a non-EL TBox residual (covering disjunction /
-                // nominal / cardinality), so cert-off elc bailed before saturating.
-                // This branch is reached only when the portfolio is suppressed —
-                // i.e. for the >100MB giants, where racing CB and elc concurrently
-                // would OOM. Retry elc alone with the repair certificate: when the
-                // canonical EL model certifies the residual (an inert/covering
-                // disjunction whose EL answer is already complete — exactly what
-                // ELK computes by dropping the non-EL axioms), elc answers soundly
-                // in EL time and memory instead of the CB engine blowing up.
-                // Bounded by wall+RSS so a failing certificate still falls through
-                // to CB. Recovers EL-safe giants 15803, 6212 (240s/18GB timeout →
-                // ~25s/82s at 1.2GB, gold-clean) while leaving the pure-EL giants
-                // (no residual, solved on the first attempt) untouched.
+            if cfg.elc && out.is_none() && meta.el_rbox_safe && !portfolio_on {
+                // bare elc: it decides EL-membership itself (exit 3 ⇒ not EL).
+                let res = engine_run::run_engine(
+                    &elc_prog,
+                    &elc_pre,
+                    clauses_path.path(),
+                    None,
+                    None,
+                    None,
+                    &[],
+                    false,
+                )?;
+                out = handle_elc_result(cfg, res, clauses_path.path())?;
+                if out.is_none() {
+                    // EL-safe RBox but a non-EL TBox residual (covering disjunction /
+                    // nominal / cardinality), so cert-off elc bailed before saturating.
+                    // This branch is reached only when the portfolio is suppressed —
+                    // i.e. for the >100MB giants, where racing CB and elc concurrently
+                    // would OOM. Retry elc alone with the repair certificate: when the
+                    // canonical EL model certifies the residual (an inert/covering
+                    // disjunction whose EL answer is already complete — exactly what
+                    // ELK computes by dropping the non-EL axioms), elc answers soundly
+                    // in EL time and memory instead of the CB engine blowing up.
+                    // Bounded by wall+RSS so a failing certificate still falls through
+                    // to CB. Recovers EL-safe giants 15803, 6212 (240s/18GB timeout →
+                    // ~25s/82s at 1.2GB, gold-clean) while leaving the pure-EL giants
+                    // (no residual, solved on the first attempt) untouched.
+                    let res = engine_run::run_engine(
+                        &elc_prog,
+                        &elc_pre,
+                        clauses_path.path(),
+                        None,
+                        Some(cfg.elc_force_mem_gb),
+                        Some(cfg.elc_force_budget_s),
+                        &[("KM_ELC_CERT", "2")],
+                        false,
+                    )?;
+                    if !(res.oom || res.timed_out) {
+                        out = handle_elc_result(cfg, res, clauses_path.path())?;
+                    }
+                }
+            } else if cfg.elc && !meta.el_rbox_safe && !portfolio_on && cfg.elc_force {
+                // KM_ELC_FORCE: attempt elc on a non-EL-safe RBox; only a passing
+                // completeness certificate lets it answer, and a failing attempt can
+                // be arbitrarily expensive, so bound it by wall clock + RSS. Hitting
+                // either bound falls through to the CB engine exactly like exit 3.
                 let res = engine_run::run_engine(
                     &elc_prog,
                     &elc_pre,
@@ -460,86 +625,60 @@ pub fn classify(cfg: &Config, ont: &Path) -> Result<Classification, OrchestrateE
                     out = handle_elc_result(cfg, res, clauses_path.path())?;
                 }
             }
-        } else if !meta.el_rbox_safe && !portfolio_on && cfg.elc_force {
-            // KM_ELC_FORCE: attempt elc on a non-EL-safe RBox; only a passing
-            // completeness certificate lets it answer, and a failing attempt can
-            // be arbitrarily expensive, so bound it by wall clock + RSS. Hitting
-            // either bound falls through to the CB engine exactly like exit 3.
-            let res = engine_run::run_engine(
-                &elc_prog,
-                &elc_pre,
-                clauses_path.path(),
-                None,
-                Some(cfg.elc_force_mem_gb),
-                Some(cfg.elc_force_budget_s),
-                &[],
-                false,
-            )?;
-            if !(res.oom || res.timed_out) {
-                out = handle_elc_result(cfg, res, clauses_path.path())?;
+            // In-process CB engine fast path for SMALL NON-EL HORN ontologies: run
+            // the trusted CB engine as a library call and, when it finishes, skip
+            // the fork/race entirely. Eligible when the ont is small (same file
+            // gate as in-process elc) and NOT EL-safe (EL-safe small onts already
+            // took the in-process elc above). The rule + Horn (no-blowup) gates and
+            // soundness argument live in `try_inproc_engine`. Opt out
+            // KM_NO_INPROC_ENGINE.
+            if out.is_none()
+                && small
+                && !meta.el_rbox_safe
+                && std::env::var_os("KM_NO_INPROC_ENGINE").is_none()
+            {
+                let budget_s: f64 = std::env::var("KM_INPROC_ENGINE_BUDGET_S")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(4.0);
+                out = try_inproc_engine(
+                    clauses_path.path(),
+                    std::time::Duration::from_secs_f64(budget_s),
+                )?;
+                if timing && out.is_some() {
+                    eprintln!(
+                        "KM_TIMING in-process engine done @ {:.2}s (no race)",
+                        t_start.elapsed().as_secs_f64()
+                    );
+                }
             }
-        }
-        // Declared class names from the frontend meta: threaded into every
-        // cb_to_ht conversion so a declared class is ALWAYS a query, even when
-        // its local name looks internal (Q_/__/aux_/def_ prefix or contains
-        // ':', e.g. <.../searchId.do?chebiId=CHEBI:37577>). Without this the
-        // HT/tableau arms silently drop such classes from their answers
-        // (ore_ont_12698: 84 missing subsumptions).
-        let named_set: HashSet<String> = meta.named.iter().cloned().collect();
 
-        // In-process CB engine fast path for SMALL NON-EL HORN ontologies: run
-        // the trusted CB engine as a library call and, when it finishes, skip
-        // the fork/race entirely. Eligible when the ont is small (same file
-        // gate as in-process elc) and NOT EL-safe (EL-safe small onts already
-        // took the in-process elc above). The rule + Horn (no-blowup) gates and
-        // soundness argument live in `try_inproc_engine`. Opt out
-        // KM_NO_INPROC_ENGINE.
-        if out.is_none()
-            && small
-            && !meta.el_rbox_safe
-            && std::env::var_os("KM_NO_INPROC_ENGINE").is_none()
-        {
-            let budget_s: f64 = std::env::var("KM_INPROC_ENGINE_BUDGET_S")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(4.0);
-            out = try_inproc_engine(
-                clauses_path.path(),
-                std::time::Duration::from_secs_f64(budget_s),
-            )?;
-            if timing && out.is_some() {
-                eprintln!(
-                    "KM_TIMING in-process engine done @ {:.2}s (no race)",
-                    t_start.elapsed().as_secs_f64()
-                );
-            }
-        }
-
-        match out {
-            Some(o) => o,
-            None => {
-                if portfolio_on && cfg.ht_race {
-                    // Combined router: HT races against (CB-adaptive vs certified
-                    // elc). Per ont, whichever sound+complete arm finishes first
-                    // wins; in fallback mode HT answers only when the CB/elc arm
-                    // fails or runs past budget (monotone-safe). This reaches the
-                    // union of the HT and elc-portfolio recoveries in one pass.
-                    race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
-                        race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), th)
-                    })?
-                } else if portfolio_on {
-                    // race the certified EL path against the context engine; both
-                    // are sound+complete so the first finisher wins. Reserve a core
-                    // (only when KM_THREADS is unset) for the certificate racer.
-                    let th = race::elc_portfolio_threads(cfg);
-                    race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), th)?
-                } else if cfg.ht_race {
-                    // race the whole CB stack against the KM_HT hypertableau.
-                    race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
-                        cb_stack(cfg, ont, clauses_path.path(), &named_set, th)
-                    })?
-                } else {
-                    cb_stack(cfg, ont, clauses_path.path(), &named_set, cfg.threads)?
+            match out {
+                Some(o) => o,
+                None => {
+                    if portfolio_on && cfg.ht_race {
+                        // Combined router: HT races against (CB-adaptive vs certified
+                        // elc). Per ont, whichever sound+complete arm finishes first
+                        // wins; in fallback mode HT answers only when the CB/elc arm
+                        // fails or runs past budget (monotone-safe). This reaches the
+                        // union of the HT and elc-portfolio recoveries in one pass.
+                        race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
+                            race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), th)
+                        })?
+                    } else if portfolio_on {
+                        // race the certified EL path against the context engine; both
+                        // are sound+complete so the first finisher wins. Reserve a core
+                        // (only when KM_THREADS is unset) for the certificate racer.
+                        let th = race::elc_portfolio_threads(cfg);
+                        race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), th)?
+                    } else if cfg.ht_race {
+                        // race the whole CB stack against the KM_HT hypertableau.
+                        race::race_cb_vs_ht(cfg, clauses_path.path(), &named_set, ht_mode, |th| {
+                            cb_stack(cfg, ont, clauses_path.path(), &named_set, th)
+                        })?
+                    } else {
+                        cb_stack(cfg, ont, clauses_path.path(), &named_set, cfg.threads)?
+                    }
                 }
             }
         }
@@ -685,6 +824,11 @@ fn resolve_residue(
     // it so the residue engine run is allowed to spawn.
     engine_run::reset_cancel();
     let res = engine_run::run_engine_adaptive(cfg, clauses_path, Some(&q), None)?;
+    if res.code == 4 {
+        return Err(OrchestrateError::OutOfFragment(
+            "CB residue completion did not reach its complete fixpoint".into(),
+        ));
+    }
     if res.code != 0 {
         return Err(OrchestrateError::Worker {
             bin: "engine".into(),
@@ -759,5 +903,18 @@ impl Classification {
             out.push(format!("UNSAT\t{}", c));
         }
         out.join("\n")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::use_elc_portfolio;
+
+    #[test]
+    fn explicit_tableau_race_is_not_shadowed_by_elc_portfolio() {
+        assert!(use_elc_portfolio(true, true, false, false));
+        assert!(!use_elc_portfolio(true, true, false, true));
+        assert!(!use_elc_portfolio(true, true, true, false));
+        assert!(!use_elc_portfolio(false, true, false, false));
     }
 }

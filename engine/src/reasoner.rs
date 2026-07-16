@@ -40,6 +40,7 @@ pub struct Reasoner {
     dropped: usize,
     subs: BTreeMap<String, BTreeSet<String>>,
     inconsistent: bool,
+    incomplete: bool,
     num_ctx: usize,
 }
 
@@ -226,6 +227,7 @@ impl Reasoner {
             dropped: b.dropped,
             subs: BTreeMap::new(),
             inconsistent: false,
+            incomplete: false,
             num_ctx: 0,
         }
     }
@@ -247,10 +249,17 @@ impl Reasoner {
         Engine::new(self.sig0.clone(), self.clauses0.clone(), self.dropped)
     }
 
-    fn absorb(&mut self, subs: Vec<(String, Vec<String>)>, inc: bool, nctx: usize) {
+    fn absorb(
+        &mut self,
+        subs: Vec<(String, Vec<String>)>,
+        inc: bool,
+        incomplete: bool,
+        nctx: usize,
+    ) {
         if inc {
             self.inconsistent = true;
         }
+        self.incomplete |= incomplete;
         self.num_ctx += nctx;
         for (a, supers) in subs {
             let set = self.subs.entry(a).or_default();
@@ -342,10 +351,10 @@ impl Reasoner {
         // Global inconsistency (⊤ ⊑ ⊥), detected once via an empty-query run
         // under the complete (unordered) regime.
         set_branch_ordered(false);
-        let inc = {
+        let (inc, inc_incomplete) = {
             let mut e = self.build_engine();
             e.run_for(&[]);
-            e.inconsistent()
+            (e.inconsistent(), e.incomplete())
         };
         let node_budget: usize = std::env::var("KM_SPLIT_BUDGET")
             .ok()
@@ -381,14 +390,19 @@ impl Reasoner {
                 fallback.len()
             );
         }
-        self.absorb(subs, inc, 0);
+        self.absorb(subs, inc, inc_incomplete, 0);
         if !fallback.is_empty() {
             // Fallback queries run under the complete (unordered) regime.
             set_branch_ordered(false);
             let mut e = self.build_engine();
             e.run_for(&fallback);
-            let (s, i, n) = (e.subsumptions(), e.inconsistent(), e.num_contexts());
-            self.absorb(s, i, n);
+            let (s, i, incomplete, n) = (
+                e.subsumptions(),
+                e.inconsistent(),
+                e.incomplete(),
+                e.num_contexts(),
+            );
+            self.absorb(s, i, incomplete, n);
         }
     }
 
@@ -440,27 +454,48 @@ impl Reasoner {
         if threads <= 1 || queries.len() <= 1 {
             let mut e = self.build_engine();
             e.run_for(&queries);
-            let (subs, inc, n) = (e.subsumptions(), e.inconsistent(), e.num_contexts());
-            self.absorb(subs, inc, n);
+            let (subs, inc, incomplete, n) = (
+                e.subsumptions(),
+                e.inconsistent(),
+                e.incomplete(),
+                e.num_contexts(),
+            );
+            self.absorb(subs, inc, incomplete, n);
             return;
         }
-        // Static-schedule escape hatch (A/B + debugging): the original
-        // contiguous chunking — `threads` engines, one fixed slice of the query
-        // list each. Kept reachable via KM_STATIC_SCHED so the dynamic scheduler
-        // below can be compared against it without rebuilding.
-        if std::env::var_os("KM_STATIC_SCHED").is_some() {
+        // Exact nominal roots all communicate through one ground context.  A
+        // long-lived work-stealing engine accumulates the conditional labels
+        // of several non-contiguous query grabs; those clauses remain logically
+        // separate, but multiply later ground r-Pred joins.  Konclude likewise
+        // separates nominal-influenced saturation tasks from the completed base
+        // nominal label.  Until KM can physically share that completed label,
+        // use one fixed contiguous query slice per engine for nominal runs.  It
+        // computes the same per-query fixpoints while bounding how many
+        // influenced labels coexist in one ground context.
+        //
+        // KM_STATIC_SCHED selects this schedule for any mechanism.  The nominal
+        // route selects it automatically; KM_NOMINAL_DYNAMIC restores the
+        // general work-stealing scheduler for direct A/B measurements.
+        let nominal_static = std::env::var_os("KM_NOMINALS").is_some()
+            && std::env::var_os("KM_NOMINAL_DYNAMIC").is_none();
+        if std::env::var_os("KM_STATIC_SCHED").is_some() || nominal_static {
             let chunk_len = queries.len().div_ceil(threads);
             let chunks: Vec<&[Iri]> = queries.chunks(chunk_len).collect();
-            let partials: Vec<(Vec<(String, Vec<String>)>, bool, usize)> = chunks
+            let partials: Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)> = chunks
                 .par_iter()
                 .map(|chunk| {
                     let mut e = self.build_engine();
                     e.run_for(chunk);
-                    (e.subsumptions(), e.inconsistent(), e.num_contexts())
+                    (
+                        e.subsumptions(),
+                        e.inconsistent(),
+                        e.incomplete(),
+                        e.num_contexts(),
+                    )
                 })
                 .collect();
-            for (subs, inc, n) in partials {
-                self.absorb(subs, inc, n);
+            for (subs, inc, incomplete, n) in partials {
+                self.absorb(subs, inc, incomplete, n);
             }
             return;
         }
@@ -486,12 +521,12 @@ impl Reasoner {
         let cursor = AtomicUsize::new(0);
         let this: &Reasoner = self;
         let queries_ref: &[Iri] = &queries;
-        let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, usize)>> =
+        let partials: std::sync::Mutex<Vec<(Vec<(String, Vec<String>)>, bool, bool, usize)>> =
             std::sync::Mutex::new(Vec::with_capacity(threads));
         rayon::scope(|s| {
             for _ in 0..threads {
                 s.spawn(|_| {
-                    let mut e = this.build_engine();
+                    let mut engine = this.build_engine();
                     let mut did_any = false;
                     loop {
                         let seen = cursor.load(Ordering::Relaxed);
@@ -506,18 +541,23 @@ impl Reasoner {
                             break;
                         }
                         let end = (start + grab).min(n);
-                        e.run_for(&queries_ref[start..end]);
+                        engine.run_for(&queries_ref[start..end]);
                         did_any = true;
                     }
                     if did_any {
-                        let part = (e.subsumptions(), e.inconsistent(), e.num_contexts());
+                        let part = (
+                            engine.subsumptions(),
+                            engine.inconsistent(),
+                            engine.incomplete(),
+                            engine.num_contexts(),
+                        );
                         partials.lock().unwrap().push(part);
                     }
                 });
             }
         });
-        for (subs, inc, n) in partials.into_inner().unwrap() {
-            self.absorb(subs, inc, n);
+        for (subs, inc, incomplete, n) in partials.into_inner().unwrap() {
+            self.absorb(subs, inc, incomplete, n);
         }
     }
 
@@ -555,6 +595,13 @@ impl Reasoner {
 
     pub fn inconsistent(&self) -> bool {
         self.inconsistent
+    }
+
+    /// True when at least one worker hit a resource backstop before reaching
+    /// its monotone fixpoint. The accumulated consequences are sound but must
+    /// not be exposed as a complete classification.
+    pub fn incomplete(&self) -> bool {
+        self.incomplete
     }
 
     pub fn dropped_unsupported(&self) -> usize {
@@ -782,5 +829,15 @@ mod tests {
             "expected B ⊑ A, got {:?}",
             supers(&rr, "B")
         );
+    }
+
+    #[test]
+    fn incomplete_worker_state_is_sticky() {
+        let mut rr = Reasoner::new(&[]);
+        assert!(!rr.incomplete());
+        rr.absorb(Vec::new(), false, true, 0);
+        assert!(rr.incomplete());
+        rr.absorb(Vec::new(), false, false, 0);
+        assert!(rr.incomplete());
     }
 }
